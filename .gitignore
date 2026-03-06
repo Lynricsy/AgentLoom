@@ -1,0 +1,98 @@
+# ============================================
+# AgentLoom AUTO - Comprehensive .gitignore
+# 基于架构文档的多技术栈配置
+# ============================================
+
+# ──────────────────────────────────────────────
+# 依赖目录 (Dependencies)
+# ──────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# Rust (agentloom-type-engine 预留)
+target/
+
+# Flutter/Dart (agentloom-mobile 预留)
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# ──────────────────────────────────────────────
+# 构建输出 (Build Outputs)
+# ──────────────────────────────────────────────
+dist/
+*.tsbuildinfo
+*.wasm
+
+# ──────────────────────────────────────────────
+# 测试覆盖率 (Test Coverage)
+# ──────────────────────────────────────────────
+coverage/
+
+# ──────────────────────────────────────────────
+# 环境变量 (Environment Variables)
+# ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.staging
+.env.production
+# 注意: .env.example 会被提交（作为模板）
+!.env.example
+
+# ──────────────────────────────────────────────
+# 操作系统文件 (OS Files)
+# ──────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ──────────────────────────────────────────────
+# IDE / 编辑器 (IDE / Editor)
+# ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ──────────────────────────────────────────────
+# Agent / 工具运行时 (Agent / Tool Runtime)
+# ──────────────────────────────────────────────
+AgentLogs/
+.autobmad-logs/
+.autobmad-state.json
+
+# ──────────────────────────────────────────────
+# 日志与调试 (Logs & Debug)
+# ──────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ──────────────────────────────────────────────
+# Docker (agentloom-deploy 预留)
+# ──────────────────────────────────────────────
+.docker/
+
+# ──────────────────────────────────────────────
+# 杂项 (Miscellaneous)
+# ──────────────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+.cache/
+.temp/
+.tmp/

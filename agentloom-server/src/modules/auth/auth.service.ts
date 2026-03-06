@@ -1,0 +1,348 @@
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { AuthApiError } from '@supabase/supabase-js';
+import * as jwt from 'jsonwebtoken';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import { users } from '../../database/schema';
+import { DomainException } from '../../common/exceptions/domain.exception';
+import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
+import { SupabaseService } from './supabase/supabase.service';
+import type { RegisterDto } from './dto/register.dto';
+import type { LoginDto } from './dto/login.dto';
+import type { RefreshTokenDto } from './dto/refresh-token.dto';
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly tokenBlacklist: TokenBlacklistService,
+  ) {}
+
+  async register(dto: RegisterDto) {
+    try {
+      const authData = await this.supabaseService.signUp(
+        dto.email,
+        dto.password,
+      );
+
+      if (!authData.user) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/registration-failed',
+          title: 'Registration Failed',
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          detail: 'Failed to create authentication account',
+        });
+      }
+
+      let userRecord;
+      try {
+        const [inserted] = await this.db
+          .insert(users)
+          .values({
+            supabaseUserId: authData.user.id,
+            email: dto.email,
+            displayName: dto.display_name ?? null,
+          })
+          .returning();
+        userRecord = inserted;
+      } catch (dbError) {
+        this.logger.error(
+          `Failed to create user record for ${dto.email}, GoTrue account created but DB insert failed. Will retry on next login.`,
+          dbError instanceof Error ? dbError.stack : undefined,
+        );
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/registration-partial',
+          title: 'Registration Partially Failed',
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          detail:
+            'Account created but profile setup failed. Please try logging in.',
+        });
+      }
+
+      const userResponse = {
+        id: userRecord.id,
+        email: userRecord.email,
+        display_name: userRecord.displayName,
+        created_at: userRecord.createdAt,
+      };
+
+      if (!authData.session) {
+        this.logger.warn(
+          `Registration for ${dto.email}: email confirmation required (session=null)`,
+        );
+        return {
+          data: {
+            user: userResponse,
+            tokens: null,
+            email_confirmation_required: true,
+          },
+        };
+      }
+
+      return {
+        data: {
+          user: userResponse,
+          tokens: {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_in: authData.session.expires_in,
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      if (error instanceof AuthApiError) {
+        if (this.isEmailConflictError(error)) {
+          throw new DomainException({
+            type: 'https://agentloom.dev/errors/email-conflict',
+            title: 'Conflict',
+            status: HttpStatus.CONFLICT,
+            detail: 'An account with this email already exists',
+          });
+        }
+      }
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/registration-failed',
+        title: 'Registration Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'An unexpected error occurred during registration',
+      });
+    }
+  }
+
+  async login(dto: LoginDto) {
+    try {
+      const authData = await this.supabaseService.signIn(
+        dto.email,
+        dto.password,
+      );
+
+      let userRecord = await this.findUserByEmail(dto.email);
+
+      if (!userRecord && authData.user) {
+        userRecord = await this.backfillUserRecord(authData.user.id, dto.email);
+      }
+
+      return {
+        data: {
+          user: userRecord
+            ? {
+                id: userRecord.id,
+                email: userRecord.email,
+                display_name: userRecord.displayName,
+                created_at: userRecord.createdAt,
+              }
+            : null,
+          tokens: {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_in: authData.session.expires_in,
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      if (error instanceof AuthApiError) {
+        if (this.isInvalidCredentialsError(error)) {
+          throw new DomainException({
+            type: 'https://agentloom.dev/errors/invalid-credentials',
+            title: 'Unauthorized',
+            status: HttpStatus.UNAUTHORIZED,
+            detail: 'Invalid email or password',
+          });
+        }
+      }
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/login-failed',
+        title: 'Login Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'An unexpected error occurred during login',
+      });
+    }
+  }
+
+  async refreshToken(dto: RefreshTokenDto) {
+    try {
+      const authData = await this.supabaseService.refreshToken(
+        dto.refresh_token,
+      );
+
+      if (!authData.session) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/refresh-failed',
+          title: 'Token Refresh Failed',
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          detail: 'Failed to refresh token',
+        });
+      }
+
+      return {
+        data: {
+          tokens: {
+            access_token: authData.session.access_token,
+            refresh_token: authData.session.refresh_token,
+            expires_in: authData.session.expires_in,
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      if (error instanceof AuthApiError) {
+        if (this.isInvalidRefreshTokenError(error)) {
+          throw new DomainException({
+            type: 'https://agentloom.dev/errors/refresh-invalid',
+            title: 'Unauthorized',
+            status: HttpStatus.UNAUTHORIZED,
+            detail: 'Refresh token is invalid or has been revoked',
+          });
+        }
+      }
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/refresh-failed',
+        title: 'Token Refresh Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'An unexpected error occurred during token refresh',
+      });
+    }
+  }
+
+  async logout(accessToken: string) {
+    const decoded = this.decodeAccessTokenClaims(accessToken);
+
+    if (decoded?.exp) {
+      try {
+        await this.tokenBlacklist.add(accessToken, decoded.exp, decoded.sub);
+      } catch (error) {
+        this.logger.error(
+          'Failed to persist revoked access token',
+          error instanceof Error ? error.stack : undefined,
+        );
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/logout-failed',
+          title: 'Logout Failed',
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          detail: 'Failed to revoke access token',
+        });
+      }
+    }
+
+    try {
+      await this.supabaseService.signOut(accessToken);
+    } catch (error) {
+      this.logger.error(
+        'Failed to sign out from Supabase',
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/logout-failed',
+        title: 'Logout Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'Failed to invalidate session',
+      });
+    }
+  }
+
+  private async findUserByEmail(email: string) {
+    return this.db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+  }
+
+  private async findUserBySupabaseId(supabaseUserId: string) {
+    return this.db.query.users.findFirst({
+      where: eq(users.supabaseUserId, supabaseUserId),
+    });
+  }
+
+  private async backfillUserRecord(supabaseUserId: string, email: string) {
+    await this.db
+      .insert(users)
+      .values({
+        supabaseUserId,
+        email,
+      })
+      .onConflictDoNothing();
+
+    const userBySupabaseId = await this.findUserBySupabaseId(supabaseUserId);
+
+    if (userBySupabaseId) {
+      return userBySupabaseId;
+    }
+
+    const userByEmail = await this.findUserByEmail(email);
+
+    if (userByEmail) {
+      this.logger.error(
+        `Failed to backfill user record for ${email}: email already belongs to supabase_user_id=${userByEmail.supabaseUserId}, expected ${supabaseUserId}`,
+      );
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/login-failed',
+        title: 'Login Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'Failed to reconcile authenticated user profile',
+      });
+    }
+
+    this.logger.error(
+      `Failed to backfill user record for ${email}: no local profile found after insert attempt`,
+    );
+    throw new DomainException({
+      type: 'https://agentloom.dev/errors/login-failed',
+      title: 'Login Failed',
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      detail: 'Failed to create authenticated user profile',
+    });
+  }
+
+  private decodeAccessTokenClaims(accessToken: string) {
+    const decoded = jwt.decode(accessToken);
+
+    if (!decoded || typeof decoded !== 'object') {
+      return null;
+    }
+
+    return {
+      sub: typeof decoded.sub === 'string' ? decoded.sub : undefined,
+      exp: typeof decoded.exp === 'number' ? decoded.exp : undefined,
+    };
+  }
+
+  private isEmailConflictError(error: AuthApiError): boolean {
+    const code = error.code?.toLowerCase();
+    const message = error.message?.toLowerCase() ?? '';
+
+    return code === 'email_exists' || message.includes('already registered');
+  }
+
+  private isInvalidCredentialsError(error: AuthApiError): boolean {
+    const code = error.code?.toLowerCase();
+    const message = error.message?.toLowerCase() ?? '';
+
+    return (
+      code === 'invalid_credentials' ||
+      message.includes('invalid login credentials')
+    );
+  }
+
+  private isInvalidRefreshTokenError(error: AuthApiError): boolean {
+    const code = error.code?.toLowerCase();
+    const message = error.message?.toLowerCase() ?? '';
+
+    return (
+      code === 'token_expired' ||
+      code === 'invalid_refresh_token' ||
+      message.includes('refresh token') ||
+      message.includes('already used') ||
+      message.includes('invalid jwt')
+    );
+  }
+}

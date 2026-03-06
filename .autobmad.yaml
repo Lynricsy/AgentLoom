@@ -1,0 +1,21 @@
+# AutoBMAD Configuration
+# https://github.com/bmadcode/autobmad
+
+# 最大重试次数
+maxRetries: 10
+
+# 超时时间（毫秒），默认 5 小时
+timeout: 18000000
+
+# 详细输出
+verbose: false
+
+# 最大 Sprint 数
+maxSprints: 10
+
+# 自定义 Prompt（可选）
+# prompts:
+#   sprint-planning: "自定义 sprint 规划 prompt"
+#   create-story: "自定义创建 story prompt"
+#   dev-story: "自定义开发 story prompt"
+#   code-review: "自定义代码审查 prompt"

@@ -1,0 +1,8 @@
+process.env.APP_PORT = '3099';
+process.env.APP_NODE_ENV = 'test';
+process.env.APP_DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+process.env.APP_SUPABASE_URL = 'https://test.supabase.co';
+process.env.APP_SUPABASE_ANON_KEY = 'test-anon-key';
+process.env.APP_SUPABASE_SERVICE_KEY = 'test-service-key';
+process.env.APP_JWT_SECRET = 'test-e2e-jwt-secret';
+process.env.APP_REDIS_URL = 'redis://127.0.0.1:6379';
