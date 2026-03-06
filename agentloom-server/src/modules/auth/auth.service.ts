@@ -1,4 +1,11 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { AuthApiError } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
@@ -19,6 +26,7 @@ export class AuthService {
     private readonly supabaseService: SupabaseService,
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly tokenBlacklist: TokenBlacklistService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -126,6 +134,45 @@ export class AuthService {
 
       if (!userRecord && authData.user) {
         userRecord = await this.backfillUserRecord(authData.user.id, dto.email);
+      }
+
+      const verifiedTotpFactors = await this.getVerifiedTotpFactors(
+        authData.session.access_token,
+      );
+
+      if (verifiedTotpFactors.length > 0) {
+        const jwtSecret = this.configService?.get<string>('APP_JWT_SECRET');
+
+        if (!jwtSecret) {
+          throw new Error('APP_JWT_SECRET is not configured');
+        }
+
+        const userId = userRecord?.id ?? authData.user?.id ?? dto.email;
+        const mfaToken = jwt.sign(
+          {
+            sub: userId,
+            email: dto.email,
+            aud: 'authenticated',
+            type: 'mfa_pending',
+            supabaseAccessToken: authData.session.access_token,
+          },
+          jwtSecret,
+          {
+            algorithm: 'HS256',
+            expiresIn: '5m',
+          },
+        );
+
+        return {
+          data: {
+            mfaRequired: true,
+            mfaToken,
+            factors: verifiedTotpFactors.map((factor) => ({
+              id: factor.id,
+              friendlyName: factor.friendly_name,
+            })),
+          },
+        };
       }
 
       return {
@@ -251,6 +298,25 @@ export class AuthService {
     }
   }
 
+  async getSecurityInfo(accessToken: string) {
+    const factors = await this.supabaseService.listFactors(accessToken);
+
+    return {
+      mfaEnabled: factors.totp.some((factor) => factor.status === 'verified'),
+      factors: factors.totp.map((factor) => ({
+        id: factor.id,
+        factorType: 'totp' as const,
+        friendlyName:
+          typeof factor.friendly_name === 'string'
+            ? factor.friendly_name
+            : undefined,
+        status: factor.status,
+        createdAt: factor.created_at,
+        updatedAt: factor.updated_at ?? factor.created_at,
+      })),
+    };
+  }
+
   private async findUserByEmail(email: string) {
     return this.db.query.users.findFirst({
       where: eq(users.email, email),
@@ -301,6 +367,16 @@ export class AuthService {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: 'Failed to create authenticated user profile',
     });
+  }
+
+  private async getVerifiedTotpFactors(accessToken: string) {
+    if (typeof this.supabaseService.listFactors !== 'function') {
+      return [];
+    }
+
+    const factors = await this.supabaseService.listFactors(accessToken);
+
+    return factors.totp?.filter((factor) => factor.status === 'verified') ?? [];
   }
 
   private decodeAccessTokenClaims(accessToken: string) {

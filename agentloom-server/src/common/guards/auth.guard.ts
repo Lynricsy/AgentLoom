@@ -2,13 +2,13 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { MfaRequiredException } from '../exceptions/auth.exceptions';
 import { DomainException } from '../exceptions/domain.exception';
 import { TokenBlacklistService } from '../services/token-blacklist.service';
 
@@ -24,7 +24,6 @@ export interface JwtPayload {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  private readonly logger = new Logger(AuthGuard.name);
   private readonly jwtSecret: string;
 
   constructor(
@@ -74,6 +73,10 @@ export class AuthGuard implements CanActivate {
 
       if (!this.isJwtPayloadObject(verified)) {
         throw this.createInvalidTokenException('Token payload is malformed');
+      }
+
+      if (this.isMfaPendingPayload(verified)) {
+        throw new MfaRequiredException();
       }
 
       const payload = this.normalizePayload(verified);
@@ -130,6 +133,10 @@ export class AuthGuard implements CanActivate {
       tenantId: this.readStringClaim(payload, 'tenantId', 'tenant_id'),
       tenantRole: this.readStringClaim(payload, 'tenantRole', 'tenant_role'),
     };
+  }
+
+  private isMfaPendingPayload(payload: jwt.JwtPayload): boolean {
+    return payload.type === 'mfa_pending';
   }
 
   private readStringClaim(

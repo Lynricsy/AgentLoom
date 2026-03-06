@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -59,5 +60,15 @@ export class AuthController {
   logout(@Req() request: FastifyRequest) {
     const token = request.headers.authorization?.split(' ')[1];
     return this.authService.logout(token!);
+  }
+
+  @Get('security')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取当前用户安全信息' })
+  @ApiResponse({ status: 200, description: '获取安全信息成功' })
+  @ApiResponse({ status: 401, description: '未认证' })
+  getSecurityInfo(@Req() request: FastifyRequest) {
+    const token = request.headers.authorization?.split(' ')[1];
+    return this.authService.getSecurityInfo(token!);
   }
 }

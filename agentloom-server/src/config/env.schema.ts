@@ -15,6 +15,9 @@ export const envSchema = z.object({
   APP_JWT_SECRET: z.string().min(1, 'JWT Secret 不能为空'),
 
   APP_REDIS_URL: z.string().min(1, 'Redis 连接字符串不能为空'),
+
+  APP_OAUTH_REDIRECT_URL: z.string().url('无效的 OAuth 回调 URL'),
+  APP_FRONTEND_URL: z.string().url('无效的前端 URL'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
