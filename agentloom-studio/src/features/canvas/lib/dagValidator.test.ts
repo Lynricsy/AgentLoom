@@ -12,8 +12,8 @@ function createNode(id: string, label = `Node ${id}`, category: NodeCategory = '
       nodeType: 'llm-agent',
       category,
       config: {},
-      inputPorts: [{ id: 'in', label: 'Input', dataType: 'any' }],
-      outputPorts: [{ id: 'out', label: 'Output', dataType: 'any' }],
+      inputPorts: [{ id: 'in', label: 'Input', dataType: 'text' }],
+      outputPorts: [{ id: 'out', label: 'Output', dataType: 'text' }],
     },
   }
 }
@@ -99,10 +99,10 @@ describe('validateDag', () => {
     const result = validateDag(nodes, edges, 10)
     expect(result.isValid).toBe(true)
     expect(result.warnings).toHaveLength(1)
-    expect(result.warnings[0].type).toBe('parallel-limit-exceeded')
-    expect(result.warnings[0].nodeId).toBe('hub')
-    expect(result.warnings[0].currentCount).toBe(12)
-    expect(result.warnings[0].limit).toBe(10)
+    expect(result.warnings[0]!.type).toBe('parallel-limit-exceeded')
+    expect(result.warnings[0]!.nodeId).toBe('hub')
+    expect(result.warnings[0]!.currentCount).toBe(12)
+    expect(result.warnings[0]!.limit).toBe(10)
   })
 
   it('does not warn when parallel outputs are within limit', () => {
@@ -127,7 +127,7 @@ describe('validateDag', () => {
     }
     const result = validateDag(nodes, edges, 3)
     expect(result.warnings).toHaveLength(1)
-    expect(result.warnings[0].limit).toBe(3)
+    expect(result.warnings[0]!.limit).toBe(3)
   })
 
   it('returns both errors and warnings when applicable', () => {
