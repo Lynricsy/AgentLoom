@@ -14,6 +14,7 @@ export interface WorkflowDefinition {
   viewport: Viewport | null
   version: number
   status: WorkflowStatus
+  publishedVersionId: string | null
   createdBy: string
   updatedBy: string
   createdAt: string
@@ -25,4 +26,43 @@ export interface UpdateWorkflowPayload {
   edges: CanvasEdge[]
   viewport: Viewport | null
   version: number
+}
+
+export interface WorkflowVersionSnapshot {
+  nodes: CanvasNode[]
+  edges: CanvasEdge[]
+  viewport: Viewport | null
+  metadata: {
+    nodeCount: number
+    edgeCount: number
+    createdFromVersion: number
+  }
+}
+
+export interface WorkflowVersion {
+  id: string
+  workflowDefinitionId: string
+  versionNumber: number
+  label: string | null
+  snapshot: WorkflowVersionSnapshot
+  publishedAt: string | null
+  archivedAt: string | null
+  createdBy: string
+  createdAt: string
+}
+
+export interface CreateVersionPayload {
+  label?: string
+}
+
+export interface PublishWorkflowPayload {
+  label?: string
+  versionId?: string
+}
+
+export interface VersionListResponse {
+  data: WorkflowVersion[]
+  total: number
+  page: number
+  pageSize: number
 }
