@@ -478,14 +478,35 @@ body {
   stroke-dasharray: 4 3;
 }
 
+/* ─── 搜索高亮 ──────────────────────────────────────── */
+@keyframes search-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 20%, transparent); }
+}
+
+.search-match {
+  animation: search-pulse 1.5s ease-in-out infinite;
+}
+
+.search-current {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.search-dimmed {
+  opacity: 0.2;
+  transition: opacity 200ms ease;
+}
+
 /* ─── 无障碍 & reduced-motion ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .smart-edge-particle--running { animation: none; opacity: 0; }
   .smart-edge-path--checking { animation: none; }
   .connection-overlay__halo--compatible { animation: none; opacity: 0.6; }
+  .search-match { animation: none; }
   .edge-badge,
   .compatibility-preview,
   .mapping-panel,
   .smart-edge-path,
-  .typed-port { transition: none; }
+  .typed-port,
+  .search-dimmed { transition: none; }
 }

@@ -3,11 +3,11 @@ import { useParams } from '@tanstack/react-router'
 import { useWorkflow } from '@/features/workflow'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
+import { WorkflowStatusBar } from './status/WorkflowStatusBar'
 import { FieldMappingPanel } from './panels/FieldMappingPanel'
 import { useAutoSave } from '../hooks/useAutoSave'
 import {
   useCanvasActions,
-  useCanvasSaveStatus,
   useCanvasStore,
   useMappingPanelEdgeId,
 } from '../stores/canvasStore'
@@ -16,7 +16,6 @@ export function WorkflowCanvasPage() {
   const { workflowId } = useParams({ from: '/workflows/$workflowId' })
   const currentWorkflowId = useCanvasStore((state) => state.workflowId)
   const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
-  const { isDirty, isSaving, lastSavedAt } = useCanvasSaveStatus()
   const mappingPanelEdgeId = useMappingPanelEdgeId()
 
   const mappingPanelEdge = useCanvasStore((s) =>
@@ -75,14 +74,7 @@ export function WorkflowCanvasPage() {
 
       <div className="relative flex-1">
         <WorkflowCanvas className="h-full w-full" />
-
-        <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-md bg-surface/80 px-3 py-1.5 text-xs text-muted backdrop-blur-sm">
-          {isSaving && <span className="animate-pulse">保存中...</span>}
-          {!isSaving && isDirty && <span>● 未保存</span>}
-          {!isSaving && !isDirty && lastSavedAt && (
-            <span>✓ 已保存 {lastSavedAt.toLocaleTimeString('zh-CN')}</span>
-          )}
-        </div>
+        <WorkflowStatusBar />
       </div>
 
       {mappingPanelEdgeId && mappingPanelEdge && (

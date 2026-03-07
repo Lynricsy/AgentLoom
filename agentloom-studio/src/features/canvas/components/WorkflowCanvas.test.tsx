@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../stores/canvasStore'
 import { createDefaultEdgeData } from '../types'
@@ -60,7 +61,10 @@ const compatibleNodes: CanvasNode[] = [
 
 vi.mock('@xyflow/react', () => {
   function MockReactFlow(props: Record<string, unknown>) {
-    capturedProps = props
+    useEffect(() => {
+      capturedProps = props
+    }, [props])
+
     return (
       <div data-testid="react-flow">
         <button
@@ -96,7 +100,8 @@ vi.mock('@xyflow/react', () => {
     Controls: () => null,
     MiniMap: () => null,
     ReactFlow: MockReactFlow,
-    useReactFlow: () => ({ screenToFlowPosition: vi.fn() }),
+    useReactFlow: () => ({ screenToFlowPosition: vi.fn(), getNode: vi.fn(), fitView: vi.fn() }),
+    useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
   }
 })
 
@@ -105,6 +110,10 @@ vi.mock('../hooks/useCanvasDrop', () => ({
     onDragOver: vi.fn(),
     onDrop: vi.fn(),
   }),
+}))
+
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: vi.fn() }),
 }))
 
 describe('WorkflowCanvas', () => {

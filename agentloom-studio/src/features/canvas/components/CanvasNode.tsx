@@ -1,10 +1,11 @@
-import { memo, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useRef, type CSSProperties } from 'react'
 import { Position, type NodeProps } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import type { CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from './nodeCategories'
 import { TypedPort } from './TypedPort'
+import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
 
 export const CanvasNodeShell = memo(function CanvasNodeShell({
   id,
@@ -19,6 +20,35 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const outputPorts = Array.isArray(data.outputPorts) ? data.outputPorts : config.outputPorts
   const subtitle = data.description ?? data.nodeType
 
+  const { setHoveredNodeId } = useCanvasActions()
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const isSearchActive = useCanvasStore((s) => s.isSearchOpen && s.searchQuery.length > 0)
+  const isMatch = useCanvasStore((s) => s.searchMatchIds.includes(id))
+  const isCurrent = useCanvasStore((s) => s.searchMatchIds[s.currentSearchIndex] === id)
+
+  const onMouseEnter = useCallback(() => {
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredNodeId(id)
+    }, 300)
+  }, [id, setHoveredNodeId])
+
+  const onMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    setHoveredNodeId(null)
+  }, [setHoveredNodeId])
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current)
+      }
+    }
+  }, [])
+
   return (
     <article
       data-testid={`canvas-node-${id}`}
@@ -26,8 +56,13 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       className={cn(
         'canvas-node-shell min-w-[180px] max-w-[260px] rounded-lg border bg-card text-card-foreground shadow-sm',
         selected && 'ring-2 ring-primary shadow-md',
+        isSearchActive && isMatch && !isCurrent && 'search-match',
+        isSearchActive && isCurrent && 'search-current',
+        isSearchActive && !isMatch && 'search-dimmed',
       )}
       style={{ '--node-color': colorToken } as CSSProperties}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <header data-slot="header" className="border-b border-border/50 px-3 py-2">
         <div className="mb-2 flex items-center gap-2">

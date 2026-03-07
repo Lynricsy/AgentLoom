@@ -3,7 +3,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   ReactFlow,
   useReactFlow,
   type Connection,
@@ -13,8 +12,11 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
+import { useToast } from '@/shared/ui/toast'
 import { CanvasNodeShell } from './CanvasNode'
 import { SmartEdge } from './edges/SmartEdge'
+import { CanvasMiniMap } from './navigation/CanvasMiniMap'
+import { NodeInfoCard } from './overlays/NodeInfoCard'
 import {
   CompatibilityPreview,
   type CompatibilityPreviewHandle,
@@ -23,9 +25,10 @@ import {
   ConnectionStateOverlay,
   type OverlayHandleSnapshot,
 } from './overlays/ConnectionStateOverlay'
-import { NODE_CATEGORIES } from './nodeCategories'
+import { CanvasSearch } from './toolbar/CanvasSearch'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import { evaluateConnection } from '../lib/connectionCompatibility'
+import { validateDag } from '../lib/dagValidator'
 import {
   useCanvasActions,
   useCanvasEdges,
@@ -187,7 +190,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     selectEdge,
     selectNode,
     setViewport,
+    toggleSearch,
   } = useCanvasActions()
+  const { notify } = useToast()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
 
@@ -226,6 +231,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        toggleSearch()
+        return
+      }
+
       if (event.key !== 'Backspace' && event.key !== 'Delete') {
         return
       }
@@ -237,11 +248,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       event.preventDefault()
       deleteSelectedNode()
     },
-    [deleteSelectedNode],
+    [deleteSelectedNode, toggleSearch],
   )
 
   useEffect(() => {
     const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        toggleSearch()
+        return
+      }
+
       if (event.key !== 'Backspace' && event.key !== 'Delete') {
         return
       }
@@ -258,7 +275,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown)
     }
-  }, [deleteSelectedNode])
+  }, [deleteSelectedNode, toggleSearch])
 
   useEffect(() => {
     if (!activeConnection) {
@@ -461,8 +478,19 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       }
 
       createConnection(connection, evaluated.edgeData)
+
+      const updatedEdges = useCanvasStore.getState().edges
+      const result = validateDag(nodes, updatedEdges)
+      if (!result.isValid) {
+        for (const err of result.errors) {
+          notify({ description: err.message, variant: 'error' })
+        }
+      }
+      for (const warn of result.warnings) {
+        notify({ description: warn.message, variant: 'info' })
+      }
     },
-    [createConnection, nodes],
+    [createConnection, nodes, notify],
   )
 
   const isValidConnection = useCallback(
@@ -477,10 +505,6 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     },
     [setViewport],
   )
-
-  const getMiniMapNodeColor = useCallback((node: CanvasNode) => {
-    return NODE_CATEGORIES[node.data.category]?.color ?? 'var(--color-surface-elevated)'
-  }, [])
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: CanvasNode) => {
@@ -549,13 +573,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           showInteractive={false}
           className="!bg-surface-elevated !border-border !shadow-lg"
         />
-        <MiniMap
-          className="!bg-surface !border-border"
-          nodeColor={getMiniMapNodeColor}
-          maskColor="rgba(0, 0, 0, 0.6)"
-          pannable
-          zoomable
-        />
+        <CanvasMiniMap />
       </ReactFlow>
       <CompatibilityPreview
         ref={previewRef}
@@ -574,6 +592,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         incompatibleTargets={activeConnection?.incompatibleTargets ?? []}
         label={null}
       />
+      <CanvasSearch />
+      <NodeInfoCard />
     </div>
   )
 })

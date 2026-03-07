@@ -2,6 +2,7 @@ import {
   forwardRef,
   memo,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   type ForwardedRef,
 } from 'react'
@@ -22,6 +23,15 @@ export interface CompatibilityPreviewProps {
 
 const OFFSET_X = 8
 const OFFSET_Y = 8
+
+function applyPosition(element: HTMLDivElement | null, x: number, y: number) {
+  if (!element) {
+    return
+  }
+
+  element.style.left = `${x + OFFSET_X}px`
+  element.style.top = `${y + OFFSET_Y}px`
+}
 
 function buildMessage(
   visualLevel: VisualCompatibilityLevel,
@@ -64,16 +74,15 @@ const CompatibilityPreviewInner = forwardRef(function CompatibilityPreview(
   const message = buildMessage(visualLevel, reasonKey, metadata)
   const cssLevel = visualLevel.toLowerCase()
 
+  useLayoutEffect(() => {
+    applyPosition(rootRef.current, x, y)
+  }, [x, y])
+
   useImperativeHandle(
     ref,
     () => ({
       setPosition(nextX: number, nextY: number) {
-        if (!rootRef.current) {
-          return
-        }
-
-        rootRef.current.style.left = `${nextX + OFFSET_X}px`
-        rootRef.current.style.top = `${nextY + OFFSET_Y}px`
+        applyPosition(rootRef.current, nextX, nextY)
       },
     }),
     [],
@@ -83,7 +92,6 @@ const CompatibilityPreviewInner = forwardRef(function CompatibilityPreview(
     <div
       ref={rootRef}
       className={`compatibility-preview${visible ? ' compatibility-preview--visible' : ''}`}
-      style={{ left: x + OFFSET_X, top: y + OFFSET_Y }}
       data-testid="compatibility-preview"
       role="tooltip"
       aria-hidden={!visible}

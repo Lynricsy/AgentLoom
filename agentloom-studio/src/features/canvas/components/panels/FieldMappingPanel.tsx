@@ -81,8 +81,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
 
   const edgeData = edge?.data
   const isReadonly = edgeData?.visualLevel === 'L0'
-  const mappings = edgeData?.fieldMapping ?? []
-  const candidates: CandidateFieldMapping[] = edgeData?.candidateMappings ?? []
+  const mappings = useMemo(() => edgeData?.fieldMapping ?? [], [edgeData?.fieldMapping])
+  const candidates = useMemo<CandidateFieldMapping[]>(
+    () => edgeData?.candidateMappings ?? [],
+    [edgeData?.candidateMappings]
+  )
 
   const sourceFields = useMemo(
     () => (sourceNode ? flattenPortFields(sourceNode.data.outputPorts) : []),

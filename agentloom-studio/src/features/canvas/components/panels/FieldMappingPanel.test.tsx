@@ -214,6 +214,37 @@ describe('FieldMappingPanel', () => {
     ])
   })
 
+  it('creates mapping via drag and drop', () => {
+    const onChange = vi.fn()
+    const dataTransfer = {
+      effectAllowed: 'uninitialized',
+      dropEffect: 'none',
+      getData: vi.fn(() => 'out-text'),
+      setData: vi.fn(),
+    }
+
+    render(<FieldMappingPanel {...defaultProps} onChange={onChange} />)
+
+    const sourceBtn = screen.getByTestId('mapping-field-out-text')
+    fireEvent.dragStart(sourceBtn, { dataTransfer })
+
+    const targetBtn = screen.getByTestId('mapping-field-in-text')
+    expect(targetBtn).not.toBeDisabled()
+
+    fireEvent.dragOver(targetBtn, { dataTransfer })
+    fireEvent.drop(targetBtn, { dataTransfer })
+
+    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'out-text')
+    expect(onChange).toHaveBeenCalledWith('e-1', [
+      {
+        sourceField: 'out-text',
+        targetField: 'in-text',
+        compatLevel: 'L1',
+        autoRecommended: false,
+      },
+    ])
+  })
+
   it('toggles source selection on repeated click', () => {
     render(<FieldMappingPanel {...defaultProps} />)
     const sourceBtn = screen.getByTestId('mapping-field-out-text')

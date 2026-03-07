@@ -1,7 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
+import { createRef } from 'react';
 import { describe, expect, it } from 'vitest';
 import { CompatibilityPreview } from './CompatibilityPreview';
-import type { CompatibilityPreviewProps } from './CompatibilityPreview';
+import type {
+  CompatibilityPreviewHandle,
+  CompatibilityPreviewProps,
+} from './CompatibilityPreview';
 
 function createProps(
   overrides: Partial<CompatibilityPreviewProps> = {},
@@ -40,6 +44,48 @@ describe('CompatibilityPreview', () => {
     const el = screen.getByTestId('compatibility-preview');
     expect(el.style.left).toBe('58px');
     expect(el.style.top).toBe('88px');
+  });
+
+  it('preserves imperative position across rerenders', () => {
+    const ref = createRef<CompatibilityPreviewHandle>();
+    const { rerender } = render(
+      <CompatibilityPreview
+        ref={ref}
+        {...createProps({
+          x: -9999,
+          y: -9999,
+          visualLevel: 'checking',
+        })}
+      />,
+    );
+
+    const el = screen.getByTestId('compatibility-preview');
+
+    act(() => {
+      ref.current?.setPosition(120, 240);
+    });
+
+    expect(el.style.left).toBe('128px');
+    expect(el.style.top).toBe('248px');
+
+    rerender(
+      <CompatibilityPreview
+        ref={ref}
+        {...createProps({
+          x: -9999,
+          y: -9999,
+          visualLevel: 'L1',
+          metadata: {
+            matchedRequiredCount: 1,
+            totalRequiredCount: 1,
+            unmappedRequiredCount: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(el.style.left).toBe('128px');
+    expect(el.style.top).toBe('248px');
   });
 
   it('shows "L0 · 完全匹配" for L0', () => {

@@ -93,13 +93,13 @@ export const SmartEdge = memo(function SmartEdge({
     [id, openFieldMapping]
   )
 
-  const handleMouseEnter = useCallback(() => {
+  const handleMouseEnter = () => {
     setIsHovered(true)
-  }, [])
+  }
 
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = () => {
     setIsHovered(false)
-  }, [])
+  }
 
   return (
     <>
