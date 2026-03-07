@@ -12,8 +12,12 @@ function createNode(id: string, label = `Node ${id}`, category: NodeCategory = '
       nodeType: 'llm-agent',
       category,
       config: {},
-      inputPorts: [{ id: 'in', label: 'Input', dataType: 'text' }],
-      outputPorts: [{ id: 'out', label: 'Output', dataType: 'text' }],
+      inputPorts: [
+        { id: 'in', label: 'Input', direction: 'input', dataType: 'text', required: false, multiple: false, maxConnections: null, schema: { kind: 'text' } },
+      ],
+      outputPorts: [
+        { id: 'out', label: 'Output', direction: 'output', dataType: 'text', required: false, multiple: false, maxConnections: null, schema: { kind: 'text' } },
+      ],
     },
   }
 }
