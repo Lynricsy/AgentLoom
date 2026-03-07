@@ -175,6 +175,10 @@ body {
   opacity: 1;
 }
 
+.edge-badge:hover {
+  opacity: 1;
+}
+
 .edge-badge__dot {
   width: 6px;
   height: 6px;
