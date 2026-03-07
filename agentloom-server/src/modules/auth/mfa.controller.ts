@@ -33,6 +33,7 @@ export class MfaController {
   }
 
   @Post('totp/verify')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '验证 TOTP MFA 验证码' })
   @ApiResponse({ status: 200, description: 'MFA 验证成功' })
@@ -43,7 +44,7 @@ export class MfaController {
   ) {
     return this.mfaService.verifyTotp(
       this.extractAccessToken(request),
-      body.factorId,
+      this.extractFactorId(body),
       body.code,
     );
   }
@@ -54,18 +55,12 @@ export class MfaController {
   @ApiOperation({ summary: '完成登录阶段的 MFA 二次验证' })
   @ApiResponse({ status: 200, description: '登录 MFA 验证成功' })
   @ApiResponse({ status: 401, description: 'MFA 令牌无效或已过期' })
-  async verifyMfaLogin(@Body() body: MfaLoginVerifyDto) {
-    const tokens = await this.mfaService.verifyMfaLogin(
-      body.mfaToken,
-      body.factorId,
+  verifyMfaLogin(@Body() body: MfaLoginVerifyDto) {
+    return this.mfaService.verifyMfaLogin(
+      this.extractMfaToken(body),
+      this.extractFactorId(body),
       body.code,
     );
-
-    return {
-      data: {
-        tokens,
-      },
-    };
   }
 
   @Delete()
@@ -79,9 +74,22 @@ export class MfaController {
   ) {
     return this.mfaService.disableMfa(
       this.extractAccessToken(request),
-      body.factorId,
       body.code,
     );
+  }
+
+  private extractFactorId(body: {
+    factor_id?: string;
+    factorId?: string;
+  }): string {
+    return body.factor_id ?? body.factorId ?? '';
+  }
+
+  private extractMfaToken(body: {
+    mfa_token?: string;
+    mfaToken?: string;
+  }): string {
+    return body.mfa_token ?? body.mfaToken ?? '';
   }
 
   private extractAccessToken(request: FastifyRequest): string {

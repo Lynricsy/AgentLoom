@@ -41,7 +41,7 @@ export class InsufficientPermissionsException extends DomainException {
 export class OAuthProviderNotSupportedException extends DomainException {
   constructor(provider: string) {
     super({
-      type: 'https://agentloom.dev/errors/oauth-provider-not-supported',
+      type: 'https://agentloom.dev/errors/unsupported-oauth-provider',
       title: 'OAuth 提供商不支持',
       status: HttpStatus.BAD_REQUEST,
       detail: `不支持的 OAuth 提供商：${provider}`,

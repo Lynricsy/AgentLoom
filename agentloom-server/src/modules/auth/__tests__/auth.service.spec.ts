@@ -1,18 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthApiError } from '@supabase/supabase-js';
+import * as jwt from 'jsonwebtoken';
 import { AuthService } from '../auth.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import { DRIZZLE } from '../../../database/database.module';
 
-const MOCK_UUID = '01912345-6789-7abc-def0-123456789abc';
+const MOCK_UUID = '01912345-6789-7abc-8ef0-123456789abc';
 const MOCK_SUPABASE_UUID = 'sup-user-id-1234';
 const MOCK_EMAIL = 'test@example.com';
 const MOCK_PASSWORD = 'Password123';
 const MOCK_DATE = new Date('2026-01-01T00:00:00Z');
+const TEST_JWT_SECRET = 'test-auth-secret';
+const TEST_FACTOR_ID = '01912345-6789-7abc-8ef0-123456789abc';
 
 const mockUserRecord = {
   id: MOCK_UUID,
@@ -55,6 +59,7 @@ function createMockSupabaseService() {
     refreshToken: vi.fn(),
     signOut: vi.fn(),
     getUser: vi.fn(),
+    listFactors: vi.fn(),
   };
 }
 
@@ -69,10 +74,12 @@ function createMockDb() {
     values: mockInsertValues,
   });
   const mockFindFirst = vi.fn();
+  const mockExecute = vi.fn();
 
   return {
     db: {
       insert: mockInsert,
+      execute: mockExecute,
       query: {
         users: {
           findFirst: mockFindFirst,
@@ -83,6 +90,15 @@ function createMockDb() {
     mockInsertReturning,
     mockOnConflictDoNothing,
     mockFindFirst,
+    mockExecute,
+  };
+}
+
+function createMockConfigService() {
+  return {
+    get: vi.fn((key: string) =>
+      key === 'APP_JWT_SECRET' ? TEST_JWT_SECRET : undefined,
+    ),
   };
 }
 
@@ -93,14 +109,23 @@ describe('AuthService', () => {
   let mockInsert: ReturnType<typeof vi.fn>;
   let mockInsertReturning: ReturnType<typeof vi.fn>;
   let mockFindFirst: ReturnType<typeof vi.fn>;
+  let mockExecute: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     supabaseService = createMockSupabaseService();
+    supabaseService.listFactors.mockResolvedValue({ totp: [] });
     tokenBlacklist = { add: vi.fn().mockResolvedValue(undefined), isBlacklisted: vi.fn().mockResolvedValue(false) };
-    const { db, mockInsert: mi, mockInsertReturning: ir, mockFindFirst: ff } = createMockDb();
+    const {
+      db,
+      mockInsert: mi,
+      mockInsertReturning: ir,
+      mockFindFirst: ff,
+      mockExecute: me,
+    } = createMockDb();
     mockInsert = mi;
     mockInsertReturning = ir;
     mockFindFirst = ff;
+    mockExecute = me;
 
     const module = await Test.createTestingModule({
       providers: [
@@ -108,6 +133,7 @@ describe('AuthService', () => {
         { provide: SupabaseService, useValue: supabaseService },
         { provide: DRIZZLE, useValue: db },
         { provide: TokenBlacklistService, useValue: tokenBlacklist },
+        { provide: ConfigService, useValue: createMockConfigService() },
       ],
     }).compile();
 
@@ -255,6 +281,11 @@ describe('AuthService', () => {
       mockFindFirst.mockResolvedValue(mockUserRecord);
 
       const result = await authService.login(loginDto);
+      const tokens = result.data.tokens;
+
+      if (!tokens) {
+        throw new Error('expected access tokens for non-MFA login');
+      }
 
       expect(result.data.user).toEqual({
         id: MOCK_UUID,
@@ -262,7 +293,7 @@ describe('AuthService', () => {
         display_name: null,
         created_at: MOCK_DATE,
       });
-      expect(result.data.tokens.access_token).toBe('mock-access-token');
+      expect(tokens.access_token).toBe('mock-access-token');
     });
 
     it('DB にユーザーが無い場合: 自動作成してログイン', async () => {
@@ -278,6 +309,48 @@ describe('AuthService', () => {
 
       expect(result.data.user).not.toBeNull();
       expect(result.data.user!.id).toBe(MOCK_UUID);
+    });
+
+    it('已启用已验证 TOTP 时返回 mfa pending 令牌而不是 access tokens', async () => {
+      supabaseService.signIn.mockResolvedValue({
+        user: mockAuthUser,
+        session: mockSession,
+      });
+      supabaseService.listFactors.mockResolvedValue({
+        totp: [
+          {
+            id: TEST_FACTOR_ID,
+            friendly_name: '主验证器',
+            status: 'verified',
+          },
+        ],
+      });
+      mockFindFirst.mockResolvedValue(mockUserRecord);
+
+      const result = await authService.login(loginDto);
+      const mfaToken = result.data.mfaToken;
+
+      if (!mfaToken) {
+        throw new Error('expected MFA token for verified TOTP login');
+      }
+
+      const payload = jwt.verify(
+        mfaToken,
+        TEST_JWT_SECRET,
+      ) as jwt.JwtPayload;
+
+      expect(result.data).toEqual({
+        mfaRequired: true,
+        mfaToken,
+        factors: [
+          {
+            id: TEST_FACTOR_ID,
+            friendlyName: '主验证器',
+          },
+        ],
+      });
+      expect(payload.type).toBe('mfa_pending');
+      expect(payload.supabaseAccessToken).toBe('mock-access-token');
     });
 
     it('backfill 中に email が別 supabase user に紐づく場合: login-failed で 500', async () => {
@@ -403,6 +476,55 @@ describe('AuthService', () => {
         supabaseUserId: MOCK_SUPABASE_UUID,
         email: MOCK_EMAIL,
       });
+    });
+  });
+
+  describe('getSecurityInfo', () => {
+    it('返回嵌套的 MFA、sessions 与 providers 结构', async () => {
+      supabaseService.listFactors.mockResolvedValue({
+        totp: [
+          {
+            id: TEST_FACTOR_ID,
+            friendly_name: '主验证器',
+            status: 'verified',
+            created_at: '2026-03-07T00:00:00.000Z',
+            updated_at: '2026-03-07T01:00:00.000Z',
+          },
+        ],
+      });
+      supabaseService.getUser.mockResolvedValue({
+        id: MOCK_SUPABASE_UUID,
+        email: MOCK_EMAIL,
+        app_metadata: {
+          provider: 'email',
+          providers: ['email', 'google'],
+        },
+        identities: [{ provider: 'google' }],
+      });
+      mockExecute.mockResolvedValue({ rows: [{ active_count: 2 }] });
+
+      const result = await authService.getSecurityInfo(mockSession.access_token);
+
+      expect(result).toEqual({
+        mfa: {
+          enabled: true,
+          factors: [
+            {
+              id: TEST_FACTOR_ID,
+              factor_type: 'totp',
+              friendly_name: '主验证器',
+              status: 'verified',
+              created_at: '2026-03-07T00:00:00.000Z',
+              updated_at: '2026-03-07T01:00:00.000Z',
+            },
+          ],
+        },
+        sessions: {
+          active_count: 2,
+        },
+        providers: ['email', 'google'],
+      });
+      expect(mockExecute).toHaveBeenCalledTimes(1);
     });
   });
 

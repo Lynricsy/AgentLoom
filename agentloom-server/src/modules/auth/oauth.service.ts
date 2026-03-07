@@ -2,6 +2,7 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { eq } from 'drizzle-orm';
+import * as jwt from 'jsonwebtoken';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import {
   OAuthCallbackException,
@@ -50,7 +51,13 @@ export class OAuthService {
       }
 
       const user = await this.backfillOAuthUser(supabaseUser);
-      const redirectUrl = this.buildFrontendRedirectUrl(session);
+      const verifiedTotpFactors = await this.getVerifiedTotpFactors(
+        session.access_token,
+      );
+      const redirectUrl =
+        verifiedTotpFactors.length > 0
+          ? this.buildFrontendMfaRedirectUrl(session.access_token, user)
+          : this.buildFrontendRedirectUrl(session);
 
       return {
         redirectUrl,
@@ -65,12 +72,47 @@ export class OAuthService {
   }
 
   private buildFrontendRedirectUrl(session: Session) {
-    const frontendUrl = this.configService.get<string>('APP_FRONTEND_URL')!;
-    const callbackBaseUrl = `${frontendUrl.replace(/\/$/, '')}/auth/callback`;
-    const query = new URLSearchParams({
+    return this.buildFrontendCallbackUrl({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
     });
+  }
+
+  private buildFrontendMfaRedirectUrl(
+    supabaseAccessToken: string,
+    user: { id: string; email: string },
+  ) {
+    const jwtSecret = this.configService.get<string>('APP_JWT_SECRET');
+
+    if (!jwtSecret) {
+      throw new OAuthCallbackException('APP_JWT_SECRET is not configured');
+    }
+
+    const mfaToken = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        aud: 'authenticated',
+        type: 'mfa_pending',
+        supabaseAccessToken,
+      },
+      jwtSecret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '5m',
+      },
+    );
+
+    return this.buildFrontendCallbackUrl({
+      mfa_required: 'true',
+      mfa_token: mfaToken,
+    });
+  }
+
+  private buildFrontendCallbackUrl(params: Record<string, string>) {
+    const frontendUrl = this.configService.get<string>('APP_FRONTEND_URL')!;
+    const callbackBaseUrl = `${frontendUrl.replace(/\/$/, '')}/auth/callback`;
+    const query = new URLSearchParams(params);
 
     return `${callbackBaseUrl}?${query.toString()}`;
   }
@@ -119,7 +161,7 @@ export class OAuthService {
     const userBySupabaseId = await this.findUserBySupabaseId(supabaseUser.id);
 
     if (userBySupabaseId) {
-      return userBySupabaseId;
+      return this.syncUserProfile(userBySupabaseId.id, displayName, avatarUrl);
     }
 
     const userByEmail = await this.findUserByEmail(email);
@@ -153,5 +195,32 @@ export class OAuthService {
   ): string | undefined {
     const value = supabaseUser.user_metadata[key];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
+  }
+
+  private async syncUserProfile(
+    userId: string,
+    displayName: string,
+    avatarUrl: string | null,
+  ) {
+    const [updatedUser] = await this.db
+      .update(users)
+      .set({
+        displayName,
+        avatarUrl,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!updatedUser) {
+      throw new OAuthCallbackException('同步 OAuth 用户资料失败');
+    }
+
+    return updatedUser;
+  }
+
+  private async getVerifiedTotpFactors(accessToken: string) {
+    const factors = await this.supabaseService.listFactors(accessToken);
+
+    return factors.totp.filter((factor) => factor.status === 'verified');
   }
 }

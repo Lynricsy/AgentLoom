@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
-import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
+import { AuthApiError } from '@supabase/supabase-js';
+import * as jwt from 'jsonwebtoken';
 import { MfaService } from '../mfa.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
+  Aal2RequiredException,
   MfaAlreadyEnrolledException,
   MfaDisableException,
   MfaEnrollmentException,
+  MfaFactorNotFoundException,
   MfaTokenExpiredException,
   MfaVerificationException,
 } from '../../../common/exceptions/auth.exceptions';
 
 const TEST_JWT_SECRET = 'test-mfa-secret';
 const TEST_SUPABASE_TOKEN = 'supabase-access-token';
-const TEST_FACTOR_ID = '01912345-6789-7abc-def0-123456789abc';
+const TEST_FACTOR_ID = '01912345-6789-7abc-8ef0-123456789abc';
 
 function createMockSupabaseService() {
   return {
@@ -22,7 +25,8 @@ function createMockSupabaseService() {
     challengeAndVerifyTotp: vi.fn(),
     unenrollFactor: vi.fn(),
     listFactors: vi.fn(),
-    createUserClient: vi.fn(),
+    getAuthenticatorAssuranceLevel: vi.fn(),
+    refreshToken: vi.fn(),
   };
 }
 
@@ -40,6 +44,19 @@ describe('MfaService', () => {
 
   beforeEach(async () => {
     supabaseService = createMockSupabaseService();
+    supabaseService.listFactors.mockResolvedValue({ totp: [] });
+    supabaseService.getAuthenticatorAssuranceLevel.mockResolvedValue({
+      currentLevel: 'aal2',
+      nextLevel: 'aal2',
+      currentAuthenticationMethods: [],
+    });
+    supabaseService.refreshToken.mockResolvedValue({
+      session: {
+        access_token: 'downgraded-access-token',
+        refresh_token: 'downgraded-refresh-token',
+        expires_in: 3600,
+      },
+    });
 
     const module = await Test.createTestingModule({
       providers: [
@@ -53,7 +70,6 @@ describe('MfaService', () => {
   });
 
   it('enrollTotp 成功返回二维码与密钥信息', async () => {
-    supabaseService.listFactors.mockResolvedValue({ totp: [] });
     supabaseService.enrollTotp.mockResolvedValue({
       id: TEST_FACTOR_ID,
       totp: {
@@ -75,12 +91,7 @@ describe('MfaService', () => {
 
   it('enrollTotp 在已存在已验证因子时抛出 MfaAlreadyEnrolledException', async () => {
     supabaseService.listFactors.mockResolvedValue({
-      totp: [
-        {
-          id: TEST_FACTOR_ID,
-          status: 'verified',
-        },
-      ],
+      totp: [{ id: TEST_FACTOR_ID, status: 'verified' }],
     });
 
     await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBeInstanceOf(
@@ -89,7 +100,6 @@ describe('MfaService', () => {
   });
 
   it('enrollTotp 在 Supabase 出错时抛出 MfaEnrollmentException', async () => {
-    supabaseService.listFactors.mockResolvedValue({ totp: [] });
     supabaseService.enrollTotp.mockRejectedValue(new Error('enroll failed'));
 
     await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBeInstanceOf(
@@ -97,10 +107,11 @@ describe('MfaService', () => {
     );
   });
 
-  it('verifyTotp 成功返回成功消息', async () => {
+  it('verifyTotp 使用 access token 成功返回 AAL2 会话令牌', async () => {
     supabaseService.challengeAndVerifyTotp.mockResolvedValue({
       access_token: 'aal2-access-token',
       refresh_token: 'aal2-refresh-token',
+      expires_in: 3600,
     });
 
     const result = await mfaService.verifyTotp(
@@ -109,7 +120,15 @@ describe('MfaService', () => {
       '123456',
     );
 
-    expect(result).toEqual({ message: 'MFA 验证成功' });
+    expect(result).toEqual({
+      data: {
+        tokens: {
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
+        },
+      },
+    });
     expect(supabaseService.challengeAndVerifyTotp).toHaveBeenCalledWith(
       TEST_SUPABASE_TOKEN,
       TEST_FACTOR_ID,
@@ -117,17 +136,17 @@ describe('MfaService', () => {
     );
   });
 
-  it('verifyTotp 在验证码错误时抛出 MfaVerificationException', async () => {
+  it('verifyTotp 在 factor 不存在时抛出 MfaFactorNotFoundException', async () => {
     supabaseService.challengeAndVerifyTotp.mockRejectedValue(
-      new Error('invalid code'),
+      new AuthApiError('factor not found', 404, 'mfa_factor_not_found'),
     );
 
     await expect(
-      mfaService.verifyTotp(TEST_SUPABASE_TOKEN, TEST_FACTOR_ID, '000000'),
-    ).rejects.toBeInstanceOf(MfaVerificationException);
+      mfaService.verifyTotp(TEST_SUPABASE_TOKEN, TEST_FACTOR_ID, '123456'),
+    ).rejects.toBeInstanceOf(MfaFactorNotFoundException);
   });
 
-  it('verifyMfaLogin 成功返回新的会话令牌', async () => {
+  it('verifyMfaLogin 成功解析 mfa_pending 令牌并返回统一的 tokens 结构', async () => {
     const mfaToken = jwt.sign(
       {
         sub: 'user-1',
@@ -142,6 +161,7 @@ describe('MfaService', () => {
     supabaseService.challengeAndVerifyTotp.mockResolvedValue({
       access_token: 'aal2-access-token',
       refresh_token: 'aal2-refresh-token',
+      expires_in: 3600,
     });
 
     const result = await mfaService.verifyMfaLogin(
@@ -150,9 +170,19 @@ describe('MfaService', () => {
       '123456',
     );
 
+    expect(supabaseService.challengeAndVerifyTotp).toHaveBeenCalledWith(
+      TEST_SUPABASE_TOKEN,
+      TEST_FACTOR_ID,
+      '123456',
+    );
     expect(result).toEqual({
-      accessToken: 'aal2-access-token',
-      refreshToken: 'aal2-refresh-token',
+      data: {
+        tokens: {
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
+        },
+      },
     });
   });
 
@@ -180,39 +210,7 @@ describe('MfaService', () => {
     ).rejects.toBeInstanceOf(MfaVerificationException);
   });
 
-  it('disableMfa 成功禁用 MFA', async () => {
-    supabaseService.challengeAndVerifyTotp.mockResolvedValue({
-      access_token: 'aal2-access-token',
-      refresh_token: 'aal2-refresh-token',
-    });
-    supabaseService.unenrollFactor.mockResolvedValue(undefined);
-
-    const result = await mfaService.disableMfa(
-      TEST_SUPABASE_TOKEN,
-      TEST_FACTOR_ID,
-      '123456',
-    );
-
-    expect(result).toEqual({ message: 'MFA 已禁用' });
-    expect(supabaseService.unenrollFactor).toHaveBeenCalledWith(
-      TEST_SUPABASE_TOKEN,
-      TEST_FACTOR_ID,
-    );
-  });
-
-  it('disableMfa 在 Supabase 出错时抛出 MfaDisableException', async () => {
-    supabaseService.challengeAndVerifyTotp.mockResolvedValue({
-      access_token: 'aal2-access-token',
-      refresh_token: 'aal2-refresh-token',
-    });
-    supabaseService.unenrollFactor.mockRejectedValue(new Error('unenroll failed'));
-
-    await expect(
-      mfaService.disableMfa(TEST_SUPABASE_TOKEN, TEST_FACTOR_ID, '123456'),
-    ).rejects.toBeInstanceOf(MfaDisableException);
-  });
-
-  it('getSecurityInfo 成功返回安全信息结构', async () => {
+  it('disableMfa 成功完成验证、解除绑定并返回降级后的会话令牌', async () => {
     supabaseService.listFactors.mockResolvedValue({
       totp: [
         {
@@ -224,21 +222,74 @@ describe('MfaService', () => {
         },
       ],
     });
-
-    const result = await mfaService.getSecurityInfo(TEST_SUPABASE_TOKEN);
-
-    expect(result).toEqual({
-      mfaEnabled: true,
-      factors: [
-        {
-          id: TEST_FACTOR_ID,
-          factorType: 'totp',
-          friendlyName: '主验证器',
-          status: 'verified',
-          createdAt: '2026-03-07T00:00:00.000Z',
-          updatedAt: '2026-03-07T01:00:00.000Z',
-        },
-      ],
+    supabaseService.challengeAndVerifyTotp.mockResolvedValue({
+      access_token: 'aal2-access-token',
+      refresh_token: 'aal2-refresh-token',
+      expires_in: 3600,
     });
+    supabaseService.unenrollFactor.mockResolvedValue(undefined);
+
+    const result = await mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456');
+
+    expect(supabaseService.getAuthenticatorAssuranceLevel).toHaveBeenCalledWith(
+      TEST_SUPABASE_TOKEN,
+    );
+    expect(supabaseService.challengeAndVerifyTotp).toHaveBeenCalledWith(
+      TEST_SUPABASE_TOKEN,
+      TEST_FACTOR_ID,
+      '123456',
+    );
+    expect(supabaseService.unenrollFactor).toHaveBeenCalledWith(
+      TEST_SUPABASE_TOKEN,
+      TEST_FACTOR_ID,
+    );
+    expect(supabaseService.refreshToken).toHaveBeenCalledWith(
+      'aal2-refresh-token',
+    );
+    expect(result).toEqual({
+      message: 'MFA 已禁用',
+      data: {
+        tokens: {
+          access_token: 'downgraded-access-token',
+          refresh_token: 'downgraded-refresh-token',
+          expires_in: 3600,
+        },
+      },
+    });
+  });
+
+  it('disableMfa 在当前会话不是 AAL2 时抛出 Aal2RequiredException', async () => {
+    supabaseService.getAuthenticatorAssuranceLevel.mockResolvedValue({
+      currentLevel: 'aal1',
+      nextLevel: 'aal2',
+      currentAuthenticationMethods: [],
+    });
+
+    await expect(
+      mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
+    ).rejects.toBeInstanceOf(Aal2RequiredException);
+  });
+
+  it('disableMfa 在没有已验证 TOTP 因子时抛出 MfaFactorNotFoundException', async () => {
+    await expect(
+      mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
+    ).rejects.toBeInstanceOf(MfaFactorNotFoundException);
+  });
+
+  it('disableMfa 在 refresh 失败时抛出 MfaDisableException', async () => {
+    supabaseService.listFactors.mockResolvedValue({
+      totp: [{ id: TEST_FACTOR_ID, status: 'verified' }],
+    });
+    supabaseService.challengeAndVerifyTotp.mockResolvedValue({
+      access_token: 'aal2-access-token',
+      refresh_token: 'aal2-refresh-token',
+      expires_in: 3600,
+    });
+    supabaseService.unenrollFactor.mockResolvedValue(undefined);
+    supabaseService.refreshToken.mockResolvedValue({ session: null });
+
+    await expect(
+      mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
+    ).rejects.toBeInstanceOf(MfaDisableException);
   });
 });

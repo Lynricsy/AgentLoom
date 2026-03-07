@@ -46,65 +46,85 @@ describe('MfaController', () => {
     expect(result).toEqual({ id: 'factor-1' });
   });
 
-  it('POST totp/verify 成功调用服务', async () => {
-    service.verifyTotp.mockResolvedValue({ message: 'MFA 验证成功' });
+  it('POST totp/verify 公开访问并支持 snake_case 的 factor_id', async () => {
+    service.verifyTotp.mockResolvedValue({
+      data: {
+        tokens: {
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
+        },
+      },
+    });
 
     const result = await controller.verifyTotp(
       {
-        factorId: '01912345-6789-7abc-def0-123456789abc',
+        factor_id: '01912345-6789-7abc-8ef0-123456789abc',
         code: '123456',
       },
       {
         headers: {
-          authorization: 'Bearer access-token',
+          authorization: 'Bearer mfa-token',
         },
       } as never,
     );
 
+    expect(getMethodPublicMetadata('verifyTotp')).toBe(true);
     expect(service.verifyTotp).toHaveBeenCalledWith(
-      'access-token',
-      '01912345-6789-7abc-def0-123456789abc',
+      'mfa-token',
+      '01912345-6789-7abc-8ef0-123456789abc',
       '123456',
     );
-    expect(result).toEqual({ message: 'MFA 验证成功' });
+    expect(result).toEqual({
+      data: {
+        tokens: {
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
+        },
+      },
+    });
   });
 
-  it('POST login/verify 成功返回包装后的令牌并保持公开访问', async () => {
+  it('POST login/verify 保持公开访问并透传统一的 tokens 结构', async () => {
     service.verifyMfaLogin.mockResolvedValue({
-      accessToken: 'aal2-access-token',
-      refreshToken: 'aal2-refresh-token',
+      data: {
+        tokens: {
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
+        },
+      },
     });
 
     const result = await controller.verifyMfaLogin({
-      mfaToken: 'mfa-token',
-      factorId: '01912345-6789-7abc-def0-123456789abc',
+      mfa_token: 'mfa-token',
+      factor_id: '01912345-6789-7abc-8ef0-123456789abc',
       code: '123456',
     });
 
     expect(service.verifyMfaLogin).toHaveBeenCalledWith(
       'mfa-token',
-      '01912345-6789-7abc-def0-123456789abc',
+      '01912345-6789-7abc-8ef0-123456789abc',
       '123456',
     );
     expect(getMethodPublicMetadata('verifyMfaLogin')).toBe(true);
     expect(result).toEqual({
       data: {
         tokens: {
-          accessToken: 'aal2-access-token',
-          refreshToken: 'aal2-refresh-token',
+          access_token: 'aal2-access-token',
+          refresh_token: 'aal2-refresh-token',
+          expires_in: 3600,
         },
       },
     });
   });
 
-  it('DELETE / 成功调用服务', async () => {
+  it('DELETE / 只传递访问令牌和验证码给服务', async () => {
     service.disableMfa.mockResolvedValue({ message: 'MFA 已禁用' });
 
     const result = await controller.disableMfa(
-      {
-        factorId: '01912345-6789-7abc-def0-123456789abc',
-        code: '123456',
-      },
+      { code: '123456' },
       {
         headers: {
           authorization: 'Bearer access-token',
@@ -112,11 +132,7 @@ describe('MfaController', () => {
       } as never,
     );
 
-    expect(service.disableMfa).toHaveBeenCalledWith(
-      'access-token',
-      '01912345-6789-7abc-def0-123456789abc',
-      '123456',
-    );
+    expect(service.disableMfa).toHaveBeenCalledWith('access-token', '123456');
     expect(result).toEqual({ message: 'MFA 已禁用' });
   });
 });

@@ -230,4 +230,19 @@ export class SupabaseService {
 
     return data;
   }
+
+  async getAuthenticatorAssuranceLevel(accessToken: string) {
+    const userClient = this.createUserClient(accessToken);
+    const { data, error } =
+      await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (error) {
+      this.logger.warn(
+        `MFA authenticator assurance level lookup failed: ${error.message}`,
+      );
+      throw error;
+    }
+
+    return data;
+  }
 }

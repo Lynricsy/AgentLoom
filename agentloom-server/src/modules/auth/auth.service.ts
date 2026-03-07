@@ -6,8 +6,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
-import { AuthApiError } from '@supabase/supabase-js';
+import { eq, sql } from 'drizzle-orm';
+import { AuthApiError, type User as SupabaseUser } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { users } from '../../database/schema';
@@ -45,7 +45,7 @@ export class AuthService {
         });
       }
 
-      let userRecord;
+      let userRecord: typeof users.$inferSelect | undefined;
       try {
         const [inserted] = await this.db
           .insert(users)
@@ -300,20 +300,30 @@ export class AuthService {
 
   async getSecurityInfo(accessToken: string) {
     const factors = await this.supabaseService.listFactors(accessToken);
+    const user = await this.supabaseService.getUser(accessToken);
+    const activeSessionCount = await this.getActiveSessionCount(
+      user?.id ?? this.decodeAccessTokenClaims(accessToken)?.sub,
+    );
 
     return {
-      mfaEnabled: factors.totp.some((factor) => factor.status === 'verified'),
-      factors: factors.totp.map((factor) => ({
-        id: factor.id,
-        factorType: 'totp' as const,
-        friendlyName:
-          typeof factor.friendly_name === 'string'
-            ? factor.friendly_name
-            : undefined,
-        status: factor.status,
-        createdAt: factor.created_at,
-        updatedAt: factor.updated_at ?? factor.created_at,
-      })),
+      mfa: {
+        enabled: factors.totp.some((factor) => factor.status === 'verified'),
+        factors: factors.totp.map((factor) => ({
+          id: factor.id,
+          factor_type: 'totp' as const,
+          friendly_name:
+            typeof factor.friendly_name === 'string'
+              ? factor.friendly_name
+              : undefined,
+          status: factor.status,
+          created_at: factor.created_at,
+          updated_at: factor.updated_at ?? factor.created_at,
+        })),
+      },
+      sessions: {
+        active_count: activeSessionCount,
+      },
+      providers: this.extractProviders(user),
     };
   }
 
@@ -390,6 +400,78 @@ export class AuthService {
       sub: typeof decoded.sub === 'string' ? decoded.sub : undefined,
       exp: typeof decoded.exp === 'number' ? decoded.exp : undefined,
     };
+  }
+
+  private async getActiveSessionCount(userId?: string) {
+    if (!userId) {
+      return 0;
+    }
+
+    try {
+      const result = await this.db.execute(sql`
+        SELECT COUNT(*)::int AS active_count
+        FROM auth.sessions
+        WHERE user_id = ${userId}
+          AND (not_after IS NULL OR not_after > NOW())
+      `);
+      const rawResult = result as unknown;
+      const resultWithRows = rawResult as {
+        rows?: Array<{ active_count?: number | string }>;
+      };
+
+      const rows = Array.isArray(rawResult)
+        ? (rawResult as Array<{ active_count?: number | string }>)
+        : Array.isArray(resultWithRows.rows)
+          ? resultWithRows.rows
+          : [];
+      const value = rows[0]?.active_count;
+
+      return typeof value === 'number'
+        ? value
+        : Number.parseInt(String(value ?? '0'), 10) || 0;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to count active sessions for ${userId}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      return 1;
+    }
+  }
+
+  private extractProviders(user: SupabaseUser | null) {
+    const providers = new Set<string>();
+    const appMetadata =
+      user && typeof user.app_metadata === 'object' && user.app_metadata !== null
+        ? user.app_metadata
+        : null;
+    const configuredProviders = appMetadata?.providers;
+
+    if (Array.isArray(configuredProviders)) {
+      for (const provider of configuredProviders) {
+        if (typeof provider === 'string' && provider.length > 0) {
+          providers.add(provider);
+        }
+      }
+    }
+
+    if (typeof appMetadata?.provider === 'string' && appMetadata.provider) {
+      providers.add(appMetadata.provider);
+    }
+
+    if (Array.isArray(user?.identities)) {
+      for (const identity of user.identities) {
+        if (typeof identity.provider === 'string' && identity.provider) {
+          providers.add(identity.provider);
+        }
+      }
+    }
+
+    if (providers.size === 0 && user?.email) {
+      providers.add('email');
+    }
+
+    return [...providers];
   }
 
   private isEmailConflictError(error: AuthApiError): boolean {
