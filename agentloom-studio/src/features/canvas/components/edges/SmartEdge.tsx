@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -10,14 +10,36 @@ import { useCanvasActions } from '../../stores/canvasStore'
 import { createDefaultEdgeData, type CanvasEdge, type VisualCompatibilityLevel } from '../../types'
 
 const LEVEL_LABELS: Record<VisualCompatibilityLevel, string> = {
-  L0: 'Exact match',
-  L1: 'Transform needed',
-  checking: 'Checking…',
-  error: 'Incompatible',
+  L0: '精确匹配',
+  L1: '需要转换',
+  checking: '检查中…',
+  error: '不兼容',
 }
 
 function resolveVisualLevel(data: CanvasEdge['data']): VisualCompatibilityLevel {
   return data?.visualLevel ?? 'L0'
+}
+
+function buildBadgeText(
+  edgeData: NonNullable<CanvasEdge['data']>,
+  visualLevel: VisualCompatibilityLevel,
+): string {
+  const { mappingSummary, reasonKey } = edgeData
+  const hasMappingInfo =
+    mappingSummary.autoMatchedCount > 0 ||
+    mappingSummary.manualCount > 0 ||
+    mappingSummary.requiredUnmappedCount > 0
+
+  if (hasMappingInfo) {
+    const total = mappingSummary.autoMatchedCount + mappingSummary.manualCount
+    return `${total} 已映射`
+  }
+
+  if (visualLevel === 'error' && reasonKey) {
+    return `不兼容: ${reasonKey}`
+  }
+
+  return LEVEL_LABELS[visualLevel]
 }
 
 export const SmartEdge = memo(function SmartEdge({
@@ -38,6 +60,7 @@ export const SmartEdge = memo(function SmartEdge({
   const edgeData = data ?? createDefaultEdgeData()
   const visualLevel = resolveVisualLevel(data)
   const cssLevel = visualLevel.toLowerCase()
+  const [isHovered, setIsHovered] = useState(false)
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -50,7 +73,9 @@ export const SmartEdge = memo(function SmartEdge({
 
   const pathId = `edge-path-${id}`
   const showParticles = visualLevel === 'L0' || visualLevel === 'L1'
-  const levelLabel = LEVEL_LABELS[visualLevel]
+  const badgeText = buildBadgeText(edgeData, visualLevel)
+  const hasWarning = edgeData.mappingSummary.requiredUnmappedCount > 0
+  const badgeVisible = isHovered || !!selected
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -68,14 +93,13 @@ export const SmartEdge = memo(function SmartEdge({
     [id, openFieldMapping]
   )
 
-  const hasMappingInfo =
-    edgeData.mappingSummary.autoMatchedCount > 0 ||
-    edgeData.mappingSummary.manualCount > 0 ||
-    edgeData.mappingSummary.requiredUnmappedCount > 0
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true)
+  }, [])
 
-  const badgeText = hasMappingInfo
-    ? `${edgeData.mappingSummary.autoMatchedCount + edgeData.mappingSummary.manualCount} mapped`
-    : levelLabel
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false)
+  }, [])
 
   return (
     <>
@@ -83,17 +107,27 @@ export const SmartEdge = memo(function SmartEdge({
         <path id={pathId} d={edgePath} />
       </defs>
 
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- SVG hit area for hover detection */}
       <path
         d={edgePath}
         className="smart-edge-interaction"
         data-testid={`edge-${source}-${target}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       />
 
       <BaseEdge
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
-        className={`smart-edge-path smart-edge-path--${cssLevel}${selected ? ' smart-edge-path--selected' : ''}`}
+        className={[
+          'smart-edge-path',
+          `smart-edge-path--${cssLevel}`,
+          selected ? 'smart-edge-path--selected' : '',
+          isHovered ? 'smart-edge-path--hovered' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       />
 
       {showParticles && (
@@ -120,7 +154,7 @@ export const SmartEdge = memo(function SmartEdge({
       <EdgeLabelRenderer>
         <div
           role="toolbar"
-          className={`edge-badge${selected ? ' edge-badge--visible' : ''}`}
+          className={`edge-badge${badgeVisible ? ' edge-badge--visible' : ''}`}
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
@@ -128,15 +162,26 @@ export const SmartEdge = memo(function SmartEdge({
           }}
           data-testid={`edge-badge-${id}`}
           onDoubleClick={handleBadgeDoubleClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           <span className={`edge-badge__dot edge-badge__dot--${cssLevel}`} />
           <span>{badgeText}</span>
+          {hasWarning && (
+            <span
+              className="edge-badge__warning"
+              data-testid={`edge-warning-${id}`}
+              title={`${edgeData.mappingSummary.requiredUnmappedCount} 个必填字段未映射`}
+            >
+              ⚠
+            </span>
+          )}
           <button
             type="button"
             className="edge-badge__delete"
             data-testid={`edge-delete-${id}`}
             onClick={handleDelete}
-            aria-label="Delete connection"
+            aria-label="删除连接"
           >
             <X size={10} />
           </button>

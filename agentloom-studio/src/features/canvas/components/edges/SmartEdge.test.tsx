@@ -79,7 +79,7 @@ describe('SmartEdge', () => {
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(2)
-    expect(particles[0].className).toContain('smart-edge-particle--l0')
+    expect(particles[0]!.className).toContain('smart-edge-particle--l0')
   })
 
   it('renders particles for L1 visual level', () => {
@@ -92,7 +92,7 @@ describe('SmartEdge', () => {
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(2)
-    expect(particles[0].className).toContain('smart-edge-particle--l1')
+    expect(particles[0]!.className).toContain('smart-edge-particle--l1')
   })
 
   it('does not render particles for checking level', () => {
@@ -126,7 +126,7 @@ describe('SmartEdge', () => {
     render(<SmartEdge {...baseProps} />)
 
     const badge = screen.getByTestId('edge-badge-edge-1')
-    expect(badge.textContent).toContain('Exact match')
+    expect(badge.textContent).toContain('精确匹配')
   })
 
   it('shows mapping count when mappingSummary has data', () => {
@@ -141,7 +141,7 @@ describe('SmartEdge', () => {
     render(<SmartEdge {...baseProps} data={mappedData} />)
 
     const badge = screen.getByTestId('edge-badge-edge-1')
-    expect(badge.textContent).toContain('4 mapped')
+    expect(badge.textContent).toContain('4 已映射')
   })
 
   it('delete button dispatches remove edge change', () => {
@@ -182,6 +182,53 @@ describe('SmartEdge', () => {
     expect(basePath.className).toContain('smart-edge-path--checking')
 
     const badge = screen.getByTestId('edge-badge-edge-1')
-    expect(badge.textContent).toContain('Checking…')
+    expect(badge.textContent).toContain('检查中…')
+  })
+
+  it('badge becomes visible on hover', () => {
+    render(<SmartEdge {...baseProps} />)
+
+    const interactionPath = screen.getByTestId('edge-node-a-node-b')
+    const badge = screen.getByTestId('edge-badge-edge-1')
+
+    expect(badge.className).not.toContain('edge-badge--visible')
+
+    fireEvent.mouseEnter(interactionPath)
+    expect(badge.className).toContain('edge-badge--visible')
+
+    fireEvent.mouseLeave(interactionPath)
+    expect(badge.className).not.toContain('edge-badge--visible')
+  })
+
+  it('shows warning indicator when requiredUnmappedCount > 0', () => {
+    const warningData: CanvasEdgeData = {
+      ...createDefaultEdgeData(),
+      visualLevel: 'L1',
+      rawCompatibilityLevel: 'TRANSFORM',
+      mappingSummary: {
+        autoMatchedCount: 1,
+        manualCount: 0,
+        requiredUnmappedCount: 2,
+      },
+    }
+    render(<SmartEdge {...baseProps} data={warningData} />)
+
+    const warning = screen.getByTestId('edge-warning-edge-1')
+    expect(warning).toBeInTheDocument()
+    expect(warning.textContent).toBe('⚠')
+    expect(warning).toHaveAttribute('title', '2 个必填字段未映射')
+  })
+
+  it('shows error label with reason key', () => {
+    const errorData: CanvasEdgeData = {
+      ...createDefaultEdgeData(),
+      visualLevel: 'error',
+      rawCompatibilityLevel: 'INCOMPATIBLE',
+      reasonKey: 'type_mismatch',
+    }
+    render(<SmartEdge {...baseProps} data={errorData} />)
+
+    const badge = screen.getByTestId('edge-badge-edge-1')
+    expect(badge.textContent).toContain('不兼容: type_mismatch')
   })
 })

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -13,6 +13,8 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { CanvasNodeShell } from './CanvasNode'
 import { SmartEdge } from './edges/SmartEdge'
+import { CompatibilityPreview } from './overlays/CompatibilityPreview'
+import { ConnectionStateOverlay } from './overlays/ConnectionStateOverlay'
 import { NODE_CATEGORIES } from './nodeCategories'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import {
@@ -21,7 +23,7 @@ import {
   useCanvasNodes,
   useCanvasStore,
 } from '../stores/canvasStore'
-import type { CanvasEdge, CanvasNode } from '../types'
+import type { CanvasEdge, CanvasNode, VisualCompatibilityLevel } from '../types'
 
 interface WorkflowCanvasProps {
   className?: string
@@ -59,12 +61,38 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     deleteSelectedNode,
     onEdgesChange,
     onNodesChange,
+    openFieldMapping,
     selectEdge,
     selectNode,
     setViewport,
   } = useCanvasActions()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
+
+  const [connectionActive, setConnectionActive] = useState(false)
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 })
+  const [previewLevel, setPreviewLevel] = useState<VisualCompatibilityLevel>('checking')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const onConnectStart = useCallback(() => {
+    setConnectionActive(true)
+    setPreviewLevel('checking')
+  }, [])
+
+  const onConnectEnd = useCallback(() => {
+    setConnectionActive(false)
+  }, [])
+
+  useEffect(() => {
+    if (!connectionActive) return
+    const handleMouseMove = (e: MouseEvent) => {
+      setCursorPos({ x: e.clientX, y: e.clientY })
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+    }
+  }, [connectionActive])
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -123,8 +151,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: CanvasEdge) => {
       selectEdge(edge.id)
+      openFieldMapping(edge.id)
     },
-    [selectEdge]
+    [selectEdge, openFieldMapping]
   )
 
   const onPaneClick = useCallback(() => {
@@ -141,6 +170,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   return (
     <div
+      ref={containerRef}
       className={cn(className, 'focus:outline-none')}
       onKeyDownCapture={handleKeyDown}
     >
@@ -157,6 +187,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onPaneClick={onPaneClick}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         viewport={viewport}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
@@ -182,6 +214,22 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           zoomable
         />
       </ReactFlow>
+      <CompatibilityPreview
+        visible={connectionActive}
+        visualLevel={previewLevel}
+        x={cursorPos.x}
+        y={cursorPos.y}
+        reasonKey={null}
+        metadata={{}}
+      />
+      <ConnectionStateOverlay
+        active={connectionActive}
+        cursor={cursorPos}
+        sourceHandle={null}
+        compatibleTargets={[]}
+        incompatibleTargets={[]}
+        label={null}
+      />
     </div>
   )
 })

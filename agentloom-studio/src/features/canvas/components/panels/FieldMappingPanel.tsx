@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import type {
+  CandidateFieldMapping,
   CanvasEdge,
   CanvasNode,
   FieldMapping,
@@ -70,6 +71,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   const edgeData = edge?.data
   const isReadonly = edgeData?.visualLevel === 'L0'
   const mappings = edgeData?.fieldMapping ?? []
+  const candidates: CandidateFieldMapping[] = edgeData?.candidateMappings ?? []
 
   const sourceFields = useMemo(
     () => (sourceNode ? flattenPortFields(sourceNode.data.outputPorts) : []),
@@ -178,6 +180,39 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
     [isReadonly, edgeId, mappings, onChange]
   )
 
+  const acceptCandidate = useCallback(
+    (candidate: CandidateFieldMapping) => {
+      if (isReadonly || !edgeId) return
+      const existing = mappings.filter((m) => m.targetField !== candidate.targetPath)
+      const newMapping: FieldMapping = {
+        sourceField: candidate.sourcePath,
+        targetField: candidate.targetPath,
+        compatLevel: 'L1',
+        autoRecommended: true,
+        confidence: candidate.confidence,
+      }
+      onChange(edgeId, [...existing, newMapping])
+    },
+    [isReadonly, edgeId, mappings, onChange]
+  )
+
+  const acceptAllCandidates = useCallback(() => {
+    if (isReadonly || !edgeId || candidates.length === 0) return
+    const manualMappedTargets = new Set(mappings.map((m) => m.targetField))
+    const newMappings = candidates
+      .filter((c) => !manualMappedTargets.has(c.targetPath))
+      .map(
+        (c): FieldMapping => ({
+          sourceField: c.sourcePath,
+          targetField: c.targetPath,
+          compatLevel: 'L1',
+          autoRecommended: true,
+          confidence: c.confidence,
+        })
+      )
+    onChange(edgeId, [...mappings, ...newMappings])
+  }, [isReadonly, edgeId, candidates, mappings, onChange])
+
   return (
     <aside
       className={`mapping-panel${open ? ' mapping-panel--open' : ''}`}
@@ -209,6 +244,45 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
           <span>所有必填字段已映射</span>
         )}
       </div>
+
+      {!isReadonly && candidates.length > 0 && (
+        <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
+          <div className="flex items-center justify-between px-2 py-1">
+            <span className="text-xs text-muted">
+              {candidates.length} 个推荐映射
+            </span>
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              data-testid="accept-all-candidates"
+              onClick={acceptAllCandidates}
+            >
+              全部接受
+            </button>
+          </div>
+          {candidates
+            .filter((c) => !mappedTargets.has(c.targetPath))
+            .map((c) => (
+              <div
+                key={`candidate-${c.targetPath}`}
+                className="mapping-line mapping-line--auto"
+                data-testid={`candidate-${c.targetPath}`}
+              >
+                <span className="truncate">{c.sourcePath}</span>
+                <span className="shrink-0 text-muted">→</span>
+                <span className="truncate">{c.targetPath}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary hover:bg-primary/10"
+                  data-testid={`accept-candidate-${c.targetPath}`}
+                  onClick={() => acceptCandidate(c)}
+                >
+                  接受
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
 
       {!isReadonly && (
         <div className="mapping-panel__body">

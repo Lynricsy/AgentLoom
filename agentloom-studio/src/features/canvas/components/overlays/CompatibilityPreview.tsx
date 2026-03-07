@@ -34,7 +34,7 @@ function buildMessage(
 ): string {
   switch (visualLevel) {
     case 'L0':
-      return 'Exact match';
+      return '完全匹配';
     case 'L1': {
       const { matchedRequiredCount, totalRequiredCount, unmappedRequiredCount } =
         metadata;
@@ -44,17 +44,17 @@ function buildMessage(
       ) {
         const unmapped = unmappedRequiredCount ?? 0;
         return unmapped > 0
-          ? `${matchedRequiredCount}/${totalRequiredCount} required fields matched — ${unmapped} unmapped`
-          : `${matchedRequiredCount}/${totalRequiredCount} required fields matched`;
+          ? `已匹配 ${matchedRequiredCount}/${totalRequiredCount} 个必填字段 — ${unmapped} 个未映射`
+          : `已匹配 ${matchedRequiredCount}/${totalRequiredCount} 个必填字段`;
       }
-      return reasonKey ?? 'Transform needed';
+      return reasonKey ?? '需要转换';
     }
     case 'checking':
-      return 'Checking compatibility…';
+      return '正在检查兼容性…';
     case 'error':
-      return reasonKey ?? 'Incompatible';
+      return reasonKey ?? '不兼容';
     default:
-      return 'Unknown';
+      return '未知';
   }
 }
 

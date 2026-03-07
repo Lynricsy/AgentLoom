@@ -42,10 +42,10 @@ describe('CompatibilityPreview', () => {
     expect(el.style.top).toBe('88px');
   });
 
-  it('shows "Exact match" for L0', () => {
+  it('shows "完全匹配" for L0', () => {
     render(<CompatibilityPreview {...createProps({ visualLevel: 'L0' })} />);
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Exact match',
+      '完全匹配',
     );
   });
 
@@ -63,7 +63,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '3/5 required fields matched — 2 unmapped',
+      '已匹配 3/5 个必填字段 — 2 个未映射',
     );
   });
 
@@ -81,7 +81,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '4/4 required fields matched',
+      '已匹配 4/4 个必填字段',
     );
   });
 
@@ -107,18 +107,18 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Transform needed',
+      '需要转换',
     );
   });
 
-  it('shows "Checking compatibility…" for checking', () => {
+  it('shows "正在检查兼容性…" for checking', () => {
     render(
       <CompatibilityPreview
         {...createProps({ visualLevel: 'checking' })}
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Checking compatibility…',
+      '正在检查兼容性…',
     );
   });
 
@@ -136,14 +136,14 @@ describe('CompatibilityPreview', () => {
     );
   });
 
-  it('falls back to "Incompatible" for error without reasonKey', () => {
+  it('falls back to "不兼容" for error without reasonKey', () => {
     render(
       <CompatibilityPreview
         {...createProps({ visualLevel: 'error' })}
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Incompatible',
+      '不兼容',
     );
   });
 
