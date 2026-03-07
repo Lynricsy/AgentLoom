@@ -59,3 +59,33 @@ body {
   --xy-controls-button-background-color: var(--color-surface-elevated);
   --xy-controls-button-color: var(--color-foreground);
 }
+
+.canvas-node-shell {
+  border-color: var(--node-color, var(--color-border));
+}
+
+.port-row .typed-port {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.typed-port {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid var(--port-color, var(--color-border)) !important;
+  background: transparent !important;
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.typed-port-shape--circle { border-radius: 50% !important; }
+.typed-port-shape--square { border-radius: 2px !important; }
+.typed-port-shape--diamond { border-radius: 2px !important; transform: translateY(-50%) rotate(45deg) !important; width: 9px !important; height: 9px !important; }
+.typed-port-shape--hexagon { border-radius: 50% !important; width: 11px !important; height: 11px !important; }
+.typed-port-shape--triangle { border-radius: 50% 50% 2px 2px !important; width: 10px !important; height: 10px !important; }
+.typed-port-shape--book { border-radius: 2px 5px 5px 2px !important; width: 10px !important; height: 12px !important; }
+.typed-port-shape--capsule { border-radius: 9999px !important; width: 14px !important; height: 8px !important; }
+
+.typed-port-state--idle { background: transparent !important; }
+.typed-port-state--hover { transform: translateY(-50%) scale(1.15) !important; }
+.typed-port-state--connected { background: var(--port-color) !important; }
+.typed-port-state--incompatible { border-color: var(--color-error) !important; }

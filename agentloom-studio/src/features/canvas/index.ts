@@ -36,6 +36,8 @@ export {
   useCanvasStore,
 } from './stores/canvasStore'
 export { NodePalette } from './components/NodePalette'
+export { TypedPort, type TypedPortProps } from './components/TypedPort'
+export { CanvasNodeShell } from './components/CanvasNodeShell'
 export { WorkflowCanvas } from './components/WorkflowCanvas'
 export { WorkflowCanvasPage } from './components/WorkflowCanvasPage'
 export { useAutoSave } from './hooks/useAutoSave'
