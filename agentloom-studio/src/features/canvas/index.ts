@@ -1,43 +1,67 @@
 export type {
   AddNodeInput,
   CanvasEdge,
+  CanvasEdgeData,
   CanvasNode,
   CanvasNodeData,
   CanvasSnapshot,
+  CandidateFieldMapping,
+  EdgeMappingSummary,
+  FieldMapping,
+  MissingFieldInfo,
   NodeCategory,
   PaletteGroup,
   PaletteNodeItem,
+  RawCompatibilityLevel,
+  VisualCompatibilityLevel,
 } from './types'
-export type { NodeType, NodeTypeConfig } from './nodeTypeRegistry'
+export { createDefaultEdgeData } from './types'
 export type {
-  PortDataType,
+  NodeConfigFieldSchema,
+  NodeConfigSchema,
+  NodeType,
+  NodeTypeConfig,
+  PortDataTypeMeta,
   PortDefinition,
   PortDirection,
   PortShape,
+} from './types/nodeTypeRegistry'
+export type {
+  PortDataType,
+  ScalarTypeSchema,
   TypeSchema,
-} from './typeSchema'
+} from './types/typeSchema'
 export {
+  assertNever,
   PORT_DATA_TYPES,
-} from './typeSchema'
+} from './types/typeSchema'
 export {
-  PORT_DATA_TYPE_META,
   NODE_TYPES,
+  NODE_TYPE_REGISTRY,
+  PORT_DATA_TYPE_META,
   getAllNodeTypes,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
   clonePortDefinitions,
-  buildPaletteGroups,
-} from './nodeTypeRegistry'
+} from './types/nodeTypeRegistry'
 export {
   useCanvasActions,
   useCanvasEdges,
   useCanvasNodes,
   useCanvasSaveStatus,
   useCanvasStore,
+  useEdgeData,
+  useMappingPanelEdgeId,
+  useSelectedEdgeId,
 } from './stores/canvasStore'
+export { buildPaletteGroups } from './components/nodeCategories'
 export { NodePalette } from './components/NodePalette'
 export { TypedPort, type TypedPortProps } from './components/TypedPort'
-export { CanvasNodeShell } from './components/CanvasNodeShell'
+export { CanvasNodeShell } from './components/CanvasNode'
+export { SmartEdge } from './components/edges/SmartEdge'
+export { CompatibilityPreview, type CompatibilityPreviewProps } from './components/overlays/CompatibilityPreview'
+export { ConnectionStateOverlay, type OverlayHandleSnapshot } from './components/overlays/ConnectionStateOverlay'
+export { FieldMappingPanel, type FieldMappingPanelProps } from './components/panels/FieldMappingPanel'
 export { WorkflowCanvas } from './components/WorkflowCanvas'
 export { WorkflowCanvasPage } from './components/WorkflowCanvasPage'
 export { useAutoSave } from './hooks/useAutoSave'

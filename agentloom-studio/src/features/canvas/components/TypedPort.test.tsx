@@ -1,171 +1,178 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { Position } from '@xyflow/react'
 import { TypedPort } from './TypedPort'
-import { PORT_DATA_TYPE_META } from '../nodeTypeRegistry'
-import type { PortDefinition } from '../typeSchema'
+import type { PortDefinition } from '../types/nodeTypeRegistry'
+
+const { useNodeConnectionsMock } = vi.hoisted(() => ({
+  useNodeConnectionsMock: vi.fn<() => Array<{ id: string }>>(() => []),
+}))
 
 vi.mock('@xyflow/react', () => ({
-  Handle: (props: Record<string, unknown>) => (
-    <div
-      data-testid={props['data-testid'] as string}
-      data-port-type={props['data-port-type'] as string}
-      data-port-state={props['data-port-state'] as string}
-      aria-label={props['aria-label'] as string}
-      className={props.className as string}
+  Handle: ({
+    className,
+    'data-testid': dataTestId,
+    'data-node-id': dataNodeId,
+    'data-port-id': dataPortId,
+    'data-port-type': dataPortType,
+    'data-port-shape': dataPortShape,
+    'data-port-state': dataPortState,
+    'aria-label': ariaLabel,
+  }: {
+    className?: string
+    'data-testid'?: string
+    'data-node-id'?: string
+    'data-port-id'?: string
+    'data-port-type'?: string
+    'data-port-shape'?: string
+    'data-port-state'?: string
+    'aria-label'?: string
+  }) => (
+    <button
+      type="button"
+      className={className}
+      data-testid={dataTestId}
+      data-node-id={dataNodeId}
+      data-port-id={dataPortId}
+      data-port-type={dataPortType}
+      data-port-shape={dataPortShape}
+      data-port-state={dataPortState}
+      aria-label={ariaLabel}
     />
   ),
-  Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
-  useNodeConnections: vi.fn(() => []),
+  Position: { Left: 'left', Right: 'right' },
+  useNodeConnections: useNodeConnectionsMock,
 }))
 
 const mockPort: PortDefinition = {
-  id: 'input-prompt',
+  id: 'prompt',
   label: '提示词',
   direction: 'input',
   dataType: 'text',
   required: true,
   multiple: false,
   maxConnections: 1,
-  schema: { kind: 'scalar', type: 'string' },
+  schema: {
+    kind: 'text',
+    title: '提示词',
+  },
 }
 
 const mockOutputPort: PortDefinition = {
-  id: 'output-result',
+  id: 'result',
   label: '结果',
   direction: 'output',
   dataType: 'model',
   required: false,
   multiple: true,
   maxConnections: null,
-  schema: { kind: 'scalar', type: 'string' },
+  schema: {
+    kind: 'model',
+    title: '结果',
+  },
+}
+
+const mockJsonPort: PortDefinition = {
+  id: 'payload',
+  label: 'payload',
+  direction: 'output',
+  dataType: 'json',
+  required: false,
+  multiple: false,
+  maxConnections: 1,
+  schema: {
+    kind: 'json',
+    shape: 'object',
+    title: 'payload',
+    properties: {},
+    additionalProperties: true,
+  },
 }
 
 describe('TypedPort', () => {
-  it('应该渲染正确的 data-testid', () => {
+  it('renders stable DOM contract attributes', () => {
     render(
       <TypedPort
         nodeId="node-1"
         port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
+        position={Position.Left}
+        isConnectable
       />,
     )
 
-    expect(
-      screen.getByTestId('port-node-1-input-prompt-input'),
-    ).toBeInTheDocument()
+    const handle = screen.getByTestId('port-node-1-prompt-input')
+
+    expect(handle).toHaveAttribute('data-node-id', 'node-1')
+    expect(handle).toHaveAttribute('data-port-id', 'prompt')
+    expect(handle).toHaveAttribute('data-port-type', 'text')
+    expect(handle).toHaveAttribute('data-port-shape', 'circle')
+    expect(handle).toHaveAttribute('data-port-state', 'idle')
+    expect(handle).toHaveAttribute('aria-label', '输入端口: 提示词, 类型: Text')
   })
 
-  it('应该设置正确的 data-port-type', () => {
+  it('passes node-aware connection lookup arguments to React Flow', () => {
     render(
       <TypedPort
-        nodeId="node-1"
+        nodeId="node-2"
         port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
+        position={Position.Left}
+        isConnectable
       />,
     )
 
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.getAttribute('data-port-type')).toBe('text')
+    expect(useNodeConnectionsMock).toHaveBeenCalledWith({
+      id: 'node-2',
+      handleId: 'prompt',
+      handleType: 'target',
+    })
   })
 
-  it('无连接时状态应为 idle', () => {
+  it('switches to connected state when connections exist', () => {
+    useNodeConnectionsMock.mockReturnValueOnce([{ id: 'edge-1' }])
+
     render(
       <TypedPort
-        nodeId="node-1"
-        port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
+        nodeId="node-3"
+        port={mockOutputPort}
+        position={Position.Right}
+        isConnectable={false}
       />,
     )
 
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.getAttribute('data-port-state')).toBe('idle')
+    expect(screen.getByTestId('port-node-3-result-output')).toHaveAttribute('data-port-state', 'connected')
   })
 
-  it('应该使用 compatibilityState 覆盖默认状态', () => {
+  it('lets compatibility state override connection state', () => {
     render(
       <TypedPort
-        nodeId="node-1"
-        port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
+        nodeId="node-4"
+        port={mockOutputPort}
+        position={Position.Right}
+        isConnectable
         compatibilityState="incompatible"
       />,
     )
 
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.getAttribute('data-port-state')).toBe('incompatible')
+    const handle = screen.getByTestId('port-node-4-result-output')
+
+    expect(handle).toHaveAttribute('data-port-state', 'incompatible')
+    expect(handle.className).toContain('typed-port--shake')
   })
 
-  it('有连接时状态应为 connected', async () => {
-    const { useNodeConnections } = await import('@xyflow/react')
-    vi.mocked(useNodeConnections).mockReturnValue([{ edgeId: 'e1', source: 's', target: 't', sourceHandle: 'sh', targetHandle: 'th' }] as never)
-
+  it('renders json ports with the square shape metadata', () => {
     render(
       <TypedPort
-        nodeId="node-1"
-        port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
+        nodeId="node-5"
+        port={mockJsonPort}
+        position={Position.Right}
+        isConnectable
       />,
     )
 
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.getAttribute('data-port-state')).toBe('connected')
+    const handle = screen.getByTestId('port-node-5-payload-output')
 
-    vi.mocked(useNodeConnections).mockReturnValue([] as never)
-  })
-
-  it('应该渲染正确的 aria-label（输入端口）', () => {
-    render(
-      <TypedPort
-        nodeId="node-1"
-        port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
-      />,
-    )
-
-    const meta = PORT_DATA_TYPE_META[mockPort.dataType]
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.getAttribute('aria-label')).toBe(
-      `输入端口: ${mockPort.label}, 类型: ${meta.label}`,
-    )
-  })
-
-  it('应该渲染正确的 aria-label（输出端口）', () => {
-    render(
-      <TypedPort
-        nodeId="node-1"
-        port={mockOutputPort}
-        position={'right' as never}
-        isConnectable={true}
-      />,
-    )
-
-    const meta = PORT_DATA_TYPE_META[mockOutputPort.dataType]
-    const el = screen.getByTestId('port-node-1-output-result-output')
-    expect(el.getAttribute('aria-label')).toBe(
-      `输出端口: ${mockOutputPort.label}, 类型: ${meta.label}`,
-    )
-  })
-
-  it('应该包含正确的 CSS 类名', () => {
-    render(
-      <TypedPort
-        nodeId="node-1"
-        port={mockPort}
-        position={'left' as never}
-        isConnectable={true}
-      />,
-    )
-
-    const meta = PORT_DATA_TYPE_META[mockPort.dataType]
-    const el = screen.getByTestId('port-node-1-input-prompt-input')
-    expect(el.className).toContain('typed-port')
-    expect(el.className).toContain(`typed-port-shape--${meta.shape}`)
-    expect(el.className).toContain('typed-port-state--idle')
+    expect(handle).toHaveAttribute('data-port-type', 'json')
+    expect(handle).toHaveAttribute('data-port-shape', 'square')
+    expect(handle).toHaveAttribute('aria-label', '输出端口: payload, 类型: JSON')
   })
 })
