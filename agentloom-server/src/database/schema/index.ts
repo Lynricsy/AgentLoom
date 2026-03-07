@@ -34,6 +34,12 @@ export {
   type ReactFlowEdge,
   type ReactFlowViewport,
 } from './workflow-definitions.schema';
+export {
+  workflowVersions,
+  type WorkflowVersion,
+  type NewWorkflowVersion,
+  type WorkflowVersionSnapshot,
+} from './workflow-versions.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,

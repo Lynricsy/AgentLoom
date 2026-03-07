@@ -95,6 +95,8 @@ export const workflowDefinitions = pgTable(
     version: integer('version').notNull().default(1),
     status: workflowStatusEnum('status').notNull().default('draft'),
 
+    publishedVersionId: uuid('published_version_id'),
+
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
