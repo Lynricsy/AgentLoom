@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
+import type { AddNodeInput, CanvasEdge, CanvasEdgeData, CanvasNode } from '../types'
+import { createDefaultEdgeData } from '../types'
+import { clonePortDefinitions } from '../types/nodeTypeRegistry'
 import { useCanvasStore } from './canvasStore'
-import type { AddNodeInput, CanvasNode, CanvasEdge } from '../types'
 
 const mockAddNodeInput: AddNodeInput = {
   id: 'node-1',
@@ -10,290 +12,410 @@ const mockAddNodeInput: AddNodeInput = {
   label: 'Test Agent',
 }
 
-const mockNode: CanvasNode = {
-  id: 'node-1',
-  type: 'agent',
-  position: { x: 100, y: 200 },
-  data: {
-    label: 'Test Agent',
-    nodeType: 'llm-agent',
-    category: 'agent',
-    config: {},
-    inputPorts: [],
-    outputPorts: [],
+const customInputPorts = [
+  {
+    id: 'custom-input',
+    label: 'Custom Input',
+    direction: 'input' as const,
+    dataType: 'text' as const,
+    required: false,
+    multiple: false,
+    maxConnections: 1,
+    schema: {
+      kind: 'text' as const,
+      title: 'Custom Input',
+    },
   },
-}
+]
 
-const mockEdge: CanvasEdge = {
-  id: 'edge-1',
-  source: 'node-1',
-  target: 'node-2',
+const customOutputPorts = [
+  {
+    id: 'custom-output',
+    label: 'Custom Output',
+    direction: 'output' as const,
+    dataType: 'json' as const,
+    required: false,
+    multiple: false,
+    maxConnections: 1,
+    schema: {
+      kind: 'json' as const,
+      shape: 'object' as const,
+      title: 'Custom Output',
+      properties: {},
+      additionalProperties: true,
+    },
+  },
+]
+
+function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
+  return {
+    id: 'node-1',
+    type: 'agent',
+    position: { x: 0, y: 0 },
+    data: {
+      label: 'Server Node',
+      nodeType: 'llm-agent',
+      category: 'agent',
+      description: '来自服务端',
+      config: {},
+      inputPorts: [],
+      outputPorts: [],
+    },
+    ...overrides,
+  }
 }
 
 describe('canvasStore', () => {
   beforeEach(() => {
-    // 重置 store 状态
-    useCanvasStore.setState({
-      nodes: [],
+    useCanvasStore.getState().actions.reset()
+  })
+
+  it('injects registry defaults when adding nodes', () => {
+    useCanvasStore.getState().actions.addNode(mockAddNodeInput)
+
+    const state = useCanvasStore.getState()
+    const node = state.nodes[0]
+
+    if (!node) {
+      throw new Error('Expected added node to exist')
+    }
+
+    expect(state.nodes).toHaveLength(1)
+    expect(node.data.inputPorts).toHaveLength(2)
+    expect(node.data.outputPorts).toHaveLength(2)
+    expect(node.data.config).toEqual({})
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('deletes the selected node and its connected edges', () => {
+    const node = createNode()
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [node],
+      edges: [edge],
+      selectedNodeId: 'node-1',
+    }))
+
+    useCanvasStore.getState().actions.deleteSelectedNode()
+
+    const state = useCanvasStore.getState()
+    expect(state.nodes).toHaveLength(0)
+    expect(state.edges).toHaveLength(0)
+    expect(state.selectedNodeId).toBeNull()
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('backfills missing ports and config during server snapshot hydration', () => {
+    const partialNode = {
+      ...createNode(),
+      data: {
+        label: 'Hydrated Node',
+        nodeType: 'llm-agent',
+        category: 'agent',
+        description: 'Hydrated',
+      },
+    } as CanvasNode
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      nodes: [partialNode],
       edges: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
-      selectedNodeId: null,
-      isDirty: false,
-      lastSavedAt: null,
-      isSaving: false,
-      workflowId: null,
+      workflowId: 'workflow-1',
+      version: 7,
+    })
+
+    const state = useCanvasStore.getState()
+    const hydratedNode = state.nodes[0]
+
+    if (!hydratedNode) {
+      throw new Error('Expected hydrated node to exist')
+    }
+
+    expect(hydratedNode.data.config).toEqual({})
+    expect(hydratedNode.data.inputPorts).toHaveLength(2)
+    expect(hydratedNode.data.outputPorts).toHaveLength(2)
+    expect(state.isDirty).toBe(false)
+    expect(state.selectedNodeId).toBeNull()
+  })
+
+  it('preserves existing ports and config during server snapshot hydration', () => {
+    const snapshotNode = createNode({
+      data: {
+        label: 'Existing Ports',
+        nodeType: 'llm-agent',
+        category: 'agent',
+        description: 'Keep my ports',
+        config: { retries: 3 },
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: [],
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      nodes: [snapshotNode],
+      edges: [],
+      workflowId: 'workflow-1',
+      version: 8,
+    })
+
+    const hydratedNode = useCanvasStore.getState().nodes[0]
+
+    if (!hydratedNode) {
+      throw new Error('Expected hydrated node to exist')
+    }
+
+    expect(hydratedNode.data.config).toEqual({ retries: 3 })
+    expect(hydratedNode.data.inputPorts).toEqual(customInputPorts)
+    expect(hydratedNode.data.outputPorts).toEqual([])
+  })
+
+  it('updates save metadata when marking as saved', () => {
+    const savedAt = Date.parse('2026-03-07T09:00:00.000Z')
+    const before = Date.now()
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      isDirty: true,
+      isSaving: true,
+    }))
+
+    useCanvasStore.getState().actions.markSaved(savedAt)
+
+    const state = useCanvasStore.getState()
+    const lastSavedAt = state.lastSavedAt
+
+    if (!lastSavedAt) {
+      throw new Error('Expected lastSavedAt to be populated after marking the snapshot as saved')
+    }
+
+    expect(state.isDirty).toBe(false)
+    expect(state.isSaving).toBe(false)
+    expect(lastSavedAt.getTime()).toBeGreaterThanOrEqual(before)
+    expect(lastSavedAt.getTime()).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('tracks selection and viewport updates', () => {
+    useCanvasStore.getState().actions.selectNode('node-42')
+    useCanvasStore.getState().actions.setViewport({ x: 10, y: 20, zoom: 1.5 })
+    useCanvasStore.getState().actions.commitViewport({ x: 30, y: 40, zoom: 2 })
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedNodeId).toBe('node-42')
+    expect(state.viewport).toEqual({ x: 30, y: 40, zoom: 2 })
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('marks node and edge changes as dirty', () => {
+    const node = createNode({
+      data: {
+        label: 'Dirty Node',
+        nodeType: 'llm-agent',
+        category: 'agent',
+        description: 'Dirty',
+        config: {},
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: clonePortDefinitions(customOutputPorts),
+      },
+    })
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [node],
+      edges: [edge],
+    }))
+
+    useCanvasStore.getState().actions.onNodesChange([{ id: 'node-1', type: 'remove' }])
+    useCanvasStore.getState().actions.onEdgesChange([{ id: 'edge-1', type: 'remove' }])
+
+    const state = useCanvasStore.getState()
+    expect(state.nodes).toHaveLength(0)
+    expect(state.edges).toHaveLength(0)
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('tracks explicit saving state and reset behavior', () => {
+    useCanvasStore.getState().actions.addNode(mockAddNodeInput)
+    useCanvasStore.getState().actions.setIsSaving(true)
+
+    expect(useCanvasStore.getState().isSaving).toBe(true)
+
+    useCanvasStore.getState().actions.reset()
+
+    const state = useCanvasStore.getState()
+    expect(state.nodes).toEqual([])
+    expect(state.edges).toEqual([])
+    expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedEdgeId).toBeNull()
+    expect(state.mappingPanelEdgeId).toBeNull()
+    expect(state.isDirty).toBe(false)
+    expect(state.isSaving).toBe(false)
+    expect(state.workflowId).toBeNull()
+    expect(state.version).toBe(1)
+  })
+
+  it('selects an edge and clears node selection', () => {
+    useCanvasStore.getState().actions.selectNode('node-42')
+    useCanvasStore.getState().actions.selectEdge('edge-1')
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedEdgeId).toBe('edge-1')
+    expect(state.selectedNodeId).toBeNull()
+  })
+
+  it('selects a node and clears edge selection', () => {
+    useCanvasStore.getState().actions.selectEdge('edge-1')
+    useCanvasStore.getState().actions.selectNode('node-42')
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedNodeId).toBe('node-42')
+    expect(state.selectedEdgeId).toBeNull()
+  })
+
+  it('opens field mapping panel for an edge', () => {
+    useCanvasStore.getState().actions.selectNode('node-42')
+    useCanvasStore.getState().actions.openFieldMapping('edge-1')
+
+    const state = useCanvasStore.getState()
+    expect(state.mappingPanelEdgeId).toBe('edge-1')
+    expect(state.selectedEdgeId).toBe('edge-1')
+    expect(state.selectedNodeId).toBeNull()
+  })
+
+  it('closes field mapping panel', () => {
+    useCanvasStore.getState().actions.openFieldMapping('edge-1')
+    useCanvasStore.getState().actions.closeFieldMapping()
+
+    const state = useCanvasStore.getState()
+    expect(state.mappingPanelEdgeId).toBeNull()
+  })
+
+  it('patches edge data and marks dirty', () => {
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
+
+    useCanvasStore.setState((s) => ({ ...s, edges: [edge] }))
+
+    useCanvasStore.getState().actions.updateEdgeData('edge-1', {
+      rawCompatibilityLevel: 'PARTIAL',
+      visualLevel: 'L1',
+    })
+
+    const state = useCanvasStore.getState()
+    const updatedEdge = state.edges[0]
+    expect(updatedEdge?.data?.rawCompatibilityLevel).toBe('PARTIAL')
+    expect(updatedEdge?.data?.visualLevel).toBe('L1')
+    expect(updatedEdge?.data?.fieldMapping).toEqual([])
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('updates field mappings and recalculates summary', () => {
+    const defaultData = createDefaultEdgeData()
+    defaultData.missingFields = [
+      { path: 'name', expectedType: { kind: 'text', title: 'name' }, required: true },
+      { path: 'age', expectedType: { kind: 'json', shape: 'object', title: 'age', properties: {}, additionalProperties: false }, required: true },
+    ]
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+      data: defaultData,
+    }
+
+    useCanvasStore.setState((s) => ({ ...s, edges: [edge] }))
+
+    useCanvasStore.getState().actions.updateFieldMapping('edge-1', [
+      { sourceField: 'fullName', targetField: 'name', compatLevel: 'L0', autoRecommended: true, confidence: 0.95 },
+    ])
+
+    const state = useCanvasStore.getState()
+    const updated = state.edges[0]?.data
+    expect(updated?.fieldMapping).toHaveLength(1)
+    expect(updated?.mappingSummary.autoMatchedCount).toBe(1)
+    expect(updated?.mappingSummary.manualCount).toBe(0)
+    expect(updated?.mappingSummary.requiredUnmappedCount).toBe(1)
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('hydrates edge data with defaults during server snapshot', () => {
+    const bareEdge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      nodes: [],
+      edges: [bareEdge],
+      workflowId: 'wf-1',
       version: 1,
     })
+
+    const state = useCanvasStore.getState()
+    const hydratedEdge = state.edges[0]
+    expect(hydratedEdge?.data).toBeDefined()
+    expect(hydratedEdge?.data?.rawCompatibilityLevel).toBe('EXACT')
+    expect(hydratedEdge?.data?.visualLevel).toBe('L0')
+    expect(hydratedEdge?.data?.fieldMapping).toEqual([])
+    expect(state.selectedEdgeId).toBeNull()
+    expect(state.mappingPanelEdgeId).toBeNull()
   })
 
-  describe('addNode', () => {
-    it('应该通过 AddNodeInput 添加节点并自动注入端口', () => {
-      const { actions } = useCanvasStore.getState()
-      actions.addNode(mockAddNodeInput)
+  it('clears edge state when deleting a node with connected edges', () => {
+    const node = createNode()
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
 
-      const state = useCanvasStore.getState()
-      expect(state.nodes).toHaveLength(1)
-      expect(state.nodes[0]!.id).toBe('node-1')
-      expect(state.nodes[0]!.type).toBe('agent')
-      expect(state.nodes[0]!.data.nodeType).toBe('llm-agent')
-      expect(state.nodes[0]!.data.inputPorts.length).toBeGreaterThan(0)
-      expect(state.nodes[0]!.data.outputPorts.length).toBeGreaterThan(0)
-      expect(state.nodes[0]!.data.config).toEqual({})
-      expect(state.isDirty).toBe(true)
-    })
+    useCanvasStore.setState((s) => ({
+      ...s,
+      nodes: [node],
+      edges: [edge],
+      selectedNodeId: 'node-1',
+      selectedEdgeId: 'edge-1',
+      mappingPanelEdgeId: 'edge-1',
+    }))
+
+    useCanvasStore.getState().actions.deleteSelectedNode()
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedEdgeId).toBeNull()
+    expect(state.mappingPanelEdgeId).toBeNull()
   })
 
-  describe('deleteSelectedNode', () => {
-    it('应该删除选中节点及其关联边', () => {
-      const node2: CanvasNode = {
-        id: 'node-2',
-        type: 'tool',
-        position: { x: 300, y: 200 },
-        data: {
-          label: 'Test Tool',
-          nodeType: 'http-tool',
-          category: 'tool',
-          config: {},
-          inputPorts: [],
-          outputPorts: [],
-        },
-      }
+  it('clears edge state when edge is removed via onEdgesChange', () => {
+    const edge: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
 
-      useCanvasStore.setState({
-        nodes: [mockNode, node2],
-        edges: [mockEdge],
-        selectedNodeId: 'node-1',
-      })
+    useCanvasStore.setState((s) => ({
+      ...s,
+      edges: [edge],
+      selectedEdgeId: 'edge-1',
+      mappingPanelEdgeId: 'edge-1',
+    }))
 
-      const { actions } = useCanvasStore.getState()
-      actions.deleteSelectedNode()
+    useCanvasStore.getState().actions.onEdgesChange([{ id: 'edge-1', type: 'remove' }])
 
-      const state = useCanvasStore.getState()
-      expect(state.nodes).toHaveLength(1)
-      expect(state.nodes[0]!.id).toBe('node-2')
-      expect(state.edges).toHaveLength(0)
-      expect(state.selectedNodeId).toBeNull()
-      expect(state.isDirty).toBe(true)
-    })
-
-    it('当无选中节点时不做任何操作', () => {
-      useCanvasStore.setState({
-        nodes: [mockNode],
-        edges: [],
-        selectedNodeId: null,
-        isDirty: false,
-      })
-
-      const { actions } = useCanvasStore.getState()
-      actions.deleteSelectedNode()
-
-      const state = useCanvasStore.getState()
-      expect(state.nodes).toHaveLength(1)
-      expect(state.isDirty).toBe(false)
-    })
-  })
-
-  describe('applyServerSnapshot', () => {
-    it('应该加载服务端数据并重置 dirty 状态', () => {
-      useCanvasStore.setState({ isDirty: true, selectedNodeId: 'old-node' })
-
-      const { actions } = useCanvasStore.getState()
-      actions.applyServerSnapshot({
-        nodes: [mockNode],
-        edges: [mockEdge],
-        viewport: { x: 10, y: 20, zoom: 1.5 },
-        workflowId: 'wf-001',
-        version: 3,
-      })
-
-      const state = useCanvasStore.getState()
-      expect(state.nodes).toHaveLength(1)
-      expect(state.nodes[0]!.data.inputPorts.length).toBeGreaterThan(0)
-      expect(state.nodes[0]!.data.outputPorts.length).toBeGreaterThan(0)
-      expect(state.edges).toHaveLength(1)
-      expect(state.viewport).toEqual({ x: 10, y: 20, zoom: 1.5 })
-      expect(state.workflowId).toBe('wf-001')
-      expect(state.version).toBe(3)
-      expect(state.isDirty).toBe(false)
-      expect(state.selectedNodeId).toBeNull()
-    })
-  })
-
-  describe('markSaved', () => {
-    it('应该更新保存状态和版本号', () => {
-      useCanvasStore.setState({ isDirty: true, isSaving: true, version: 1 })
-
-      const { actions } = useCanvasStore.getState()
-      actions.markSaved(2)
-
-      const state = useCanvasStore.getState()
-      expect(state.isDirty).toBe(false)
-      expect(state.isSaving).toBe(false)
-      expect(state.version).toBe(2)
-      expect(state.lastSavedAt).toBeInstanceOf(Date)
-    })
-  })
-
-  describe('selectNode', () => {
-    it('应该更新 selectedNodeId', () => {
-      const { actions } = useCanvasStore.getState()
-      actions.selectNode('node-1')
-
-      expect(useCanvasStore.getState().selectedNodeId).toBe('node-1')
-
-      actions.selectNode(null)
-      expect(useCanvasStore.getState().selectedNodeId).toBeNull()
-    })
-  })
-
-  describe('onNodesChange', () => {
-    it('当 position 变化且 dragging=false 时应标记 isDirty', () => {
-      useCanvasStore.setState({ nodes: [mockNode], isDirty: false })
-
-      const { actions } = useCanvasStore.getState()
-      actions.onNodesChange([
-        { type: 'position', id: 'node-1', position: { x: 200, y: 300 }, dragging: false },
-      ])
-
-      const state = useCanvasStore.getState()
-      expect(state.isDirty).toBe(true)
-    })
-
-    it('当 position 变化且 dragging=true 时不标记 isDirty', () => {
-      useCanvasStore.setState({ nodes: [mockNode], isDirty: false })
-
-      const { actions } = useCanvasStore.getState()
-      actions.onNodesChange([
-        { type: 'position', id: 'node-1', position: { x: 200, y: 300 }, dragging: true },
-      ])
-
-      const state = useCanvasStore.getState()
-      expect(state.isDirty).toBe(false)
-    })
-
-    it('当 select 变化时应更新 selectedNodeId', () => {
-      useCanvasStore.setState({ nodes: [mockNode], selectedNodeId: null })
-
-      const { actions } = useCanvasStore.getState()
-      actions.onNodesChange([
-        { type: 'select', id: 'node-1', selected: true },
-      ])
-
-      expect(useCanvasStore.getState().selectedNodeId).toBe('node-1')
-
-      actions.onNodesChange([
-        { type: 'select', id: 'node-1', selected: false },
-      ])
-
-      expect(useCanvasStore.getState().selectedNodeId).toBeNull()
-    })
-
-    it('当 remove 变化时应标记 isDirty', () => {
-      useCanvasStore.setState({ nodes: [mockNode], isDirty: false })
-
-      const { actions } = useCanvasStore.getState()
-      actions.onNodesChange([{ type: 'remove', id: 'node-1' }])
-
-      const state = useCanvasStore.getState()
-      expect(state.isDirty).toBe(true)
-    })
-  })
-
-  describe('onEdgesChange', () => {
-    it('当 remove 变化时应标记 isDirty', () => {
-      useCanvasStore.setState({ edges: [mockEdge], isDirty: false })
-
-      const { actions } = useCanvasStore.getState()
-      actions.onEdgesChange([{ type: 'remove', id: 'edge-1' }])
-
-      const state = useCanvasStore.getState()
-      expect(state.isDirty).toBe(true)
-      expect(state.edges).toHaveLength(0)
-    })
-  })
-
-  describe('setViewport', () => {
-    it('应该更新 viewport', () => {
-      const { actions } = useCanvasStore.getState()
-      actions.setViewport({ x: 50, y: 100, zoom: 2 })
-
-      const state = useCanvasStore.getState()
-      expect(state.viewport).toEqual({ x: 50, y: 100, zoom: 2 })
-      expect(state.isDirty).toBe(false)
-    })
-  })
-
-  describe('commitViewport', () => {
-    it('应该在视口交互结束后更新 viewport 并标记 isDirty', () => {
-      const { actions } = useCanvasStore.getState()
-      actions.commitViewport({ x: 50, y: 100, zoom: 2 })
-
-      const state = useCanvasStore.getState()
-      expect(state.viewport).toEqual({ x: 50, y: 100, zoom: 2 })
-      expect(state.isDirty).toBe(true)
-    })
-  })
-
-  describe('setIsSaving', () => {
-    it('应该更新 isSaving 状态', () => {
-      const { actions } = useCanvasStore.getState()
-      actions.setIsSaving(true)
-
-      expect(useCanvasStore.getState().isSaving).toBe(true)
-
-      actions.setIsSaving(false)
-      expect(useCanvasStore.getState().isSaving).toBe(false)
-    })
-  })
-
-  describe('reset', () => {
-    it('应该重置为初始状态', () => {
-      useCanvasStore.setState({
-        nodes: [mockNode],
-        edges: [mockEdge],
-        viewport: { x: 50, y: 100, zoom: 2 },
-        selectedNodeId: 'node-1',
-        isDirty: true,
-        isSaving: true,
-        workflowId: 'wf-001',
-        version: 5,
-      })
-
-      const { actions } = useCanvasStore.getState()
-      actions.reset()
-
-      const state = useCanvasStore.getState()
-      expect(state.nodes).toHaveLength(0)
-      expect(state.edges).toHaveLength(0)
-      expect(state.viewport).toEqual({ x: 0, y: 0, zoom: 1 })
-      expect(state.selectedNodeId).toBeNull()
-      expect(state.isDirty).toBe(false)
-      expect(state.isSaving).toBe(false)
-      expect(state.workflowId).toBeNull()
-      expect(state.version).toBe(1)
-
-      state.actions.addNode(mockAddNodeInput)
-      expect(useCanvasStore.getState().nodes).toHaveLength(1)
-    })
+    const state = useCanvasStore.getState()
+    expect(state.edges).toHaveLength(0)
+    expect(state.selectedEdgeId).toBeNull()
+    expect(state.mappingPanelEdgeId).toBeNull()
   })
 })

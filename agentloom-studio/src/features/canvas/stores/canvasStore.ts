@@ -9,14 +9,21 @@ import {
   type EdgeChange,
   type Viewport,
 } from '@xyflow/react'
-import type { CanvasNode, CanvasEdge, CanvasSnapshot, AddNodeInput } from '../types'
-import { getNodeTypeConfig, getNodeTypeConfigOrNull, clonePortDefinitions } from '../nodeTypeRegistry'
+import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping } from '../types'
+import { createDefaultEdgeData } from '../types'
+import {
+  clonePortDefinitions,
+  getNodeTypeConfig,
+  getNodeTypeConfigOrNull,
+} from '../types/nodeTypeRegistry'
 
 interface CanvasState {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport: Viewport
   selectedNodeId: string | null
+  selectedEdgeId: string | null
+  mappingPanelEdgeId: string | null
   isDirty: boolean
   lastSavedAt: Date | null
   isSaving: boolean
@@ -31,6 +38,11 @@ interface CanvasActions {
     addNode: (input: AddNodeInput) => void
     deleteSelectedNode: () => void
     selectNode: (nodeId: string | null) => void
+    selectEdge: (edgeId: string | null) => void
+    openFieldMapping: (edgeId: string) => void
+    closeFieldMapping: () => void
+    updateEdgeData: (edgeId: string, patch: Partial<CanvasEdgeData>) => void
+    updateFieldMapping: (edgeId: string, mappings: FieldMapping[]) => void
     setViewport: (viewport: Viewport) => void
     commitViewport: (viewport: Viewport) => void
     applyServerSnapshot: (snapshot: CanvasSnapshot & { workflowId: string; version: number }) => void
@@ -46,6 +58,8 @@ function createInitialState(): CanvasState {
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeId: null,
+    selectedEdgeId: null,
+    mappingPanelEdgeId: null,
     isDirty: false,
     lastSavedAt: null,
     isSaving: false,
@@ -76,6 +90,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               const selectChange = changes.find((c) => c.type === 'select')
               if (selectChange && selectChange.type === 'select') {
                 state.selectedNodeId = selectChange.selected ? selectChange.id : null
+                if (selectChange.selected) state.selectedEdgeId = null
               }
             }),
 
@@ -87,6 +102,17 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               )
               if (isDirtyChange) {
                 state.isDirty = true
+              }
+              const removedIds = changes
+                .filter((c): c is EdgeChange<CanvasEdge> & { type: 'remove' } => c.type === 'remove')
+                .map((c) => c.id)
+              if (removedIds.length > 0) {
+                if (state.selectedEdgeId && removedIds.includes(state.selectedEdgeId)) {
+                  state.selectedEdgeId = null
+                }
+                if (state.mappingPanelEdgeId && removedIds.includes(state.mappingPanelEdgeId)) {
+                  state.mappingPanelEdgeId = null
+                }
               }
             }),
 
@@ -115,17 +141,70 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               if (!state.selectedNodeId) return
               const nodeId = state.selectedNodeId
+              const removedEdgeIds = new Set(
+                state.edges.filter((e) => e.source === nodeId || e.target === nodeId).map((e) => e.id)
+              )
               state.nodes = state.nodes.filter((n) => n.id !== nodeId)
               state.edges = state.edges.filter(
                 (e) => e.source !== nodeId && e.target !== nodeId
               )
               state.selectedNodeId = null
+              if (state.selectedEdgeId && removedEdgeIds.has(state.selectedEdgeId)) {
+                state.selectedEdgeId = null
+              }
+              if (state.mappingPanelEdgeId && removedEdgeIds.has(state.mappingPanelEdgeId)) {
+                state.mappingPanelEdgeId = null
+              }
               state.isDirty = true
             }),
 
           selectNode: (nodeId) =>
             set((state) => {
               state.selectedNodeId = nodeId
+              if (nodeId) state.selectedEdgeId = null
+            }),
+
+          selectEdge: (edgeId) =>
+            set((state) => {
+              state.selectedEdgeId = edgeId
+              if (edgeId) state.selectedNodeId = null
+            }),
+
+          openFieldMapping: (edgeId) =>
+            set((state) => {
+              state.mappingPanelEdgeId = edgeId
+              state.selectedEdgeId = edgeId
+              state.selectedNodeId = null
+            }),
+
+          closeFieldMapping: () =>
+            set((state) => {
+              state.mappingPanelEdgeId = null
+            }),
+
+          updateEdgeData: (edgeId, patch) =>
+            set((state) => {
+              const edge = state.edges.find((e) => e.id === edgeId)
+              if (!edge) return
+              edge.data = { ...(edge.data ?? createDefaultEdgeData()), ...patch }
+              state.isDirty = true
+            }),
+
+          updateFieldMapping: (edgeId, mappings) =>
+            set((state) => {
+              const edge = state.edges.find((e) => e.id === edgeId)
+              if (!edge) return
+              const data = edge.data ?? createDefaultEdgeData()
+              data.fieldMapping = mappings
+              data.mappingSummary = {
+                autoMatchedCount: mappings.filter((m) => m.autoRecommended).length,
+                manualCount: mappings.filter((m) => !m.autoRecommended).length,
+                requiredUnmappedCount: data.missingFields.filter(
+                  (f) => f.required && !mappings.some((m) => m.targetField === f.path)
+                ).length,
+              }
+              edge.data = data
+              state.isDirty = true
             }),
 
           setViewport: (viewport) =>
@@ -143,22 +222,38 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               state.nodes = nodes.map((n) => {
                 const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
-                if (!typeConfig) return n
+                const inputPorts = Array.isArray(n.data.inputPorts)
+                  ? clonePortDefinitions(n.data.inputPorts)
+                  : typeConfig
+                    ? clonePortDefinitions(typeConfig.inputPorts)
+                    : []
+                const outputPorts = Array.isArray(n.data.outputPorts)
+                  ? clonePortDefinitions(n.data.outputPorts)
+                  : typeConfig
+                    ? clonePortDefinitions(typeConfig.outputPorts)
+                    : []
+
                 return {
                   ...n,
                   data: {
                     ...n.data,
-                    inputPorts: clonePortDefinitions(typeConfig.inputPorts),
-                    outputPorts: clonePortDefinitions(typeConfig.outputPorts),
+                    config: n.data.config ?? {},
+                    inputPorts,
+                    outputPorts,
                   },
                 }
               })
-              state.edges = edges
+              state.edges = edges.map((e) => ({
+                ...e,
+                data: { ...createDefaultEdgeData(), ...(e.data ?? {}) },
+              }))
               state.viewport = viewport ?? { x: 0, y: 0, zoom: 1 }
               state.workflowId = workflowId
               state.version = version
               state.isDirty = false
               state.selectedNodeId = null
+              state.selectedEdgeId = null
+              state.mappingPanelEdgeId = null
             }),
 
           markSaved: (version) =>
@@ -199,3 +294,13 @@ export const useCanvasSaveStatus = () =>
       lastSavedAt: s.lastSavedAt,
     }))
   )
+
+export const useSelectedEdgeId = () => useCanvasStore((s) => s.selectedEdgeId)
+
+export const useMappingPanelEdgeId = () => useCanvasStore((s) => s.mappingPanelEdgeId)
+
+export const useEdgeData = (edgeId: string | null) =>
+  useCanvasStore((s) => {
+    if (!edgeId) return null
+    return s.edges.find((e) => e.id === edgeId)?.data ?? null
+  })
