@@ -22,12 +22,18 @@ function createNode(id: string, label = `Node ${id}`, category: NodeCategory = '
   }
 }
 
-function createEdge(source: string, target: string, id?: string): CanvasEdge {
+function createEdge(
+  source: string,
+  target: string,
+  id?: string,
+  overrides: Partial<CanvasEdge> = {},
+): CanvasEdge {
   return {
     id: id ?? `${source}-${target}`,
     source,
     target,
     type: 'smart',
+    ...overrides,
   }
 }
 
@@ -132,6 +138,22 @@ describe('validateDag', () => {
     const result = validateDag(nodes, edges, 3)
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]!.limit).toBe(3)
+  })
+
+  it('detects multiple incoming edges on the same input handle', () => {
+    const nodes = [createNode('a'), createNode('b'), createNode('hub')]
+    const edges = [
+      createEdge('a', 'hub', 'a-hub', { sourceHandle: 'out', targetHandle: 'in' }),
+      createEdge('b', 'hub', 'b-hub', { sourceHandle: 'out', targetHandle: 'in' }),
+    ]
+
+    const result = validateDag(nodes, edges)
+
+    expect(result.isValid).toBe(false)
+    const error = result.errors.find((item) => item.type === 'multiple-input-edges')
+    expect(error).toBeDefined()
+    expect(error?.edgeIds).toEqual(expect.arrayContaining(['a-hub', 'b-hub']))
+    expect(error?.nodeIds).toEqual(['hub'])
   })
 
   it('returns both errors and warnings when applicable', () => {

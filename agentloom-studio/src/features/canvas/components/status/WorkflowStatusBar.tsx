@@ -1,25 +1,41 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
+import { useOnViewportChange } from '@xyflow/react'
 import { Loader2, Check, Circle } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
-import { useCanvasNodes, useCanvasEdges, useCanvasSaveStatus } from '../../stores/canvasStore'
+import {
+  useCanvasEdges,
+  useCanvasSaveStatus,
+  useCanvasStore,
+} from '../../stores/canvasStore'
 import { formatRelativeTime } from '../../lib/formatRelativeTime'
 
 export const WorkflowStatusBar = memo(function WorkflowStatusBar() {
-  const nodes = useCanvasNodes()
-  const edges = useCanvasEdges()
+  const nodeCount = useCanvasStore((state) => state.nodes.length)
+  const edgeCount = useCanvasEdges().length
+  const viewportZoom = useCanvasStore((state) => state.viewport.zoom)
   const { isDirty, isSaving, lastSavedAt } = useCanvasSaveStatus()
+  const [zoomPercent, setZoomPercent] = useState(() => Math.round(viewportZoom * 100))
 
-  const nodeCount = nodes.length
-  const edgeCount = edges.length
+  useEffect(() => {
+    setZoomPercent(Math.round(viewportZoom * 100))
+  }, [viewportZoom])
+
+  useOnViewportChange({
+    onChange: (viewport) => {
+      setZoomPercent(Math.round(viewport.zoom * 100))
+    },
+  })
 
   return (
     <div
-      className="absolute bottom-3 right-3 z-10 flex items-center gap-2 rounded-md border bg-surface/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm"
+      className="absolute bottom-0 left-0 right-0 z-20 flex h-7 items-center gap-2 border-t border-border/70 bg-surface/90 px-3 text-xs text-muted-foreground backdrop-blur-sm"
       data-testid="workflow-status-bar"
     >
-      <span>{nodeCount}节点</span>
+      <span>{nodeCount} 节点</span>
       <span className="text-border">|</span>
-      <span>{edgeCount}连接</span>
+      <span>{edgeCount} 连接</span>
+      <span className="text-border">|</span>
+      <span>{zoomPercent}%</span>
       <span className="text-border">|</span>
       <StatusIndicator isDirty={isDirty} isSaving={isSaving} lastSavedAt={lastSavedAt} />
     </div>
@@ -57,10 +73,15 @@ const StatusIndicator = memo(function StatusIndicator({
     return (
       <span className="flex items-center gap-1 text-emerald-500">
         <Check className="h-3 w-3" />
-        已保存 {formatRelativeTime(lastSavedAt)}
+        已保存 · {formatRelativeTime(lastSavedAt)}
       </span>
     )
   }
 
-  return null
+  return (
+    <span className="flex items-center gap-1 text-emerald-500">
+      <Check className="h-3 w-3" />
+      已保存
+    </span>
+  )
 })

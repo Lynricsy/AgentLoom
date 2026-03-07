@@ -97,6 +97,13 @@ function createEdgeId(): string {
   return `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function matchesSearchQuery(node: CanvasNode, lowerQuery: string): boolean {
+  return (
+    node.data.label.toLowerCase().includes(lowerQuery) ||
+    node.data.nodeType.toLowerCase().includes(lowerQuery)
+  )
+}
+
 export const useCanvasStore = create<CanvasState & CanvasActions>()(
   devtools(
     subscribeWithSelector(
@@ -352,9 +359,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 return
               }
               const lowerQuery = query.toLowerCase()
-              state.searchMatchIds = state.nodes
-                .filter((n) => n.data.label.toLowerCase().includes(lowerQuery))
-                .map((n) => n.id)
+              state.searchMatchIds = state.nodes.filter((n) => matchesSearchQuery(n, lowerQuery)).map((n) => n.id)
               state.currentSearchIndex = state.searchMatchIds.length > 0 ? 0 : -1
             }),
 

@@ -45,7 +45,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
 
   return (
     <div
-      className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border bg-surface px-3 py-1.5 shadow-lg"
+      className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border bg-surface px-3 py-1.5 shadow-lg"
       data-testid="canvas-search"
     >
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -61,7 +61,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
       />
       {searchQuery && (
         <span className={cn('text-xs tabular-nums', searchMatchIds.length === 0 ? 'text-destructive' : 'text-muted-foreground')}>
-          {searchMatchIds.length === 0 ? '0/0' : `${currentSearchIndex + 1}/${searchMatchIds.length}`}
+          {searchMatchIds.length === 0 ? '无结果' : `${currentSearchIndex + 1}/${searchMatchIds.length}`}
         </span>
       )}
       <div className="flex items-center border-l pl-1.5">

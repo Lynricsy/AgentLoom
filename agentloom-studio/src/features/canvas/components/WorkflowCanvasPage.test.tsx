@@ -46,6 +46,10 @@ vi.mock('./WorkflowCanvas', () => ({
   WorkflowCanvas: () => <div>Workflow Canvas</div>,
 }))
 
+vi.mock('./status/WorkflowStatusBar', () => ({
+  WorkflowStatusBar: () => <div data-testid="workflow-status-bar" />,
+}))
+
 vi.mock('./panels/FieldMappingPanel', () => ({
   FieldMappingPanel: (props: { open: boolean; edgeId: string; onClose: () => void }) => (
     <div data-testid="field-mapping-panel" data-edge-id={props.edgeId}>

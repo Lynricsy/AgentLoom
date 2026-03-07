@@ -1,6 +1,7 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useCanvasStore } from '../stores/canvasStore'
 import { CanvasNodeShell } from './CanvasNode'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import type { CanvasNode, CanvasNodeData } from '../types'
@@ -70,6 +71,14 @@ function renderNode(data: CanvasNodeData, overrides: Partial<NodeProps<CanvasNod
 }
 
 describe('CanvasNodeShell', () => {
+  beforeEach(() => {
+    useCanvasStore.getState().actions.reset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders the required slots and header metadata', () => {
     renderNode(createMockNodeData())
 
@@ -114,5 +123,44 @@ describe('CanvasNodeShell', () => {
 
     expect(screen.getByText('执行多步推理')).toBeInTheDocument()
     expect(screen.getByText('chat-agent')).toBeInTheDocument()
+  })
+
+  it('applies search highlight classes based on current search state', () => {
+    useCanvasStore.setState((state) => ({
+      ...state,
+      isSearchOpen: true,
+      searchQuery: 'agent',
+      searchMatchIds: ['node-1', 'node-2'],
+      currentSearchIndex: 0,
+    }))
+
+    renderNode(createMockNodeData(), { id: 'node-1' })
+    renderNode(createMockNodeData(), { id: 'node-2' })
+    renderNode(createMockNodeData(), { id: 'node-3' })
+
+    expect(screen.getByTestId('canvas-node-node-1')).toHaveClass('search-current')
+    expect(screen.getByTestId('canvas-node-node-2')).toHaveClass('search-match')
+    expect(screen.getByTestId('canvas-node-node-3')).toHaveClass('search-dimmed')
+  })
+
+  it('sets hovered node after 300ms and clears it on mouse leave', () => {
+    vi.useFakeTimers()
+    renderNode(createMockNodeData(), { id: 'node-hover' })
+
+    const node = screen.getByTestId('canvas-node-node-hover')
+
+    fireEvent.mouseEnter(node)
+    act(() => {
+      vi.advanceTimersByTime(299)
+    })
+    expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(useCanvasStore.getState().hoveredNodeId).toBe('node-hover')
+
+    fireEvent.mouseLeave(node)
+    expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
   })
 })

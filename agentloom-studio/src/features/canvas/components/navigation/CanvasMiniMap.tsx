@@ -18,7 +18,7 @@ export const CanvasMiniMap = memo(function CanvasMiniMap() {
   return (
     <div
       className={cn(
-        'absolute bottom-4 right-4 z-20 rounded-lg border bg-surface shadow-md transition-all',
+        'absolute bottom-11 right-4 z-20 rounded-lg border bg-surface shadow-md transition-all',
         isMiniMapCollapsed ? 'h-8 w-8' : 'h-[140px] w-[200px]'
       )}
       data-testid="canvas-minimap"

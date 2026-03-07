@@ -4,9 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../stores/canvasStore'
 import { createDefaultEdgeData } from '../types'
 import type { CanvasNode, CanvasEdge } from '../types'
+import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { WorkflowCanvas } from './WorkflowCanvas'
 
 let capturedProps: Record<string, unknown> = {}
+const notifyMock = vi.fn()
+const fitViewMock = vi.fn()
 
 const compatibleNodes: CanvasNode[] = [
   {
@@ -59,6 +62,25 @@ const compatibleNodes: CanvasNode[] = [
   },
 ]
 
+function createNode(id: string, nodeType: Parameters<typeof getNodeTypeConfig>[0]): CanvasNode {
+  const config = getNodeTypeConfig(nodeType)
+
+  return {
+    id,
+    type: config.category,
+    position: { x: 0, y: 0 },
+    data: {
+      label: `${config.label} ${id}`,
+      nodeType: config.type,
+      category: config.category,
+      description: config.description,
+      config: {},
+      inputPorts: clonePortDefinitions(config.inputPorts),
+      outputPorts: clonePortDefinitions(config.outputPorts),
+    },
+  }
+}
+
 vi.mock('@xyflow/react', () => {
   function MockReactFlow(props: Record<string, unknown>) {
     useEffect(() => {
@@ -100,7 +122,7 @@ vi.mock('@xyflow/react', () => {
     Controls: () => null,
     MiniMap: () => null,
     ReactFlow: MockReactFlow,
-    useReactFlow: () => ({ screenToFlowPosition: vi.fn(), getNode: vi.fn(), fitView: vi.fn() }),
+    useReactFlow: () => ({ screenToFlowPosition: vi.fn(), getNode: vi.fn(), fitView: fitViewMock }),
     useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
   }
 })
@@ -113,13 +135,15 @@ vi.mock('../hooks/useCanvasDrop', () => ({
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
-  useToast: () => ({ notify: vi.fn() }),
+  useToast: () => ({ notify: notifyMock }),
 }))
 
 describe('WorkflowCanvas', () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset()
     capturedProps = {}
+    notifyMock.mockReset()
+    fitViewMock.mockReset()
   })
 
   it('注册了 smart edge 类型', () => {
@@ -219,6 +243,108 @@ describe('WorkflowCanvas', () => {
       target: 'n-2',
       sourceHandle: 'result',
       targetHandle: 'input',
+    })
+  })
+
+  it('Ctrl+F 会打开画布搜索', () => {
+    render(<WorkflowCanvas />)
+
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true })
+
+    expect(useCanvasStore.getState().isSearchOpen).toBe(true)
+    expect(screen.getByTestId('canvas-search')).toBeInTheDocument()
+  })
+
+  it('在创建前阻止循环依赖连线并提示固定错误文案', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const nodeA = createNode('a', 'llm-agent')
+    const nodeB = createNode('b', 'llm-agent')
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [nodeA, nodeB],
+      edges: [
+        {
+          id: 'edge-a-b',
+          type: 'smart',
+          source: 'a',
+          target: 'b',
+          sourceHandle: 'structured',
+          targetHandle: 'context',
+          data: createDefaultEdgeData(),
+        },
+      ],
+    }))
+
+    render(<WorkflowCanvas />)
+
+    const onConnect = capturedProps.onConnect as (connection: {
+      source: string
+      target: string
+      sourceHandle: string
+      targetHandle: string
+    }) => void
+
+    act(() => {
+      onConnect({
+        source: 'b',
+        target: 'a',
+        sourceHandle: 'structured',
+        targetHandle: 'context',
+      })
+    })
+
+    expect(useCanvasStore.getState().edges).toHaveLength(1)
+    expect(notifyMock).toHaveBeenCalledWith({
+      description: '无法创建连接：检测到循环依赖',
+      variant: 'error',
+    })
+    expect(warnSpy).toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it('超过并行路径建议上限时只告警不阻止创建', () => {
+    const hub = createNode('hub', 'llm-agent')
+    const existingTargets = Array.from({ length: 10 }, (_, index) => createNode(`target-${index}`, 'text-output'))
+    const nextTarget = createNode('target-10', 'text-output')
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [hub, ...existingTargets, nextTarget],
+      edges: existingTargets.map((target, index) => ({
+        id: `edge-${index}`,
+        type: 'smart',
+        source: 'hub',
+        target: target.id,
+        sourceHandle: 'result',
+        targetHandle: 'content',
+        data: createDefaultEdgeData(),
+      })),
+    }))
+
+    render(<WorkflowCanvas />)
+
+    const onConnect = capturedProps.onConnect as (connection: {
+      source: string
+      target: string
+      sourceHandle: string
+      targetHandle: string
+    }) => void
+
+    act(() => {
+      onConnect({
+        source: 'hub',
+        target: 'target-10',
+        sourceHandle: 'result',
+        targetHandle: 'content',
+      })
+    })
+
+    expect(useCanvasStore.getState().edges).toHaveLength(11)
+    expect(notifyMock).toHaveBeenCalledWith({
+      description: '并行路径数量（11）超过建议上限（10），可能影响执行性能',
+      variant: 'warning',
     })
   })
 })

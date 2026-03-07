@@ -23,6 +23,10 @@ export interface DagValidationResult {
 
 const DEFAULT_PARALLEL_LIMIT = 10
 
+function formatPortKey(targetHandle: string | undefined, nodeLabel: string): string {
+  return targetHandle ? `"${targetHandle}"` : `"${nodeLabel}"`
+}
+
 export function validateDag(
   nodes: CanvasNode[],
   edges: CanvasEdge[],
@@ -48,6 +52,40 @@ export function validateDag(
     const current = inDegree.get(edge.target) ?? 0
     inDegree.set(edge.target, current + 1)
     adjacency.get(edge.source)?.push(edge.target)
+  }
+
+  const incomingHandleGroups = new Map<string, CanvasEdge[]>()
+  for (const edge of edges) {
+    if (!edge.targetHandle) {
+      continue
+    }
+
+    const groupKey = `${edge.target}:${edge.targetHandle ?? '__default__'}`
+    const group = incomingHandleGroups.get(groupKey) ?? []
+    group.push(edge)
+    incomingHandleGroups.set(groupKey, group)
+  }
+
+  for (const groupedEdges of incomingHandleGroups.values()) {
+    if (groupedEdges.length <= 1) {
+      continue
+    }
+
+    const targetNodeId = groupedEdges[0]?.target
+    const targetHandle = groupedEdges[0]?.targetHandle
+    if (!targetNodeId || !targetHandle) {
+      continue
+    }
+
+    const targetNode = nodes.find((node) => node.id === targetNodeId)
+    const portKey = formatPortKey(targetHandle, targetNode?.data.label ?? targetNodeId)
+
+    errors.push({
+      type: 'multiple-input-edges',
+      message: `输入端口 ${portKey} 不能同时接收多条入边`,
+      nodeIds: [targetNodeId],
+      edgeIds: groupedEdges.map((edge) => edge.id),
+    })
   }
 
   // 起始节点检查（入度为 0 的节点）
@@ -93,7 +131,7 @@ export function validateDag(
     if (outEdges.length > parallelLimit) {
       warnings.push({
         type: 'parallel-limit-exceeded',
-        message: `节点 "${node.data.label}" 的并行输出路径 (${outEdges.length}) 超过建议上限 (${parallelLimit})`,
+        message: `并行路径数量（${outEdges.length}）超过建议上限（${parallelLimit}），可能影响执行性能`,
         nodeId: node.id,
         currentCount: outEdges.length,
         limit: parallelLimit,

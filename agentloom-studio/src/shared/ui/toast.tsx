@@ -9,7 +9,7 @@ import {
 import * as ToastPrimitives from '@radix-ui/react-toast'
 import { cn } from '@/shared/lib/utils'
 
-type ToastVariant = 'info' | 'success' | 'error'
+type ToastVariant = 'info' | 'success' | 'warning' | 'error'
 
 interface ToastOptions {
   title?: string
@@ -31,6 +31,7 @@ const ToastContext = createContext<ToastContextValue | null>(null)
 const variantStyles: Record<ToastVariant, string> = {
   info: 'border-info/50',
   success: 'border-success/50',
+  warning: 'border-warning/60',
   error: 'border-error/60',
 }
 

@@ -505,7 +505,10 @@ describe('canvasStore', () => {
 
     it('setSearchQuery finds matching nodes by label', () => {
       const nodeA = createNode({ id: 'a', data: { ...createNode().data, label: 'LLM Agent' } })
-      const nodeB = createNode({ id: 'b', data: { ...createNode().data, label: 'HTTP Request' } })
+      const nodeB = createNode({
+        id: 'b',
+        data: { ...createNode().data, label: 'HTTP Request', nodeType: 'http-tool' },
+      })
       const nodeC = createNode({ id: 'c', data: { ...createNode().data, label: 'Data Agent' } })
       useCanvasStore.setState((s) => ({ ...s, nodes: [nodeA, nodeB, nodeC] }))
 
@@ -522,6 +525,24 @@ describe('canvasStore', () => {
 
       useCanvasStore.getState().actions.setSearchQuery('llm')
       expect(useCanvasStore.getState().searchMatchIds).toEqual(['x'])
+    })
+
+    it('setSearchQuery also matches node type', () => {
+      const node = createNode({
+        id: 'http-node',
+        data: {
+          ...createNode().data,
+          label: '请求节点',
+          nodeType: 'http-tool',
+        },
+      })
+      useCanvasStore.setState((s) => ({ ...s, nodes: [node] }))
+
+      useCanvasStore.getState().actions.setSearchQuery('http')
+
+      const state = useCanvasStore.getState()
+      expect(state.searchMatchIds).toEqual(['http-node'])
+      expect(state.currentSearchIndex).toBe(0)
     })
 
     it('setSearchQuery resets index when no matches', () => {

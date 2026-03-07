@@ -47,6 +47,12 @@ interface ActiveConnectionState {
   incompatibleTargets: OverlayHandleSnapshot[]
 }
 
+interface DagValidationPreview {
+  blockingError: ReturnType<typeof validateDag>['errors'][number] | null
+  warnings: ReturnType<typeof validateDag>['warnings']
+  tentativeEdge: CanvasEdge | null
+}
+
 type PreviewState = Pick<
   CanvasEdgeData,
   'visualLevel' | 'reasonKey' | 'metadata'
@@ -79,6 +85,68 @@ const hiddenPreviewState: PreviewState = {
   visualLevel: 'checking',
   reasonKey: null,
   metadata: {},
+}
+
+function buildTentativeEdge(
+  connection: Connection | CanvasEdge,
+  edgeData: CanvasEdgeData,
+): CanvasEdge | null {
+  if (!connection.source || !connection.target) {
+    return null
+  }
+
+  return {
+    id: '__tentative__',
+    type: 'smart',
+    source: connection.source,
+    target: connection.target,
+    sourceHandle: connection.sourceHandle ?? undefined,
+    targetHandle: connection.targetHandle ?? undefined,
+    data: edgeData,
+  }
+}
+
+function normalizeHandle(handle: string | null | undefined): string | null {
+  return handle ?? null
+}
+
+function isDuplicateConnection(
+  connection: Connection | CanvasEdge,
+  edges: CanvasEdge[],
+): boolean {
+  return edges.some(
+    (edge) =>
+      edge.source === connection.source &&
+      edge.target === connection.target &&
+      normalizeHandle(edge.sourceHandle) === normalizeHandle(connection.sourceHandle) &&
+      normalizeHandle(edge.targetHandle) === normalizeHandle(connection.targetHandle),
+  )
+}
+
+function previewDagValidation(
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+  connection: Connection | CanvasEdge,
+  edgeData: CanvasEdgeData,
+): DagValidationPreview {
+  const tentativeEdge = buildTentativeEdge(connection, edgeData)
+  if (!tentativeEdge || isDuplicateConnection(connection, edges)) {
+    return {
+      blockingError: null,
+      warnings: [],
+      tentativeEdge: null,
+    }
+  }
+
+  const validation = validateDag(nodes, [...edges, tentativeEdge])
+  const blockingError =
+    validation.errors.find((error) => error.type === 'cycle') ?? validation.errors[0] ?? null
+
+  return {
+    blockingError,
+    warnings: validation.warnings,
+    tentativeEdge,
+  }
 }
 
 function isEditableTarget(target: EventTarget | null): target is HTMLElement {
@@ -477,26 +545,56 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
+      const validationPreview = previewDagValidation(
+        nodes,
+        edges,
+        connection,
+        evaluated.edgeData,
+      )
+      if (!validationPreview.tentativeEdge) {
+        return
+      }
+
+      if (validationPreview.blockingError) {
+        if (validationPreview.blockingError.type === 'cycle') {
+          console.warn('检测到循环依赖，已阻止创建连接', {
+            connection,
+            error: validationPreview.blockingError,
+          })
+          notify({ description: '无法创建连接：检测到循环依赖', variant: 'error' })
+          return
+        }
+
+        notify({ description: validationPreview.blockingError.message, variant: 'error' })
+        return
+      }
+
       createConnection(connection, evaluated.edgeData)
 
-      const updatedEdges = useCanvasStore.getState().edges
-      const result = validateDag(nodes, updatedEdges)
-      if (!result.isValid) {
-        for (const err of result.errors) {
-          notify({ description: err.message, variant: 'error' })
-        }
-      }
-      for (const warn of result.warnings) {
-        notify({ description: warn.message, variant: 'info' })
+      for (const warn of validationPreview.warnings) {
+        notify({ description: warn.message, variant: 'warning' })
       }
     },
-    [createConnection, nodes, notify],
+    [createConnection, edges, nodes, notify],
   )
 
   const isValidConnection = useCallback(
-    (connectionOrEdge: Connection | CanvasEdge) =>
-      evaluateConnection(nodes, connectionOrEdge).compatible,
-    [nodes],
+    (connectionOrEdge: Connection | CanvasEdge) => {
+      const evaluated = evaluateConnection(nodes, connectionOrEdge)
+      if (!evaluated.compatible) {
+        return false
+      }
+
+      const validationPreview = previewDagValidation(
+        nodes,
+        edges,
+        connectionOrEdge,
+        evaluated.edgeData,
+      )
+
+      return validationPreview.blockingError === null
+    },
+    [edges, nodes],
   )
 
   const onViewportChange = useCallback(

@@ -494,6 +494,7 @@ body {
 
 .search-dimmed {
   opacity: 0.2;
+  pointer-events: none;
   transition: opacity 200ms ease;
 }
 
