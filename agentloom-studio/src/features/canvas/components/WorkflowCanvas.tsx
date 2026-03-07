@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -6,11 +6,13 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  type EdgeTypes,
   type NodeTypes,
   type Viewport,
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
-import { CanvasNodeShell } from './CanvasNodeShell'
+import { CanvasNodeShell } from './CanvasNode'
+import { SmartEdge } from './edges/SmartEdge'
 import { NODE_CATEGORIES } from './nodeCategories'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import {
@@ -34,6 +36,10 @@ const nodeTypes: NodeTypes = {
   control: CanvasNodeShell,
 }
 
+const edgeTypes: EdgeTypes = {
+  smart: SmartEdge,
+}
+
 function isEditableTarget(target: EventTarget | null): target is HTMLElement {
   return (
     target instanceof HTMLElement &&
@@ -53,6 +59,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     deleteSelectedNode,
     onEdgesChange,
     onNodesChange,
+    selectEdge,
     selectNode,
     setViewport,
   } = useCanvasActions()
@@ -75,16 +82,25 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     [deleteSelectedNode]
   )
 
-  const handlePointerDownCapture = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Backspace' && event.key !== 'Delete') {
+        return
+      }
+
       if (isEditableTarget(event.target)) {
         return
       }
 
-      event.currentTarget.focus()
-    },
-    []
-  )
+      event.preventDefault()
+      deleteSelectedNode()
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown)
+    }
+  }, [deleteSelectedNode])
 
   const onViewportChange = useCallback(
     (nextViewport: Viewport) => {
@@ -104,6 +120,18 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     [selectNode]
   )
 
+  const onEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: CanvasEdge) => {
+      selectEdge(edge.id)
+    },
+    [selectEdge]
+  )
+
+  const onPaneClick = useCallback(() => {
+    selectNode(null)
+    selectEdge(null)
+  }, [selectNode, selectEdge])
+
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
       commitViewport(nextViewport)
@@ -114,18 +142,19 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   return (
     <div
       className={cn(className, 'focus:outline-none')}
-      tabIndex={0}
-      aria-label="Workflow Canvas"
       onKeyDownCapture={handleKeyDown}
-      onPointerDownCapture={handlePointerDownCapture}
     >
       <ReactFlow<CanvasNode, CanvasEdge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={{ type: 'smart' }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
         onDragOver={onDragOver}
         onDrop={onDrop}
         viewport={viewport}
