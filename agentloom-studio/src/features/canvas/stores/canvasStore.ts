@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
+import { useShallow } from 'zustand/react/shallow'
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -8,7 +9,8 @@ import {
   type EdgeChange,
   type Viewport,
 } from '@xyflow/react'
-import type { CanvasNode, CanvasEdge, CanvasSnapshot } from '../types'
+import type { CanvasNode, CanvasEdge, CanvasSnapshot, AddNodeInput } from '../types'
+import { getNodeTypeConfig, getNodeTypeConfigOrNull, clonePortDefinitions } from '../nodeTypeRegistry'
 
 interface CanvasState {
   nodes: CanvasNode[]
@@ -26,10 +28,11 @@ interface CanvasActions {
   actions: {
     onNodesChange: (changes: NodeChange<CanvasNode>[]) => void
     onEdgesChange: (changes: EdgeChange<CanvasEdge>[]) => void
-    addNode: (node: CanvasNode) => void
+    addNode: (input: AddNodeInput) => void
     deleteSelectedNode: () => void
     selectNode: (nodeId: string | null) => void
     setViewport: (viewport: Viewport) => void
+    commitViewport: (viewport: Viewport) => void
     applyServerSnapshot: (snapshot: CanvasSnapshot & { workflowId: string; version: number }) => void
     markSaved: (version: number) => void
     setIsSaving: (saving: boolean) => void
@@ -37,23 +40,25 @@ interface CanvasActions {
   }
 }
 
-const initialState: CanvasState = {
-  nodes: [],
-  edges: [],
-  viewport: { x: 0, y: 0, zoom: 1 },
-  selectedNodeId: null,
-  isDirty: false,
-  lastSavedAt: null,
-  isSaving: false,
-  workflowId: null,
-  version: 1,
+function createInitialState(): CanvasState {
+  return {
+    nodes: [],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+    selectedNodeId: null,
+    isDirty: false,
+    lastSavedAt: null,
+    isSaving: false,
+    workflowId: null,
+    version: 1,
+  }
 }
 
 export const useCanvasStore = create<CanvasState & CanvasActions>()(
   devtools(
     subscribeWithSelector(
       immer((set) => ({
-        ...initialState,
+        ...createInitialState(),
 
         actions: {
           onNodesChange: (changes) =>
@@ -85,8 +90,23 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               }
             }),
 
-          addNode: (node) =>
+          addNode: (input) =>
             set((state) => {
+              const config = getNodeTypeConfig(input.nodeType)
+              const node: CanvasNode = {
+                id: input.id,
+                type: input.category,
+                position: input.position,
+                data: {
+                  label: input.label ?? config.label,
+                  nodeType: input.nodeType,
+                  category: input.category,
+                  description: input.description ?? config.description,
+                  config: input.config ?? {},
+                  inputPorts: clonePortDefinitions(config.inputPorts),
+                  outputPorts: clonePortDefinitions(config.outputPorts),
+                },
+              }
               state.nodes.push(node)
               state.isDirty = true
             }),
@@ -113,9 +133,26 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.viewport = viewport
             }),
 
+          commitViewport: (viewport) =>
+            set((state) => {
+              state.viewport = viewport
+              state.isDirty = true
+            }),
+
           applyServerSnapshot: ({ nodes, edges, viewport, workflowId, version }) =>
             set((state) => {
-              state.nodes = nodes
+              state.nodes = nodes.map((n) => {
+                const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
+                if (!typeConfig) return n
+                return {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    inputPorts: clonePortDefinitions(typeConfig.inputPorts),
+                    outputPorts: clonePortDefinitions(typeConfig.outputPorts),
+                  },
+                }
+              })
               state.edges = edges
               state.viewport = viewport ?? { x: 0, y: 0, zoom: 1 }
               state.workflowId = workflowId
@@ -137,7 +174,10 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isSaving = saving
             }),
 
-          reset: () => set(() => ({ ...initialState, actions: undefined as never })),
+          reset: () =>
+            set((state) => {
+              Object.assign(state, createInitialState())
+            }),
         },
       }))
     ),
@@ -152,8 +192,10 @@ export const useCanvasEdges = () => useCanvasStore((s) => s.edges)
 export const useCanvasActions = () => useCanvasStore((s) => s.actions)
 
 export const useCanvasSaveStatus = () =>
-  useCanvasStore((s) => ({
-    isDirty: s.isDirty,
-    isSaving: s.isSaving,
-    lastSavedAt: s.lastSavedAt,
-  }))
+  useCanvasStore(
+    useShallow((s) => ({
+      isDirty: s.isDirty,
+      isSaving: s.isSaving,
+      lastSavedAt: s.lastSavedAt,
+    }))
+  )

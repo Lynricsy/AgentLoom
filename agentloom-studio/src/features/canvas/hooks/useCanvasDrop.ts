@@ -3,9 +3,9 @@ import type { ReactFlowInstance } from '@xyflow/react'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasActions } from '../stores/canvasStore'
 import type {
+  AddNodeInput,
   CanvasEdge,
   CanvasNode,
-  CanvasNodeData,
   PaletteNodeItem,
 } from '../types'
 
@@ -46,19 +46,16 @@ export function useCanvasDrop(
         y: event.clientY,
       })
 
-      const newNode: CanvasNode = {
+      const input: AddNodeInput = {
         id: generateNodeId(),
-        type: 'default',
+        nodeType: item.type,
+        category: item.category,
         position,
-        data: {
-          label: item.label,
-          nodeType: item.type,
-          category: item.category,
-          description: item.description,
-        } satisfies CanvasNodeData,
+        label: item.label,
+        description: item.description,
       }
 
-      addNode(newNode)
+      addNode(input)
     },
     [addNode, reactFlowInstance]
   )
