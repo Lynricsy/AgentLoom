@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useWorkflow } from '@/features/workflow'
+import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowStatusBar } from './status/WorkflowStatusBar'
 import { FieldMappingPanel } from './panels/FieldMappingPanel'
+import { VersionToolbar } from './toolbar/VersionToolbar'
 import { useAutoSave } from '../hooks/useAutoSave'
 import {
   useCanvasActions,
@@ -17,6 +19,10 @@ export function WorkflowCanvasPage() {
   const currentWorkflowId = useCanvasStore((state) => state.workflowId)
   const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
   const mappingPanelEdgeId = useMappingPanelEdgeId()
+
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
+  const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
 
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
@@ -75,6 +81,14 @@ export function WorkflowCanvasPage() {
       <div className="relative flex-1">
         <WorkflowCanvas className="h-full w-full" />
         <WorkflowStatusBar />
+
+        {workflow && (
+          <VersionToolbar
+            workflowId={workflowId}
+            workflowStatus={workflow.status}
+            onOpenVersionHistory={handleOpenVersionHistory}
+          />
+        )}
       </div>
 
       {mappingPanelEdgeId && mappingPanelEdge && (
@@ -86,6 +100,15 @@ export function WorkflowCanvasPage() {
           targetNode={mappingTargetNode}
           onClose={closeFieldMapping}
           onChange={updateFieldMapping}
+        />
+      )}
+
+      {workflow && (
+        <VersionHistoryPanel
+          open={isVersionHistoryOpen}
+          workflowId={workflowId}
+          workflowStatus={workflow.status}
+          onClose={handleCloseVersionHistory}
         />
       )}
     </div>

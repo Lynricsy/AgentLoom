@@ -19,3 +19,7 @@ export {
   usePublishWorkflow,
   useArchiveWorkflow,
 } from './api/versionMutations'
+export { CreateVersionDialog } from './components/CreateVersionDialog'
+export { ArchiveDialog } from './components/ArchiveDialog'
+export { PublishSheet } from './components/PublishSheet'
+export { VersionHistoryPanel } from './components/VersionHistoryPanel'
