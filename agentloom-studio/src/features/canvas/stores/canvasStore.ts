@@ -30,6 +30,12 @@ interface CanvasState {
   isSaving: boolean
   workflowId: string | null
   version: number
+  isSearchOpen: boolean
+  searchQuery: string
+  searchMatchIds: string[]
+  currentSearchIndex: number
+  isMiniMapCollapsed: boolean
+  hoveredNodeId: string | null
 }
 
 interface CanvasActions {
@@ -51,6 +57,13 @@ interface CanvasActions {
     markSaved: (version: number) => void
     setIsSaving: (saving: boolean) => void
     reset: () => void
+    toggleSearch: () => void
+    setSearchQuery: (query: string) => void
+    nextSearchResult: () => void
+    prevSearchResult: () => void
+    clearSearch: () => void
+    toggleMiniMap: () => void
+    setHoveredNodeId: (nodeId: string | null) => void
   }
 }
 
@@ -67,6 +80,12 @@ function createInitialState(): CanvasState {
     isSaving: false,
     workflowId: null,
     version: 1,
+    isSearchOpen: false,
+    searchQuery: '',
+    searchMatchIds: [],
+    currentSearchIndex: -1,
+    isMiniMapCollapsed: false,
+    hoveredNodeId: null,
   }
 }
 
@@ -313,6 +332,64 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               Object.assign(state, createInitialState())
             }),
+
+          toggleSearch: () =>
+            set((state) => {
+              state.isSearchOpen = !state.isSearchOpen
+              if (!state.isSearchOpen) {
+                state.searchQuery = ''
+                state.searchMatchIds = []
+                state.currentSearchIndex = -1
+              }
+            }),
+
+          setSearchQuery: (query) =>
+            set((state) => {
+              state.searchQuery = query
+              if (!query.trim()) {
+                state.searchMatchIds = []
+                state.currentSearchIndex = -1
+                return
+              }
+              const lowerQuery = query.toLowerCase()
+              state.searchMatchIds = state.nodes
+                .filter((n) => n.data.label.toLowerCase().includes(lowerQuery))
+                .map((n) => n.id)
+              state.currentSearchIndex = state.searchMatchIds.length > 0 ? 0 : -1
+            }),
+
+          nextSearchResult: () =>
+            set((state) => {
+              if (state.searchMatchIds.length === 0) return
+              state.currentSearchIndex =
+                (state.currentSearchIndex + 1) % state.searchMatchIds.length
+            }),
+
+          prevSearchResult: () =>
+            set((state) => {
+              if (state.searchMatchIds.length === 0) return
+              state.currentSearchIndex =
+                (state.currentSearchIndex - 1 + state.searchMatchIds.length) %
+                state.searchMatchIds.length
+            }),
+
+          clearSearch: () =>
+            set((state) => {
+              state.isSearchOpen = false
+              state.searchQuery = ''
+              state.searchMatchIds = []
+              state.currentSearchIndex = -1
+            }),
+
+          toggleMiniMap: () =>
+            set((state) => {
+              state.isMiniMapCollapsed = !state.isMiniMapCollapsed
+            }),
+
+          setHoveredNodeId: (nodeId) =>
+            set((state) => {
+              state.hoveredNodeId = nodeId
+            }),
         },
       }))
     ),
@@ -344,3 +421,17 @@ export const useEdgeData = (edgeId: string | null) =>
     if (!edgeId) return null
     return s.edges.find((e) => e.id === edgeId)?.data ?? null
   })
+
+export const useSearchState = () =>
+  useCanvasStore(
+    useShallow((s) => ({
+      isSearchOpen: s.isSearchOpen,
+      searchQuery: s.searchQuery,
+      searchMatchIds: s.searchMatchIds,
+      currentSearchIndex: s.currentSearchIndex,
+    }))
+  )
+
+export const useIsMiniMapCollapsed = () => useCanvasStore((s) => s.isMiniMapCollapsed)
+
+export const useHoveredNodeId = () => useCanvasStore((s) => s.hoveredNodeId)

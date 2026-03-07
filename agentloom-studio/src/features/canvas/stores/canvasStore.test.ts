@@ -482,4 +482,158 @@ describe('canvasStore', () => {
     })
     expect(state.isDirty).toBe(true)
   })
+
+  describe('search actions', () => {
+    it('toggleSearch opens and closes search', () => {
+      useCanvasStore.getState().actions.toggleSearch()
+      expect(useCanvasStore.getState().isSearchOpen).toBe(true)
+
+      useCanvasStore.getState().actions.toggleSearch()
+      expect(useCanvasStore.getState().isSearchOpen).toBe(false)
+    })
+
+    it('toggleSearch clears search state when closing', () => {
+      useCanvasStore.getState().actions.toggleSearch()
+      useCanvasStore.getState().actions.setSearchQuery('agent')
+      useCanvasStore.getState().actions.toggleSearch()
+
+      const state = useCanvasStore.getState()
+      expect(state.searchQuery).toBe('')
+      expect(state.searchMatchIds).toEqual([])
+      expect(state.currentSearchIndex).toBe(-1)
+    })
+
+    it('setSearchQuery finds matching nodes by label', () => {
+      const nodeA = createNode({ id: 'a', data: { ...createNode().data, label: 'LLM Agent' } })
+      const nodeB = createNode({ id: 'b', data: { ...createNode().data, label: 'HTTP Request' } })
+      const nodeC = createNode({ id: 'c', data: { ...createNode().data, label: 'Data Agent' } })
+      useCanvasStore.setState((s) => ({ ...s, nodes: [nodeA, nodeB, nodeC] }))
+
+      useCanvasStore.getState().actions.setSearchQuery('agent')
+
+      const state = useCanvasStore.getState()
+      expect(state.searchMatchIds).toEqual(['a', 'c'])
+      expect(state.currentSearchIndex).toBe(0)
+    })
+
+    it('setSearchQuery is case-insensitive', () => {
+      const node = createNode({ id: 'x', data: { ...createNode().data, label: 'LLM Agent' } })
+      useCanvasStore.setState((s) => ({ ...s, nodes: [node] }))
+
+      useCanvasStore.getState().actions.setSearchQuery('llm')
+      expect(useCanvasStore.getState().searchMatchIds).toEqual(['x'])
+    })
+
+    it('setSearchQuery resets index when no matches', () => {
+      const node = createNode()
+      useCanvasStore.setState((s) => ({ ...s, nodes: [node] }))
+
+      useCanvasStore.getState().actions.setSearchQuery('nonexistent')
+      expect(useCanvasStore.getState().searchMatchIds).toEqual([])
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(-1)
+    })
+
+    it('setSearchQuery clears matches for empty/whitespace query', () => {
+      const node = createNode()
+      useCanvasStore.setState((s) => ({ ...s, nodes: [node] }))
+
+      useCanvasStore.getState().actions.setSearchQuery('Server')
+      expect(useCanvasStore.getState().searchMatchIds.length).toBeGreaterThan(0)
+
+      useCanvasStore.getState().actions.setSearchQuery('  ')
+      expect(useCanvasStore.getState().searchMatchIds).toEqual([])
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(-1)
+    })
+
+    it('nextSearchResult cycles forward through matches', () => {
+      const nodes = [
+        createNode({ id: 'a', data: { ...createNode().data, label: 'Agent 1' } }),
+        createNode({ id: 'b', data: { ...createNode().data, label: 'Agent 2' } }),
+        createNode({ id: 'c', data: { ...createNode().data, label: 'Agent 3' } }),
+      ]
+      useCanvasStore.setState((s) => ({ ...s, nodes }))
+      useCanvasStore.getState().actions.setSearchQuery('Agent')
+
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(0)
+      useCanvasStore.getState().actions.nextSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(1)
+      useCanvasStore.getState().actions.nextSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(2)
+      useCanvasStore.getState().actions.nextSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(0)
+    })
+
+    it('prevSearchResult cycles backward through matches', () => {
+      const nodes = [
+        createNode({ id: 'a', data: { ...createNode().data, label: 'Agent 1' } }),
+        createNode({ id: 'b', data: { ...createNode().data, label: 'Agent 2' } }),
+      ]
+      useCanvasStore.setState((s) => ({ ...s, nodes }))
+      useCanvasStore.getState().actions.setSearchQuery('Agent')
+
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(0)
+      useCanvasStore.getState().actions.prevSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(1)
+      useCanvasStore.getState().actions.prevSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(0)
+    })
+
+    it('next/prev does nothing when no matches', () => {
+      useCanvasStore.getState().actions.nextSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(-1)
+      useCanvasStore.getState().actions.prevSearchResult()
+      expect(useCanvasStore.getState().currentSearchIndex).toBe(-1)
+    })
+
+    it('clearSearch resets all search state', () => {
+      useCanvasStore.getState().actions.toggleSearch()
+      useCanvasStore.getState().actions.setSearchQuery('test')
+      useCanvasStore.getState().actions.clearSearch()
+
+      const state = useCanvasStore.getState()
+      expect(state.isSearchOpen).toBe(false)
+      expect(state.searchQuery).toBe('')
+      expect(state.searchMatchIds).toEqual([])
+      expect(state.currentSearchIndex).toBe(-1)
+    })
+  })
+
+  describe('minimap actions', () => {
+    it('toggleMiniMap toggles collapsed state', () => {
+      expect(useCanvasStore.getState().isMiniMapCollapsed).toBe(false)
+
+      useCanvasStore.getState().actions.toggleMiniMap()
+      expect(useCanvasStore.getState().isMiniMapCollapsed).toBe(true)
+
+      useCanvasStore.getState().actions.toggleMiniMap()
+      expect(useCanvasStore.getState().isMiniMapCollapsed).toBe(false)
+    })
+  })
+
+  describe('hover actions', () => {
+    it('setHoveredNodeId sets and clears hover', () => {
+      useCanvasStore.getState().actions.setHoveredNodeId('node-1')
+      expect(useCanvasStore.getState().hoveredNodeId).toBe('node-1')
+
+      useCanvasStore.getState().actions.setHoveredNodeId(null)
+      expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
+    })
+  })
+
+  it('reset clears search, minimap, and hover state', () => {
+    useCanvasStore.getState().actions.toggleSearch()
+    useCanvasStore.getState().actions.setSearchQuery('test')
+    useCanvasStore.getState().actions.toggleMiniMap()
+    useCanvasStore.getState().actions.setHoveredNodeId('node-1')
+
+    useCanvasStore.getState().actions.reset()
+
+    const state = useCanvasStore.getState()
+    expect(state.isSearchOpen).toBe(false)
+    expect(state.searchQuery).toBe('')
+    expect(state.searchMatchIds).toEqual([])
+    expect(state.currentSearchIndex).toBe(-1)
+    expect(state.isMiniMapCollapsed).toBe(false)
+    expect(state.hoveredNodeId).toBeNull()
+  })
 })
