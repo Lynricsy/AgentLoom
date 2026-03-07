@@ -1,12 +1,27 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useCanvasStore } from './canvasStore'
-import type { CanvasNode, CanvasEdge } from '../types'
+import type { AddNodeInput, CanvasNode, CanvasEdge } from '../types'
+
+const mockAddNodeInput: AddNodeInput = {
+  id: 'node-1',
+  nodeType: 'llm-agent',
+  category: 'agent',
+  position: { x: 100, y: 200 },
+  label: 'Test Agent',
+}
 
 const mockNode: CanvasNode = {
   id: 'node-1',
-  type: 'default',
+  type: 'agent',
   position: { x: 100, y: 200 },
-  data: { label: 'Test Agent', nodeType: 'llm-agent', category: 'agent' },
+  data: {
+    label: 'Test Agent',
+    nodeType: 'llm-agent',
+    category: 'agent',
+    config: {},
+    inputPorts: [],
+    outputPorts: [],
+  },
 }
 
 const mockEdge: CanvasEdge = {
@@ -32,13 +47,18 @@ describe('canvasStore', () => {
   })
 
   describe('addNode', () => {
-    it('应该添加节点并标记 isDirty', () => {
+    it('应该通过 AddNodeInput 添加节点并自动注入端口', () => {
       const { actions } = useCanvasStore.getState()
-      actions.addNode(mockNode)
+      actions.addNode(mockAddNodeInput)
 
       const state = useCanvasStore.getState()
       expect(state.nodes).toHaveLength(1)
       expect(state.nodes[0]!.id).toBe('node-1')
+      expect(state.nodes[0]!.type).toBe('agent')
+      expect(state.nodes[0]!.data.nodeType).toBe('llm-agent')
+      expect(state.nodes[0]!.data.inputPorts.length).toBeGreaterThan(0)
+      expect(state.nodes[0]!.data.outputPorts.length).toBeGreaterThan(0)
+      expect(state.nodes[0]!.data.config).toEqual({})
       expect(state.isDirty).toBe(true)
     })
   })
@@ -47,9 +67,16 @@ describe('canvasStore', () => {
     it('应该删除选中节点及其关联边', () => {
       const node2: CanvasNode = {
         id: 'node-2',
-        type: 'default',
+        type: 'tool',
         position: { x: 300, y: 200 },
-        data: { label: 'Test Tool', nodeType: 'http-tool', category: 'tool' },
+        data: {
+          label: 'Test Tool',
+          nodeType: 'http-tool',
+          category: 'tool',
+          config: {},
+          inputPorts: [],
+          outputPorts: [],
+        },
       }
 
       useCanvasStore.setState({
@@ -101,6 +128,8 @@ describe('canvasStore', () => {
 
       const state = useCanvasStore.getState()
       expect(state.nodes).toHaveLength(1)
+      expect(state.nodes[0]!.data.inputPorts.length).toBeGreaterThan(0)
+      expect(state.nodes[0]!.data.outputPorts.length).toBeGreaterThan(0)
       expect(state.edges).toHaveLength(1)
       expect(state.viewport).toEqual({ x: 10, y: 20, zoom: 1.5 })
       expect(state.workflowId).toBe('wf-001')
@@ -210,6 +239,18 @@ describe('canvasStore', () => {
 
       const state = useCanvasStore.getState()
       expect(state.viewport).toEqual({ x: 50, y: 100, zoom: 2 })
+      expect(state.isDirty).toBe(false)
+    })
+  })
+
+  describe('commitViewport', () => {
+    it('应该在视口交互结束后更新 viewport 并标记 isDirty', () => {
+      const { actions } = useCanvasStore.getState()
+      actions.commitViewport({ x: 50, y: 100, zoom: 2 })
+
+      const state = useCanvasStore.getState()
+      expect(state.viewport).toEqual({ x: 50, y: 100, zoom: 2 })
+      expect(state.isDirty).toBe(true)
     })
   })
 
@@ -250,6 +291,9 @@ describe('canvasStore', () => {
       expect(state.isSaving).toBe(false)
       expect(state.workflowId).toBeNull()
       expect(state.version).toBe(1)
+
+      state.actions.addNode(mockAddNodeInput)
+      expect(useCanvasStore.getState().nodes).toHaveLength(1)
     })
   })
 })
