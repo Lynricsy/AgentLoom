@@ -1,6 +1,6 @@
-import type { Edge, Node, Viewport } from '@xyflow/react'
-import type { NodeType } from './nodeTypeRegistry'
-import type { PortDefinition } from './typeSchema'
+import type { Edge, Node, Viewport, XYPosition } from '@xyflow/react'
+import type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
+import type { TypeSchema } from './types/typeSchema'
 
 export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control'
 
@@ -22,15 +22,86 @@ export interface CanvasNodeData extends Record<string, unknown> {
   outputPorts: PortDefinition[]
 }
 
-export type CanvasNode = Node<CanvasNodeData>
+export type CanvasNode = Node<CanvasNodeData, NodeCategory>
 
-export type CanvasEdge = Edge
+// ── 边兼容性类型 (TypeEngine WASM 合约) ──────────────────────────
+
+/** TypeEngine 返回的原始兼容性等级（SCREAMING_SNAKE_CASE，与 Rust serde 对齐） */
+export type RawCompatibilityLevel = 'EXACT' | 'TRANSFORM' | 'PARTIAL' | 'INCOMPATIBLE'
+
+export type VisualCompatibilityLevel = 'L0' | 'L1' | 'checking' | 'error'
+
+export interface MissingFieldInfo {
+  path: string
+  expectedType: TypeSchema
+  required: boolean
+}
+
+export interface CandidateFieldMapping {
+  sourcePath: string
+  targetPath: string
+  confidence: number
+  autoRecommended: boolean
+}
+
+/** 用户确认后的映射（区别于 CandidateFieldMapping 的 WASM 候选） */
+export interface FieldMapping {
+  sourceField: string
+  targetField: string
+  compatLevel: 'L0' | 'L1'
+  autoRecommended: boolean
+  confidence?: number
+  required?: boolean
+}
+
+export interface EdgeMappingSummary {
+  autoMatchedCount: number
+  manualCount: number
+  requiredUnmappedCount: number
+}
+
+export interface CanvasEdgeData extends Record<string, unknown> {
+  rawCompatibilityLevel: RawCompatibilityLevel
+  visualLevel: VisualCompatibilityLevel
+  reasonKey: string | null
+  transformFn: string | null
+  missingFields: MissingFieldInfo[]
+  candidateMappings: CandidateFieldMapping[]
+  fieldMapping: FieldMapping[]
+  metadata: {
+    matchedRatio?: number
+    matchedRequiredCount?: number
+    totalRequiredCount?: number
+    unmappedRequiredCount?: number
+  }
+  mappingSummary: EdgeMappingSummary
+}
+
+export function createDefaultEdgeData(): CanvasEdgeData {
+  return {
+    rawCompatibilityLevel: 'EXACT',
+    visualLevel: 'L0',
+    reasonKey: null,
+    transformFn: null,
+    missingFields: [],
+    candidateMappings: [],
+    fieldMapping: [],
+    metadata: {},
+    mappingSummary: {
+      autoMatchedCount: 0,
+      manualCount: 0,
+      requiredUnmappedCount: 0,
+    },
+  }
+}
+
+export type CanvasEdge = Edge<CanvasEdgeData>
 
 export interface AddNodeInput {
   id: string
   nodeType: NodeType
   category: NodeCategory
-  position: { x: number; y: number }
+  position: XYPosition
   label?: string
   description?: string
   config?: Record<string, unknown>
@@ -57,3 +128,6 @@ export interface CanvasSnapshot {
   edges: CanvasEdge[]
   viewport?: Viewport
 }
+
+export type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
+export type { PortDataType, TypeSchema } from './types/typeSchema'
