@@ -58,6 +58,14 @@ vi.mock('./panels/FieldMappingPanel', () => ({
   ),
 }))
 
+vi.mock('./toolbar/VersionToolbar', () => ({
+  VersionToolbar: () => <div data-testid="version-toolbar" />,
+}))
+
+vi.mock('@/features/workflow/components/VersionHistoryPanel', () => ({
+  VersionHistoryPanel: () => <div data-testid="version-history-panel" />,
+}))
+
 const workflowOne: WorkflowDefinition = {
   id: 'wf-001',
   tenantId: 'tenant-1',
