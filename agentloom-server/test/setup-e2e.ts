@@ -9,3 +9,5 @@ process.env.APP_REDIS_URL = 'redis://127.0.0.1:6379';
 process.env.APP_OAUTH_REDIRECT_URL =
   'https://test.supabase.co/auth/v1/callback';
 process.env.APP_FRONTEND_URL = 'http://localhost:3000';
+process.env.APP_MASTER_ENCRYPTION_KEY =
+  '3HiqJr2j48+6csTN+/yp+9FDJeiBpILxtxgYy/w/uFQ=';

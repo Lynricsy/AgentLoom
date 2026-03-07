@@ -17,6 +17,14 @@ export {
   type OrganizationInvitation,
   type NewOrganizationInvitation,
 } from './organizations.schema';
+export {
+  bytea,
+  apiKeyStatusEnum,
+  llmProviderEnum,
+  apiKeys,
+  type ApiKey,
+  type NewApiKey,
+} from './api-keys.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,

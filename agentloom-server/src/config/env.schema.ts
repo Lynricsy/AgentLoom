@@ -16,6 +16,20 @@ export const envSchema = z.object({
 
   APP_REDIS_URL: z.string().min(1, 'Redis 连接字符串不能为空'),
 
+  APP_MASTER_ENCRYPTION_KEY: z
+    .string()
+    .min(1, '主加密密钥不能为空')
+    .refine(
+      (val) => {
+        try {
+          return Buffer.from(val, 'base64').length === 32;
+        } catch {
+          return false;
+        }
+      },
+      { message: '主加密密钥必须为 256 位（32 字节）Base64 编码' },
+    ),
+
   APP_OAUTH_REDIRECT_URL: z.string().url('无效的 OAuth 回调 URL'),
   APP_FRONTEND_URL: z.string().url('无效的前端 URL'),
 });

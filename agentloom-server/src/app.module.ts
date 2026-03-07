@@ -7,6 +7,7 @@ import { RedisModule } from './common/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationModule } from './modules/organization/organization.module';
+import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -23,6 +24,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     HealthModule,
     AuthModule,
     OrganizationModule,
+    ApiKeyModule,
   ],
   providers: [
     RbacCacheService,
