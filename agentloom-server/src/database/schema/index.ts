@@ -25,6 +25,15 @@ export {
   type ApiKey,
   type NewApiKey,
 } from './api-keys.schema';
+export {
+  workflowStatusEnum,
+  workflowDefinitions,
+  type WorkflowDefinition,
+  type NewWorkflowDefinition,
+  type ReactFlowNode,
+  type ReactFlowEdge,
+  type ReactFlowViewport,
+} from './workflow-definitions.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,
