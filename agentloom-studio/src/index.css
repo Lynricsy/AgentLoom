@@ -1,0 +1,61 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/noto-sans-sc";
+
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --color-brand: #09090b;
+  --color-brand-foreground: #fafafa;
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-surface: #18181b;
+  --color-surface-elevated: #27272a;
+  --color-border: #3f3f46;
+  --color-muted: #a1a1aa;
+  --color-muted-foreground: #71717a;
+  --color-type-model: #a78bfa;
+  --color-type-text: #38bdf8;
+  --color-type-json: #2dd4bf;
+  --color-type-image: #f472b6;
+  --color-type-audio: #fb923c;
+  --color-type-tool: #fbbf24;
+  --color-type-sandbox: #a3e635;
+  --color-type-knowledge: #34d399;
+  --color-compat-l0: #22c55e;
+  --color-compat-l1: #eab308;
+  --color-compat-l2: #f97316;
+  --color-compat-l3: #ef4444;
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  --font-sans: "Inter Variable", "Noto Sans SC Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --spacing-toolbar: 44px;
+  --spacing-palette-expanded: 220px;
+  --spacing-palette-collapsed: 52px;
+  --spacing-property-panel: 300px;
+  --spacing-bottom-panel-collapsed: 40px;
+  --spacing-bottom-panel-expanded: 200px;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+.react-flow {
+  --xy-background-color: var(--color-background);
+  --xy-node-background-color: var(--color-surface);
+  --xy-node-border-color: var(--color-border);
+  --xy-node-color: var(--color-foreground);
+  --xy-minimap-background-color: var(--color-surface);
+  --xy-controls-button-background-color: var(--color-surface-elevated);
+  --xy-controls-button-color: var(--color-foreground);
+}
