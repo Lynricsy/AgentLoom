@@ -1,10 +1,13 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DRIZZLE } from '../../../database/database.module';
 import { ApiKeyService } from '../api-key.service';
 import { EncryptionService } from '../encryption.service';
 import {
   ApiKeyNotFoundException,
   ApiKeyLimitExceededException,
+  ApiKeyRevokedException,
 } from '../api-key.exceptions';
 import type { EncryptedData } from '../encryption.service';
 
@@ -48,13 +51,14 @@ function createApiKeyRecord(overrides: Record<string, unknown> = {}) {
     userId: USER_ID,
     provider: 'openai' as const,
     label: 'My OpenAI Key',
-    keyPreview: '...5678',
+    keyPreview: 'sk-...5678',
     status: 'active' as const,
     encryptedKey: Buffer.from('enc-key'),
     encryptedDek: Buffer.from('enc-dek'),
     iv: Buffer.from('iv-12bytes!!'),
     authTag: Buffer.from('auth-tag-16bytes'),
     lastUsedAt: null as Date | null,
+    rotatedAt: null as Date | null,
     expiresAt: null as Date | null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -101,6 +105,9 @@ describe('ApiKeyService', () => {
 
   describe('create', () => {
     it('应当创建加密 API 密钥并返回安全响应', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const countChain = createSelectChain([{ count: 0 }]);
       db.select.mockReturnValueOnce(countChain);
 
@@ -120,9 +127,18 @@ describe('ApiKeyService', () => {
       expect(encryptionService.encrypt).toHaveBeenCalledWith('sk-test5678');
       expect(result.id).toBe(KEY_ID);
       expect(result.provider).toBe('openai');
-      expect(result.keyPreview).toBe('...5678');
+      expect(result.keyPreview).toBe('sk-...5678');
       expect(result).not.toHaveProperty('encryptedKey');
       expect(result).not.toHaveProperty('encryptedDek');
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"action":"create"'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"actorId":"${USER_ID}"`),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"keyId":"${KEY_ID}"`),
+      );
     });
 
     it('应当在达到限制时抛出 ApiKeyLimitExceededException', async () => {
@@ -147,18 +163,18 @@ describe('ApiKeyService', () => {
       const orgChain = createSelectChain([{ id: ORG_ID }]);
       db.select.mockReturnValueOnce(orgChain);
 
-      const record = createApiKeyRecord({ keyPreview: '...ABCD' });
+      const record = createApiKeyRecord({ keyPreview: 'sk-...ABCD' });
       const insertChain = createInsertChain([record]);
       db.insert.mockReturnValueOnce(insertChain);
 
-      const result = await service.create(
+      await service.create(
         { provider: 'anthropic', label: 'Key', apiKey: 'sk-ant-testABCD' },
         USER_ID,
         TENANT_ID,
       );
 
       expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({ keyPreview: '...ABCD' }),
+        expect.objectContaining({ keyPreview: 'sk-...ABCD' }),
       );
     });
   });
@@ -191,11 +207,17 @@ describe('ApiKeyService', () => {
 
   describe('rotate', () => {
     it('应当重新加密密钥', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const existing = createApiKeyRecord();
       const selectChain = createSelectChain([existing]);
       db.select.mockReturnValueOnce(selectChain);
 
-      const updated = createApiKeyRecord({ keyPreview: '...9999' });
+      const updated = createApiKeyRecord({
+        keyPreview: 'sk-...9999',
+        rotatedAt: NOW,
+      });
       const updateChain = createUpdateChain([updated]);
       db.update.mockReturnValueOnce(updateChain);
 
@@ -203,10 +225,29 @@ describe('ApiKeyService', () => {
         KEY_ID,
         { apiKey: 'sk-new-key-9999' },
         TENANT_ID,
+        USER_ID,
       );
 
       expect(encryptionService.encrypt).toHaveBeenCalledWith('sk-new-key-9999');
       expect(result.id).toBe(KEY_ID);
+      expect(result.keyPreview).toBe('sk-...9999');
+      expect(result.rotatedAt).toBe(NOW.toISOString());
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          keyPreview: 'sk-...9999',
+          rotatedAt: expect.any(Date),
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"action":"rotate"'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"actorId":"${USER_ID}"`),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"keyId":"${KEY_ID}"`),
+      );
     });
 
     it('应当在密钥不存在时抛出 ApiKeyNotFoundException', async () => {
@@ -214,13 +255,28 @@ describe('ApiKeyService', () => {
       db.select.mockReturnValueOnce(selectChain);
 
       await expect(
-        service.rotate(KEY_ID, { apiKey: 'sk-new' }, TENANT_ID),
+        service.rotate(KEY_ID, { apiKey: 'sk-new' }, TENANT_ID, USER_ID),
       ).rejects.toBeInstanceOf(ApiKeyNotFoundException);
+    });
+
+    it('应当拒绝轮换已撤销的密钥', async () => {
+      const revoked = createApiKeyRecord({ status: 'revoked' });
+      const selectChain = createSelectChain([revoked]);
+      db.select.mockReturnValueOnce(selectChain);
+
+      await expect(
+        service.rotate(KEY_ID, { apiKey: 'sk-new' }, TENANT_ID, USER_ID),
+      ).rejects.toBeInstanceOf(ApiKeyRevokedException);
+
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 
   describe('revoke', () => {
     it('应当将加密字段清空并设置状态为 revoked', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const existing = createApiKeyRecord();
       const selectChain = createSelectChain([existing]);
       db.select.mockReturnValueOnce(selectChain);
@@ -235,7 +291,7 @@ describe('ApiKeyService', () => {
       const updateChain = createUpdateChain([revoked]);
       db.update.mockReturnValueOnce(updateChain);
 
-      const result = await service.revoke(KEY_ID, TENANT_ID);
+      const result = await service.revoke(KEY_ID, TENANT_ID, USER_ID);
 
       expect(result.status).toBe('revoked');
       expect(updateChain.set).toHaveBeenCalledWith(
@@ -247,6 +303,15 @@ describe('ApiKeyService', () => {
           authTag: null,
         }),
       );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"action":"revoke"'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"actorId":"${USER_ID}"`),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"keyId":"${KEY_ID}"`),
+      );
     });
 
     it('应当在密钥不存在时抛出 ApiKeyNotFoundException', async () => {
@@ -254,7 +319,7 @@ describe('ApiKeyService', () => {
       db.select.mockReturnValueOnce(selectChain);
 
       await expect(
-        service.revoke('non-existent-id', TENANT_ID),
+        service.revoke('non-existent-id', TENANT_ID, USER_ID),
       ).rejects.toBeInstanceOf(ApiKeyNotFoundException);
     });
   });

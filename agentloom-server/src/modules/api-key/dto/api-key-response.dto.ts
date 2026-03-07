@@ -8,6 +8,7 @@ export const apiKeyResponseSchema = z.object({
   keyPreview: z.string(),
   status: z.enum(['active', 'revoked', 'expired']),
   lastUsedAt: z.string().datetime().nullable(),
+  rotatedAt: z.string().datetime().nullable(),
   expiresAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

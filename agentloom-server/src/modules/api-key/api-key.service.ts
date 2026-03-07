@@ -7,6 +7,7 @@ import { EncryptionService } from './encryption.service';
 import {
   ApiKeyNotFoundException,
   ApiKeyLimitExceededException,
+  ApiKeyRevokedException,
 } from './api-key.exceptions';
 import type { ApiKeyResponseDto } from './dto/api-key-response.dto';
 import type { CreateApiKeyDto } from './dto/create-api-key.dto';
@@ -43,7 +44,7 @@ export class ApiKeyService {
       .from(organizations)
       .where(eq(organizations.tenantId, tenantId));
 
-    const keyPreview = `...${dto.apiKey.slice(-4)}`;
+    const keyPreview = this.createKeyPreview(dto.apiKey);
     const encrypted = this.encryptionService.encrypt(dto.apiKey);
 
     const [created] = await this.tenantDb
@@ -62,6 +63,8 @@ export class ApiKeyService {
       })
       .returning();
 
+    this.logAuditEvent('create', userId, created.id, tenantId);
+
     return this.toResponseDto(created);
   }
 
@@ -74,6 +77,7 @@ export class ApiKeyService {
         keyPreview: apiKeys.keyPreview,
         status: apiKeys.status,
         lastUsedAt: apiKeys.lastUsedAt,
+        rotatedAt: apiKeys.rotatedAt,
         expiresAt: apiKeys.expiresAt,
         createdAt: apiKeys.createdAt,
         updatedAt: apiKeys.updatedAt,
@@ -88,10 +92,15 @@ export class ApiKeyService {
     id: string,
     dto: RotateApiKeyDto,
     tenantId: string,
+    actorId: string,
   ): Promise<ApiKeyResponseDto> {
     const existing = await this.findByIdOrThrow(id, tenantId);
+    if (existing.status === 'revoked') {
+      throw new ApiKeyRevokedException(id);
+    }
 
-    const keyPreview = `...${dto.apiKey.slice(-4)}`;
+    const keyPreview = this.createKeyPreview(dto.apiKey);
+    const rotatedAt = new Date();
     const encrypted = this.encryptionService.encrypt(dto.apiKey);
 
     const [updated] = await this.tenantDb
@@ -102,17 +111,24 @@ export class ApiKeyService {
         encryptedDek: encrypted.encryptedDek,
         iv: encrypted.iv,
         authTag: encrypted.authTag,
-        updatedAt: new Date(),
+        rotatedAt,
+        updatedAt: rotatedAt,
       })
       .where(
         and(eq(apiKeys.id, existing.id), eq(apiKeys.tenantId, tenantId)),
       )
       .returning();
 
+    this.logAuditEvent('rotate', actorId, updated.id, tenantId);
+
     return this.toResponseDto(updated);
   }
 
-  async revoke(id: string, tenantId: string): Promise<ApiKeyResponseDto> {
+  async revoke(
+    id: string,
+    tenantId: string,
+    actorId: string,
+  ): Promise<ApiKeyResponseDto> {
     await this.findByIdOrThrow(id, tenantId);
 
     const [revoked] = await this.tenantDb
@@ -127,6 +143,8 @@ export class ApiKeyService {
       })
       .where(and(eq(apiKeys.id, id), eq(apiKeys.tenantId, tenantId)))
       .returning();
+
+    this.logAuditEvent('revoke', actorId, revoked.id, tenantId);
 
     return this.toResponseDto(revoked);
   }
@@ -177,6 +195,7 @@ export class ApiKeyService {
       label: string;
       keyPreview: string;
       status: string;
+      rotatedAt?: Date | null;
       createdAt: Date;
       updatedAt: Date;
     },
@@ -188,9 +207,31 @@ export class ApiKeyService {
       keyPreview: key.keyPreview,
       status: key.status as ApiKeyResponseDto['status'],
       lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+      rotatedAt: key.rotatedAt?.toISOString() ?? null,
       expiresAt: key.expiresAt?.toISOString() ?? null,
       createdAt: key.createdAt.toISOString(),
       updatedAt: key.updatedAt.toISOString(),
     };
+  }
+
+  private createKeyPreview(apiKey: string): string {
+    return `${apiKey.slice(0, 3)}...${apiKey.slice(-4)}`;
+  }
+
+  private logAuditEvent(
+    action: 'create' | 'rotate' | 'revoke',
+    actorId: string,
+    keyId: string,
+    tenantId: string,
+  ): void {
+    this.logger.log(
+      `API Key 审计 ${JSON.stringify({
+        action,
+        actorId,
+        keyId,
+        tenantId,
+        timestamp: new Date().toISOString(),
+      })}`,
+    );
   }
 }

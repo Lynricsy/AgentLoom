@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DecryptionBoundaryService } from '../decryption-boundary.service';
 import { ApiKeyService } from '../api-key.service';
 import { EncryptionService } from '../encryption.service';
@@ -17,18 +19,42 @@ function createActiveApiKey(overrides: Record<string, unknown> = {}) {
     userId: '00000000-0000-0000-0000-000000000001',
     provider: 'openai',
     label: 'Test Key',
-    keyPreview: '...5678',
+    keyPreview: 'sk-...5678',
     status: 'active',
     encryptedKey: Buffer.from('encrypted-key'),
     encryptedDek: Buffer.from('encrypted-dek'),
     iv: Buffer.from('iv-data'),
     authTag: Buffer.from('auth-tag'),
     lastUsedAt: null,
+    rotatedAt: null,
     expiresAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
   };
+}
+
+function expectAuditLog(
+  logSpy: ReturnType<typeof vi.spyOn>,
+  outcome: string,
+  caller = DecryptionBoundaryService.name,
+) {
+  const calls = logSpy.mock.calls as unknown[][];
+  const matchedCall = calls.find((call) => {
+    const [message] = call as [unknown, ...unknown[]];
+    return (
+      typeof message === 'string' &&
+      message.includes(`"outcome":"${outcome}"`)
+    );
+  });
+
+  expect(matchedCall).toBeDefined();
+
+  const [message] = matchedCall!;
+  expect(message).toContain(`"keyId":"${KEY_ID}"`);
+  expect(message).toContain(`"caller":"${caller}"`);
+  expect(message).toContain('"timestamp":"');
+  expect(message).toContain(`"outcome":"${outcome}"`);
 }
 
 describe('DecryptionBoundaryService', () => {
@@ -56,12 +82,15 @@ describe('DecryptionBoundaryService', () => {
 
   describe('decryptApiKey', () => {
     it('应当成功解密活跃的 API 密钥', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const activeKey = createActiveApiKey();
       vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(
         activeKey as never,
       );
 
-      const result = await service.decryptApiKey(KEY_ID, TENANT_ID);
+      const result = await service.decryptApiKey(KEY_ID, TENANT_ID, 'llm-gateway');
 
       expect(result).toBe('sk-decrypted-plain-key');
       expect(encryptionService.decrypt).toHaveBeenCalledWith({
@@ -70,6 +99,19 @@ describe('DecryptionBoundaryService', () => {
         iv: activeKey.iv,
         authTag: activeKey.authTag,
       });
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"keyId":"${KEY_ID}"`),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"caller":"llm-gateway"'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"timestamp":"'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"outcome":"requested"'),
+      );
+      expectAuditLog(logSpy, 'decrypted', 'llm-gateway');
     });
 
     it('应当在解密后更新 lastUsedAt', async () => {
@@ -84,14 +126,22 @@ describe('DecryptionBoundaryService', () => {
     });
 
     it('应当在密钥不存在时抛出 ApiKeyNotFoundException', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(undefined);
 
       await expect(
         service.decryptApiKey(KEY_ID, TENANT_ID),
       ).rejects.toBeInstanceOf(ApiKeyNotFoundException);
+
+      expectAuditLog(logSpy, 'not_found');
     });
 
     it('应当在密钥已撤销时抛出 ApiKeyRevokedException', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const revokedKey = createActiveApiKey({ status: 'revoked' });
       vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(
         revokedKey as never,
@@ -100,9 +150,14 @@ describe('DecryptionBoundaryService', () => {
       await expect(
         service.decryptApiKey(KEY_ID, TENANT_ID),
       ).rejects.toBeInstanceOf(ApiKeyRevokedException);
+
+      expectAuditLog(logSpy, 'revoked');
     });
 
     it('应当在加密字段为 null 时抛出 ApiKeyRevokedException', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
       const nullFieldsKey = createActiveApiKey({
         status: 'active',
         encryptedKey: null,
@@ -117,6 +172,8 @@ describe('DecryptionBoundaryService', () => {
       await expect(
         service.decryptApiKey(KEY_ID, TENANT_ID),
       ).rejects.toBeInstanceOf(ApiKeyRevokedException);
+
+      expectAuditLog(logSpy, 'missing_ciphertext');
     });
 
     it('应当在部分加密字段为 null 时抛出 ApiKeyRevokedException', async () => {
@@ -134,14 +191,24 @@ describe('DecryptionBoundaryService', () => {
       ).rejects.toBeInstanceOf(ApiKeyRevokedException);
     });
 
-    it('应当不在解密失败时更新 lastUsedAt', async () => {
-      vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(undefined);
+    it('应当在解密失败时记录审计并且不更新 lastUsedAt', async () => {
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      const activeKey = createActiveApiKey();
+      vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(
+        activeKey as never,
+      );
+      vi.mocked(encryptionService.decrypt!).mockImplementation(() => {
+        throw new Error('decrypt failed');
+      });
 
       await expect(
         service.decryptApiKey(KEY_ID, TENANT_ID),
-      ).rejects.toThrow();
+      ).rejects.toThrow('decrypt failed');
 
       expect(apiKeyService.updateLastUsedAt).not.toHaveBeenCalled();
+      expectAuditLog(logSpy, 'decrypt_failed');
     });
   });
 });

@@ -224,11 +224,11 @@ export async function seedWorkflowDefinition(
     createdBy: string;
     updatedBy: string;
     description?: string;
-    nodes?: unknown[];
-    edges?: unknown[];
-    viewport?: Record<string, unknown>;
+    nodes?: readonly postgres.JSONValue[];
+    edges?: readonly postgres.JSONValue[];
+    viewport?: postgres.JSONValue;
     version?: number;
-    status?: string;
+    status?: (typeof schema.workflowStatusEnum.enumValues)[number];
   },
 ) {
   const [row] = await sqlClient`

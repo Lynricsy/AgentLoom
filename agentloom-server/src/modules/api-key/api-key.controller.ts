@@ -41,6 +41,7 @@ export class ApiKeyController {
   }
 
   @Get()
+  @Roles('owner', 'admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取租户下所有 API 密钥' })
   @ApiResponse({ status: 200, description: 'API 密钥列表' })
@@ -57,9 +58,10 @@ export class ApiKeyController {
   async rotate(
     @Param('id') id: string,
     @Body() dto: RotateApiKeyDto,
+    @CurrentUser('sub') userId: string,
     @CurrentTenant() tenantId: string,
   ) {
-    const data = await this.apiKeyService.rotate(id, dto, tenantId);
+    const data = await this.apiKeyService.rotate(id, dto, tenantId, userId);
     return { data };
   }
 
@@ -70,9 +72,10 @@ export class ApiKeyController {
   @ApiResponse({ status: 200, description: 'API 密钥已撤销' })
   async revoke(
     @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
     @CurrentTenant() tenantId: string,
   ) {
-    const data = await this.apiKeyService.revoke(id, tenantId);
+    const data = await this.apiKeyService.revoke(id, tenantId, userId);
     return { data };
   }
 }

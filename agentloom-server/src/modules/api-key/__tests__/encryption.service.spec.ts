@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'node:crypto';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionService } from '../encryption.service';
 
 const VALID_KEK = crypto.randomBytes(32).toString('base64');

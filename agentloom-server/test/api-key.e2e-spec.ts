@@ -19,6 +19,8 @@ import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
+import { ApiKeyRevokedException } from '../src/modules/api-key/api-key.exceptions';
+import { DecryptionBoundaryService } from '../src/modules/api-key/decryption-boundary.service';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import * as schema from '../src/database/schema';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
@@ -48,7 +50,7 @@ function authHeaders(user: AuthenticatedTestUser): Record<string, string> {
   };
   if (user.tenantId) {
     payload.tenant_id = user.tenantId;
-    payload.tenant_role = user.tenantRole ?? 'member';
+    payload.tenant_role = user.tenantRole ?? 'viewer';
   }
   return { authorization: `Bearer ${signToken(payload)}` };
 }
@@ -113,6 +115,7 @@ describe('API Key (E2E)', () => {
   let sql: ReturnType<typeof postgres>;
   let drizzleClient: ReturnType<typeof postgres>;
   let drizzleDb: DrizzleDB;
+  let decryptionBoundary: DecryptionBoundaryService;
 
   let owner: AuthenticatedTestUser;
   let organization: { id: string; tenant_id: string };
@@ -146,6 +149,21 @@ describe('API Key (E2E)', () => {
       UPDATE users SET current_organization_id = ${org.id} WHERE id = ${ownerId}
     `;
     return org as { id: string; tenant_id: string };
+  }
+
+  async function seedOrganizationMember(
+    organizationId: string,
+    userId: string,
+    role: 'owner' | 'admin' | 'creator' | 'operator' | 'viewer',
+    invitedBy: string,
+  ) {
+    await sql`
+      INSERT INTO organization_members (organization_id, user_id, role, invited_by)
+      VALUES (${organizationId}, ${userId}, ${role}, ${invitedBy})
+    `;
+    await sql`
+      UPDATE users SET current_organization_id = ${organizationId} WHERE id = ${userId}
+    `;
   }
 
   beforeAll(async () => {
@@ -232,6 +250,7 @@ describe('API Key (E2E)', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    decryptionBoundary = app.get(DecryptionBoundaryService);
   }, 120_000);
 
   afterAll(async () => {
@@ -282,8 +301,9 @@ describe('API Key (E2E)', () => {
       expect(body.data).toBeDefined();
       expect(body.data.provider).toBe('openai');
       expect(body.data.label).toBe('My OpenAI Key');
-      expect(body.data.keyPreview).toBe('...cdef');
+      expect(body.data.keyPreview).toBe('sk-...cdef');
       expect(body.data.status).toBe('active');
+      expect(body.data.rotatedAt).toBeNull();
       expect(body.data.id).toBeDefined();
       expect(body.data.createdAt).toBeDefined();
       expect(body.data.encryptedKey).toBeUndefined();
@@ -292,7 +312,7 @@ describe('API Key (E2E)', () => {
       expect(body.data.authTag).toBeUndefined();
     });
 
-    it('should reject invalid provider (400)', async () => {
+    it('should reject invalid provider (422)', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/api-keys',
@@ -303,7 +323,7 @@ describe('API Key (E2E)', () => {
       expect(res.statusCode).toBe(422);
     });
 
-    it('should reject missing required fields (400)', async () => {
+    it('should reject missing required fields (422)', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/api-keys',
@@ -369,6 +389,101 @@ describe('API Key (E2E)', () => {
       expect(res.statusCode).toBe(200);
       expect(res.json().data).toHaveLength(0);
     });
+
+    it('should allow operator to list API keys (200)', async () => {
+      const operatorUser = createTestUser('apikey-operator');
+      await seedAppUser(operatorUser.id, operatorUser.email);
+      await seedOrganizationMember(
+        organization.id,
+        operatorUser.id,
+        'operator',
+        owner.id,
+      );
+      const operator = withTenantContext(
+        operatorUser,
+        organization.tenant_id,
+        'operator',
+      );
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/api-keys',
+        payload: createApiKeyPayload,
+        headers: authHeaders(owner),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/api-keys',
+        headers: authHeaders(operator),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data).toHaveLength(1);
+    });
+
+    it('should forbid viewer from listing API keys (403)', async () => {
+      const viewerUser = createTestUser('apikey-viewer');
+      await seedAppUser(viewerUser.id, viewerUser.email);
+      await seedOrganizationMember(
+        organization.id,
+        viewerUser.id,
+        'viewer',
+        owner.id,
+      );
+      const viewer = withTenantContext(
+        viewerUser,
+        organization.tenant_id,
+        'viewer',
+      );
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/api-keys',
+        headers: authHeaders(viewer),
+      });
+
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('should isolate API keys by tenant (200)', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/api-keys',
+        payload: createApiKeyPayload,
+        headers: authHeaders(owner),
+      });
+
+      const otherOwnerUser = createTestUser('apikey-other-owner');
+      await seedAppUser(otherOwnerUser.id, otherOwnerUser.email);
+      const otherOrganization = await seedOrganization(otherOwnerUser.id);
+      const otherOwner = withTenantContext(
+        otherOwnerUser,
+        otherOrganization.tenant_id,
+        'owner',
+      );
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/api-keys',
+        payload: {
+          ...createApiKeyPayload,
+          label: 'Other Tenant Key',
+          apiKey: 'sk-test-redacted',
+        },
+        headers: authHeaders(otherOwner),
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/api-keys',
+        headers: authHeaders(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data).toHaveLength(1);
+      expect(res.json().data[0].label).toBe('My OpenAI Key');
+    });
   });
 
   describe('PUT /api/v1/api-keys/:id/rotate', () => {
@@ -390,9 +505,15 @@ describe('API Key (E2E)', () => {
 
       expect(res.statusCode).toBe(200);
       const body = res.json();
-      expect(body.data.keyPreview).toBe('...9999');
+      expect(body.data.keyPreview).toBe('sk-...9999');
       expect(body.data.id).toBe(keyId);
       expect(body.data.status).toBe('active');
+      expect(body.data.rotatedAt).toBeTruthy();
+
+      const [dbRecord] = await sql`
+        SELECT rotated_at FROM api_keys WHERE id = ${keyId}
+      `;
+      expect(dbRecord.rotated_at).toBeTruthy();
     });
 
     it('should return 404 for non-existent key', async () => {
@@ -404,6 +525,31 @@ describe('API Key (E2E)', () => {
       });
 
       expect(res.statusCode).toBe(404);
+    });
+
+    it('should reject rotating a revoked key (410)', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/api-keys',
+        payload: createApiKeyPayload,
+        headers: authHeaders(owner),
+      });
+      const keyId = createRes.json().data.id;
+
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/api-keys/${keyId}`,
+        headers: authHeaders(owner),
+      });
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/api-keys/${keyId}/rotate`,
+        payload: { apiKey: 'sk-proj-retry5678' },
+        headers: authHeaders(owner),
+      });
+
+      expect(res.statusCode).toBe(410);
     });
   });
 
@@ -436,6 +582,9 @@ describe('API Key (E2E)', () => {
       expect(dbRecord.iv).toBeNull();
       expect(dbRecord.auth_tag).toBeNull();
       expect(dbRecord.status).toBe('revoked');
+      await expect(
+        decryptionBoundary.decryptApiKey(keyId, organization.tenant_id, 'api-key-e2e'),
+      ).rejects.toBeInstanceOf(ApiKeyRevokedException);
     });
 
     it('should return 404 for non-existent key', async () => {
@@ -475,7 +624,8 @@ describe('API Key (E2E)', () => {
         headers: authHeaders(owner),
       });
       expect(rotateRes.statusCode).toBe(200);
-      expect(rotateRes.json().data.keyPreview).toBe('...5678');
+      expect(rotateRes.json().data.keyPreview).toBe('sk-...5678');
+      expect(rotateRes.json().data.rotatedAt).toBeTruthy();
 
       const revokeRes = await app.inject({
         method: 'DELETE',

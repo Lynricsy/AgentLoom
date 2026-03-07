@@ -75,6 +75,7 @@ export const apiKeys = pgTable(
     authTag: bytea('auth_tag'),
     status: apiKeyStatusEnum('status').notNull().default('active'),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
