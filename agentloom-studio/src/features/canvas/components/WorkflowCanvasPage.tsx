@@ -3,29 +3,49 @@ import { useParams } from '@tanstack/react-router'
 import { useWorkflow } from '@/features/workflow'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
+import { FieldMappingPanel } from './panels/FieldMappingPanel'
 import { useAutoSave } from '../hooks/useAutoSave'
-import { useCanvasActions, useCanvasSaveStatus } from '../stores/canvasStore'
+import {
+  useCanvasActions,
+  useCanvasSaveStatus,
+  useCanvasStore,
+  useMappingPanelEdgeId,
+} from '../stores/canvasStore'
 
 export function WorkflowCanvasPage() {
   const { workflowId } = useParams({ from: '/workflows/$workflowId' })
-  const { applyServerSnapshot, reset } = useCanvasActions()
+  const currentWorkflowId = useCanvasStore((state) => state.workflowId)
+  const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
   const { isDirty, isSaving, lastSavedAt } = useCanvasSaveStatus()
+  const mappingPanelEdgeId = useMappingPanelEdgeId()
+
+  const mappingPanelEdge = useCanvasStore((s) =>
+    mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
+  )
+  const mappingSourceNode = useCanvasStore((s) =>
+    mappingPanelEdge ? s.nodes.find((n) => n.id === mappingPanelEdge.source) ?? null : null
+  )
+  const mappingTargetNode = useCanvasStore((s) =>
+    mappingPanelEdge ? s.nodes.find((n) => n.id === mappingPanelEdge.target) ?? null : null
+  )
 
   const { data: workflow, isLoading, error } = useWorkflow(workflowId)
 
   useAutoSave(workflowId)
 
   useEffect(() => {
-    if (workflow) {
-      applyServerSnapshot({
-        nodes: workflow.nodes ?? [],
-        edges: workflow.edges ?? [],
-        viewport: workflow.viewport ?? undefined,
-        workflowId: workflow.id,
-        version: workflow.version,
-      })
+    if (!workflow || workflow.id === currentWorkflowId) {
+      return
     }
-  }, [workflow, applyServerSnapshot])
+
+    applyServerSnapshot({
+      nodes: workflow.nodes ?? [],
+      edges: workflow.edges ?? [],
+      viewport: workflow.viewport ?? undefined,
+      workflowId: workflow.id,
+      version: workflow.version,
+    })
+  }, [workflow, currentWorkflowId, applyServerSnapshot])
 
   useEffect(() => {
     return () => {
@@ -64,6 +84,18 @@ export function WorkflowCanvasPage() {
           )}
         </div>
       </div>
+
+      {mappingPanelEdgeId && mappingPanelEdge && (
+        <FieldMappingPanel
+          open={!!mappingPanelEdgeId}
+          edgeId={mappingPanelEdgeId}
+          edge={mappingPanelEdge}
+          sourceNode={mappingSourceNode}
+          targetNode={mappingTargetNode}
+          onClose={closeFieldMapping}
+          onChange={updateFieldMapping}
+        />
+      )}
     </div>
   )
 }
