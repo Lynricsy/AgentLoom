@@ -41,6 +41,7 @@ export const TypedPort = memo(function TypedPort({
       data-testid={`port-${nodeId}-${port.id}-${port.direction}`}
       data-node-id={nodeId}
       data-port-id={port.id}
+      data-port-direction={port.direction}
       data-port-type={port.dataType}
       data-port-shape={meta.shape}
       data-port-state={resolvedState}

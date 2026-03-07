@@ -91,6 +91,23 @@ body {
 .typed-port-state--connected { background: var(--port-color) !important; }
 .typed-port-state--incompatible { border-color: var(--color-error) !important; }
 
+.typed-port--connect-source,
+.typed-port--connect-compatible {
+  background: color-mix(in srgb, var(--port-color) 55%, transparent) !important;
+  transform: translateY(-50%) scale(1.5) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-compat-l0) 24%, transparent);
+}
+
+.typed-port--connect-hover-compatible {
+  transform: translateY(-50%) scale(1.65) !important;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-compat-l0) 30%, transparent);
+}
+
+.typed-port--connect-hover-incompatible {
+  border-color: var(--color-compat-l3) !important;
+  background: color-mix(in srgb, var(--color-compat-l3) 28%, transparent) !important;
+}
+
 /* ─── SmartEdge ────────────────────────────────────────── */
 .smart-edge-path {
   fill: none;
@@ -107,6 +124,10 @@ body {
 .smart-edge-path--selected {
   stroke-width: 3;
   filter: drop-shadow(0 0 4px currentColor);
+}
+
+.smart-edge-path--hovered {
+  stroke-width: 3;
 }
 
 /* 交互区域（透明宽路径提升点击命中率） */
@@ -270,6 +291,11 @@ body {
   animation: halo-pulse 1.2s ease-in-out infinite;
 }
 
+.connection-overlay__halo--source {
+  stroke: color-mix(in srgb, var(--color-brand) 75%, white 12%);
+  opacity: 0.5;
+}
+
 .connection-overlay__halo--incompatible {
   stroke: var(--color-compat-l3);
   opacity: 0.3;
@@ -381,6 +407,13 @@ body {
   color: var(--color-error);
 }
 
+.mapping-panel__section-title {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
 /* 字段树 */
 .mapping-field {
   display: flex;
@@ -407,6 +440,11 @@ body {
 
 .mapping-field--mapped {
   color: var(--color-compat-l0);
+}
+
+.mapping-field--suggested {
+  background: color-mix(in srgb, var(--color-compat-l1) 12%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--color-compat-l1) 45%, transparent);
 }
 
 .mapping-field--required::after {

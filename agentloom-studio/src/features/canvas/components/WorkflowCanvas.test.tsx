@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../stores/canvasStore'
 import { createDefaultEdgeData } from '../types'
@@ -6,6 +6,57 @@ import type { CanvasNode, CanvasEdge } from '../types'
 import { WorkflowCanvas } from './WorkflowCanvas'
 
 let capturedProps: Record<string, unknown> = {}
+
+const compatibleNodes: CanvasNode[] = [
+  {
+    id: 'n-1',
+    type: 'agent',
+    position: { x: 0, y: 0 },
+    data: {
+      label: 'Source',
+      nodeType: 'llm-agent',
+      category: 'agent',
+      config: {},
+      inputPorts: [],
+      outputPorts: [
+        {
+          id: 'result',
+          label: 'Result',
+          direction: 'output',
+          dataType: 'text',
+          required: false,
+          multiple: false,
+          maxConnections: null,
+          schema: { kind: 'text' },
+        },
+      ],
+    },
+  },
+  {
+    id: 'n-2',
+    type: 'tool',
+    position: { x: 320, y: 0 },
+    data: {
+      label: 'Target',
+      nodeType: 'http-tool',
+      category: 'tool',
+      config: {},
+      inputPorts: [
+        {
+          id: 'input',
+          label: 'Input',
+          direction: 'input',
+          dataType: 'text',
+          required: true,
+          multiple: false,
+          maxConnections: null,
+          schema: { kind: 'text' },
+        },
+      ],
+      outputPorts: [],
+    },
+  },
+]
 
 vi.mock('@xyflow/react', () => {
   function MockReactFlow(props: Record<string, unknown>) {
@@ -80,6 +131,12 @@ describe('WorkflowCanvas', () => {
     expect(useCanvasStore.getState().selectedEdgeId).toBe('e-1')
   })
 
+  it('点击边时打开字段映射面板', () => {
+    render(<WorkflowCanvas />)
+    fireEvent.click(screen.getByTestId('trigger-edge-click'))
+    expect(useCanvasStore.getState().mappingPanelEdgeId).toBe('e-1')
+  })
+
   it('点击边时清除选中的节点', () => {
     useCanvasStore.setState({ selectedNodeId: 'n-1' })
     render(<WorkflowCanvas />)
@@ -110,5 +167,49 @@ describe('WorkflowCanvas', () => {
     expect(capturedProps.edges).toBeDefined()
     expect(Array.isArray(capturedProps.nodes)).toBe(true)
     expect(Array.isArray(capturedProps.edges)).toBe(true)
+  })
+
+  it('注册了连接生命周期处理器', () => {
+    render(<WorkflowCanvas />)
+    expect(typeof capturedProps.onConnect).toBe('function')
+    expect(typeof capturedProps.isValidConnection).toBe('function')
+    expect(typeof capturedProps.onConnectStart).toBe('function')
+    expect(typeof capturedProps.onConnectEnd).toBe('function')
+  })
+
+  it('onConnect 会持久化兼容连线', () => {
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: compatibleNodes,
+      edges: [],
+    }))
+
+    render(<WorkflowCanvas />)
+
+    const onConnect = capturedProps.onConnect as (connection: {
+      source: string
+      target: string
+      sourceHandle: string
+      targetHandle: string
+    }) => void
+
+    act(() => {
+      onConnect({
+        source: 'n-1',
+        target: 'n-2',
+        sourceHandle: 'result',
+        targetHandle: 'input',
+      })
+    })
+
+    const state = useCanvasStore.getState()
+    expect(state.edges).toHaveLength(1)
+    expect(state.edges[0]).toMatchObject({
+      type: 'smart',
+      source: 'n-1',
+      target: 'n-2',
+      sourceHandle: 'result',
+      targetHandle: 'input',
+    })
   })
 })

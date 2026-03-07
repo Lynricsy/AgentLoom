@@ -1,14 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { useUpdateWorkflow } from '@/features/workflow'
 import type { UpdateWorkflowPayload } from '@/features/workflow'
+import { useToast } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
 
 const AUTOSAVE_DEBOUNCE_MS = 500
+const AUTOSAVE_ERROR_MESSAGE = '自动保存失败，修改已保留在本地'
 
 export function useAutoSave(workflowId: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const changeRevisionRef = useRef(0)
   const { mutate: updateWorkflow } = useUpdateWorkflow(workflowId)
   const { markSaved, setIsSaving } = useCanvasStore((state) => state.actions)
+  const { notify } = useToast()
 
   useEffect(() => {
     if (!workflowId) return
@@ -34,6 +38,9 @@ export function useAutoSave(workflowId: string) {
           return
         }
 
+        changeRevisionRef.current += 1
+        const scheduledRevision = changeRevisionRef.current
+
         if (timerRef.current) {
           clearTimeout(timerRef.current)
         }
@@ -51,11 +58,23 @@ export function useAutoSave(workflowId: string) {
 
           updateWorkflow(payload, {
             onSuccess: (data) => {
+              if (scheduledRevision !== changeRevisionRef.current) {
+                return
+              }
+
               markSaved(data.version)
             },
             onError: () => {
+              if (scheduledRevision !== changeRevisionRef.current) {
+                return
+              }
+
               setIsSaving(false)
-              console.error('[AutoSave] 保存失败，本地草稿已保留')
+              notify({
+                title: '自动保存失败',
+                description: AUTOSAVE_ERROR_MESSAGE,
+                variant: 'error',
+              })
             },
           })
         }, AUTOSAVE_DEBOUNCE_MS)
@@ -67,7 +86,7 @@ export function useAutoSave(workflowId: string) {
       unsubscribe()
       if (timerRef.current) {
         clearTimeout(timerRef.current)
+        }
       }
-    }
-  }, [workflowId, updateWorkflow, markSaved, setIsSaving])
+    }, [workflowId, updateWorkflow, markSaved, notify, setIsSaving])
 }

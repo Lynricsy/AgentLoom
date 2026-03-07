@@ -161,6 +161,7 @@ describe('FieldMappingPanel', () => {
     expect(screen.getByTestId('mapping-field-out-text')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-field-out-obj.name')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-field-out-obj.age')).toBeInTheDocument()
+    expect(screen.getByTestId('mapping-source-summary')).toHaveTextContent('源: Node src (3)')
   })
 
   it('flattens target input ports into field buttons', () => {
@@ -168,6 +169,32 @@ describe('FieldMappingPanel', () => {
     expect(screen.getByTestId('mapping-field-in-text')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-field-in-obj.name')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-field-in-obj.age')).toBeInTheDocument()
+    expect(screen.getByTestId('mapping-target-summary')).toHaveTextContent('目标: Node tgt (3)')
+  })
+
+  it('highlights suggested fields from auto recommendations', () => {
+    render(
+      <FieldMappingPanel
+        {...defaultProps}
+        edge={makeEdge({
+          candidateMappings: [
+            {
+              sourcePath: 'out-obj.name',
+              targetPath: 'in-obj.name',
+              confidence: 0.92,
+              autoRecommended: true,
+            },
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByTestId('mapping-field-out-obj.name').className).toContain(
+      'mapping-field--suggested'
+    )
+    expect(screen.getByTestId('mapping-field-in-obj.name').className).toContain(
+      'mapping-field--suggested'
+    )
   })
 
   it('creates mapping via click-click', () => {

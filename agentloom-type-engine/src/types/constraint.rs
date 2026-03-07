@@ -1,16 +1,15 @@
 use serde::{Deserialize, Serialize};
-
-use super::port_data_type::PortDataType;
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub enum TypeConstraint {
-    #[serde(rename_all = "camelCase")]
-    RequiredKind { kind: PortDataType },
-    #[serde(rename_all = "camelCase")]
-    RequiredField { field_name: String },
-    #[serde(rename_all = "camelCase")]
-    RequiredShape { shape: String },
+    MinLength { min: usize },
+    MaxLength { max: usize },
+    Pattern { regex: String },
+    Enum { values: Vec<String> },
+    Range { min: Option<f64>, max: Option<f64> },
+    Custom { name: String, config: Value },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

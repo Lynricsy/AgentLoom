@@ -26,17 +26,28 @@ export interface FieldMappingPanelProps {
   onChange: (edgeId: string, mappings: FieldMapping[]) => void
 }
 
-function flattenSchema(prefix: string, schema: TypeSchema): FlatField[] {
+function flattenSchema(prefix: string, schema: TypeSchema, required = false): FlatField[] {
   if (schema.kind === 'json' && schema.shape === 'object') {
     const requiredProps = schema.required ?? []
-    return Object.entries(schema.properties).map(([propName, propSchema]) => ({
-      path: `${prefix}.${propName}`,
-      label: propSchema.title ?? propName,
-      dataType: propSchema.kind,
-      required: requiredProps.includes(propName),
-    }))
+    return Object.entries(schema.properties).flatMap(([propName, propSchema]) =>
+      flattenSchema(
+        `${prefix}.${propName}`,
+        propSchema,
+        requiredProps.includes(propName),
+      )
+    )
   }
-  return []
+
+  const fallbackLabel = prefix.split('.').at(-1) ?? prefix
+
+  return [
+    {
+      path: prefix,
+      label: schema.title ?? fallbackLabel,
+      dataType: schema.kind,
+      required,
+    },
+  ]
 }
 
 function flattenPortFields(ports: PortDefinition[]): FlatField[] {
@@ -93,6 +104,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
     [mappings]
   )
 
+  const visibleCandidates = useMemo(
+    () => candidates.filter((candidate) => !mappedTargets.has(candidate.targetPath)),
+    [candidates, mappedTargets]
+  )
+
   const targetToSource = useMemo(() => {
     const map = new Map<string, string>()
     for (const m of mappings) {
@@ -104,6 +120,26 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   const requiredUnmappedCount = useMemo(
     () => targetFields.filter((f) => f.required && !mappedTargets.has(f.path)).length,
     [targetFields, mappedTargets]
+  )
+
+  const suggestedTargetFields = useMemo(
+    () =>
+      new Set(
+        visibleCandidates
+          .filter((candidate) => candidate.autoRecommended)
+          .map((candidate) => candidate.targetPath)
+      ),
+    [visibleCandidates]
+  )
+
+  const suggestedSourceFields = useMemo(
+    () =>
+      new Set(
+        visibleCandidates
+          .filter((candidate) => candidate.autoRecommended)
+          .map((candidate) => candidate.sourcePath)
+      ),
+    [visibleCandidates]
   )
 
   const createMapping = useCallback(
@@ -245,11 +281,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         )}
       </div>
 
-      {!isReadonly && candidates.length > 0 && (
+      {!isReadonly && visibleCandidates.length > 0 && (
         <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
           <div className="flex items-center justify-between px-2 py-1">
             <span className="text-xs text-muted">
-              {candidates.length} 个推荐映射
+              {visibleCandidates.length} 个推荐映射
             </span>
             <button
               type="button"
@@ -260,9 +296,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
               全部接受
             </button>
           </div>
-          {candidates
-            .filter((c) => !mappedTargets.has(c.targetPath))
-            .map((c) => (
+          {visibleCandidates.map((c) => (
               <div
                 key={`candidate-${c.targetPath}`}
                 className="mapping-line mapping-line--auto"
@@ -288,8 +322,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         <div className="mapping-panel__body">
           <div className="flex gap-2">
             <div className="flex-1 min-w-0">
-              <div className="px-2 py-1 text-xs font-medium text-muted">
-                源: {sourceNode?.data.label ?? '—'}
+              <div
+                className="mapping-panel__section-title"
+                data-testid="mapping-source-summary"
+              >
+                源: {sourceNode?.data.label ?? '—'} ({sourceFields.length})
               </div>
               {sourceFields.map((field) => (
                 <button
@@ -297,10 +334,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
                   type="button"
                   className={[
                     'mapping-field',
-                    selectedSource === field.path ? 'mapping-field--selected' : '',
-                    mappedSources.has(field.path) ? 'mapping-field--mapped' : '',
-                    field.required ? 'mapping-field--required' : '',
-                    dragSource === field.path ? 'mapping-field--selected' : '',
+                     selectedSource === field.path ? 'mapping-field--selected' : '',
+                     mappedSources.has(field.path) ? 'mapping-field--mapped' : '',
+                     suggestedSourceFields.has(field.path) ? 'mapping-field--suggested' : '',
+                     field.required ? 'mapping-field--required' : '',
+                     dragSource === field.path ? 'mapping-field--selected' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -318,8 +356,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="px-2 py-1 text-xs font-medium text-muted">
-                目标: {targetNode?.data.label ?? '—'}
+              <div
+                className="mapping-panel__section-title"
+                data-testid="mapping-target-summary"
+              >
+                目标: {targetNode?.data.label ?? '—'} ({targetFields.length})
               </div>
               {targetFields.map((field) => {
                 const sourceForThis = targetToSource.get(field.path)
@@ -328,10 +369,13 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
                     <button
                       type="button"
                       className={[
-                        'mapping-field',
-                        'flex-1',
-                        mappedTargets.has(field.path) ? 'mapping-field--mapped' : '',
-                        field.required ? 'mapping-field--required' : '',
+                         'mapping-field',
+                         'flex-1',
+                         mappedTargets.has(field.path) ? 'mapping-field--mapped' : '',
+                         suggestedTargetFields.has(field.path)
+                           ? 'mapping-field--suggested'
+                           : '',
+                         field.required ? 'mapping-field--required' : '',
                       ]
                         .filter(Boolean)
                         .join(' ')}

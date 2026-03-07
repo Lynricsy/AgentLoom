@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import type { AddNodeInput, CanvasEdge, CanvasEdgeData, CanvasNode } from '../types'
+import type { AddNodeInput, CanvasEdge, CanvasNode } from '../types'
 import { createDefaultEdgeData } from '../types'
 import { clonePortDefinitions } from '../types/nodeTypeRegistry'
 import { useCanvasStore } from './canvasStore'
@@ -417,5 +417,69 @@ describe('canvasStore', () => {
     expect(state.edges).toHaveLength(0)
     expect(state.selectedEdgeId).toBeNull()
     expect(state.mappingPanelEdgeId).toBeNull()
+  })
+
+  it('creates smart connections once and ignores exact duplicates', () => {
+    const sourceNode = createNode({
+      id: 'src',
+      data: {
+        ...createNode().data,
+        inputPorts: [],
+        outputPorts: clonePortDefinitions(customOutputPorts),
+      },
+    })
+    const targetNode = createNode({
+      id: 'tgt',
+      data: {
+        ...createNode().data,
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: [],
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [sourceNode, targetNode],
+      edges: [],
+      viewport: undefined,
+      version: 1,
+    })
+
+    const edgeData = {
+      ...createDefaultEdgeData(),
+      rawCompatibilityLevel: 'PARTIAL' as const,
+      visualLevel: 'L1' as const,
+    }
+
+    useCanvasStore.getState().actions.createConnection(
+      {
+        source: 'src',
+        target: 'tgt',
+        sourceHandle: 'result',
+        targetHandle: 'input',
+      },
+      edgeData
+    )
+    useCanvasStore.getState().actions.createConnection(
+      {
+        source: 'src',
+        target: 'tgt',
+        sourceHandle: 'result',
+        targetHandle: 'input',
+      },
+      edgeData
+    )
+
+    const state = useCanvasStore.getState()
+    expect(state.edges).toHaveLength(1)
+    expect(state.edges[0]).toMatchObject({
+      type: 'smart',
+      source: 'src',
+      target: 'tgt',
+      sourceHandle: 'result',
+      targetHandle: 'input',
+      data: edgeData,
+    })
+    expect(state.isDirty).toBe(true)
   })
 })

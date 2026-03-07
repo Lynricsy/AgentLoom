@@ -10,9 +10,9 @@ import { useCanvasActions } from '../../stores/canvasStore'
 import { createDefaultEdgeData, type CanvasEdge, type VisualCompatibilityLevel } from '../../types'
 
 const LEVEL_LABELS: Record<VisualCompatibilityLevel, string> = {
-  L0: '精确匹配',
-  L1: '需要转换',
-  checking: '检查中…',
+  L0: 'L0 精确匹配',
+  L1: 'L1 需要转换',
+  checking: '检查中...',
   error: '不兼容',
 }
 
@@ -107,18 +107,10 @@ export const SmartEdge = memo(function SmartEdge({
         <path id={pathId} d={edgePath} />
       </defs>
 
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- SVG hit area for hover detection */}
-      <path
-        d={edgePath}
-        className="smart-edge-interaction"
-        data-testid={`edge-${source}-${target}`}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      />
-
       <BaseEdge
         id={id}
         path={edgePath}
+        interactionWidth={16}
         markerEnd={markerEnd}
         className={[
           'smart-edge-path',
@@ -128,6 +120,9 @@ export const SmartEdge = memo(function SmartEdge({
         ]
           .filter(Boolean)
           .join(' ')}
+        data-testid={`edge-${source}-${target}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       />
 
       {showParticles && (
@@ -154,7 +149,7 @@ export const SmartEdge = memo(function SmartEdge({
       <EdgeLabelRenderer>
         <div
           role="toolbar"
-          className={`edge-badge${badgeVisible ? ' edge-badge--visible' : ''}`}
+          className={`edge-badge nodrag nopan${badgeVisible ? ' edge-badge--visible' : ''}`}
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,

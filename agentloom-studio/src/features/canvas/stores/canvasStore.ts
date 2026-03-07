@@ -7,6 +7,7 @@ import {
   applyEdgeChanges,
   type NodeChange,
   type EdgeChange,
+  type Connection,
   type Viewport,
 } from '@xyflow/react'
 import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping } from '../types'
@@ -35,6 +36,7 @@ interface CanvasActions {
   actions: {
     onNodesChange: (changes: NodeChange<CanvasNode>[]) => void
     onEdgesChange: (changes: EdgeChange<CanvasEdge>[]) => void
+    createConnection: (connection: Connection, edgeData: CanvasEdgeData) => void
     addNode: (input: AddNodeInput) => void
     deleteSelectedNode: () => void
     selectNode: (nodeId: string | null) => void
@@ -66,6 +68,14 @@ function createInitialState(): CanvasState {
     workflowId: null,
     version: 1,
   }
+}
+
+function createEdgeId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export const useCanvasStore = create<CanvasState & CanvasActions>()(
@@ -114,6 +124,36 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   state.mappingPanelEdgeId = null
                 }
               }
+            }),
+
+          createConnection: (connection, edgeData) =>
+            set((state) => {
+              if (!connection.source || !connection.target) {
+                return
+              }
+
+              const duplicateEdge = state.edges.some(
+                (edge) =>
+                  edge.source === connection.source &&
+                  edge.target === connection.target &&
+                  edge.sourceHandle === connection.sourceHandle &&
+                  edge.targetHandle === connection.targetHandle
+              )
+
+              if (duplicateEdge) {
+                return
+              }
+
+              state.edges.push({
+                id: createEdgeId(),
+                type: 'smart',
+                source: connection.source,
+                target: connection.target,
+                sourceHandle: connection.sourceHandle ?? undefined,
+                targetHandle: connection.targetHandle ?? undefined,
+                data: edgeData,
+              })
+              state.isDirty = true
             }),
 
           addNode: (input) =>

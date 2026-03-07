@@ -19,11 +19,20 @@ vi.mock('@xyflow/react', () => ({
     id,
     path,
     className,
+    ...rest
   }: {
     id?: string
     path?: string
     className?: string
-  }) => <path data-testid={`base-edge-${id}`} d={path} className={className} />,
+    [key: string]: unknown
+  }) => (
+    <path
+      data-testid={`base-edge-${id}`}
+      d={path}
+      className={className}
+      {...rest}
+    />
+  ),
   EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="edge-label-renderer">{children}</div>
   ),
@@ -59,10 +68,8 @@ describe('SmartEdge', () => {
   it('renders edge with default L0 visual level', () => {
     render(<SmartEdge {...baseProps} />)
 
-    const interactionPath = screen.getByTestId('edge-node-a-node-b')
-    expect(interactionPath).toBeInTheDocument()
-
-    const basePath = screen.getByTestId('base-edge-edge-1')
+    const basePath = screen.getByTestId('edge-node-a-node-b')
+    expect(basePath).toBeInTheDocument()
     expect(basePath.className).toContain('smart-edge-path--l0')
     expect(basePath.className).not.toContain('smart-edge-path--selected')
   })
@@ -70,7 +77,7 @@ describe('SmartEdge', () => {
   it('applies selected class when selected', () => {
     render(<SmartEdge {...baseProps} selected />)
 
-    const basePath = screen.getByTestId('base-edge-edge-1')
+    const basePath = screen.getByTestId('edge-node-a-node-b')
     expect(basePath.className).toContain('smart-edge-path--selected')
   })
 
@@ -178,11 +185,11 @@ describe('SmartEdge', () => {
     }
     render(<SmartEdge {...baseProps} data={checkingData} />)
 
-    const basePath = screen.getByTestId('base-edge-edge-1')
+    const basePath = screen.getByTestId('edge-node-a-node-b')
     expect(basePath.className).toContain('smart-edge-path--checking')
 
     const badge = screen.getByTestId('edge-badge-edge-1')
-    expect(badge.textContent).toContain('检查中…')
+    expect(badge.textContent).toContain('检查中...')
   })
 
   it('badge becomes visible on hover', () => {

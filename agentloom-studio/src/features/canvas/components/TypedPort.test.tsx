@@ -11,10 +11,11 @@ const { useNodeConnectionsMock } = vi.hoisted(() => ({
 vi.mock('@xyflow/react', () => ({
   Handle: ({
     className,
-    'data-testid': dataTestId,
-    'data-node-id': dataNodeId,
-    'data-port-id': dataPortId,
-    'data-port-type': dataPortType,
+      'data-testid': dataTestId,
+      'data-node-id': dataNodeId,
+      'data-port-id': dataPortId,
+      'data-port-direction': dataPortDirection,
+      'data-port-type': dataPortType,
     'data-port-shape': dataPortShape,
     'data-port-state': dataPortState,
     'aria-label': ariaLabel,
@@ -23,6 +24,7 @@ vi.mock('@xyflow/react', () => ({
     'data-testid'?: string
     'data-node-id'?: string
     'data-port-id'?: string
+    'data-port-direction'?: string
     'data-port-type'?: string
     'data-port-shape'?: string
     'data-port-state'?: string
@@ -31,10 +33,11 @@ vi.mock('@xyflow/react', () => ({
     <button
       type="button"
       className={className}
-      data-testid={dataTestId}
-      data-node-id={dataNodeId}
-      data-port-id={dataPortId}
-      data-port-type={dataPortType}
+          data-testid={dataTestId}
+          data-node-id={dataNodeId}
+          data-port-id={dataPortId}
+          data-port-direction={dataPortDirection}
+          data-port-type={dataPortType}
       data-port-shape={dataPortShape}
       data-port-state={dataPortState}
       aria-label={ariaLabel}
@@ -104,6 +107,7 @@ describe('TypedPort', () => {
 
     expect(handle).toHaveAttribute('data-node-id', 'node-1')
     expect(handle).toHaveAttribute('data-port-id', 'prompt')
+    expect(handle).toHaveAttribute('data-port-direction', 'input')
     expect(handle).toHaveAttribute('data-port-type', 'text')
     expect(handle).toHaveAttribute('data-port-shape', 'circle')
     expect(handle).toHaveAttribute('data-port-state', 'idle')

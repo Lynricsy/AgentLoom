@@ -42,10 +42,10 @@ describe('CompatibilityPreview', () => {
     expect(el.style.top).toBe('88px');
   });
 
-  it('shows "完全匹配" for L0', () => {
+  it('shows "L0 · 完全匹配" for L0', () => {
     render(<CompatibilityPreview {...createProps({ visualLevel: 'L0' })} />);
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '完全匹配',
+      'L0 · 完全匹配',
     );
   });
 
@@ -63,7 +63,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '已匹配 3/5 个必填字段 — 2 个未映射',
+      'L1 · 3/5 字段自动匹配，2 个待确认',
     );
   });
 
@@ -81,7 +81,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '已匹配 4/4 个必填字段',
+      'L1 · 4/4 字段自动匹配，0 个待确认',
     );
   });
 
@@ -96,7 +96,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Type coercion available',
+      'L1 · Type coercion available',
     );
   });
 
@@ -111,18 +111,18 @@ describe('CompatibilityPreview', () => {
     );
   });
 
-  it('shows "正在检查兼容性…" for checking', () => {
+  it('shows "检查中..." for checking', () => {
     render(
       <CompatibilityPreview
         {...createProps({ visualLevel: 'checking' })}
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '正在检查兼容性…',
+      '检查中...',
     );
   });
 
-  it('shows reasonKey for error level', () => {
+  it('shows formatted reasonKey for error level', () => {
     render(
       <CompatibilityPreview
         {...createProps({
@@ -132,7 +132,7 @@ describe('CompatibilityPreview', () => {
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      'Schema mismatch at root.name',
+      '不兼容: Schema mismatch at root.name',
     );
   });
 
