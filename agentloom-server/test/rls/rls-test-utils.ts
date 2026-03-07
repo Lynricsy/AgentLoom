@@ -97,6 +97,7 @@ export async function createRlsTestContext(): Promise<RlsTestContext> {
 }
 
 export async function cleanupTables(sqlClient: TestSql) {
+  await sqlClient`DELETE FROM "workflow_definitions"`;
   await sqlClient`DELETE FROM "organization_invitations"`;
   await sqlClient`DELETE FROM "organization_members"`;
   await sqlClient`DELETE FROM "organizations"`;
@@ -211,6 +212,49 @@ export async function seedInvitation(
   `;
 
   return invitation;
+}
+
+export async function seedWorkflowDefinition(
+  sqlClient: TestSql,
+  options: {
+    id: string;
+    tenantId: string;
+    name: string;
+    slug: string;
+    createdBy: string;
+    updatedBy: string;
+    description?: string;
+    nodes?: unknown[];
+    edges?: unknown[];
+    viewport?: Record<string, unknown>;
+    version?: number;
+    status?: string;
+  },
+) {
+  const [row] = await sqlClient`
+    INSERT INTO workflow_definitions (
+      id, tenant_id, name, slug, description,
+      nodes, edges, viewport,
+      version, status, created_by, updated_by
+    )
+    VALUES (
+      ${options.id}::uuid,
+      ${options.tenantId}::uuid,
+      ${options.name},
+      ${options.slug},
+      ${options.description ?? null},
+      ${sqlClient.json(options.nodes ?? [])},
+      ${sqlClient.json(options.edges ?? [])},
+      ${options.viewport ? sqlClient.json(options.viewport) : null},
+      ${options.version ?? 1},
+      ${options.status ?? 'draft'}::workflow_status_enum,
+      ${options.createdBy}::uuid,
+      ${options.updatedBy}::uuid
+    )
+    RETURNING *
+  `;
+
+  return row;
 }
 
 export function getErrorText(error: unknown) {
