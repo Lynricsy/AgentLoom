@@ -92,6 +92,20 @@
       "when": 1772930384855,
       "tag": "0012_add-llm-model-configs",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1772952000000,
+      "tag": "0013_add-api-key-defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1772952571703,
+      "tag": "0014_mcp-server-configs-and-tool-definitions",
+      "breakpoints": true
     }
   ]
 }
