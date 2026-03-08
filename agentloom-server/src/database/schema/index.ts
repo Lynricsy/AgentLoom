@@ -68,6 +68,11 @@ export {
   type Document,
   type NewDocument,
 } from './knowledge-bases.schema';
+export {
+  documentChunks,
+  type DocumentChunkRow,
+  type NewDocumentChunk,
+} from './document-chunks.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,

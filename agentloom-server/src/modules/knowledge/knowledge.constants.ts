@@ -25,3 +25,6 @@ export const EXTENSION_MIME_MAP: Record<string, SupportedMimeType> = {
 };
 
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+export const DEFAULT_CHUNK_MAX_TOKENS = 512;
+export const DEFAULT_CHUNK_OVERLAP_TOKENS = 64;

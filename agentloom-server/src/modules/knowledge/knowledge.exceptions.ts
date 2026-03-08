@@ -44,3 +44,25 @@ export class EmptyFileException extends DomainException {
     });
   }
 }
+
+export class DocumentParseException extends DomainException {
+  constructor(fileName: string, reason: string) {
+    super({
+      type: 'document/parse-failed',
+      title: '文档解析失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `文件 "${fileName}" 解析失败: ${reason}`,
+    });
+  }
+}
+
+export class DocumentChunkException extends DomainException {
+  constructor(documentId: string, reason: string) {
+    super({
+      type: 'document/chunk-failed',
+      title: '文档分块失败',
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      detail: `文档 ${documentId} 分块失败: ${reason}`,
+    });
+  }
+}
