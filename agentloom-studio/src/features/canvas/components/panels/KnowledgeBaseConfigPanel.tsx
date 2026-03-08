@@ -17,7 +17,8 @@ export const KnowledgeBaseConfigPanel = memo(
     config,
     onApply,
   }: KnowledgeBaseConfigPanelProps) {
-    const { data: knowledgeBases = [], isLoading } = useKnowledgeBases()
+    const { data, isLoading } = useKnowledgeBases({ page: 1, pageSize: 100 })
+    const knowledgeBases = data?.data ?? []
 
     const currentId = isKnowledgeBaseConfigured(config)
       ? config.knowledgeBaseId

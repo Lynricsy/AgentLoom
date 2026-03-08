@@ -7,18 +7,23 @@ import {
   fetchDocuments,
   fetchKnowledgeBase,
   fetchKnowledgeBases,
+  updateKnowledgeBaseSettings,
   uploadDocument,
 } from '../api/knowledgeBaseApi';
 import { knowledgeBaseKeys } from '../api/knowledgeBaseKeys';
 import type {
   CreateKnowledgeBaseInput,
   DocumentListParams,
+  UpdateKnowledgeBaseSettingsInput,
 } from '../types';
 
-export function useKnowledgeBases() {
+export function useKnowledgeBases(params?: {
+  page?: number;
+  pageSize?: number;
+}) {
   return useQuery({
-    queryKey: knowledgeBaseKeys.lists(),
-    queryFn: fetchKnowledgeBases,
+    queryKey: knowledgeBaseKeys.list(params ? { ...params } : undefined),
+    queryFn: () => fetchKnowledgeBases(params),
   });
 }
 
@@ -70,6 +75,30 @@ export function useDeleteKnowledgeBase() {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: knowledgeBaseKeys.all,
+      });
+    },
+  });
+}
+
+export function useUpdateKnowledgeBaseSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['update-knowledge-base-settings'],
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: UpdateKnowledgeBaseSettingsInput;
+    }) => updateKnowledgeBaseSettings(id, input),
+    gcTime: 0,
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.detail(variables.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.lists(),
       });
     },
   });

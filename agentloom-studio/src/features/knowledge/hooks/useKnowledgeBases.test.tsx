@@ -10,12 +10,14 @@ import {
   useDocuments,
   useKnowledgeBase,
   useKnowledgeBases,
+  useUpdateKnowledgeBaseSettings,
   useUploadDocument,
 } from './useKnowledgeBases'
 
-const { getMock, postMock, deleteMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  patchMock: vi.fn(),
   deleteMock: vi.fn(),
 }))
 
@@ -23,6 +25,7 @@ vi.mock('@/shared/api/client', () => ({
   apiClient: {
     get: getMock,
     post: postMock,
+    patch: patchMock,
     delete: deleteMock,
   },
   toSnakeBody: (input: unknown) => input,
@@ -35,6 +38,9 @@ const mockKnowledgeBase: KnowledgeBase = {
   description: 'Test knowledge base',
   visibility: 'private',
   createdBy: 'user-1',
+  chunkSize: 512,
+  chunkOverlap: 64,
+  embeddingModel: 'text-embedding-3-small',
   documentCount: 0,
   chunkCount: 0,
   status: 'empty',
@@ -76,13 +82,24 @@ describe('useKnowledgeBases', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
+    patchMock.mockReset()
     deleteMock.mockReset()
   })
 
   describe('useKnowledgeBases', () => {
     it('fetches knowledge bases list', async () => {
+      const response = {
+        data: [mockKnowledgeBase],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      }
+
       getMock.mockReturnValue({
-        json: vi.fn().mockResolvedValue({ data: [mockKnowledgeBase] }),
+        json: vi.fn().mockResolvedValue(response),
       })
 
       const queryClient = createQueryClient()
@@ -92,8 +109,38 @@ describe('useKnowledgeBases', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      expect(getMock).toHaveBeenCalledWith('knowledge-bases')
-      expect(result.current.data).toEqual([mockKnowledgeBase])
+      expect(getMock).toHaveBeenCalledWith('knowledge-bases', {
+        searchParams: {},
+      })
+      expect(result.current.data).toEqual(response)
+    })
+
+    it('passes pagination params to list query', async () => {
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          data: [mockKnowledgeBase],
+          meta: {
+            page: 2,
+            pageSize: 10,
+            total: 11,
+            totalPages: 2,
+          },
+        }),
+      })
+
+      const queryClient = createQueryClient()
+      const { result } = renderHook(
+        () => useKnowledgeBases({ page: 2, pageSize: 10 }),
+        {
+          wrapper: createWrapper(queryClient),
+        },
+      )
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      expect(getMock).toHaveBeenCalledWith('knowledge-bases', {
+        searchParams: { page: '2', page_size: '10' },
+      })
     })
   })
 
@@ -127,8 +174,18 @@ describe('useKnowledgeBases', () => {
 
   describe('useDocuments', () => {
     it('fetches documents for a knowledge base', async () => {
+      const response = {
+        data: [mockDocument],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      }
+
       getMock.mockReturnValue({
-        json: vi.fn().mockResolvedValue({ data: [mockDocument], total: 1 }),
+        json: vi.fn().mockResolvedValue(response),
       })
 
       const queryClient = createQueryClient()
@@ -141,7 +198,7 @@ describe('useKnowledgeBases', () => {
       expect(getMock).toHaveBeenCalledWith('knowledge-bases/kb-1/documents', {
         searchParams: {},
       })
-      expect(result.current.data).toEqual({ data: [mockDocument], total: 1 })
+      expect(result.current.data).toEqual(response)
     })
 
     it('is disabled when knowledgeBaseId is null', () => {
@@ -203,6 +260,53 @@ describe('useKnowledgeBases', () => {
       )
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ['knowledge-bases', 'detail', 'kb-1', 'documents'] }),
+      )
+    })
+  })
+
+  describe('useUpdateKnowledgeBaseSettings', () => {
+    it('updates settings and invalidates detail/list queries on success', async () => {
+      patchMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({ data: mockKnowledgeBase }),
+      })
+
+      const queryClient = createQueryClient()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      const { result } = renderHook(() => useUpdateKnowledgeBaseSettings(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      result.current.mutate({
+        id: 'kb-1',
+        input: {
+          chunkSize: 1024,
+          chunkOverlap: 128,
+          embeddingModel: 'text-embedding-3-large',
+        },
+      })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      expect(patchMock).toHaveBeenCalledWith(
+        'knowledge-bases/kb-1/settings',
+        expect.objectContaining({
+          json: {
+            chunkSize: 1024,
+            chunkOverlap: 128,
+            embeddingModel: 'text-embedding-3-large',
+          },
+        }),
+      )
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ['knowledge-bases', 'detail', 'kb-1'],
+        }),
+      )
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ['knowledge-bases', 'list'],
+        }),
       )
     })
   })

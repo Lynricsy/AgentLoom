@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { KnowledgeBaseDetailPage } from './KnowledgeBaseDetailPage'
@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   useDocuments: vi.fn(),
   useUploadDocument: vi.fn(),
   useDeleteDocument: vi.fn(),
+  useUpdateKnowledgeBaseSettings: vi.fn(),
+  useKnowledgeBaseSocket: vi.fn(),
+  notify: vi.fn(),
   navigate: vi.fn(),
 }))
 
@@ -19,10 +22,19 @@ vi.mock('../hooks/useKnowledgeBases', () => ({
   useDocuments: mocks.useDocuments,
   useUploadDocument: mocks.useUploadDocument,
   useDeleteDocument: mocks.useDeleteDocument,
+  useUpdateKnowledgeBaseSettings: mocks.useUpdateKnowledgeBaseSettings,
+}))
+
+vi.mock('../hooks/useKnowledgeBaseSocket', () => ({
+  useKnowledgeBaseSocket: mocks.useKnowledgeBaseSocket,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+}))
+
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: mocks.notify }),
 }))
 
 // --- Test data factories ---
@@ -35,6 +47,9 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '这是一个测试知识库',
     visibility: 'private' as const,
     createdBy: 'user-1',
+    chunkSize: 512,
+    chunkOverlap: 64,
+    embeddingModel: 'text-embedding-3-small',
     documentCount: 0,
     chunkCount: 0,
     status: 'empty',
@@ -82,6 +97,7 @@ function setupMocks(overrides: {
 
   const uploadFn = vi.fn()
   const deleteFn = vi.fn()
+  const updateSettingsFn = vi.fn().mockResolvedValue(knowledgeBase)
 
   mocks.useKnowledgeBase.mockReturnValue({
     data: knowledgeBase,
@@ -107,8 +123,13 @@ function setupMocks(overrides: {
   mocks.useDeleteDocument.mockReturnValue({
     mutate: deleteFn,
   })
+  mocks.useUpdateKnowledgeBaseSettings.mockReturnValue({
+    mutateAsync: updateSettingsFn,
+    isPending: false,
+  })
+  mocks.useKnowledgeBaseSocket.mockReturnValue(undefined)
 
-  return { uploadFn, deleteFn }
+  return { uploadFn, deleteFn, updateSettingsFn }
 }
 
 // --- Tests ---
@@ -117,6 +138,22 @@ describe('KnowledgeBaseDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('confirm', vi.fn(() => true))
+  })
+
+  it('显示知识库实时设置', () => {
+    setupMocks({
+      knowledgeBase: createKnowledgeBase({
+        chunkSize: 1024,
+        chunkOverlap: 128,
+        embeddingModel: 'text-embedding-3-large',
+      }),
+    })
+
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    expect(screen.getAllByText('1024')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('128')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('text-embedding-3-large')[0]).toBeInTheDocument()
   })
 
   it('显示加载状态', () => {
@@ -264,6 +301,43 @@ describe('KnowledgeBaseDetailPage', () => {
       knowledgeBaseId: 'kb-1',
       documentId: 'doc-del',
     })
+  })
+
+  it('保存设置时调用 mutation 并提示成功', async () => {
+    const { updateSettingsFn } = setupMocks()
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    const chunkSizeInput = screen.getByLabelText('分块大小')
+    const chunkOverlapInput = screen.getByLabelText('分块重叠')
+    const embeddingModelInput = screen.getByLabelText('Embedding 模型')
+
+    await userEvent.clear(chunkSizeInput)
+    await userEvent.type(chunkSizeInput, '1024')
+    await userEvent.clear(chunkOverlapInput)
+    await userEvent.type(chunkOverlapInput, '128')
+    await userEvent.clear(embeddingModelInput)
+    await userEvent.type(embeddingModelInput, 'text-embedding-3-large')
+
+    await userEvent.click(screen.getByRole('button', { name: '保存设置' }))
+
+    await waitFor(() =>
+      expect(updateSettingsFn).toHaveBeenCalledWith({
+        id: 'kb-1',
+        input: {
+          chunkSize: 1024,
+          chunkOverlap: 128,
+          embeddingModel: 'text-embedding-3-large',
+        },
+      }),
+    )
+    await waitFor(() =>
+      expect(mocks.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: '知识库设置已保存',
+          variant: 'success',
+        }),
+      ),
+    )
   })
 
   it('拖拽悬停时显示高亮', () => {

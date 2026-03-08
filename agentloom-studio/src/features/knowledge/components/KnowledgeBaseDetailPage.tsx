@@ -1,24 +1,51 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Upload, Trash2, FileText } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { ArrowLeft, FileText, Trash2, Upload } from 'lucide-react'
+import { z } from 'zod'
+import { Pagination } from '@/shared/components'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { useToast } from '@/shared/ui/toast'
 import {
-  useKnowledgeBase,
-  useDocuments,
-  useUploadDocument,
   useDeleteDocument,
+  useDocuments,
+  useKnowledgeBase,
+  useUpdateKnowledgeBaseSettings,
+  useUploadDocument,
 } from '../hooks/useKnowledgeBases'
+import { useKnowledgeBaseSocket } from '../hooks/useKnowledgeBaseSocket'
 import {
+  formatFileSize,
   getDocumentStatusLabel,
   getKnowledgeBaseStatusLabel,
-  formatFileSize,
-  type KnowledgeBaseStatus,
   type KnowledgeBaseDocument,
+  type KnowledgeBaseStatus,
 } from '../types'
 
-const DEFAULT_CHUNK_SIZE = 512
-const DEFAULT_CHUNK_OVERLAP = 64
+const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
+const DOCUMENT_PAGE_SIZE = 20
+
+const knowledgeBaseSettingsSchema = z.object({
+  chunkSize: z
+    .number()
+    .int('分块大小必须是整数')
+    .min(64, '分块大小不能小于 64')
+    .max(8192, '分块大小不能大于 8192')
+    .multipleOf(64, '分块大小必须是 64 的倍数'),
+  chunkOverlap: z
+    .number()
+    .int('分块重叠必须是整数')
+    .min(0, '分块重叠不能小于 0')
+    .max(4096, '分块重叠不能大于 4096')
+    .multipleOf(16, '分块重叠必须是 16 的倍数'),
+  embeddingModel: z.string().trim().min(1, '请输入 Embedding 模型'),
+})
+
+type KnowledgeBaseSettingsFormInput = z.input<typeof knowledgeBaseSettingsSchema>
+type KnowledgeBaseSettingsFormValues = z.output<typeof knowledgeBaseSettingsSchema>
 
 interface UploadFeedback {
   id: string
@@ -27,7 +54,6 @@ interface UploadFeedback {
   message?: string
 }
 
-/** 文档状态对应的样式 */
 function getStatusBadgeClass(status: string): string {
   switch (status) {
     case 'ready':
@@ -68,8 +94,11 @@ function formatDateTime(value: string): string {
   return new Date(value).toLocaleString()
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '操作失败，请稍后重试'
+}
+
 interface KnowledgeBaseDetailPageProps {
-  /** 知识库 ID，由路由参数传入 */
   knowledgeBaseId: string
 }
 
@@ -78,7 +107,9 @@ export function KnowledgeBaseDetailPage({
 }: KnowledgeBaseDetailPageProps) {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { notify } = useToast()
   const [isDragOver, setIsDragOver] = useState(false)
+  const [documentPage, setDocumentPage] = useState(1)
   const [uploadFeedbacks, setUploadFeedbacks] = useState<UploadFeedback[]>([])
 
   const {
@@ -86,11 +117,55 @@ export function KnowledgeBaseDetailPage({
     isLoading: kbLoading,
     error: kbError,
   } = useKnowledgeBase(knowledgeBaseId)
-  const { data: documentResponse, isLoading: docsLoading } =
-    useDocuments(knowledgeBaseId)
+  useKnowledgeBaseSocket(knowledgeBase?.tenantId, knowledgeBaseId)
+
+  const { data: documentResponse, isLoading: docsLoading } = useDocuments(
+    knowledgeBaseId,
+    {
+      page: documentPage,
+      pageSize: DOCUMENT_PAGE_SIZE,
+    },
+  )
   const uploadMutation = useUploadDocument()
   const deleteMutation = useDeleteDocument()
+  const updateSettingsMutation = useUpdateKnowledgeBaseSettings()
   const documents = documentResponse?.data ?? []
+
+  const {
+    register,
+    reset,
+    handleSubmit,
+    formState: { errors, isDirty },
+  } = useForm<
+    KnowledgeBaseSettingsFormInput,
+    unknown,
+    KnowledgeBaseSettingsFormValues
+  >({
+    resolver: zodResolver(knowledgeBaseSettingsSchema),
+    defaultValues: {
+      chunkSize: 512,
+      chunkOverlap: 64,
+      embeddingModel: DEFAULT_EMBEDDING_MODEL,
+    },
+  })
+
+  useEffect(() => {
+    if (!knowledgeBase) {
+      return
+    }
+
+    reset({
+      chunkSize: knowledgeBase.chunkSize,
+      chunkOverlap: knowledgeBase.chunkOverlap,
+      embeddingModel: knowledgeBase.embeddingModel,
+    })
+  }, [knowledgeBase, reset])
+
+  useEffect(() => {
+    if (documentResponse && documentPage > documentResponse.meta.totalPages) {
+      setDocumentPage(documentResponse.meta.totalPages)
+    }
+  }, [documentPage, documentResponse])
 
   const removeUploadFeedback = useCallback((feedbackId: string) => {
     setUploadFeedbacks((current) =>
@@ -111,7 +186,10 @@ export function KnowledgeBaseDetailPage({
 
   const handleUpload = useCallback(
     (files: FileList | null) => {
-      if (!files?.length) return
+      if (!files?.length) {
+        return
+      }
+
       Array.from(files).forEach((file) => {
         const feedbackId = `${file.name}-${file.lastModified}-${file.size}`
 
@@ -134,8 +212,7 @@ export function KnowledgeBaseDetailPage({
             onError: (error) => {
               updateUploadFeedback(feedbackId, {
                 status: 'failed',
-                message:
-                  error instanceof Error ? error.message : '上传失败，请稍后重试',
+                message: getErrorMessage(error),
               })
             },
           },
@@ -181,27 +258,55 @@ export function KnowledgeBaseDetailPage({
     [knowledgeBaseId, deleteMutation],
   )
 
+  const handleResetSettings = useCallback(() => {
+    if (!knowledgeBase) {
+      return
+    }
+
+    reset({
+      chunkSize: knowledgeBase.chunkSize,
+      chunkOverlap: knowledgeBase.chunkOverlap,
+      embeddingModel: knowledgeBase.embeddingModel,
+    })
+  }, [knowledgeBase, reset])
+
+  const handleSaveSettings = handleSubmit(async (values) => {
+    try {
+      await updateSettingsMutation.mutateAsync({
+        id: knowledgeBaseId,
+        input: values,
+      })
+      reset(values)
+      notify({
+        description: '知识库设置已保存',
+        variant: 'success',
+      })
+    } catch (error) {
+      notify({
+        description: getErrorMessage(error),
+        variant: 'error',
+      })
+    }
+  })
+
   if (kbError) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-destructive">
-          加载知识库失败: {kbError.message}
-        </p>
+      <div className="flex h-full items-center justify-center">
+        <p className="text-destructive">加载知识库失败: {kbError.message}</p>
       </div>
     )
   }
 
   if (kbLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex h-full items-center justify-center">
         <p className="text-muted-foreground">加载中...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full p-6 gap-4">
-      {/* 页头 */}
+    <div className="flex h-full flex-col gap-4 p-6">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -211,12 +316,11 @@ export function KnowledgeBaseDetailPage({
           }
           aria-label="返回知识库列表"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4" />
         </Button>
+
         <div>
-          <h1 className="text-2xl font-bold">
-            {knowledgeBase?.name}
-          </h1>
+          <h1 className="text-2xl font-bold">{knowledgeBase?.name}</h1>
           {knowledgeBase?.description && (
             <p className="text-sm text-muted-foreground">
               {knowledgeBase.description}
@@ -240,39 +344,38 @@ export function KnowledgeBaseDetailPage({
         </div>
       </div>
 
-      {/* 上传区域 */}
-        <button
-          type="button"
+      <button
+        type="button"
         onClick={() => fileInputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-          className={cn(
-            'flex flex-col items-center justify-center gap-2 p-8 rounded-lg border-2 border-dashed transition-colors cursor-pointer w-full',
+        className={cn(
+          'flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors',
           isDragOver
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-muted-foreground',
         )}
         data-testid="upload-area"
-        >
-          <Upload className="w-8 h-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {uploadMutation.isPending
-              ? `正在并行上传 ${uploadFeedbacks.filter((item) => item.status === 'uploading').length} 个文件...`
-              : '拖拽文件到此处或点击上传（支持多文件）'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            当前使用浏览器并发上传；实时处理状态推送仍依赖后端事件通道。
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => handleUpload(e.target.files)}
-            data-testid="file-input"
-          />
-        </button>
+      >
+        <Upload className="h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          {uploadMutation.isPending
+            ? `正在并行上传 ${uploadFeedbacks.filter((item) => item.status === 'uploading').length} 个文件...`
+            : '拖拽文件到此处或点击上传（支持多文件）'}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          文档处理状态会通过实时事件自动刷新，无需手动重载页面。
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => handleUpload(e.target.files)}
+          data-testid="file-input"
+        />
+      </button>
 
       {uploadFeedbacks.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-3">
@@ -312,39 +415,147 @@ export function KnowledgeBaseDetailPage({
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">分块大小</p>
-          <p className="mt-1 text-lg font-semibold">{DEFAULT_CHUNK_SIZE}</p>
-          <p className="text-xs text-muted-foreground">当前系统默认 token 上限</p>
+          <p className="mt-1 text-lg font-semibold">
+            {knowledgeBase?.chunkSize ?? 512}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            当前知识库的单块 token 上限
+          </p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">分块重叠</p>
-          <p className="mt-1 text-lg font-semibold">{DEFAULT_CHUNK_OVERLAP}</p>
-          <p className="text-xs text-muted-foreground">当前系统默认 overlap token</p>
+          <p className="mt-1 text-lg font-semibold">
+            {knowledgeBase?.chunkOverlap ?? 64}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            相邻分块共享的 token 数量
+          </p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Embedding 模型</p>
-          <p className="mt-1 text-lg font-semibold">待接入</p>
-          <p className="text-xs text-muted-foreground">向量索引链路尚未返回模型信息</p>
+          <p className="mt-1 text-lg font-semibold">
+            {knowledgeBase?.embeddingModel ?? DEFAULT_EMBEDDING_MODEL}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            用于文档向量化与召回的模型
+          </p>
         </div>
       </div>
 
-      {/* 文档加载中 */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">知识库设置</h2>
+            <p className="text-sm text-muted-foreground">
+              保存后，新上传或重新处理的文档会使用新的分块与向量化配置。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetSettings}
+            disabled={updateSettingsMutation.isPending || !isDirty}
+          >
+            重置修改
+          </Button>
+        </div>
+
+        <form
+          className="mt-4 grid gap-4 md:grid-cols-3"
+          onSubmit={handleSaveSettings}
+        >
+          <div className="space-y-2">
+            <label
+              htmlFor="chunk-size"
+              className="text-xs font-medium text-foreground"
+            >
+              分块大小
+            </label>
+            <Input
+              id="chunk-size"
+              type="number"
+              min={64}
+              max={8192}
+              step={64}
+              disabled={updateSettingsMutation.isPending}
+              {...register('chunkSize', { valueAsNumber: true })}
+            />
+            {errors.chunkSize && (
+              <p className="text-xs text-destructive">
+                {errors.chunkSize.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="chunk-overlap"
+              className="text-xs font-medium text-foreground"
+            >
+              分块重叠
+            </label>
+            <Input
+              id="chunk-overlap"
+              type="number"
+              min={0}
+              max={4096}
+              step={16}
+              disabled={updateSettingsMutation.isPending}
+              {...register('chunkOverlap', { valueAsNumber: true })}
+            />
+            {errors.chunkOverlap && (
+              <p className="text-xs text-destructive">
+                {errors.chunkOverlap.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="embedding-model"
+              className="text-xs font-medium text-foreground"
+            >
+              Embedding 模型
+            </label>
+            <Input
+              id="embedding-model"
+              type="text"
+              placeholder="例如 text-embedding-3-small"
+              disabled={updateSettingsMutation.isPending}
+              {...register('embeddingModel')}
+            />
+            {errors.embeddingModel && (
+              <p className="text-xs text-destructive">
+                {errors.embeddingModel.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 md:col-span-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-xs text-muted-foreground">
+              建议模型：`text-embedding-3-small`、`text-embedding-3-large`。
+            </p>
+            <Button
+              type="submit"
+              disabled={updateSettingsMutation.isPending || !isDirty}
+            >
+              {updateSettingsMutation.isPending ? '保存中...' : '保存设置'}
+            </Button>
+          </div>
+        </form>
+      </div>
+
       {docsLoading && (
-        <p className="text-muted-foreground text-center">
-          加载文档中...
-        </p>
+        <p className="text-center text-muted-foreground">加载文档中...</p>
       )}
 
-      {/* 空文档状态 */}
       {!docsLoading && documents.length === 0 && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-2">
-          <FileText className="w-12 h-12 text-muted-foreground" />
-          <p className="text-muted-foreground">
-            还没有文档，上传文件开始使用
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2">
+          <FileText className="h-12 w-12 text-muted-foreground" />
+          <p className="text-muted-foreground">还没有文档，上传文件开始使用</p>
         </div>
       )}
 
-      {/* 文档列表 */}
       {!docsLoading && documents.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -353,25 +564,25 @@ export function KnowledgeBaseDetailPage({
               共 {documentResponse?.meta.total ?? documents.length} 个文档
             </p>
           </div>
-          <div className="border rounded-lg divide-y divide-border">
+
+          <div className="divide-y divide-border rounded-lg border border-border">
             {documents.map((doc) => (
               <div
                 key={doc.id}
                 className="flex items-center justify-between p-3"
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
-                    <p className="font-medium truncate">
-                      {doc.fileName}
-                    </p>
+                    <p className="truncate font-medium">{doc.fileName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDocumentType(doc.fileName, doc.mimeType)} · {formatFileSize(doc.sizeBytes)} · 上传于{' '}
+                      {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
+                      {formatFileSize(doc.sizeBytes)} · 上传于{' '}
                       {formatDateTime(doc.createdAt)}
                     </p>
                     {doc.status === 'failed' && (
                       <p className="text-xs text-destructive">
-                        处理失败，请查看服务端日志后重试上传。
+                        {doc.errorMessage ?? '处理失败，请查看服务端日志后重试上传。'}
                       </p>
                     )}
                   </div>
@@ -379,7 +590,7 @@ export function KnowledgeBaseDetailPage({
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      'text-xs px-2 py-0.5 rounded-full',
+                      'rounded-full px-2 py-0.5 text-xs',
                       getStatusBadgeClass(doc.status),
                     )}
                   >
@@ -392,14 +603,35 @@ export function KnowledgeBaseDetailPage({
                     className="text-muted-foreground hover:text-destructive"
                     aria-label={`删除 ${doc.fileName}`}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             ))}
           </div>
+
+          {documentResponse && (
+            <Pagination
+              page={documentResponse.meta.page}
+              totalPages={documentResponse.meta.totalPages}
+              onPageChange={setDocumentPage}
+              isLoading={docsLoading}
+            />
+          )}
         </div>
       )}
+
+      {!docsLoading &&
+        documents.length === 0 &&
+        documentResponse &&
+        documentResponse.meta.totalPages > 1 && (
+          <Pagination
+            page={documentResponse.meta.page}
+            totalPages={documentResponse.meta.totalPages}
+            onPageChange={setDocumentPage}
+            isLoading={docsLoading}
+          />
+        )}
     </div>
   )
 }

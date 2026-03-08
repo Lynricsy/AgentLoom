@@ -33,6 +33,9 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '这是一个测试知识库',
     visibility: 'private' as const,
     createdBy: 'user-1',
+    chunkSize: 512,
+    chunkOverlap: 64,
+    embeddingModel: 'text-embedding-3-small',
     documentCount: 0,
     chunkCount: 0,
     status: 'empty',
@@ -54,7 +57,15 @@ function setupMocks(overrides: {
   const deleteFn = vi.fn()
 
   mocks.useKnowledgeBases.mockReturnValue({
-    data: knowledgeBases,
+    data: {
+      data: knowledgeBases,
+      meta: {
+        page: 1,
+        pageSize: 20,
+        total: knowledgeBases.length,
+        totalPages: Math.max(1, Math.ceil(knowledgeBases.length / 20)),
+      },
+    },
     isLoading,
     error,
   })

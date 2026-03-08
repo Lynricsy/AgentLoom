@@ -7,12 +7,14 @@ import {
   fetchDocuments,
   fetchKnowledgeBase,
   fetchKnowledgeBases,
+  updateKnowledgeBaseSettings,
   uploadDocument,
 } from './knowledgeBaseApi'
 
-const { getMock, postMock, deleteMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
+  patchMock: vi.fn(),
   deleteMock: vi.fn(),
 }))
 
@@ -20,6 +22,7 @@ vi.mock('@/shared/api/client', () => ({
   apiClient: {
     get: getMock,
     post: postMock,
+    patch: patchMock,
     delete: deleteMock,
   },
   toSnakeBody: (input: unknown) => input,
@@ -32,6 +35,9 @@ const mockKnowledgeBase: KnowledgeBase = {
   description: 'Test knowledge base',
   visibility: 'private',
   createdBy: 'user-1',
+  chunkSize: 512,
+  chunkOverlap: 64,
+  embeddingModel: 'text-embedding-3-small',
   documentCount: 0,
   chunkCount: 0,
   status: 'empty',
@@ -57,19 +63,52 @@ describe('knowledgeBaseApi', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
+    patchMock.mockReset()
     deleteMock.mockReset()
   })
 
   describe('fetchKnowledgeBases', () => {
-    it('calls GET knowledge-bases and returns data array', async () => {
+    it('calls GET knowledge-bases and returns paginated response', async () => {
+      const response = {
+        data: [mockKnowledgeBase],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      }
+
       getMock.mockReturnValue({
-        json: vi.fn().mockResolvedValue({ data: [mockKnowledgeBase] }),
+        json: vi.fn().mockResolvedValue(response),
       })
 
       const result = await fetchKnowledgeBases()
 
-      expect(getMock).toHaveBeenCalledWith('knowledge-bases')
-      expect(result).toEqual([mockKnowledgeBase])
+      expect(getMock).toHaveBeenCalledWith('knowledge-bases', {
+        searchParams: {},
+      })
+      expect(result).toEqual(response)
+    })
+
+    it('appends pagination params when provided', async () => {
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({
+          data: [mockKnowledgeBase],
+          meta: {
+            page: 2,
+            pageSize: 10,
+            total: 11,
+            totalPages: 2,
+          },
+        }),
+      })
+
+      await fetchKnowledgeBases({ page: 2, pageSize: 10 })
+
+      expect(getMock).toHaveBeenCalledWith('knowledge-bases', {
+        searchParams: { page: '2', page_size: '10' },
+      })
     })
   })
 
@@ -100,6 +139,26 @@ describe('knowledgeBaseApi', () => {
     })
   })
 
+  describe('updateKnowledgeBaseSettings', () => {
+    it('calls PATCH knowledge-bases/:id/settings with json body and returns data', async () => {
+      patchMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue({ data: mockKnowledgeBase }),
+      })
+
+      const input = {
+        chunkSize: 1024,
+        chunkOverlap: 128,
+        embeddingModel: 'text-embedding-3-large',
+      }
+      const result = await updateKnowledgeBaseSettings('kb-1', input)
+
+      expect(patchMock).toHaveBeenCalledWith('knowledge-bases/kb-1/settings', {
+        json: input,
+      })
+      expect(result).toEqual(mockKnowledgeBase)
+    })
+  })
+
   describe('deleteKnowledgeBase', () => {
     it('calls DELETE knowledge-bases/:id', async () => {
       deleteMock.mockResolvedValue(undefined)
@@ -112,8 +171,18 @@ describe('knowledgeBaseApi', () => {
 
   describe('fetchDocuments', () => {
     it('calls GET knowledge-bases/:id/documents with searchParams', async () => {
+      const response = {
+        data: [mockDocument],
+        meta: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+      }
+
       getMock.mockReturnValue({
-        json: vi.fn().mockResolvedValue({ data: [mockDocument], total: 1 }),
+        json: vi.fn().mockResolvedValue(response),
       })
 
       const result = await fetchDocuments('kb-1', { page: 1, pageSize: 10, status: 'ready' })
@@ -121,12 +190,20 @@ describe('knowledgeBaseApi', () => {
       expect(getMock).toHaveBeenCalledWith('knowledge-bases/kb-1/documents', {
         searchParams: { page: '1', page_size: '10', status: 'ready' },
       })
-      expect(result).toEqual({ data: [mockDocument], total: 1 })
+      expect(result).toEqual(response)
     })
 
     it('calls GET without optional params when not provided', async () => {
       getMock.mockReturnValue({
-        json: vi.fn().mockResolvedValue({ data: [mockDocument], total: 1 }),
+        json: vi.fn().mockResolvedValue({
+          data: [mockDocument],
+          meta: {
+            page: 1,
+            pageSize: 20,
+            total: 1,
+            totalPages: 1,
+          },
+        }),
       })
 
       await fetchDocuments('kb-1')

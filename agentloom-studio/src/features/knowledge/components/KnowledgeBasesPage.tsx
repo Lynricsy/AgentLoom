@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, Search, Database, Trash2 } from 'lucide-react'
+import { Pagination } from '@/shared/components'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import {
@@ -34,14 +35,23 @@ function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
  */
 export function KnowledgeBasesPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKbName, setNewKbName] = useState('')
   const [newKbDescription, setNewKbDescription] = useState('')
 
   const navigate = useNavigate()
-  const { data: knowledgeBases, isLoading, error } = useKnowledgeBases()
+  const { data, isLoading, error } = useKnowledgeBases({ page, pageSize: 20 })
   const createMutation = useCreateKnowledgeBase()
   const deleteMutation = useDeleteKnowledgeBase()
+  const knowledgeBases = data?.data ?? []
+  const paginationMeta = data?.meta
+
+  useEffect(() => {
+    if (paginationMeta && page > paginationMeta.totalPages) {
+      setPage(paginationMeta.totalPages)
+    }
+  }, [page, paginationMeta])
 
   const filteredKbs =
     knowledgeBases?.filter(
@@ -146,60 +156,80 @@ export function KnowledgeBasesPage() {
 
       {/* 卡片网格 */}
       {!isLoading && filteredKbs.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredKbs.map((kb) => (
-            <div
-              key={kb.id}
-              className="relative p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors"
-            >
-              <button
-                type="button"
-                onClick={() => handleCardClick(kb)}
-                className="w-full text-left cursor-pointer"
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {filteredKbs.map((kb) => (
+              <div
+                key={kb.id}
+                className="relative rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
               >
-                <div className="pr-8">
-                  <div className="flex items-center gap-2">
-                    <h3 className="truncate font-medium">{kb.name}</h3>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getKnowledgeBaseStatusClass(
-                        kb.status,
-                      )}`}
-                    >
-                      {getKnowledgeBaseStatusLabel(kb.status)}
+                <button
+                  type="button"
+                  onClick={() => handleCardClick(kb)}
+                  className="w-full cursor-pointer text-left"
+                >
+                  <div className="pr-8">
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate font-medium">{kb.name}</h3>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getKnowledgeBaseStatusClass(
+                          kb.status,
+                        )}`}
+                      >
+                        {getKnowledgeBaseStatusLabel(kb.status)}
+                      </span>
+                    </div>
+                    {kb.description && (
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {kb.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{kb.documentCount} 个文档</span>
+                    <span>·</span>
+                    <span>{kb.chunkCount} 个分块</span>
+                    <span>·</span>
+                    <span>
+                      {kb.visibility === 'organization' ? '组织' : '私有'}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      更新于 {new Date(kb.updatedAt).toLocaleDateString()}
                     </span>
                   </div>
-                  {kb.description && (
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                      {kb.description}
-                    </p>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{kb.documentCount} 个文档</span>
-                  <span>·</span>
-                  <span>{kb.chunkCount} 个分块</span>
-                  <span>·</span>
-                  <span>
-                    {kb.visibility === 'organization' ? '组织' : '私有'}
-                  </span>
-                  <span>·</span>
-                  <span>
-                    更新于 {new Date(kb.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => handleDelete(e, kb)}
-                className="absolute top-3 right-3 text-muted-foreground hover:text-destructive"
-                aria-label={`删除 ${kb.name}`}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          ))}
+                </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => handleDelete(e, kb)}
+                  className="absolute right-3 top-3 text-muted-foreground hover:text-destructive"
+                  aria-label={`删除 ${kb.name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          {paginationMeta && (
+            <Pagination
+              page={paginationMeta.page}
+              totalPages={paginationMeta.totalPages}
+              onPageChange={setPage}
+              isLoading={isLoading}
+            />
+          )}
         </div>
+      )}
+
+      {!isLoading && filteredKbs.length === 0 && paginationMeta && paginationMeta.totalPages > 1 && (
+        <Pagination
+          page={paginationMeta.page}
+          totalPages={paginationMeta.totalPages}
+          onPageChange={setPage}
+          isLoading={isLoading}
+        />
       )}
 
       {/* 创建知识库对话框 */}
