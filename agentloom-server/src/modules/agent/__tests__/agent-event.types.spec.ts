@@ -80,6 +80,28 @@ describe('AgentEvent 类型守卫', () => {
 })
 
 describe('ToolCallEvent 类型验证', () => {
+  it('应支持全部 ToolCallStatus 状态值', () => {
+    const statuses = [
+      'pending',
+      'awaiting_permission',
+      'denied',
+      'in_progress',
+      'completed',
+      'failed',
+    ] as const
+
+    for (const status of statuses) {
+      const event: ToolCallEvent = {
+        id: `tc_${status}`,
+        tool: 'noop',
+        args: {},
+        status,
+      }
+
+      expect(event.status).toBe(status)
+    }
+  })
+
   it('应支持完整的 ToolCallEvent 结构', () => {
     const event: ToolCallEvent = {
       id: 'tc_002',

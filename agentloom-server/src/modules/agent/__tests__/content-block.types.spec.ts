@@ -156,6 +156,12 @@ describe('ContentBlock Zod Schema', () => {
       const input = { type: 'video', data: 'something' }
       expect(() => ContentBlockSchema.parse(input)).toThrow()
     })
+
+    it('应拒绝 null 输入', () => {
+      const result = ContentBlockSchema.safeParse(null)
+
+      expect(result.success).toBe(false)
+    })
   })
 
   // ─── ContentBlockArraySchema ────────────────────────────

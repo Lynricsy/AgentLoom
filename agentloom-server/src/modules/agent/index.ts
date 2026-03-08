@@ -57,6 +57,7 @@ export {
   isToolCallEvent,
   isDoneEvent,
   type McpServerConfig,
+  type McpTransportType,
   type SessionMode,
   type SessionStatus,
   type SessionContext,

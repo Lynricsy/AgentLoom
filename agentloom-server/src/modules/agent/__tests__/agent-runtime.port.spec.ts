@@ -11,6 +11,7 @@ describe('IAgentRuntime 接口契约', () => {
       history: [],
       cwd: params.cwd,
       mcpServers: params.mcpServers,
+      workflowState: params.context,
     }
     return {
       id: 'ses_mock_001',
@@ -76,6 +77,44 @@ describe('IAgentRuntime 接口契约', () => {
       })
 
       expect(session.mode).toBe('conversation')
+    })
+
+    it('应兼容 MCP 模块的 streamable_http 传输类型', async () => {
+      const runtime = createMockRuntime()
+      const session = await runtime.createSession({
+        agentId: 'agent_003',
+        mode: 'workflow',
+        mcpServers: {
+          docs: {
+            transportType: 'streamable_http',
+            url: 'https://example.com/mcp',
+            headers: {
+              Authorization: 'Bearer token',
+            },
+          },
+        },
+      })
+
+      expect(session.context.mcpServers?.docs?.transportType).toBe('streamable_http')
+      expect(session.context.mcpServers?.docs?.url).toBe('https://example.com/mcp')
+      expect(session.context.mcpServers?.docs?.headers?.Authorization).toBe('Bearer token')
+    })
+
+    it('应将初始 context 映射为 workflowState', async () => {
+      const runtime = createMockRuntime()
+      const session = await runtime.createSession({
+        agentId: 'agent_004',
+        mode: 'workflow',
+        context: {
+          stepId: 'node_1',
+          retryCount: 1,
+        },
+      })
+
+      expect(session.context.workflowState).toEqual({
+        stepId: 'node_1',
+        retryCount: 1,
+      })
     })
   })
 

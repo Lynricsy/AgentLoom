@@ -1,11 +1,14 @@
 import type { ContentBlock } from './content-block.types'
 
+export type McpTransportType = 'stdio' | 'sse' | 'streamable_http'
+
 export interface McpServerConfig {
-  readonly transport: 'stdio' | 'sse' | 'streamable-http'
+  readonly transportType: McpTransportType
   readonly command?: string
   readonly args?: readonly string[]
   readonly url?: string
   readonly env?: Readonly<Record<string, string>>
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export type SessionMode = 'workflow' | 'conversation'
@@ -33,6 +36,7 @@ export interface CreateSessionParams {
   readonly agentId: string
   readonly mode: SessionMode
   readonly cwd?: string
-  readonly mcpServers?: Record<string, McpServerConfig>
+  readonly mcpServers?: Readonly<Record<string, McpServerConfig>>
+  /** 初始上下文数据（在 workflow 模式下映射为 SessionContext.workflowState） */
   readonly context?: Record<string, unknown>
 }

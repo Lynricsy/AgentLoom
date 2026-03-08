@@ -40,6 +40,7 @@ export {
 
 export {
   type McpServerConfig,
+  type McpTransportType,
   type SessionMode,
   type SessionStatus,
   type SessionContext,
