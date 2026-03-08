@@ -45,6 +45,8 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
 }
 
 function createDocument(overrides: Partial<KnowledgeBaseDocument> = {}): KnowledgeBaseDocument {
+  const { errorMessage, ...restOverrides } = overrides
+
   return {
     id: 'doc-1',
     knowledgeBaseId: 'kb-1',
@@ -53,10 +55,11 @@ function createDocument(overrides: Partial<KnowledgeBaseDocument> = {}): Knowled
     mimeType: 'application/pdf',
     sizeBytes: 1024000,
     status: 'ready' as const,
+    errorMessage: errorMessage ?? null,
     uploadedBy: 'user-1',
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides,
+    ...restOverrides,
   }
 }
 

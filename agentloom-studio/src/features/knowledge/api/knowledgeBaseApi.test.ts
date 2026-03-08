@@ -47,6 +47,7 @@ const mockDocument: KnowledgeBaseDocument = {
   mimeType: 'application/pdf',
   sizeBytes: 1024,
   status: 'ready',
+  errorMessage: null,
   uploadedBy: 'user-1',
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',

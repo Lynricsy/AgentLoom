@@ -73,11 +73,6 @@ interface KnowledgeBaseDetailPageProps {
   knowledgeBaseId: string
 }
 
-/**
- * 知识库详情页面
- * 路由: /settings/knowledge-bases/:knowledgeBaseId
- * 功能: 文档列表、拖拽上传、WebSocket 实时状态、删除文档
- */
 export function KnowledgeBaseDetailPage({
   knowledgeBaseId,
 }: KnowledgeBaseDetailPageProps) {
