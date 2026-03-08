@@ -40,6 +40,7 @@ export interface KnowledgeBaseDocument {
   mimeType: string;
   sizeBytes: number;
   status: DocumentStatus;
+  errorMessage: string | null;
   uploadedBy: string;
   createdAt: string;
   updatedAt: string;

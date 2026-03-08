@@ -66,6 +66,7 @@ export const documents = pgTable(
     sizeBytes: integer('size_bytes').notNull(),
     storageKey: varchar('storage_key', { length: 2048 }).notNull(),
     status: documentStatusEnum('status').notNull().default('uploaded'),
+    errorMessage: text('error_message'),
     uploadedBy: uuid('uploaded_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

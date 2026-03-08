@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import type { MultipartFile } from '@fastify/multipart';
 import { extname } from 'node:path';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
@@ -16,6 +18,8 @@ import {
   EXTENSION_MIME_MAP,
   MAX_FILE_SIZE_BYTES,
   SUPPORTED_MIME_TYPES,
+  DOCUMENT_PROCESSING_QUEUE,
+  DOCUMENT_PROCESSING_MAX_ATTEMPTS,
 } from './knowledge.constants';
 import {
   UnsupportedFileTypeException,
@@ -23,11 +27,14 @@ import {
   DocumentNotFoundException,
   EmptyFileException,
 } from './knowledge.exceptions';
+import type { DocumentProcessingJobData } from './document-processing.worker';
 
 export type DocumentResponse = Omit<
   (typeof documents)['$inferSelect'],
   'storageKey'
 >;
+
+export type InternalDocument = (typeof documents)['$inferSelect'];
 
 type DocumentStatus = DocumentResponse['status'];
 
@@ -44,6 +51,8 @@ export class DocumentService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly storageService: StorageService,
+    @InjectQueue(DOCUMENT_PROCESSING_QUEUE)
+    private readonly processingQueue: Queue<DocumentProcessingJobData>,
   ) {}
 
   async uploadFromRequest(
@@ -93,6 +102,17 @@ export class DocumentService {
         .returning();
 
       const { storageKey: _key, ...safeDocument } = document;
+
+      await this.processingQueue.add(
+        'process',
+        { documentId: document.id },
+        {
+          attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
+          backoff: { type: 'exponential', delay: 2000 },
+          jobId: `process-${document.id}`,
+        },
+      );
+
       return safeDocument;
     } catch (error) {
       if (await this.storageService.exists(storageKey)) {
@@ -133,6 +153,7 @@ export class DocumentService {
           mimeType: documents.mimeType,
           sizeBytes: documents.sizeBytes,
           status: documents.status,
+          errorMessage: documents.errorMessage,
           uploadedBy: documents.uploadedBy,
           createdAt: documents.createdAt,
           updatedAt: documents.updatedAt,
@@ -220,6 +241,37 @@ export class DocumentService {
       .returning({ id: documents.id });
 
     return deletedDocuments.length;
+  }
+
+  async findById(documentId: string): Promise<InternalDocument> {
+    const db = getTenantDb(this.db);
+    const [document] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, documentId))
+      .limit(1);
+
+    if (!document) {
+      throw new DocumentNotFoundException(documentId);
+    }
+
+    return document;
+  }
+
+  async updateStatus(
+    documentId: string,
+    status: DocumentStatus,
+    errorMessage?: string | null,
+  ): Promise<void> {
+    const db = getTenantDb(this.db);
+    await db
+      .update(documents)
+      .set({
+        status,
+        errorMessage: errorMessage ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(documents.id, documentId));
   }
 
   private async readMultipartFile(request: FastifyRequest): Promise<MultipartFile> {

@@ -1,5 +1,7 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { TokenBlacklistModule } from './common/services/token-blacklist.module';
@@ -27,6 +29,21 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     DatabaseModule,
     TokenBlacklistModule,
     RedisModule,
+    BullModule.forRootAsync({
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get<string>('APP_REDIS_URL')!;
+        const url = new URL(redisUrl);
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port, 10) || 6379,
+            password: url.password || undefined,
+            db: url.pathname ? parseInt(url.pathname.slice(1), 10) || 0 : 0,
+          },
+        };
+      },
+      inject: [ConfigService],
+    }),
     HealthModule,
     AuthModule,
     OrganizationModule,

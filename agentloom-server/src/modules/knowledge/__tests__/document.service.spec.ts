@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import type { MultipartFile } from '@fastify/multipart';
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,8 +9,10 @@ import {
   EmptyFileException,
   UnsupportedFileTypeException,
   FileTooLargeException,
+  DocumentNotFoundException,
 } from '../knowledge.exceptions';
 import { DRIZZLE } from '../../../database/database.module';
+import { DOCUMENT_PROCESSING_QUEUE } from '../knowledge.constants';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
@@ -64,6 +67,7 @@ describe('DocumentService', () => {
     removeIncompleteUpload: ReturnType<typeof vi.fn>;
     buildStorageKey: ReturnType<typeof vi.fn>;
   };
+  let processingQueue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -71,6 +75,8 @@ describe('DocumentService', () => {
     db = {
       select: vi.fn(),
       insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     };
     mocks.getTenantDb.mockReturnValue(db);
     mocks.uuidv7.mockReturnValue(DOC_ID);
@@ -86,11 +92,19 @@ describe('DocumentService', () => {
       ),
     };
 
+    processingQueue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         DocumentService,
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: storageService },
+        {
+          provide: getQueueToken(DOCUMENT_PROCESSING_QUEUE),
+          useValue: processingQueue,
+        },
       ],
     }).compile();
 
@@ -380,6 +394,126 @@ describe('DocumentService', () => {
 
       expect(result.data).toEqual([]);
       expect(result.total).toBe(0);
+    });
+  });
+
+  describe('findById', () => {
+    it('应返回包含 storageKey 的完整文档记录', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+
+      const result = await service.findById(DOC_ID);
+
+      expect(result).toEqual(fullDoc);
+      expect(result.storageKey).toBe(STORAGE_KEY);
+    });
+
+    it('文档不存在时应抛出 DocumentNotFoundException', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      });
+
+      await expect(service.findById('nonexistent-id')).rejects.toThrow(
+        DocumentNotFoundException,
+      );
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('应更新文档状态', async () => {
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+      db.update.mockReturnValue({ set: setFn });
+
+      await service.updateStatus(DOC_ID, 'processing');
+
+      expect(db.update).toHaveBeenCalled();
+      expect(setFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'processing',
+          errorMessage: null,
+        }),
+      );
+    });
+
+    it('应同时更新状态和错误信息', async () => {
+      const setFn = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+      db.update.mockReturnValue({ set: setFn });
+
+      await service.updateStatus(DOC_ID, 'failed', 'Parse error: corrupt file');
+
+      expect(setFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          errorMessage: 'Parse error: corrupt file',
+        }),
+      );
+    });
+  });
+
+  describe('uploadFromRequest (job dispatch)', () => {
+    it('上传成功后应派发文档处理任务', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+
+      const dbDocument = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: PDF_BUFFER.length,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([dbDocument]),
+        }),
+      });
+
+      await service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID);
+
+      expect(processingQueue.add).toHaveBeenCalledWith(
+        'process',
+        { documentId: DOC_ID },
+        expect.objectContaining({
+          attempts: 3,
+          jobId: `process-${DOC_ID}`,
+        }),
+      );
     });
   });
 });
