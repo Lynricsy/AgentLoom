@@ -16,7 +16,10 @@ async function bootstrap() {
   );
 
   await app.register(multipart, {
-    limits: { fileSize: 50 * 1024 * 1024 },
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+      files: 1,
+    },
   });
 
   app.setGlobalPrefix('api/v1');
