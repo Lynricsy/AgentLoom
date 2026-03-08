@@ -9,6 +9,6 @@ import { DecryptionBoundaryService } from './decryption-boundary.service';
   imports: [ConfigModule],
   controllers: [ApiKeyController],
   providers: [ApiKeyService, EncryptionService, DecryptionBoundaryService],
-  exports: [DecryptionBoundaryService],
+  exports: [EncryptionService, DecryptionBoundaryService],
 })
 export class ApiKeyModule {}

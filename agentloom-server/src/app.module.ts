@@ -11,6 +11,7 @@ import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
 import { LlmModule } from './modules/llm/llm.module';
 import { AgentModule } from './modules/agent/agent.module';
+import { McpModule } from './modules/mcp/mcp.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -31,6 +32,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     WorkflowDefinitionModule,
     LlmModule,
     AgentModule,
+    McpModule,
   ],
   providers: [
     RbacCacheService,
