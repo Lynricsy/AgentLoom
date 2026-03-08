@@ -39,6 +39,7 @@ export class TextChunkerService {
     let currentTexts: string[] = [];
     let currentTokenCount = 0;
     let currentLocation: ParsedSection['location'] | null = null;
+    let currentCharEnd = 0;
 
     for (const section of document.sections) {
       const sectionTokens = encode(section.text).length;
@@ -46,17 +47,19 @@ export class TextChunkerService {
       // 处理超大段落
       if (sectionTokens > maxTokens) {
         // 先刷出已累积内容
-        if (currentTexts.length > 0) {
+        if (currentTexts.length > 0 && currentLocation) {
           chunks.push(
             this.createChunk(
               currentTexts.join('\n\n'),
-              currentLocation!,
+              currentLocation,
               currentTokenCount,
+              currentCharEnd - currentLocation.charOffset,
             ),
           );
           currentTexts = [];
           currentTokenCount = 0;
           currentLocation = null;
+          currentCharEnd = 0;
         }
 
         // 拆分大段落
@@ -76,14 +79,23 @@ export class TextChunkerService {
       ) {
         const chunkText = currentTexts.join('\n\n');
         chunks.push(
-          this.createChunk(chunkText, currentLocation!, currentTokenCount),
+          this.createChunk(
+            chunkText,
+            currentLocation!,
+            currentTokenCount,
+            currentCharEnd - currentLocation!.charOffset,
+          ),
         );
 
-        // 使用重叠文本
-        const overlapText = this.getOverlapText(chunkText, overlapTokens);
+        // 计算重叠文本，限制重叠量确保下一个块不超过 maxTokens
+        const availableForOverlap = Math.max(0, maxTokens - sectionTokens);
+        const effectiveOverlap = Math.min(overlapTokens, availableForOverlap);
+        const overlapText = this.getOverlapText(chunkText, effectiveOverlap);
         currentTexts = overlapText ? [overlapText] : [];
         currentTokenCount = overlapText ? encode(overlapText).length : 0;
-        currentLocation = overlapText ? currentLocation : null;
+        // 始终重置位置，确保下一个块使用新段落的位置
+        currentLocation = null;
+        currentCharEnd = 0;
       }
 
       if (!currentLocation) {
@@ -92,6 +104,7 @@ export class TextChunkerService {
 
       currentTexts.push(section.text);
       currentTokenCount += sectionTokens;
+      currentCharEnd = section.location.charOffset + section.text.length;
     }
 
     // 刷出最后一个块
@@ -101,6 +114,7 @@ export class TextChunkerService {
           currentTexts.join('\n\n'),
           currentLocation,
           currentTokenCount,
+          currentCharEnd - currentLocation.charOffset,
         ),
       );
     }
@@ -122,6 +136,7 @@ export class TextChunkerService {
     const sentences = section.text.split(/(?<=[.。!！?？\n])\s*/);
     let currentTexts: string[] = [];
     let currentTokenCount = 0;
+    let currentOverlapLength = 0;
 
     for (const sentence of sentences) {
       const sentenceTokens = encode(sentence).length;
@@ -131,12 +146,22 @@ export class TextChunkerService {
         currentTexts.length > 0
       ) {
         const chunkText = currentTexts.join(' ');
+        const charLength = chunkText.length - currentOverlapLength;
         chunks.push(
-          this.createChunk(chunkText, section.location, currentTokenCount),
+          this.createChunk(
+            chunkText,
+            section.location,
+            currentTokenCount,
+            charLength,
+          ),
         );
 
-        const overlapText = this.getOverlapText(chunkText, overlapTokens);
+        // 限制重叠量确保下一个子块不超过 maxTokens
+        const availableForOverlap = Math.max(0, maxTokens - sentenceTokens);
+        const effectiveOverlap = Math.min(overlapTokens, availableForOverlap);
+        const overlapText = this.getOverlapText(chunkText, effectiveOverlap);
         currentTexts = overlapText ? [overlapText] : [];
+        currentOverlapLength = overlapText ? overlapText.length : 0;
         currentTokenCount = overlapText ? encode(overlapText).length : 0;
       }
 
@@ -145,11 +170,14 @@ export class TextChunkerService {
     }
 
     if (currentTexts.length > 0) {
+      const chunkText = currentTexts.join(' ');
+      const charLength = chunkText.length - currentOverlapLength;
       chunks.push(
         this.createChunk(
-          currentTexts.join(' '),
+          chunkText,
           section.location,
           currentTokenCount,
+          charLength,
         ),
       );
     }
@@ -174,6 +202,7 @@ export class TextChunkerService {
     content: string,
     location: ParsedSection['location'],
     tokenCount: number,
+    charLength: number,
   ): DocumentChunk {
     return {
       content,
@@ -182,7 +211,7 @@ export class TextChunkerService {
         paragraph: location.paragraph,
         heading: location.heading,
         charOffset: location.charOffset,
-        charLength: content.length,
+        charLength,
       },
       tokenCount,
     };

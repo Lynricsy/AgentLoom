@@ -131,6 +131,65 @@ describe('TextChunkerService', () => {
       }
     });
 
+    it('应确保 charOffset + charLength 不超过全文长度', () => {
+      const longText = '这是一段需要被拆分的较长文本。'.repeat(100);
+      const doc = createDocument([longText]);
+
+      const chunks = chunker.chunk(doc, { maxTokens: 50, overlapTokens: 10 });
+
+      for (const chunk of chunks) {
+        expect(chunk.location.charOffset + chunk.location.charLength).toBeLessThanOrEqual(
+          doc.fullText.length,
+        );
+        expect(chunk.location.charOffset).toBeGreaterThanOrEqual(0);
+        expect(chunk.location.charLength).toBeGreaterThan(0);
+      }
+    });
+
+    it('应确保所有分块的 tokenCount 不超过 maxTokens', () => {
+      const longText = '这是一个用来测试token边界的句子。'.repeat(100);
+      const doc = createDocument([longText]);
+      const maxTokens = 50;
+
+      const chunks = chunker.chunk(doc, { maxTokens, overlapTokens: 10 });
+
+      for (const chunk of chunks) {
+        expect(chunk.tokenCount).toBeLessThanOrEqual(maxTokens);
+      }
+    });
+
+    it('多段落分块时 charOffset 应递增', () => {
+      const sections = Array.from(
+        { length: 10 },
+        (_, i) => `第${i + 1}个段落需要足够长的文本来测试分块行为。`,
+      );
+      const doc = createDocument(sections);
+
+      const chunks = chunker.chunk(doc, { maxTokens: 30, overlapTokens: 5 });
+
+      for (let i = 1; i < chunks.length; i++) {
+        expect(chunks[i].location.charOffset).toBeGreaterThanOrEqual(
+          chunks[i - 1].location.charOffset,
+        );
+      }
+    });
+
+    it('含重叠时 charLength 应不包含重叠文本的长度', () => {
+      const sections = Array.from(
+        { length: 6 },
+        (_, i) => `段落${i + 1}的内容有一定长度来确保分块产生重叠。`,
+      );
+      const doc = createDocument(sections);
+
+      const chunks = chunker.chunk(doc, { maxTokens: 40, overlapTokens: 8 });
+
+      if (chunks.length > 1) {
+        for (const chunk of chunks) {
+          expect(chunk.location.charLength).toBeLessThanOrEqual(chunk.content.length);
+        }
+      }
+    });
+
     it('应能处理含有大段落的文档', () => {
       const sentences = Array.from(
         { length: 200 },

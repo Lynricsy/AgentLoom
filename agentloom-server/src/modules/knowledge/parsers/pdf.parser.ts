@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import type {
   IDocumentParser,
   ParsedDocument,
   ParsedSection,
 } from '../interfaces/document-parser.interface';
+import { DocumentParseException } from '../knowledge.exceptions';
 
 @Injectable()
 export class PdfParser implements IDocumentParser {
@@ -15,42 +16,58 @@ export class PdfParser implements IDocumentParser {
   async parse(buffer: Buffer, fileName: string): Promise<ParsedDocument> {
     this.logger.debug(`解析 PDF 文件: ${fileName}`);
 
-    const result = await pdfParse(buffer);
-    const fullText = result.text;
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
 
-    const sections: ParsedSection[] = [];
-    let charOffset = 0;
+      // 使用各页文本拼接完整文本，避免默认分页标记
+      const fullText = result.pages.map((p) => p.text).join('\n\n');
 
-    // 按段落分割文本（双换行）
-    const paragraphs = fullText.split(/\n\s*\n/).filter((p) => p.trim());
+      const sections: ParsedSection[] = [];
+      let charOffset = 0;
+      let paragraphIndex = 0;
 
-    for (let i = 0; i < paragraphs.length; i++) {
-      const text = paragraphs[i].trim();
-      if (!text) continue;
+      for (const page of result.pages) {
+        const paragraphs = page.text.split(/\n\s*\n/);
 
-      const actualOffset = fullText.indexOf(text, charOffset);
+        for (const rawParagraph of paragraphs) {
+          const text = rawParagraph.trim();
+          if (!text) continue;
 
-      sections.push({
-        text,
-        location: {
-          page: null,
-          paragraph: i,
-          heading: null,
-          charOffset: actualOffset >= 0 ? actualOffset : charOffset,
+          const actualOffset = fullText.indexOf(text, charOffset);
+
+          sections.push({
+            text,
+            location: {
+              page: page.num,
+              paragraph: paragraphIndex,
+              heading: null,
+              charOffset: actualOffset >= 0 ? actualOffset : charOffset,
+            },
+          });
+
+          charOffset =
+            (actualOffset >= 0 ? actualOffset : charOffset) + text.length;
+          paragraphIndex++;
+        }
+      }
+
+      return {
+        fullText,
+        sections,
+        metadata: {
+          totalPages: result.total,
+          totalCharacters: fullText.length,
         },
-      });
-
-      charOffset =
-        (actualOffset >= 0 ? actualOffset : charOffset) + text.length;
+      };
+    } catch (error) {
+      if (error instanceof DocumentParseException) throw error;
+      throw new DocumentParseException(
+        fileName,
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      await parser.destroy();
     }
-
-    return {
-      fullText,
-      sections,
-      metadata: {
-        totalPages: result.numpages,
-        totalCharacters: fullText.length,
-      },
-    };
   }
 }
