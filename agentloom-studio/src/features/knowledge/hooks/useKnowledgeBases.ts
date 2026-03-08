@@ -28,10 +28,11 @@ export function useKnowledgeBases(params?: {
   });
 }
 
-export function useAllKnowledgeBases() {
+export function useAllKnowledgeBases(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: knowledgeBaseKeys.allOptions(),
     queryFn: () => fetchAllKnowledgeBases(),
+    enabled: options?.enabled ?? true,
   });
 }
 

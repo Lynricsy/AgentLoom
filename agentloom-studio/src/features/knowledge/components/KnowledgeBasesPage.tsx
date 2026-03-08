@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, Search, Database, Trash2 } from 'lucide-react'
 import { Pagination } from '@/shared/components'
@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import {
   useKnowledgeBases,
+  useAllKnowledgeBases,
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
 } from '../hooks/useKnowledgeBases'
@@ -34,6 +35,7 @@ function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
  * 功能: 展示知识库卡片列表、搜索过滤、创建知识库
  */
 export function KnowledgeBasesPage() {
+  const pageSize = 20
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -41,24 +43,68 @@ export function KnowledgeBasesPage() {
   const [newKbDescription, setNewKbDescription] = useState('')
 
   const navigate = useNavigate()
-  const { data, isLoading, error } = useKnowledgeBases({ page, pageSize: 20 })
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+  const isSearching = normalizedSearchQuery.length > 0
+  const {
+    data,
+    isLoading: isPageLoading,
+    error: pageError,
+  } = useKnowledgeBases({ page, pageSize })
+  const {
+    data: allKnowledgeBases,
+    isLoading: isAllKnowledgeBasesLoading,
+    error: allKnowledgeBasesError,
+  } = useAllKnowledgeBases({ enabled: isSearching })
   const createMutation = useCreateKnowledgeBase()
   const deleteMutation = useDeleteKnowledgeBase()
   const knowledgeBases = data?.data ?? []
-  const paginationMeta = data?.meta
+
+  const filteredKnowledgeBases = useMemo(() => {
+    const sourceKnowledgeBases = isSearching
+      ? allKnowledgeBases ?? []
+      : knowledgeBases
+
+    if (!isSearching) {
+      return sourceKnowledgeBases
+    }
+
+    return sourceKnowledgeBases.filter(
+      (kb) =>
+        kb.name.toLowerCase().includes(normalizedSearchQuery) ||
+        (kb.description ?? '').toLowerCase().includes(normalizedSearchQuery),
+    )
+  }, [allKnowledgeBases, isSearching, knowledgeBases, normalizedSearchQuery])
+
+  const paginationMeta = useMemo(() => {
+    if (!isSearching) {
+      return data?.meta
+    }
+
+    return {
+      page,
+      pageSize,
+      total: filteredKnowledgeBases.length,
+      totalPages: Math.max(1, Math.ceil(filteredKnowledgeBases.length / pageSize)),
+    }
+  }, [data?.meta, filteredKnowledgeBases.length, isSearching, page])
+
+  const visibleKnowledgeBases = useMemo(() => {
+    if (!isSearching) {
+      return filteredKnowledgeBases
+    }
+
+    const startIndex = (page - 1) * pageSize
+    return filteredKnowledgeBases.slice(startIndex, startIndex + pageSize)
+  }, [filteredKnowledgeBases, isSearching, page])
+
+  const isLoading = isSearching ? isAllKnowledgeBasesLoading : isPageLoading
+  const error = isSearching ? allKnowledgeBasesError ?? pageError : pageError
 
   useEffect(() => {
     if (paginationMeta && page > paginationMeta.totalPages) {
       setPage(paginationMeta.totalPages)
     }
   }, [page, paginationMeta])
-
-  const filteredKbs =
-    knowledgeBases?.filter(
-      (kb) =>
-        kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        kb.description?.toLowerCase().includes(searchQuery.toLowerCase()),
-    ) ?? []
 
   const handleCreate = useCallback(() => {
     if (!newKbName.trim()) return
@@ -130,7 +176,10 @@ export function KnowledgeBasesPage() {
         <Input
           placeholder="搜索知识库..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value)
+            setPage(1)
+          }}
           className="pl-9"
         />
       </div>
@@ -143,7 +192,7 @@ export function KnowledgeBasesPage() {
       )}
 
       {/* 空状态 */}
-      {!isLoading && filteredKbs.length === 0 && (
+      {!isLoading && visibleKnowledgeBases.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 gap-2">
           <Database className="w-12 h-12 text-muted-foreground" />
           <p className="text-muted-foreground">
@@ -155,10 +204,10 @@ export function KnowledgeBasesPage() {
       )}
 
       {/* 卡片网格 */}
-      {!isLoading && filteredKbs.length > 0 && (
+      {!isLoading && visibleKnowledgeBases.length > 0 && (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredKbs.map((kb) => (
+            {visibleKnowledgeBases.map((kb) => (
               <div
                 key={kb.id}
                 className="relative rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -223,7 +272,7 @@ export function KnowledgeBasesPage() {
         </div>
       )}
 
-      {!isLoading && filteredKbs.length === 0 && paginationMeta && paginationMeta.totalPages > 1 && (
+      {!isLoading && visibleKnowledgeBases.length === 0 && paginationMeta && paginationMeta.totalPages > 1 && (
         <Pagination
           page={paginationMeta.page}
           totalPages={paginationMeta.totalPages}

@@ -8,6 +8,7 @@ import type { KnowledgeBase } from '../types'
 
 const mocks = vi.hoisted(() => ({
   useKnowledgeBases: vi.fn(),
+  useAllKnowledgeBases: vi.fn(),
   useCreateKnowledgeBase: vi.fn(),
   useDeleteKnowledgeBase: vi.fn(),
   navigate: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../hooks/useKnowledgeBases', () => ({
   useKnowledgeBases: mocks.useKnowledgeBases,
+  useAllKnowledgeBases: mocks.useAllKnowledgeBases,
   useCreateKnowledgeBase: mocks.useCreateKnowledgeBase,
   useDeleteKnowledgeBase: mocks.useDeleteKnowledgeBase,
 }))
@@ -49,10 +51,20 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
 
 function setupMocks(overrides: {
   knowledgeBases?: KnowledgeBase[]
+  allKnowledgeBases?: KnowledgeBase[]
   isLoading?: boolean
+  isAllKnowledgeBasesLoading?: boolean
   error?: Error | null
+  allKnowledgeBasesError?: Error | null
 } = {}) {
-  const { knowledgeBases = [], isLoading = false, error = null } = overrides
+  const {
+    knowledgeBases = [],
+    allKnowledgeBases = knowledgeBases,
+    isLoading = false,
+    isAllKnowledgeBasesLoading = false,
+    error = null,
+    allKnowledgeBasesError = null,
+  } = overrides
   const mutateFn = vi.fn()
   const deleteFn = vi.fn()
 
@@ -73,6 +85,11 @@ function setupMocks(overrides: {
     mutate: mutateFn,
     isPending: false,
   })
+  mocks.useAllKnowledgeBases.mockImplementation(({ enabled }: { enabled?: boolean } = {}) => ({
+    data: enabled ? allKnowledgeBases : undefined,
+    isLoading: enabled ? isAllKnowledgeBasesLoading : false,
+    error: enabled ? allKnowledgeBasesError : null,
+  }))
   mocks.useDeleteKnowledgeBase.mockReturnValue({
     mutate: deleteFn,
   })
@@ -153,6 +170,26 @@ describe('KnowledgeBasesPage', () => {
     const searchInput = screen.getByPlaceholderText('搜索知识库...')
     await userEvent.type(searchInput, 'Alpha')
 
+    expect(screen.getByText('Alpha文档')).toBeInTheDocument()
+    expect(screen.queryByText('Beta资料')).not.toBeInTheDocument()
+  })
+
+  it('搜索时会跨分页检索全部知识库', async () => {
+    setupMocks({
+      knowledgeBases: [createKnowledgeBase({ id: 'kb-2', name: 'Beta资料' })],
+      allKnowledgeBases: [
+        createKnowledgeBase({ id: 'kb-1', name: 'Alpha文档' }),
+        createKnowledgeBase({ id: 'kb-2', name: 'Beta资料' }),
+      ],
+    })
+    render(<KnowledgeBasesPage />)
+
+    expect(mocks.useAllKnowledgeBases).toHaveBeenCalledWith({ enabled: false })
+
+    const searchInput = screen.getByPlaceholderText('搜索知识库...')
+    await userEvent.type(searchInput, 'Alpha')
+
+    expect(mocks.useAllKnowledgeBases).toHaveBeenLastCalledWith({ enabled: true })
     expect(screen.getByText('Alpha文档')).toBeInTheDocument()
     expect(screen.queryByText('Beta资料')).not.toBeInTheDocument()
   })
