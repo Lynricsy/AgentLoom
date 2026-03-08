@@ -675,6 +675,50 @@ describe('canvasStore', () => {
     })
   })
 
+  describe('addNode with MCP dynamic ports', () => {
+    beforeEach(() => {
+      useCanvasStore.getState().actions.reset()
+    })
+
+    it('uses input.inputPorts when provided instead of config defaults', () => {
+      useCanvasStore.getState().actions.addNode({
+        ...mockAddNodeInput,
+        nodeType: 'mcp-tool',
+        category: 'tool',
+        inputPorts: customInputPorts,
+      })
+
+      const node = useCanvasStore.getState().nodes[0]
+      expect(node?.data.inputPorts).toHaveLength(1)
+      expect(node?.data.inputPorts[0]?.id).toBe('custom-input')
+    })
+
+    it('uses input.outputPorts when provided instead of config defaults', () => {
+      useCanvasStore.getState().actions.addNode({
+        ...mockAddNodeInput,
+        nodeType: 'mcp-tool',
+        category: 'tool',
+        outputPorts: customOutputPorts,
+      })
+
+      const node = useCanvasStore.getState().nodes[0]
+      expect(node?.data.outputPorts).toHaveLength(1)
+      expect(node?.data.outputPorts[0]?.id).toBe('custom-output')
+    })
+
+    it('stores mcpToolDefinitionId in node data', () => {
+      useCanvasStore.getState().actions.addNode({
+        ...mockAddNodeInput,
+        nodeType: 'mcp-tool',
+        category: 'tool',
+        mcpToolDefinitionId: 'mcp-tool-def-123',
+      })
+
+      const node = useCanvasStore.getState().nodes[0]
+      expect(node?.data.mcpToolDefinitionId).toBe('mcp-tool-def-123')
+    })
+  })
+
   it('reset clears search, minimap, and hover state', () => {
     useCanvasStore.getState().actions.toggleSearch()
     useCanvasStore.getState().actions.setSearchQuery('test')
