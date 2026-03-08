@@ -22,8 +22,8 @@ export function useCreateVersion(workflowId: string) {
         .json<ApiResponse<WorkflowVersion>>()
       return response.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
         queryKey: versionKeys.lists(workflowId),
       })
     },
@@ -42,13 +42,15 @@ export function useRollbackVersion(workflowId: string) {
         .json<ApiResponse<WorkflowVersion>>()
       return response.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: workflowKeys.detail(workflowId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: versionKeys.all(workflowId),
-      })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: workflowKeys.detail(workflowId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: versionKeys.all(workflowId),
+        }),
+      ])
     },
     gcTime: 0,
   })
@@ -67,13 +69,15 @@ export function usePublishWorkflow(workflowId: string) {
         .json<ApiResponse<WorkflowVersion>>()
       return response.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: workflowKeys.detail(workflowId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: versionKeys.all(workflowId),
-      })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: workflowKeys.detail(workflowId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: versionKeys.all(workflowId),
+        }),
+      ])
     },
     gcTime: 0,
   })
@@ -87,13 +91,15 @@ export function useArchiveWorkflow(workflowId: string) {
     mutationFn: async () => {
       await apiClient.post(`workflow-definitions/${workflowId}/archive`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: workflowKeys.detail(workflowId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: versionKeys.all(workflowId),
-      })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: workflowKeys.detail(workflowId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: versionKeys.all(workflowId),
+        }),
+      ])
     },
     gcTime: 0,
   })

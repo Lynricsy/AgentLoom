@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { AlertCircle, Loader2, Upload, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -9,18 +9,57 @@ import { useToast } from '@/shared/ui/toast'
 interface PublishSheetProps {
   open: boolean
   workflowId: string
+  initialVersionId?: string | null
   onOpenChange: (open: boolean) => void
+}
+
+interface PublishErrorPayload {
+  detail?: unknown
+  errors?: Array<{
+    message?: unknown
+  }>
+}
+
+async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as { response?: unknown }).response
+    if (typeof Response !== 'undefined' && response instanceof Response) {
+      try {
+        const payload = (await response.clone().json()) as PublishErrorPayload
+        const messages = (payload.errors ?? [])
+          .map((item) => (typeof item.message === 'string' ? item.message.trim() : ''))
+          .filter(Boolean)
+
+        if (messages.length > 0) {
+          return messages
+        }
+
+        if (typeof payload.detail === 'string' && payload.detail.trim()) {
+          return [payload.detail.trim()]
+        }
+      } catch {
+      }
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return [error.message.trim()]
+  }
+
+  return ['发布失败，请稍后重试']
 }
 
 export const PublishSheet = memo(function PublishSheet({
   open,
   workflowId,
+  initialVersionId,
   onOpenChange,
 }: PublishSheetProps) {
   const [label, setLabel] = useState('')
+  const [releaseNotes, setReleaseNotes] = useState('')
   const [versionSource, setVersionSource] = useState<'current' | 'existing'>('current')
   const [selectedVersionId, setSelectedVersionId] = useState<string>('')
-  const [validationError, setValidationError] = useState<string | null>(null)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
 
   const publishMutation = usePublishWorkflow(workflowId)
   const { data: versionsData } = useWorkflowVersions(workflowId, { page: 1, pageSize: 50 })
@@ -30,26 +69,34 @@ export const PublishSheet = memo(function PublishSheet({
     (v) => !v.publishedAt && !v.archivedAt,
   )
 
-  const resetForm = useCallback(() => {
+  const resetForm = useCallback((nextVersionId: string | null = initialVersionId ?? null) => {
     setLabel('')
-    setVersionSource('current')
-    setSelectedVersionId('')
-    setValidationError(null)
-  }, [])
+    setReleaseNotes('')
+    setVersionSource(nextVersionId ? 'existing' : 'current')
+    setSelectedVersionId(nextVersionId ?? '')
+    setValidationErrors([])
+  }, [initialVersionId])
+
+  useEffect(() => {
+    if (open) {
+      resetForm(initialVersionId ?? null)
+    }
+  }, [initialVersionId, open, resetForm])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
-      setValidationError(null)
+      setValidationErrors([])
 
       if (versionSource === 'existing' && !selectedVersionId) {
-        setValidationError('请选择一个已有版本')
+        setValidationErrors(['请选择一个已有版本'])
         return
       }
 
       try {
         await publishMutation.mutateAsync({
           label: label.trim() || undefined,
+          releaseNotes: releaseNotes.trim() || undefined,
           versionId: versionSource === 'existing' ? selectedVersionId : undefined,
         })
         notify({
@@ -60,12 +107,19 @@ export const PublishSheet = memo(function PublishSheet({
         resetForm()
         onOpenChange(false)
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : '发布失败，请稍后重试'
-        setValidationError(message)
+        setValidationErrors(await extractPublishErrorMessages(err))
       }
     },
-    [label, versionSource, selectedVersionId, publishMutation, notify, onOpenChange, resetForm],
+    [
+      label,
+      releaseNotes,
+      versionSource,
+      selectedVersionId,
+      publishMutation,
+      notify,
+      onOpenChange,
+      resetForm,
+    ],
   )
 
   const handleOpenChange = useCallback(
@@ -115,13 +169,22 @@ export const PublishSheet = memo(function PublishSheet({
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto">
             <div className="flex-1 space-y-6 px-6 py-4">
               {/* 验证错误 */}
-              {validationError && (
+              {validationErrors.length > 0 && (
                 <div
                   className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
                   data-testid="publish-validation-error"
                 >
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{validationError}</span>
+                  <div className="space-y-1">
+                    {validationErrors.map((message) => (
+                      <p
+                        key={message}
+                        data-testid="publish-validation-error-item"
+                      >
+                        {message}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -139,6 +202,21 @@ export const PublishSheet = memo(function PublishSheet({
                   placeholder="例如：v1.0 正式版"
                   className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   data-testid="publish-label-input"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="publish-release-notes" className="text-sm font-medium">
+                  发布说明 <span className="text-muted-foreground">（可选）</span>
+                </label>
+                <textarea
+                  id="publish-release-notes"
+                  maxLength={1000}
+                  value={releaseNotes}
+                  onChange={(e) => setReleaseNotes(e.target.value)}
+                  placeholder="可填写本次发布的变更说明、注意事项或上线备注"
+                  className="mt-1.5 min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="publish-release-notes-input"
                 />
               </div>
 

@@ -6,6 +6,29 @@ import { CanvasNodeShell } from './CanvasNode'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import type { CanvasNode, CanvasNodeData } from '../types'
 
+const llmModuleMocks = vi.hoisted(() => {
+  let mockApiKeys: Array<Record<string, unknown>> = []
+
+  return {
+    mockUseLlmApiKeys: vi.fn(() => ({ data: mockApiKeys })),
+    resetMockApiKeys: () => {
+      mockApiKeys = []
+    },
+    setMockApiKeys: (next: Array<Record<string, unknown>>) => {
+      mockApiKeys = next
+    },
+  }
+})
+
+vi.mock('@/features/llm', async () => {
+  const actual = await vi.importActual<typeof import('@/features/llm')>('@/features/llm')
+
+  return {
+    ...actual,
+    useLlmApiKeys: llmModuleMocks.mockUseLlmApiKeys,
+  }
+})
+
 vi.mock('@xyflow/react', () => ({
   Handle: ({
     className,
@@ -73,6 +96,8 @@ function renderNode(data: CanvasNodeData, overrides: Partial<NodeProps<CanvasNod
 describe('CanvasNodeShell', () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset()
+    llmModuleMocks.resetMockApiKeys()
+    llmModuleMocks.mockUseLlmApiKeys.mockClear()
   })
 
   afterEach(() => {
@@ -162,5 +187,87 @@ describe('CanvasNodeShell', () => {
 
     fireEvent.mouseLeave(node)
     expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
+  })
+
+  it('renders llm-model nodes as unconfigured when no valid config is present', () => {
+    renderNode(createMockNodeData('llm-model'), { id: 'llm-node-empty' })
+
+    const node = screen.getByTestId('canvas-node-llm-node-empty')
+
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'unconfigured')
+    expect(within(node).getAllByText('点击配置模型')).toHaveLength(2)
+    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
+  })
+
+  it('treats provider default api keys as configured for llm-model nodes', () => {
+    llmModuleMocks.setMockApiKeys([
+      {
+        id: 'key-default',
+        provider: 'openai',
+        label: '默认 OpenAI Key',
+        keyPreview: 'sk-****',
+        isDefault: true,
+        status: 'active',
+      },
+    ])
+
+    renderNode(
+      {
+        ...createMockNodeData('llm-model'),
+        label: 'LLM 模型',
+        config: {
+          llmConfigId: 'config-openai',
+          name: '默认 GPT-4o',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          parameters: {
+            temperature: 0.7,
+            topP: 1,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            stop: [],
+          },
+          apiKeyId: null,
+          isDefault: true,
+        },
+      },
+      { id: 'llm-node-default-key' },
+    )
+
+    const node = screen.getByTestId('canvas-node-llm-node-default-key')
+
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'configured')
+    expect(within(node).getByRole('heading', { name: 'gpt-4o' })).toBeInTheDocument()
+    expect(within(node).getByText('OpenAI · 默认 GPT-4o')).toBeInTheDocument()
+    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
+  })
+
+  it('marks llm-model nodes as warning when neither explicit nor default api keys exist', () => {
+    renderNode(
+      {
+        ...createMockNodeData('llm-model'),
+        config: {
+          llmConfigId: 'config-anthropic',
+          name: 'Claude Sonnet',
+          provider: 'anthropic',
+          modelName: 'claude-3-7-sonnet',
+          parameters: {
+            temperature: 0.3,
+            topP: 0.9,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            stop: [],
+          },
+          apiKeyId: null,
+        },
+      },
+      { id: 'llm-node-warning' },
+    )
+
+    const node = screen.getByTestId('canvas-node-llm-node-warning')
+
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'warning')
+    expect(within(node).getByText('缺少 API Key')).toBeInTheDocument()
+    expect(within(node).getByRole('heading', { name: 'claude-3-7-sonnet' })).toBeInTheDocument()
   })
 })

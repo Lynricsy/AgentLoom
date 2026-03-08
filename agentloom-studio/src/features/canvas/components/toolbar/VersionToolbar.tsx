@@ -3,13 +3,13 @@ import { Save, History, Upload, Archive } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
-import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { ArchiveDialog } from '@/features/workflow/components/ArchiveDialog'
 
 interface VersionToolbarProps {
   workflowId: string
   workflowStatus: WorkflowStatus
   onOpenVersionHistory: () => void
+  onOpenPublish: (versionId?: string) => void
 }
 
 const statusConfig: Record<WorkflowStatus, { label: string; className: string }> = {
@@ -31,9 +31,9 @@ export const VersionToolbar = memo(function VersionToolbar({
   workflowId,
   workflowStatus,
   onOpenVersionHistory,
+  onOpenPublish,
 }: VersionToolbarProps) {
   const [createOpen, setCreateOpen] = useState(false)
-  const [publishOpen, setPublishOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
   const isArchived = workflowStatus === 'archived'
@@ -42,7 +42,6 @@ export const VersionToolbar = memo(function VersionToolbar({
   const canArchive = !isArchived
 
   const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
-  const handleOpenPublish = useCallback(() => setPublishOpen(true), [])
   const handleOpenArchive = useCallback(() => setArchiveOpen(true), [])
 
   const config = statusConfig[workflowStatus]
@@ -91,7 +90,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
-            onClick={handleOpenPublish}
+            onClick={() => onOpenPublish()}
             data-testid="btn-publish"
           >
             <Upload className="h-3.5 w-3.5" />
@@ -121,11 +120,6 @@ export const VersionToolbar = memo(function VersionToolbar({
         open={createOpen}
         workflowId={workflowId}
         onOpenChange={setCreateOpen}
-      />
-      <PublishSheet
-        open={publishOpen}
-        workflowId={workflowId}
-        onOpenChange={setPublishOpen}
       />
       <ArchiveDialog
         open={archiveOpen}

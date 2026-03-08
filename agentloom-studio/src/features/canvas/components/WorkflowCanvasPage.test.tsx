@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
 import { useCanvasStore } from '../stores/canvasStore'
@@ -26,6 +26,12 @@ let workflowResult: {
   error: Error | null
 }
 
+const useAutoSaveMock = vi.fn()
+const workflowCanvasMock = vi.fn()
+const publishSheetMock = vi.fn()
+const versionToolbarMock = vi.fn()
+const versionHistoryPanelMock = vi.fn()
+
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ workflowId: routeWorkflowId }),
 }))
@@ -35,7 +41,7 @@ vi.mock('@/features/workflow', () => ({
 }))
 
 vi.mock('../hooks/useAutoSave', () => ({
-  useAutoSave: vi.fn(),
+  useAutoSave: (...args: unknown[]) => useAutoSaveMock(...args),
 }))
 
 vi.mock('./NodePalette', () => ({
@@ -43,7 +49,10 @@ vi.mock('./NodePalette', () => ({
 }))
 
 vi.mock('./WorkflowCanvas', () => ({
-  WorkflowCanvas: () => <div>Workflow Canvas</div>,
+  WorkflowCanvas: (props: { workflowStatus: WorkflowDefinition['status'] }) => {
+    workflowCanvasMock(props)
+    return <div data-testid="workflow-canvas" data-status={props.workflowStatus}>Workflow Canvas</div>
+  },
 }))
 
 vi.mock('./status/WorkflowStatusBar', () => ({
@@ -59,11 +68,46 @@ vi.mock('./panels/FieldMappingPanel', () => ({
 }))
 
 vi.mock('./toolbar/VersionToolbar', () => ({
-  VersionToolbar: () => <div data-testid="version-toolbar" />,
+  VersionToolbar: (props: {
+    onOpenPublish: (versionId?: string) => void
+    workflowStatus: WorkflowDefinition['status']
+  }) => {
+    versionToolbarMock(props)
+    return (
+      <button
+        type="button"
+        data-testid="version-toolbar-open-publish"
+        onClick={() => props.onOpenPublish('ver-002')}
+      >
+        Open publish
+      </button>
+    )
+  },
 }))
 
 vi.mock('@/features/workflow/components/VersionHistoryPanel', () => ({
-  VersionHistoryPanel: () => <div data-testid="version-history-panel" />,
+  VersionHistoryPanel: (props: {
+    onPublish?: (versionId: string) => void
+    workflowStatus: WorkflowDefinition['status']
+  }) => {
+    versionHistoryPanelMock(props)
+    return (
+      <button
+        type="button"
+        data-testid="version-history-open-publish"
+        onClick={() => props.onPublish?.('ver-003')}
+      >
+        History publish
+      </button>
+    )
+  },
+}))
+
+vi.mock('@/features/workflow/components/PublishSheet', () => ({
+  PublishSheet: (props: { open: boolean; initialVersionId?: string | null }) => {
+    publishSheetMock(props)
+    return props.open ? <div data-testid="publish-sheet" data-version-id={props.initialVersionId ?? ''} /> : null
+  },
 }))
 
 const workflowOne: WorkflowDefinition = {
@@ -84,6 +128,7 @@ const workflowOne: WorkflowDefinition = {
   viewport: { x: 10, y: 20, zoom: 1.25 },
   version: 1,
   status: 'draft',
+  publishedVersionId: null,
   createdBy: 'user-1',
   updatedBy: 'user-1',
   createdAt: '2026-03-07T00:00:00.000Z',
@@ -114,10 +159,11 @@ describe('WorkflowCanvasPage', () => {
       isLoading: false,
       error: null,
     }
+    vi.clearAllMocks()
     useCanvasStore.getState().actions.reset()
   })
 
-  it('相同工作流的查询刷新不应重新覆盖本地画布状态', () => {
+  it('相同工作流且服务端版本未变化时不应重新覆盖本地画布状态', () => {
     const { rerender } = render(<WorkflowCanvasPage />)
 
     act(() => {
@@ -125,7 +171,7 @@ describe('WorkflowCanvasPage', () => {
     })
 
     workflowResult = {
-      data: { ...workflowOne, version: 2 },
+      data: { ...workflowOne, name: 'Workflow One (refetched)' },
       isLoading: false,
       error: null,
     }
@@ -135,6 +181,40 @@ describe('WorkflowCanvasPage', () => {
     expect(useCanvasStore.getState().workflowId).toBe('wf-001')
     expect(useCanvasStore.getState().selectedNodeId).toBe('node-1')
     expect(useCanvasStore.getState().nodes[0]?.id).toBe('node-1')
+  })
+
+  it('相同工作流但服务端版本变化时应重放回滚后的快照', () => {
+    const { rerender } = render(<WorkflowCanvasPage />)
+
+    act(() => {
+      useCanvasStore.getState().actions.selectNode('node-1')
+    })
+
+    workflowResult = {
+      data: {
+        ...workflowOne,
+        version: 2,
+        nodes: [
+          {
+            id: 'node-rollback',
+            type: 'tool',
+            position: { x: 420, y: 180 },
+            data: createNodeData('http-tool'),
+          },
+        ],
+        viewport: { x: 80, y: 120, zoom: 1.75 },
+      },
+      isLoading: false,
+      error: null,
+    }
+
+    rerender(<WorkflowCanvasPage />)
+
+    expect(useCanvasStore.getState().workflowId).toBe('wf-001')
+    expect(useCanvasStore.getState().version).toBe(2)
+    expect(useCanvasStore.getState().nodes[0]?.id).toBe('node-rollback')
+    expect(useCanvasStore.getState().viewport).toEqual({ x: 80, y: 120, zoom: 1.75 })
+    expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
 
   it('切换到新的 workflowId 时应应用新的服务端快照', () => {
@@ -155,25 +235,32 @@ describe('WorkflowCanvasPage', () => {
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
 
-  it('mappingPanelEdgeId 有值且边存在时应渲染 FieldMappingPanel', () => {
+  it('把 workflow 状态透传给自动保存、画布和版本面板', () => {
+    render(<WorkflowCanvasPage />)
+
+    expect(useAutoSaveMock).toHaveBeenCalledWith('wf-001', 'draft')
+    expect(screen.getByTestId('workflow-canvas')).toHaveAttribute('data-status', 'draft')
+    expect(versionHistoryPanelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ workflowStatus: 'draft' }),
+    )
+  })
+
+  it('toolbar 与历史面板共用页面级 PublishSheet', () => {
+    render(<WorkflowCanvasPage />)
+
+    fireEvent.click(screen.getByTestId('version-toolbar-open-publish'))
+    expect(screen.getByTestId('publish-sheet')).toHaveAttribute('data-version-id', 'ver-002')
+
+    fireEvent.click(screen.getByTestId('version-history-open-publish'))
+    expect(screen.getByTestId('publish-sheet')).toHaveAttribute('data-version-id', 'ver-003')
+  })
+
+  it('归档工作流隐藏节点面板和字段映射面板，但仍传递只读状态', () => {
     workflowResult = {
       data: {
         ...workflowOne,
-        nodes: [
-          {
-            id: 'node-1',
-            type: 'agent',
-            position: { x: 100, y: 120 },
-            data: createNodeData('llm-agent'),
-          },
-          {
-            id: 'node-2',
-            type: 'tool',
-            position: { x: 300, y: 260 },
-            data: createNodeData('http-tool'),
-          },
-        ],
-        edges: [{ id: 'e-1', source: 'node-1', target: 'node-2' }],
+        status: 'archived',
+        edges: [{ id: 'e-1', source: 'node-1', target: 'node-1' }],
       },
       isLoading: false,
       error: null,
@@ -185,8 +272,10 @@ describe('WorkflowCanvasPage', () => {
       useCanvasStore.getState().actions.openFieldMapping('e-1')
     })
 
-    expect(screen.getByTestId('field-mapping-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('field-mapping-panel').getAttribute('data-edge-id')).toBe('e-1')
+    expect(screen.queryByText('Node Palette')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('field-mapping-panel')).not.toBeInTheDocument()
+    expect(useAutoSaveMock).toHaveBeenCalledWith('wf-001', 'archived')
+    expect(screen.getByTestId('workflow-canvas')).toHaveAttribute('data-status', 'archived')
   })
 
   it('mappingPanelEdgeId 为 null 时不应渲染 FieldMappingPanel', () => {

@@ -70,6 +70,11 @@ describe('WorkflowStatusBar', () => {
       onViewportChange?.({ zoom: 1.5 })
     })
     expect(screen.getByText('150%')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(screen.getByText('已保存 · 3分钟前')).toBeInTheDocument()
   })
 
   it('保存中时显示保存中状态', () => {

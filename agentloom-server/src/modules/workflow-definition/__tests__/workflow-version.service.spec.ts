@@ -118,6 +118,10 @@ describe('WorkflowVersionService', () => {
       insert: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      execute: vi.fn().mockResolvedValue(undefined),
+      transaction: vi.fn(async (callback: (tx: typeof db) => unknown) =>
+        callback(db as typeof db),
+      ),
     };
 
     redis = {
@@ -161,6 +165,8 @@ describe('WorkflowVersionService', () => {
       expect(result.versionNumber).toBe(3);
       expect(result.workflowDefinitionId).toBe(WORKFLOW_ID);
       expect(db.insert).toHaveBeenCalledOnce();
+      expect(db.execute).toHaveBeenCalledOnce();
+      expect(db.transaction).toHaveBeenCalledOnce();
     });
 
     it('应当在无历史版本时从 1 开始编号', async () => {
@@ -220,9 +226,10 @@ describe('WorkflowVersionService', () => {
       const result = await service.listVersions(WORKFLOW_ID, { page: 1, pageSize: 10 });
 
       expect(result.data).toHaveLength(2);
-      expect(result.total).toBe(2);
-      expect(result.page).toBe(1);
-      expect(result.pageSize).toBe(10);
+      expect(result.meta.total).toBe(2);
+      expect(result.meta.page).toBe(1);
+      expect(result.meta.pageSize).toBe(10);
+      expect(result.meta.totalPages).toBe(1);
     });
 
     it('应当使用默认分页参数', async () => {
@@ -235,10 +242,14 @@ describe('WorkflowVersionService', () => {
         .mockReturnValueOnce(selectVersions)
         .mockReturnValueOnce(selectCount);
 
-      const result = await service.listVersions(WORKFLOW_ID, {});
+      const result = await service.listVersions(WORKFLOW_ID, {
+        page: 1,
+        pageSize: 20,
+      });
 
-      expect(result.page).toBe(1);
-      expect(result.pageSize).toBe(20);
+      expect(result.meta.page).toBe(1);
+      expect(result.meta.pageSize).toBe(20);
+      expect(result.meta.totalPages).toBe(0);
       expect(result.data).toHaveLength(0);
     });
 
@@ -308,8 +319,9 @@ describe('WorkflowVersionService', () => {
       const insertChain = createInsertChain([publishedVersion]);
       db.insert.mockReturnValueOnce(insertChain);
 
-      const updateChain = createUpdateChainVoid();
-      db.update.mockReturnValueOnce(updateChain);
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
 
       redis.del.mockResolvedValueOnce(undefined);
 
@@ -318,8 +330,9 @@ describe('WorkflowVersionService', () => {
       expect(result.versionNumber).toBe(2);
       expect(result.publishedAt).toBe(NOW.toISOString());
       expect(db.insert).toHaveBeenCalledOnce();
-      expect(db.update).toHaveBeenCalledOnce();
+      expect(db.update).toHaveBeenCalledTimes(2);
       expect(redis.del).toHaveBeenCalledOnce();
+      expect(db.execute).toHaveBeenCalledOnce();
     });
 
     it('应当发布指定的已有版本', async () => {
@@ -330,11 +343,10 @@ describe('WorkflowVersionService', () => {
         .mockReturnValueOnce(selectVersion);
 
       const updatedVersion = createMockVersion({ publishedAt: NOW });
-      const updateVersionChain = createUpdateChain([updatedVersion]);
-      db.update.mockReturnValueOnce(updateVersionChain);
-
-      const updateWfChain = createUpdateChainVoid();
-      db.update.mockReturnValueOnce(updateWfChain);
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChain([updatedVersion]))
+        .mockReturnValueOnce(createUpdateChainVoid());
 
       redis.del.mockResolvedValueOnce(undefined);
 
@@ -347,6 +359,7 @@ describe('WorkflowVersionService', () => {
       expect(result.id).toBe(VERSION_ID);
       expect(result.publishedAt).toBe(NOW.toISOString());
       expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalledTimes(3);
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
@@ -544,8 +557,9 @@ describe('WorkflowVersionService', () => {
         const insertChain = createInsertChain([createMockVersion({ publishedAt: NOW })]);
         db.insert.mockReturnValueOnce(insertChain);
 
-        const updateChain = createUpdateChainVoid();
-        db.update.mockReturnValueOnce(updateChain);
+        db.update
+          .mockReturnValueOnce(createUpdateChainVoid())
+          .mockReturnValueOnce(createUpdateChainVoid());
         redis.del.mockResolvedValueOnce(undefined);
 
         await expect(
@@ -676,6 +690,19 @@ describe('WorkflowVersionService', () => {
       const result = await service.createVersion(WORKFLOW_ID, {}, USER_ID);
 
       expect(result.label).toBeNull();
+    });
+
+    it('应当在事务内获取工作流级写锁', async () => {
+      const selectWf = createSelectChain([createDraftWorkflow()]);
+      const selectMax = createSelectChain([{ maxVersion: 0 }]);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+
+      db.insert.mockReturnValueOnce(createInsertChain([createMockVersion({ versionNumber: 1 })]));
+
+      await service.createVersion(WORKFLOW_ID, {}, USER_ID);
+
+      expect(db.transaction).toHaveBeenCalledOnce();
+      expect(db.execute).toHaveBeenCalledOnce();
     });
   });
 });

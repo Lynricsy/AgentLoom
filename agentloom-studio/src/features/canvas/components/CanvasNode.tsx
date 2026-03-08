@@ -1,12 +1,42 @@
-import { memo, useCallback, useEffect, useRef, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { AlertTriangle, Brain } from 'lucide-react'
 import { Position, type NodeProps } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
+import {
+  getLlmConfigState,
+  getProviderInfo,
+  parseLlmModelConfig,
+  ProviderIcon,
+  useLlmApiKeys,
+} from '@/features/llm'
 import type { CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from './nodeCategories'
 import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { TypedPort } from './TypedPort'
 import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
+
+function getNodeColorToken(
+  nodeType: CanvasNode['data']['nodeType'],
+  rawConfig: Record<string, unknown>,
+  fallback: string,
+  hasProviderDefaultKey = false,
+) {
+  if (nodeType !== 'llm-model') {
+    return fallback
+  }
+
+  const state = getLlmConfigState(rawConfig, hasProviderDefaultKey)
+
+  switch (state) {
+    case 'unconfigured':
+      return 'var(--color-muted)'
+    case 'warning':
+      return 'var(--color-warning)'
+    default:
+      return 'var(--color-type-model)'
+  }
+}
 
 export const CanvasNodeShell = memo(function CanvasNodeShell({
   id,
@@ -16,10 +46,35 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
 }: NodeProps<CanvasNode>) {
   const config = getNodeTypeConfig(data.nodeType)
   const categoryMeta = NODE_CATEGORIES[data.category]
-  const colorToken = config.colorToken ?? categoryMeta.color
+  const { data: activeApiKeys = [] } = useLlmApiKeys()
+  const llmConfig = data.nodeType === 'llm-model' ? parseLlmModelConfig(data.config) : null
+  const hasProviderDefaultKey = useMemo(() => {
+    if (!llmConfig) {
+      return false
+    }
+
+    return activeApiKeys.some((apiKey) => apiKey.provider === llmConfig.provider && apiKey.isDefault)
+  }, [activeApiKeys, llmConfig])
+  const llmState = data.nodeType === 'llm-model'
+    ? getLlmConfigState(data.config, hasProviderDefaultKey)
+    : null
+  const providerInfo = llmConfig ? getProviderInfo(llmConfig.provider) : null
+  const colorToken = getNodeColorToken(
+    data.nodeType,
+    data.config,
+    config.colorToken ?? categoryMeta.color,
+    hasProviderDefaultKey,
+  )
   const inputPorts = Array.isArray(data.inputPorts) ? data.inputPorts : config.inputPorts
   const outputPorts = Array.isArray(data.outputPorts) ? data.outputPorts : config.outputPorts
-  const subtitle = data.description ?? data.nodeType
+  const subtitle = data.nodeType === 'llm-model'
+    ? llmConfig
+      ? `${providerInfo?.name ?? llmConfig.provider} · ${llmConfig.name}`
+      : '点击配置模型'
+    : data.description ?? data.nodeType
+  const title = data.nodeType === 'llm-model'
+    ? llmConfig?.modelName ?? data.label
+    : data.label
 
   const { setHoveredNodeId } = useCanvasActions()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,6 +112,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       className={cn(
         'canvas-node-shell min-w-[180px] max-w-[260px] rounded-lg border bg-card text-card-foreground shadow-sm',
         selected && 'ring-2 ring-primary shadow-md',
+        data.nodeType === 'llm-model' && llmState === 'unconfigured' && 'border-border/80 bg-muted/10',
+        data.nodeType === 'llm-model' && llmState === 'warning' && 'border-warning/40 bg-warning/5',
         isSearchActive && isMatch && !isCurrent && 'search-match',
         isSearchActive && isCurrent && 'search-current',
         isSearchActive && !isMatch && 'search-dimmed',
@@ -83,7 +140,19 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         </div>
 
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-medium leading-tight">{data.label}</h3>
+          <div className="flex items-center gap-2">
+            {data.nodeType === 'llm-model' ? (
+              llmConfig ? (
+                <ProviderIcon provider={llmConfig.provider} size={15} className="shrink-0 text-foreground" />
+              ) : (
+                <Brain className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )
+            ) : null}
+            <h3 className="truncate text-sm font-medium leading-tight">{title}</h3>
+            {data.nodeType === 'llm-model' && llmState === 'warning' ? (
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+            ) : null}
+          </div>
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
         </div>
       </header>
@@ -106,7 +175,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
 
       <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
         {data.nodeType === 'llm-model' ? (
-          <LlmModelNodeBody config={data.config} />
+          <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
         ) : (
           config.description
         )}
@@ -128,8 +197,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         </section>
       )}
 
-      <div data-slot="state" data-state="idle" className="sr-only">
-        idle
+      <div data-slot="state" data-state={llmState ?? 'idle'} className="sr-only">
+        {llmState ?? 'idle'}
       </div>
     </article>
   )

@@ -1,19 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { WorkflowVersion } from '@/features/workflow/types';
+import type { VersionListResponse, WorkflowVersion } from '@/features/workflow/types';
 
 import { PublishSheet } from './PublishSheet';
 
 const mutateAsyncMock = vi.fn();
 const notifyMock = vi.fn();
 
-let versionsData: {
-  data: WorkflowVersion[];
-  total: number;
-  page: number;
-  pageSize: number;
-} | undefined;
+let versionsData: VersionListResponse | undefined;
 
 vi.mock('../api/versionMutations', () => ({
   usePublishWorkflow: () => ({
@@ -39,7 +34,12 @@ function makeVersion(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion 
     workflowDefinitionId: 'wf-001',
     versionNumber: 1,
     label: '初始版本',
-    snapshot: { nodes: [], edges: [], viewport: null, metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 } },
+    snapshot: {
+      nodes: [],
+      edges: [],
+      viewport: null,
+      metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+    },
     publishedAt: null,
     archivedAt: null,
     createdBy: 'user-001',
@@ -62,9 +62,12 @@ describe('PublishSheet', () => {
         makeVersion({ id: 'ver-001', versionNumber: 2, label: '稳定版' }),
         makeVersion({ id: 'ver-002', versionNumber: 1, label: '初始版' }),
       ],
-      total: 2,
-      page: 1,
-      pageSize: 50,
+      meta: {
+        total: 2,
+        page: 1,
+        pageSize: 50,
+        totalPages: 1,
+      },
     };
   });
 
@@ -72,6 +75,7 @@ describe('PublishSheet', () => {
     render(<PublishSheet {...defaultProps} />);
 
     expect(screen.getByTestId('publish-label-input')).toBeInTheDocument();
+    expect(screen.getByTestId('publish-release-notes-input')).toBeInTheDocument();
     expect(screen.getByTestId('source-current')).toBeInTheDocument();
     expect(screen.getByTestId('source-existing')).toBeInTheDocument();
     expect(screen.getByTestId('confirm-publish')).toBeInTheDocument();
@@ -92,6 +96,13 @@ describe('PublishSheet', () => {
     expect(screen.queryByTestId('version-select')).not.toBeInTheDocument();
   });
 
+  it('带 initialVersionId 打开时预选已有版本', () => {
+    render(<PublishSheet {...defaultProps} initialVersionId="ver-001" />);
+
+    expect(screen.getByRole('radio', { name: /选择已有版本/ })).toBeChecked();
+    expect(screen.getByTestId('version-select')).toHaveValue('ver-001');
+  });
+
   it('切换到已有版本显示版本选择器', () => {
     render(<PublishSheet {...defaultProps} />);
 
@@ -100,18 +111,25 @@ describe('PublishSheet', () => {
     expect(screen.getByTestId('version-select')).toBeInTheDocument();
   });
 
-  it('当前版本提交发布', async () => {
+  it('当前版本提交发布时带上发布说明', async () => {
     mutateAsyncMock.mockResolvedValueOnce({});
 
     render(<PublishSheet {...defaultProps} />);
 
-    const labelInput = screen.getByTestId('publish-label-input');
-    fireEvent.change(labelInput, { target: { value: '正式发布' } });
+    fireEvent.change(screen.getByTestId('publish-label-input'), {
+      target: { value: '正式发布' },
+    });
+    fireEvent.change(screen.getByTestId('publish-release-notes-input'), {
+      target: { value: '修复节点编排与发布链路' },
+    });
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     await waitFor(() => {
       expect(mutateAsyncMock).toHaveBeenCalledWith(
-        expect.objectContaining({ label: '正式发布' }),
+        expect.objectContaining({
+          label: '正式发布',
+          releaseNotes: '修复节点编排与发布链路',
+        }),
       );
     });
 
@@ -127,10 +145,10 @@ describe('PublishSheet', () => {
 
     render(<PublishSheet {...defaultProps} />);
 
-    const existingRadio = screen.getByRole('radio', { name: /选择已有版本/ });
-    fireEvent.click(existingRadio);
-    const select = screen.getByTestId('version-select');
-    fireEvent.change(select, { target: { value: 'ver-001' } });
+    fireEvent.click(screen.getByRole('radio', { name: /选择已有版本/ }));
+    fireEvent.change(screen.getByTestId('version-select'), {
+      target: { value: 'ver-001' },
+    });
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     await waitFor(() => {
@@ -143,12 +161,43 @@ describe('PublishSheet', () => {
   it('未选择版本时显示验证错误', () => {
     render(<PublishSheet {...defaultProps} />);
 
-    const existingRadio = screen.getByRole('radio', { name: /选择已有版本/ });
-    fireEvent.click(existingRadio);
+    fireEvent.click(screen.getByRole('radio', { name: /选择已有版本/ }));
+    fireEvent.change(screen.getByTestId('version-select'), {
+      target: { value: '' },
+    });
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     expect(screen.getByTestId('publish-validation-error')).toBeInTheDocument();
+    expect(screen.getByText('请选择一个已有版本')).toBeInTheDocument();
     expect(mutateAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it('服务端返回多条校验错误时逐条展示', async () => {
+    mutateAsyncMock.mockRejectedValueOnce({
+      response: new Response(
+        JSON.stringify({
+          detail: '发布校验失败',
+          errors: [
+            { message: '工作流必须至少包含一个节点' },
+            { message: '仅草稿工作流允许发布' },
+          ],
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    });
+
+    render(<PublishSheet {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('confirm-publish'));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('publish-validation-error-item')).toHaveLength(2);
+    });
+
+    expect(screen.getByText('工作流必须至少包含一个节点')).toBeInTheDocument();
+    expect(screen.getByText('仅草稿工作流允许发布')).toBeInTheDocument();
   });
 
   it('点击取消关闭面板', () => {

@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import { useToast } from '@/shared/ui/toast'
+import type { WorkflowStatus } from '@/features/workflow/types'
 import { CanvasNodeShell } from './CanvasNode'
 import { SmartEdge } from './edges/SmartEdge'
 import { CanvasMiniMap } from './navigation/CanvasMiniMap'
@@ -39,6 +40,7 @@ import type { CanvasEdge, CanvasEdgeData, CanvasNode } from '../types'
 
 interface WorkflowCanvasProps {
   className?: string
+  workflowStatus?: WorkflowStatus
 }
 
 interface ActiveConnectionState {
@@ -244,6 +246,7 @@ function applyConnectionClasses(root: HTMLElement, state: ActiveConnectionState)
 
 export const WorkflowCanvas = memo(function WorkflowCanvas({
   className,
+  workflowStatus = 'draft',
 }: WorkflowCanvasProps) {
   const nodes = useCanvasNodes()
   const edges = useCanvasEdges()
@@ -263,6 +266,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const { notify } = useToast()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
+  const isReadOnly = workflowStatus === 'archived'
 
   const [activeConnection, setActiveConnection] = useState<ActiveConnectionState | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>(hiddenPreviewState)
@@ -297,33 +301,15 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   useEffect(() => resetConnectionPreview, [resetConnectionPreview])
 
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-        event.preventDefault()
-        toggleSearch()
-        return
-      }
-
-      if (event.key !== 'Backspace' && event.key !== 'Delete') {
-        return
-      }
-
-      if (isEditableTarget(event.target)) {
-        return
-      }
-
-      event.preventDefault()
-      deleteSelectedNode()
-    },
-    [deleteSelectedNode, toggleSearch],
-  )
-
   useEffect(() => {
     const handleWindowKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         toggleSearch()
+        return
+      }
+
+      if (isReadOnly) {
         return
       }
 
@@ -343,7 +329,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown)
     }
-  }, [deleteSelectedNode, toggleSearch])
+  }, [deleteSelectedNode, isReadOnly, toggleSearch])
 
   useEffect(() => {
     if (!activeConnection) {
@@ -451,6 +437,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onConnectStart = useCallback(
     (event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+      if (isReadOnly) {
+        return
+      }
+
       if (params.handleType !== 'source' || !params.nodeId || !params.handleId) {
         return
       }
@@ -531,7 +521,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         metadata: {},
       })
     },
-    [nodes],
+    [isReadOnly, nodes],
   )
 
   const onConnectEnd = useCallback(() => {
@@ -540,6 +530,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isReadOnly) {
+        return
+      }
+
       const evaluated = evaluateConnection(nodes, connection)
       if (!evaluated.compatible) {
         return
@@ -575,11 +569,15 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         notify({ description: warn.message, variant: 'warning' })
       }
     },
-    [createConnection, edges, nodes, notify],
+    [createConnection, edges, isReadOnly, nodes, notify],
   )
 
   const isValidConnection = useCallback(
     (connectionOrEdge: Connection | CanvasEdge) => {
+      if (isReadOnly) {
+        return false
+      }
+
       const evaluated = evaluateConnection(nodes, connectionOrEdge)
       if (!evaluated.compatible) {
         return false
@@ -594,14 +592,18 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       return validationPreview.blockingError === null
     },
-    [edges, nodes],
+    [edges, isReadOnly, nodes],
   )
 
   const onViewportChange = useCallback(
     (nextViewport: Viewport) => {
+      if (isReadOnly) {
+        return
+      }
+
       setViewport(nextViewport)
     },
-    [setViewport],
+    [isReadOnly, setViewport],
   )
 
   const onNodeClick = useCallback(
@@ -614,9 +616,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: CanvasEdge) => {
       selectEdge(edge.id)
-      openFieldMapping(edge.id)
+      if (!isReadOnly) {
+        openFieldMapping(edge.id)
+      }
     },
-    [selectEdge, openFieldMapping],
+    [isReadOnly, openFieldMapping, selectEdge],
   )
 
   const onPaneClick = useCallback(() => {
@@ -626,17 +630,41 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
+      if (isReadOnly) {
+        return
+      }
+
       commitViewport(nextViewport)
     },
-    [commitViewport],
+    [commitViewport, isReadOnly],
+  )
+
+  const handleDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (isReadOnly) {
+        event.preventDefault()
+        return
+      }
+
+      onDragOver(event)
+    },
+    [isReadOnly, onDragOver],
+  )
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (isReadOnly) {
+        event.preventDefault()
+        return
+      }
+
+      onDrop(event)
+    },
+    [isReadOnly, onDrop],
   )
 
   return (
-    <div
-      ref={containerRef}
-      className={cn(className, 'focus:outline-none')}
-      onKeyDownCapture={handleKeyDown}
-    >
+    <div ref={containerRef} className={cn(className, 'focus:outline-none')}>
       <ReactFlow<CanvasNode, CanvasEdge>
         nodes={nodes}
         edges={edges}
@@ -650,13 +678,16 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         viewport={viewport}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
+        nodesDraggable={!isReadOnly}
+        nodesConnectable={!isReadOnly}
+        connectOnClick={!isReadOnly}
         deleteKeyCode={null}
         multiSelectionKeyCode="Shift"
         selectionKeyCode="Shift"

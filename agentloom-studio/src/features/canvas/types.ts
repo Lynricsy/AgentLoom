@@ -18,6 +18,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   category: NodeCategory
   description?: string
   config: Record<string, unknown>
+  llmConfigId?: string | null
+  parameters?: Record<string, unknown>
   inputPorts: PortDefinition[]
   outputPorts: PortDefinition[]
 }

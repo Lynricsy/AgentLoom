@@ -4,7 +4,7 @@ import { ToastProvider } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
 import type { CanvasNode } from '../types'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
-import { useAutoSave } from './useAutoSave'
+import { AUTOSAVE_DEBOUNCE_MS, useAutoSave } from './useAutoSave'
 
 const llmAgentConfig = getNodeTypeConfig('llm-agent')
 
@@ -29,8 +29,14 @@ const mockNode: CanvasNode = {
   },
 }
 
-function AutoSaveHarness({ workflowId }: { workflowId: string }) {
-  useAutoSave(workflowId)
+function AutoSaveHarness({
+  workflowId,
+  workflowStatus,
+}: {
+  workflowId: string
+  workflowStatus?: 'draft' | 'published' | 'archived'
+}) {
+  useAutoSave(workflowId, workflowStatus)
   return null
 }
 
@@ -70,7 +76,7 @@ describe('useAutoSave', () => {
     })
 
     act(() => {
-      vi.advanceTimersByTime(500)
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
     })
 
     expect(mutateMock).toHaveBeenCalledTimes(1)
@@ -97,7 +103,7 @@ describe('useAutoSave', () => {
     })
 
     act(() => {
-      vi.advanceTimersByTime(500)
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
     })
 
     const firstRequest = mutateMock.mock.calls[0]?.[1] as {
@@ -112,7 +118,7 @@ describe('useAutoSave', () => {
     })
 
     act(() => {
-      vi.advanceTimersByTime(500)
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
     })
 
     const secondRequest = mutateMock.mock.calls[1]?.[1] as {
@@ -132,5 +138,60 @@ describe('useAutoSave', () => {
 
     expect(useCanvasStore.getState().isDirty).toBe(false)
     expect(useCanvasStore.getState().version).toBe(3)
+  })
+
+  it('归档工作流不应触发自动保存', () => {
+    render(
+      <ToastProvider>
+        <AutoSaveHarness workflowId="wf-001" workflowStatus="archived" />
+      </ToastProvider>
+    )
+
+    act(() => {
+      useCanvasStore.setState({
+        nodes: [mockNode],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        isDirty: true,
+        version: 1,
+      })
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
+    })
+
+    expect(mutateMock).not.toHaveBeenCalled()
+    expect(useCanvasStore.getState().isDirty).toBe(true)
+  })
+
+  it('达到 2 秒前不应触发自动保存', () => {
+    render(
+      <ToastProvider>
+        <AutoSaveHarness workflowId="wf-001" />
+      </ToastProvider>
+    )
+
+    act(() => {
+      useCanvasStore.setState({
+        nodes: [mockNode],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        isDirty: true,
+        version: 1,
+      })
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS - 1)
+    })
+
+    expect(mutateMock).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+
+    expect(mutateMock).toHaveBeenCalledTimes(1)
   })
 })

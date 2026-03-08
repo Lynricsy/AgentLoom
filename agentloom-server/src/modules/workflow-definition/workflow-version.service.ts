@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, max, sql } from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
+import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import { RedisDomain, redisKey } from '../../common/redis/redis-key.util';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
@@ -27,6 +28,18 @@ const NULL_CACHE_TTL = 60;
 /** 空值缓存标记 */
 const NULL_SENTINEL = '__NULL__';
 
+type WorkflowDbClient = Pick<DrizzleDB, 'execute' | 'insert' | 'select' | 'update'>;
+
+interface VersionListResult {
+  data: VersionResponseDto[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 @Injectable()
 export class WorkflowVersionService {
   private readonly logger = new Logger(WorkflowVersionService.name);
@@ -47,50 +60,34 @@ export class WorkflowVersionService {
     dto: CreateVersionDto,
     userId: string,
   ): Promise<VersionResponseDto> {
-    const workflow = await this.findWorkflowOrThrow(workflowId);
+    const version = await this.withWorkflowWriteLock(workflowId, async (dbClient) => {
+      const workflow = await this.findWorkflowOrThrow(dbClient, workflowId);
 
-    if (workflow.status === 'archived') {
-      throw new WorkflowArchivedException(workflowId);
-    }
+      if (workflow.status === 'archived') {
+        throw new WorkflowArchivedException(workflowId);
+      }
 
-    const [maxResult] = await this.tenantDb
-      .select({ maxVersion: max(schema.workflowVersions.versionNumber) })
-      .from(schema.workflowVersions)
-      .where(
-        eq(schema.workflowVersions.workflowDefinitionId, workflowId),
-      );
+      const [createdVersion] = await dbClient
+        .insert(schema.workflowVersions)
+        .values({
+          workflowDefinitionId: workflowId,
+          tenantId: workflow.tenantId,
+          versionNumber: await this.getNextVersionNumber(dbClient, workflowId),
+          label: dto.label ?? null,
+          snapshot: this.buildSnapshot(workflow),
+          createdBy: userId,
+        })
+        .returning();
 
-    const nextVersionNumber = (maxResult?.maxVersion ?? 0) + 1;
-
-    const snapshot: WorkflowVersionSnapshot = {
-      nodes: (workflow.nodes ?? []) as WorkflowVersionSnapshot['nodes'],
-      edges: (workflow.edges ?? []) as WorkflowVersionSnapshot['edges'],
-      viewport: (workflow.viewport as WorkflowVersionSnapshot['viewport']) ?? null,
-      metadata: {
-        nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
-        edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
-        createdFromVersion: workflow.version,
-      },
-    };
-
-    const [version] = await this.tenantDb
-      .insert(schema.workflowVersions)
-      .values({
-        workflowDefinitionId: workflowId,
-        tenantId: workflow.tenantId,
-        versionNumber: nextVersionNumber,
-        label: dto.label ?? null,
-        snapshot,
-        createdBy: userId,
-      })
-      .returning();
+      return createdVersion;
+    });
 
     this.logger.log(
       JSON.stringify({
         action: 'version_created',
         workflowId,
         versionId: version.id,
-        versionNumber: nextVersionNumber,
+        versionNumber: version.versionNumber,
         userId,
       }),
     );
@@ -103,13 +100,8 @@ export class WorkflowVersionService {
   async listVersions(
     workflowId: string,
     query: ListVersionsQueryDto,
-  ): Promise<{
-    data: VersionResponseDto[];
-    total: number;
-    page: number;
-    pageSize: number;
-  }> {
-    await this.findWorkflowOrThrow(workflowId);
+  ): Promise<VersionListResult> {
+    await this.findWorkflowOrThrow(this.tenantDb, workflowId);
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -135,9 +127,15 @@ export class WorkflowVersionService {
 
     return {
       data: versions.map((v) => this.toResponseDto(v)),
-      total: countResult[0]?.count ?? 0,
-      page,
-      pageSize,
+      meta: {
+        total: countResult[0]?.count ?? 0,
+        page,
+        pageSize,
+        totalPages:
+          (countResult[0]?.count ?? 0) === 0
+            ? 0
+            : Math.ceil((countResult[0]?.count ?? 0) / pageSize),
+      },
     };
   }
 
@@ -148,25 +146,33 @@ export class WorkflowVersionService {
     versionId: string,
     userId: string,
   ): Promise<VersionResponseDto> {
-    const workflow = await this.findWorkflowOrThrow(workflowId);
+    const version = await this.withWorkflowWriteLock(workflowId, async (dbClient) => {
+      const workflow = await this.findWorkflowOrThrow(dbClient, workflowId);
 
-    if (workflow.status === 'archived') {
-      throw new WorkflowArchivedException(workflowId);
-    }
+      if (workflow.status === 'archived') {
+        throw new WorkflowArchivedException(workflowId);
+      }
 
-    const version = await this.findVersionOrThrow(versionId, workflowId);
+      const targetVersion = await this.findVersionOrThrow(
+        dbClient,
+        versionId,
+        workflowId,
+      );
 
-    await this.tenantDb
-      .update(schema.workflowDefinitions)
-      .set({
-        nodes: version.snapshot.nodes,
-        edges: version.snapshot.edges,
-        viewport: version.snapshot.viewport,
-        version: sql`${schema.workflowDefinitions.version} + 1`,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.workflowDefinitions.id, workflowId));
+      await dbClient
+        .update(schema.workflowDefinitions)
+        .set({
+          nodes: targetVersion.snapshot.nodes,
+          edges: targetVersion.snapshot.edges,
+          viewport: targetVersion.snapshot.viewport,
+          version: sql`${schema.workflowDefinitions.version} + 1`,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.workflowDefinitions.id, workflowId));
+
+      return targetVersion;
+    });
 
     this.logger.log(
       JSON.stringify({
@@ -188,126 +194,152 @@ export class WorkflowVersionService {
     dto: PublishWorkflowDto,
     userId: string,
   ): Promise<VersionResponseDto> {
-    const workflow = await this.findWorkflowOrThrow(workflowId);
+    const publishResult = await this.withWorkflowWriteLock(
+      workflowId,
+      async (dbClient) => {
+        const workflow = await this.findWorkflowOrThrow(dbClient, workflowId);
 
-    if (workflow.status === 'archived') {
-      throw new WorkflowArchivedException(workflowId);
-    }
+        if (workflow.status === 'archived') {
+          throw new WorkflowArchivedException(workflowId);
+        }
 
-    if (workflow.status !== 'draft') {
-      throw new InvalidStatusTransitionException(workflow.status, 'published');
-    }
+        if (workflow.status !== 'draft') {
+          throw new InvalidStatusTransitionException(workflow.status, 'published');
+        }
 
-    const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
-    if (nodes.length === 0) {
-      throw new WorkflowPublishValidationException(
-        '工作流必须包含至少一个节点才能发布',
-      );
-    }
+        const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
+        if (nodes.length === 0) {
+          throw new WorkflowPublishValidationException([
+            '工作流必须包含至少一个节点才能发布',
+          ]);
+        }
 
-    let publishedVersion: typeof schema.workflowVersions.$inferSelect;
-
-    if (dto.versionId) {
-      publishedVersion = await this.findVersionOrThrow(dto.versionId, workflowId);
-
-      const [updated] = await this.tenantDb
-        .update(schema.workflowVersions)
-        .set({ publishedAt: new Date() })
-        .where(eq(schema.workflowVersions.id, dto.versionId))
-        .returning();
-
-      publishedVersion = updated;
-    } else {
-      const [maxResult] = await this.tenantDb
-        .select({ maxVersion: max(schema.workflowVersions.versionNumber) })
-        .from(schema.workflowVersions)
-        .where(
-          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+        const publishedAt = new Date();
+        const normalizedReleaseNotes = this.normalizeOptionalText(
+          dto.releaseNotes,
         );
 
-      const nextVersionNumber = (maxResult?.maxVersion ?? 0) + 1;
+        await dbClient
+          .update(schema.workflowVersions)
+          .set({ publishedAt: null })
+          .where(
+            and(
+              eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+              sql`${schema.workflowVersions.publishedAt} IS NOT NULL`,
+            ),
+          );
 
-      const snapshot: WorkflowVersionSnapshot = {
-        nodes: (workflow.nodes ?? []) as WorkflowVersionSnapshot['nodes'],
-        edges: (workflow.edges ?? []) as WorkflowVersionSnapshot['edges'],
-        viewport: (workflow.viewport as WorkflowVersionSnapshot['viewport']) ?? null,
-        metadata: {
-          nodeCount: nodes.length,
-          edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
-          createdFromVersion: workflow.version,
-        },
-      };
+        let publishedVersion: typeof schema.workflowVersions.$inferSelect;
 
-      const [created] = await this.tenantDb
-        .insert(schema.workflowVersions)
-        .values({
-          workflowDefinitionId: workflowId,
+        if (dto.versionId) {
+          const existingVersion = await this.findVersionOrThrow(
+            dbClient,
+            dto.versionId,
+            workflowId,
+          );
+
+          const [updatedVersion] = await dbClient
+            .update(schema.workflowVersions)
+            .set({
+              publishedAt,
+              label: dto.label ?? existingVersion.label,
+              snapshot: {
+                ...existingVersion.snapshot,
+                metadata: {
+                  ...existingVersion.snapshot.metadata,
+                  releaseNotes:
+                    normalizedReleaseNotes ??
+                    existingVersion.snapshot.metadata.releaseNotes ??
+                    null,
+                },
+              },
+            })
+            .where(eq(schema.workflowVersions.id, dto.versionId))
+            .returning();
+
+          publishedVersion = updatedVersion;
+        } else {
+          const [createdVersion] = await dbClient
+            .insert(schema.workflowVersions)
+            .values({
+              workflowDefinitionId: workflowId,
+              tenantId: workflow.tenantId,
+              versionNumber: await this.getNextVersionNumber(dbClient, workflowId),
+              label: dto.label ?? null,
+              snapshot: this.buildSnapshot(workflow, normalizedReleaseNotes),
+              publishedAt,
+              createdBy: userId,
+            })
+            .returning();
+
+          publishedVersion = createdVersion;
+        }
+
+        await dbClient
+          .update(schema.workflowDefinitions)
+          .set({
+            status: 'published',
+            publishedVersionId: publishedVersion.id,
+            updatedBy: userId,
+            updatedAt: publishedAt,
+          })
+          .where(eq(schema.workflowDefinitions.id, workflowId));
+
+        return {
           tenantId: workflow.tenantId,
-          versionNumber: nextVersionNumber,
-          label: dto.label ?? null,
-          snapshot,
-          publishedAt: new Date(),
-          createdBy: userId,
-        })
-        .returning();
+          version: publishedVersion,
+        };
+      },
+    );
 
-      publishedVersion = created;
-    }
-
-    await this.tenantDb
-      .update(schema.workflowDefinitions)
-      .set({
-        status: 'published',
-        publishedVersionId: publishedVersion.id,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.workflowDefinitions.id, workflowId));
-
-    await this.invalidatePublishedCache(workflow.tenantId, workflowId);
+    await this.invalidatePublishedCache(publishResult.tenantId, workflowId);
 
     this.logger.log(
       JSON.stringify({
         action: 'workflow_published',
         workflowId,
-        versionId: publishedVersion.id,
-        versionNumber: publishedVersion.versionNumber,
+        versionId: publishResult.version.id,
+        versionNumber: publishResult.version.versionNumber,
         userId,
       }),
     );
 
-    return this.toResponseDto(publishedVersion);
+    return this.toResponseDto(publishResult.version);
   }
 
   // ─── 归档工作流 ───────────────────────────────────────────────
 
   async archive(workflowId: string, userId: string): Promise<void> {
-    const workflow = await this.findWorkflowOrThrow(workflowId);
+    const workflow = await this.withWorkflowWriteLock(workflowId, async (dbClient) => {
+      const currentWorkflow = await this.findWorkflowOrThrow(dbClient, workflowId);
 
-    if (workflow.status === 'archived') {
-      throw new WorkflowArchivedException(workflowId);
-    }
+      if (currentWorkflow.status === 'archived') {
+        throw new WorkflowArchivedException(workflowId);
+      }
 
-    const now = new Date();
+      const now = new Date();
 
-    await this.tenantDb
-      .update(schema.workflowVersions)
-      .set({ archivedAt: now })
-      .where(
-        and(
-          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
-          sql`${schema.workflowVersions.archivedAt} IS NULL`,
-        ),
-      );
+      await dbClient
+        .update(schema.workflowVersions)
+        .set({ archivedAt: now })
+        .where(
+          and(
+            eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+            sql`${schema.workflowVersions.archivedAt} IS NULL`,
+          ),
+        );
 
-    await this.tenantDb
-      .update(schema.workflowDefinitions)
-      .set({
-        status: 'archived',
-        updatedBy: userId,
-        updatedAt: now,
-      })
-      .where(eq(schema.workflowDefinitions.id, workflowId));
+      await dbClient
+        .update(schema.workflowDefinitions)
+        .set({
+          status: 'archived',
+          updatedBy: userId,
+          updatedAt: now,
+        })
+        .where(eq(schema.workflowDefinitions.id, workflowId));
+
+      return currentWorkflow;
+    });
 
     await this.invalidatePublishedCache(workflow.tenantId, workflowId);
 
@@ -337,7 +369,7 @@ export class WorkflowVersionService {
       return JSON.parse(cached) as VersionResponseDto;
     }
 
-    const workflow = await this.findWorkflowOrThrow(workflowId);
+    const workflow = await this.findWorkflowOrThrow(this.tenantDb, workflowId);
 
     if (!workflow.publishedVersionId) {
       // 缓存空值，防止缓存穿透
@@ -373,8 +405,11 @@ export class WorkflowVersionService {
 
   // ─── 私有辅助方法 ─────────────────────────────────────────────
 
-  private async findWorkflowOrThrow(workflowId: string) {
-    const [workflow] = await this.tenantDb
+  private async findWorkflowOrThrow(
+    dbClient: WorkflowDbClient,
+    workflowId: string,
+  ) {
+    const [workflow] = await dbClient
       .select()
       .from(schema.workflowDefinitions)
       .where(eq(schema.workflowDefinitions.id, workflowId));
@@ -386,8 +421,12 @@ export class WorkflowVersionService {
     return workflow;
   }
 
-  private async findVersionOrThrow(versionId: string, workflowId: string) {
-    const [version] = await this.tenantDb
+  private async findVersionOrThrow(
+    dbClient: WorkflowDbClient,
+    versionId: string,
+    workflowId: string,
+  ) {
+    const [version] = await dbClient
       .select()
       .from(schema.workflowVersions)
       .where(
@@ -402,6 +441,68 @@ export class WorkflowVersionService {
     }
 
     return version;
+  }
+
+  private async withWorkflowWriteLock<T>(
+    workflowId: string,
+    operation: (dbClient: WorkflowDbClient) => Promise<T>,
+  ): Promise<T> {
+    const currentTransaction = transactionStorage.getStore();
+
+    if (currentTransaction) {
+      const dbClient = currentTransaction as unknown as WorkflowDbClient;
+      await this.lockWorkflowVersions(dbClient, workflowId);
+      return operation(dbClient);
+    }
+
+    return this.db.transaction(async (tx) => {
+      const dbClient = tx as unknown as WorkflowDbClient;
+      await this.lockWorkflowVersions(dbClient, workflowId);
+      return operation(dbClient);
+    });
+  }
+
+  private async lockWorkflowVersions(
+    dbClient: WorkflowDbClient,
+    workflowId: string,
+  ): Promise<void> {
+    await dbClient.execute(
+      sql`select pg_advisory_xact_lock(hashtext('workflow_versions'), hashtext(${workflowId}))`,
+    );
+  }
+
+  private async getNextVersionNumber(
+    dbClient: WorkflowDbClient,
+    workflowId: string,
+  ): Promise<number> {
+    const [maxResult] = await dbClient
+      .select({ maxVersion: max(schema.workflowVersions.versionNumber) })
+      .from(schema.workflowVersions)
+      .where(eq(schema.workflowVersions.workflowDefinitionId, workflowId));
+
+    return (maxResult?.maxVersion ?? 0) + 1;
+  }
+
+  private buildSnapshot(
+    workflow: typeof schema.workflowDefinitions.$inferSelect,
+    releaseNotes: string | null = null,
+  ): WorkflowVersionSnapshot {
+    return {
+      nodes: (workflow.nodes ?? []) as WorkflowVersionSnapshot['nodes'],
+      edges: (workflow.edges ?? []) as WorkflowVersionSnapshot['edges'],
+      viewport: (workflow.viewport as WorkflowVersionSnapshot['viewport']) ?? null,
+      metadata: {
+        nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
+        edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
+        createdFromVersion: workflow.version,
+        releaseNotes,
+      },
+    };
+  }
+
+  private normalizeOptionalText(value?: string): string | null {
+    const normalizedValue = value?.trim();
+    return normalizedValue ? normalizedValue : null;
   }
 
   private getPublishedCacheKey(tenantId: string, workflowId: string): string {

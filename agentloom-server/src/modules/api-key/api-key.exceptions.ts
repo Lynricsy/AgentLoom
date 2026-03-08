@@ -23,6 +23,17 @@ export class ApiKeyRevokedException extends DomainException {
   }
 }
 
+export class DefaultApiKeyNotConfiguredException extends DomainException {
+  constructor(provider: string) {
+    super({
+      type: 'https://agentloom.dev/errors/api-key-default-not-configured',
+      title: '默认 API 密钥未配置',
+      status: HttpStatus.NOT_FOUND,
+      detail: `未找到提供商 ${provider} 的默认 API 密钥`,
+    });
+  }
+}
+
 export class InvalidProviderException extends DomainException {
   constructor(provider: string) {
     super({

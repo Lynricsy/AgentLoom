@@ -93,6 +93,25 @@ describe('nodeTypeRegistry', () => {
     expect(getNodeTypeConfigOrNull('not-real')).toBeNull()
   })
 
+  it('defines llm-model as a single model-output node with multi-connect support', () => {
+    const llmModelNode = getNodeTypeConfig('llm-model')
+    const [outputPort] = llmModelNode.outputPorts
+
+    expect(llmModelNode.category).toBe('agent')
+    expect(llmModelNode.inputPorts).toEqual([])
+    expect(llmModelNode.outputPorts).toHaveLength(1)
+
+    expect(outputPort).toMatchObject({
+      id: 'model-output',
+      label: '模型输出',
+      direction: 'output',
+      dataType: 'model',
+      required: false,
+      multiple: true,
+      maxConnections: 5,
+    })
+  })
+
   it('exposes every registry entry through ordered helpers and palette groups', () => {
     const orderedTypes = getAllNodeTypes().map((config) => config.type)
     const groupedTypes = buildPaletteGroups().flatMap((group) => group.items.map((item) => item.type))

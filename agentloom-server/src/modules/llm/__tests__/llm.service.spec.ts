@@ -108,7 +108,13 @@ describe('LlmService', () => {
       db.insert.mockReturnValueOnce(insertChain);
 
       const result = await service.create(
-        { name: 'My GPT Config', provider: 'openai', modelName: 'gpt-4o' },
+        {
+          name: 'My GPT Config',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          parameters: {},
+          isDefault: false,
+        },
         TENANT_ID,
         USER_ID,
       );
@@ -134,7 +140,13 @@ describe('LlmService', () => {
 
       await expect(
         service.create(
-          { name: 'Dup', provider: 'openai', modelName: 'gpt-4o' },
+          {
+            name: 'Dup',
+            provider: 'openai',
+            modelName: 'gpt-4o',
+            parameters: {},
+            isDefault: false,
+          },
           TENANT_ID,
           USER_ID,
         ),
@@ -149,7 +161,13 @@ describe('LlmService', () => {
 
       await expect(
         service.create(
-          { name: 'X', provider: 'openai', modelName: 'gpt-4o' },
+          {
+            name: 'X',
+            provider: 'openai',
+            modelName: 'gpt-4o',
+            parameters: {},
+            isDefault: false,
+          },
           TENANT_ID,
           USER_ID,
         ),
@@ -171,7 +189,13 @@ describe('LlmService', () => {
       );
 
       const result = await service.create(
-        { name: 'My GPT Config', provider: 'openai', modelName: 'gpt-4o', isDefault: true },
+        {
+          name: 'My GPT Config',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          parameters: {},
+          isDefault: true,
+        },
         TENANT_ID,
         USER_ID,
       );

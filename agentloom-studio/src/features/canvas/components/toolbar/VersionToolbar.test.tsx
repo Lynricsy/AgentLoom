@@ -8,11 +8,6 @@ vi.mock('@/features/workflow/components/CreateVersionDialog', () => ({
     open ? <div data-testid="mock-create-version-dialog">CreateVersionDialog</div> : null,
 }));
 
-vi.mock('@/features/workflow/components/PublishSheet', () => ({
-  PublishSheet: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="mock-publish-sheet">PublishSheet</div> : null,
-}));
-
 vi.mock('@/features/workflow/components/ArchiveDialog', () => ({
   ArchiveDialog: ({ open }: { open: boolean }) =>
     open ? <div data-testid="mock-archive-dialog">ArchiveDialog</div> : null,
@@ -22,6 +17,7 @@ const defaultProps = {
   workflowId: 'wf-001',
   workflowStatus: 'draft' as const,
   onOpenVersionHistory: vi.fn(),
+  onOpenPublish: vi.fn(),
 };
 
 describe('VersionToolbar', () => {
@@ -97,12 +93,11 @@ describe('VersionToolbar', () => {
       expect(screen.getByTestId('mock-create-version-dialog')).toBeInTheDocument();
     });
 
-    it('点击发布打开发布面板', () => {
+    it('点击发布调用页面级发布回调', () => {
       render(<VersionToolbar {...defaultProps} />);
 
-      expect(screen.queryByTestId('mock-publish-sheet')).not.toBeInTheDocument();
       fireEvent.click(screen.getByTestId('btn-publish'));
-      expect(screen.getByTestId('mock-publish-sheet')).toBeInTheDocument();
+      expect(defaultProps.onOpenPublish).toHaveBeenCalledWith();
     });
 
     it('点击归档打开归档对话框', () => {

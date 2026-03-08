@@ -1,8 +1,11 @@
 import { memo, useCallback } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
-import { LlmModelConfigPanel } from '@/features/llm'
-import type { LlmModelConfig } from '@/features/llm'
+import {
+  LlmModelConfigPanel,
+  parseLlmModelConfig,
+  type LlmNodeDataPatch,
+} from '@/features/llm'
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
@@ -26,11 +29,9 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
   }, [selectNode])
 
   const handleConfigChange = useCallback(
-    (config: Record<string, unknown>) => {
+    (patch: Record<string, unknown>) => {
       if (!selectedNodeId) return
-      updateNodeData(selectedNodeId, {
-        config,
-      })
+      updateNodeData(selectedNodeId, patch)
     },
     [selectedNodeId, updateNodeData],
   )
@@ -69,7 +70,6 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
         <NodeConfigDispatch
           node={node}
           onConfigChange={handleConfigChange}
-          onClose={handleClose}
         />
       </div>
     </aside>
@@ -78,20 +78,23 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
 
 interface NodeConfigDispatchProps {
   node: CanvasNode
-  onConfigChange: (config: Record<string, unknown>) => void
-  onClose: () => void
+  onConfigChange: (patch: Record<string, unknown>) => void
 }
 
 const NodeConfigDispatch = memo(function NodeConfigDispatch({
   node,
   onConfigChange,
-  onClose,
 }: NodeConfigDispatchProps) {
   const nodeType = node.data.nodeType
 
   const handleLlmChange = useCallback(
-    (config: LlmModelConfig) => {
-      onConfigChange(Object.fromEntries(Object.entries(config)))
+    (patch: LlmNodeDataPatch) => {
+      onConfigChange({
+        config: patch.config,
+        llmConfigId: patch.llmConfigId,
+        parameters: patch.parameters,
+        label: patch.label,
+      })
     },
     [onConfigChange],
   )
@@ -100,9 +103,8 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
     case 'llm-model':
       return (
         <LlmModelConfigPanel
-          config={(node.data.config ?? null) as LlmModelConfig | null}
-          onChange={handleLlmChange}
-          onClose={onClose}
+          config={parseLlmModelConfig(node.data.config ?? null)}
+          onApply={handleLlmChange}
         />
       )
     default:

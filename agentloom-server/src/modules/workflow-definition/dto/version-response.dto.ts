@@ -8,6 +8,7 @@ const versionSnapshotSchema = z.object({
     nodeCount: z.number(),
     edgeCount: z.number(),
     createdFromVersion: z.number(),
+    releaseNotes: z.string().nullable().optional(),
   }),
 });
 

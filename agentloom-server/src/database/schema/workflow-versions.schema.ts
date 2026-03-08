@@ -7,6 +7,7 @@ import {
   jsonb,
   timestamp,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
@@ -25,6 +26,7 @@ export interface WorkflowVersionSnapshot {
     nodeCount: number;
     edgeCount: number;
     createdFromVersion: number;
+    releaseNotes?: string | null;
   };
 }
 
@@ -62,7 +64,7 @@ export const workflowVersions = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index('idx_workflow_versions_workflow_version').on(
+    uniqueIndex('uq_workflow_versions_workflow_version').on(
       table.workflowDefinitionId,
       table.versionNumber,
     ),

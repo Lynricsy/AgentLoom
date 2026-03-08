@@ -19,6 +19,7 @@ vi.mock('@xyflow/react', () => ({
     id,
     path,
     className,
+    interactionWidth: _interactionWidth,
     ...rest
   }: {
     id?: string
@@ -34,7 +35,9 @@ vi.mock('@xyflow/react', () => ({
     />
   ),
   EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="edge-label-renderer">{children}</div>
+    <foreignObject data-testid="edge-label-renderer" x="0" y="0" width="160" height="80">
+      {children}
+    </foreignObject>
   ),
   getBezierPath: () => ['M 0,0 C 50,0 50,100 100,100', 50, 50, 0, 0],
   Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
@@ -60,33 +63,46 @@ const baseProps = {
   data: createDefaultEdgeData(),
 }
 
+function renderSmartEdge(props?: Partial<typeof baseProps>) {
+  return render(
+    <svg aria-label="SmartEdge test canvas">
+      <title>SmartEdge test canvas</title>
+      <SmartEdge {...baseProps} {...props} />
+    </svg>
+  )
+}
+
 describe('SmartEdge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
+  function readClassName(element: Element): string {
+    return element.getAttribute('class') ?? ''
+  }
+
   it('renders edge with default L0 visual level', () => {
-    render(<SmartEdge {...baseProps} />)
+    renderSmartEdge()
 
     const basePath = screen.getByTestId('edge-node-a-node-b')
     expect(basePath).toBeInTheDocument()
-    expect(basePath.className).toContain('smart-edge-path--l0')
-    expect(basePath.className).not.toContain('smart-edge-path--selected')
+    expect(readClassName(basePath)).toContain('smart-edge-path--l0')
+    expect(readClassName(basePath)).not.toContain('smart-edge-path--selected')
   })
 
   it('applies selected class when selected', () => {
-    render(<SmartEdge {...baseProps} selected />)
+    renderSmartEdge({ selected: true })
 
     const basePath = screen.getByTestId('edge-node-a-node-b')
-    expect(basePath.className).toContain('smart-edge-path--selected')
+    expect(readClassName(basePath)).toContain('smart-edge-path--selected')
   })
 
   it('renders particles for L0 visual level', () => {
-    const { container } = render(<SmartEdge {...baseProps} />)
+    const { container } = renderSmartEdge()
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(2)
-    expect(particles[0]!.className).toContain('smart-edge-particle--l0')
+    expect(readClassName(particles[0]!)).toContain('smart-edge-particle--l0')
   })
 
   it('renders particles for L1 visual level', () => {
@@ -95,11 +111,11 @@ describe('SmartEdge', () => {
       visualLevel: 'L1',
       rawCompatibilityLevel: 'TRANSFORM',
     }
-    const { container } = render(<SmartEdge {...baseProps} data={l1Data} />)
+    const { container } = renderSmartEdge({ data: l1Data })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(2)
-    expect(particles[0]!.className).toContain('smart-edge-particle--l1')
+    expect(readClassName(particles[0]!)).toContain('smart-edge-particle--l1')
   })
 
   it('does not render particles for checking level', () => {
@@ -107,9 +123,7 @@ describe('SmartEdge', () => {
       ...createDefaultEdgeData(),
       visualLevel: 'checking',
     }
-    const { container } = render(
-      <SmartEdge {...baseProps} data={checkingData} />
-    )
+    const { container } = renderSmartEdge({ data: checkingData })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(0)
@@ -121,16 +135,14 @@ describe('SmartEdge', () => {
       visualLevel: 'error',
       rawCompatibilityLevel: 'INCOMPATIBLE',
     }
-    const { container } = render(
-      <SmartEdge {...baseProps} data={errorData} />
-    )
+    const { container } = renderSmartEdge({ data: errorData })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
     expect(particles).toHaveLength(0)
   })
 
   it('shows level label on badge by default', () => {
-    render(<SmartEdge {...baseProps} />)
+    renderSmartEdge()
 
     const badge = screen.getByTestId('edge-badge-edge-1')
     expect(badge.textContent).toContain('精确匹配')
@@ -145,14 +157,14 @@ describe('SmartEdge', () => {
         requiredUnmappedCount: 0,
       },
     }
-    render(<SmartEdge {...baseProps} data={mappedData} />)
+    renderSmartEdge({ data: mappedData })
 
     const badge = screen.getByTestId('edge-badge-edge-1')
     expect(badge.textContent).toContain('4 已映射')
   })
 
   it('delete button dispatches remove edge change', () => {
-    render(<SmartEdge {...baseProps} />)
+    renderSmartEdge()
 
     const deleteBtn = screen.getByTestId('edge-delete-edge-1')
     fireEvent.click(deleteBtn)
@@ -162,17 +174,18 @@ describe('SmartEdge', () => {
     ])
   })
 
-  it('double-click badge opens field mapping', () => {
-    render(<SmartEdge {...baseProps} />)
+  it('click badge action opens field mapping', () => {
+    renderSmartEdge()
 
-    const badge = screen.getByTestId('edge-badge-edge-1')
-    fireEvent.doubleClick(badge)
+    const badgeAction = screen.getByTestId('edge-badge-action-edge-1')
+    fireEvent.mouseEnter(screen.getByTestId('edge-node-a-node-b'))
+    fireEvent.click(badgeAction)
 
     expect(mockOpenFieldMapping).toHaveBeenCalledWith('edge-1')
   })
 
   it('badge is visible when edge is selected', () => {
-    render(<SmartEdge {...baseProps} selected />)
+    renderSmartEdge({ selected: true })
 
     const badge = screen.getByTestId('edge-badge-edge-1')
     expect(badge.className).toContain('edge-badge--visible')
@@ -183,28 +196,39 @@ describe('SmartEdge', () => {
       ...createDefaultEdgeData(),
       visualLevel: 'checking',
     }
-    render(<SmartEdge {...baseProps} data={checkingData} />)
+    renderSmartEdge({ data: checkingData })
 
     const basePath = screen.getByTestId('edge-node-a-node-b')
-    expect(basePath.className).toContain('smart-edge-path--checking')
+    expect(readClassName(basePath)).toContain('smart-edge-path--checking')
 
     const badge = screen.getByTestId('edge-badge-edge-1')
     expect(badge.textContent).toContain('检查中...')
   })
 
   it('badge becomes visible on hover', () => {
-    render(<SmartEdge {...baseProps} />)
+    renderSmartEdge()
 
     const interactionPath = screen.getByTestId('edge-node-a-node-b')
     const badge = screen.getByTestId('edge-badge-edge-1')
+    const badgeAction = screen.getByTestId('edge-badge-action-edge-1')
+    const deleteButton = screen.getByTestId('edge-delete-edge-1')
 
     expect(badge.className).not.toContain('edge-badge--visible')
+    expect(badge).toHaveStyle({ pointerEvents: 'none' })
+    expect(badge).toHaveAttribute('aria-hidden', 'true')
+    expect(badgeAction).toHaveAttribute('tabindex', '-1')
+    expect(deleteButton).toHaveAttribute('tabindex', '-1')
 
     fireEvent.mouseEnter(interactionPath)
     expect(badge.className).toContain('edge-badge--visible')
+    expect(badge).toHaveStyle({ pointerEvents: 'all' })
+    expect(badge).toHaveAttribute('aria-hidden', 'false')
+    expect(badgeAction).toHaveAttribute('tabindex', '0')
+    expect(deleteButton).toHaveAttribute('tabindex', '0')
 
     fireEvent.mouseLeave(interactionPath)
     expect(badge.className).not.toContain('edge-badge--visible')
+    expect(badge).toHaveStyle({ pointerEvents: 'none' })
   })
 
   it('shows warning indicator when requiredUnmappedCount > 0', () => {
@@ -218,7 +242,7 @@ describe('SmartEdge', () => {
         requiredUnmappedCount: 2,
       },
     }
-    render(<SmartEdge {...baseProps} data={warningData} />)
+    renderSmartEdge({ data: warningData })
 
     const warning = screen.getByTestId('edge-warning-edge-1')
     expect(warning).toBeInTheDocument()
@@ -233,7 +257,7 @@ describe('SmartEdge', () => {
       rawCompatibilityLevel: 'INCOMPATIBLE',
       reasonKey: 'type_mismatch',
     }
-    render(<SmartEdge {...baseProps} data={errorData} />)
+    renderSmartEdge({ data: errorData })
 
     const badge = screen.getByTestId('edge-badge-edge-1')
     expect(badge.textContent).toContain('不兼容: type_mismatch')

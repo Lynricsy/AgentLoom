@@ -29,7 +29,7 @@ ALTER TABLE "workflow_definitions"
   FOREIGN KEY ("published_version_id") REFERENCES "public"."workflow_versions"("id")
   ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_workflow_versions_workflow_version"
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_workflow_versions_workflow_version"
   ON "workflow_versions" USING btree ("workflow_definition_id", "version_number");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_workflow_versions_tenant_published"

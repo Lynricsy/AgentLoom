@@ -1,26 +1,32 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { WorkflowVersion } from '@/features/workflow/types';
+import type { VersionListResponse, WorkflowVersion } from '@/features/workflow/types';
 
 import { VersionHistoryPanel } from './VersionHistoryPanel';
 
 const mutateAsyncMock = vi.fn();
 const notifyMock = vi.fn();
 
-let versionsData: {
-  data: WorkflowVersion[];
-  total: number;
-  page: number;
-  pageSize: number;
-} | undefined;
+let versionPages: Record<number, VersionListResponse>;
 let versionsLoading = false;
+let versionsFetching = false;
+let requestedPages: number[] = [];
 
 vi.mock('../api/versionQueries', () => ({
-  useWorkflowVersions: () => ({
-    data: versionsLoading ? undefined : versionsData,
-    isLoading: versionsLoading,
-  }),
+  useWorkflowVersions: (
+    _workflowId: string,
+    filters: { page?: number; pageSize?: number } = {},
+  ) => {
+    const page = filters.page ?? 1;
+    requestedPages.push(page);
+
+    return {
+      data: versionsLoading ? undefined : versionPages[page],
+      isLoading: versionsLoading,
+      isFetching: versionsFetching,
+    };
+  },
 }));
 
 vi.mock('../api/versionMutations', () => ({
@@ -44,12 +50,29 @@ function makeVersion(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion 
     workflowDefinitionId: 'wf-001',
     versionNumber: 1,
     label: null,
-    snapshot: { nodes: [], edges: [], viewport: null, metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 } },
+    snapshot: {
+      nodes: [],
+      edges: [],
+      viewport: null,
+      metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+    },
     publishedAt: null,
     archivedAt: null,
     createdBy: 'user-001',
     createdAt: '2024-01-01T00:00:00Z',
     ...overrides,
+  };
+}
+
+function makePage(data: WorkflowVersion[], page: number, total: number, pageSize = 20): VersionListResponse {
+  return {
+    data,
+    meta: {
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    },
   };
 }
 
@@ -64,8 +87,12 @@ const defaultProps = {
 describe('VersionHistoryPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    versionsData = { data: [], total: 0, page: 1, pageSize: 20 };
+    requestedPages = [];
     versionsLoading = false;
+    versionsFetching = false;
+    versionPages = {
+      1: makePage([], 1, 0),
+    };
   });
 
   it('关闭时面板被移出视口', () => {
@@ -90,24 +117,24 @@ describe('VersionHistoryPanel', () => {
     expect(screen.getAllByTestId('version-item-skeleton').length).toBeGreaterThan(0);
   });
 
-  it('无版本时显示空状态', () => {
-    versionsData = { data: [], total: 0, page: 1, pageSize: 20 };
-
+  it('无版本时显示新的空状态文案', () => {
     render(<VersionHistoryPanel {...defaultProps} />);
 
     expect(screen.getByTestId('version-list-empty')).toBeInTheDocument();
-    expect(screen.getByText('暂无版本历史')).toBeInTheDocument();
+    expect(screen.getByText('暂无版本快照')).toBeInTheDocument();
+    expect(screen.getByText('保存版本或发布当前画布后，会在这里展示历史记录')).toBeInTheDocument();
   });
 
-  it('渲染版本列表', () => {
-    versionsData = {
-      data: [
-        makeVersion({ id: 'ver-001', versionNumber: 2, label: '稳定版本' }),
-        makeVersion({ id: 'ver-002', versionNumber: 1, label: null }),
-      ],
-      total: 2,
-      page: 1,
-      pageSize: 20,
+  it('渲染版本列表并显示创建者', () => {
+    versionPages = {
+      1: makePage(
+        [
+          makeVersion({ id: 'ver-002', versionNumber: 2, label: '稳定版本', createdBy: 'owner-002' }),
+          makeVersion({ id: 'ver-001', versionNumber: 1 }),
+        ],
+        1,
+        2,
+      ),
     };
 
     render(<VersionHistoryPanel {...defaultProps} />);
@@ -115,16 +142,16 @@ describe('VersionHistoryPanel', () => {
     expect(screen.getByTestId('version-item-2')).toBeInTheDocument();
     expect(screen.getByTestId('version-item-1')).toBeInTheDocument();
     expect(screen.getByText('稳定版本')).toBeInTheDocument();
+    expect(screen.getByTestId('version-created-by-2')).toHaveTextContent('owner-002');
   });
 
   it('已发布版本显示发布标签', () => {
-    versionsData = {
-      data: [
-        makeVersion({ id: 'ver-001', versionNumber: 1, publishedAt: '2024-01-01T00:00:00Z' }),
-      ],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+    versionPages = {
+      1: makePage(
+        [makeVersion({ id: 'ver-001', versionNumber: 1, publishedAt: '2024-01-01T00:00:00Z' })],
+        1,
+        1,
+      ),
     };
 
     render(<VersionHistoryPanel {...defaultProps} />);
@@ -133,13 +160,12 @@ describe('VersionHistoryPanel', () => {
   });
 
   it('已归档版本显示归档标签', () => {
-    versionsData = {
-      data: [
-        makeVersion({ id: 'ver-001', versionNumber: 1, archivedAt: '2024-01-01T00:00:00Z' }),
-      ],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+    versionPages = {
+      1: makePage(
+        [makeVersion({ id: 'ver-001', versionNumber: 1, archivedAt: '2024-01-01T00:00:00Z' })],
+        1,
+        1,
+      ),
     };
 
     render(<VersionHistoryPanel {...defaultProps} />);
@@ -147,16 +173,28 @@ describe('VersionHistoryPanel', () => {
     expect(screen.getByText('已归档')).toBeInTheDocument();
   });
 
+  it('点击发布按钮调用页面级 onPublish', () => {
+    versionPages = {
+      1: makePage([makeVersion({ id: 'ver-001', versionNumber: 1 })], 1, 1),
+    };
+
+    render(<VersionHistoryPanel {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('publish-version-1'));
+
+    expect(defaultProps.onPublish).toHaveBeenCalledWith('ver-001');
+  });
+
   describe('回滚', () => {
     beforeEach(() => {
-      versionsData = {
-        data: [
-          makeVersion({ id: 'ver-001', versionNumber: 2 }),
-          makeVersion({ id: 'ver-002', versionNumber: 1 }),
-        ],
-        total: 2,
-        page: 1,
-        pageSize: 20,
+      versionPages = {
+        1: makePage(
+          [
+            makeVersion({ id: 'ver-001', versionNumber: 2 }),
+            makeVersion({ id: 'ver-002', versionNumber: 1 }),
+          ],
+          1,
+          2,
+        ),
       };
     });
 
@@ -191,43 +229,36 @@ describe('VersionHistoryPanel', () => {
     });
   });
 
-  describe('分页', () => {
-    it('多页时显示分页控件', () => {
-      versionsData = {
-        data: Array.from({ length: 20 }, (_, i) =>
-          makeVersion({ id: `ver-${i}`, versionNumber: 20 - i }),
-        ),
-        total: 40,
-        page: 1,
-        pageSize: 20,
-      };
+  it('滚动到底部时加载下一页并累积版本', async () => {
+    versionPages = {
+      1: makePage([makeVersion({ id: 'ver-002', versionNumber: 2 })], 1, 2, 1),
+      2: makePage([makeVersion({ id: 'ver-001', versionNumber: 1 })], 2, 2, 1),
+    };
 
-      render(<VersionHistoryPanel {...defaultProps} />);
+    render(<VersionHistoryPanel {...defaultProps} />);
 
-      expect(screen.getByTestId('version-page-next')).toBeInTheDocument();
-      expect(screen.getByText(/第 1\/2 页/)).toBeInTheDocument();
+    const list = screen.getByTestId('version-list');
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 600 });
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(list, 'scrollTop', { configurable: true, value: 340, writable: true });
+
+    fireEvent.scroll(list);
+
+    await waitFor(() => {
+      expect(requestedPages).toContain(2);
     });
 
-    it('单页时不显示分页控件', () => {
-      versionsData = {
-        data: [makeVersion()],
-        total: 1,
-        page: 1,
-        pageSize: 20,
-      };
-
-      render(<VersionHistoryPanel {...defaultProps} />);
-
-      expect(screen.queryByTestId('version-page-next')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('version-item-1')).toBeInTheDocument();
     });
+
+    expect(screen.getByText('已加载 2/2 个版本')).toBeInTheDocument();
+    expect(screen.getByText('已加载全部版本')).toBeInTheDocument();
   });
 
   it('归档工作流隐藏操作按钮', () => {
-    versionsData = {
-      data: [makeVersion({ id: 'ver-001', versionNumber: 1 })],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+    versionPages = {
+      1: makePage([makeVersion({ id: 'ver-001', versionNumber: 1 })], 1, 1),
     };
 
     render(<VersionHistoryPanel {...defaultProps} workflowStatus="archived" />);

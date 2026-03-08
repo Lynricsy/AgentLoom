@@ -6,4 +6,5 @@ export const llmModelKeys = {
   details: () => [...llmModelKeys.all, 'detail'] as const,
   detail: (id: string) => [...llmModelKeys.details(), id] as const,
   providers: () => [...llmModelKeys.all, 'providers'] as const,
+  apiKeys: () => [...llmModelKeys.all, 'api-keys'] as const,
 }

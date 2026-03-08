@@ -172,7 +172,7 @@ body {
 /* ─── Edge Badge（hover 信息徽标） ─────────────────────── */
 .edge-badge {
   position: absolute;
-  pointer-events: all;
+  pointer-events: none;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -188,12 +188,12 @@ body {
   opacity: 0;
   transform: translateX(-50%) translateY(-50%);
   transition: opacity 0.15s ease;
-  cursor: pointer;
   user-select: none;
 }
 
 .edge-badge--visible {
   opacity: 1;
+  pointer-events: all;
 }
 
 .edge-badge:hover {
@@ -211,6 +211,18 @@ body {
 .edge-badge__dot--l1 { background: var(--color-compat-l1); }
 .edge-badge__dot--checking { background: var(--color-info); }
 .edge-badge__dot--error { background: var(--color-compat-l3); }
+
+.edge-badge__summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 
 .edge-badge__delete {
   display: flex;

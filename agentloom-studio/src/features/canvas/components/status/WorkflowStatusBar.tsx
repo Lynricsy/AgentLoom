@@ -51,6 +51,24 @@ const StatusIndicator = memo(function StatusIndicator({
   isSaving: boolean
   lastSavedAt: Date | null
 }) {
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    if (!lastSavedAt || isDirty || isSaving) {
+      return
+    }
+
+    setNow(new Date())
+
+    const timer = window.setInterval(() => {
+      setNow(new Date())
+    }, 60_000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [isDirty, isSaving, lastSavedAt])
+
   if (isSaving) {
     return (
       <span className={cn('flex items-center gap-1 text-muted-foreground')}>
@@ -73,7 +91,7 @@ const StatusIndicator = memo(function StatusIndicator({
     return (
       <span className="flex items-center gap-1 text-emerald-500">
         <Check className="h-3 w-3" />
-        已保存 · {formatRelativeTime(lastSavedAt)}
+        已保存 · {formatRelativeTime(lastSavedAt, now)}
       </span>
     )
   }

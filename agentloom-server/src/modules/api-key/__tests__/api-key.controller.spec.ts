@@ -17,6 +17,7 @@ const MOCK_RESPONSE = {
   provider: 'openai' as const,
   label: 'My Key',
   keyPreview: 'sk-...5678',
+  isDefault: false,
   status: 'active' as const,
   lastUsedAt: null,
   rotatedAt: null,
@@ -66,7 +67,12 @@ describe('ApiKeyController', () => {
 
   describe('create', () => {
     it('应当调用 service.create 并包装返回值', async () => {
-      const dto = { provider: 'openai' as const, label: 'Key', apiKey: 'sk-test5678' };
+      const dto = {
+        provider: 'openai' as const,
+        label: 'Key',
+        apiKey: 'sk-test5678',
+        isDefault: false,
+      };
       const result = await controller.create(dto, USER_ID, TENANT_ID);
 
       expect(result).toEqual({ data: MOCK_RESPONSE });

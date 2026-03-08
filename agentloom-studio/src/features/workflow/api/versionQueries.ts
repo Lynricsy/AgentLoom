@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiClient } from '../../../shared/api/client'
 import type { ApiResponse } from '../../../shared/types/api'
 import type { VersionListResponse, WorkflowVersion } from '../types'
@@ -21,6 +21,7 @@ export function useWorkflowVersions(
       return response
     },
     enabled: !!workflowId,
+    placeholderData: keepPreviousData,
   })
 }
 

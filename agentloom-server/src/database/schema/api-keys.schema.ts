@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   pgTable,
   pgEnum,
   uuid,
@@ -73,6 +74,7 @@ export const apiKeys = pgTable(
     encryptedDek: bytea('encrypted_dek'),
     iv: bytea('iv'),
     authTag: bytea('auth_tag'),
+    isDefault: boolean('is_default').notNull().default(false),
     status: apiKeyStatusEnum('status').notNull().default('active'),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     rotatedAt: timestamp('rotated_at', { withTimezone: true }),
@@ -90,6 +92,7 @@ export const apiKeys = pgTable(
     index('idx_api_keys_user_id').on(table.userId),
     index('idx_api_keys_status').on(table.status),
     index('idx_api_keys_provider').on(table.provider),
+    index('idx_api_keys_org_default').on(table.organizationId, table.isDefault),
     ...createDirectTenantPolicies('api_keys'),
   ],
 );

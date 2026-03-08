@@ -41,9 +41,12 @@ describe('WorkflowVersionController', () => {
       createVersion: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
       listVersions: vi.fn().mockResolvedValue({
         data: [MOCK_VERSION_DTO],
-        total: 1,
-        page: 1,
-        pageSize: 20,
+        meta: {
+          total: 1,
+          page: 1,
+          pageSize: 20,
+          totalPages: 1,
+        },
       }),
       rollback: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
       publish: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
@@ -63,11 +66,13 @@ describe('WorkflowVersionController', () => {
       expect(getRoles(controller, 'createVersion')).toEqual(['owner', 'admin']);
     });
 
-    it('listVersions 应当允许 owner、admin、member', () => {
+    it('listVersions 应当允许所有可读组织角色', () => {
       expect(getRoles(controller, 'listVersions')).toEqual([
         'owner',
         'admin',
-        'member',
+        'creator',
+        'operator',
+        'viewer',
       ]);
     });
 
@@ -83,11 +88,13 @@ describe('WorkflowVersionController', () => {
       expect(getRoles(controller, 'archive')).toEqual(['owner', 'admin']);
     });
 
-    it('getPublishedVersion 应当允许 owner、admin、member', () => {
+    it('getPublishedVersion 应当允许所有可读组织角色', () => {
       expect(getRoles(controller, 'getPublishedVersion')).toEqual([
         'owner',
         'admin',
-        'member',
+        'creator',
+        'operator',
+        'viewer',
       ]);
     });
   });
@@ -115,7 +122,8 @@ describe('WorkflowVersionController', () => {
 
       expect(service.listVersions).toHaveBeenCalledWith(WORKFLOW_ID, query);
       expect(result.data).toHaveLength(1);
-      expect(result.total).toBe(1);
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.totalPages).toBe(1);
     });
   });
 

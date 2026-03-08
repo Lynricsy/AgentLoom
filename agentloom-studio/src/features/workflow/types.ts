@@ -1,5 +1,6 @@
 import type { Viewport } from '@xyflow/react'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas/types'
+import type { PaginatedResponse } from '@/shared/types/api'
 
 export type WorkflowStatus = 'draft' | 'published' | 'archived'
 
@@ -36,6 +37,7 @@ export interface WorkflowVersionSnapshot {
     nodeCount: number
     edgeCount: number
     createdFromVersion: number
+    releaseNotes?: string | null
   }
 }
 
@@ -57,12 +59,8 @@ export interface CreateVersionPayload {
 
 export interface PublishWorkflowPayload {
   label?: string
+  releaseNotes?: string
   versionId?: string
 }
 
-export interface VersionListResponse {
-  data: WorkflowVersion[]
-  total: number
-  page: number
-  pageSize: number
-}
+export type VersionListResponse = PaginatedResponse<WorkflowVersion>

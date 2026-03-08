@@ -1,16 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DefaultApiKeyNotConfiguredException } from '../../api-key/api-key.exceptions';
+import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import { LlmProviderException } from '../llm.exceptions';
 import { PiAiAdapter } from '../pi-ai-adapter';
 import type { LlmModelConfig } from '../../../database/schema/llm-model-configs.schema';
 
-const { mockProviderFn, mockCreateOpenAI, mockCreateAnthropic, mockCreateGoogle } = vi.hoisted(() => {
-  const fn = vi.fn().mockReturnValue('mock-model');
+type WrappedModel = {
+  doGenerate: (...args: unknown[]) => Promise<unknown>;
+  doStream: (...args: unknown[]) => Promise<unknown>;
+  provider: string;
+};
+
+const {
+  mockProviderFn,
+  mockCreateOpenAI,
+  mockCreateAnthropic,
+  mockCreateGoogle,
+  mockModel,
+} = vi.hoisted(() => {
+  const model = {
+    doGenerate: vi.fn().mockResolvedValue('generated'),
+    doStream: vi.fn().mockResolvedValue('streamed'),
+    provider: 'mock-provider',
+  };
+  const fn = vi.fn().mockReturnValue(model);
   return {
     mockProviderFn: fn,
     mockCreateOpenAI: vi.fn().mockReturnValue(fn),
     mockCreateAnthropic: vi.fn().mockReturnValue(fn),
     mockCreateGoogle: vi.fn().mockReturnValue(fn),
+    mockModel: model,
   };
 });
 
@@ -37,20 +57,35 @@ function createConfig(overrides: Partial<LlmModelConfig> = {}): LlmModelConfig {
 
 describe('PiAiAdapter', () => {
   let adapter: PiAiAdapter;
+  let decryptionBoundaryService: {
+    decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProviderFn.mockReturnValue('mock-model');
-    adapter = new PiAiAdapter();
-    // 跳过 sleep 延迟，加速重试测试
-    vi.spyOn(adapter as never, 'sleep' as never).mockResolvedValue(undefined as never);
+    mockModel.doGenerate.mockResolvedValue('generated');
+    mockModel.doStream.mockResolvedValue('streamed');
+    mockProviderFn.mockReturnValue(mockModel);
+
+    decryptionBoundaryService = {
+      decryptConfiguredApiKey: vi.fn().mockResolvedValue('decrypted-key'),
+    };
+    adapter = new PiAiAdapter(
+      decryptionBoundaryService as unknown as DecryptionBoundaryService,
+    );
+    vi.spyOn(
+      adapter as unknown as { sleep: (ms: number) => Promise<void> },
+      'sleep',
+    ).mockResolvedValue(
+      undefined as never,
+    );
   });
 
   describe('getModel - 各提供商', () => {
     it('应当为 openai 创建模型', async () => {
       const result = await adapter.getModel(createConfig({ provider: 'openai' }), 'sk-key');
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ apiKey: 'sk-key' }),
       );
@@ -62,7 +97,7 @@ describe('PiAiAdapter', () => {
         'sk-key',
       );
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateAnthropic).toHaveBeenCalledWith(
         expect.objectContaining({ apiKey: 'sk-key' }),
       );
@@ -74,7 +109,7 @@ describe('PiAiAdapter', () => {
         'sk-key',
       );
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateGoogle).toHaveBeenCalledWith(
         expect.objectContaining({ apiKey: 'sk-key' }),
       );
@@ -86,7 +121,7 @@ describe('PiAiAdapter', () => {
         'sk-key',
       );
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: 'https://api.deepseek.com/v1' }),
       );
@@ -102,7 +137,7 @@ describe('PiAiAdapter', () => {
         'sk-key',
       );
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: 'https://my-llm.example.com/v1' }),
       );
@@ -110,6 +145,44 @@ describe('PiAiAdapter', () => {
   });
 
   describe('getModel - 错误处理', () => {
+    it('应当在未显式传入 apiKey 时通过 DecryptionBoundary 解密配置绑定的密钥', async () => {
+      await adapter.getModel(createConfig({ apiKeyId: 'config-key-id' }));
+
+      expect(decryptionBoundaryService.decryptConfiguredApiKey).toHaveBeenCalledWith(
+        {
+          apiKeyId: 'config-key-id',
+          organizationId: 'org-id',
+          tenantId: 'tenant-id',
+          provider: 'openai',
+        },
+        'PiAiAdapter',
+      );
+    });
+
+    it('应当在配置未绑定 apiKey 时回退到组织默认 API Key', async () => {
+      await adapter.getModel(createConfig({ apiKeyId: null }));
+
+      expect(decryptionBoundaryService.decryptConfiguredApiKey).toHaveBeenCalledWith(
+        {
+          apiKeyId: null,
+          organizationId: 'org-id',
+          tenantId: 'tenant-id',
+          provider: 'openai',
+        },
+        'PiAiAdapter',
+      );
+    });
+
+    it('应当透传默认 API Key 未配置错误', async () => {
+      decryptionBoundaryService.decryptConfiguredApiKey.mockRejectedValue(
+        new DefaultApiKeyNotConfiguredException('openai'),
+      );
+
+      await expect(
+        adapter.getModel(createConfig({ apiKeyId: null })),
+      ).rejects.toBeInstanceOf(DefaultApiKeyNotConfiguredException);
+    });
+
     it('应当在 custom 缺少 baseUrl 时抛出 LlmProviderException', async () => {
       await expect(
         adapter.getModel(createConfig({ provider: 'custom' }), 'sk-key'),
@@ -123,41 +196,69 @@ describe('PiAiAdapter', () => {
     });
 
     it('应当在 5xx 错误时重试', async () => {
-      mockProviderFn
-        .mockImplementationOnce(() => {
-          throw Object.assign(new Error('Server Error'), { status: 500 });
-        })
-        .mockReturnValueOnce('mock-model');
+      mockModel.doGenerate
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Server Error'), { status: 500 }),
+        )
+        .mockResolvedValueOnce('generated');
 
-      const result = await adapter.getModel(createConfig(), 'sk-key');
-      expect(result).toBe('mock-model');
-      expect(mockProviderFn).toHaveBeenCalledTimes(2);
+      const result = (await adapter.getModel(
+        createConfig(),
+        'sk-key',
+      )) as WrappedModel;
+
+      await expect(result.doGenerate('prompt')).resolves.toBe('generated');
+      expect(mockModel.doGenerate).toHaveBeenCalledTimes(2);
     });
 
     it('应当在 4xx 错误时不重试，直接包装为 LlmProviderException', async () => {
-      mockProviderFn.mockImplementation(() => {
-        throw Object.assign(new Error('Bad Request'), { status: 400 });
-      });
+      mockModel.doGenerate.mockRejectedValue(
+        Object.assign(new Error('Bad Request'), { status: 400 }),
+      );
+
+      const result = (await adapter.getModel(
+        createConfig(),
+        'sk-key',
+      )) as WrappedModel;
 
       await expect(
-        adapter.getModel(createConfig(), 'sk-key'),
+        result.doGenerate('prompt'),
       ).rejects.toBeInstanceOf(LlmProviderException);
 
-      // 仅调用一次（无重试）
-      expect(mockProviderFn).toHaveBeenCalledTimes(1);
+      expect(mockModel.doGenerate).toHaveBeenCalledTimes(1);
     });
 
     it('应当在超出最大重试次数后抛出 LlmProviderException', async () => {
-      mockProviderFn.mockImplementation(() => {
-        throw Object.assign(new Error('Server Error'), { status: 500 });
-      });
+      mockModel.doGenerate.mockRejectedValue(
+        Object.assign(new Error('Server Error'), { status: 500 }),
+      );
+
+      const result = (await adapter.getModel(
+        createConfig(),
+        'sk-key',
+      )) as WrappedModel;
 
       await expect(
-        adapter.getModel(createConfig(), 'sk-key'),
+        result.doGenerate('prompt'),
       ).rejects.toBeInstanceOf(LlmProviderException);
 
-      // 1 initial + 2 retries = 3 calls
-      expect(mockProviderFn).toHaveBeenCalledTimes(3);
+      expect(mockModel.doGenerate).toHaveBeenCalledTimes(3);
+    });
+
+    it('应当对 doStream 应用相同的重试包装', async () => {
+      mockModel.doStream
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Server Error'), { statusCode: 500 }),
+        )
+        .mockResolvedValueOnce('streamed');
+
+      const result = (await adapter.getModel(
+        createConfig(),
+        'sk-key',
+      )) as WrappedModel;
+
+      await expect(result.doStream('prompt')).resolves.toBe('streamed');
+      expect(mockModel.doStream).toHaveBeenCalledTimes(2);
     });
 
     it('应当在 openai 提供商可传入自定义 baseURL', async () => {
@@ -169,7 +270,7 @@ describe('PiAiAdapter', () => {
         'sk-key',
       );
 
-      expect(result).toBe('mock-model');
+      expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: 'https://my-proxy.com/v1' }),
       );

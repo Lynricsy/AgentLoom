@@ -4,6 +4,7 @@ import { DecryptionBoundaryService } from '../decryption-boundary.service';
 import { ApiKeyService } from '../api-key.service';
 import { EncryptionService } from '../encryption.service';
 import {
+  DefaultApiKeyNotConfiguredException,
   ApiKeyNotFoundException,
   ApiKeyRevokedException,
 } from '../api-key.exceptions';
@@ -20,6 +21,7 @@ function createActiveApiKey(overrides: Record<string, unknown> = {}) {
     provider: 'openai',
     label: 'Test Key',
     keyPreview: 'sk-...5678',
+    isDefault: false,
     status: 'active',
     encryptedKey: Buffer.from('encrypted-key'),
     encryptedDek: Buffer.from('encrypted-dek'),
@@ -67,6 +69,7 @@ describe('DecryptionBoundaryService', () => {
 
     apiKeyService = {
       findByIdInternal: vi.fn(),
+      findDefaultActiveByOrganizationInternal: vi.fn(),
       updateLastUsedAt: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -209,6 +212,68 @@ describe('DecryptionBoundaryService', () => {
 
       expect(apiKeyService.updateLastUsedAt).not.toHaveBeenCalled();
       expectAuditLog(logSpy, 'decrypt_failed');
+    });
+  });
+
+  describe('decryptConfiguredApiKey', () => {
+    it('应当优先解密显式绑定的 API Key', async () => {
+      const activeKey = createActiveApiKey();
+      vi.mocked(apiKeyService.findByIdInternal!).mockResolvedValue(
+        activeKey as never,
+      );
+
+      const result = await service.decryptConfiguredApiKey({
+        apiKeyId: KEY_ID,
+        organizationId: activeKey.organizationId,
+        tenantId: TENANT_ID,
+        provider: 'openai',
+      });
+
+      expect(result).toBe('sk-decrypted-plain-key');
+      expect(apiKeyService.findByIdInternal).toHaveBeenCalledWith(
+        KEY_ID,
+        TENANT_ID,
+      );
+      expect(
+        apiKeyService.findDefaultActiveByOrganizationInternal,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('应当在未显式绑定时回退到同 provider 的默认 API Key', async () => {
+      const defaultKey = createActiveApiKey({ id: 'default-key-id', isDefault: true });
+      vi.mocked(
+        apiKeyService.findDefaultActiveByOrganizationInternal!,
+      ).mockResolvedValue(defaultKey as never);
+
+      const result = await service.decryptConfiguredApiKey({
+        apiKeyId: null,
+        organizationId: defaultKey.organizationId,
+        tenantId: TENANT_ID,
+        provider: 'openai',
+      });
+
+      expect(result).toBe('sk-decrypted-plain-key');
+      expect(
+        apiKeyService.findDefaultActiveByOrganizationInternal,
+      ).toHaveBeenCalledWith(defaultKey.organizationId, TENANT_ID, 'openai');
+      expect(apiKeyService.updateLastUsedAt).toHaveBeenCalledWith(
+        'default-key-id',
+      );
+    });
+
+    it('应当在缺少默认 API Key 时抛出 DefaultApiKeyNotConfiguredException', async () => {
+      vi.mocked(
+        apiKeyService.findDefaultActiveByOrganizationInternal!,
+      ).mockResolvedValue(undefined);
+
+      await expect(
+        service.decryptConfiguredApiKey({
+          apiKeyId: null,
+          organizationId: 'org-id',
+          tenantId: TENANT_ID,
+          provider: 'openai',
+        }),
+      ).rejects.toBeInstanceOf(DefaultApiKeyNotConfiguredException);
     });
   });
 });

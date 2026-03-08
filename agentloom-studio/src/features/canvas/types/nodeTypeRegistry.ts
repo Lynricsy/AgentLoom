@@ -213,6 +213,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [],
     outputPorts: [{
       ...createPort('model-output', '模型输出', 'output', 'model'),
+      multiple: true,
       maxConnections: 5,
     }],
     configSchema: EMPTY_CONFIG_SCHEMA,

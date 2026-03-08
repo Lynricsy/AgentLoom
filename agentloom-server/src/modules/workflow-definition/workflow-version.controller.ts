@@ -48,7 +48,7 @@ export class WorkflowVersionController {
   }
 
   @Get('versions')
-  @Roles('owner', 'admin', 'member')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取工作流版本列表' })
   @ApiResponse({ status: 200, description: '版本列表获取成功' })
@@ -58,9 +58,12 @@ export class WorkflowVersionController {
     @Query() query: ListVersionsQueryDto,
   ): Promise<{
     data: VersionResponseDto[];
-    total: number;
-    page: number;
-    pageSize: number;
+    meta: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
   }> {
     return this.workflowVersionService.listVersions(workflowId, query);
   }
@@ -121,7 +124,7 @@ export class WorkflowVersionController {
   }
 
   @Get('published-version')
-  @Roles('owner', 'admin', 'member')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取已发布的工作流版本' })
   @ApiResponse({ status: 200, description: '已发布版本获取成功' })

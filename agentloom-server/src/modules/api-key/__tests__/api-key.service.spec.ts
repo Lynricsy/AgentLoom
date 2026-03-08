@@ -43,6 +43,12 @@ function createUpdateChain(result: unknown) {
   return { set, where, returning };
 }
 
+function createSimpleUpdateChain() {
+  const where = vi.fn().mockResolvedValue(undefined);
+  const set = vi.fn().mockReturnValue({ where });
+  return { set, where };
+}
+
 function createApiKeyRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: KEY_ID,
@@ -52,6 +58,7 @@ function createApiKeyRecord(overrides: Record<string, unknown> = {}) {
     provider: 'openai' as const,
     label: 'My OpenAI Key',
     keyPreview: 'sk-...5678',
+    isDefault: false,
     status: 'active' as const,
     encryptedKey: Buffer.from('enc-key'),
     encryptedDek: Buffer.from('enc-dek'),
@@ -119,7 +126,12 @@ describe('ApiKeyService', () => {
       db.insert.mockReturnValueOnce(insertChain);
 
       const result = await service.create(
-        { provider: 'openai', label: 'My OpenAI Key', apiKey: 'sk-test5678' },
+        {
+          provider: 'openai',
+          label: 'My OpenAI Key',
+          apiKey: 'sk-test5678',
+          isDefault: false,
+        },
         USER_ID,
         TENANT_ID,
       );
@@ -128,6 +140,7 @@ describe('ApiKeyService', () => {
       expect(result.id).toBe(KEY_ID);
       expect(result.provider).toBe('openai');
       expect(result.keyPreview).toBe('sk-...5678');
+      expect(result.isDefault).toBe(false);
       expect(result).not.toHaveProperty('encryptedKey');
       expect(result).not.toHaveProperty('encryptedDek');
       expect(logSpy).toHaveBeenCalledWith(
@@ -147,7 +160,12 @@ describe('ApiKeyService', () => {
 
       await expect(
         service.create(
-          { provider: 'openai', label: 'Key', apiKey: 'sk-test1234' },
+          {
+            provider: 'openai',
+            label: 'Key',
+            apiKey: 'sk-test1234',
+            isDefault: false,
+          },
           USER_ID,
           TENANT_ID,
         ),
@@ -168,7 +186,12 @@ describe('ApiKeyService', () => {
       db.insert.mockReturnValueOnce(insertChain);
 
       await service.create(
-        { provider: 'anthropic', label: 'Key', apiKey: 'sk-ant-testABCD' },
+        {
+          provider: 'anthropic',
+          label: 'Key',
+          apiKey: 'sk-ant-testABCD',
+          isDefault: false,
+        },
         USER_ID,
         TENANT_ID,
       );
@@ -176,6 +199,46 @@ describe('ApiKeyService', () => {
       expect(insertChain.values).toHaveBeenCalledWith(
         expect.objectContaining({ keyPreview: 'sk-...ABCD' }),
       );
+    });
+
+    it('应当在创建默认密钥时清理同 provider 的旧默认值', async () => {
+      const countChain = createSelectChain([{ count: 0 }]);
+      db.select.mockReturnValueOnce(countChain);
+
+      const orgChain = createSelectChain([{ id: ORG_ID }]);
+      db.select.mockReturnValueOnce(orgChain);
+
+      const clearDefaultChain = createSimpleUpdateChain();
+      db.update.mockReturnValueOnce(clearDefaultChain);
+
+      const record = createApiKeyRecord({ isDefault: true });
+      const insertChain = createInsertChain([record]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      const result = await service.create(
+        {
+          provider: 'openai',
+          label: 'Default Key',
+          apiKey: 'sk-default5678',
+          isDefault: true,
+        },
+        USER_ID,
+        TENANT_ID,
+      );
+
+      expect(clearDefaultChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isDefault: false,
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'openai',
+          isDefault: true,
+        }),
+      );
+      expect(result.isDefault).toBe(true);
     });
   });
 
@@ -193,6 +256,7 @@ describe('ApiKeyService', () => {
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveProperty('id');
       expect(result[0]).toHaveProperty('provider');
+      expect(result[0]).toHaveProperty('isDefault', false);
       expect(result[0]).not.toHaveProperty('encryptedKey');
     });
 
@@ -297,6 +361,7 @@ describe('ApiKeyService', () => {
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'revoked',
+          isDefault: false,
           encryptedKey: null,
           encryptedDek: null,
           iv: null,
@@ -358,6 +423,33 @@ describe('ApiKeyService', () => {
 
       const result = await service.findByIdInternal(KEY_ID, TENANT_ID);
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('findDefaultActiveByOrganizationInternal', () => {
+    it('应当按组织与 provider 返回默认活跃密钥', async () => {
+      const record = createApiKeyRecord({ isDefault: true, provider: 'anthropic' });
+      const selectChain = createSelectChain([record]);
+      db.select.mockReturnValueOnce(selectChain);
+
+      const result = await service.findDefaultActiveByOrganizationInternal(
+        ORG_ID,
+        TENANT_ID,
+        'anthropic',
+      );
+
+      expect(result).toEqual(record);
+    });
+
+    it('应当在 provider 不受支持时直接返回 undefined', async () => {
+      const result = await service.findDefaultActiveByOrganizationInternal(
+        ORG_ID,
+        TENANT_ID,
+        'custom',
+      );
+
+      expect(result).toBeUndefined();
+      expect(db.select).not.toHaveBeenCalled();
     });
   });
 });

@@ -13,12 +13,18 @@ export class WorkflowArchivedException extends DomainException {
 }
 
 export class WorkflowPublishValidationException extends DomainException {
-  constructor(reason: string) {
+  constructor(reasons: string | string[]) {
+    const validationReasons = Array.isArray(reasons) ? reasons : [reasons];
+
     super({
       type: 'https://agentloom.dev/errors/workflow-publish-validation',
       title: '工作流发布验证失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: reason,
+      detail: validationReasons[0] ?? '工作流发布校验失败',
+      errors: validationReasons.map((message) => ({
+        field: 'workflow',
+        message,
+      })),
     });
   }
 }

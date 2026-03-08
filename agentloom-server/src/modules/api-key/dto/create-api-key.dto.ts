@@ -21,6 +21,7 @@ const createApiKeySchema = z.object({
     .min(1, '标签不能为空')
     .max(255, '标签长度不能超过 255 个字符'),
   apiKey: z.string().min(1, 'API 密钥不能为空'),
+  isDefault: z.boolean().optional().default(false),
 });
 
 export class CreateApiKeyDto extends createZodDto(createApiKeySchema) {}

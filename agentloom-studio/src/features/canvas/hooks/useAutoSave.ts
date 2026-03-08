@@ -1,21 +1,29 @@
 import { useEffect, useRef } from 'react'
 import { useUpdateWorkflow } from '@/features/workflow'
-import type { UpdateWorkflowPayload } from '@/features/workflow'
+import type { UpdateWorkflowPayload, WorkflowStatus } from '@/features/workflow'
 import { useToast } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
 
-const AUTOSAVE_DEBOUNCE_MS = 500
+export const AUTOSAVE_DEBOUNCE_MS = 2000
 const AUTOSAVE_ERROR_MESSAGE = '自动保存失败，修改已保留在本地'
 
-export function useAutoSave(workflowId: string) {
+export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const changeRevisionRef = useRef(0)
   const { mutate: updateWorkflow } = useUpdateWorkflow(workflowId)
   const { markSaved, setIsSaving } = useCanvasStore((state) => state.actions)
   const { notify } = useToast()
+  const isReadOnly = workflowStatus === 'archived'
 
   useEffect(() => {
-    if (!workflowId) return
+    if (!workflowId || isReadOnly) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+
+      return
+    }
 
     const unsubscribe = useCanvasStore.subscribe(
       (state) => ({
@@ -88,5 +96,5 @@ export function useAutoSave(workflowId: string) {
         clearTimeout(timerRef.current)
         }
       }
-    }, [workflowId, updateWorkflow, markSaved, notify, setIsSaving])
+    }, [workflowId, updateWorkflow, markSaved, notify, setIsSaving, isReadOnly])
 }

@@ -10,7 +10,7 @@ import {
   ApiKeyRevokedException,
 } from './api-key.exceptions';
 import type { ApiKeyResponseDto } from './dto/api-key-response.dto';
-import type { CreateApiKeyDto } from './dto/create-api-key.dto';
+import { LLM_PROVIDERS, type CreateApiKeyDto } from './dto/create-api-key.dto';
 import type { RotateApiKeyDto } from './dto/rotate-api-key.dto';
 import type { ApiKey } from '../../database/schema';
 
@@ -44,6 +44,10 @@ export class ApiKeyService {
       .from(organizations)
       .where(eq(organizations.tenantId, tenantId));
 
+    if (dto.isDefault) {
+      await this.clearDefaultInOrganization(org.id, tenantId, dto.provider);
+    }
+
     const keyPreview = this.createKeyPreview(dto.apiKey);
     const encrypted = this.encryptionService.encrypt(dto.apiKey);
 
@@ -56,6 +60,7 @@ export class ApiKeyService {
         provider: dto.provider,
         label: dto.label,
         keyPreview,
+        isDefault: dto.isDefault ?? false,
         encryptedKey: encrypted.encryptedKey,
         encryptedDek: encrypted.encryptedDek,
         iv: encrypted.iv,
@@ -75,6 +80,7 @@ export class ApiKeyService {
         provider: apiKeys.provider,
         label: apiKeys.label,
         keyPreview: apiKeys.keyPreview,
+        isDefault: apiKeys.isDefault,
         status: apiKeys.status,
         lastUsedAt: apiKeys.lastUsedAt,
         rotatedAt: apiKeys.rotatedAt,
@@ -135,6 +141,7 @@ export class ApiKeyService {
       .update(apiKeys)
       .set({
         status: 'revoked',
+        isDefault: false,
         encryptedKey: null,
         encryptedDek: null,
         iv: null,
@@ -168,6 +175,31 @@ export class ApiKeyService {
     return key;
   }
 
+  async findDefaultActiveByOrganizationInternal(
+    organizationId: string,
+    tenantId: string,
+    provider: string,
+  ): Promise<ApiKey | undefined> {
+    if (!this.isStoredProvider(provider)) {
+      return undefined;
+    }
+
+    const [key] = await this.tenantDb
+      .select()
+      .from(apiKeys)
+      .where(
+        and(
+          eq(apiKeys.organizationId, organizationId),
+          eq(apiKeys.tenantId, tenantId),
+          eq(apiKeys.provider, provider),
+          eq(apiKeys.isDefault, true),
+          eq(apiKeys.status, 'active'),
+        ),
+      );
+
+    return key;
+  }
+
   private async findByIdOrThrow(
     id: string,
     tenantId: string,
@@ -194,6 +226,7 @@ export class ApiKeyService {
       provider: string;
       label: string;
       keyPreview: string;
+      isDefault?: boolean;
       status: string;
       rotatedAt?: Date | null;
       createdAt: Date;
@@ -205,6 +238,7 @@ export class ApiKeyService {
       provider: key.provider as ApiKeyResponseDto['provider'],
       label: key.label,
       keyPreview: key.keyPreview,
+      isDefault: key.isDefault ?? false,
       status: key.status as ApiKeyResponseDto['status'],
       lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
       rotatedAt: key.rotatedAt?.toISOString() ?? null,
@@ -216,6 +250,31 @@ export class ApiKeyService {
 
   private createKeyPreview(apiKey: string): string {
     return `${apiKey.slice(0, 3)}...${apiKey.slice(-4)}`;
+  }
+
+  private async clearDefaultInOrganization(
+    organizationId: string,
+    tenantId: string,
+    provider: ApiKey['provider'],
+  ): Promise<void> {
+    await this.tenantDb
+      .update(apiKeys)
+      .set({
+        isDefault: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(apiKeys.organizationId, organizationId),
+          eq(apiKeys.tenantId, tenantId),
+          eq(apiKeys.provider, provider),
+          eq(apiKeys.isDefault, true),
+        ),
+      );
+  }
+
+  private isStoredProvider(provider: string): provider is ApiKey['provider'] {
+    return (LLM_PROVIDERS as readonly string[]).includes(provider);
   }
 
   private logAuditEvent(

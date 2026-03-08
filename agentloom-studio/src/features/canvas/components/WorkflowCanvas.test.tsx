@@ -255,6 +255,58 @@ describe('WorkflowCanvas', () => {
     expect(screen.getByTestId('canvas-search')).toBeInTheDocument()
   })
 
+  it('在画布容器内按 Ctrl+F 时不会因为重复监听而立即关闭搜索', () => {
+    render(<WorkflowCanvas />)
+
+    const canvasContainer = screen.getByTestId('react-flow').parentElement
+    expect(canvasContainer).not.toBeNull()
+
+    fireEvent.keyDown(canvasContainer as HTMLElement, { key: 'f', ctrlKey: true })
+
+    expect(useCanvasStore.getState().isSearchOpen).toBe(true)
+    expect(screen.getByTestId('canvas-search')).toBeInTheDocument()
+  })
+
+  it('在画布容器内按 Delete 时只会触发一次删除动作', () => {
+    const originalDeleteSelectedNode = useCanvasStore.getState().actions.deleteSelectedNode
+    const deleteSelectedNodeSpy = vi.fn(() => {
+      originalDeleteSelectedNode()
+    })
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: compatibleNodes,
+      selectedNodeId: 'n-1',
+      actions: {
+        ...state.actions,
+        deleteSelectedNode: deleteSelectedNodeSpy,
+      },
+    }))
+
+    const { unmount } = render(<WorkflowCanvas />)
+
+    const canvasContainer = screen.getByTestId('react-flow').parentElement
+    expect(canvasContainer).not.toBeNull()
+
+    act(() => {
+      fireEvent.keyDown(canvasContainer as HTMLElement, { key: 'Delete' })
+    })
+
+    expect(deleteSelectedNodeSpy).toHaveBeenCalledTimes(1)
+    expect(useCanvasStore.getState().nodes).toHaveLength(1)
+    expect(useCanvasStore.getState().selectedNodeId).toBeNull()
+
+    unmount()
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      actions: {
+        ...state.actions,
+        deleteSelectedNode: originalDeleteSelectedNode,
+      },
+    }))
+  })
+
   it('在创建前阻止循环依赖连线并提示固定错误文案', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const nodeA = createNode('a', 'llm-agent')

@@ -1,10 +1,34 @@
-export type LlmProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'custom'
+export const LLM_PROVIDER_IDS = [
+  'openai',
+  'anthropic',
+  'google',
+  'deepseek',
+  'custom',
+] as const
+
+export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number]
+
+export type ApiKeyStatus = 'active' | 'revoked' | 'expired'
 
 export interface LlmProviderInfo {
   id: LlmProvider
   name: string
   description: string
   models: string[]
+}
+
+export interface ApiKeyInfo {
+  id: string
+  provider: LlmProvider
+  label: string
+  keyPreview: string
+  isDefault: boolean
+  status: ApiKeyStatus
+  lastUsedAt: string | null
+  rotatedAt: string | null
+  expiresAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LlmParameters {
@@ -24,29 +48,196 @@ export const DEFAULT_LLM_PARAMETERS: LlmParameters = {
   stop: [],
 }
 
-export interface LlmModelConfig {
-  [key: string]: unknown
-  provider: LlmProvider
-  modelId: string
-  modelName: string
-  parameters: LlmParameters
-}
-
 export interface LlmModelInfo {
   id: string
-  provider: LlmProvider
-  modelId: string
   name: string
-  description?: string
+  provider: LlmProvider
+  modelName: string
   parameters: LlmParameters
+  apiKeyId: string | null
+  isDefault: boolean
   createdAt: string
   updatedAt: string
 }
 
+export interface LlmModelConfig extends Record<string, unknown> {
+  llmConfigId: string | null
+  name: string
+  provider: LlmProvider
+  modelName: string
+  parameters: LlmParameters
+  apiKeyId: string | null
+  isDefault: boolean
+}
+
+export interface CreateLlmModelInput {
+  name: string
+  provider: LlmProvider
+  modelName: string
+  parameters: LlmParameters
+  apiKeyId?: string | null
+  isDefault?: boolean
+}
+
+export type UpdateLlmModelInput = Partial<CreateLlmModelInput>
+
+export interface LlmNodeDataPatch {
+  config: LlmModelConfig
+  llmConfigId: string | null
+  parameters: LlmParameters
+  label: string
+}
+
 export const LLM_PROVIDERS: readonly LlmProviderInfo[] = [
-  { id: 'openai', name: 'OpenAI', description: 'GPT 系列模型', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-  { id: 'anthropic', name: 'Anthropic', description: 'Claude 系列模型', models: ['claude-3.5-sonnet', 'claude-3-opus', 'claude-3-haiku'] },
-  { id: 'google', name: 'Google', description: 'Gemini 系列模型', models: ['gemini-pro', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-  { id: 'deepseek', name: 'DeepSeek', description: 'DeepSeek 系列模型', models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'] },
-  { id: 'custom', name: '自定义', description: '自定义兼容 API', models: [] },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'GPT 系列模型',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    description: 'Claude 系列模型',
+    models: ['claude-3.5-sonnet', 'claude-3-opus', 'claude-3-haiku'],
+  },
+  {
+    id: 'google',
+    name: 'Google',
+    description: 'Gemini 系列模型',
+    models: ['gemini-pro', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    description: 'DeepSeek 系列模型',
+    models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+  },
+  {
+    id: 'custom',
+    name: '自定义',
+    description: '自定义兼容 API',
+    models: [],
+  },
 ] as const
+
+function parseNumber(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function parseString(value: unknown) {
+  return typeof value === 'string' ? value : null
+}
+
+function parseNullableString(value: unknown) {
+  const parsed = parseString(value)
+  if (!parsed) {
+    return null
+  }
+
+  return parsed
+}
+
+export function isLlmProvider(value: unknown): value is LlmProvider {
+  return typeof value === 'string' && LLM_PROVIDER_IDS.includes(value as LlmProvider)
+}
+
+export function getProviderInfo(provider: LlmProvider | null | undefined) {
+  if (!provider) {
+    return null
+  }
+
+  return LLM_PROVIDERS.find((item) => item.id === provider) ?? null
+}
+
+export function normalizeLlmParameters(value: unknown): LlmParameters {
+  const record = typeof value === 'object' && value !== null
+    ? value as Record<string, unknown>
+    : {}
+
+  const maxTokensValue = record.maxTokens
+
+  return {
+    temperature: parseNumber(record.temperature, DEFAULT_LLM_PARAMETERS.temperature),
+    maxTokens:
+      typeof maxTokensValue === 'number' && Number.isFinite(maxTokensValue)
+        ? maxTokensValue
+        : undefined,
+    topP: parseNumber(record.topP, DEFAULT_LLM_PARAMETERS.topP),
+    frequencyPenalty: parseNumber(
+      record.frequencyPenalty,
+      DEFAULT_LLM_PARAMETERS.frequencyPenalty,
+    ),
+    presencePenalty: parseNumber(
+      record.presencePenalty,
+      DEFAULT_LLM_PARAMETERS.presencePenalty,
+    ),
+    stop: Array.isArray(record.stop)
+      ? record.stop.filter((item): item is string => typeof item === 'string' && item.length > 0)
+      : [],
+  }
+}
+
+export function parseLlmModelConfig(value: unknown): LlmModelConfig | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const provider = isLlmProvider(record.provider) ? record.provider : null
+  const modelName = parseString(record.modelName) ?? parseString(record.modelId)
+
+  if (!provider || !modelName) {
+    return null
+  }
+
+  return {
+    llmConfigId: parseNullableString(record.llmConfigId) ?? parseNullableString(record.id),
+    name: parseString(record.name) ?? modelName,
+    provider,
+    modelName,
+    parameters: normalizeLlmParameters(record.parameters),
+    apiKeyId: parseNullableString(record.apiKeyId),
+    isDefault: record.isDefault === true,
+  }
+}
+
+export function toLlmModelConfig(model: LlmModelInfo): LlmModelConfig {
+  return {
+    llmConfigId: model.id,
+    name: model.name,
+    provider: model.provider,
+    modelName: model.modelName,
+    parameters: normalizeLlmParameters(model.parameters),
+    apiKeyId: model.apiKeyId,
+    isDefault: model.isDefault,
+  }
+}
+
+export function buildLlmNodePatch(model: LlmModelInfo): LlmNodeDataPatch {
+  const config = toLlmModelConfig(model)
+
+  return {
+    config,
+    llmConfigId: config.llmConfigId,
+    parameters: config.parameters,
+    label: config.modelName,
+  }
+}
+
+export function getLlmConfigState(
+  config: Record<string, unknown> | null | undefined,
+  hasProviderDefaultKey = false,
+) {
+  const parsed = parseLlmModelConfig(config)
+
+  if (!parsed) {
+    return 'unconfigured' as const
+  }
+
+  if (!parsed.apiKeyId && !hasProviderDefaultKey) {
+    return 'warning' as const
+  }
+
+  return 'configured' as const
+}

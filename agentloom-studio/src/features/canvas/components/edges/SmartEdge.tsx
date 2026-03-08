@@ -76,6 +76,7 @@ export const SmartEdge = memo(function SmartEdge({
   const badgeText = buildBadgeText(edgeData, visualLevel)
   const hasWarning = edgeData.mappingSummary.requiredUnmappedCount > 0
   const badgeVisible = isHovered || !!selected
+  const badgeTabIndex = badgeVisible ? 0 : -1
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -85,7 +86,7 @@ export const SmartEdge = memo(function SmartEdge({
     [id, onEdgesChange]
   )
 
-  const handleBadgeDoubleClick = useCallback(
+  const handleBadgeClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
       openFieldMapping(id)
@@ -132,7 +133,7 @@ export const SmartEdge = memo(function SmartEdge({
             className={`smart-edge-particle smart-edge-particle--${cssLevel} smart-edge-particle--running`}
           >
             <animateMotion dur="2s" repeatCount="indefinite">
-              <mpath xlinkHref={`#${pathId}`} />
+              <mpath href={`#${pathId}`} />
             </animateMotion>
           </circle>
           <circle
@@ -140,7 +141,7 @@ export const SmartEdge = memo(function SmartEdge({
             className={`smart-edge-particle smart-edge-particle--${cssLevel} smart-edge-particle--running`}
           >
             <animateMotion dur="2s" repeatCount="indefinite" begin="1s">
-              <mpath xlinkHref={`#${pathId}`} />
+              <mpath href={`#${pathId}`} />
             </animateMotion>
           </circle>
         </>
@@ -148,20 +149,30 @@ export const SmartEdge = memo(function SmartEdge({
 
       <EdgeLabelRenderer>
         <div
-          role="toolbar"
           className={`edge-badge nodrag nopan${badgeVisible ? ' edge-badge--visible' : ''}`}
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: 'all',
+            pointerEvents: badgeVisible ? 'all' : 'none',
           }}
           data-testid={`edge-badge-${id}`}
-          onDoubleClick={handleBadgeDoubleClick}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          aria-hidden={!badgeVisible}
         >
-          <span className={`edge-badge__dot edge-badge__dot--${cssLevel}`} />
-          <span>{badgeText}</span>
+          <button
+            type="button"
+            className="edge-badge__summary"
+            data-testid={`edge-badge-action-${id}`}
+            onClick={handleBadgeClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            onFocus={handleMouseEnter}
+            onBlur={handleMouseLeave}
+            aria-label="打开字段映射"
+            tabIndex={badgeTabIndex}
+          >
+            <span className={`edge-badge__dot edge-badge__dot--${cssLevel}`} />
+            <span>{badgeText}</span>
+          </button>
           {hasWarning && (
             <span
               className="edge-badge__warning"
@@ -176,7 +187,12 @@ export const SmartEdge = memo(function SmartEdge({
             className="edge-badge__delete"
             data-testid={`edge-delete-${id}`}
             onClick={handleDelete}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            onFocus={handleMouseEnter}
+            onBlur={handleMouseLeave}
             aria-label="删除连接"
+            tabIndex={badgeTabIndex}
           >
             <X size={10} />
           </button>
