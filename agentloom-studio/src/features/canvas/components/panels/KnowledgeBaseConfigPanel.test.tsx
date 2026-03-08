@@ -49,6 +49,7 @@ describe('KnowledgeBaseConfigPanel', () => {
   })
 
   it('applies the selected knowledge base with full node config', async () => {
+    const user = userEvent.setup()
     const onApply = vi.fn()
     const selectedKnowledgeBase = createKnowledgeBase({
       id: 'kb-2',
@@ -68,7 +69,7 @@ describe('KnowledgeBaseConfigPanel', () => {
 
     render(<KnowledgeBaseConfigPanel config={{}} onApply={onApply} />)
 
-    await userEvent.selectOptions(screen.getByLabelText('选择知识库'), 'kb-2')
+    await user.selectOptions(screen.getByLabelText('选择知识库'), 'kb-2')
 
     expect(onApply).toHaveBeenCalledWith({
       config: buildKnowledgeBaseNodeConfig(selectedKnowledgeBase),
