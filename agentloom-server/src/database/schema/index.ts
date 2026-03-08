@@ -58,6 +58,16 @@ export {
   type ToolDefinition,
   type NewToolDefinition,
 } from './tool-definitions.schema';
+export {
+  knowledgeBaseVisibilityEnum,
+  documentStatusEnum,
+  knowledgeBases,
+  documents,
+  type KnowledgeBase,
+  type NewKnowledgeBase,
+  type Document,
+  type NewDocument,
+} from './knowledge-bases.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,

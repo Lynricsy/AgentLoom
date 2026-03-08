@@ -32,6 +32,16 @@ export const envSchema = z.object({
 
   APP_OAUTH_REDIRECT_URL: z.string().url('无效的 OAuth 回调 URL'),
   APP_FRONTEND_URL: z.string().url('无效的前端 URL'),
+
+  APP_MINIO_ENDPOINT: z.string().min(1).default('localhost'),
+  APP_MINIO_PORT: z.coerce.number().default(9000),
+  APP_MINIO_ACCESS_KEY: z.string().min(1).default('minioadmin'),
+  APP_MINIO_SECRET_KEY: z.string().min(1).default('minioadmin'),
+  APP_MINIO_USE_SSL: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((val) => val === 'true'),
+  APP_MINIO_BUCKET: z.string().min(1).default('agentloom-documents'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
