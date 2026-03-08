@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,6 +19,7 @@ import { KnowledgeBaseService } from './knowledge-base.service';
 import { DocumentService } from './document.service';
 import {
   CreateKnowledgeBaseDto,
+  UpdateKnowledgeBaseSettingsDto,
   ListKnowledgeBasesQueryDto,
   ListDocumentsQueryDto,
 } from './dto';
@@ -144,6 +146,21 @@ export class KnowledgeBaseController {
     await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
     await this.documentService.deleteByKnowledgeBase(knowledgeBaseId, tenantId);
     await this.knowledgeBaseService.delete(knowledgeBaseId, tenantId);
+  }
+
+  @Patch(':id/settings')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  async updateSettings(
+    @Param('id') knowledgeBaseId: string,
+    @Body() dto: UpdateKnowledgeBaseSettingsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const knowledgeBase = await this.knowledgeBaseService.updateSettings(
+      knowledgeBaseId,
+      tenantId,
+      dto,
+    );
+    return { data: knowledgeBase };
   }
 
   @Delete(':id/documents/:documentId')

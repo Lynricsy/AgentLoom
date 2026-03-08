@@ -9,7 +9,7 @@ import {
   documents,
 } from '../../database/schema/knowledge-bases.schema';
 import { documentChunks } from '../../database/schema/document-chunks.schema';
-import { CreateKnowledgeBaseDto } from './dto';
+import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
 import { KnowledgeBaseNotFoundException } from './knowledge.exceptions';
 
 type DocumentStatus = (typeof documents)['$inferSelect']['status'];
@@ -55,6 +55,9 @@ export class KnowledgeBaseService {
         name: dto.name,
         description: dto.description,
         visibility: dto.visibility,
+        chunkSize: dto.chunkSize,
+        chunkOverlap: dto.chunkOverlap,
+        embeddingModel: dto.embeddingModel,
         createdBy: userId,
       })
       .returning();
@@ -138,6 +141,7 @@ export class KnowledgeBaseService {
   }
 
   async delete(id: string, tenantId: string): Promise<void> {
+    // TODO: Clean up vector index entries when deleting KB (blocked by Story 4.4)
     const db = getTenantDb(this.db);
     await db
       .delete(knowledgeBases)
@@ -147,6 +151,34 @@ export class KnowledgeBaseService {
           eq(knowledgeBases.tenantId, tenantId),
         ),
       );
+  }
+
+  async updateSettings(
+    id: string,
+    tenantId: string,
+    dto: UpdateKnowledgeBaseSettingsDto,
+  ): Promise<KnowledgeBaseSummary> {
+    await this.findByIdOrThrow(id, tenantId);
+
+    const db = getTenantDb(this.db);
+    const updateData: Record<string, unknown> = {};
+    if (dto.chunkSize !== undefined) updateData.chunkSize = dto.chunkSize;
+    if (dto.chunkOverlap !== undefined) updateData.chunkOverlap = dto.chunkOverlap;
+    if (dto.embeddingModel !== undefined) updateData.embeddingModel = dto.embeddingModel;
+
+    if (Object.keys(updateData).length > 0) {
+      await db
+        .update(knowledgeBases)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(
+          and(
+            eq(knowledgeBases.id, id),
+            eq(knowledgeBases.tenantId, tenantId),
+          ),
+        );
+    }
+
+    return this.findSummaryByIdOrThrow(id, tenantId);
   }
 
   private async hydrateSummaries(

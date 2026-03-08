@@ -13,6 +13,7 @@ import {
   DocumentParserService,
 } from './parsers';
 import { TextChunkerService } from './chunker';
+import { KnowledgeGateway } from './knowledge.gateway';
 import {
   DOCUMENT_PROCESSING_QUEUE,
   DOCUMENT_INDEXING_QUEUE,
@@ -49,6 +50,7 @@ import {
     DocumentParserService,
     TextChunkerService,
     DocumentProcessingWorker,
+    KnowledgeGateway,
   ],
   exports: [
     KnowledgeBaseService,
@@ -56,6 +58,7 @@ import {
     DocumentChunkService,
     DocumentParserService,
     TextChunkerService,
+    KnowledgeGateway,
   ],
 })
 export class KnowledgeModule {}

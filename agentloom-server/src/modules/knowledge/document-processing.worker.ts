@@ -7,6 +7,8 @@ import { DocumentService } from './document.service';
 import { DocumentChunkService } from './document-chunk.service';
 import { DocumentParserService } from './parsers/document-parser.service';
 import { TextChunkerService } from './chunker/text-chunker.service';
+import { KnowledgeBaseService } from './knowledge-base.service';
+import { KnowledgeGateway } from './knowledge.gateway';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   DOCUMENT_PROCESSING_QUEUE,
@@ -38,6 +40,8 @@ export class DocumentProcessingWorker extends WorkerHost {
     private readonly documentChunkService: DocumentChunkService,
     private readonly parserService: DocumentParserService,
     private readonly chunkerService: TextChunkerService,
+    private readonly knowledgeBaseService: KnowledgeBaseService,
+    private readonly knowledgeGateway: KnowledgeGateway,
     private readonly storageService: StorageService,
     @InjectQueue(DOCUMENT_INDEXING_QUEUE)
     private readonly indexingQueue: Queue<DocumentIndexingJobData>,
@@ -58,6 +62,19 @@ export class DocumentProcessingWorker extends WorkerHost {
 
     const document = await this.documentService.findById(documentId);
 
+    if (job.attemptsMade === 0) {
+      this.knowledgeGateway.emitDocumentStatusChanged(
+        document.tenantId,
+        document.knowledgeBaseId,
+        { documentId, knowledgeBaseId: document.knowledgeBaseId, status: 'processing' },
+      );
+    }
+
+    const knowledgeBase = await this.knowledgeBaseService.findByIdOrThrow(
+      document.knowledgeBaseId,
+      document.tenantId,
+    );
+
     const fileStream = await this.storageService.download(document.storageKey);
     const buffer = await streamToBuffer(fileStream);
 
@@ -67,7 +84,10 @@ export class DocumentProcessingWorker extends WorkerHost {
       document.fileName,
     );
 
-    const chunks = this.chunkerService.chunk(parsed);
+    const chunks = this.chunkerService.chunk(parsed, {
+      maxTokens: knowledgeBase.chunkSize,
+      overlapTokens: knowledgeBase.chunkOverlap,
+    });
 
     const chunkCount = await this.documentChunkService.createChunks(
       documentId,
@@ -75,6 +95,16 @@ export class DocumentProcessingWorker extends WorkerHost {
     );
 
     await this.documentService.updateStatus(documentId, 'ready');
+
+    this.knowledgeGateway.emitDocumentStatusChanged(
+      document.tenantId,
+      document.knowledgeBaseId,
+      { documentId, knowledgeBaseId: document.knowledgeBaseId, status: 'ready' },
+    );
+    this.knowledgeGateway.emitKnowledgeBaseUpdated(
+      document.tenantId,
+      document.knowledgeBaseId,
+    );
 
     this.logger.log(
       `Document ${documentId} processed: ${chunkCount} chunks created`,
@@ -93,5 +123,25 @@ export class DocumentProcessingWorker extends WorkerHost {
       'failed',
       error.message,
     );
+
+    try {
+      const document = await this.documentService.findById(job.data.documentId);
+      this.knowledgeGateway.emitDocumentStatusChanged(
+        document.tenantId,
+        document.knowledgeBaseId,
+        {
+          documentId: job.data.documentId,
+          knowledgeBaseId: document.knowledgeBaseId,
+          status: 'failed',
+          errorMessage: error.message,
+        },
+      );
+      this.knowledgeGateway.emitKnowledgeBaseUpdated(
+        document.tenantId,
+        document.knowledgeBaseId,
+      );
+    } catch {
+      this.logger.warn(`Failed to emit WebSocket event for document ${job.data.documentId}`);
+    }
   }
 }

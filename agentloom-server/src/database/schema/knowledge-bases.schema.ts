@@ -35,6 +35,11 @@ export const knowledgeBases = pgTable(
     visibility: knowledgeBaseVisibilityEnum('visibility')
       .notNull()
       .default('private'),
+    chunkSize: integer('chunk_size').notNull().default(512),
+    chunkOverlap: integer('chunk_overlap').notNull().default(64),
+    embeddingModel: varchar('embedding_model', { length: 255 })
+      .notNull()
+      .default('text-embedding-3-small'),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

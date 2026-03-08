@@ -120,6 +120,13 @@
       "when": 1772982215595,
       "tag": "0016_young_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1772995609614,
+      "tag": "0017_add-knowledge-base-settings",
+      "breakpoints": true
     }
   ]
 }
