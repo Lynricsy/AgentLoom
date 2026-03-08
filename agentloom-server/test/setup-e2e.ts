@@ -11,3 +11,7 @@ process.env.APP_OAUTH_REDIRECT_URL =
 process.env.APP_FRONTEND_URL = 'http://localhost:3000';
 process.env.APP_MASTER_ENCRYPTION_KEY =
   '3HiqJr2j48+6csTN+/yp+9FDJeiBpILxtxgYy/w/uFQ=';
+process.env.APP_MINIO_ENDPOINT = 'localhost';
+process.env.APP_MINIO_PORT = '9000';
+process.env.APP_MINIO_ACCESS_KEY = 'test-access-key';
+process.env.APP_MINIO_SECRET_KEY = 'test-secret-key';

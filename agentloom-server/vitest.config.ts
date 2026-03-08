@@ -12,6 +12,12 @@ export default defineConfig({
       : ['src/**/*.spec.ts'],
     setupFiles: runsTestDirectory ? ['./test/setup-e2e.ts'] : [],
     testTimeout: runsTestDirectory ? 30000 : undefined,
+    env: {
+      APP_MINIO_ENDPOINT: 'localhost',
+      APP_MINIO_PORT: '9000',
+      APP_MINIO_ACCESS_KEY: 'test-access-key',
+      APP_MINIO_SECRET_KEY: 'test-secret-key',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

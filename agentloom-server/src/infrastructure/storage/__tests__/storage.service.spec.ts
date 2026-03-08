@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from '../storage.service';
-import { MINIO_CLIENT } from '../storage.module';
+import { MINIO_CLIENT } from '../storage.constants';
 
 const BUCKET_NAME = 'test-bucket';
 

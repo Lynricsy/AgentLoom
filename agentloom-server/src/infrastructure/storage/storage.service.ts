@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Client } from 'minio';
 import { Readable } from 'node:stream';
-import { MINIO_CLIENT } from './storage.module';
+import { MINIO_CLIENT } from './storage.constants';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -20,10 +20,25 @@ export class StorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    const exists = await this.minioClient.bucketExists(this.bucket);
-    if (!exists) {
-      await this.minioClient.makeBucket(this.bucket);
-      this.logger.log(`已创建存储桶: ${this.bucket}`);
+    try {
+      const timeoutMs = 3_000;
+      const exists = await Promise.race([
+        this.minioClient.bucketExists(this.bucket),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`连接超时 (${timeoutMs}ms)`)),
+            timeoutMs,
+          ),
+        ),
+      ]);
+      if (!exists) {
+        await this.minioClient.makeBucket(this.bucket);
+        this.logger.log(`已创建存储桶: ${this.bucket}`);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `MinIO 连接失败，对象存储功能暂不可用: ${(error as Error).message}`,
+      );
     }
   }
 
