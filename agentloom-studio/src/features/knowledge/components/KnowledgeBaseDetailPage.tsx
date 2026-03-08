@@ -122,6 +122,7 @@ export function KnowledgeBaseDetailPage({
 }: KnowledgeBaseDetailPageProps) {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const uploadFeedbackSequenceRef = useRef(0)
   const { notify } = useToast()
   const [isDragOver, setIsDragOver] = useState(false)
   const [documentPage, setDocumentPage] = useState(1)
@@ -209,7 +210,8 @@ export function KnowledgeBaseDetailPage({
       }
 
       Array.from(files).forEach((file) => {
-        const feedbackId = `${file.name}-${file.lastModified}-${file.size}`
+        const feedbackId = `${file.name}-${file.lastModified}-${file.size}-${uploadFeedbackSequenceRef.current}`
+        uploadFeedbackSequenceRef.current += 1
 
         setUploadFeedbacks((current) => [
           ...current,
@@ -238,6 +240,14 @@ export function KnowledgeBaseDetailPage({
       })
     },
     [knowledgeBaseId, removeUploadFeedback, updateUploadFeedback, uploadMutation],
+  )
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      handleUpload(e.target.files)
+      e.target.value = ''
+    },
+    [handleUpload],
   )
 
   const handleDrop = useCallback(
@@ -390,7 +400,7 @@ export function KnowledgeBaseDetailPage({
           type="file"
           multiple
           className="hidden"
-          onChange={(e) => handleUpload(e.target.files)}
+          onChange={handleFileInputChange}
           data-testid="file-input"
         />
       </button>

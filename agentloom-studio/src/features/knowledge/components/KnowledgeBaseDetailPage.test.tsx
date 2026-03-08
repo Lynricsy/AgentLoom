@@ -293,6 +293,43 @@ describe('KnowledgeBaseDetailPage', () => {
     )
   })
 
+  it('允许通过文件选择器重复选择同一个文件再次上传', async () => {
+    const { uploadFn } = setupMocks()
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
+    const testFile = new File(['content'], 'same-file.pdf', {
+      type: 'application/pdf',
+    })
+
+    await userEvent.upload(fileInput, testFile)
+    await userEvent.upload(fileInput, testFile)
+
+    expect(uploadFn).toHaveBeenCalledTimes(2)
+    expect(uploadFn).toHaveBeenNthCalledWith(
+      1,
+      {
+        knowledgeBaseId: 'kb-1',
+        file: testFile,
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
+    expect(uploadFn).toHaveBeenNthCalledWith(
+      2,
+      {
+        knowledgeBaseId: 'kb-1',
+        file: testFile,
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
+  })
+
   it('拖拽文件上传', () => {
     const { uploadFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
