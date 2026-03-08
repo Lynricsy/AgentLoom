@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { KnowledgeBasesPage } from './KnowledgeBasesPage'
@@ -33,6 +33,9 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '这是一个测试知识库',
     visibility: 'private' as const,
     createdBy: 'user-1',
+    documentCount: 0,
+    chunkCount: 0,
+    status: 'empty',
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     ...overrides,
@@ -71,6 +74,7 @@ function setupMocks(overrides: {
 describe('KnowledgeBasesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('显示加载状态', () => {
@@ -94,8 +98,23 @@ describe('KnowledgeBasesPage', () => {
 
   it('渲染知识库卡片列表', () => {
     const kbs = [
-      createKnowledgeBase({ id: 'kb-1', name: '知识库A', description: '描述A' }),
-      createKnowledgeBase({ id: 'kb-2', name: '知识库B', description: '描述B', visibility: 'organization' }),
+      createKnowledgeBase({
+        id: 'kb-1',
+        name: '知识库A',
+        description: '描述A',
+        documentCount: 3,
+        chunkCount: 12,
+        status: 'ready',
+      }),
+      createKnowledgeBase({
+        id: 'kb-2',
+        name: '知识库B',
+        description: '描述B',
+        visibility: 'organization',
+        documentCount: 1,
+        chunkCount: 4,
+        status: 'processing',
+      }),
     ]
     setupMocks({ knowledgeBases: kbs })
     render(<KnowledgeBasesPage />)
@@ -104,8 +123,12 @@ describe('KnowledgeBasesPage', () => {
     expect(screen.getByText('描述A')).toBeInTheDocument()
     expect(screen.getByText('知识库B')).toBeInTheDocument()
     expect(screen.getByText('描述B')).toBeInTheDocument()
+    expect(screen.getByText('3 个文档')).toBeInTheDocument()
+    expect(screen.getByText('12 个分块')).toBeInTheDocument()
     expect(screen.getByText('私有')).toBeInTheDocument()
     expect(screen.getByText('组织')).toBeInTheDocument()
+    expect(screen.getByText('可用')).toBeInTheDocument()
+    expect(screen.getByText('处理中')).toBeInTheDocument()
   })
 
   it('搜索过滤知识库', async () => {
@@ -200,16 +223,11 @@ describe('KnowledgeBasesPage', () => {
     const { deleteFn } = setupMocks({ knowledgeBases: [kb] })
     render(<KnowledgeBasesPage />)
 
-    // 找到删除按钮（卡片内的 ghost button）
-    const deleteButtons = screen.getAllByRole('button').filter(
-      (btn) => btn.querySelector('svg') && btn.closest('.p-4'),
+    await userEvent.click(screen.getByLabelText('删除 测试知识库'))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      '确认删除知识库“测试知识库”吗？该操作会同时删除其下文档与分块记录。',
     )
-    const deleteBtn = deleteButtons.find((btn) =>
-      btn.classList.contains('hover:text-destructive'),
-    )
-    if (deleteBtn) {
-      await userEvent.click(deleteBtn)
-      expect(deleteFn).toHaveBeenCalledWith('kb-del')
-    }
+    expect(deleteFn).toHaveBeenCalledWith('kb-del')
   })
 })

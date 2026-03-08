@@ -77,6 +77,8 @@ describe('KnowledgeBaseService', () => {
         ...dto,
         createdBy: USER_ID,
         documentCount: 0,
+        chunkCount: 0,
+        status: 'empty' as const,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -87,6 +89,18 @@ describe('KnowledgeBaseService', () => {
 
       expect(result).toEqual(expectedKB);
       expect(db.insert).toHaveBeenCalled();
+    });
+  });
+
+  describe('delete', () => {
+    it('应按租户条件删除知识库', async () => {
+      const where = vi.fn().mockResolvedValue(undefined);
+      db.delete.mockReturnValue({ where });
+
+      await expect(service.delete(KB_ID, TENANT_ID)).resolves.toBeUndefined();
+
+      expect(db.delete).toHaveBeenCalled();
+      expect(where).toHaveBeenCalledTimes(1);
     });
   });
 

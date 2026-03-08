@@ -12,12 +12,16 @@ describe('KnowledgeBaseController', () => {
   let controller: KnowledgeBaseController;
   let knowledgeBaseService: {
     create: ReturnType<typeof vi.fn>;
-    findAllByTenant: ReturnType<typeof vi.fn>;
+    findSummariesByTenant: ReturnType<typeof vi.fn>;
     findByIdOrThrow: ReturnType<typeof vi.fn>;
+    findSummaryByIdOrThrow: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
   };
   let documentService: {
     uploadFromRequest: ReturnType<typeof vi.fn>;
     findByKnowledgeBase: ReturnType<typeof vi.fn>;
+    deleteByKnowledgeBase: ReturnType<typeof vi.fn>;
+    deleteDocument: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -25,13 +29,17 @@ describe('KnowledgeBaseController', () => {
 
     knowledgeBaseService = {
       create: vi.fn(),
-      findAllByTenant: vi.fn(),
+      findSummariesByTenant: vi.fn(),
       findByIdOrThrow: vi.fn(),
+      findSummaryByIdOrThrow: vi.fn(),
+      delete: vi.fn(),
     };
 
     documentService = {
       uploadFromRequest: vi.fn(),
       findByKnowledgeBase: vi.fn(),
+      deleteByKnowledgeBase: vi.fn(),
+      deleteDocument: vi.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -61,8 +69,8 @@ describe('KnowledgeBaseController', () => {
   describe('findAll', () => {
     it('应返回分页知识库列表 { data, meta }', async () => {
       const query = { page: 1, pageSize: 10 };
-      const kbList = [{ id: KB_ID, name: '知识库1' }];
-      knowledgeBaseService.findAllByTenant.mockResolvedValue({
+      const kbList = [{ id: KB_ID, name: '知识库1', documentCount: 2, chunkCount: 6, status: 'ready' }];
+      knowledgeBaseService.findSummariesByTenant.mockResolvedValue({
         data: kbList,
         total: 1,
       });
@@ -71,12 +79,33 @@ describe('KnowledgeBaseController', () => {
 
       expect(result).toEqual({
         data: kbList,
-        meta: { page: 1, pageSize: 10, total: 1 },
+        meta: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
       });
-      expect(knowledgeBaseService.findAllByTenant).toHaveBeenCalledWith(
+      expect(knowledgeBaseService.findSummariesByTenant).toHaveBeenCalledWith(
         TENANT_ID,
         1,
         10,
+      );
+    });
+  });
+
+  describe('findOne', () => {
+    it('应返回知识库详情摘要 { data }', async () => {
+      const summary = {
+        id: KB_ID,
+        name: '知识库1',
+        documentCount: 2,
+        chunkCount: 6,
+        status: 'ready',
+      };
+      knowledgeBaseService.findSummaryByIdOrThrow.mockResolvedValue(summary);
+
+      const result = await controller.findOne(KB_ID, TENANT_ID);
+
+      expect(result).toEqual({ data: summary });
+      expect(knowledgeBaseService.findSummaryByIdOrThrow).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
       );
     });
   });
@@ -132,7 +161,7 @@ describe('KnowledgeBaseController', () => {
 
       expect(result).toEqual({
         data: docs,
-        meta: { page: 1, pageSize: 20, total: 1 },
+        meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
       });
       expect(knowledgeBaseService.findByIdOrThrow).toHaveBeenCalledWith(
         KB_ID,
@@ -144,6 +173,53 @@ describe('KnowledgeBaseController', () => {
         1,
         20,
         undefined,
+      );
+    });
+  });
+
+  describe('deleteKnowledgeBase', () => {
+    it('应先校验知识库再级联删除文档与知识库', async () => {
+      knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
+      documentService.deleteByKnowledgeBase.mockResolvedValue(2);
+      knowledgeBaseService.delete.mockResolvedValue(undefined);
+
+      await expect(
+        controller.deleteKnowledgeBase(KB_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
+
+      expect(knowledgeBaseService.findByIdOrThrow).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
+      );
+      expect(documentService.deleteByKnowledgeBase).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
+      );
+      expect(knowledgeBaseService.delete).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
+      );
+    });
+  });
+
+  describe('deleteDocument', () => {
+    it('应先校验知识库再删除指定文档', async () => {
+      const documentId = '00000000-0000-0000-0000-000000000020';
+      knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
+      documentService.deleteDocument.mockResolvedValue(undefined);
+
+      await expect(
+        controller.deleteDocument(KB_ID, documentId, TENANT_ID),
+      ).resolves.toBeUndefined();
+
+      expect(knowledgeBaseService.findByIdOrThrow).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
+      );
+      expect(documentService.deleteDocument).toHaveBeenCalledWith(
+        KB_ID,
+        documentId,
+        TENANT_ID,
       );
     });
   });

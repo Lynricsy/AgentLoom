@@ -8,7 +8,24 @@ import {
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
 } from '../hooks/useKnowledgeBases'
-import type { KnowledgeBase } from '../types'
+import {
+  getKnowledgeBaseStatusLabel,
+  type KnowledgeBase,
+  type KnowledgeBaseStatus,
+} from '../types'
+
+function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
+  switch (status) {
+    case 'ready':
+      return 'bg-emerald-500/10 text-emerald-700'
+    case 'processing':
+      return 'bg-blue-500/10 text-blue-700'
+    case 'failed':
+      return 'bg-rose-500/10 text-rose-700'
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
 
 /**
  * 知识库列表页面
@@ -51,9 +68,17 @@ export function KnowledgeBasesPage() {
   }, [newKbName, newKbDescription, createMutation])
 
   const handleDelete = useCallback(
-    (e: React.MouseEvent, id: string) => {
+    (e: React.MouseEvent, kb: KnowledgeBase) => {
       e.stopPropagation()
-      deleteMutation.mutate(id)
+      const confirmed = window.confirm(
+        `确认删除知识库“${kb.name}”吗？该操作会同时删除其下文档与分块记录。`,
+      )
+
+      if (!confirmed) {
+        return
+      }
+
+      deleteMutation.mutate(kb.id)
     },
     [deleteMutation],
   )
@@ -133,27 +158,40 @@ export function KnowledgeBasesPage() {
                 className="w-full text-left cursor-pointer"
               >
                 <div className="pr-8">
-                  <h3 className="font-medium truncate">{kb.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate font-medium">{kb.name}</h3>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getKnowledgeBaseStatusClass(
+                        kb.status,
+                      )}`}
+                    >
+                      {getKnowledgeBaseStatusLabel(kb.status)}
+                    </span>
+                  </div>
                   {kb.description && (
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                       {kb.description}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{kb.documentCount} 个文档</span>
+                  <span>·</span>
+                  <span>{kb.chunkCount} 个分块</span>
+                  <span>·</span>
                   <span>
                     {kb.visibility === 'organization' ? '组织' : '私有'}
                   </span>
                   <span>·</span>
                   <span>
-                    {new Date(kb.createdAt).toLocaleDateString()}
+                    更新于 {new Date(kb.updatedAt).toLocaleDateString()}
                   </span>
                 </div>
               </button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => handleDelete(e, kb.id)}
+                onClick={(e) => handleDelete(e, kb)}
                 className="absolute top-3 right-3 text-muted-foreground hover:text-destructive"
                 aria-label={`删除 ${kb.name}`}
               >

@@ -11,9 +11,21 @@ import {
 } from '../hooks/useKnowledgeBases'
 import {
   getDocumentStatusLabel,
+  getKnowledgeBaseStatusLabel,
   formatFileSize,
+  type KnowledgeBaseStatus,
+  type KnowledgeBaseDocument,
 } from '../types'
-import type { KnowledgeBaseDocument } from '../types'
+
+const DEFAULT_CHUNK_SIZE = 512
+const DEFAULT_CHUNK_OVERLAP = 64
+
+interface UploadFeedback {
+  id: string
+  fileName: string
+  status: 'uploading' | 'failed'
+  message?: string
+}
 
 /** 文档状态对应的样式 */
 function getStatusBadgeClass(status: string): string {
@@ -27,6 +39,33 @@ function getStatusBadgeClass(status: string): string {
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
+}
+
+function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
+  switch (status) {
+    case 'ready':
+      return 'bg-emerald-500/10 text-emerald-700'
+    case 'processing':
+      return 'bg-blue-500/10 text-blue-700'
+    case 'failed':
+      return 'bg-rose-500/10 text-rose-700'
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
+
+function formatDocumentType(fileName: string, mimeType: string): string {
+  const extension = fileName.split('.').pop()?.trim().toUpperCase()
+  if (extension) {
+    return extension
+  }
+
+  const mimeLabel = mimeType.split('/').pop()?.replace(/[-+]/g, ' ')
+  return mimeLabel ? mimeLabel.toUpperCase() : '未知格式'
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString()
 }
 
 interface KnowledgeBaseDetailPageProps {
@@ -45,25 +84,70 @@ export function KnowledgeBaseDetailPage({
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [uploadFeedbacks, setUploadFeedbacks] = useState<UploadFeedback[]>([])
 
   const {
     data: knowledgeBase,
     isLoading: kbLoading,
     error: kbError,
   } = useKnowledgeBase(knowledgeBaseId)
-  const { data: documents, isLoading: docsLoading } =
+  const { data: documentResponse, isLoading: docsLoading } =
     useDocuments(knowledgeBaseId)
   const uploadMutation = useUploadDocument()
   const deleteMutation = useDeleteDocument()
+  const documents = documentResponse?.data ?? []
+
+  const removeUploadFeedback = useCallback((feedbackId: string) => {
+    setUploadFeedbacks((current) =>
+      current.filter((item) => item.id !== feedbackId),
+    )
+  }, [])
+
+  const updateUploadFeedback = useCallback(
+    (feedbackId: string, patch: Partial<UploadFeedback>) => {
+      setUploadFeedbacks((current) =>
+        current.map((item) =>
+          item.id === feedbackId ? { ...item, ...patch } : item,
+        ),
+      )
+    },
+    [],
+  )
 
   const handleUpload = useCallback(
     (files: FileList | null) => {
       if (!files?.length) return
       Array.from(files).forEach((file) => {
-        uploadMutation.mutate({ knowledgeBaseId, file })
+        const feedbackId = `${file.name}-${file.lastModified}-${file.size}`
+
+        setUploadFeedbacks((current) => [
+          ...current,
+          {
+            id: feedbackId,
+            fileName: file.name,
+            status: 'uploading',
+            message: '文件上传中...',
+          },
+        ])
+
+        uploadMutation.mutate(
+          { knowledgeBaseId, file },
+          {
+            onSuccess: () => {
+              removeUploadFeedback(feedbackId)
+            },
+            onError: (error) => {
+              updateUploadFeedback(feedbackId, {
+                status: 'failed',
+                message:
+                  error instanceof Error ? error.message : '上传失败，请稍后重试',
+              })
+            },
+          },
+        )
       })
     },
-    [knowledgeBaseId, uploadMutation],
+    [knowledgeBaseId, removeUploadFeedback, updateUploadFeedback, uploadMutation],
   )
 
   const handleDrop = useCallback(
@@ -86,6 +170,14 @@ export function KnowledgeBaseDetailPage({
 
   const handleDeleteDoc = useCallback(
     (doc: KnowledgeBaseDocument) => {
+      const confirmed = window.confirm(
+        `确认删除文档“${doc.fileName}”吗？相关分块记录会一并清理。`,
+      )
+
+      if (!confirmed) {
+        return
+      }
+
       deleteMutation.mutate({
         knowledgeBaseId,
         documentId: doc.id,
@@ -135,39 +227,110 @@ export function KnowledgeBaseDetailPage({
               {knowledgeBase.description}
             </p>
           )}
+          {knowledgeBase && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>{knowledgeBase.documentCount} 个文档</span>
+              <span>·</span>
+              <span>{knowledgeBase.chunkCount} 个分块</span>
+              <span>·</span>
+              <span
+                className={`rounded-full px-2 py-0.5 font-medium ${getKnowledgeBaseStatusClass(
+                  knowledgeBase.status,
+                )}`}
+              >
+                {getKnowledgeBaseStatusLabel(knowledgeBase.status)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* 上传区域 */}
-      <button
-        type="button"
+        <button
+          type="button"
         onClick={() => fileInputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={cn(
-          'flex flex-col items-center justify-center gap-2 p-8 rounded-lg border-2 border-dashed transition-colors cursor-pointer w-full',
+          className={cn(
+            'flex flex-col items-center justify-center gap-2 p-8 rounded-lg border-2 border-dashed transition-colors cursor-pointer w-full',
           isDragOver
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-muted-foreground',
         )}
         data-testid="upload-area"
-      >
-        <Upload className="w-8 h-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          {uploadMutation.isPending
-            ? '上传中...'
-            : '拖拽文件到此处或点击上传'}
-        </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => handleUpload(e.target.files)}
-          data-testid="file-input"
-        />
-      </button>
+        >
+          <Upload className="w-8 h-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            {uploadMutation.isPending
+              ? `正在并行上传 ${uploadFeedbacks.filter((item) => item.status === 'uploading').length} 个文件...`
+              : '拖拽文件到此处或点击上传（支持多文件）'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            当前使用浏览器并发上传；实时处理状态推送仍依赖后端事件通道。
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleUpload(e.target.files)}
+            data-testid="file-input"
+          />
+        </button>
+
+      {uploadFeedbacks.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-sm font-medium">上传队列</p>
+          <div className="mt-2 flex flex-col gap-2">
+            {uploadFeedbacks.map((feedback) => (
+              <div
+                key={feedback.id}
+                className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{feedback.fileName}</p>
+                  {feedback.message && (
+                    <p
+                      className={cn(
+                        'truncate text-muted-foreground',
+                        feedback.status === 'failed' && 'text-destructive',
+                      )}
+                    >
+                      {feedback.message}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="ml-3 text-muted-foreground hover:text-foreground"
+                  onClick={() => removeUploadFeedback(feedback.id)}
+                >
+                  关闭
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">分块大小</p>
+          <p className="mt-1 text-lg font-semibold">{DEFAULT_CHUNK_SIZE}</p>
+          <p className="text-xs text-muted-foreground">当前系统默认 token 上限</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">分块重叠</p>
+          <p className="mt-1 text-lg font-semibold">{DEFAULT_CHUNK_OVERLAP}</p>
+          <p className="text-xs text-muted-foreground">当前系统默认 overlap token</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Embedding 模型</p>
+          <p className="mt-1 text-lg font-semibold">待接入</p>
+          <p className="text-xs text-muted-foreground">向量索引链路尚未返回模型信息</p>
+        </div>
+      </div>
 
       {/* 文档加载中 */}
       {docsLoading && (
@@ -177,7 +340,7 @@ export function KnowledgeBaseDetailPage({
       )}
 
       {/* 空文档状态 */}
-      {!docsLoading && (!documents || documents.length === 0) && (
+      {!docsLoading && documents.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 gap-2">
           <FileText className="w-12 h-12 text-muted-foreground" />
           <p className="text-muted-foreground">
@@ -187,9 +350,14 @@ export function KnowledgeBaseDetailPage({
       )}
 
       {/* 文档列表 */}
-      {!docsLoading && documents && documents.length > 0 && (
+      {!docsLoading && documents.length > 0 && (
         <div className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">文档列表</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">文档列表</h2>
+            <p className="text-xs text-muted-foreground">
+              共 {documentResponse?.meta.total ?? documents.length} 个文档
+            </p>
+          </div>
           <div className="border rounded-lg divide-y divide-border">
             {documents.map((doc) => (
               <div
@@ -203,8 +371,14 @@ export function KnowledgeBaseDetailPage({
                       {doc.fileName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatFileSize(doc.sizeBytes)}
+                      {formatDocumentType(doc.fileName, doc.mimeType)} · {formatFileSize(doc.sizeBytes)} · 上传于{' '}
+                      {formatDateTime(doc.createdAt)}
                     </p>
+                    {doc.status === 'failed' && (
+                      <p className="text-xs text-destructive">
+                        处理失败，请查看服务端日志后重试上传。
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

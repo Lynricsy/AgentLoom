@@ -381,7 +381,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Database',
     description: '知识库检索节点',
     colorToken: CATEGORY_COLOR_TOKENS.knowledge,
-    inputPorts: [createPort('query', 'query', 'input', 'text')],
+    inputPorts: [],
     outputPorts: [createPort('knowledge', 'knowledge', 'output', 'knowledge')],
     configSchema: {
       type: 'object',

@@ -35,6 +35,9 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '这是一个测试知识库',
     visibility: 'private' as const,
     createdBy: 'user-1',
+    documentCount: 0,
+    chunkCount: 0,
+    status: 'empty',
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     ...overrides,
@@ -83,7 +86,15 @@ function setupMocks(overrides: {
     error: kbError,
   })
   mocks.useDocuments.mockReturnValue({
-    data: documents,
+    data: {
+      data: documents,
+      meta: {
+        page: 1,
+        pageSize: 20,
+        total: documents.length,
+        totalPages: Math.max(1, Math.ceil(documents.length / 20)),
+      },
+    },
     isLoading: docsLoading,
   })
   mocks.useUploadDocument.mockReturnValue({
@@ -102,6 +113,7 @@ function setupMocks(overrides: {
 describe('KnowledgeBaseDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('显示加载状态', () => {
@@ -130,8 +142,7 @@ describe('KnowledgeBaseDetailPage', () => {
     setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    // 找到返回按钮（第一个 ghost button）
-    const backButton = screen.getAllByRole('button')[0]
+    const backButton = screen.getByRole('button', { name: '返回知识库列表' })
     await userEvent.click(backButton)
 
     expect(mocks.navigate).toHaveBeenCalledWith({
@@ -142,7 +153,9 @@ describe('KnowledgeBaseDetailPage', () => {
   it('显示上传区域', () => {
     setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('拖拽文件到此处或点击上传')).toBeInTheDocument()
+    expect(
+      screen.getByText('拖拽文件到此处或点击上传（支持多文件）'),
+    ).toBeInTheDocument()
   })
 
   it('显示空文档提示', () => {
@@ -177,7 +190,6 @@ describe('KnowledgeBaseDetailPage', () => {
     setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const uploadArea = screen.getByTestId('upload-area')
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement
 
     // 验证 file input 存在且隐藏
@@ -194,10 +206,16 @@ describe('KnowledgeBaseDetailPage', () => {
 
     await userEvent.upload(fileInput, testFile)
 
-    expect(uploadFn).toHaveBeenCalledWith({
-      knowledgeBaseId: 'kb-1',
-      file: testFile,
-    })
+    expect(uploadFn).toHaveBeenCalledWith(
+      {
+        knowledgeBaseId: 'kb-1',
+        file: testFile,
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
   })
 
   it('拖拽文件上传', () => {
@@ -217,10 +235,16 @@ describe('KnowledgeBaseDetailPage', () => {
       dataTransfer: { files: [testFile] },
     })
 
-    expect(uploadFn).toHaveBeenCalledWith({
-      knowledgeBaseId: 'kb-1',
-      file: testFile,
-    })
+    expect(uploadFn).toHaveBeenCalledWith(
+      {
+        knowledgeBaseId: 'kb-1',
+        file: testFile,
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
   })
 
   it('删除文档时调用 mutation', async () => {
@@ -228,17 +252,15 @@ describe('KnowledgeBaseDetailPage', () => {
     const { deleteFn } = setupMocks({ documents: [doc] })
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    // 文档行中的删除按钮
-    const deleteButtons = screen.getAllByRole('button').filter(
-      (btn) => btn.querySelector('.lucide-trash-2'),
+    await userEvent.click(screen.getByLabelText('删除 删除我.pdf'))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      '确认删除文档“删除我.pdf”吗？相关分块记录会一并清理。',
     )
-    if (deleteButtons.length > 0) {
-      await userEvent.click(deleteButtons[0])
-      expect(deleteFn).toHaveBeenCalledWith({
-        knowledgeBaseId: 'kb-1',
-        documentId: 'doc-del',
-      })
-    }
+    expect(deleteFn).toHaveBeenCalledWith({
+      knowledgeBaseId: 'kb-1',
+      documentId: 'doc-del',
+    })
   })
 
   it('拖拽悬停时显示高亮', () => {

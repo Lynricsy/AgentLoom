@@ -35,6 +35,9 @@ const mockKnowledgeBase: KnowledgeBase = {
   description: 'Test knowledge base',
   visibility: 'private',
   createdBy: 'user-1',
+  documentCount: 0,
+  chunkCount: 0,
+  status: 'empty',
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 }

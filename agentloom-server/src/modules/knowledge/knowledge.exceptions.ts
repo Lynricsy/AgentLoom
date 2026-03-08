@@ -12,6 +12,17 @@ export class KnowledgeBaseNotFoundException extends DomainException {
   }
 }
 
+export class DocumentNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'document/not-found',
+      title: '文档不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `未找到 ID 为 ${id} 的文档`,
+    });
+  }
+}
+
 export class UnsupportedFileTypeException extends DomainException {
   constructor(fileName: string) {
     super({

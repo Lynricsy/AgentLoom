@@ -20,11 +20,12 @@ import {
 import {
   UnsupportedFileTypeException,
   FileTooLargeException,
+  DocumentNotFoundException,
   EmptyFileException,
 } from './knowledge.exceptions';
 
 export type DocumentResponse = Omit<
-  typeof documents.$inferSelect,
+  (typeof documents)['$inferSelect'],
   'storageKey'
 >;
 
@@ -148,6 +149,77 @@ export class DocumentService {
     ]);
 
     return { data: rows, total };
+  }
+
+  async deleteDocument(
+    knowledgeBaseId: string,
+    documentId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const db = getTenantDb(this.db);
+    const [document] = await db
+      .select({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.id, documentId),
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          eq(documents.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!document) {
+      throw new DocumentNotFoundException(documentId);
+    }
+
+    await this.storageService.delete(document.storageKey);
+    await db
+      .delete(documents)
+      .where(
+        and(
+          eq(documents.id, documentId),
+          eq(documents.tenantId, tenantId),
+        ),
+      );
+  }
+
+  async deleteByKnowledgeBase(
+    knowledgeBaseId: string,
+    tenantId: string,
+  ): Promise<number> {
+    const db = getTenantDb(this.db);
+    const storedDocuments = await db
+      .select({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          eq(documents.tenantId, tenantId),
+        ),
+      );
+
+    await Promise.all(
+      storedDocuments.map((document) => this.storageService.delete(document.storageKey)),
+    );
+
+    const deletedDocuments = await db
+      .delete(documents)
+      .where(
+        and(
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          eq(documents.tenantId, tenantId),
+        ),
+      )
+      .returning({ id: documents.id });
+
+    return deletedDocuments.length;
   }
 
   private async readMultipartFile(request: FastifyRequest): Promise<MultipartFile> {

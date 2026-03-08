@@ -92,6 +92,12 @@ export function useUploadDocument() {
       void queryClient.invalidateQueries({
         queryKey: knowledgeBaseKeys.documents(variables.knowledgeBaseId),
       });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.detail(variables.knowledgeBaseId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.lists(),
+      });
     },
   });
 }
@@ -112,6 +118,12 @@ export function useDeleteDocument() {
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: knowledgeBaseKeys.documents(variables.knowledgeBaseId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.detail(variables.knowledgeBaseId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.lists(),
       });
     },
   });

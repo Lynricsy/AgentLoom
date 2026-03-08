@@ -114,6 +114,22 @@ describe('nodeTypeRegistry', () => {
     })
   })
 
+  it('defines knowledge-base as an output-only knowledge source node', () => {
+    const knowledgeBaseNode = getNodeTypeConfig('knowledge-base')
+    const [outputPort] = knowledgeBaseNode.outputPorts
+
+    expect(knowledgeBaseNode.inputPorts).toEqual([])
+    expect(knowledgeBaseNode.outputPorts).toHaveLength(1)
+    expect(outputPort).toMatchObject({
+      id: 'knowledge',
+      label: 'knowledge',
+      direction: 'output',
+      dataType: 'knowledge',
+      required: false,
+      multiple: false,
+    })
+  })
+
   it('exposes every registry entry through ordered helpers and palette groups', () => {
     const orderedTypes = getAllNodeTypes().map((config) => config.type)
     const groupedTypes = buildPaletteGroups().flatMap((group) => group.items.map((item) => item.type))

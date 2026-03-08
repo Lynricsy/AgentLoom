@@ -1,6 +1,10 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { BookOpen, Loader2 } from 'lucide-react'
-import { isKnowledgeBaseConfigured } from '@/features/knowledge/types'
+import {
+  buildKnowledgeBaseNodeConfig,
+  getKnowledgeBaseStatusLabel,
+  isKnowledgeBaseConfigured,
+} from '@/features/knowledge/types'
 import { useKnowledgeBases } from '@/features/knowledge/hooks/useKnowledgeBases'
 
 interface KnowledgeBaseConfigPanelProps {
@@ -22,20 +26,29 @@ export const KnowledgeBaseConfigPanel = memo(
     const handleSelect = useCallback(
       (e: ChangeEvent<HTMLSelectElement>) => {
         const selectedId = e.target.value
-        if (!selectedId) return
+        if (!selectedId) {
+          onApply({
+            config: {},
+            label: '知识库',
+          })
+          return
+        }
 
         const selectedKb = knowledgeBases.find((kb) => kb.id === selectedId)
 
+        if (!selectedKb) {
+          return
+        }
+
         onApply({
-          config: {
-            knowledgeBaseId: selectedId,
-            knowledgeBaseName: selectedKb?.name,
-          },
-          label: selectedKb?.name ?? '知识库',
+          config: buildKnowledgeBaseNodeConfig(selectedKb),
+          label: selectedKb.name,
         })
       },
       [knowledgeBases, onApply],
     )
+
+    const selectedKnowledgeBase = knowledgeBases.find((kb) => kb.id === currentId)
 
     return (
       <div className="space-y-4 px-4 py-4">
@@ -64,19 +77,31 @@ export const KnowledgeBaseConfigPanel = memo(
               value={currentId}
               onChange={handleSelect}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">请选择知识库</option>
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name}
-                </option>
-              ))}
-            </select>
-          )}
+              >
+                <option value="">请选择知识库</option>
+                {knowledgeBases.map((kb) => (
+                  <option key={kb.id} value={kb.id}>
+                    {kb.name} · {kb.documentCount} 文档
+                  </option>
+                ))}
+              </select>
+            )}
         </div>
 
-        {currentId && (
-          <p className="break-all text-xs text-muted">ID: {currentId}</p>
+        {selectedKnowledgeBase && (
+          <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+            <p className="font-medium text-foreground">
+              {selectedKnowledgeBase.name}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+              <span>{selectedKnowledgeBase.documentCount} 个文档</span>
+              <span>·</span>
+              <span>{selectedKnowledgeBase.chunkCount} 个分块</span>
+              <span>·</span>
+              <span>{getKnowledgeBaseStatusLabel(selectedKnowledgeBase.status)}</span>
+            </div>
+            <p className="break-all text-muted">ID: {currentId}</p>
+          </div>
         )}
       </div>
     )

@@ -10,6 +10,14 @@ export const DOCUMENT_STATUSES = [
 ] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
+export const KNOWLEDGE_BASE_STATUSES = [
+  'empty',
+  'processing',
+  'ready',
+  'failed',
+] as const;
+export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
+
 export interface KnowledgeBase {
   id: string;
   tenantId: string;
@@ -17,6 +25,9 @@ export interface KnowledgeBase {
   description: string | null;
   visibility: KnowledgeBaseVisibility;
   createdBy: string;
+  documentCount: number;
+  chunkCount: number;
+  status: KnowledgeBaseStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +53,10 @@ export interface CreateKnowledgeBaseInput {
 
 export interface KnowledgeBaseNodeConfig extends Record<string, unknown> {
   knowledgeBaseId: string;
+  knowledgeBaseName?: string;
+  knowledgeBaseDocumentCount?: number;
+  knowledgeBaseChunkCount?: number;
+  knowledgeBaseStatus?: KnowledgeBaseStatus;
 }
 
 export interface DocumentListParams {
@@ -75,6 +90,18 @@ export function getDocumentStatusVariant(
   return variants[status];
 }
 
+export function getKnowledgeBaseStatusLabel(
+  status: KnowledgeBaseStatus,
+): string {
+  const labels: Record<KnowledgeBaseStatus, string> = {
+    empty: '空库',
+    processing: '处理中',
+    ready: '可用',
+    failed: '异常',
+  };
+  return labels[status];
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -84,9 +111,24 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function buildKnowledgeBaseNodeConfig(
-  knowledgeBaseId: string,
+  knowledgeBase:
+    | string
+    | Pick<
+        KnowledgeBase,
+        'id' | 'name' | 'documentCount' | 'chunkCount' | 'status'
+      >,
 ): KnowledgeBaseNodeConfig {
-  return { knowledgeBaseId };
+  if (typeof knowledgeBase === 'string') {
+    return { knowledgeBaseId: knowledgeBase };
+  }
+
+  return {
+    knowledgeBaseId: knowledgeBase.id,
+    knowledgeBaseName: knowledgeBase.name,
+    knowledgeBaseDocumentCount: knowledgeBase.documentCount,
+    knowledgeBaseChunkCount: knowledgeBase.chunkCount,
+    knowledgeBaseStatus: knowledgeBase.status,
+  };
 }
 
 export function isKnowledgeBaseConfigured(

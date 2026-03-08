@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -47,15 +50,34 @@ export class KnowledgeBaseController {
     @Query() query: ListKnowledgeBasesQueryDto,
     @CurrentTenant() tenantId: string,
   ) {
-    const { data, total } = await this.knowledgeBaseService.findAllByTenant(
+    const { data, total } = await this.knowledgeBaseService.findSummariesByTenant(
       tenantId,
       query.page,
       query.pageSize,
     );
     return {
       data,
-      meta: { page: query.page, pageSize: query.pageSize, total },
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      },
     };
+  }
+
+  @Get(':id')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  async findOne(
+    @Param('id') knowledgeBaseId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const knowledgeBase = await this.knowledgeBaseService.findSummaryByIdOrThrow(
+      knowledgeBaseId,
+      tenantId,
+    );
+
+    return { data: knowledgeBase };
   }
 
   @Post(':id/documents')
@@ -103,7 +125,40 @@ export class KnowledgeBaseController {
 
     return {
       data,
-      meta: { page: query.page, pageSize: query.pageSize, total },
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      },
     };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  async deleteKnowledgeBase(
+    @Param('id') knowledgeBaseId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
+    await this.documentService.deleteByKnowledgeBase(knowledgeBaseId, tenantId);
+    await this.knowledgeBaseService.delete(knowledgeBaseId, tenantId);
+  }
+
+  @Delete(':id/documents/:documentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  async deleteDocument(
+    @Param('id') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
+    await this.documentService.deleteDocument(
+      knowledgeBaseId,
+      documentId,
+      tenantId,
+    );
   }
 }
