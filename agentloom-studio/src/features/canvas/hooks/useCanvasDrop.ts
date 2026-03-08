@@ -53,6 +53,14 @@ export function useCanvasDrop(
         position,
         label: item.label,
         description: item.description,
+        ...(item.mcpToolDefinitionId
+          ? {
+              inputPorts: item.inputPorts,
+              outputPorts: item.outputPorts,
+              mcpToolDefinitionId: item.mcpToolDefinitionId,
+              config: { inputSchema: item.inputSchema },
+            }
+          : {}),
       }
 
       addNode(input)

@@ -13,6 +13,7 @@ import type { CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from './nodeCategories'
 import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
+import { McpToolNodeBody } from './nodes/McpToolNodeBody'
 import { TypedPort } from './TypedPort'
 import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
 
@@ -176,6 +177,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
         {data.nodeType === 'llm-model' ? (
           <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
+        ) : data.nodeType === 'mcp-tool' ? (
+          <McpToolNodeBody data={data} />
         ) : (
           config.description
         )}

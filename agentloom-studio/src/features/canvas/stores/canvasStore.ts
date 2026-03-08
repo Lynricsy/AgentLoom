@@ -244,8 +244,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   category: input.category,
                   description: input.description ?? config.description,
                   config: input.config ?? {},
-                  inputPorts: clonePortDefinitions(config.inputPorts),
-                  outputPorts: clonePortDefinitions(config.outputPorts),
+                  inputPorts: clonePortDefinitions(input.inputPorts ?? config.inputPorts),
+                  outputPorts: clonePortDefinitions(input.outputPorts ?? config.outputPorts),
+                  ...(input.mcpToolDefinitionId ? { mcpToolDefinitionId: input.mcpToolDefinitionId } : {}),
                   ...(isAgentNodeType(input.nodeType) ? createDefaultAgentNodeData() : {}),
                 },
               }

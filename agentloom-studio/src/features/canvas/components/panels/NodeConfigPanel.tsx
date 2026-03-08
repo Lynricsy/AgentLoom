@@ -9,6 +9,7 @@ import {
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
+import { McpToolConfigPanel } from './McpToolConfigPanel'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -107,6 +108,8 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
           onApply={handleLlmChange}
         />
       )
+    case 'mcp-tool':
+      return <McpToolConfigPanel data={node.data} />
     default:
       return (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">

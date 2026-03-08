@@ -21,6 +21,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   description?: string
   config: Record<string, unknown>
   llmConfigId?: string | null
+  mcpToolDefinitionId?: string
   parameters?: Record<string, unknown>
   inputPorts: PortDefinition[]
   outputPorts: PortDefinition[]
@@ -147,6 +148,10 @@ export interface PaletteNodeItem {
   category: NodeCategory
   icon: string
   description: string
+  mcpToolDefinitionId?: string
+  inputPorts?: PortDefinition[]
+  outputPorts?: PortDefinition[]
+  inputSchema?: Record<string, unknown>
 }
 
 export interface PaletteGroup {
