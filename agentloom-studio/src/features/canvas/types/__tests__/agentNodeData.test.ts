@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_AUTONOMY_CONFIG } from '../../autonomy.types'
+import {
+  DEFAULT_AUTONOMY_CONFIG,
+  DEFAULT_OUTPUT_FORMAT_STRATEGY,
+} from '../../autonomy.types'
 import { createDefaultAgentNodeData } from '../../types'
 import type { AgentNodeData, AgentModelConfig } from '../../types'
 import { getNodeTypeConfig } from '../nodeTypeRegistry'
@@ -20,7 +23,7 @@ describe('createDefaultAgentNodeData', () => {
     })
 
     expect(defaults.autonomyConfig).toEqual(DEFAULT_AUTONOMY_CONFIG)
-    expect(defaults.outputFormatStrategy).toEqual({})
+    expect(defaults.outputFormatStrategy).toEqual(DEFAULT_OUTPUT_FORMAT_STRATEGY)
 
     expect(defaults.toolBindings).toEqual([])
     expect(defaults.knowledgeBindings).toEqual([])
@@ -41,7 +44,7 @@ describe('createDefaultAgentNodeData', () => {
     expect(partial).toBeDefined()
   })
 
-  it('autonomyConfig 遵循受限默认契约，outputFormatStrategy 保持可扩展', () => {
+  it('autonomyConfig 与 outputFormatStrategy 均遵循强类型契约', () => {
     const defaults = createDefaultAgentNodeData()
 
     const extended: AgentNodeData['autonomyConfig'] = {
@@ -56,9 +59,17 @@ describe('createDefaultAgentNodeData', () => {
 
     const format: AgentNodeData['outputFormatStrategy'] = {
       ...defaults.outputFormatStrategy,
-      type: 'markdown',
+      outputSchema: '{"type":"object"}',
+      strictness: 'strict',
+      allowDegrade: false,
+      repairPolicy: 'manual',
     }
-    expect(format).toHaveProperty('type', 'markdown')
+    expect(format).toEqual({
+      outputSchema: '{"type":"object"}',
+      strictness: 'strict',
+      allowDegrade: false,
+      repairPolicy: 'manual',
+    })
   })
 
   it('每次调用返回全新实例（无共享引用）', () => {

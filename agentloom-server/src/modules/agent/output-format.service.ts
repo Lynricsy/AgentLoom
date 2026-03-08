@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { generateText, Output, NoObjectGeneratedError } from 'ai'
+import { generateText, NoObjectGeneratedError, Output } from 'ai'
 import type { LanguageModel } from 'ai'
 import { jsonrepair } from 'jsonrepair'
 import { z } from 'zod'
@@ -12,19 +12,43 @@ import type {
   OutputFormatStrategy,
 } from './dto/output-format.dto'
 
-export interface FormatRequest {
-  providerId: string
-  model: LanguageModel
-  prompt: string
-  system?: string
-  strategy: OutputFormatStrategy
+type JsonSchemaPrimitiveType =
+  | 'string'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'object'
+  | 'array'
+  | 'null'
+
+type JsonLiteralValue = string | number | boolean | null
+
+interface JsonSchemaNode {
+  type?: JsonSchemaPrimitiveType | JsonSchemaPrimitiveType[]
+  properties?: Record<string, JsonSchemaNode>
+  required?: string[]
+  items?: JsonSchemaNode
+  enum?: JsonLiteralValue[]
+  anyOf?: JsonSchemaNode[]
+  oneOf?: JsonSchemaNode[]
+  additionalProperties?: boolean | JsonSchemaNode
+  nullable?: boolean
 }
 
-const LEVEL_ORDER: Record<OutputFormatLevel, number> = {
-  L1: 1,
-  L2: 2,
-  L3: 3,
-  L4: 4,
+interface LevelExecutionResult {
+  data: unknown
+  rawOutput?: string
+  rawText?: string
+}
+
+class FormatLevelError extends Error {
+  constructor(
+    message: string,
+    readonly rawOutput?: string,
+  ) {
+    super(message)
+    this.name = 'FormatLevelError'
+  }
 }
 
 const MAX_LEVEL_BY_STRICTNESS: Record<string, OutputFormatLevel> = {
@@ -53,27 +77,33 @@ export class OutputFormatService {
     for (const level of allowedLevels) {
       const start = performance.now()
       try {
-        const data = await this.executeLevel(level, request)
+        const outcome = await this.executeLevel(level, request)
         const durationMs = Math.round(performance.now() - start)
-        attempts.push({ level, durationMs, success: true })
+        attempts.push({
+          level,
+          durationMs,
+          success: true,
+          rawOutput: outcome.rawOutput,
+        })
         return {
           outputFormatLevel: level,
           degraded: level !== startLevel,
-          data,
+          data: outcome.data,
           attempts,
+          rawText: outcome.rawText,
         }
       } catch (error) {
         const durationMs = Math.round(performance.now() - start)
-        const errorMessage =
-          error instanceof Error ? error.message : String(error)
+        const formatError = this.toFormatLevelError(level, error)
         attempts.push({
           level,
           durationMs,
           success: false,
-          error: errorMessage,
+          error: formatError.message,
+          rawOutput: formatError.rawOutput,
         })
         this.logger.warn(
-          `${level} failed (${durationMs}ms): ${errorMessage}, attempting next level`,
+          `${level} failed (${durationMs}ms): ${formatError.message}, attempting next level`,
         )
       }
     }
@@ -102,7 +132,7 @@ export class OutputFormatService {
   private async executeLevel(
     level: OutputFormatLevel,
     request: FormatRequest,
-  ): Promise<unknown> {
+  ): Promise<LevelExecutionResult> {
     switch (level) {
       case 'L1':
         return this.executeL1(request)
@@ -117,7 +147,7 @@ export class OutputFormatService {
     }
   }
 
-  private async executeL1(request: FormatRequest): Promise<unknown> {
+  private async executeL1(request: FormatRequest): Promise<LevelExecutionResult> {
     const zodSchema = this.parseJsonSchemaToZod(request.strategy.outputSchema)
     try {
       const result = await generateText({
@@ -126,16 +156,21 @@ export class OutputFormatService {
         system: request.system,
         output: Output.object({ schema: zodSchema }),
       })
-      return result.output
+      return { data: result.output }
     } catch (error) {
       if (NoObjectGeneratedError.isInstance(error)) {
-        throw new Error(`L1 native structured output failed: ${error.message}`)
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        throw new FormatLevelError(
+          `L1 native structured output failed: ${errorMessage}`,
+          this.extractNoObjectGeneratedText(error),
+        )
       }
       throw error
     }
   }
 
-  private async executeL2(request: FormatRequest): Promise<unknown> {
+  private async executeL2(request: FormatRequest): Promise<LevelExecutionResult> {
     const schemaHint = request.strategy.outputSchema
       ? `\n\nYou MUST respond with valid JSON matching this schema:\n${request.strategy.outputSchema}`
       : '\n\nYou MUST respond with valid JSON.'
@@ -146,26 +181,25 @@ export class OutputFormatService {
       system: request.system,
     })
 
-    const parsed = this.repairAndParse(
-      result.text,
-      request.strategy.repairPolicy,
-    )
-    if (request.strategy.outputSchema) {
-      const zodSchema = this.parseJsonSchemaToZod(
-        request.strategy.outputSchema,
+    try {
+      const parsed = this.repairAndParse(
+        result.text,
+        request.strategy.repairPolicy,
       )
-      const validation = zodSchema.safeParse(parsed)
-      if (!validation.success) {
-        throw new Error(
-          `L2 validation failed: ${validation.error.message}`,
-        )
+      return {
+        data: this.validateStructuredData(
+          parsed,
+          request.strategy.outputSchema,
+          'L2',
+        ),
+        rawOutput: result.text,
       }
-      return validation.data
+    } catch (error) {
+      throw this.toFormatLevelError('L2', error, result.text)
     }
-    return parsed
   }
 
-  private async executeL3(request: FormatRequest): Promise<unknown> {
+  private async executeL3(request: FormatRequest): Promise<LevelExecutionResult> {
     const result = await generateText({
       model: request.model,
       prompt: request.prompt,
@@ -173,14 +207,30 @@ export class OutputFormatService {
       output: Output.json(),
     })
 
-    const raw =
-      typeof result.output === 'string'
-        ? result.output
+    const rawOutput =
+      typeof result.text === 'string' && result.text.trim() !== ''
+        ? result.text
         : JSON.stringify(result.output)
-    return this.repairAndParse(raw, request.strategy.repairPolicy)
+
+    try {
+      const parsed =
+        typeof result.output === 'string'
+          ? this.repairAndParse(result.output, request.strategy.repairPolicy)
+          : result.output
+      return {
+        data: this.validateStructuredData(
+          parsed,
+          request.strategy.outputSchema,
+          'L3',
+        ),
+        rawOutput,
+      }
+    } catch (error) {
+      throw this.toFormatLevelError('L3', error, rawOutput)
+    }
   }
 
-  private async executeL4(request: FormatRequest): Promise<unknown> {
+  private async executeL4(request: FormatRequest): Promise<LevelExecutionResult> {
     const result = await generateText({
       model: request.model,
       prompt: request.prompt,
@@ -189,21 +239,63 @@ export class OutputFormatService {
 
     const extracted = this.extractJsonFromText(result.text)
     if (!extracted) {
-      throw new Error('L4 failed: no JSON found in text output')
-    }
-    return this.repairAndParse(extracted, request.strategy.repairPolicy)
-  }
-
-  private repairAndParse(raw: string, repairPolicy: string): unknown {
-    if (repairPolicy === 'none') {
-      return JSON.parse(raw)
+      throw new FormatLevelError(
+        'L4 failed: no JSON found in text output',
+        result.text,
+      )
     }
 
     try {
-      const repaired = jsonrepair(raw)
-      return JSON.parse(repaired)
+      const parsed = this.repairAndParse(extracted, request.strategy.repairPolicy)
+      return {
+        data: this.validateStructuredData(
+          parsed,
+          request.strategy.outputSchema,
+          'L4',
+        ),
+        rawOutput: result.text,
+        rawText: result.text,
+      }
+    } catch (error) {
+      throw this.toFormatLevelError('L4', error, result.text)
+    }
+  }
+
+  private validateStructuredData(
+    data: unknown,
+    outputSchema: string,
+    level: OutputFormatLevel,
+  ): unknown {
+    if (!outputSchema.trim()) {
+      return data
+    }
+
+    const zodSchema = this.parseJsonSchemaToZod(outputSchema)
+    const validation = zodSchema.safeParse(data)
+    if (!validation.success) {
+      throw new Error(`${level} validation failed: ${validation.error.message}`)
+    }
+
+    return validation.data
+  }
+
+  private repairAndParse(
+    raw: string,
+    repairPolicy: OutputFormatStrategy['repairPolicy'],
+  ): unknown {
+    const normalized = raw.trim()
+    if (normalized === '') {
+      throw new Error('Empty JSON output')
+    }
+
+    if (repairPolicy === 'none' || repairPolicy === 'manual') {
+      return JSON.parse(normalized)
+    }
+
+    try {
+      return JSON.parse(normalized)
     } catch {
-      return JSON.parse(raw)
+      return JSON.parse(jsonrepair(normalized))
     }
   }
 
@@ -226,7 +318,190 @@ export class OutputFormatService {
     return null
   }
 
-  parseJsonSchemaToZod(_schemaStr: string): z.ZodType {
-    return z.record(z.string(), z.any())
+  parseJsonSchemaToZod(schemaStr: string): z.ZodType<unknown> {
+    const normalized = schemaStr.trim()
+    if (normalized === '') {
+      return this.createLooseObjectSchema()
+    }
+
+    const schema = JSON.parse(normalized) as JsonSchemaNode
+    return this.convertJsonSchemaToZod(schema)
   }
+
+  private convertJsonSchemaToZod(schema: JsonSchemaNode): z.ZodType<unknown> {
+    if (schema.enum && schema.enum.length > 0) {
+      return this.applyNullability(schema, this.createLiteralUnion(schema.enum))
+    }
+
+    const variants = schema.anyOf ?? schema.oneOf
+    if (variants && variants.length > 0) {
+      return this.applyNullability(
+        schema,
+        this.createUnionSchema(
+          variants.map((variant) => this.convertJsonSchemaToZod(variant)),
+        ),
+      )
+    }
+
+    const types = this.normalizeSchemaTypes(schema)
+    const nonNullableTypes = types.filter((type) => type !== 'null')
+
+    let baseSchema: z.ZodType<unknown>
+    if (nonNullableTypes.length === 0) {
+      baseSchema = schema.properties
+        ? this.createObjectSchema(schema)
+        : this.createLooseObjectSchema()
+    } else if (nonNullableTypes.length === 1) {
+      baseSchema = this.createSchemaForType(nonNullableTypes[0], schema)
+    } else {
+      baseSchema = this.createUnionSchema(
+        nonNullableTypes.map((type) => this.createSchemaForType(type, schema)),
+      )
+    }
+
+    return this.applyNullability(schema, baseSchema)
+  }
+
+  private createSchemaForType(
+    type: JsonSchemaPrimitiveType,
+    schema: JsonSchemaNode,
+  ): z.ZodType<unknown> {
+    switch (type) {
+      case 'string':
+        return z.string()
+      case 'number':
+        return z.number()
+      case 'integer':
+        return z.number().int()
+      case 'boolean':
+        return z.boolean()
+      case 'array':
+        return z.array(
+          schema.items ? this.convertJsonSchemaToZod(schema.items) : z.unknown(),
+        )
+      case 'object':
+        return this.createObjectSchema(schema)
+      case 'null':
+        return z.null()
+    }
+  }
+
+  private createObjectSchema(schema: JsonSchemaNode): z.ZodType<unknown> {
+    const properties = schema.properties ?? {}
+    const required = new Set(schema.required ?? [])
+    const shape: Record<string, z.ZodType<unknown>> = {}
+
+    for (const [key, value] of Object.entries(properties)) {
+      const propertySchema = this.convertJsonSchemaToZod(value)
+      shape[key] = required.has(key)
+        ? propertySchema
+        : propertySchema.optional()
+    }
+
+    const objectSchema = z.object(shape)
+    if (schema.additionalProperties === false) {
+      return objectSchema.strict()
+    }
+
+    if (
+      schema.additionalProperties &&
+      typeof schema.additionalProperties === 'object'
+    ) {
+      return objectSchema.catchall(
+        this.convertJsonSchemaToZod(schema.additionalProperties),
+      )
+    }
+
+    return objectSchema.catchall(z.unknown())
+  }
+
+  private createLooseObjectSchema(): z.ZodType<unknown> {
+    return z.object({}).catchall(z.unknown())
+  }
+
+  private createLiteralUnion(values: JsonLiteralValue[]): z.ZodType<unknown> {
+    const literals = values.map((value) => z.literal(value))
+    return this.createUnionSchema(literals)
+  }
+
+  private createUnionSchema(schemas: z.ZodType<unknown>[]): z.ZodType<unknown> {
+    const [first, second, ...rest] = schemas
+    if (!first) {
+      return z.unknown()
+    }
+    if (!second) {
+      return first
+    }
+
+    let unionSchema: z.ZodType<unknown> = z.union([first, second])
+    for (const schema of rest) {
+      unionSchema = z.union([unionSchema, schema])
+    }
+
+    return unionSchema
+  }
+
+  private normalizeSchemaTypes(schema: JsonSchemaNode): JsonSchemaPrimitiveType[] {
+    if (Array.isArray(schema.type)) {
+      return schema.type
+    }
+
+    if (schema.type) {
+      return [schema.type]
+    }
+
+    if (schema.properties || schema.additionalProperties !== undefined) {
+      return ['object']
+    }
+
+    if (schema.items) {
+      return ['array']
+    }
+
+    return []
+  }
+
+  private applyNullability(
+    schema: JsonSchemaNode,
+    zodSchema: z.ZodType<unknown>,
+  ): z.ZodType<unknown> {
+    const typeIncludesNull = this.normalizeSchemaTypes(schema).includes('null')
+    return schema.nullable || typeIncludesNull ? zodSchema.nullable() : zodSchema
+  }
+
+  private toFormatLevelError(
+    level: OutputFormatLevel,
+    error: unknown,
+    rawOutput?: string,
+  ): FormatLevelError {
+    if (error instanceof FormatLevelError) {
+      return error.rawOutput === undefined && rawOutput !== undefined
+        ? new FormatLevelError(error.message, rawOutput)
+        : error
+    }
+
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    return new FormatLevelError(`${level} failed: ${errorMessage}`, rawOutput)
+  }
+
+  private extractNoObjectGeneratedText(error: unknown): string | undefined {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'text' in error &&
+      typeof error.text === 'string'
+    ) {
+      return error.text
+    }
+
+    return undefined
+  }
+}
+
+export interface FormatRequest {
+  providerId: string
+  model: LanguageModel
+  prompt: string
+  system?: string
+  strategy: OutputFormatStrategy
 }

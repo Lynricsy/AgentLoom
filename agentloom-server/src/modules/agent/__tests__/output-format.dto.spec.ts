@@ -57,6 +57,34 @@ describe('输出格式 DTO', () => {
       expect(FormatAttemptSchema.parse(attempt)).toEqual(attempt)
     })
   })
+
+  describe('FormatResultSchema', () => {
+    it('应解析带 rawText 的降级结果', () => {
+      const result = {
+        outputFormatLevel: 'L4',
+        degraded: true,
+        data: { name: 'fallback' },
+        attempts: [
+          {
+            level: 'L3',
+            durationMs: 120,
+            success: false,
+            error: 'L3 validation failed',
+            rawOutput: '{"wrong":"shape"}',
+          },
+          {
+            level: 'L4',
+            durationMs: 80,
+            success: true,
+            rawOutput: '回答如下：{"name":"fallback"}',
+          },
+        ],
+        rawText: '回答如下：{"name":"fallback"}',
+      }
+
+      expect(FormatResultSchema.parse(result)).toEqual(result)
+    })
+  })
 })
 
 describe('输出格式验证器', () => {

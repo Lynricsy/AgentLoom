@@ -143,7 +143,9 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.autonomyConfig).toEqual(
       createDefaultAgentNodeData().autonomyConfig,
     )
-    expect(hydratedNode.data.outputFormatStrategy).toEqual({})
+    expect(hydratedNode.data.outputFormatStrategy).toEqual(
+      createDefaultAgentNodeData().outputFormatStrategy,
+    )
     expect(hydratedNode.data.toolBindings).toEqual([])
     expect(hydratedNode.data.knowledgeBindings).toEqual([])
     expect(state.isDirty).toBe(false)
@@ -160,7 +162,12 @@ describe('canvasStore', () => {
         config: { retries: 3 },
         modelConfig: { connectedModelNodeId: 'model-node-1' },
         autonomyConfig: { mode: 'RULE_BASED' },
-        outputFormatStrategy: { type: 'markdown' },
+        outputFormatStrategy: {
+          outputSchema: '{"type":"object"}',
+          strictness: 'lenient',
+          allowDegrade: false,
+          repairPolicy: 'manual',
+        },
         toolBindings: ['tool-a'],
         knowledgeBindings: ['kb-a'],
         inputPorts: clonePortDefinitions(customInputPorts),
@@ -192,7 +199,10 @@ describe('canvasStore', () => {
       mode: 'RULE_BASED',
     })
     expect(hydratedNode.data.outputFormatStrategy).toEqual({
-      type: 'markdown',
+      outputSchema: '{"type":"object"}',
+      strictness: 'lenient',
+      allowDegrade: false,
+      repairPolicy: 'manual',
     })
     expect(hydratedNode.data.toolBindings).toEqual(['tool-a'])
     expect(hydratedNode.data.knowledgeBindings).toEqual(['kb-a'])
