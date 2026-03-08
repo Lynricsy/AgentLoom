@@ -8,12 +8,49 @@ import { DocumentChunkService } from './document-chunk.service';
 import { DocumentParserService } from './parsers/document-parser.service';
 import { TextChunkerService } from './chunker/text-chunker.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
-import { KnowledgeGateway } from './knowledge.gateway';
+import {
+  KnowledgeGateway,
+  type DocumentProgressStage,
+  type DocumentStatusProgress,
+} from './knowledge.gateway';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   DOCUMENT_PROCESSING_QUEUE,
   DOCUMENT_INDEXING_QUEUE,
 } from './knowledge.constants';
+
+const DOCUMENT_PROGRESS_BY_STAGE = {
+  preparing: {
+    percentage: 10,
+    stage: 'preparing',
+    currentStep: 1,
+    totalSteps: 5,
+  },
+  parsing: {
+    percentage: 35,
+    stage: 'parsing',
+    currentStep: 2,
+    totalSteps: 5,
+  },
+  chunking: {
+    percentage: 65,
+    stage: 'chunking',
+    currentStep: 3,
+    totalSteps: 5,
+  },
+  queueing: {
+    percentage: 90,
+    stage: 'queueing',
+    currentStep: 4,
+    totalSteps: 5,
+  },
+  completed: {
+    percentage: 100,
+    stage: 'completed',
+    currentStep: 5,
+    totalSteps: 5,
+  },
+} satisfies Record<DocumentProgressStage, DocumentStatusProgress>;
 
 export interface DocumentProcessingJobData {
   documentId: string;
@@ -21,6 +58,12 @@ export interface DocumentProcessingJobData {
 
 export interface DocumentIndexingJobData {
   documentId: string;
+}
+
+interface DocumentRealtimeContext {
+  id: string;
+  tenantId: string;
+  knowledgeBaseId: string;
 }
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -49,6 +92,22 @@ export class DocumentProcessingWorker extends WorkerHost {
     super();
   }
 
+  private emitProcessingProgress(
+    document: DocumentRealtimeContext,
+    stage: DocumentProgressStage,
+  ) {
+    this.knowledgeGateway.emitDocumentStatusChanged(
+      document.tenantId,
+      document.knowledgeBaseId,
+      {
+        documentId: document.id,
+        knowledgeBaseId: document.knowledgeBaseId,
+        status: 'processing',
+        progress: DOCUMENT_PROGRESS_BY_STAGE[stage],
+      },
+    );
+  }
+
   async process(job: Job<DocumentProcessingJobData>): Promise<void> {
     const { documentId } = job.data;
 
@@ -62,27 +121,25 @@ export class DocumentProcessingWorker extends WorkerHost {
 
     const document = await this.documentService.findById(documentId);
 
-    if (job.attemptsMade === 0) {
-      this.knowledgeGateway.emitDocumentStatusChanged(
-        document.tenantId,
-        document.knowledgeBaseId,
-        { documentId, knowledgeBaseId: document.knowledgeBaseId, status: 'processing' },
-      );
-    }
-
     const knowledgeBase = await this.knowledgeBaseService.findByIdOrThrow(
       document.knowledgeBaseId,
       document.tenantId,
     );
 
+    this.emitProcessingProgress(document, 'preparing');
+
     const fileStream = await this.storageService.download(document.storageKey);
     const buffer = await streamToBuffer(fileStream);
+
+    this.emitProcessingProgress(document, 'parsing');
 
     const parsed = await this.parserService.parse(
       buffer,
       document.mimeType,
       document.fileName,
     );
+
+    this.emitProcessingProgress(document, 'chunking');
 
     const chunks = this.chunkerService.chunk(parsed, {
       maxTokens: knowledgeBase.chunkSize,
@@ -94,12 +151,21 @@ export class DocumentProcessingWorker extends WorkerHost {
       chunks,
     );
 
+    this.emitProcessingProgress(document, 'queueing');
+
+    await this.indexingQueue.add('index', { documentId }, { jobId: `index-${documentId}` });
+
     await this.documentService.updateStatus(documentId, 'ready');
 
     this.knowledgeGateway.emitDocumentStatusChanged(
       document.tenantId,
       document.knowledgeBaseId,
-      { documentId, knowledgeBaseId: document.knowledgeBaseId, status: 'ready' },
+      {
+        documentId,
+        knowledgeBaseId: document.knowledgeBaseId,
+        status: 'ready',
+        progress: DOCUMENT_PROGRESS_BY_STAGE.completed,
+      },
     );
     this.knowledgeGateway.emitKnowledgeBaseUpdated(
       document.tenantId,
@@ -109,8 +175,6 @@ export class DocumentProcessingWorker extends WorkerHost {
     this.logger.log(
       `Document ${documentId} processed: ${chunkCount} chunks created`,
     );
-
-    await this.indexingQueue.add('index', { documentId }, { jobId: `index-${documentId}` });
   }
 
   @OnWorkerEvent('failed')

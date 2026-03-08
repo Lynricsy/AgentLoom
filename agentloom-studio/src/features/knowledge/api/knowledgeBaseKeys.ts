@@ -1,6 +1,7 @@
 export const knowledgeBaseKeys = {
   all: ['knowledge-bases'] as const,
   lists: () => [...knowledgeBaseKeys.all, 'list'] as const,
+  allOptions: () => [...knowledgeBaseKeys.lists(), 'all-options'] as const,
   list: (filters?: Record<string, unknown>) =>
     [...knowledgeBaseKeys.lists(), filters] as const,
   details: () => [...knowledgeBaseKeys.all, 'detail'] as const,

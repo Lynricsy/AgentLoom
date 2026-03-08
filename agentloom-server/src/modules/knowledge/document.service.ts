@@ -28,6 +28,7 @@ import {
   EmptyFileException,
 } from './knowledge.exceptions';
 import type { DocumentProcessingJobData } from './document-processing.worker';
+import { KnowledgeGateway } from './knowledge.gateway';
 
 export type DocumentResponse = Omit<
   (typeof documents)['$inferSelect'],
@@ -53,6 +54,7 @@ export class DocumentService {
     private readonly storageService: StorageService,
     @InjectQueue(DOCUMENT_PROCESSING_QUEUE)
     private readonly processingQueue: Queue<DocumentProcessingJobData>,
+    private readonly knowledgeGateway: KnowledgeGateway,
   ) {}
 
   async uploadFromRequest(
@@ -102,6 +104,8 @@ export class DocumentService {
         .returning();
 
       const { storageKey: _key, ...safeDocument } = document;
+
+      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
 
       await this.processingQueue.add(
         'process',
@@ -272,6 +276,25 @@ export class DocumentService {
         updatedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
+  }
+
+  private emitUploadedRealtimeEvents(
+    tenantId: string,
+    knowledgeBaseId: string,
+    documentId: string,
+  ): void {
+    try {
+      this.knowledgeGateway.emitDocumentStatusChanged(tenantId, knowledgeBaseId, {
+        documentId,
+        knowledgeBaseId,
+        status: 'uploaded',
+      });
+      this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to emit uploaded event for document ${documentId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async readMultipartFile(request: FastifyRequest): Promise<MultipartFile> {

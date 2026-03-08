@@ -4,6 +4,7 @@ import {
   createKnowledgeBase,
   deleteDocument,
   deleteKnowledgeBase,
+  fetchAllKnowledgeBases,
   fetchDocuments,
   fetchKnowledgeBase,
   fetchKnowledgeBases,
@@ -24,6 +25,13 @@ export function useKnowledgeBases(params?: {
   return useQuery({
     queryKey: knowledgeBaseKeys.list(params ? { ...params } : undefined),
     queryFn: () => fetchKnowledgeBases(params),
+  });
+}
+
+export function useAllKnowledgeBases() {
+  return useQuery({
+    queryKey: knowledgeBaseKeys.allOptions(),
+    queryFn: () => fetchAllKnowledgeBases(),
   });
 }
 

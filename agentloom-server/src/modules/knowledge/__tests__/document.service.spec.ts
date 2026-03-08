@@ -13,6 +13,7 @@ import {
 } from '../knowledge.exceptions';
 import { DRIZZLE } from '../../../database/database.module';
 import { DOCUMENT_PROCESSING_QUEUE } from '../knowledge.constants';
+import { KnowledgeGateway } from '../knowledge.gateway';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
@@ -68,6 +69,10 @@ describe('DocumentService', () => {
     buildStorageKey: ReturnType<typeof vi.fn>;
   };
   let processingQueue: { add: ReturnType<typeof vi.fn> };
+  let knowledgeGateway: {
+    emitDocumentStatusChanged: ReturnType<typeof vi.fn>;
+    emitKnowledgeBaseUpdated: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -96,6 +101,11 @@ describe('DocumentService', () => {
       add: vi.fn().mockResolvedValue(undefined),
     };
 
+    knowledgeGateway = {
+      emitDocumentStatusChanged: vi.fn(),
+      emitKnowledgeBaseUpdated: vi.fn(),
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         DocumentService,
@@ -105,6 +115,7 @@ describe('DocumentService', () => {
           provide: getQueueToken(DOCUMENT_PROCESSING_QUEUE),
           useValue: processingQueue,
         },
+        { provide: KnowledgeGateway, useValue: knowledgeGateway },
       ],
     }).compile();
 
@@ -150,6 +161,19 @@ describe('DocumentService', () => {
         'application/pdf',
       );
       expect(db.insert).toHaveBeenCalled();
+      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        KB_ID,
+        {
+          documentId: DOC_ID,
+          knowledgeBaseId: KB_ID,
+          status: 'uploaded',
+        },
+      );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
+        TENANT_ID,
+        KB_ID,
+      );
       expect(result).not.toHaveProperty('storageKey');
       expect(result.id).toBe(DOC_ID);
       expect(result.fileName).toBe('report.pdf');
@@ -514,6 +538,45 @@ describe('DocumentService', () => {
           jobId: `process-${DOC_ID}`,
         }),
       );
+    });
+
+    it('实时广播失败时不应阻止上传成功', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+
+      const dbDocument = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: PDF_BUFFER.length,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([dbDocument]),
+        }),
+      });
+      knowledgeGateway.emitDocumentStatusChanged.mockImplementation(() => {
+        throw new Error('socket unavailable');
+      });
+
+      await expect(
+        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
+      ).resolves.toMatchObject({ id: DOC_ID });
+      expect(processingQueue.add).toHaveBeenCalledWith(
+        'process',
+        { documentId: DOC_ID },
+        expect.objectContaining({ jobId: `process-${DOC_ID}` }),
+      );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
     });
   });
 });

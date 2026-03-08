@@ -16,7 +16,10 @@ import {
   useUpdateKnowledgeBaseSettings,
   useUploadDocument,
 } from '../hooks/useKnowledgeBases'
-import { useKnowledgeBaseSocket } from '../hooks/useKnowledgeBaseSocket'
+import {
+  useKnowledgeBaseSocket,
+  type DocumentProgressStage,
+} from '../hooks/useKnowledgeBaseSocket'
 import {
   formatFileSize,
   getDocumentStatusLabel,
@@ -94,6 +97,18 @@ function formatDateTime(value: string): string {
   return new Date(value).toLocaleString()
 }
 
+function getProgressStageLabel(stage: DocumentProgressStage): string {
+  const labels: Record<DocumentProgressStage, string> = {
+    preparing: '准备处理文件',
+    parsing: '解析文档内容',
+    chunking: '生成语义分块',
+    queueing: '提交索引任务',
+    completed: '处理完成',
+  }
+
+  return labels[stage]
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
 }
@@ -117,7 +132,10 @@ export function KnowledgeBaseDetailPage({
     isLoading: kbLoading,
     error: kbError,
   } = useKnowledgeBase(knowledgeBaseId)
-  useKnowledgeBaseSocket(knowledgeBase?.tenantId, knowledgeBaseId)
+  const { documentEvents } = useKnowledgeBaseSocket(
+    knowledgeBase?.tenantId,
+    knowledgeBaseId,
+  )
 
   const { data: documentResponse, isLoading: docsLoading } = useDocuments(
     knowledgeBaseId,
@@ -365,7 +383,7 @@ export function KnowledgeBaseDetailPage({
             : '拖拽文件到此处或点击上传（支持多文件）'}
         </p>
         <p className="text-xs text-muted-foreground">
-          文档处理状态会通过实时事件自动刷新，无需手动重载页面。
+          文档处理状态与进度会通过实时事件自动刷新，无需手动重载页面。
         </p>
         <input
           ref={fileInputRef}
@@ -566,48 +584,83 @@ export function KnowledgeBaseDetailPage({
           </div>
 
           <div className="divide-y divide-border rounded-lg border border-border">
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center justify-between p-3"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{doc.fileName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
-                      {formatFileSize(doc.sizeBytes)} · 上传于{' '}
-                      {formatDateTime(doc.createdAt)}
-                    </p>
-                    {doc.status === 'failed' && (
-                      <p className="text-xs text-destructive">
-                        {doc.errorMessage ?? '处理失败，请查看服务端日志后重试上传。'}
+            {documents.map((doc) => {
+              const liveEvent = documentEvents[doc.id]
+              const displayStatus = liveEvent?.status ?? doc.status
+              const displayErrorMessage =
+                liveEvent?.errorMessage ?? doc.errorMessage
+              const displayProgress =
+                displayStatus === 'processing' ? liveEvent?.progress : undefined
+
+              return (
+                <div key={doc.id} className="flex items-start justify-between p-3">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{doc.fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
+                        {formatFileSize(doc.sizeBytes)} · 上传于{' '}
+                        {formatDateTime(doc.createdAt)}
                       </p>
-                    )}
+                      {displayStatus === 'failed' && (
+                        <p className="text-xs text-destructive">
+                          {displayErrorMessage ??
+                            '处理失败，请查看服务端日志后重试上传。'}
+                        </p>
+                      )}
+                      {displayProgress && (
+                        <div
+                          className="mt-2 space-y-1"
+                          data-testid={`document-progress-${doc.id}`}
+                        >
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{getProgressStageLabel(displayProgress.stage)}</span>
+                            <span>{displayProgress.percentage}%</span>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-label={`${doc.fileName} 处理进度`}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={displayProgress.percentage}
+                            className="h-1.5 overflow-hidden rounded-full bg-muted"
+                          >
+                            <div
+                              className="h-full rounded-full bg-blue-500 transition-[width]"
+                              style={{ width: `${displayProgress.percentage}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            第 {displayProgress.currentStep}/{displayProgress.totalSteps}{' '}
+                            步
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs',
+                        getStatusBadgeClass(displayStatus),
+                      )}
+                    >
+                      {getDocumentStatusLabel(displayStatus)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteDoc(doc)}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`删除 ${doc.fileName}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-xs',
-                      getStatusBadgeClass(doc.status),
-                    )}
-                  >
-                    {getDocumentStatusLabel(doc.status)}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteDoc(doc)}
-                    className="text-muted-foreground hover:text-destructive"
-                    aria-label={`删除 ${doc.fileName}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {documentResponse && (

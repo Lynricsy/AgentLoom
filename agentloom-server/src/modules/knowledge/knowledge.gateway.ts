@@ -8,10 +8,27 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
+export type DocumentRealtimeStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+
+export type DocumentProgressStage =
+  | 'preparing'
+  | 'parsing'
+  | 'chunking'
+  | 'queueing'
+  | 'completed';
+
+export interface DocumentStatusProgress {
+  percentage: number;
+  stage: DocumentProgressStage;
+  currentStep: number;
+  totalSteps: number;
+}
+
 export interface DocumentStatusEvent {
   documentId: string;
   knowledgeBaseId: string;
-  status: string;
+  status: DocumentRealtimeStatus;
+  progress?: DocumentStatusProgress;
   errorMessage?: string;
 }
 

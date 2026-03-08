@@ -127,7 +127,7 @@ function setupMocks(overrides: {
     mutateAsync: updateSettingsFn,
     isPending: false,
   })
-  mocks.useKnowledgeBaseSocket.mockReturnValue(undefined)
+  mocks.useKnowledgeBaseSocket.mockReturnValue({ documentEvents: {} })
 
   return { uploadFn, deleteFn, updateSettingsFn }
 }
@@ -224,6 +224,41 @@ describe('KnowledgeBaseDetailPage', () => {
     // 状态标签
     expect(screen.getAllByText('就绪').length).toBeGreaterThan(0)
     expect(screen.getAllByText('处理中').length).toBeGreaterThan(0)
+  })
+
+  it('显示实时处理进度', () => {
+    setupMocks({
+      documents: [
+        createDocument({
+          id: 'doc-progress',
+          fileName: 'process.md',
+          status: 'processing',
+        }),
+      ],
+    })
+    mocks.useKnowledgeBaseSocket.mockReturnValue({
+      documentEvents: {
+        'doc-progress': {
+          documentId: 'doc-progress',
+          knowledgeBaseId: 'kb-1',
+          status: 'processing',
+          progress: {
+            percentage: 65,
+            stage: 'chunking',
+            currentStep: 3,
+            totalSteps: 5,
+          },
+        },
+      },
+    })
+
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    expect(screen.getByText('生成语义分块')).toBeInTheDocument()
+    expect(screen.getByText('65%')).toBeInTheDocument()
+    expect(
+      screen.getByRole('progressbar', { name: 'process.md 处理进度' }),
+    ).toHaveAttribute('aria-valuenow', '65')
   })
 
   it('点击上传区域触发文件选择', async () => {

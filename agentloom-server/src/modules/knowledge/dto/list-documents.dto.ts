@@ -22,14 +22,23 @@ function normalizeStatusQuery(value: unknown): unknown {
   return value;
 }
 
-const ListDocumentsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  status: z.preprocess(
-    normalizeStatusQuery,
-    z.array(DocumentStatusSchema).optional(),
-  ),
-});
+const PageSizeSchema = z.coerce.number().int().min(1).max(100).optional();
+
+export const ListDocumentsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: PageSizeSchema,
+    page_size: PageSizeSchema,
+    status: z.preprocess(
+      normalizeStatusQuery,
+      z.array(DocumentStatusSchema).optional(),
+    ),
+  })
+  .transform((value) => ({
+    page: value.page,
+    pageSize: value.pageSize ?? value.page_size ?? 20,
+    status: value.status,
+  }));
 
 export class ListDocumentsQueryDto extends createZodDto(
   ListDocumentsQuerySchema,

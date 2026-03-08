@@ -4,6 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KnowledgeBase, KnowledgeBaseDocument } from '../types'
 import {
+  useAllKnowledgeBases,
   useCreateKnowledgeBase,
   useDeleteDocument,
   useDeleteKnowledgeBase,
@@ -141,6 +142,56 @@ describe('useKnowledgeBases', () => {
       expect(getMock).toHaveBeenCalledWith('knowledge-bases', {
         searchParams: { page: '2', page_size: '10' },
       })
+    })
+
+    it('fetches all knowledge bases across multiple pages', async () => {
+      getMock
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            data: [mockKnowledgeBase],
+            meta: {
+              page: 1,
+              pageSize: 100,
+              total: 101,
+              totalPages: 2,
+            },
+          }),
+        })
+        .mockReturnValueOnce({
+          json: vi.fn().mockResolvedValue({
+            data: [
+              {
+                ...mockKnowledgeBase,
+                id: 'kb-2',
+                name: 'Another KB',
+              },
+            ],
+            meta: {
+              page: 2,
+              pageSize: 100,
+              total: 101,
+              totalPages: 2,
+            },
+          }),
+        })
+
+      const queryClient = createQueryClient()
+      const { result } = renderHook(() => useAllKnowledgeBases(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      expect(getMock).toHaveBeenNthCalledWith(1, 'knowledge-bases', {
+        searchParams: { page: '1', page_size: '100' },
+      })
+      expect(getMock).toHaveBeenNthCalledWith(2, 'knowledge-bases', {
+        searchParams: { page: '2', page_size: '100' },
+      })
+      expect(result.current.data).toEqual([
+        mockKnowledgeBase,
+        expect.objectContaining({ id: 'kb-2', name: 'Another KB' }),
+      ])
     })
   })
 

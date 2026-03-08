@@ -5,7 +5,7 @@ import {
   getKnowledgeBaseStatusLabel,
   isKnowledgeBaseConfigured,
 } from '@/features/knowledge/types'
-import { useKnowledgeBases } from '@/features/knowledge/hooks/useKnowledgeBases'
+import { useAllKnowledgeBases } from '@/features/knowledge/hooks/useKnowledgeBases'
 
 interface KnowledgeBaseConfigPanelProps {
   config: Record<string, unknown>
@@ -17,8 +17,8 @@ export const KnowledgeBaseConfigPanel = memo(
     config,
     onApply,
   }: KnowledgeBaseConfigPanelProps) {
-    const { data, isLoading } = useKnowledgeBases({ page: 1, pageSize: 100 })
-    const knowledgeBases = data?.data ?? []
+    const { data, isLoading } = useAllKnowledgeBases()
+    const knowledgeBases = data ?? []
 
     const currentId = isKnowledgeBaseConfigured(config)
       ? config.knowledgeBaseId
@@ -78,15 +78,15 @@ export const KnowledgeBaseConfigPanel = memo(
               value={currentId}
               onChange={handleSelect}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">请选择知识库</option>
-                {knowledgeBases.map((kb) => (
-                  <option key={kb.id} value={kb.id}>
-                    {kb.name} · {kb.documentCount} 文档
-                  </option>
-                ))}
-              </select>
-            )}
+            >
+              <option value="">请选择知识库</option>
+              {knowledgeBases.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  {kb.name} · {kb.documentCount} 文档
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {selectedKnowledgeBase && (

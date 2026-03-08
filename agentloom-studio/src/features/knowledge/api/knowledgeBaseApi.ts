@@ -23,6 +23,23 @@ export async function fetchKnowledgeBases(params?: {
     .json<PaginatedResponse<KnowledgeBase>>();
 }
 
+export async function fetchAllKnowledgeBases(
+  pageSize = 100,
+): Promise<KnowledgeBase[]> {
+  const knowledgeBases: KnowledgeBase[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const response = await fetchKnowledgeBases({ page, pageSize });
+    knowledgeBases.push(...response.data);
+    totalPages = response.meta.totalPages;
+    page += 1;
+  } while (page <= totalPages);
+
+  return knowledgeBases;
+}
+
 export async function fetchKnowledgeBase(id: string): Promise<KnowledgeBase> {
   const response = await apiClient
     .get(`${BASE_PATH}/${id}`)
