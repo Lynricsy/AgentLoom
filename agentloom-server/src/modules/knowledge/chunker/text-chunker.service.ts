@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { encode, decode } from 'gpt-tokenizer';
+import { encode } from 'gpt-tokenizer';
 import type {
   DocumentChunk,
   ParsedDocument,
@@ -37,57 +37,56 @@ export class TextChunkerService {
     options: ChunkOptions = DEFAULT_CHUNK_OPTIONS,
   ): DocumentChunk[] {
     const { maxTokens, overlapTokens } = options;
-    const fullTextLength = document.fullText.length;
 
     if (!document.sections.length) {
       return [];
     }
 
     const chunks: DocumentChunk[] = [];
-    let currentTexts: string[] = [];
-    let currentTokenCount = 0;
+    let currentSpanStart: number | null = null;
+    let currentSpanEnd: number | null = null;
     let currentLocation: ParsedSection['location'] | null = null;
-    let currentCharEnd = 0;
-    /** overlap 文本的字符数（不含 '\n\n' 分隔符）；用于反向调整 charOffset */
-    let overlapPrefixLength = 0;
 
-    /**
-     * 将当前累积内容刷出为一个 DocumentChunk。
-     * charOffset 向前调整 overlapPrefixLength，charLength 覆盖完整 content 长度。
-     */
     const flushChunk = (): void => {
-      if (currentTexts.length === 0 || !currentLocation) return;
+      if (currentSpanStart === null || currentSpanEnd === null || !currentLocation) {
+        return;
+      }
 
-      const content = currentTexts.join('\n\n');
-      // 向前调整 charOffset 以覆盖 overlap 前缀；clamp 至 [0, fullTextLength)
-      const charOffset = Math.max(0, currentLocation.charOffset - overlapPrefixLength);
-      // charLength 覆盖完整 content，同时保证不越出 fullText 边界
-      const charLength = Math.min(content.length, fullTextLength - charOffset);
+      const content = document.fullText.slice(currentSpanStart, currentSpanEnd);
+
+      if (!content) {
+        return;
+      }
 
       chunks.push(
-        this.createChunk(content, currentLocation, currentTokenCount, charOffset, charLength),
+        this.createChunk(
+          content,
+          currentLocation,
+          encode(content).length,
+          currentSpanStart,
+          currentSpanEnd - currentSpanStart,
+        ),
       );
     };
 
     for (const section of document.sections) {
+      const sectionStart = section.location.charOffset;
+      const sectionEnd = section.location.charOffset + section.text.length;
       const sectionTokens = encode(section.text).length;
 
       // 处理超大段落
       if (sectionTokens > maxTokens) {
         // 先刷出已累积内容
         flushChunk();
-        currentTexts = [];
-        currentTokenCount = 0;
+        currentSpanStart = null;
+        currentSpanEnd = null;
         currentLocation = null;
-        currentCharEnd = 0;
-        overlapPrefixLength = 0;
 
         // 拆分大段落
         const subChunks = this.splitLargeSection(
           section,
           maxTokens,
           overlapTokens,
-          fullTextLength,
         );
         chunks.push(...subChunks);
         continue;
@@ -95,42 +94,41 @@ export class TextChunkerService {
 
       // 检查当前块是否已满
       if (
-        currentTokenCount + sectionTokens > maxTokens &&
-        currentTexts.length > 0
+        currentSpanStart !== null &&
+        currentSpanEnd !== null &&
+        encode(document.fullText.slice(currentSpanStart, sectionEnd)).length > maxTokens &&
+        currentLocation
       ) {
-        const prevCharEnd = currentCharEnd;
+        const previousSpanStart = currentSpanStart;
+        const previousSpanEnd = currentSpanEnd;
+
         // 刷出当前块
         flushChunk();
 
-        // 计算重叠文本，限制重叠量确保下一个块不超过 maxTokens
-        const chunkText = currentTexts.join('\n\n');
-        const availableForOverlap = Math.max(0, maxTokens - sectionTokens);
-        const effectiveOverlap = Math.min(overlapTokens, availableForOverlap);
-        const overlapText = this.getOverlapText(chunkText, effectiveOverlap);
+        const overlapStart = this.findOverlapStart(
+          document.fullText,
+          previousSpanStart,
+          previousSpanEnd,
+          sectionEnd,
+          maxTokens,
+          overlapTokens,
+        );
 
-        if (overlapText) {
-          currentTexts = [overlapText];
-          currentTokenCount = encode(overlapText).length;
-          // overlap 在 fullText 中的起始位置 ≈ prevCharEnd - overlapText.length
-          // 记录 overlapPrefixLength 供下次 flushChunk 调整 charOffset
-          overlapPrefixLength = overlapText.length;
-        } else {
-          currentTexts = [];
-          currentTokenCount = 0;
-          overlapPrefixLength = 0;
-        }
-        // 始终重置位置，确保下一个块使用新段落的位置作为基准
-        currentLocation = null;
-        currentCharEnd = prevCharEnd;
+        currentSpanStart = overlapStart ?? sectionStart;
+        currentSpanEnd = sectionEnd;
+        currentLocation = section.location;
+        continue;
+      }
+
+      if (currentSpanStart === null) {
+        currentSpanStart = sectionStart;
       }
 
       if (!currentLocation) {
         currentLocation = section.location;
       }
 
-      currentTexts.push(section.text);
-      currentTokenCount += sectionTokens;
-      currentCharEnd = section.location.charOffset + section.text.length;
+      currentSpanEnd = sectionEnd;
     }
 
     // 刷出最后一个块
@@ -147,79 +145,111 @@ export class TextChunkerService {
     section: ParsedSection,
     maxTokens: number,
     overlapTokens: number,
-    fullTextLength: number,
   ): DocumentChunk[] {
-    const chunks: DocumentChunk[] = []
-    // 按句号、问号、感叹号、换行分句
-    const sentences = section.text.split(/(?<=[.。!！?？\n])\s*/);
-    let currentTexts: string[] = [];
-    let currentTokenCount = 0;
-    /** 当前子块中 overlap 前缀的字符数（用于 charOffset 反向调整） */
-    let overlapPrefixLength = 0;
-    /** 当前子块主文本（非 overlap）在 section.text 中的起始位置 */
-    let mainTextLocalOffset = 0;
+    const chunks: DocumentChunk[] = [];
+    const sentences = this.getSentenceRanges(section.text);
+    let currentStartLocal: number | null = null;
+    let currentEndLocal: number | null = null;
 
     const flushSub = (): void => {
-      if (currentTexts.length === 0) return;
-      const content = currentTexts.join(' ');
-      // charOffset 向前调整覆盖 overlap 前缀
-      const charOffset = Math.max(
-        0,
-        section.location.charOffset + mainTextLocalOffset - overlapPrefixLength,
-      );
-      const charLength = Math.min(content.length, fullTextLength - charOffset);
+      if (currentStartLocal === null || currentEndLocal === null) {
+        return;
+      }
+
+      const content = section.text.slice(currentStartLocal, currentEndLocal);
+
+      if (!content) {
+        return;
+      }
+
       chunks.push(
-        this.createChunk(content, section.location, currentTokenCount, charOffset, charLength),
+        this.createChunk(
+          content,
+          section.location,
+          encode(content).length,
+          section.location.charOffset + currentStartLocal,
+          currentEndLocal - currentStartLocal,
+        ),
       );
     };
 
-    let localOffset = 0;
-
     for (const sentence of sentences) {
-      const sentenceTokens = encode(sentence).length;
+      const sentenceText = section.text.slice(sentence.start, sentence.end);
+      const sentenceStart = sentence.start;
+      const sentenceEnd = sentence.end;
+      const sentenceTokens = encode(sentenceText).length;
 
       if (
-        currentTokenCount + sentenceTokens > maxTokens &&
-        currentTexts.length > 0
+        currentStartLocal !== null &&
+        currentEndLocal !== null &&
+        encode(section.text.slice(currentStartLocal, sentenceEnd)).length > maxTokens
       ) {
+        const previousStartLocal = currentStartLocal;
+        const previousEndLocal = currentEndLocal;
+
         flushSub();
 
-        // 限制重叠量确保下一个子块不超过 maxTokens
-        const availableForOverlap = Math.max(0, maxTokens - sentenceTokens);
-        const effectiveOverlap = Math.min(overlapTokens, availableForOverlap);
-        const chunkText = currentTexts.join(' ');
-        const overlapText = this.getOverlapText(chunkText, effectiveOverlap);
+        const overlapStart = this.findOverlapStart(
+          section.text,
+          previousStartLocal,
+          previousEndLocal,
+          sentenceEnd,
+          maxTokens,
+          overlapTokens,
+        );
 
-        if (overlapText) {
-          currentTexts = [overlapText];
-          overlapPrefixLength = overlapText.length;
-          currentTokenCount = encode(overlapText).length;
-        } else {
-          currentTexts = [];
-          overlapPrefixLength = 0;
-          currentTokenCount = 0;
-        }
-        // 主文本从当前句子在 section.text 中的位置开始
-        mainTextLocalOffset = localOffset;
+        currentStartLocal = overlapStart ?? sentenceStart;
+        currentEndLocal = sentenceEnd;
+        continue;
       }
 
-      currentTexts.push(sentence);
-      currentTokenCount += sentenceTokens;
-      localOffset += sentence.length;
+      if (currentStartLocal === null) {
+        currentStartLocal = sentenceStart;
+      }
+
+      currentEndLocal = sentenceEnd;
     }
 
     flushSub();
     return chunks;
   }
 
-  /**
-   * 从文本末尾获取指定 token 数量的重叠文本
-   */
-  private getOverlapText(text: string, overlapTokens: number): string {
-    if (overlapTokens <= 0) return '';
-    const tokens = encode(text);
-    if (tokens.length <= overlapTokens) return text;
-    return decode(tokens.slice(-overlapTokens));
+  private findOverlapStart(
+    text: string,
+    previousStart: number,
+    previousEnd: number,
+    nextEnd: number,
+    maxTokens: number,
+    overlapTokens: number,
+  ): number | null {
+    if (overlapTokens <= 0 || !text || previousStart >= previousEnd) {
+      return null;
+    }
+
+    for (let start = previousStart; start < previousEnd; start += 1) {
+      const overlapText = text.slice(start, previousEnd);
+
+      if (encode(overlapText).length > overlapTokens) {
+        continue;
+      }
+
+      if (encode(text.slice(start, nextEnd)).length <= maxTokens) {
+        return start;
+      }
+    }
+
+    return null;
+  }
+
+  private getSentenceRanges(text: string): Array<{ start: number; end: number }> {
+    const matches = Array.from(text.matchAll(/[\s\S]+?(?:[.。!！?？]\s*|\n+|$)/g));
+
+    return matches
+      .map((match) => ({
+        start: match.index ?? 0,
+        end: (match.index ?? 0) + match[0].length,
+      }))
+      .filter((range) => range.end > range.start);
   }
 
   /**

@@ -58,7 +58,7 @@ describe('PdfParser', () => {
       expect(result.fullText).toBe('第一段内容\n\n第二段内容\n\n第三段内容');
     });
 
-    it('应为每个段落设置正确的页码', async () => {
+    it('应为每页中的每个段落设置正确的页码与页内段落索引', async () => {
       mocks.getText.mockResolvedValue({
         pages: [
           { num: 1, text: '页面一段落A\n\n页面一段落B' },
@@ -76,7 +76,7 @@ describe('PdfParser', () => {
       expect(result.sections[1].location.page).toBe(1);
       expect(result.sections[1].location.paragraph).toBe(1);
       expect(result.sections[2].location.page).toBe(2);
-      expect(result.sections[2].location.paragraph).toBe(2);
+      expect(result.sections[2].location.paragraph).toBe(0);
     });
 
     it('应正确计算跨页的 charOffset', async () => {

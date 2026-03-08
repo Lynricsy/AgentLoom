@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 
 import { TextChunkerService } from '../chunker/text-chunker.service';
-import type { ParsedDocument } from '../interfaces/document-parser.interface';
+import type {
+  DocumentChunk,
+  ParsedDocument,
+} from '../interfaces/document-parser.interface';
+import { MarkdownParser } from '../parsers/markdown.parser';
 
 describe('TextChunkerService', () => {
   let chunker: TextChunkerService;
@@ -40,6 +44,19 @@ describe('TextChunkerService', () => {
         totalCharacters: fullText.length,
       },
     };
+  }
+
+  function expectChunksMatchFullText(doc: ParsedDocument, chunks: DocumentChunk[]): void {
+    for (const chunk of chunks) {
+      const { charOffset, charLength } = chunk.location;
+      expect(charOffset).toBeGreaterThanOrEqual(0);
+      expect(charOffset + charLength).toBeLessThanOrEqual(doc.fullText.length);
+      expect(charLength).toBeGreaterThan(0);
+      expect(doc.fullText.substring(charOffset, charOffset + charLength)).toBe(
+        chunk.content,
+      );
+      expect(charLength).toBe(chunk.content.length);
+    }
   }
 
   describe('chunk', () => {
@@ -138,13 +155,7 @@ describe('TextChunkerService', () => {
 
       const chunks = chunker.chunk(doc, { maxTokens: 50, overlapTokens: 10 });
 
-      for (const chunk of chunks) {
-        expect(chunk.location.charOffset + chunk.location.charLength).toBeLessThanOrEqual(
-          doc.fullText.length,
-        );
-        expect(chunk.location.charOffset).toBeGreaterThanOrEqual(0);
-        expect(chunk.location.charLength).toBeGreaterThan(0);
-      }
+      expectChunksMatchFullText(doc, chunks);
     });
 
     it('应确保所有分块的 tokenCount 不超过 maxTokens', () => {
@@ -175,7 +186,7 @@ describe('TextChunkerService', () => {
       }
     });
 
-    it('含重叠时 charLength 应不超过 content 长度', () => {
+    it('含重叠时 charLength 应等于精确 content 长度', () => {
       const sections = Array.from(
         { length: 6 },
         (_, i) => `段落${i + 1}的内容有一定长度来确保分块产生重叠。`,
@@ -185,9 +196,7 @@ describe('TextChunkerService', () => {
       const chunks = chunker.chunk(doc, { maxTokens: 40, overlapTokens: 8 });
 
       if (chunks.length > 1) {
-        for (const chunk of chunks) {
-          expect(chunk.location.charLength).toBeLessThanOrEqual(chunk.content.length);
-        }
+        expectChunksMatchFullText(doc, chunks);
       }
     });
 
@@ -204,10 +213,10 @@ describe('TextChunkerService', () => {
       expect(chunks.length).toBeGreaterThan(1);
       const allContent = chunks.map((c) => c.content).join('');
       expect(allContent.length).toBeGreaterThan(0);
+      expectChunksMatchFullText(doc, chunks);
     });
 
-    it('charOffset 与 charLength 应覆盖 chunk content 在 fullText 中的完整区间', () => {
-      // 构造足够多段落以产生多个分块（含 overlap）
+    it('跨 section overlap 时 chunk content 应等于 fullText 对应子串', () => {
       const sections = Array.from(
         { length: 8 },
         (_, i) => `段落${i + 1}：这是用于验证重叠定位语义的测试文本，确保内容足够长。`,
@@ -216,19 +225,37 @@ describe('TextChunkerService', () => {
 
       const chunks = chunker.chunk(doc, { maxTokens: 40, overlapTokens: 8 });
 
-      for (const chunk of chunks) {
-        const { charOffset, charLength } = chunk.location;
-        // 1. 位置不越界
-        expect(charOffset).toBeGreaterThanOrEqual(0);
-        expect(charOffset + charLength).toBeLessThanOrEqual(doc.fullText.length);
-        expect(charLength).toBeGreaterThan(0);
-        // 2. fullText 子串与 content 长度匹配（定位区间覆盖整个 content）
-        const substring = doc.fullText.substring(charOffset, charOffset + charLength);
-        expect(substring.length).toBe(charLength);
-        // 3. content 的尾部应出现在对应的 fullText 区间中（可能因分隔符近似而允许轻微差异）
-        //    至少 charLength 等于 content 长度（无损定位）
-        expect(charLength).toBeLessThanOrEqual(chunk.content.length);
-      }
+      expect(chunks.length).toBeGreaterThan(1);
+      expectChunksMatchFullText(doc, chunks);
+    });
+
+    it('拆分超长段落时应保留原始换行边界', () => {
+      const longParagraph = Array.from(
+        { length: 120 },
+        (_, i) => `第${i + 1}句需要保留原始换行边界以验证精确切片语义。`,
+      ).join('\n');
+      const doc = createDocument([longParagraph]);
+
+      const chunks = chunker.chunk(doc, { maxTokens: 45, overlapTokens: 8 });
+
+      expect(chunks.length).toBeGreaterThan(1);
+      expect(chunks.some((chunk) => chunk.content.includes('\n'))).toBe(true);
+      expectChunksMatchFullText(doc, chunks);
+    });
+
+    it('跨 Markdown 标题边界时应保留原始单换行', async () => {
+      const parser = new MarkdownParser();
+      const doc = await parser.parse(
+        Buffer.from('正文段落用于验证标题前的单换行边界。\n# 标题\n标题下的正文继续延伸。'),
+        'boundary.md',
+      );
+
+      const chunks = chunker.chunk(doc, { maxTokens: 200, overlapTokens: 16 });
+
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0].content).toContain('正文段落用于验证标题前的单换行边界。\n# 标题');
+      expect(chunks[0].content).not.toContain('正文段落用于验证标题前的单换行边界。\n\n# 标题');
+      expectChunksMatchFullText(doc, chunks);
     });
   });
 });

@@ -25,9 +25,9 @@ export class PdfParser implements IDocumentParser {
 
       const sections: ParsedSection[] = [];
       let charOffset = 0;
-      let paragraphIndex = 0;
 
       for (const page of result.pages) {
+        let paragraphIndex = 0;
         const paragraphs = page.text.split(/\n\s*\n/);
 
         for (const rawParagraph of paragraphs) {
