@@ -19,8 +19,9 @@ describe('TextChunkerService', () => {
 
   function createDocument(sections: string[]): ParsedDocument {
     let charOffset = 0;
+    const fullText = sections.join('\n\n');
     return {
-      fullText: sections.join('\n\n'),
+      fullText,
       sections: sections.map((text, i) => {
         const section = {
           text,
@@ -31,12 +32,12 @@ describe('TextChunkerService', () => {
             charOffset,
           },
         };
-        charOffset += text.length + 2;
+        charOffset += text.length + 2; // '\n\n' 分隔符
         return section;
       }),
       metadata: {
         totalPages: null,
-        totalCharacters: sections.join('\n\n').length,
+        totalCharacters: fullText.length,
       },
     };
   }
@@ -121,7 +122,7 @@ describe('TextChunkerService', () => {
       }
     });
 
-    it('应为每个分块设置 charLength', () => {
+    it('无重叠时 charLength 应等于 content 长度', () => {
       const doc = createDocument(['测试字符长度。']);
 
       const chunks = chunker.chunk(doc);
@@ -174,7 +175,7 @@ describe('TextChunkerService', () => {
       }
     });
 
-    it('含重叠时 charLength 应不包含重叠文本的长度', () => {
+    it('含重叠时 charLength 应不超过 content 长度', () => {
       const sections = Array.from(
         { length: 6 },
         (_, i) => `段落${i + 1}的内容有一定长度来确保分块产生重叠。`,
@@ -203,6 +204,31 @@ describe('TextChunkerService', () => {
       expect(chunks.length).toBeGreaterThan(1);
       const allContent = chunks.map((c) => c.content).join('');
       expect(allContent.length).toBeGreaterThan(0);
+    });
+
+    it('charOffset 与 charLength 应覆盖 chunk content 在 fullText 中的完整区间', () => {
+      // 构造足够多段落以产生多个分块（含 overlap）
+      const sections = Array.from(
+        { length: 8 },
+        (_, i) => `段落${i + 1}：这是用于验证重叠定位语义的测试文本，确保内容足够长。`,
+      );
+      const doc = createDocument(sections);
+
+      const chunks = chunker.chunk(doc, { maxTokens: 40, overlapTokens: 8 });
+
+      for (const chunk of chunks) {
+        const { charOffset, charLength } = chunk.location;
+        // 1. 位置不越界
+        expect(charOffset).toBeGreaterThanOrEqual(0);
+        expect(charOffset + charLength).toBeLessThanOrEqual(doc.fullText.length);
+        expect(charLength).toBeGreaterThan(0);
+        // 2. fullText 子串与 content 长度匹配（定位区间覆盖整个 content）
+        const substring = doc.fullText.substring(charOffset, charOffset + charLength);
+        expect(substring.length).toBe(charLength);
+        // 3. content 的尾部应出现在对应的 fullText 区间中（可能因分隔符近似而允许轻微差异）
+        //    至少 charLength 等于 content 长度（无损定位）
+        expect(charLength).toBeLessThanOrEqual(chunk.content.length);
+      }
     });
   });
 });

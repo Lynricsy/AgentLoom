@@ -4,6 +4,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { documentChunks } from '../../database/schema/document-chunks.schema';
+import { documents } from '../../database/schema/knowledge-bases.schema';
 import type { DocumentChunk } from './interfaces/document-parser.interface';
 import { DocumentChunkException } from './knowledge.exceptions';
 
@@ -13,16 +14,40 @@ export class DocumentChunkService {
 
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
+  /**
+   * 批量创建文档分块。
+   *
+   * `tenantId` 和 `knowledgeBaseId` 强制从源文档记录继承，禁止调用方传入不一致的归属值。
+   * 若源文档不存在，抛出 DocumentChunkException。
+   *
+   * @param documentId - 源文档 ID
+   * @param chunks - 待持久化的分块列表
+   * @returns 实际写入的分块数量
+   */
   async createChunks(
     documentId: string,
-    tenantId: string,
-    knowledgeBaseId: string,
     chunks: DocumentChunk[],
   ): Promise<number> {
     if (chunks.length === 0) return 0;
 
     try {
       const db = getTenantDb(this.db);
+
+      // 从源文档继承 tenantId / knowledgeBaseId，防止调用方手工传入不一致的租户/知识库归属
+      const [sourceDoc] = await db
+        .select({
+          tenantId: documents.tenantId,
+          knowledgeBaseId: documents.knowledgeBaseId,
+        })
+        .from(documents)
+        .where(eq(documents.id, documentId))
+        .limit(1);
+
+      if (!sourceDoc) {
+        throw new DocumentChunkException(documentId, '源文档不存在');
+      }
+
+      const { tenantId, knowledgeBaseId } = sourceDoc;
 
       const values = chunks.map((chunk, index) => ({
         documentId,
@@ -41,6 +66,7 @@ export class DocumentChunkService {
       );
       return chunks.length;
     } catch (error) {
+      if (error instanceof DocumentChunkException) throw error;
       this.logger.error(`创建文档分块失败: ${error}`);
       throw new DocumentChunkException(documentId, '创建分块失败');
     }

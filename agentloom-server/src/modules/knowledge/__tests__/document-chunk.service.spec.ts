@@ -12,6 +12,7 @@ vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
 import { DRIZZLE } from '../../../database/database.module';
 import { DocumentChunkService } from '../document-chunk.service';
 import type { DocumentChunk } from '../interfaces/document-parser.interface';
+import { DocumentChunkException } from '../knowledge.exceptions';
 
 describe('DocumentChunkService', () => {
   let service: DocumentChunkService;
@@ -68,17 +69,25 @@ describe('DocumentChunkService', () => {
     },
   ];
 
+  /** 配置 mockTenantDb.select 返回源文档信息（用于 createChunks 内部查询） */
+  function mockSourceDocSelect(tenantId = 'tenant-id', knowledgeBaseId = 'kb-id') {
+    mockTenantDb.select.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ tenantId, knowledgeBaseId }]),
+        }),
+      }),
+    });
+  }
+
   describe('createChunks', () => {
     it('应批量创建文档分块并返回数量', async () => {
+      mockSourceDocSelect('tenant-id', 'kb-id');
+
       const mockValues = vi.fn().mockResolvedValue(undefined);
       mockTenantDb.insert.mockReturnValue({ values: mockValues });
 
-      const count = await service.createChunks(
-        'doc-id',
-        'tenant-id',
-        'kb-id',
-        sampleChunks,
-      );
+      const count = await service.createChunks('doc-id', sampleChunks);
 
       expect(count).toBe(2);
       expect(mockTenantDb.insert).toHaveBeenCalled();
@@ -101,14 +110,59 @@ describe('DocumentChunkService', () => {
       );
     });
 
-    it('应在创建失败时抛出 DocumentChunkException', async () => {
+    it('应从源文档继承 tenantId 和 knowledgeBaseId，而非由调用方传入', async () => {
+      // 源文档返回 db-tenant / db-kb，验证写入时使用的是 DB 中的值
+      mockSourceDocSelect('db-tenant', 'db-kb');
+
+      const capturedValues: unknown[] = [];
+      mockTenantDb.insert.mockReturnValue({
+        values: vi.fn().mockImplementation((vals) => {
+          capturedValues.push(...vals);
+          return Promise.resolve(undefined);
+        }),
+      });
+
+      await service.createChunks('doc-id', sampleChunks);
+
+      for (const val of capturedValues as Array<Record<string, string>>) {
+        expect(val.tenantId).toBe('db-tenant');
+        expect(val.knowledgeBaseId).toBe('db-kb');
+      }
+    });
+
+    it('源文档不存在时应抛出 DocumentChunkException', async () => {
+      // select 返回空数组，模拟源文档不存在
+      mockTenantDb.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      });
+
+      await expect(service.createChunks('non-existent-doc', sampleChunks)).rejects.toThrow(
+        DocumentChunkException,
+      );
+    });
+
+    it('应在数据库写入失败时抛出 DocumentChunkException', async () => {
+      mockSourceDocSelect();
       mockTenantDb.insert.mockReturnValue({
         values: vi.fn().mockRejectedValue(new Error('DB 错误')),
       });
 
-      await expect(
-        service.createChunks('doc-id', 'tenant-id', 'kb-id', sampleChunks),
-      ).rejects.toThrow();
+      await expect(service.createChunks('doc-id', sampleChunks)).rejects.toThrow(
+        DocumentChunkException,
+      );
+    });
+
+    it('chunks 为空时应直接返回 0，无需查询源文档', async () => {
+      const count = await service.createChunks('doc-id', []);
+
+      expect(count).toBe(0);
+      // 不应触发任何 DB 查询
+      expect(mockTenantDb.select).not.toHaveBeenCalled();
+      expect(mockTenantDb.insert).not.toHaveBeenCalled();
     });
   });
 
