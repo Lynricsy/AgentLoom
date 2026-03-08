@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import type { AddNodeInput, CanvasEdge, CanvasNode } from '../types'
-import { createDefaultEdgeData } from '../types'
+import { createDefaultAgentNodeData, createDefaultEdgeData } from '../types'
 import { clonePortDefinitions } from '../types/nodeTypeRegistry'
 import { useCanvasStore } from './canvasStore'
 
@@ -139,6 +139,13 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.config).toEqual({})
     expect(hydratedNode.data.inputPorts).toHaveLength(9)
     expect(hydratedNode.data.outputPorts).toHaveLength(4)
+    expect(hydratedNode.data.modelConfig).toEqual({ connectedModelNodeId: null })
+    expect(hydratedNode.data.autonomyConfig).toEqual(
+      createDefaultAgentNodeData().autonomyConfig,
+    )
+    expect(hydratedNode.data.outputFormatStrategy).toEqual({})
+    expect(hydratedNode.data.toolBindings).toEqual([])
+    expect(hydratedNode.data.knowledgeBindings).toEqual([])
     expect(state.isDirty).toBe(false)
     expect(state.selectedNodeId).toBeNull()
   })
@@ -151,6 +158,11 @@ describe('canvasStore', () => {
         category: 'agent',
         description: 'Keep my ports',
         config: { retries: 3 },
+        modelConfig: { connectedModelNodeId: 'model-node-1' },
+        autonomyConfig: { mode: 'RULE_BASED' },
+        outputFormatStrategy: { type: 'markdown' },
+        toolBindings: ['tool-a'],
+        knowledgeBindings: ['kb-a'],
         inputPorts: clonePortDefinitions(customInputPorts),
         outputPorts: [],
       },
@@ -172,6 +184,18 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.config).toEqual({ retries: 3 })
     expect(hydratedNode.data.inputPorts).toEqual(customInputPorts)
     expect(hydratedNode.data.outputPorts).toEqual([])
+    expect(hydratedNode.data.modelConfig).toEqual({
+      connectedModelNodeId: 'model-node-1',
+    })
+    expect(hydratedNode.data.autonomyConfig).toEqual({
+      ...createDefaultAgentNodeData().autonomyConfig,
+      mode: 'RULE_BASED',
+    })
+    expect(hydratedNode.data.outputFormatStrategy).toEqual({
+      type: 'markdown',
+    })
+    expect(hydratedNode.data.toolBindings).toEqual(['tool-a'])
+    expect(hydratedNode.data.knowledgeBindings).toEqual(['kb-a'])
   })
 
   it('updates save metadata when marking as saved', () => {

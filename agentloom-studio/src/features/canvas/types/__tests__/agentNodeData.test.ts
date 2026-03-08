@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { DEFAULT_AUTONOMY_CONFIG } from '../../autonomy.types'
 import { createDefaultAgentNodeData } from '../../types'
 import type { AgentNodeData, AgentModelConfig } from '../../types'
 import { getNodeTypeConfig } from '../nodeTypeRegistry'
@@ -18,7 +19,7 @@ describe('createDefaultAgentNodeData', () => {
       connectedModelNodeId: null,
     })
 
-    expect(defaults.autonomyConfig).toEqual({})
+    expect(defaults.autonomyConfig).toEqual(DEFAULT_AUTONOMY_CONFIG)
     expect(defaults.outputFormatStrategy).toEqual({})
 
     expect(defaults.toolBindings).toEqual([])
@@ -40,15 +41,18 @@ describe('createDefaultAgentNodeData', () => {
     expect(partial).toBeDefined()
   })
 
-  it('autonomyConfig / outputFormatStrategy 可自由扩展', () => {
+  it('autonomyConfig 遵循受限默认契约，outputFormatStrategy 保持可扩展', () => {
     const defaults = createDefaultAgentNodeData()
 
     const extended: AgentNodeData['autonomyConfig'] = {
       ...defaults.autonomyConfig,
-      maxIterations: 5,
-      earlyStop: true,
+      mode: 'RULE_BASED',
+      allowedInferenceFields: ['model'],
     }
-    expect(extended).toHaveProperty('maxIterations', 5)
+    expect(extended).toMatchObject({
+      mode: 'RULE_BASED',
+      allowedInferenceFields: ['model'],
+    })
 
     const format: AgentNodeData['outputFormatStrategy'] = {
       ...defaults.outputFormatStrategy,

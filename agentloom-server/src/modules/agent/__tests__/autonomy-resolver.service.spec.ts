@@ -144,6 +144,24 @@ describe('AutonomyResolverService', () => {
       expect(result.pendingConfirmations).toHaveLength(1)
       expect(result.pendingConfirmations[0].fieldPath).toBe('model')
     })
+
+    it('应为缺失字段配置补齐默认值后再执行规则推断', () => {
+      const context: InputContext = {
+        requiredFields: ['model'],
+        providedInputs: {},
+        fieldDefaults: { model: 'gpt-4' },
+      }
+      const result = service.resolveInputs(
+        {
+          mode: 'RULE_BASED',
+          allowedInferenceFields: ['model'],
+        },
+        context,
+      )
+
+      expect(result.resolvedInputs).toEqual({ model: 'gpt-4' })
+      expect(result.pendingConfirmations).toHaveLength(0)
+    })
   })
 
   describe('LLM_SUGGEST 模式', () => {
@@ -153,7 +171,7 @@ describe('AutonomyResolverService', () => {
       fallbackStrategy: 'USE_DEFAULT',
     }
 
-    it('有默认值的字段应作为建议放入 pendingConfirmations', () => {
+    it('有默认值的字段应作为建议写入 resolvedInputs 并放入 pendingConfirmations', () => {
       const context: InputContext = {
         requiredFields: ['model'],
         providedInputs: {},
@@ -161,6 +179,7 @@ describe('AutonomyResolverService', () => {
       }
       const result = service.resolveInputs(config, context)
 
+      expect(result.resolvedInputs).toEqual({ model: 'gpt-4' })
       expect(result.pendingConfirmations).toHaveLength(1)
       expect(result.pendingConfirmations[0]).toMatchObject({
         fieldPath: 'model',
@@ -202,6 +221,53 @@ describe('AutonomyResolverService', () => {
       expect(result.pendingConfirmations[0].fallbackInfo).toMatchObject({
         strategy: 'USE_DEFAULT',
       })
+    })
+  })
+
+  describe('运行时兼容性', () => {
+    it('未知 mode 时应回退到 MANUAL_CONFIRM', () => {
+      const context: InputContext = {
+        requiredFields: ['query', 'model'],
+        providedInputs: { query: 'hello' },
+      }
+      const result = service.resolveInputs(
+        {
+          ...DEFAULT_AUTONOMY_CONFIG,
+          mode: 'UNSUPPORTED_MODE',
+        },
+        context,
+      )
+
+      expect(result.resolvedInputs).toEqual({ query: 'hello' })
+      expect(result.pendingConfirmations).toHaveLength(1)
+      expect(result.pendingConfirmations[0]).toMatchObject({
+        fieldPath: 'model',
+      })
+      expect(result.annotations).toMatchObject([
+        {
+          fieldPath: 'query',
+          source: 'user',
+        },
+      ])
+    })
+
+    it('返回的注解结果应可 JSON 序列化', () => {
+      const context: InputContext = {
+        requiredFields: ['model'],
+        providedInputs: {},
+        fieldDefaults: { model: 'gpt-4' },
+      }
+      const result = service.resolveInputs(
+        {
+          mode: 'RULE_BASED',
+          allowedInferenceFields: ['model'],
+        },
+        context,
+      )
+
+      expect(JSON.parse(JSON.stringify(result.annotations))).toEqual(
+        result.annotations,
+      )
     })
   })
 

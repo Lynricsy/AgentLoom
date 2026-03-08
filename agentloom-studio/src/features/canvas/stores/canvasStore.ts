@@ -338,6 +338,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               state.nodes = nodes.map((n) => {
                 const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
+                const agentNodeDefaults = isAgentNodeType(n.data.nodeType)
+                  ? createDefaultAgentNodeData()
+                  : null
+                const agentNodeData = agentNodeDefaults
+                  ? (n.data as Partial<AgentNodeData>)
+                  : null
                 const inputPorts = Array.isArray(n.data.inputPorts)
                   ? clonePortDefinitions(n.data.inputPorts)
                   : typeConfig
@@ -352,10 +358,31 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 return {
                   ...n,
                   data: {
+                    ...(agentNodeDefaults ?? {}),
                     ...n.data,
                     config: n.data.config ?? {},
                     inputPorts,
                     outputPorts,
+                    ...(agentNodeDefaults && agentNodeData
+                      ? {
+                          modelConfig: agentNodeData.modelConfig
+                            ? { ...agentNodeData.modelConfig }
+                            : agentNodeDefaults.modelConfig,
+                          autonomyConfig: {
+                            ...agentNodeDefaults.autonomyConfig,
+                            ...(agentNodeData.autonomyConfig ?? {}),
+                          },
+                          outputFormatStrategy: agentNodeData.outputFormatStrategy
+                            ? { ...agentNodeData.outputFormatStrategy }
+                            : agentNodeDefaults.outputFormatStrategy,
+                          toolBindings: Array.isArray(agentNodeData.toolBindings)
+                            ? [...agentNodeData.toolBindings]
+                            : [...agentNodeDefaults.toolBindings],
+                          knowledgeBindings: Array.isArray(agentNodeData.knowledgeBindings)
+                            ? [...agentNodeData.knowledgeBindings]
+                            : [...agentNodeDefaults.knowledgeBindings],
+                        }
+                      : {}),
                   },
                 }
               })
