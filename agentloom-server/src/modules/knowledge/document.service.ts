@@ -79,6 +79,7 @@ export class DocumentService {
       documentId,
       multipartFile.filename,
     );
+    let persistedDocumentId: string | null = null;
 
     try {
       await this.storageService.upload(
@@ -103,9 +104,9 @@ export class DocumentService {
         })
         .returning();
 
-      const { storageKey: _key, ...safeDocument } = document;
+      persistedDocumentId = document.id;
 
-      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
+      const { storageKey: _key, ...safeDocument } = document;
 
       await this.processingQueue.add(
         'process',
@@ -117,8 +118,14 @@ export class DocumentService {
         },
       );
 
+      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
+
       return safeDocument;
     } catch (error) {
+      if (persistedDocumentId) {
+        await this.rollbackPersistedDocument(persistedDocumentId, tenantId);
+      }
+
       if (await this.storageService.exists(storageKey)) {
         await this.cleanupUploadedObject(storageKey);
       } else {
@@ -183,11 +190,7 @@ export class DocumentService {
   ): Promise<void> {
     const db = getTenantDb(this.db);
     const [document] = await db
-      .select({
-        id: documents.id,
-        storageKey: documents.storageKey,
-      })
-      .from(documents)
+      .delete(documents)
       .where(
         and(
           eq(documents.id, documentId),
@@ -195,21 +198,19 @@ export class DocumentService {
           eq(documents.tenantId, tenantId),
         ),
       )
-      .limit(1);
+      .returning({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      });
 
     if (!document) {
       throw new DocumentNotFoundException(documentId);
     }
 
-    await this.storageService.delete(document.storageKey);
-    await db
-      .delete(documents)
-      .where(
-        and(
-          eq(documents.id, documentId),
-          eq(documents.tenantId, tenantId),
-        ),
-      );
+    await this.cleanupDeletedObject(
+      document.storageKey,
+      `document ${documentId} in knowledge base ${knowledgeBaseId}`,
+    );
   }
 
   async deleteByKnowledgeBase(
@@ -217,23 +218,6 @@ export class DocumentService {
     tenantId: string,
   ): Promise<number> {
     const db = getTenantDb(this.db);
-    const storedDocuments = await db
-      .select({
-        id: documents.id,
-        storageKey: documents.storageKey,
-      })
-      .from(documents)
-      .where(
-        and(
-          eq(documents.knowledgeBaseId, knowledgeBaseId),
-          eq(documents.tenantId, tenantId),
-        ),
-      );
-
-    await Promise.all(
-      storedDocuments.map((document) => this.storageService.delete(document.storageKey)),
-    );
-
     const deletedDocuments = await db
       .delete(documents)
       .where(
@@ -242,7 +226,19 @@ export class DocumentService {
           eq(documents.tenantId, tenantId),
         ),
       )
-      .returning({ id: documents.id });
+      .returning({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      });
+
+    await Promise.all(
+      deletedDocuments.map((document) =>
+        this.cleanupDeletedObject(
+          document.storageKey,
+          `document ${document.id} in knowledge base ${knowledgeBaseId}`,
+        ),
+      ),
+    );
 
     return deletedDocuments.length;
   }
@@ -387,6 +383,42 @@ export class DocumentService {
     await this.storageService.delete(storageKey).catch((cleanupError: unknown) => {
       this.logger.error(`清理 MinIO 文件失败: ${storageKey}`, cleanupError);
     });
+  }
+
+  private async rollbackPersistedDocument(
+    documentId: string,
+    tenantId: string,
+  ): Promise<void> {
+    try {
+      const db = getTenantDb(this.db);
+      await db
+        .delete(documents)
+        .where(
+          and(
+            eq(documents.id, documentId),
+            eq(documents.tenantId, tenantId),
+          ),
+        );
+    } catch (error) {
+      this.logger.warn(
+        `回滚文档记录失败: ${documentId}`,
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+    }
+  }
+
+  private async cleanupDeletedObject(
+    storageKey: string,
+    context: string,
+  ): Promise<void> {
+    try {
+      await this.storageService.delete(storageKey);
+    } catch (error) {
+      this.logger.warn(
+        `元数据已删除，但对象存储清理失败: ${context} (${storageKey})`,
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+    }
   }
 
   private async cleanupIncompleteUpload(storageKey: string): Promise<void> {

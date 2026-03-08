@@ -333,6 +333,45 @@ describe('DocumentService', () => {
       );
       expect(storageService.delete).not.toHaveBeenCalled();
     });
+
+    it('任务入队失败时应回滚文档记录并清理对象存储', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const queueError = new Error('queue unavailable');
+
+      const dbDocument = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: PDF_BUFFER.length,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([dbDocument]),
+        }),
+      });
+      const rollbackWhere = vi.fn().mockResolvedValue(undefined);
+      db.delete.mockReturnValue({ where: rollbackWhere });
+      processingQueue.add.mockRejectedValueOnce(queueError);
+
+      await expect(
+        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(queueError);
+
+      expect(db.delete).toHaveBeenCalledTimes(1);
+      expect(rollbackWhere).toHaveBeenCalled();
+      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
+      expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
+    });
   });
 
   describe('findByKnowledgeBase', () => {
@@ -464,6 +503,86 @@ describe('DocumentService', () => {
       await expect(service.findById('nonexistent-id')).rejects.toThrow(
         DocumentNotFoundException,
       );
+    });
+  });
+
+  describe('deleteDocument', () => {
+    it('应先删除元数据再清理对象存储', async () => {
+      const returning = vi.fn().mockResolvedValue([
+        { id: DOC_ID, storageKey: STORAGE_KEY },
+      ]);
+      db.delete.mockReturnValue({
+        where: vi.fn().mockReturnValue({ returning }),
+      });
+
+      await expect(
+        service.deleteDocument(KB_ID, DOC_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
+
+      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
+    });
+
+    it('文档不存在时应抛出 DocumentNotFoundException', async () => {
+      db.delete.mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
+        }),
+      });
+
+      await expect(
+        service.deleteDocument(KB_ID, 'missing-doc', TENANT_ID),
+      ).rejects.toThrow(DocumentNotFoundException);
+
+      expect(storageService.delete).not.toHaveBeenCalled();
+    });
+
+    it('对象存储清理失败时不应阻止删除成功', async () => {
+      db.delete.mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+          ]),
+        }),
+      });
+      storageService.delete.mockRejectedValueOnce(new Error('MinIO 不可达'));
+
+      await expect(
+        service.deleteDocument(KB_ID, DOC_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('deleteByKnowledgeBase', () => {
+    it('应删除全部元数据并批量清理对象存储', async () => {
+      db.delete.mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+            { id: `${DOC_ID}-2`, storageKey: `${STORAGE_KEY}-2` },
+          ]),
+        }),
+      });
+
+      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).resolves.toBe(2);
+
+      expect(storageService.delete).toHaveBeenNthCalledWith(1, STORAGE_KEY);
+      expect(storageService.delete).toHaveBeenNthCalledWith(2, `${STORAGE_KEY}-2`);
+    });
+
+    it('对象存储部分清理失败时仍应返回已删除数量', async () => {
+      db.delete.mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+            { id: `${DOC_ID}-2`, storageKey: `${STORAGE_KEY}-2` },
+          ]),
+        }),
+      });
+      storageService.delete
+        .mockRejectedValueOnce(new Error('MinIO 不可达'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).resolves.toBe(2);
     });
   });
 

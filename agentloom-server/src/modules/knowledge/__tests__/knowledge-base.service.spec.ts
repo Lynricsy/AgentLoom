@@ -39,6 +39,24 @@ function createSelectChain(result: unknown) {
   };
 }
 
+function createWhereResolvedChain(result: unknown) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(result),
+    }),
+  };
+}
+
+function createGroupedWhereChain(result: unknown) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        groupBy: vi.fn().mockResolvedValue(result),
+      }),
+    }),
+  };
+}
+
 describe('KnowledgeBaseService', () => {
   let service: KnowledgeBaseService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
@@ -70,6 +88,9 @@ describe('KnowledgeBaseService', () => {
         name: '测试知识库',
         description: '描述',
         visibility: 'private' as const,
+        chunkSize: 512,
+        chunkOverlap: 64,
+        embeddingModel: 'text-embedding-3-small',
       };
       const expectedKB = {
         id: KB_ID,
@@ -160,6 +181,105 @@ describe('KnowledgeBaseService', () => {
       await expect(
         service.findByIdOrThrow(KB_ID, TENANT_ID),
       ).rejects.toThrow(KnowledgeBaseNotFoundException);
+    });
+  });
+
+  describe('findSummaryByIdOrThrow', () => {
+    it('应派生文档数、分块数和 processing 状态摘要', async () => {
+      const baseKnowledgeBase = {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        name: '测试知识库',
+        description: '用于摘要测试',
+        visibility: 'private' as const,
+        chunkSize: 512,
+        chunkOverlap: 64,
+        embeddingModel: 'text-embedding-3-small',
+        createdBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([baseKnowledgeBase]))
+        .mockReturnValueOnce(
+          createWhereResolvedChain([
+            { knowledgeBaseId: KB_ID, status: 'uploaded' },
+            { knowledgeBaseId: KB_ID, status: 'ready' },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createGroupedWhereChain([{ knowledgeBaseId: KB_ID, chunkCount: 7 }]),
+        );
+
+      const result = await service.findSummaryByIdOrThrow(KB_ID, TENANT_ID);
+
+      expect(result).toMatchObject({
+        ...baseKnowledgeBase,
+        documentCount: 2,
+        chunkCount: 7,
+        status: 'processing',
+      });
+    });
+  });
+
+  describe('updateSettings', () => {
+    it('应持久化设置并返回最新摘要', async () => {
+      const originalKnowledgeBase = {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        name: '测试知识库',
+        description: '旧描述',
+        visibility: 'private' as const,
+        chunkSize: 512,
+        chunkOverlap: 64,
+        embeddingModel: 'text-embedding-3-small',
+        createdBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const updatedKnowledgeBase = {
+        ...originalKnowledgeBase,
+        chunkSize: 1024,
+        chunkOverlap: 128,
+        embeddingModel: 'text-embedding-3-large',
+      };
+
+      const updateWhere = vi.fn().mockResolvedValue(undefined);
+      const set = vi.fn().mockReturnValue({ where: updateWhere });
+      db.update.mockReturnValue({ set });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([originalKnowledgeBase]))
+        .mockReturnValueOnce(createSelectChain([updatedKnowledgeBase]))
+        .mockReturnValueOnce(
+          createWhereResolvedChain([{ knowledgeBaseId: KB_ID, status: 'ready' }]),
+        )
+        .mockReturnValueOnce(
+          createGroupedWhereChain([{ knowledgeBaseId: KB_ID, chunkCount: 3 }]),
+        );
+
+      const result = await service.updateSettings(KB_ID, TENANT_ID, {
+        chunkSize: 1024,
+        chunkOverlap: 128,
+        embeddingModel: 'text-embedding-3-large',
+      });
+
+      expect(db.update).toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chunkSize: 1024,
+          chunkOverlap: 128,
+          embeddingModel: 'text-embedding-3-large',
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(result).toMatchObject({
+        ...updatedKnowledgeBase,
+        documentCount: 1,
+        chunkCount: 3,
+        status: 'ready',
+      });
     });
   });
 });
