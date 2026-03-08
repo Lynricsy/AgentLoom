@@ -40,6 +40,11 @@ export {
   type NewWorkflowVersion,
   type WorkflowVersionSnapshot,
 } from './workflow-versions.schema';
+export {
+  llmModelConfigs,
+  type LlmModelConfig,
+  type NewLlmModelConfig,
+} from './llm-model-configs.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,
