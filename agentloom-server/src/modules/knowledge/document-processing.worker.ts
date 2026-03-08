@@ -77,6 +77,8 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 @Processor(DOCUMENT_PROCESSING_QUEUE)
 export class DocumentProcessingWorker extends WorkerHost {
   private readonly logger = new Logger(DocumentProcessingWorker.name);
+  @InjectQueue(DOCUMENT_INDEXING_QUEUE)
+  private readonly indexingQueue!: Queue<DocumentIndexingJobData>;
 
   constructor(
     private readonly documentService: DocumentService,
@@ -86,8 +88,6 @@ export class DocumentProcessingWorker extends WorkerHost {
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly knowledgeGateway: KnowledgeGateway,
     private readonly storageService: StorageService,
-    @InjectQueue(DOCUMENT_INDEXING_QUEUE)
-    private readonly indexingQueue: Queue<DocumentIndexingJobData>,
   ) {
     super();
   }
@@ -155,25 +155,8 @@ export class DocumentProcessingWorker extends WorkerHost {
 
     await this.indexingQueue.add('index', { documentId }, { jobId: `index-${documentId}` });
 
-    await this.documentService.updateStatus(documentId, 'ready');
-
-    this.knowledgeGateway.emitDocumentStatusChanged(
-      document.tenantId,
-      document.knowledgeBaseId,
-      {
-        documentId,
-        knowledgeBaseId: document.knowledgeBaseId,
-        status: 'ready',
-        progress: DOCUMENT_PROGRESS_BY_STAGE.completed,
-      },
-    );
-    this.knowledgeGateway.emitKnowledgeBaseUpdated(
-      document.tenantId,
-      document.knowledgeBaseId,
-    );
-
     this.logger.log(
-      `Document ${documentId} processed: ${chunkCount} chunks created`,
+      `Document ${documentId} processed: ${chunkCount} chunks created and queued for indexing`,
     );
   }
 

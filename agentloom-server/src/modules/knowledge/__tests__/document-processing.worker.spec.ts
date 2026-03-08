@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { Job, Queue } from 'bullmq';
+import type { Job } from 'bullmq';
 
 import { DocumentProcessingWorker } from '../document-processing.worker';
 import type { DocumentProcessingJobData } from '../document-processing.worker';
@@ -13,7 +13,6 @@ import { KnowledgeBaseService } from '../knowledge-base.service';
 import { KnowledgeGateway } from '../knowledge.gateway';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import {
-  DOCUMENT_PROCESSING_QUEUE,
   DOCUMENT_INDEXING_QUEUE,
 } from '../knowledge.constants';
 import { Readable } from 'node:stream';
@@ -149,7 +148,6 @@ describe('DocumentProcessingWorker', () => {
         overlapTokens: 128,
       });
       expect(documentChunkService.createChunks).toHaveBeenCalledWith(DOC_ID, mockChunks);
-      expect(documentService.updateStatus).toHaveBeenCalledWith(DOC_ID, 'ready');
       expect(indexingQueue.add).toHaveBeenCalledWith(
         'index',
         { documentId: DOC_ID },
@@ -195,19 +193,9 @@ describe('DocumentProcessingWorker', () => {
             progress: expect.objectContaining({ stage: 'queueing', percentage: 90 }),
           }),
         ],
-        [
-          'tenant-1',
-          'kb-1',
-          expect.objectContaining({
-            status: 'ready',
-            progress: expect.objectContaining({ stage: 'completed', percentage: 100 }),
-          }),
-        ],
       ]);
-      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
-        'tenant-1',
-        'kb-1',
-      );
+      expect(documentService.updateStatus.mock.calls).toEqual([[DOC_ID, 'processing']]);
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
     });
 
     it('should not set processing status on retry attempts', async () => {
@@ -216,9 +204,8 @@ describe('DocumentProcessingWorker', () => {
       await worker.process(job);
 
       const statusCalls = documentService.updateStatus.mock.calls;
-      expect(statusCalls).toHaveLength(1);
-      expect(statusCalls[0]).toEqual([DOC_ID, 'ready']);
-      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledTimes(5);
+      expect(statusCalls).toHaveLength(0);
+      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledTimes(4);
     });
 
     it('should propagate parser errors for BullMQ retry', async () => {

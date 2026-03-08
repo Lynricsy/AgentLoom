@@ -5,6 +5,7 @@ import { KnowledgeBaseController } from './knowledge-base.controller';
 import { DocumentService } from './document.service';
 import { DocumentChunkService } from './document-chunk.service';
 import { DocumentProcessingWorker } from './document-processing.worker';
+import { DocumentIndexingWorker } from './document-indexing.worker';
 import {
   PdfParser,
   DocxParser,
@@ -50,6 +51,7 @@ import {
     DocumentParserService,
     TextChunkerService,
     DocumentProcessingWorker,
+    DocumentIndexingWorker,
     KnowledgeGateway,
   ],
   exports: [
