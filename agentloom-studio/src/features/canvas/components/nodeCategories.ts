@@ -1,5 +1,5 @@
 import type { NodeCategory, PaletteGroup, PaletteNodeItem } from '../types'
-import { NODE_TYPE_REGISTRY, type NodeTypeConfig } from '../types/nodeTypeRegistry'
+import { DYNAMIC_ONLY_NODE_TYPES, NODE_TYPE_REGISTRY, type NodeTypeConfig } from '../types/nodeTypeRegistry'
 
 export const NODE_CATEGORIES: Record<NodeCategory, { label: string; icon: string; color: string }> = {
   agent: { label: 'Agent', icon: 'Bot', color: 'var(--color-type-model)' },
@@ -18,6 +18,7 @@ export function buildPaletteGroups(
   const grouped = new Map<NodeCategory, PaletteNodeItem[]>()
 
   for (const config of Object.values(registry)) {
+    if (DYNAMIC_ONLY_NODE_TYPES.has(config.type)) continue
     const items = grouped.get(config.category) ?? []
     items.push({
       type: config.type,

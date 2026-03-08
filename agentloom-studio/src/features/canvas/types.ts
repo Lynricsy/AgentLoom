@@ -136,6 +136,9 @@ export interface AddNodeInput {
   label?: string
   description?: string
   config?: Record<string, unknown>
+  inputPorts?: PortDefinition[]
+  outputPorts?: PortDefinition[]
+  mcpToolDefinitionId?: string
 }
 
 export interface PaletteNodeItem {

@@ -13,6 +13,7 @@ export const NODE_TYPES = [
   'llm-model',
   'http-tool',
   'code-tool',
+  'mcp-tool',
   'manual-trigger',
   'schedule-trigger',
   'knowledge-base',
@@ -21,6 +22,8 @@ export const NODE_TYPES = [
   'condition',
   'loop',
 ] as const
+
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -135,7 +138,7 @@ export interface CreatePortOptions {
   schema?: TypeSchema
 }
 
-function createPort(
+export function createPort(
   id: string,
   label: string,
   direction: PortDirection,
@@ -329,6 +332,19 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       },
       required: ['language'],
     },
+  },
+  'mcp-tool': {
+    type: 'mcp-tool',
+    category: 'tool',
+    label: 'MCP Tool',
+    icon: 'Plug',
+    description: 'MCP 工具节点',
+    colorToken: CATEGORY_COLOR_TOKENS.tool,
+    inputPorts: [],
+    outputPorts: [createPort('tool-output', 'Tool', 'output', 'tool', {
+      description: '连接到 Agent 的工具端口',
+    })],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'manual-trigger': {
     type: 'manual-trigger',

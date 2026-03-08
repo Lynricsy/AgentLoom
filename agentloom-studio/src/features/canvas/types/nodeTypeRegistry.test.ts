@@ -3,6 +3,7 @@ import { buildPaletteGroups } from '../components/nodeCategories'
 import { PORT_DATA_TYPES } from './typeSchema'
 import {
   clonePortDefinitions,
+  DYNAMIC_ONLY_NODE_TYPES,
   getAllNodeTypes,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
@@ -21,6 +22,7 @@ describe('nodeTypeRegistry', () => {
       'llm-model',
       'http-tool',
       'code-tool',
+      'mcp-tool',
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',
@@ -115,9 +117,10 @@ describe('nodeTypeRegistry', () => {
   it('exposes every registry entry through ordered helpers and palette groups', () => {
     const orderedTypes = getAllNodeTypes().map((config) => config.type)
     const groupedTypes = buildPaletteGroups().flatMap((group) => group.items.map((item) => item.type))
+    const staticTypes = NODE_TYPES.filter((t) => !DYNAMIC_ONLY_NODE_TYPES.has(t))
 
     expect(orderedTypes).toEqual([...NODE_TYPES])
-    expect(groupedTypes).toEqual([...NODE_TYPES])
+    expect(groupedTypes).toEqual(staticTypes)
     expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual([...NODE_TYPES].sort())
   })
 
