@@ -96,7 +96,7 @@ describe('mcpToolMapping', () => {
 
       expect(inputPorts).toHaveLength(0)
       expect(outputPorts).toHaveLength(1)
-      expect(outputPorts[0].dataType).toBe('tool')
+      expect(outputPorts[0]!.dataType).toBe('tool')
     })
 
     it('returns only tool output when metadata has empty inputs', () => {
