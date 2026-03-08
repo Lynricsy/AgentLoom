@@ -94,7 +94,6 @@ import type { EncryptedData } from '../../api-key/encryption.service';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
-  McpDiscoveryFailedException,
 } from '../mcp.exceptions';
 import { McpService } from '../mcp.service';
 
@@ -482,7 +481,7 @@ describe('McpService', () => {
       expect(mcpMocks.stdioTransport.close).toHaveBeenCalledOnce();
     });
 
-    it('应当在工具发现失败时抛出 McpDiscoveryFailedException', async () => {
+    it('应当在工具发现失败时映射为 McpConnectionFailedException', async () => {
       mcpMocks.mockClient.connect.mockResolvedValue(undefined);
       mcpMocks.mockClient.listTools.mockRejectedValue(new Error('列出工具失败'));
 
@@ -491,9 +490,9 @@ describe('McpService', () => {
       });
 
       await promise.catch((error: unknown) => {
-        expect(error).toBeInstanceOf(McpDiscoveryFailedException);
+        expect(error).toBeInstanceOf(McpConnectionFailedException);
         expect(error).toMatchObject({
-          detail: '工具发现失败: 列出工具失败',
+          detail: 'MCP 工具发现失败: 列出工具失败',
         });
       });
       expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
@@ -510,9 +509,14 @@ describe('McpService', () => {
       });
 
       mcpMocks.mockClient.connect.mockResolvedValue(undefined);
-      mcpMocks.mockClient.listTools.mockResolvedValue({
-        tools: [tool, ignoredTool],
-      });
+      mcpMocks.mockClient.listTools
+        .mockResolvedValueOnce({
+          tools: [tool],
+          nextCursor: 'page-2',
+        })
+        .mockResolvedValueOnce({
+          tools: [ignoredTool],
+        });
 
       const orgChain = createSelectChain([{ id: ORG_ID }]);
       db.select.mockReturnValueOnce(orgChain);
@@ -654,7 +658,7 @@ describe('McpService', () => {
       );
       expect(result).toEqual({
         mcpServerConfigId: CONFIG_ID,
-        importedTools: [
+        imported: [
           {
             id: TOOL_ID,
             name: 'search-docs',
@@ -715,7 +719,6 @@ describe('McpService', () => {
             },
           },
         ],
-        totalImported: 1,
       });
     });
 

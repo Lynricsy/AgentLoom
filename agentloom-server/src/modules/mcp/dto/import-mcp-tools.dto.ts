@@ -7,10 +7,7 @@ export class ImportMcpToolsDto extends createZodDto(
     serverName: z.string().min(1, '服务器名称不能为空'),
     serverDescription: z.string().optional(),
     connection: testMcpConnectionSchema,
-    toolNames: z
-      .array(z.string().min(1))
-      .min(1, '至少需要选择一个工具')
-      .optional(),
+    toolNames: z.array(z.string().min(1)).min(1, '至少需要选择一个工具'),
   }),
 ) {}
 
@@ -36,8 +33,7 @@ export const importedToolSchema = z.object({
 
 export const importMcpToolsResponseSchema = z.object({
   mcpServerConfigId: z.string().uuid(),
-  importedTools: z.array(importedToolSchema),
-  totalImported: z.number(),
+  imported: z.array(importedToolSchema),
 });
 
 export type ImportMcpToolsResponse = z.infer<

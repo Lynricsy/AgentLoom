@@ -52,7 +52,7 @@ const DISCOVER_TOOLS_RESULT = {
 
 const IMPORT_TOOLS_RESULT = {
   mcpServerConfigId: MCP_SERVER_CONFIG_ID,
-  importedTools: [
+  imported: [
     {
       id: TOOL_ID,
       name: 'search-files',
@@ -71,7 +71,6 @@ const IMPORT_TOOLS_RESULT = {
       },
     },
   ],
-  totalImported: 1,
 };
 
 const LIST_TOOLS_RESULT = [

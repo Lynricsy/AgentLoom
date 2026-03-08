@@ -177,5 +177,24 @@ describe('MCP DTO', () => {
         result.error.issues.some((issue) => issue.path.join('.') === 'toolNames'),
       ).toBe(true);
     });
+
+    it('缺少 toolNames 时应校验失败', () => {
+      const result = ImportMcpToolsDto.schema.safeParse({
+        serverName: 'Filesystem Server',
+        connection: {
+          transportType: 'stdio',
+          command: 'node',
+        },
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        expect.unreachable('预期缺少 toolNames 校验失败');
+      }
+
+      expect(
+        result.error.issues.some((issue) => issue.path.join('.') === 'toolNames'),
+      ).toBe(true);
+    });
   });
 });

@@ -23,7 +23,7 @@ import type { ImportMcpToolsDto } from './dto/import-mcp-tools.dto';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
-  McpDiscoveryFailedException,
+  McpImportConflictException,
 } from './mcp.exceptions';
 
 const CONNECT_TIMEOUT_MS = 30_000;
@@ -48,6 +48,7 @@ export class McpService {
     const { client, transport } = await this.createAndConnectClient(
       dto.connection,
       CONNECT_TIMEOUT_MS,
+      '连接测试',
     );
 
     try {
@@ -81,19 +82,16 @@ export class McpService {
     const { client, transport } = await this.createAndConnectClient(
       dto.connection,
       CONNECT_TIMEOUT_MS,
+      '工具发现',
     );
 
     try {
-      const result = await this.withTimeout(
-        client.listTools(),
-        LIST_TOOLS_TIMEOUT_MS,
-        '工具发现超时',
-      );
+      const tools = await this.listAllTools(client, '工具发现');
 
       const serverVersion = client.getServerVersion();
 
       return {
-        tools: (result.tools ?? []).map((tool) => ({
+        tools: tools.map((tool) => ({
           name: tool.name,
           title: (tool as Record<string, unknown>).title as string | undefined,
           description: tool.description,
@@ -107,15 +105,7 @@ export class McpService {
           : undefined,
       };
     } catch (error) {
-      if (
-        error instanceof McpConnectionTimeoutException ||
-        error instanceof McpConnectionFailedException
-      ) {
-        throw error;
-      }
-      throw new McpDiscoveryFailedException(
-        `工具发现失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.handleOperationError(error, dto.connection, '工具发现');
     } finally {
       await this.safeCloseClient(client, transport);
     }
@@ -129,25 +119,35 @@ export class McpService {
     const { client, transport } = await this.createAndConnectClient(
       dto.connection,
       CONNECT_TIMEOUT_MS,
+      '工具导入',
     );
 
-    let discoveredTools: Awaited<ReturnType<Client['listTools']>>['tools'];
+    let discoveredTools: Awaited<ReturnType<Client['listTools']>>['tools'] = [];
 
     try {
-      const result = await this.withTimeout(
-        client.listTools(),
-        LIST_TOOLS_TIMEOUT_MS,
-        '工具发现超时',
-      );
-      discoveredTools = result.tools ?? [];
+      discoveredTools = await this.listAllTools(client, '工具导入');
+    } catch (error) {
+      this.handleOperationError(error, dto.connection, '工具导入');
     } finally {
       await this.safeCloseClient(client, transport);
     }
 
-    if (dto.toolNames && dto.toolNames.length > 0) {
-      const requested = new Set(dto.toolNames);
-      discoveredTools = discoveredTools.filter((t) => requested.has(t.name));
+    const requestedToolNames = new Set(dto.toolNames);
+    const selectedTools = discoveredTools.filter((tool) =>
+      requestedToolNames.has(tool.name),
+    );
+    const selectedToolNames = new Set(selectedTools.map((tool) => tool.name));
+    const missingToolNames = dto.toolNames.filter(
+      (toolName) => !selectedToolNames.has(toolName),
+    );
+
+    if (missingToolNames.length > 0) {
+      throw new McpImportConflictException(
+        `请求导入的工具不存在: ${missingToolNames.join(', ')}`,
+      );
     }
+
+    discoveredTools = selectedTools;
 
     const credentials = this.extractCredentials(dto.connection);
     const encryptedFields = credentials
@@ -187,7 +187,7 @@ export class McpService {
         })
         .returning();
 
-      const importedTools = await Promise.all(
+      const imported = await Promise.all(
         discoveredTools.map(async (tool) => {
           const portMappingMetadata = this.generatePortMapping(tool);
           const [inserted] = await tx
@@ -223,8 +223,7 @@ export class McpService {
 
       return {
         mcpServerConfigId: config.id,
-        importedTools,
-        totalImported: importedTools.length,
+        imported,
       };
     });
   }
@@ -265,6 +264,7 @@ export class McpService {
   private async createAndConnectClient(
     connection: TestMcpConnectionDto['connection'],
     timeout: number,
+    operation: '连接测试' | '工具发现' | '工具导入',
   ): Promise<{ client: Client; transport: Transport }> {
     const transport = this.createTransport(connection);
     const client = new Client({ name: 'agentloom', version: '1.0.0' });
@@ -278,7 +278,37 @@ export class McpService {
       return { client, transport };
     } catch (error) {
       await this.safeCloseClient(client, transport);
-      this.handleConnectionError(error);
+      this.handleOperationError(error, connection, operation);
+    }
+  }
+
+  private async listAllTools(
+    client: Client,
+    operation: '工具发现' | '工具导入',
+  ): Promise<Awaited<ReturnType<Client['listTools']>>['tools']> {
+    const tools: Awaited<ReturnType<Client['listTools']>>['tools'] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+
+    while (true) {
+      const result = await this.withTimeout(
+        client.listTools(cursor ? { cursor } : undefined),
+        LIST_TOOLS_TIMEOUT_MS,
+        `${operation}超时`,
+      );
+
+      tools.push(...(result.tools ?? []));
+
+      if (!result.nextCursor) {
+        return tools;
+      }
+
+      if (seenCursors.has(result.nextCursor)) {
+        throw new Error(`MCP 工具列表分页游标重复: ${result.nextCursor}`);
+      }
+
+      seenCursors.add(result.nextCursor);
+      cursor = result.nextCursor;
     }
   }
 
@@ -400,19 +430,62 @@ export class McpService {
     client: Client,
     transport: Transport,
   ): Promise<void> {
+    if (this.isTerminableStreamableHttpTransport(transport)) {
+      try {
+        await transport.terminateSession();
+      } catch (error) {
+        this.logger.warn(
+          `MCP streamable_http 会话终止失败: ${this.getErrorMessage(error)}`,
+        );
+      }
+    }
+
     try {
       await client.close();
-    } catch {
-      // 忽略关闭错误
+    } catch (error) {
+      this.logger.warn(`MCP 客户端关闭失败: ${this.getErrorMessage(error)}`);
     }
+
     try {
       await transport.close();
-    } catch {
-      // 忽略关闭错误
+    } catch (error) {
+      this.logger.warn(`MCP transport 关闭失败: ${this.getErrorMessage(error)}`);
     }
   }
 
-  private handleConnectionError(error: unknown): never {
+  private isTerminableStreamableHttpTransport(
+    transport: Transport,
+  ): transport is Transport & { terminateSession: () => Promise<void> } {
+    return (
+      'terminateSession' in transport &&
+      typeof transport.terminateSession === 'function'
+    );
+  }
+
+  private getConnectionTarget(
+    connection: TestMcpConnectionDto['connection'],
+  ): string {
+    return connection.transportType === 'stdio'
+      ? connection.command
+      : connection.url;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private handleOperationError(
+    error: unknown,
+    connection: TestMcpConnectionDto['connection'],
+    operation: '连接测试' | '工具发现' | '工具导入',
+  ): never {
+    const message = this.getErrorMessage(error);
+
+    this.logger.error(
+      `[MCP ${operation}] 失败 transport=${connection.transportType} target=${this.getConnectionTarget(connection)} message=${message}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+
     if (
       error instanceof McpConnectionTimeoutException ||
       error instanceof McpConnectionFailedException
@@ -420,13 +493,8 @@ export class McpService {
       throw error;
     }
 
-    const message =
-      error instanceof Error ? error.message : String(error);
-
-    this.logger.error(`MCP 连接失败: ${message}`, error instanceof Error ? error.stack : undefined);
-
     throw new McpConnectionFailedException(
-      `MCP 服务器连接失败: ${message}`,
+      `MCP ${operation}失败: ${message}`,
     );
   }
 
