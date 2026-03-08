@@ -6,6 +6,7 @@ export interface LlmProviderInfo {
   models: string[];
   defaultModel: string;
   supportsStreaming: boolean;
+  supportsStructuredOutput: boolean;
 }
 
 export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
@@ -24,6 +25,7 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     ],
     defaultModel: 'gpt-4o',
     supportsStreaming: true,
+    supportsStructuredOutput: true,
   },
   {
     id: 'anthropic',
@@ -36,6 +38,7 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     ],
     defaultModel: 'claude-sonnet-4-20250514',
     supportsStreaming: true,
+    supportsStructuredOutput: true,
   },
   {
     id: 'google',
@@ -48,6 +51,7 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     ],
     defaultModel: 'gemini-2.0-flash',
     supportsStreaming: true,
+    supportsStructuredOutput: true,
   },
   {
     id: 'deepseek',
@@ -55,6 +59,7 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     models: ['deepseek-chat', 'deepseek-reasoner'],
     defaultModel: 'deepseek-chat',
     supportsStreaming: true,
+    supportsStructuredOutput: false,
   },
   {
     id: 'custom',
@@ -62,5 +67,11 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     models: [],
     defaultModel: '',
     supportsStreaming: true,
+    supportsStructuredOutput: false,
   },
 ];
+
+export function supportsNativeStructuredOutput(providerId: string): boolean {
+  const provider = LLM_PROVIDER_CATALOG.find((p) => p.id === providerId);
+  return provider?.supportsStructuredOutput ?? false;
+}

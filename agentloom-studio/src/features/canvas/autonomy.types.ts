@@ -63,3 +63,22 @@ export const DEFAULT_AUTONOMY_CONFIG: AutonomyConfig = {
   confirmationThreshold: 0.8,
   fallbackStrategy: 'REQUIRE_CONFIRMATION',
 } as const
+
+// ── 输出格式策略数据模型 ──────────────────────────────────────────
+
+export type OutputStrictness = 'strict' | 'flexible' | 'lenient'
+export type RepairPolicy = 'auto' | 'none' | 'manual'
+
+export interface OutputFormatStrategy {
+  outputSchema: string
+  strictness: OutputStrictness
+  allowDegrade: boolean
+  repairPolicy: RepairPolicy
+}
+
+export const DEFAULT_OUTPUT_FORMAT_STRATEGY: OutputFormatStrategy = {
+  outputSchema: '',
+  strictness: 'flexible',
+  allowDegrade: true,
+  repairPolicy: 'auto',
+} as const
