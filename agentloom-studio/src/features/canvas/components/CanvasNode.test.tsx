@@ -150,6 +150,55 @@ describe('CanvasNodeShell', () => {
     expect(screen.getByText('chat-agent')).toBeInTheDocument()
   })
 
+  it('renders mcp-tool nodes with MCP badge and dynamic port labels', () => {
+    renderNode(
+      {
+        label: 'Search Tool',
+        nodeType: 'mcp-tool',
+        category: 'tool',
+        description: '搜索知识库',
+        config: {
+          inputSchema: { type: 'object' },
+        },
+        inputPorts: [
+          {
+            id: 'query',
+            label: 'Query',
+            direction: 'input',
+            dataType: 'text',
+            required: true,
+            multiple: false,
+            maxConnections: 1,
+            schema: { kind: 'text', title: 'Query' },
+          },
+        ],
+        outputPorts: [
+          {
+            id: 'tool-output',
+            label: 'Tool',
+            direction: 'output',
+            dataType: 'tool',
+            required: false,
+            multiple: false,
+            maxConnections: 1,
+            schema: { kind: 'tool', title: 'Tool' },
+          },
+        ],
+        mcpToolDefinitionId: 'tool-1',
+      },
+      { id: 'mcp-node' },
+    )
+
+    const node = screen.getByTestId('canvas-node-mcp-node')
+
+    expect(within(node).getByRole('heading', { name: 'Search Tool' })).toBeInTheDocument()
+    expect(within(node).getByText('MCP')).toBeInTheDocument()
+    expect(within(node).getAllByText('搜索知识库')).toHaveLength(2)
+    expect(within(node).getByText('1入 / 1出')).toBeInTheDocument()
+    expect(within(node).getByText('Query')).toBeInTheDocument()
+    expect(within(node).getAllByText('Tool')).not.toHaveLength(0)
+  })
+
   it('applies search highlight classes based on current search state', () => {
     useCanvasStore.setState((state) => ({
       ...state,

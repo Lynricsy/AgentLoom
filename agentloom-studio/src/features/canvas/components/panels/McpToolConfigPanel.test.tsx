@@ -70,10 +70,43 @@ describe('McpToolConfigPanel', () => {
     expect(screen.getByText('text')).toBeInTheDocument()
   })
 
+  it('renders required badge for required input ports', () => {
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData({
+          inputPorts: [
+            {
+              id: 'required-port',
+              label: 'Prompt',
+              direction: 'input',
+              dataType: 'text',
+              required: true,
+              multiple: false,
+              maxConnections: 1,
+              schema: { kind: 'text', title: 'Prompt' },
+            },
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('必填')).toBeInTheDocument()
+  })
+
   it('renders inputSchema as formatted JSON', () => {
     render(<McpToolConfigPanel data={createMcpNodeData()} />)
     expect(screen.getByText('Input Schema')).toBeInTheDocument()
     expect(screen.getByText(/"query"/)).toBeInTheDocument()
+  })
+
+  it('hides inputSchema section when schema is absent', () => {
+    render(<McpToolConfigPanel data={createMcpNodeData({ config: {} })} />)
+    expect(screen.queryByText('Input Schema')).not.toBeInTheDocument()
+  })
+
+  it('renders empty-state when no input ports exist', () => {
+    render(<McpToolConfigPanel data={createMcpNodeData({ inputPorts: [] })} />)
+    expect(screen.getByText('无输入参数')).toBeInTheDocument()
   })
 
   it('renders tool ID when mcpToolDefinitionId is present', () => {

@@ -46,6 +46,10 @@ export class StorageService implements OnModuleInit {
     await this.minioClient.removeObject(this.bucket, key);
   }
 
+  async removeIncompleteUpload(key: string): Promise<void> {
+    await this.minioClient.removeIncompleteUpload(this.bucket, key);
+  }
+
   async exists(key: string): Promise<boolean> {
     try {
       await this.minioClient.statObject(this.bucket, key);
@@ -61,6 +65,6 @@ export class StorageService implements OnModuleInit {
     documentId: string,
     fileName: string,
   ): string {
-    return `${tenantId}/${knowledgeBaseId}/${documentId}/${fileName}`;
+    return `tenants/${tenantId}/kb/${knowledgeBaseId}/${documentId}/${fileName}`;
   }
 }

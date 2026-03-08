@@ -148,6 +148,7 @@ export interface PaletteNodeItem {
   category: NodeCategory
   icon: string
   description: string
+  searchText?: string
   mcpToolDefinitionId?: string
   inputPorts?: PortDefinition[]
   outputPorts?: PortDefinition[]

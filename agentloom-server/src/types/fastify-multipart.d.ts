@@ -1,14 +1,8 @@
 import 'fastify';
+import type { MultipartFile } from '@fastify/multipart';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    file(): Promise<
-      | {
-          filename: string;
-          mimetype: string;
-          toBuffer(): Promise<Buffer>;
-        }
-      | undefined
-    >;
+    file(): Promise<MultipartFile | undefined>;
   }
 }

@@ -12,6 +12,7 @@ const mockMinioClient = {
   putObject: vi.fn(),
   getObject: vi.fn(),
   removeObject: vi.fn(),
+  removeIncompleteUpload: vi.fn(),
   statObject: vi.fn(),
 };
 
@@ -110,6 +111,20 @@ describe('StorageService', () => {
     });
   });
 
+  describe('removeIncompleteUpload', () => {
+    it('应正确调用 removeIncompleteUpload 清理未完成分片', async () => {
+      const key = 'tenants/tenant/kb/doc/file.pdf';
+      mockMinioClient.removeIncompleteUpload.mockResolvedValue(undefined);
+
+      await service.removeIncompleteUpload(key);
+
+      expect(mockMinioClient.removeIncompleteUpload).toHaveBeenCalledWith(
+        BUCKET_NAME,
+        key,
+      );
+    });
+  });
+
   describe('exists', () => {
     it('文件存在时应返回 true', async () => {
       const key = 'tenant/kb/doc/file.pdf';
@@ -143,7 +158,9 @@ describe('StorageService', () => {
         'report.pdf',
       );
 
-      expect(result).toBe('tenant-123/kb-456/doc-789/report.pdf');
+      expect(result).toBe(
+        'tenants/tenant-123/kb/kb-456/doc-789/report.pdf',
+      );
     });
   });
 });

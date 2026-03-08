@@ -155,6 +155,7 @@ describe('NodePalette', () => {
       render(<NodePalette />)
       expect(screen.getByText('Imported Tools')).toBeInTheDocument()
       expect(screen.getByText('Search Tool')).toBeInTheDocument()
+      expect(screen.getByText('Searches for things')).toBeInTheDocument()
     })
 
     it('hides "Imported Tools" group when no MCP tools exist', () => {
@@ -170,7 +171,43 @@ describe('NodePalette', () => {
       expect(screen.queryByText('Inactive Tool')).not.toBeInTheDocument()
     })
 
-    it('MCP drag payload includes mcpToolDefinitionId', () => {
+    it('falls back to tool name when MCP title is missing', () => {
+      mcpQueryMock.useMcpTools.mockReturnValue({
+        data: [
+          {
+            ...mockMcpTools[0],
+            title: null,
+          },
+        ],
+      })
+
+      render(<NodePalette />)
+
+      expect(screen.getByText('search-tool')).toBeInTheDocument()
+    })
+
+    it('collapses imported tools independently from the built-in tool group', async () => {
+      mcpQueryMock.useMcpTools.mockReturnValue({ data: mockMcpTools })
+      const user = userEvent.setup()
+
+      render(<NodePalette />)
+
+      const importedToolsHeader = screen.getByText('Imported Tools').closest('button')
+
+      if (!importedToolsHeader) {
+        throw new Error('Expected Imported Tools group toggle to exist')
+      }
+
+      expect(screen.getByText('Search Tool')).toBeInTheDocument()
+      expect(screen.getByText('HTTP Request')).toBeInTheDocument()
+
+      await user.click(importedToolsHeader)
+
+      expect(screen.queryByText('Search Tool')).not.toBeInTheDocument()
+      expect(screen.getByText('HTTP Request')).toBeInTheDocument()
+    })
+
+    it('MCP drag payload includes ports, schema, and mcpToolDefinitionId', () => {
       mcpQueryMock.useMcpTools.mockReturnValue({ data: mockMcpTools })
       render(<NodePalette />)
 
@@ -188,10 +225,21 @@ describe('NodePalette', () => {
         } as unknown as DataTransfer,
       })
 
-      expect(setData).toHaveBeenCalledWith(
-        DRAG_TRANSFER_TYPE,
-        expect.stringContaining('tool-1'),
-      )
+      expect(setData).toHaveBeenCalledWith(DRAG_TRANSFER_TYPE, expect.any(String))
+
+      const [, rawPayload] = setData.mock.calls[0] ?? []
+      const payload = JSON.parse(String(rawPayload))
+
+      expect(payload).toMatchObject({
+        mcpToolDefinitionId: 'tool-1',
+        inputSchema: { type: 'object' },
+      })
+      expect(payload.inputPorts).toEqual([
+        expect.objectContaining({ id: 'mock-in', direction: 'input', dataType: 'text' }),
+      ])
+      expect(payload.outputPorts).toEqual([
+        expect.objectContaining({ id: 'mock-out', direction: 'output', dataType: 'json' }),
+      ])
     })
 
     it('filters MCP tools by search query', async () => {
@@ -203,6 +251,17 @@ describe('NodePalette', () => {
 
       expect(screen.getByText('Search Tool')).toBeInTheDocument()
       expect(screen.queryByText('LLM Agent')).not.toBeInTheDocument()
+    })
+
+    it('filters MCP tools by raw tool name even when title exists', async () => {
+      mcpQueryMock.useMcpTools.mockReturnValue({ data: mockMcpTools })
+      const user = userEvent.setup()
+      render(<NodePalette />)
+
+      await user.type(screen.getByPlaceholderText('搜索节点...'), 'search-tool')
+
+      expect(screen.getByText('Search Tool')).toBeInTheDocument()
+      expect(screen.getByText('Searches for things')).toBeInTheDocument()
     })
   })
 })

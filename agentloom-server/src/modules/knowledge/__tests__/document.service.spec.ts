@@ -1,4 +1,6 @@
 import { Test } from '@nestjs/testing';
+import type { MultipartFile } from '@fastify/multipart';
+import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentService } from '../document.service';
 import { StorageService } from '../../../infrastructure/storage';
@@ -7,37 +9,47 @@ import {
   UnsupportedFileTypeException,
   FileTooLargeException,
 } from '../knowledge.exceptions';
-import { MAX_FILE_SIZE_BYTES } from '../knowledge.constants';
 import { DRIZZLE } from '../../../database/database.module';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
-  randomUUID: vi.fn(),
+  uuidv7: vi.fn(),
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: mocks.getTenantDb,
 }));
 
-vi.mock('node:crypto', async () => {
-  const actual = await vi.importActual<typeof import('node:crypto')>(
-    'node:crypto',
-  );
-  return { ...actual, randomUUID: mocks.randomUUID };
-});
+vi.mock('uuid', () => ({
+  v7: mocks.uuidv7,
+}));
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
 const KB_ID = '00000000-0000-0000-0000-000000000010';
-const DOC_ID = '00000000-0000-0000-0000-000000000020';
+const DOC_ID = '0195814f-df24-7880-9c1e-0f80bb4d0020';
+const STORAGE_KEY = `tenants/${TENANT_ID}/kb/${KB_ID}/${DOC_ID}/report.pdf`;
+const PDF_BUFFER = Buffer.from(
+  '%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF',
+  'utf-8',
+);
+const TEXT_BUFFER = Buffer.from('# 知识库文档\n\n这是一段 Markdown 文本。', 'utf-8');
 
 function createMultipartFile(
   filename: string,
   content: Buffer,
-): Record<string, unknown> {
+): MultipartFile {
+  const fileStream = Readable.from([content]) as MultipartFile['file'];
+  fileStream.truncated = false;
+
   return {
+    type: 'file',
+    fieldname: 'file',
     filename,
+    encoding: '7bit',
     mimetype: 'application/octet-stream',
+    fields: {},
+    file: fileStream,
     toBuffer: vi.fn().mockResolvedValue(content),
   };
 }
@@ -48,6 +60,8 @@ describe('DocumentService', () => {
   let storageService: {
     upload: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
+    exists: ReturnType<typeof vi.fn>;
+    removeIncompleteUpload: ReturnType<typeof vi.fn>;
     buildStorageKey: ReturnType<typeof vi.fn>;
   };
 
@@ -59,14 +73,16 @@ describe('DocumentService', () => {
       insert: vi.fn(),
     };
     mocks.getTenantDb.mockReturnValue(db);
-    mocks.randomUUID.mockReturnValue(DOC_ID);
+    mocks.uuidv7.mockReturnValue(DOC_ID);
 
     storageService = {
       upload: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
+      exists: vi.fn().mockResolvedValue(true),
+      removeIncompleteUpload: vi.fn().mockResolvedValue(undefined),
       buildStorageKey: vi.fn().mockImplementation(
         (tenantId: string, kbId: string, docId: string, fileName: string) =>
-          `${tenantId}/${kbId}/${docId}/${fileName}`,
+          `tenants/${tenantId}/kb/${kbId}/${docId}/${fileName}`,
       ),
     };
 
@@ -83,8 +99,7 @@ describe('DocumentService', () => {
 
   describe('uploadFromRequest', () => {
     it('应成功上传文件并返回不含 storageKey 的文档', async () => {
-      const buffer = Buffer.from('PDF content');
-      const multipartFile = createMultipartFile('report.pdf', buffer);
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
       const request = { file: vi.fn().mockResolvedValue(multipartFile) };
 
       const dbDocument = {
@@ -93,8 +108,8 @@ describe('DocumentService', () => {
         tenantId: TENANT_ID,
         fileName: 'report.pdf',
         mimeType: 'application/pdf',
-        sizeBytes: buffer.length,
-        storageKey: `${TENANT_ID}/${KB_ID}/${DOC_ID}/report.pdf`,
+        sizeBytes: PDF_BUFFER.length,
+        storageKey: STORAGE_KEY,
         status: 'uploaded',
         uploadedBy: USER_ID,
         createdAt: new Date(),
@@ -115,9 +130,9 @@ describe('DocumentService', () => {
       );
 
       expect(storageService.upload).toHaveBeenCalledWith(
-        `${TENANT_ID}/${KB_ID}/${DOC_ID}/report.pdf`,
-        buffer,
-        buffer.length,
+        STORAGE_KEY,
+        PDF_BUFFER,
+        PDF_BUFFER.length,
         'application/pdf',
       );
       expect(db.insert).toHaveBeenCalled();
@@ -156,8 +171,14 @@ describe('DocumentService', () => {
     });
 
     it('文件过大应抛出 FileTooLargeException', async () => {
-      const largeBuffer = Buffer.alloc(MAX_FILE_SIZE_BYTES + 1);
-      const multipartFile = createMultipartFile('large.pdf', largeBuffer);
+      const multipartFile = createMultipartFile('large.pdf', PDF_BUFFER);
+      const tooLargeError = new Error('request file too large');
+      Object.defineProperty(tooLargeError, 'code', {
+        value: 'FST_REQ_FILE_TOO_LARGE',
+      });
+      multipartFile.toBuffer = vi.fn().mockRejectedValue(
+        tooLargeError,
+      );
       const request = { file: vi.fn().mockResolvedValue(multipartFile) };
 
       await expect(
@@ -165,9 +186,61 @@ describe('DocumentService', () => {
       ).rejects.toThrow(FileTooLargeException);
     });
 
+    it('文本文件应基于文本内容通过校验', async () => {
+      const multipartFile = createMultipartFile('notes.md', TEXT_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+
+      const dbDocument = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'notes.md',
+        mimeType: 'text/markdown',
+        sizeBytes: TEXT_BUFFER.length,
+        storageKey: `tenants/${TENANT_ID}/kb/${KB_ID}/${DOC_ID}/notes.md`,
+        status: 'uploaded',
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([dbDocument]),
+        }),
+      });
+
+      storageService.buildStorageKey.mockReturnValueOnce(
+        `tenants/${TENANT_ID}/kb/${KB_ID}/${DOC_ID}/notes.md`,
+      );
+
+      const result = await service.uploadFromRequest(
+        request as never,
+        KB_ID,
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result.mimeType).toBe('text/markdown');
+      expect(storageService.upload).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/kb/${KB_ID}/${DOC_ID}/notes.md`,
+        TEXT_BUFFER,
+        TEXT_BUFFER.length,
+        'text/markdown',
+      );
+    });
+
+    it('扩展名与真实内容不匹配时应拒绝上传', async () => {
+      const multipartFile = createMultipartFile('notes.txt', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+
+      await expect(
+        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(UnsupportedFileTypeException);
+    });
+
     it('数据库写入失败时应清理 MinIO 文件并重新抛出错误', async () => {
-      const buffer = Buffer.from('PDF content');
-      const multipartFile = createMultipartFile('report.pdf', buffer);
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
       const request = { file: vi.fn().mockResolvedValue(multipartFile) };
 
       const dbError = new Error('数据库连接超时');
@@ -182,14 +255,14 @@ describe('DocumentService', () => {
       ).rejects.toThrow(dbError);
 
       expect(storageService.upload).toHaveBeenCalled();
+      expect(storageService.exists).toHaveBeenCalledWith(STORAGE_KEY);
       expect(storageService.delete).toHaveBeenCalledWith(
-        `${TENANT_ID}/${KB_ID}/${DOC_ID}/report.pdf`,
+        STORAGE_KEY,
       );
     });
 
     it('MinIO 清理失败时不应阻止错误抛出', async () => {
-      const buffer = Buffer.from('PDF content');
-      const multipartFile = createMultipartFile('report.pdf', buffer);
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
       const request = { file: vi.fn().mockResolvedValue(multipartFile) };
 
       const dbError = new Error('数据库错误');
@@ -203,6 +276,24 @@ describe('DocumentService', () => {
       await expect(
         service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
       ).rejects.toThrow(dbError);
+    });
+
+    it('上传阶段失败时应清理未完成的 MinIO 分片', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const uploadError = new Error('上传中断');
+
+      storageService.upload.mockRejectedValueOnce(uploadError);
+      storageService.exists.mockResolvedValueOnce(false);
+
+      await expect(
+        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(uploadError);
+
+      expect(storageService.removeIncompleteUpload).toHaveBeenCalledWith(
+        STORAGE_KEY,
+      );
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 
@@ -257,7 +348,7 @@ describe('DocumentService', () => {
       expect(db.select).toHaveBeenCalledTimes(2);
     });
 
-    it('应支持按状态筛选', async () => {
+    it('应支持按多个状态筛选', async () => {
       const selectChain1 = {
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -284,7 +375,7 @@ describe('DocumentService', () => {
         TENANT_ID,
         1,
         10,
-        'ready',
+        ['uploaded', 'ready'],
       );
 
       expect(result.data).toEqual([]);

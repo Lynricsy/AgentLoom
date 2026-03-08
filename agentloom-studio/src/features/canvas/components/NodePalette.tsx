@@ -7,6 +7,10 @@ import { buildMcpToolPorts } from '../types/mcpToolMapping'
 
 export const DRAG_TRANSFER_TYPE = 'application/agentloom-node'
 
+function getGroupKey(group: Pick<PaletteGroup, 'category' | 'label'>): string {
+  return `${group.category}:${group.label}`
+}
+
 interface NodePaletteProps {
   className?: string
 }
@@ -32,6 +36,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
           category: 'tool',
           icon: 'Plug',
           description: tool.description ?? '',
+          searchText: [tool.title, tool.name, tool.description].filter(Boolean).join(' '),
           mcpToolDefinitionId: tool.id,
           inputPorts: ports.inputPorts,
           outputPorts: ports.outputPorts,
@@ -45,13 +50,13 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     return mcpGroup ? [...PALETTE_GROUPS, mcpGroup] : PALETTE_GROUPS
   }, [mcpGroup])
 
-  const toggleGroup = useCallback((category: string) => {
+  const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev)
-      if (next.has(category)) {
-        next.delete(category)
+      if (next.has(groupKey)) {
+        next.delete(groupKey)
       } else {
-        next.add(category)
+        next.add(groupKey)
       }
       return next
     })
@@ -66,9 +71,15 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     ? allGroups.map((group) => ({
         ...group,
         items: group.items.filter(
-          (item) =>
-            item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.description.toLowerCase().includes(searchQuery.toLowerCase())
+          (item) => {
+            const normalizedQuery = searchQuery.toLowerCase()
+            const searchableText = [item.label, item.description, item.searchText]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+
+            return searchableText.includes(normalizedQuery)
+          }
         ),
       })).filter((group) => group.items.length > 0)
     : allGroups
@@ -91,15 +102,19 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        {filteredGroups.map((group) => (
-          <PaletteGroupSection
-            key={group.category}
-            group={group}
-            isCollapsed={collapsedGroups.has(group.category)}
-            onToggle={() => toggleGroup(group.category)}
-            onDragStart={onDragStart}
-          />
-        ))}
+        {filteredGroups.map((group) => {
+          const groupKey = getGroupKey(group)
+
+          return (
+            <PaletteGroupSection
+              key={groupKey}
+              group={group}
+              isCollapsed={collapsedGroups.has(groupKey)}
+              onToggle={() => toggleGroup(groupKey)}
+              onDragStart={onDragStart}
+            />
+          )
+        })}
         {filteredGroups.length === 0 && (
           <p className="mt-4 text-center text-sm text-muted">无匹配节点</p>
         )}
@@ -144,10 +159,17 @@ const PaletteGroupSection = memo(function PaletteGroupSection({
               key={item.mcpToolDefinitionId ?? item.type}
               draggable
               onDragStart={(e) => onDragStart(e, item)}
-              className="flex cursor-grab items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"
+              className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"
               title={item.description}
             >
-              <span className="text-xs">{item.label}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-foreground">{item.label}</span>
+                {item.description ? (
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                    {item.description}
+                  </span>
+                ) : null}
+              </span>
             </button>
           ))}
         </div>

@@ -2,6 +2,10 @@ import { memo } from 'react'
 import { Plug } from 'lucide-react'
 import type { CanvasNodeData } from '../../types'
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 interface McpToolConfigPanelProps {
   data: CanvasNodeData
 }
@@ -10,8 +14,12 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
   data,
 }: McpToolConfigPanelProps) {
   const inputPorts = Array.isArray(data.inputPorts) ? data.inputPorts : []
-  const inputSchema = data.config?.inputSchema as Record<string, unknown> | undefined
-  const toolId = (data.mcpToolDefinitionId as string | undefined) ?? null
+  const inputSchema = isRecord(data.config) && isRecord(data.config.inputSchema)
+    ? data.config.inputSchema
+    : undefined
+  const toolId = typeof data.mcpToolDefinitionId === 'string' && data.mcpToolDefinitionId.length > 0
+    ? data.mcpToolDefinitionId
+    : null
 
   return (
     <div className="space-y-4 px-4 py-4">
@@ -29,22 +37,33 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
       )}
 
       {/* 输入端口列表 */}
-      {inputPorts.length > 0 && (
-        <div>
-          <h4 className="mb-2 text-xs font-medium text-foreground">输入端口</h4>
+      <div>
+        <h4 className="mb-2 text-xs font-medium text-foreground">输入端口</h4>
+        {inputPorts.length > 0 ? (
           <ul className="space-y-1">
             {inputPorts.map((port) => (
               <li
                 key={port.id}
                 className="flex items-center justify-between rounded-md bg-surface-elevated px-2 py-1 text-xs"
               >
-                <span className="text-foreground">{port.label}</span>
+                <span className="flex items-center gap-2 text-foreground">
+                  <span>{port.label}</span>
+                  {port.required && (
+                    <span className="rounded-full bg-info/10 px-1.5 py-0.5 text-[10px] font-medium text-info">
+                      必填
+                    </span>
+                  )}
+                </span>
                 <span className="text-muted">{port.dataType}</span>
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        ) : (
+          <p className="rounded-md bg-surface-elevated px-3 py-2 text-xs text-muted-foreground">
+            无输入参数
+          </p>
+        )}
+      </div>
 
       {/* inputSchema JSON */}
       {inputSchema && (

@@ -27,7 +27,7 @@ export class KnowledgeBaseController {
   ) {}
 
   @Post()
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @Roles('owner', 'admin', 'creator', 'operator')
   async create(
     @Body() dto: CreateKnowledgeBaseDto,
     @CurrentTenant() tenantId: string,
@@ -59,7 +59,7 @@ export class KnowledgeBaseController {
   }
 
   @Post(':id/documents')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @Roles('owner', 'admin', 'creator', 'operator')
   async uploadDocument(
     @Param('id') knowledgeBaseId: string,
     @CurrentTenant() tenantId: string,

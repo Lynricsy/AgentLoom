@@ -50,6 +50,9 @@ importers:
       fastify:
         specifier: ^5.8.1
         version: 5.8.1
+      file-type:
+        specifier: ^21.3.0
+        version: 21.3.0
       ioredis:
         specifier: ^5.10.0
         version: 5.10.0
