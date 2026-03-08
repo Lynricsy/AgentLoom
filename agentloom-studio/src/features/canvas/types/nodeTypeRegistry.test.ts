@@ -18,6 +18,7 @@ describe('nodeTypeRegistry', () => {
     expect(NODE_TYPES).toEqual([
       'llm-agent',
       'chat-agent',
+      'llm-model',
       'http-tool',
       'code-tool',
       'manual-trigger',

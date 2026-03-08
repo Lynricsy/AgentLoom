@@ -10,6 +10,7 @@ import type {
 export const NODE_TYPES = [
   'llm-agent',
   'chat-agent',
+  'llm-model',
   'http-tool',
   'code-tool',
   'manual-trigger',
@@ -201,6 +202,20 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       },
       required: [],
     },
+  },
+  'llm-model': {
+    type: 'llm-model',
+    category: 'agent',
+    label: 'LLM 模型',
+    icon: 'Brain',
+    description: '配置 LLM provider 和模型参数，通过连线为 Agent 提供模型能力',
+    colorToken: CATEGORY_COLOR_TOKENS.agent,
+    inputPorts: [],
+    outputPorts: [{
+      ...createPort('model-output', '模型输出', 'output', 'model'),
+      maxConnections: 5,
+    }],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'http-tool': {
     type: 'http-tool',

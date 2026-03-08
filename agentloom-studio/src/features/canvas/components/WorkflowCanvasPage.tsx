@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useWorkflow } from '@/features/workflow'
+import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowStatusBar } from './status/WorkflowStatusBar'
 import { FieldMappingPanel } from './panels/FieldMappingPanel'
+import { NodeConfigPanel } from './panels/NodeConfigPanel'
 import { VersionToolbar } from './toolbar/VersionToolbar'
 import { useAutoSave } from '../hooks/useAutoSave'
 import {
@@ -17,12 +19,26 @@ import {
 export function WorkflowCanvasPage() {
   const { workflowId } = useParams({ from: '/workflows/$workflowId' })
   const currentWorkflowId = useCanvasStore((state) => state.workflowId)
+  const currentCanvasVersion = useCanvasStore((state) => state.version)
   const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
   const mappingPanelEdgeId = useMappingPanelEdgeId()
+  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
+  const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
   const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
+  const handleOpenPublishSheet = useCallback((versionId?: string) => {
+    setPublishVersionId(versionId ?? null)
+    setIsPublishSheetOpen(true)
+  }, [])
+  const handlePublishSheetOpenChange = useCallback((open: boolean) => {
+    setIsPublishSheetOpen(open)
+    if (!open) {
+      setPublishVersionId(null)
+    }
+  }, [])
 
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
@@ -35,11 +51,19 @@ export function WorkflowCanvasPage() {
   )
 
   const { data: workflow, isLoading, error } = useWorkflow(workflowId)
+  const isWorkflowArchived = workflow?.status === 'archived'
 
-  useAutoSave(workflowId)
+  useAutoSave(workflowId, workflow?.status)
 
   useEffect(() => {
-    if (!workflow || workflow.id === currentWorkflowId) {
+    if (!workflow) {
+      return
+    }
+
+    const shouldApplySnapshot =
+      workflow.id !== currentWorkflowId || workflow.version !== currentCanvasVersion
+
+    if (!shouldApplySnapshot) {
       return
     }
 
@@ -50,13 +74,19 @@ export function WorkflowCanvasPage() {
       workflowId: workflow.id,
       version: workflow.version,
     })
-  }, [workflow, currentWorkflowId, applyServerSnapshot])
+  }, [workflow, currentWorkflowId, currentCanvasVersion, applyServerSnapshot])
 
   useEffect(() => {
     return () => {
       reset()
     }
   }, [reset])
+
+  useEffect(() => {
+    if (isWorkflowArchived) {
+      closeFieldMapping()
+    }
+  }, [closeFieldMapping, isWorkflowArchived])
 
   if (isLoading) {
     return (
@@ -76,10 +106,15 @@ export function WorkflowCanvasPage() {
 
   return (
     <div className="flex h-full w-full">
-      <NodePalette />
+      {!isWorkflowArchived && <NodePalette />}
 
       <div className="relative flex-1">
-        <WorkflowCanvas className="h-full w-full" />
+        {workflow && (
+          <WorkflowCanvas
+            className="h-full w-full"
+            workflowStatus={workflow.status}
+          />
+        )}
         <WorkflowStatusBar />
 
         {workflow && (
@@ -87,11 +122,16 @@ export function WorkflowCanvasPage() {
             workflowId={workflowId}
             workflowStatus={workflow.status}
             onOpenVersionHistory={handleOpenVersionHistory}
+            onOpenPublish={handleOpenPublishSheet}
           />
         )}
       </div>
 
-      {mappingPanelEdgeId && mappingPanelEdge && (
+      {!isWorkflowArchived && selectedNodeId && !mappingPanelEdgeId && (
+        <NodeConfigPanel />
+      )}
+
+      {!isWorkflowArchived && mappingPanelEdgeId && mappingPanelEdge && (
         <FieldMappingPanel
           open={!!mappingPanelEdgeId}
           edgeId={mappingPanelEdgeId}
@@ -109,6 +149,16 @@ export function WorkflowCanvasPage() {
           workflowId={workflowId}
           workflowStatus={workflow.status}
           onClose={handleCloseVersionHistory}
+          onPublish={handleOpenPublishSheet}
+        />
+      )}
+
+      {workflow && (
+        <PublishSheet
+          open={isPublishSheetOpen}
+          workflowId={workflowId}
+          initialVersionId={publishVersionId}
+          onOpenChange={handlePublishSheetOpenChange}
         />
       )}
     </div>

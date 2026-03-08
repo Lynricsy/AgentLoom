@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/utils'
 import type { CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from './nodeCategories'
+import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { TypedPort } from './TypedPort'
 import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
 
@@ -104,7 +105,11 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       )}
 
       <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
-        {config.description}
+        {data.nodeType === 'llm-model' ? (
+          <LlmModelNodeBody config={data.config} />
+        ) : (
+          config.description
+        )}
       </div>
 
       {outputPorts.length > 0 && (

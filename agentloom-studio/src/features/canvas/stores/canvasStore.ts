@@ -64,6 +64,7 @@ interface CanvasActions {
     clearSearch: () => void
     toggleMiniMap: () => void
     setHoveredNodeId: (nodeId: string | null) => void
+    updateNodeData: (nodeId: string, patch: Partial<CanvasNode['data']>) => void
   }
 }
 
@@ -395,6 +396,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               state.hoveredNodeId = nodeId
             }),
+
+          updateNodeData: (nodeId, patch) =>
+            set((state) => {
+              const node = state.nodes.find((n) => n.id === nodeId)
+              if (!node) return
+              Object.assign(node.data, patch)
+              state.isDirty = true
+            }),
         },
       }))
     ),
@@ -440,3 +449,10 @@ export const useSearchState = () =>
 export const useIsMiniMapCollapsed = () => useCanvasStore((s) => s.isMiniMapCollapsed)
 
 export const useHoveredNodeId = () => useCanvasStore((s) => s.hoveredNodeId)
+
+export const useSelectedNodeData = () =>
+  useCanvasStore((s) => {
+    if (!s.selectedNodeId) return null
+    const node = s.nodes.find((n) => n.id === s.selectedNodeId)
+    return node?.data ?? null
+  })

@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react'
 import { useReactFlow, useViewport } from '@xyflow/react'
 import {
   Bot,
+  Brain,
   Braces,
   Clock,
   Code,
@@ -22,6 +23,7 @@ import type { CanvasNode } from '../../types'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
+  Brain,
   MessageSquare,
   Globe,
   Code,

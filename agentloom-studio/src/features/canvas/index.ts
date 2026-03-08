@@ -56,6 +56,7 @@ export {
   useMappingPanelEdgeId,
   useSearchState,
   useSelectedEdgeId,
+  useSelectedNodeData,
 } from './stores/canvasStore'
 export { buildPaletteGroups } from './components/nodeCategories'
 export { NodePalette } from './components/NodePalette'
@@ -67,6 +68,8 @@ export { NodeInfoCard } from './components/overlays/NodeInfoCard'
 export { CompatibilityPreview, type CompatibilityPreviewProps } from './components/overlays/CompatibilityPreview'
 export { ConnectionStateOverlay, type OverlayHandleSnapshot } from './components/overlays/ConnectionStateOverlay'
 export { FieldMappingPanel, type FieldMappingPanelProps } from './components/panels/FieldMappingPanel'
+export { NodeConfigPanel } from './components/panels/NodeConfigPanel'
+export { LlmModelNodeBody } from './components/nodes/LlmModelNodeBody'
 export { WorkflowStatusBar } from './components/status/WorkflowStatusBar'
 export { CanvasSearch } from './components/toolbar/CanvasSearch'
 export { WorkflowCanvas } from './components/WorkflowCanvas'
