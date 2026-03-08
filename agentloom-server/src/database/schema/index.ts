@@ -45,6 +45,19 @@ export {
   type LlmModelConfig,
   type NewLlmModelConfig,
 } from './llm-model-configs.schema';
+export {
+  mcpTransportTypeEnum,
+  mcpServerStatusEnum,
+  mcpServerConfigs,
+  type McpServerConfig,
+  type NewMcpServerConfig,
+} from './mcp-server-configs.schema';
+export {
+  toolSourceEnum,
+  toolDefinitions,
+  type ToolDefinition,
+  type NewToolDefinition,
+} from './tool-definitions.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,
