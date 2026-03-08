@@ -1,4 +1,6 @@
 import type { Edge, Node, Viewport, XYPosition } from '@xyflow/react'
+import { DEFAULT_AUTONOMY_CONFIG } from './autonomy.types'
+import type { AutonomyConfig } from './autonomy.types'
 import type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
 import type { TypeSchema } from './types/typeSchema'
 
@@ -34,7 +36,7 @@ export interface AgentModelConfig {
 
 export interface AgentNodeData extends CanvasNodeData {
   modelConfig: AgentModelConfig
-  autonomyConfig: Record<string, unknown>
+  autonomyConfig: AutonomyConfig
   outputFormatStrategy: Record<string, unknown>
   toolBindings: string[]
   knowledgeBindings: string[]
@@ -46,7 +48,7 @@ export function createDefaultAgentNodeData(): Pick<
 > {
   return {
     modelConfig: { connectedModelNodeId: null },
-    autonomyConfig: {},
+    autonomyConfig: { ...DEFAULT_AUTONOMY_CONFIG },
     outputFormatStrategy: {},
     toolBindings: [],
     knowledgeBindings: [],
