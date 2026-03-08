@@ -173,6 +173,7 @@ export function resolveConnectionPorts(
 export function evaluateConnection(
   nodes: CanvasNode[],
   connection: ConnectionLike | Pick<Edge, 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
+  edges: Edge[] = [],
 ): EvaluatedConnection {
   const resolved = resolveConnectionPorts(nodes, connection)
   const base = createDefaultEdgeData()
@@ -200,6 +201,23 @@ export function evaluateConnection(
         visualLevel: 'error',
         reasonKey: '节点不能连接到自身',
       },
+    }
+  }
+
+  if (target.port.maxConnections !== null) {
+    const existingCount = edges.filter(
+      (e) => e.target === connection.target && e.targetHandle === connection.targetHandle,
+    ).length
+    if (existingCount >= target.port.maxConnections) {
+      return {
+        compatible: false,
+        edgeData: {
+          ...base,
+          rawCompatibilityLevel: 'INCOMPATIBLE',
+          visualLevel: 'error',
+          reasonKey: `端口已达到最大连接数 (${target.port.maxConnections})`,
+        },
+      }
     }
   }
 

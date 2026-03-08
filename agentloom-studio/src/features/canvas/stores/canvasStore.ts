@@ -10,13 +10,19 @@ import {
   type Connection,
   type Viewport,
 } from '@xyflow/react'
-import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping } from '../types'
-import { createDefaultEdgeData } from '../types'
+import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping, AgentNodeData } from '../types'
+import { createDefaultEdgeData, createDefaultAgentNodeData } from '../types'
 import {
   clonePortDefinitions,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
 } from '../types/nodeTypeRegistry'
+import type { NodeType } from '../types/nodeTypeRegistry'
+
+const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['llm-agent', 'chat-agent'])
+function isAgentNodeType(nodeType: string): boolean {
+  return AGENT_NODE_TYPES.has(nodeType as NodeType)
+}
 
 interface CanvasState {
   nodes: CanvasNode[]
@@ -133,6 +139,35 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
 
           onEdgesChange: (changes) =>
             set((state) => {
+              const removedIds = changes
+                .filter((c): c is EdgeChange<CanvasEdge> & { type: 'remove' } => c.type === 'remove')
+                .map((c) => c.id)
+
+              if (removedIds.length > 0) {
+                const removedEdges = state.edges.filter((e) => removedIds.includes(e.id))
+                for (const edge of removedEdges) {
+                  const targetNode = state.nodes.find((n) => n.id === edge.target)
+                  if (targetNode && isAgentNodeType(targetNode.data.nodeType)) {
+                    const agentData = targetNode.data as AgentNodeData
+                    const handle = edge.targetHandle
+                    if (handle === 'tools') {
+                      agentData.toolBindings = (agentData.toolBindings ?? []).filter(
+                        (id) => id !== edge.source,
+                      )
+                    } else if (handle === 'knowledge') {
+                      agentData.knowledgeBindings = (agentData.knowledgeBindings ?? []).filter(
+                        (id) => id !== edge.source,
+                      )
+                    } else if (handle === 'model') {
+                      agentData.modelConfig = {
+                        ...agentData.modelConfig,
+                        connectedModelNodeId: null,
+                      }
+                    }
+                  }
+                }
+              }
+
               state.edges = applyEdgeChanges(changes, state.edges)
               const isDirtyChange = changes.some(
                 (c) => c.type === 'remove' || c.type === 'add'
@@ -140,9 +175,6 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               if (isDirtyChange) {
                 state.isDirty = true
               }
-              const removedIds = changes
-                .filter((c): c is EdgeChange<CanvasEdge> & { type: 'remove' } => c.type === 'remove')
-                .map((c) => c.id)
               if (removedIds.length > 0) {
                 if (state.selectedEdgeId && removedIds.includes(state.selectedEdgeId)) {
                   state.selectedEdgeId = null
@@ -181,6 +213,22 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 data: edgeData,
               })
               state.isDirty = true
+
+              const targetNode = state.nodes.find((n) => n.id === connection.target)
+              if (targetNode && isAgentNodeType(targetNode.data.nodeType)) {
+                const agentData = targetNode.data as AgentNodeData
+                const handle = connection.targetHandle
+                if (handle === 'tools') {
+                  agentData.toolBindings = [...(agentData.toolBindings ?? []), connection.source]
+                } else if (handle === 'knowledge') {
+                  agentData.knowledgeBindings = [...(agentData.knowledgeBindings ?? []), connection.source]
+                } else if (handle === 'model') {
+                  agentData.modelConfig = {
+                    ...agentData.modelConfig,
+                    connectedModelNodeId: connection.source,
+                  }
+                }
+              }
             }),
 
           addNode: (input) =>
@@ -198,6 +246,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   config: input.config ?? {},
                   inputPorts: clonePortDefinitions(config.inputPorts),
                   outputPorts: clonePortDefinitions(config.outputPorts),
+                  ...(isAgentNodeType(input.nodeType) ? createDefaultAgentNodeData() : {}),
                 },
               }
               state.nodes.push(node)

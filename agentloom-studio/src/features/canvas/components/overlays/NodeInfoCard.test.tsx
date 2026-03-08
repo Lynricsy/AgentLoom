@@ -55,7 +55,7 @@ describe('NodeInfoCard', () => {
     expect(screen.getByTestId('node-info-card-icon')).toBeInTheDocument()
     expect(screen.getByText('分析 Agent')).toBeInTheDocument()
     expect(screen.getByText('LLM Agent')).toBeInTheDocument()
-    expect(screen.getByText('2 输入, 2 输出')).toBeInTheDocument()
+    expect(screen.getByText('9 输入, 4 输出')).toBeInTheDocument()
     expect(screen.getByText('空闲')).toBeInTheDocument()
   })
 })

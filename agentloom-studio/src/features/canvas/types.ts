@@ -26,6 +26,33 @@ export interface CanvasNodeData extends Record<string, unknown> {
 
 export type CanvasNode = Node<CanvasNodeData, NodeCategory>
 
+// ── Agent 节点扩展数据 ──────────────────────────────────────────
+
+export interface AgentModelConfig {
+  connectedModelNodeId: string | null
+}
+
+export interface AgentNodeData extends CanvasNodeData {
+  modelConfig: AgentModelConfig
+  autonomyConfig: Record<string, unknown>
+  outputFormatStrategy: Record<string, unknown>
+  toolBindings: string[]
+  knowledgeBindings: string[]
+}
+
+export function createDefaultAgentNodeData(): Pick<
+  AgentNodeData,
+  'modelConfig' | 'autonomyConfig' | 'outputFormatStrategy' | 'toolBindings' | 'knowledgeBindings'
+> {
+  return {
+    modelConfig: { connectedModelNodeId: null },
+    autonomyConfig: {},
+    outputFormatStrategy: {},
+    toolBindings: [],
+    knowledgeBindings: [],
+  }
+}
+
 // ── 边兼容性类型 (TypeEngine WASM 合约) ──────────────────────────
 
 /** TypeEngine 返回的原始兼容性等级（SCREAMING_SNAKE_CASE，与 Rust serde 对齐） */
@@ -131,5 +158,5 @@ export interface CanvasSnapshot {
   viewport?: Viewport
 }
 
-export type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
+export type { NodeType, PortDefinition, CreatePortOptions } from './types/nodeTypeRegistry'
 export type { PortDataType, TypeSchema } from './types/typeSchema'

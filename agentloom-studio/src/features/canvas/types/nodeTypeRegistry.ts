@@ -127,24 +127,35 @@ function createJsonSchema(title: string, description?: string): ObjectTypeSchema
   }
 }
 
+export interface CreatePortOptions {
+  required?: boolean
+  multiple?: boolean
+  maxConnections?: number | null
+  description?: string
+  schema?: TypeSchema
+}
+
 function createPort(
   id: string,
   label: string,
   direction: PortDirection,
   dataType: PortDataType,
+  options?: CreatePortOptions,
 ): PortDefinition {
-  const schema = dataType === 'json'
-    ? createJsonSchema(label)
-    : createScalarSchema(dataType, label)
+  const schema = options?.schema
+    ?? (dataType === 'json'
+      ? createJsonSchema(label)
+      : createScalarSchema(dataType, label))
 
   return {
     id,
     label,
     direction,
     dataType,
-    required: false,
-    multiple: false,
-    maxConnections: 1,
+    description: options?.description,
+    required: options?.required ?? false,
+    multiple: options?.multiple ?? false,
+    maxConnections: options?.maxConnections !== undefined ? options.maxConnections : 1,
     schema,
   }
 }
@@ -175,8 +186,71 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Bot',
     description: '大语言模型 Agent 节点',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [createPort('context', 'context', 'input', 'json'), createPort('model', 'model', 'input', 'model')],
-    outputPorts: [createPort('result', 'result', 'output', 'text'), createPort('structured', 'structured', 'output', 'json')],
+    inputPorts: [
+      createPort('tools', 'Tools', 'input', 'tool', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 可调用的工具',
+      }),
+      createPort('knowledge', 'Knowledge', 'input', 'knowledge', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 可检索的知识源',
+      }),
+      createPort('sandbox', 'Sandbox', 'input', 'sandbox', {
+        description: 'Agent 代码执行沙箱',
+      }),
+      createPort('model', 'Model', 'input', 'model', {
+        required: true,
+        description: 'LLM 模型配置',
+      }),
+      createPort('context', 'Context', 'input', 'json', {
+        description: '上下文数据',
+        schema: createJsonSchema('Context', '输入上下文'),
+      }),
+      createPort('system-prompt', 'System Prompt', 'input', 'text', {
+        description: '系统提示词',
+      }),
+      createPort('tool-results', 'Tool Results', 'input', 'json', {
+        multiple: true,
+        maxConnections: null,
+        description: '工具执行结果回传',
+        schema: createJsonSchema('Tool Results', '工具返回的执行结果'),
+      }),
+      createPort('trigger-payload', 'Trigger Payload', 'input', 'json', {
+        description: '触发器负载',
+        schema: createJsonSchema('Trigger Payload', '触发器传入的负载数据'),
+      }),
+      createPort('memory', 'Memory', 'input', 'json', {
+        description: '记忆/历史上下文',
+        schema: createJsonSchema('Memory', '历史对话或记忆数据'),
+      }),
+    ],
+    outputPorts: [
+      createPort('final-output', 'Final Output', 'output', 'text', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 最终输出',
+      }),
+      createPort('structured-output', 'Structured Output', 'output', 'json', {
+        multiple: true,
+        maxConnections: null,
+        description: '结构化输出',
+        schema: createJsonSchema('Structured Output', 'Agent 结构化输出'),
+      }),
+      createPort('telemetry', 'Telemetry', 'output', 'json', {
+        multiple: true,
+        maxConnections: null,
+        description: '遥测数据',
+        schema: createJsonSchema('Telemetry', 'Agent 运行遥测数据'),
+      }),
+      createPort('evidence-requests', 'Evidence Requests', 'output', 'json', {
+        multiple: true,
+        maxConnections: null,
+        description: '证据请求',
+        schema: createJsonSchema('Evidence Requests', 'Agent 发出的证据收集请求'),
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -211,11 +285,10 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '配置 LLM provider 和模型参数，通过连线为 Agent 提供模型能力',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [],
-    outputPorts: [{
-      ...createPort('model-output', '模型输出', 'output', 'model'),
+    outputPorts: [createPort('model-output', '模型输出', 'output', 'model', {
       multiple: true,
       maxConnections: 5,
-    }],
+    })],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'http-tool': {

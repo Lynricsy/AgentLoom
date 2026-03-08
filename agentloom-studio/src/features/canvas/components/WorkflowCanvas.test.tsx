@@ -321,7 +321,7 @@ describe('WorkflowCanvas', () => {
           type: 'smart',
           source: 'a',
           target: 'b',
-          sourceHandle: 'structured',
+          sourceHandle: 'structured-output',
           targetHandle: 'context',
           data: createDefaultEdgeData(),
         },
@@ -341,7 +341,7 @@ describe('WorkflowCanvas', () => {
       onConnect({
         source: 'b',
         target: 'a',
-        sourceHandle: 'structured',
+        sourceHandle: 'structured-output',
         targetHandle: 'context',
       })
     })
@@ -369,7 +369,7 @@ describe('WorkflowCanvas', () => {
         type: 'smart',
         source: 'hub',
         target: target.id,
-        sourceHandle: 'result',
+        sourceHandle: 'final-output',
         targetHandle: 'content',
         data: createDefaultEdgeData(),
       })),
@@ -388,7 +388,7 @@ describe('WorkflowCanvas', () => {
       onConnect({
         source: 'hub',
         target: 'target-10',
-        sourceHandle: 'result',
+        sourceHandle: 'final-output',
         targetHandle: 'content',
       })
     })

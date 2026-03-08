@@ -410,7 +410,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           sourceHandle: currentConnection.sourceHandle.portId,
           target: nodeId,
           targetHandle: portId,
-        })
+        }, edges)
 
         hoveredTarget.classList.add(
           evaluated.compatible ? HOVER_COMPATIBLE_CLASS : HOVER_INCOMPATIBLE_CLASS,
@@ -433,7 +433,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         frameRef.current = null
       }
     }
-  }, [activeConnection, nodes])
+  }, [activeConnection, edges, nodes])
 
   const onConnectStart = useCallback(
     (event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
@@ -491,7 +491,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
             sourceHandle: sourceHandleId,
             target: targetNodeId,
             targetHandle: targetPortId,
-          })
+          }, edges)
 
           if (evaluated.compatible) {
             compatibleTargets.push(snapshot)
@@ -521,7 +521,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         metadata: {},
       })
     },
-    [isReadOnly, nodes],
+    [isReadOnly, edges, nodes],
   )
 
   const onConnectEnd = useCallback(() => {
@@ -534,7 +534,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
-      const evaluated = evaluateConnection(nodes, connection)
+      const evaluated = evaluateConnection(nodes, connection, edges)
       if (!evaluated.compatible) {
         return
       }
@@ -578,7 +578,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return false
       }
 
-      const evaluated = evaluateConnection(nodes, connectionOrEdge)
+      const evaluated = evaluateConnection(nodes, connectionOrEdge, edges)
       if (!evaluated.compatible) {
         return false
       }
