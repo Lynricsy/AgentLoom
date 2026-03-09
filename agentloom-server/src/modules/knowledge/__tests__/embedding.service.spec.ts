@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { beforeEach, describe, expect, it, vi, afterEach, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 
 import { EmbeddingService } from '../services/embedding.service';
 import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
@@ -150,6 +150,16 @@ describe('EmbeddingService', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(3);
     }, 10_000);
 
+    it('should not retry non-retryable 400 errors', async () => {
+      fetchSpy.mockResolvedValue(new Response('bad request', { status: 400 }));
+
+      await expect(
+        service.generateEmbeddings(['text'], ORG_ID, TENANT_ID),
+      ).rejects.toThrow('OpenAI Embedding API error 400');
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry on failure and succeed', async () => {
       fetchSpy
         .mockImplementationOnce(
@@ -164,6 +174,25 @@ describe('EmbeddingService', () => {
       );
       expect(result).toEqual([[0.1, 0.2]]);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it('should honor Retry-After header when rate limited', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          new Response('rate limited', {
+            status: 429,
+            headers: { 'Retry-After': '3' },
+          }),
+        )
+        .mockResolvedValueOnce(createEmbeddingResponse([[0.1, 0.2]]));
+
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+      await expect(
+        service.generateEmbeddings(['text'], ORG_ID, TENANT_ID),
+      ).resolves.toEqual([[0.1, 0.2]]);
+
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 3000);
     }, 10_000);
   });
 });

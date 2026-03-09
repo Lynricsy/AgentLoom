@@ -15,6 +15,7 @@ const COLLECTION = 'knowledge_tenant-1';
 function createMockClient() {
   return {
     createCollection: vi.fn(),
+    collectionExists: vi.fn(),
     getCollection: vi.fn(),
     upsert: vi.fn(),
     search: vi.fn(),
@@ -42,7 +43,7 @@ describe('QdrantVectorStoreService', () => {
 
   describe('createCollection', () => {
     it('should create collection when it does not exist', async () => {
-      client.getCollection.mockRejectedValue(new Error('not found'));
+      client.collectionExists.mockResolvedValue({ exists: false });
 
       await service.createCollection(COLLECTION);
 
@@ -52,7 +53,7 @@ describe('QdrantVectorStoreService', () => {
     });
 
     it('should skip creation when collection already exists', async () => {
-      client.getCollection.mockResolvedValue({ status: 'green' });
+      client.collectionExists.mockResolvedValue({ exists: true });
 
       await service.createCollection(COLLECTION);
 
@@ -60,7 +61,7 @@ describe('QdrantVectorStoreService', () => {
     });
 
     it('should accept a custom vector size', async () => {
-      client.getCollection.mockRejectedValue(new Error('not found'));
+      client.collectionExists.mockResolvedValue({ exists: false });
 
       await service.createCollection(COLLECTION, 768);
 
@@ -71,20 +72,28 @@ describe('QdrantVectorStoreService', () => {
   });
 
   describe('collectionExists', () => {
-    it('should return true when getCollection succeeds', async () => {
-      client.getCollection.mockResolvedValue({ status: 'green' });
+    it('should return true when collectionExists reports true', async () => {
+      client.collectionExists.mockResolvedValue({ exists: true });
 
       const result = await service.collectionExists(COLLECTION);
 
       expect(result).toBe(true);
     });
 
-    it('should return false when getCollection throws', async () => {
-      client.getCollection.mockRejectedValue(new Error('not found'));
+    it('should return false when collectionExists reports false', async () => {
+      client.collectionExists.mockResolvedValue({ exists: false });
 
       const result = await service.collectionExists(COLLECTION);
 
       expect(result).toBe(false);
+    });
+
+    it('should rethrow infrastructure errors from Qdrant', async () => {
+      client.collectionExists.mockRejectedValue(new Error('Qdrant unavailable'));
+
+      await expect(service.collectionExists(COLLECTION)).rejects.toThrow(
+        'Qdrant unavailable',
+      );
     });
   });
 
@@ -198,7 +207,7 @@ describe('QdrantVectorStoreService', () => {
 
   describe('deleteCollection', () => {
     it('should delete collection when it exists', async () => {
-      client.getCollection.mockResolvedValue({ status: 'green' });
+      client.collectionExists.mockResolvedValue({ exists: true });
 
       await service.deleteCollection(COLLECTION);
 
@@ -206,7 +215,7 @@ describe('QdrantVectorStoreService', () => {
     });
 
     it('should skip deletion when collection does not exist', async () => {
-      client.getCollection.mockRejectedValue(new Error('not found'));
+      client.collectionExists.mockResolvedValue({ exists: false });
 
       await service.deleteCollection(COLLECTION);
 

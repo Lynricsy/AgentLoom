@@ -141,7 +141,6 @@ export class KnowledgeBaseService {
   }
 
   async delete(id: string, tenantId: string): Promise<void> {
-    // TODO: Clean up vector index entries when deleting KB (blocked by Story 4.4)
     const db = getTenantDb(this.db);
     await db
       .delete(knowledgeBases)

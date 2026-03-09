@@ -40,12 +40,8 @@ export class QdrantVectorStoreService implements VectorStore {
   }
 
   async collectionExists(name: string): Promise<boolean> {
-    try {
-      await this.client.getCollection(name);
-      return true;
-    } catch {
-      return false;
-    }
+    const { exists } = await this.client.collectionExists(name);
+    return exists;
   }
 
   async upsert(

@@ -191,14 +191,34 @@ export class DocumentService {
     tenantId: string,
   ): Promise<void> {
     const db = getTenantDb(this.db);
+    const deletionCondition = and(
+      eq(documents.id, documentId),
+      eq(documents.knowledgeBaseId, knowledgeBaseId),
+      eq(documents.tenantId, tenantId),
+    );
+    const [existingDocument] = await db
+      .select({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      })
+      .from(documents)
+      .where(deletionCondition)
+      .limit(1);
+
+    if (!existingDocument) {
+      throw new DocumentNotFoundException(documentId);
+    }
+
+    await this.deleteVectorsOrThrow(
+      documentId,
+      tenantId,
+      `document ${documentId} in knowledge base ${knowledgeBaseId}`,
+    );
+
     const [document] = await db
       .delete(documents)
       .where(
-        and(
-          eq(documents.id, documentId),
-          eq(documents.knowledgeBaseId, knowledgeBaseId),
-          eq(documents.tenantId, tenantId),
-        ),
+        deletionCondition,
       )
       .returning({
         id: documents.id,
@@ -206,17 +226,14 @@ export class DocumentService {
       });
 
     if (!document) {
-      throw new DocumentNotFoundException(documentId);
+      this.logger.warn(
+        `Document ${documentId} disappeared before metadata deletion completed`,
+      );
+      return;
     }
 
     await this.cleanupDeletedObject(
       document.storageKey,
-      `document ${documentId} in knowledge base ${knowledgeBaseId}`,
-    );
-
-    await this.cleanupVectors(
-      documentId,
-      tenantId,
       `document ${documentId} in knowledge base ${knowledgeBaseId}`,
     );
   }
@@ -226,14 +243,29 @@ export class DocumentService {
     tenantId: string,
   ): Promise<number> {
     const db = getTenantDb(this.db);
+    const deletionCondition = and(
+      eq(documents.knowledgeBaseId, knowledgeBaseId),
+      eq(documents.tenantId, tenantId),
+    );
+    const documentsToDelete = await db
+      .select({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      })
+      .from(documents)
+      .where(deletionCondition);
+
+    for (const document of documentsToDelete) {
+      await this.deleteVectorsOrThrow(
+        document.id,
+        tenantId,
+        `document ${document.id} in knowledge base ${knowledgeBaseId}`,
+      );
+    }
+
     const deletedDocuments = await db
       .delete(documents)
-      .where(
-        and(
-          eq(documents.knowledgeBaseId, knowledgeBaseId),
-          eq(documents.tenantId, tenantId),
-        ),
-      )
+      .where(deletionCondition)
       .returning({
         id: documents.id,
         storageKey: documents.storageKey,
@@ -241,17 +273,10 @@ export class DocumentService {
 
     await Promise.all(
       deletedDocuments.map((document) =>
-        Promise.all([
-          this.cleanupDeletedObject(
-            document.storageKey,
-            `document ${document.id} in knowledge base ${knowledgeBaseId}`,
-          ),
-          this.cleanupVectors(
-            document.id,
-            tenantId,
-            `document ${document.id} in knowledge base ${knowledgeBaseId}`,
-          ),
-        ]),
+        this.cleanupDeletedObject(
+          document.storageKey,
+          `document ${document.id} in knowledge base ${knowledgeBaseId}`,
+        ),
       ),
     );
 
@@ -436,7 +461,7 @@ export class DocumentService {
     }
   }
 
-  private async cleanupVectors(
+  private async deleteVectorsOrThrow(
     documentId: string,
     tenantId: string,
     context: string,
@@ -444,10 +469,11 @@ export class DocumentService {
     try {
       await this.ragService.deleteByDocument(documentId, tenantId);
     } catch (error) {
-      this.logger.warn(
-        `元数据已删除，但向量索引清理失败: ${context}`,
+      this.logger.error(
+        `删除操作中止，向量索引清理失败: ${context}`,
         error instanceof Error ? error.stack ?? error.message : String(error),
       );
+      throw error;
     }
   }
 

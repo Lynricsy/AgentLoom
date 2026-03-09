@@ -517,6 +517,15 @@ describe('DocumentService', () => {
 
   describe('deleteDocument', () => {
     it('应先删除元数据再清理对象存储和向量索引', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              { id: DOC_ID, storageKey: STORAGE_KEY },
+            ]),
+          }),
+        }),
+      });
       const returning = vi.fn().mockResolvedValue([
         { id: DOC_ID, storageKey: STORAGE_KEY },
       ]);
@@ -528,17 +537,24 @@ describe('DocumentService', () => {
         service.deleteDocument(KB_ID, DOC_ID, TENANT_ID),
       ).resolves.toBeUndefined();
 
-      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
       expect(ragService.deleteByDocument).toHaveBeenCalledWith(
         DOC_ID,
         TENANT_ID,
       );
+      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
+      expect(
+        ragService.deleteByDocument.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        returning.mock.invocationCallOrder[0],
+      );
     });
 
     it('文档不存在时应抛出 DocumentNotFoundException', async () => {
-      db.delete.mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([]),
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
         }),
       });
 
@@ -546,10 +562,20 @@ describe('DocumentService', () => {
         service.deleteDocument(KB_ID, 'missing-doc', TENANT_ID),
       ).rejects.toThrow(DocumentNotFoundException);
 
+      expect(db.delete).not.toHaveBeenCalled();
       expect(storageService.delete).not.toHaveBeenCalled();
     });
 
     it('对象存储清理失败时不应阻止删除成功', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              { id: DOC_ID, storageKey: STORAGE_KEY },
+            ]),
+          }),
+        }),
+      });
       db.delete.mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -564,12 +590,14 @@ describe('DocumentService', () => {
       ).resolves.toBeUndefined();
     });
 
-    it('向量索引清理失败时不应阻止删除成功', async () => {
-      db.delete.mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            { id: DOC_ID, storageKey: STORAGE_KEY },
-          ]),
+    it('向量索引清理失败时应中止删除并保留元数据', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              { id: DOC_ID, storageKey: STORAGE_KEY },
+            ]),
+          }),
         }),
       });
       ragService.deleteByDocument.mockRejectedValueOnce(
@@ -578,14 +606,23 @@ describe('DocumentService', () => {
 
       await expect(
         service.deleteDocument(KB_ID, DOC_ID, TENANT_ID),
-      ).resolves.toBeUndefined();
+      ).rejects.toThrow('Qdrant 不可达');
 
-      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 
   describe('deleteByKnowledgeBase', () => {
     it('应删除全部元数据并批量清理对象存储和向量索引', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+            { id: `${DOC_ID}-2`, storageKey: `${STORAGE_KEY}-2` },
+          ]),
+        }),
+      });
       db.delete.mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -607,6 +644,14 @@ describe('DocumentService', () => {
     });
 
     it('对象存储部分清理失败时仍应返回已删除数量', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+            { id: `${DOC_ID}-2`, storageKey: `${STORAGE_KEY}-2` },
+          ]),
+        }),
+      });
       db.delete.mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -620,6 +665,27 @@ describe('DocumentService', () => {
         .mockResolvedValueOnce(undefined);
 
       await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).resolves.toBe(2);
+    });
+
+    it('向量索引清理失败时应中止知识库级删除', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { id: DOC_ID, storageKey: STORAGE_KEY },
+            { id: `${DOC_ID}-2`, storageKey: `${STORAGE_KEY}-2` },
+          ]),
+        }),
+      });
+      ragService.deleteByDocument.mockRejectedValueOnce(
+        new Error('Qdrant 不可达'),
+      );
+
+      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).rejects.toThrow(
+        'Qdrant 不可达',
+      );
+
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 

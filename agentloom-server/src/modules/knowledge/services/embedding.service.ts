@@ -11,6 +11,17 @@ interface EmbeddingApiResponse {
   usage: { prompt_tokens: number; total_tokens: number };
 }
 
+class EmbeddingApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'EmbeddingApiError';
+  }
+}
+
 @Injectable()
 export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name);
@@ -58,13 +69,18 @@ export class EmbeddingService {
         return await this.callEmbeddingApi(texts, apiKey);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < EMBEDDING_MAX_RETRIES) {
-          const delay = 1000 * (attempt + 1);
-          this.logger.warn(
-            `Embedding API attempt ${attempt + 1} failed, retrying in ${delay}ms: ${lastError.message}`,
-          );
-          await this.sleep(delay);
+        const shouldRetry =
+          attempt < EMBEDDING_MAX_RETRIES && this.isRetryableError(lastError);
+
+        if (!shouldRetry) {
+          break;
         }
+
+        const delay = this.getRetryDelay(lastError, attempt);
+        this.logger.warn(
+          `Embedding API attempt ${attempt + 1} failed, retrying in ${delay}ms: ${lastError.message}`,
+        );
+        await this.sleep(delay);
       }
     }
 
@@ -89,8 +105,10 @@ export class EmbeddingService {
 
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(
+      throw new EmbeddingApiError(
+        response.status,
         `OpenAI Embedding API error ${response.status}: ${body}`,
+        this.parseRetryAfterMs(response.headers.get('retry-after')),
       );
     }
 
@@ -103,5 +121,40 @@ export class EmbeddingService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private isRetryableError(error: Error): boolean {
+    if (!(error instanceof EmbeddingApiError)) {
+      return true;
+    }
+
+    return error.status === 429 || error.status >= 500;
+  }
+
+  private getRetryDelay(error: Error, attempt: number): number {
+    if (error instanceof EmbeddingApiError && error.retryAfterMs !== undefined) {
+      return error.retryAfterMs;
+    }
+
+    return 1000 * 2 ** attempt;
+  }
+
+  private parseRetryAfterMs(value: string | null): number | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const retryAfterSeconds = Number(value);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+      return retryAfterSeconds * 1000;
+    }
+
+    const retryAfterDate = Date.parse(value);
+    if (Number.isNaN(retryAfterDate)) {
+      return undefined;
+    }
+
+    const retryAfterMs = retryAfterDate - Date.now();
+    return retryAfterMs > 0 ? retryAfterMs : undefined;
   }
 }

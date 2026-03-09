@@ -145,14 +145,14 @@ describe('DocumentIndexingWorker', () => {
       );
     });
 
-    it('should still emit WS events when vector cleanup fails', async () => {
+    it('should retry vector cleanup and surface cleanup failure details', async () => {
       documentService.updateStatus.mockResolvedValue(undefined);
       documentService.findById.mockResolvedValue({
         id: DOC_ID,
         tenantId: 'tenant-1',
         knowledgeBaseId: 'kb-1',
       });
-      ragService.deleteByDocument.mockRejectedValueOnce(
+      ragService.deleteByDocument.mockRejectedValue(
         new Error('Qdrant unavailable'),
       );
 
@@ -161,9 +161,23 @@ describe('DocumentIndexingWorker', () => {
         new Error('index failed'),
       );
 
-      expect(ragService.deleteByDocument).toHaveBeenCalledWith(
+      expect(ragService.deleteByDocument).toHaveBeenCalledTimes(3);
+      expect(ragService.deleteByDocument).toHaveBeenNthCalledWith(
+        1,
         DOC_ID,
         'tenant-1',
+      );
+      expect(documentService.updateStatus).toHaveBeenNthCalledWith(
+        1,
+        DOC_ID,
+        'failed',
+        'index failed',
+      );
+      expect(documentService.updateStatus).toHaveBeenNthCalledWith(
+        2,
+        DOC_ID,
+        'failed',
+        'index failed | vector cleanup failed: Qdrant unavailable',
       );
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
         'tenant-1',
@@ -171,8 +185,31 @@ describe('DocumentIndexingWorker', () => {
         expect.objectContaining({
           documentId: DOC_ID,
           status: 'failed',
+          errorMessage: 'index failed | vector cleanup failed: Qdrant unavailable',
         }),
       );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
+        'tenant-1',
+        'kb-1',
+      );
+    });
+
+    it('should emit knowledge base update even when document status event fails', async () => {
+      documentService.updateStatus.mockResolvedValue(undefined);
+      documentService.findById.mockResolvedValue({
+        id: DOC_ID,
+        tenantId: 'tenant-1',
+        knowledgeBaseId: 'kb-1',
+      });
+      knowledgeGateway.emitDocumentStatusChanged.mockImplementation(() => {
+        throw new Error('ws unavailable');
+      });
+
+      await worker.onFailed(
+        createMockJob({ attemptsMade: 2 }),
+        new Error('index failed'),
+      );
+
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
         'tenant-1',
         'kb-1',
