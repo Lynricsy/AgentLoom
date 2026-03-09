@@ -1,6 +1,5 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { WsException } from '@nestjs/websockets';
 import { ExecutionGateway } from '../execution.gateway';
 import type { StateReplayService } from '../services/state-replay.service';
 import type { ThrottleService } from '../services/throttle.service';
@@ -98,6 +97,10 @@ describe('ExecutionGateway', () => {
     gateway.server = mockServer as any;
   });
 
+  afterEach(() => {
+    gateway.onModuleDestroy();
+  });
+
   describe('onModuleInit', () => {
     it('registers throttle flush handler', () => {
       gateway.onModuleInit();
@@ -159,35 +162,52 @@ describe('ExecutionGateway', () => {
       );
     });
 
-    it('throws WsException when no tenant context', async () => {
+    it('returns FORBIDDEN error when no tenant context', async () => {
       const client = makeSocket({
         data: { user: { sub: 'u1', email: 'a@b.com' } },
       });
 
-      await expect(
-        gateway.handleSubscribe(client as any, { executionId: 'exec-1' }),
-      ).rejects.toThrow(WsException);
+      const result = await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-1',
+      });
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'FORBIDDEN',
+        currentState: null,
+      });
+      expect(client.join).not.toHaveBeenCalled();
     });
 
-    it('throws WsException on tenant mismatch', async () => {
+    it('returns FORBIDDEN error on tenant mismatch', async () => {
       const client = makeSocket();
 
-      await expect(
-        gateway.handleSubscribe(client as any, {
-          tenantId: 'other-tenant',
-          executionId: 'exec-1',
-        }),
-      ).rejects.toThrow(WsException);
+      const result = await gateway.handleSubscribe(client as any, {
+        tenantId: 'other-tenant',
+        executionId: 'exec-1',
+      });
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'FORBIDDEN',
+        currentState: null,
+      });
+      expect(client.join).not.toHaveBeenCalled();
     });
 
-    it('throws WsException when executionId is missing', async () => {
+    it('returns INVALID_PAYLOAD error when executionId is missing', async () => {
       const client = makeSocket();
 
-      await expect(
-        gateway.handleSubscribe(client as any, {
-          executionId: '',
-        }),
-      ).rejects.toThrow(WsException);
+      const result = await gateway.handleSubscribe(client as any, {
+        executionId: '',
+      });
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'INVALID_PAYLOAD',
+        currentState: null,
+      });
+      expect(client.join).not.toHaveBeenCalled();
     });
 
     it('emits state snapshot on subscribe', async () => {
@@ -254,14 +274,19 @@ describe('ExecutionGateway', () => {
       expect(client.emit).not.toHaveBeenCalled();
     });
 
-    it('throws WsException when execution not found (tenant verification)', async () => {
+    it('returns NOT_FOUND error when execution not found (tenant verification)', async () => {
       mockStateReplay.getExecutionSnapshot.mockResolvedValue(null);
 
       const client = makeSocket();
-      await expect(
-        gateway.handleSubscribe(client as any, { executionId: 'exec-1' }),
-      ).rejects.toThrow(WsException);
+      const result = await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-1',
+      });
 
+      expect(result).toEqual({
+        status: 'error',
+        error: 'NOT_FOUND',
+        currentState: null,
+      });
       expect(client.join).not.toHaveBeenCalled();
     });
   });
@@ -311,24 +336,25 @@ describe('ExecutionGateway', () => {
   });
 
   describe('broadcastTypedEvent', () => {
-    it('checks throttle before broadcasting', () => {
+    it('broadcasts when throttle allows', () => {
       const emitFn = vi.fn();
       mockServer.to.mockReturnValue({ emit: emitFn });
 
       gateway.broadcastTypedEvent(
         't1',
         'e1',
-        'execution.step.status-changed',
+        'execution.node.status-changed',
         { status: 'running' },
       );
 
       expect(mockThrottle.tryConsume).toHaveBeenCalledWith('e1');
-      expect(emitFn).toHaveBeenCalledWith('execution.step.status-changed', {
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
         status: 'running',
       });
     });
 
-    it('drops event when rate limited', () => {
+    it('queues event when rate limited (backpressure)', () => {
+      vi.useFakeTimers();
       mockThrottle.tryConsume.mockReturnValue(false);
       const emitFn = vi.fn();
       mockServer.to.mockReturnValue({ emit: emitFn });
@@ -336,11 +362,89 @@ describe('ExecutionGateway', () => {
       gateway.broadcastTypedEvent(
         't1',
         'e1',
-        'execution.step.status-changed',
+        'execution.node.status-changed',
         { status: 'running' },
       );
 
       expect(emitFn).not.toHaveBeenCalled();
+
+      mockThrottle.tryConsume.mockReturnValue(true);
+      vi.advanceTimersByTime(150);
+
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
+        status: 'running',
+      });
+
+      vi.useRealTimers();
+    });
+
+    it('drains queue on next successful broadcast', () => {
+      vi.useFakeTimers();
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      mockThrottle.tryConsume.mockReturnValue(false);
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'queued',
+      });
+      expect(emitFn).not.toHaveBeenCalled();
+
+      mockThrottle.tryConsume.mockReturnValue(true);
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'running',
+      });
+
+      expect(emitFn).toHaveBeenCalledTimes(2);
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
+        status: 'queued',
+      });
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
+        status: 'running',
+      });
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('clearExecutionQueue', () => {
+    it('clears queue and timers for a specific execution', () => {
+      vi.useFakeTimers();
+      mockThrottle.tryConsume.mockReturnValue(false);
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'running',
+      });
+
+      gateway.clearExecutionQueue('t1', 'e1');
+
+      mockThrottle.tryConsume.mockReturnValue(true);
+      vi.advanceTimersByTime(200);
+
+      expect(emitFn).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('createAuthError', () => {
+    it('creates error with code 4001 data', () => {
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+
+      const socket = makeSocket({
+        handshake: { auth: {}, headers: {} },
+      });
+
+      const next = vi.fn();
+      middleware(socket, next);
+
+      expect(next).toHaveBeenCalledOnce();
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('Authentication required');
+      expect(err.data).toEqual({ code: 4001, reason: 'Authentication required' });
     });
   });
 });

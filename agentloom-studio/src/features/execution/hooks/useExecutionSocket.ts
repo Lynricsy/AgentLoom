@@ -137,6 +137,13 @@ export function useExecutionSocket(
       }
 
       socket.emit('execution:subscribe', payload, (ack: SubscribeAck) => {
+        if (ack?.status === 'error') {
+          callbacksRef.current.onError?.({
+            message: ack.error ?? 'Subscription failed',
+            code: ack.error,
+          })
+          return
+        }
         if (ack?.currentState) {
           if (ack.currentState.lastEventId != null) {
             trackEventId(ack.currentState.lastEventId)

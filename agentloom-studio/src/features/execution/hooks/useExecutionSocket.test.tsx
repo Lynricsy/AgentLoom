@@ -165,6 +165,110 @@ describe('useExecutionSocket', () => {
     )
   })
 
+  it('calls onError when subscribe ACK has error status', () => {
+    const { socket, handlers } = createMockSocket()
+    ioMock.mockReturnValue(socket)
+    const onError = vi.fn()
+
+    renderHook(() =>
+      useExecutionSocket({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        onError,
+      }),
+    )
+
+    act(() => {
+      handlers.connect?.()
+    })
+
+    const subscribeCall = socket.emit.mock.calls.find(
+      (call: unknown[]) => call[0] === 'execution:subscribe',
+    )
+    const ackCallback = subscribeCall?.[2] as (ack: unknown) => void
+
+    act(() => {
+      ackCallback({ status: 'error', error: 'FORBIDDEN', currentState: null })
+    })
+
+    expect(onError).toHaveBeenCalledWith({
+      message: 'FORBIDDEN',
+      code: 'FORBIDDEN',
+    })
+  })
+
+  it('uses default message when subscribe ACK error has no error text', () => {
+    const { socket, handlers } = createMockSocket()
+    ioMock.mockReturnValue(socket)
+    const onError = vi.fn()
+
+    renderHook(() =>
+      useExecutionSocket({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        onError,
+      }),
+    )
+
+    act(() => {
+      handlers.connect?.()
+    })
+
+    const subscribeCall = socket.emit.mock.calls.find(
+      (call: unknown[]) => call[0] === 'execution:subscribe',
+    )
+    const ackCallback = subscribeCall?.[2] as (ack: unknown) => void
+
+    act(() => {
+      ackCallback({ status: 'error', currentState: null })
+    })
+
+    expect(onError).toHaveBeenCalledWith({
+      message: 'Subscription failed',
+      code: undefined,
+    })
+  })
+
+  it('calls onSnapshot and tracks lastEventId from subscribe ACK', () => {
+    const { socket, handlers } = createMockSocket()
+    ioMock.mockReturnValue(socket)
+    const onSnapshot = vi.fn()
+
+    const { result } = renderHook(() =>
+      useExecutionSocket({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        onSnapshot,
+      }),
+    )
+
+    act(() => {
+      handlers.connect?.()
+    })
+
+    const subscribeCall = socket.emit.mock.calls.find(
+      (call: unknown[]) => call[0] === 'execution:subscribe',
+    )
+    const ackCallback = subscribeCall?.[2] as (ack: unknown) => void
+
+    const snapshot: ExecutionStateSnapshot = {
+      executionId: 'exec-1',
+      status: 'running',
+      completedSteps: 1,
+      totalSteps: 3,
+      steps: [],
+      snapshotAt: '2025-01-01T00:00:00Z',
+      lastEventId: 15,
+    }
+
+    act(() => {
+      ackCallback({ status: 'subscribed', currentState: snapshot })
+    })
+
+    expect(onSnapshot).toHaveBeenCalledWith(snapshot)
+    expect(result.current.lastEventId).toBe(15)
+  })
+
   it('handles execution status changed events', () => {
     const { socket, handlers } = createMockSocket()
     ioMock.mockReturnValue(socket)

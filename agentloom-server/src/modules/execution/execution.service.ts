@@ -242,7 +242,6 @@ export class ExecutionService {
       {
         executionId,
         status: 'cancelled',
-        timestamp: new Date().toISOString(),
       },
     );
 
@@ -400,7 +399,7 @@ export class ExecutionService {
         this.eventBridge.emitExecutionStatusChanged(
           execution.tenantId,
           executionId,
-          { executionId, status: 'failed', error: error.message },
+          { executionId, status: 'failed', errorMessage: error.message },
         );
       },
     );

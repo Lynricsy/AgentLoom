@@ -125,7 +125,7 @@ export class EventBridgeService {
       standardEvent,
       tenantId,
       executionId,
-      data as ExecutionEventPayloadMap[typeof standardEvent],
+      data as unknown as ExecutionEventPayloadMap[typeof standardEvent],
     );
     this.broadcast(tenantId, executionId, envelope);
     return envelope;

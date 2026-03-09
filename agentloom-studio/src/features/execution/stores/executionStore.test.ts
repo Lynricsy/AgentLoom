@@ -26,7 +26,7 @@ function makeStepStatusEvent(
   overrides: Partial<StepStatusChangedPayload> = {},
 ): ExecutionEvent<StepStatusChangedPayload> {
   return makeEvent({
-    event: 'execution.step.status-changed',
+    event: 'execution.node.status-changed',
     data: {
       stepId: 'step-1',
       nodeId: 'node-1',
@@ -140,14 +140,14 @@ describe('executionStore', () => {
 
       actions.appendNodeOutput(
         makeEvent<OutputChunkPayload>({
-          event: 'execution.output.chunk',
+          event: 'execution.node.output-chunk',
           eventId: 2,
           data: { stepId: 'step-1', chunk: 'hello ', index: 0 },
         }),
       )
       actions.appendNodeOutput(
         makeEvent<OutputChunkPayload>({
-          event: 'execution.output.chunk',
+          event: 'execution.node.output-chunk',
           eventId: 3,
           data: { stepId: 'step-1', chunk: 'world', index: 1 },
         }),
@@ -160,7 +160,7 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       actions.appendNodeOutput(
         makeEvent<OutputChunkPayload>({
-          event: 'execution.output.chunk',
+          event: 'execution.node.output-chunk',
           data: { stepId: 'unknown', chunk: 'data', index: 0 },
         }),
       )
@@ -177,7 +177,7 @@ describe('executionStore', () => {
 
       actions.appendNodeOutput(
         makeEvent<OutputChunkPayload>({
-          event: 'execution.output.chunk',
+          event: 'execution.node.output-chunk',
           eventId: 2,
           data: { stepId: 'step-1', chunk: 'late chunk', index: 0 },
         }),
@@ -193,7 +193,7 @@ describe('executionStore', () => {
 
       actions.updateNodeRetry(
         makeEvent<StepRetryingPayload>({
-          event: 'execution.step.retrying',
+          event: 'execution.node.retrying',
           eventId: 2,
           data: {
             stepId: 'step-1',
@@ -214,7 +214,7 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeRetry(
         makeEvent<StepRetryingPayload>({
-          event: 'execution.step.retrying',
+          event: 'execution.node.retrying',
           data: { stepId: 'unknown', attempt: 1, maxAttempts: 3 },
         }),
       )

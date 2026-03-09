@@ -53,15 +53,18 @@ HTTP POST /executions
                             ┌───────┴──────────┐
                             │  output_chunk     │  其他事件
                             ▼                   ▼
-                    ThrottleService        直接 broadcastTypedEvent()
-                    (50ms merge window)         │
-                    (100 events/s bucket)       │
-                            │                   │
-                            └───────┬───────────┘
-                                    ▼
-                          ExecutionGateway.broadcastTypedEvent()
-                                    │
-                          Socket.IO → 客户端
+                     ThrottleService        直接 broadcastTypedEvent()
+                     (50ms merge window)         │
+                     (100 events/s bucket)       │
+                             │                   │
+                             └───────┬───────────┘
+                                     ▼
+                           ExecutionGateway.broadcastTypedEvent()
+                                     │
+                             tryConsume(token bucket)
+                             ├── 通过 → Socket.IO emit
+                             └── 限流 → enqueueEvent() → scheduleDrain()
+                                         (500 cap, 100ms interval)
 ```
 
 ## BullMQ 队列
@@ -85,9 +88,13 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
 - `/execution` namespace: `execution:subscribe`/`execution:unsubscribe` (带 ACK: `{status, currentState}`)
   - 订阅时验证 JWT blacklist + MFA，tenant 归属校验 (DB lookup)
   - 状态回放 tenant-scoped: `StateReplayService.getExecutionSnapshot(execId, tenantId)`
-  - 事件协议: `execution.state.snapshot`, typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
-  - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放
-- `/knowledge` namespace: document status/kb updates
+  - 事件协议: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
+  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status-changed`
+  - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放状态快照
+  - AC-1 认证失败: `createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame
+  - AC-2 订阅拒绝: 返回 `{status:'error', error:'FORBIDDEN', currentState:null}` (非抛异常)
+  - AC-6 背压: Gateway 内置队列 (`eventQueue` Map)，速率限制时排队而非丢弃，500 事件上限/执行，100ms drain 间隔
+- `/knowledge` namespace: document status/kb updates (隐式契约)
 - 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 
 ## common/ 目录

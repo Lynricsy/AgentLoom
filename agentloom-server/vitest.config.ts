@@ -1,7 +1,11 @@
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
-const runsTestDirectory = process.argv.some((arg) => arg.includes('test/'));
+// 仅当显式指定 test/ 目录下的文件时才包含 E2E 测试
+// 注意：不能用 includes('test/')，否则会匹配到 vitest 二进制路径中的 "vitest/"
+const runsTestDirectory = process.argv.some(
+  (arg) => arg.startsWith('test/') || arg === 'test',
+);
 
 export default defineConfig({
   test: {

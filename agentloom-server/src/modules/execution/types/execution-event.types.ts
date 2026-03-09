@@ -2,10 +2,10 @@ import type { AgentEvent } from '../../agent/types/agent-event.types';
 
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
-  STEP_STATUS_CHANGED: 'execution.step.status-changed',
-  STEP_AGENT_EVENT: 'execution.step.agent-event',
-  STEP_RETRYING: 'execution.step.retrying',
-  OUTPUT_CHUNK: 'execution.output.chunk',
+  STEP_STATUS_CHANGED: 'execution.node.status-changed',
+  STEP_AGENT_EVENT: 'execution.node.agent-event',
+  STEP_RETRYING: 'execution.node.retrying',
+  OUTPUT_CHUNK: 'execution.node.output-chunk',
 } as const;
 
 export type ExecutionEventName =

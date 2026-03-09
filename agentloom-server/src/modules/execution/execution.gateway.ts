@@ -5,9 +5,15 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
-  WsException,
 } from '@nestjs/websockets';
-import { Logger, UseGuards, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import {
+  Logger,
+  UseGuards,
+  OnModuleInit,
+  OnModuleDestroy,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
@@ -22,6 +28,15 @@ import type {
   ExecutionStateSnapshot,
 } from './types/execution-event.types';
 
+/** 认证失败的 WebSocket 关闭代码 */
+const WS_CLOSE_AUTH_FAILURE = 4001;
+
+/** 背压队列每个执行实例的最大容量 */
+const BACKPRESSURE_QUEUE_LIMIT = 500;
+
+/** 背压队列排空重试间隔 (ms) */
+const BACKPRESSURE_DRAIN_INTERVAL_MS = 100;
+
 interface SubscribePayload {
   tenantId?: string;
   executionId: string;
@@ -31,6 +46,17 @@ interface SubscribePayload {
 interface UnsubscribePayload {
   tenantId?: string;
   executionId: string;
+}
+
+interface QueuedEvent {
+  readonly event: string;
+  readonly data: Record<string, unknown>;
+}
+
+interface SubscribeResult {
+  status: string;
+  error?: string;
+  currentState: ExecutionStateSnapshot | null;
 }
 
 @WebSocketGateway({
@@ -43,12 +69,20 @@ export class ExecutionGateway
     OnGatewayInit,
     OnGatewayConnection,
     OnGatewayDisconnect,
-    OnModuleInit
+    OnModuleInit,
+    OnModuleDestroy
 {
   private readonly logger = new Logger(ExecutionGateway.name);
 
   @WebSocketServer()
   server!: Server;
+
+  /** 背压事件队列: key = `tenantId:executionId` */
+  private readonly eventQueue = new Map<string, QueuedEvent[]>();
+  private readonly drainTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   constructor(
     private readonly configService: ConfigService,
@@ -75,6 +109,14 @@ export class ExecutionGateway
     });
   }
 
+  onModuleDestroy(): void {
+    for (const timer of this.drainTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.drainTimers.clear();
+    this.eventQueue.clear();
+  }
+
   afterInit(server: Server) {
     const secret = this.configService.get<string>('APP_JWT_SECRET');
 
@@ -86,14 +128,15 @@ export class ExecutionGateway
           : undefined);
 
       if (!token) {
-        return next(new Error('Authentication required'));
+        const err = this.createAuthError('Authentication required');
+        return next(err);
       }
 
       try {
         const isBlacklisted =
           await this.tokenBlacklistService.isBlacklisted(token);
         if (isBlacklisted) {
-          return next(new Error('Token has been revoked'));
+          return next(this.createAuthError('Token has been revoked'));
         }
 
         const payload = jwt.verify(token, secret!, {
@@ -102,17 +145,37 @@ export class ExecutionGateway
         }) as jwt.JwtPayload;
 
         if ((payload as Record<string, unknown>).type === 'mfa_pending') {
-          return next(new Error('MFA verification required'));
+          return next(this.createAuthError('MFA verification required'));
         }
+
+        // jwt.verify 保证 sub/aud/exp/iat 存在（HS256 标准声明）
+        if (!payload.sub || !payload.aud || !payload.exp || !payload.iat) {
+          return next(this.createAuthError('Invalid token claims'));
+        }
+
+        const email =
+          (payload as Record<string, unknown>).email as string | undefined;
 
         socket.data.user = {
           sub: payload.sub,
-          email: payload.email,
+          email: email ?? '',
           aud: payload.aud,
           exp: payload.exp,
           iat: payload.iat,
-          tenantId: payload.tenantId ?? payload.tenant_id,
-          tenantRole: payload.tenantRole ?? payload.tenant_role,
+          tenantId:
+            (payload as Record<string, unknown>).tenantId as
+              | string
+              | undefined ??
+            (payload as Record<string, unknown>).tenant_id as
+              | string
+              | undefined,
+          tenantRole:
+            (payload as Record<string, unknown>).tenantRole as
+              | string
+              | undefined ??
+            (payload as Record<string, unknown>).tenant_role as
+              | string
+              | undefined,
         } satisfies JwtPayload;
 
         next();
@@ -123,7 +186,7 @@ export class ExecutionGateway
         if (err instanceof Error && err.message.includes('revoked')) {
           return next(err);
         }
-        next(new Error('Invalid or expired token'));
+        next(this.createAuthError('Invalid or expired token'));
       }
     });
   }
@@ -179,24 +242,77 @@ export class ExecutionGateway
     this.server.to(room).emit(event, data);
   }
 
+  /**
+   * 带背压控制的事件广播。
+   * 当令牌桶耗尽时，事件进入队列而非丢弃，并通过定时器排空。
+   */
+  broadcastTypedEvent<
+    K extends (typeof ExecutionEventName)[keyof typeof ExecutionEventName],
+  >(
+    tenantId: string,
+    executionId: string,
+    event: K,
+    data: Record<string, unknown>,
+  ) {
+    const queueKey = `${tenantId}:${executionId}`;
+    const queue = this.eventQueue.get(queueKey);
+
+    if (queue && queue.length > 0) {
+      this.drainQueueSync(tenantId, executionId, queueKey);
+    }
+
+    if (this.throttleService.tryConsume(executionId)) {
+      const room = this.buildRoom(tenantId, executionId);
+      this.server.to(room).emit(event, data);
+    } else {
+      this.enqueueEvent(tenantId, executionId, queueKey, event, data);
+    }
+  }
+
+  /**
+   * 清理指定执行实例的背压队列。
+   * 在执行到达终态后调用以释放内存。
+   */
+  clearExecutionQueue(tenantId: string, executionId: string): void {
+    const queueKey = `${tenantId}:${executionId}`;
+    this.eventQueue.delete(queueKey);
+    const timer = this.drainTimers.get(queueKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.drainTimers.delete(queueKey);
+    }
+  }
+
   private async subscribe(
     client: Socket,
     payload: SubscribePayload,
-  ): Promise<{ status: string; currentState: ExecutionStateSnapshot | null }> {
+  ): Promise<SubscribeResult> {
     const user = client.data?.user as JwtPayload | undefined;
     if (!user?.tenantId) {
-      throw new WsException('Tenant context required');
+      return {
+        status: 'error',
+        error: 'FORBIDDEN',
+        currentState: null,
+      };
     }
 
     if (payload.tenantId && payload.tenantId !== user.tenantId) {
-      throw new WsException('Tenant mismatch: access denied');
+      return {
+        status: 'error',
+        error: 'FORBIDDEN',
+        currentState: null,
+      };
     }
 
     const tenantId = user.tenantId;
     const { executionId, lastEventId } = payload;
 
     if (!executionId) {
-      throw new WsException('executionId is required');
+      return {
+        status: 'error',
+        error: 'INVALID_PAYLOAD',
+        currentState: null,
+      };
     }
 
     const snapshot = await this.stateReplayService.getExecutionSnapshot(
@@ -206,7 +322,11 @@ export class ExecutionGateway
     );
 
     if (!snapshot) {
-      throw new WsException('Execution not found or access denied');
+      return {
+        status: 'error',
+        error: 'NOT_FOUND',
+        currentState: null,
+      };
     }
 
     const room = this.buildRoom(tenantId, executionId);
@@ -242,20 +362,98 @@ export class ExecutionGateway
     client.emit('execution.state.snapshot' satisfies `${string}`, snapshot);
   }
 
-  broadcastTypedEvent<K extends (typeof ExecutionEventName)[keyof typeof ExecutionEventName]>(
+  /**
+   * 创建带有 close code 4001 的认证错误。
+   * Socket.IO 客户端可通过 `err.data.code` 获取此代码。
+   */
+  private createAuthError(message: string): Error & {
+    data?: { code: number; reason: string };
+  } {
+    const err: Error & { data?: { code: number; reason: string } } = new Error(
+      message,
+    );
+    err.data = { code: WS_CLOSE_AUTH_FAILURE, reason: message };
+    return err;
+  }
+
+  private enqueueEvent(
     tenantId: string,
     executionId: string,
-    event: K,
+    queueKey: string,
+    event: string,
     data: Record<string, unknown>,
-  ) {
-    if (!this.throttleService.tryConsume(executionId)) {
-      this.logger.warn(
-        `Rate limit reached for execution ${executionId}, event ${event} dropped`,
-      );
-      return;
+  ): void {
+    let queue = this.eventQueue.get(queueKey);
+    if (!queue) {
+      queue = [];
+      this.eventQueue.set(queueKey, queue);
     }
+
+    if (queue.length >= BACKPRESSURE_QUEUE_LIMIT) {
+      this.logger.warn(
+        `Backpressure queue full for execution ${executionId} (limit=${BACKPRESSURE_QUEUE_LIMIT}), dropping oldest event`,
+      );
+      queue.shift();
+    }
+
+    queue.push({ event, data });
+
+    if (!this.drainTimers.has(queueKey)) {
+      const timer = setTimeout(() => {
+        this.drainTimers.delete(queueKey);
+        this.drainQueueSync(tenantId, executionId, queueKey);
+
+        // 如果仍有积压，继续调度排空
+        const remaining = this.eventQueue.get(queueKey);
+        if (remaining && remaining.length > 0) {
+          this.scheduleDrain(tenantId, executionId, queueKey);
+        }
+      }, BACKPRESSURE_DRAIN_INTERVAL_MS);
+      this.drainTimers.set(queueKey, timer);
+    }
+  }
+
+  private scheduleDrain(
+
+    tenantId: string,
+    executionId: string,
+    queueKey: string,
+  ): void {
+    if (this.drainTimers.has(queueKey)) return;
+
+    const timer = setTimeout(() => {
+      this.drainTimers.delete(queueKey);
+      this.drainQueueSync(tenantId, executionId, queueKey);
+
+      const remaining = this.eventQueue.get(queueKey);
+      if (remaining && remaining.length > 0) {
+        this.scheduleDrain(tenantId, executionId, queueKey);
+      }
+    }, BACKPRESSURE_DRAIN_INTERVAL_MS);
+    this.drainTimers.set(queueKey, timer);
+  }
+
+  private drainQueueSync(
+    tenantId: string,
+    executionId: string,
+    queueKey: string,
+  ): void {
+    const queue = this.eventQueue.get(queueKey);
+    if (!queue || queue.length === 0) return;
+
     const room = this.buildRoom(tenantId, executionId);
-    this.server.to(room).emit(event, data);
+
+    while (
+      queue.length > 0 &&
+      this.throttleService.tryConsume(executionId)
+    ) {
+      const item = queue.shift()!;
+      this.server.to(room).emit(item.event, item.data);
+    }
+
+    if (queue.length === 0) {
+      this.eventQueue.delete(queueKey);
+    }
   }
 
   private buildRoom(tenantId: string, executionId: string): string {

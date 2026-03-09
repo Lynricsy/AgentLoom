@@ -621,7 +621,7 @@ describe('ExecutionService', () => {
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        { executionId: EXECUTION_ID, status: 'failed', error: '执行失败' },
+        { executionId: EXECUTION_ID, status: 'failed', errorMessage: '执行失败' },
       );
     });
 
