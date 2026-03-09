@@ -69,13 +69,13 @@ HTTP POST /executions
 
 ## 断点恢复与检查点 (Story 5-5)
 
-- **CheckpointService** (`checkpoint.service.ts`): 节点完成后保存 dagState 快照 (`saveCheckpoint`)，恢复失败执行 (`resumeExecution`)
-- 检查点数据存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
-- 恢复 API: `POST /executions/:id/resume` (202 Accepted, Editor+ 角色)，可选 `{ fromNodeId }` 指定恢复起点（BFS 重置目标+下游）
-- 仅 `failed` 状态可恢复，`paused` 返回 409 (需先通过 Story 5.6 干预)
-- `STEP_TRANSITIONS` 新增: `failed→pending`, `cancelled→pending`
-- Agent 重试追踪: `checkpointData.attempts[]` 记录每次重试的 `{attempt, error, timestamp}`
-- Dead letter: 3 次重试耗尽后 errorMessage 和 checkpointData 均记录所有 attempts
+- 已落地基础能力：`CheckpointService` (`checkpoint.service.ts`) 会在节点完成后保存 dagState 快照 (`saveCheckpoint`)，并支持恢复失败执行 (`resumeExecution`)
+- 检查点数据当前存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
+- 恢复 API: `POST /executions/:id/resume` (202 Accepted, Editor+ 角色)，可选 `{ fromNodeId }` 指定恢复起点（BFS 重置目标+下游）；仅 `failed` 状态可恢复，`paused` 返回 409
+- `STEP_TRANSITIONS` 已新增 `failed→pending`、`cancelled→pending`，`NodeSchedulerService.resumeScheduling()` 会跳过 `completed` 节点并继续调度 `pending` 节点
+- Agent 重试追踪已写入 `checkpointData.attempts[]`，记录每次重试的 `{ attempt, error, timestamp }`
+- **当前 Story 5-5 仍未闭合**：`execution_steps` 尚无 `attempt_count` 字段；resume 仍在 controller 中直接调用 `resumeScheduling()`，未重新创建 BullMQ job；`agent-task-queue` backoff 仍为 `delay: 1000`；dead letter queue 只保留错误信息，尚无管理 API / 查询入口
+- 因此 `/_bmad-output/implementation-artifacts/story-5-5-breakpoint-resume-and-checkpoint-mechanism.md` 与 `sprint-status.yaml` 目前都应保持 `in-progress`，待补齐上述 follow-ups 后再复审
 
 ## BullMQ 队列
 
