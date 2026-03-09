@@ -8,6 +8,7 @@ import { ExecutionGateway } from './execution.gateway';
 import { StepStateMachineService } from './step-state-machine.service';
 import { DagResolverService } from './dag-resolver.service';
 import { NodeSchedulerService } from './node-scheduler.service';
+import { AgentTaskWorker } from './agent-task.worker';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 
 @Module({
@@ -38,6 +39,7 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     StepStateMachineService,
     DagResolverService,
     NodeSchedulerService,
+    AgentTaskWorker,
   ],
   exports: [
     ExecutionService,
