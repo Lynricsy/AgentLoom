@@ -102,6 +102,7 @@ const mockStateMachine: Record<string, Mock> = {
 
 const mockNodeScheduler: Record<string, Mock> = {
   onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+  onNodeFailed: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockAgentRuntime: Record<string, Mock> = {
@@ -398,6 +399,25 @@ describe('AgentTaskWorker', () => {
         },
       );
     });
+
+    it('应在 Agent 执行失败后调用 onNodeFailed 级联取消下游', async () => {
+      const step = makeStep();
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          throw new Error('执行失败');
+        })(),
+      );
+
+      await expect(worker.process(createMockJob())).rejects.toThrow('执行失败');
+
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+    });
   });
 
   describe('process — stopReason 处理', () => {
@@ -491,6 +511,27 @@ describe('AgentTaskWorker', () => {
       await expect(
         worker.onFailed(undefined as any, error),
       ).resolves.not.toThrow();
+    });
+
+    it('应在任务失败时调用 onNodeFailed 级联取消下游', async () => {
+      const job = createMockJob();
+      const error = new Error('Worker 处理失败');
+
+      await worker.onFailed(job, error);
+
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('onNodeFailed 失败时不应抛出异常', async () => {
+      const job = createMockJob();
+      const error = new Error('Worker 处理失败');
+      mockNodeScheduler.onNodeFailed.mockRejectedValueOnce(new Error('级联失败'));
+
+      await expect(worker.onFailed(job, error)).resolves.not.toThrow();
     });
   });
 

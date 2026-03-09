@@ -773,6 +773,17 @@ describe('NodeSchedulerService', () => {
           throw new Error('模拟数据库错误');
         });
 
+      // onNodeFailed 需要的 mock
+      db.select
+        .mockReturnValueOnce(createSelectChain([step])) // 读取 failedStep
+        .mockReturnValueOnce(
+          createSelectChain([{ definitionSnapshot: makeSnapshot([], []) }]),
+        )
+        .mockReturnValueOnce(createSelectChain([step]));
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([], new Map(), new Map()),
+      );
+
       await service.executeDataTransform(
         step, { 'node-a': { val: 1 } }, TENANT_ID, EXECUTION_ID,
       );
@@ -879,6 +890,17 @@ describe('NodeSchedulerService', () => {
         .mockImplementationOnce(() => {
           throw new Error('条件评估异常');
         });
+
+      // onNodeFailed 需要的 mock
+      db.select
+        .mockReturnValueOnce(createSelectChain([step])) // 读取 failedStep
+        .mockReturnValueOnce(
+          createSelectChain([{ definitionSnapshot: makeSnapshot([], []) }]),
+        )
+        .mockReturnValueOnce(createSelectChain([step]));
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([], new Map(), new Map()),
+      );
 
       await service.executeConditional(
         step, {}, TENANT_ID, EXECUTION_ID,
@@ -1103,6 +1125,208 @@ describe('NodeSchedulerService', () => {
       await expect(
         service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '反馈'),
       ).rejects.toThrow(AgentExecutionException);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // onNodeFailed
+  // ────────────────────────────────────────────────────────────
+  describe('onNodeFailed', () => {
+    it('应取消失败节点的下游 pending 步骤并更新执行状态', async () => {
+      // A(failed) → B(pending) → C(pending)
+      const stepA = makeStep({
+        id: 'step-a', nodeId: 'A', status: 'failed',
+      });
+      const stepB = makeStep({
+        id: 'step-b', nodeId: 'B', status: 'pending',
+      });
+      const stepC = makeStep({
+        id: 'step-c', nodeId: 'C', status: 'pending',
+      });
+
+      // 1. 读取 failedStep
+      db.select.mockReturnValueOnce(createSelectChain([stepA]));
+      // 2. loadExecutionContext
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B'), makeNode('C')],
+        [makeEdge('A', 'B'), makeEdge('B', 'C')],
+      );
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ definitionSnapshot: snapshot }]))
+        .mockReturnValueOnce(createSelectChain([stepA, stepB, stepC]));
+
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['A'], ['B'], ['C']],
+          new Map([['A', ['B']], ['B', ['C']], ['C', []]]),
+          new Map([['A', 0], ['B', 1], ['C', 1]]),
+        ),
+      );
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-b', 'cancelled',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-c', 'cancelled',
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID, TENANT_ID,
+      );
+    });
+
+    it('应取消 queued 和 waiting_intervention 状态的下游步骤', async () => {
+      const stepA = makeStep({
+        id: 'step-a', nodeId: 'A', status: 'failed',
+      });
+      const stepB = makeStep({
+        id: 'step-b', nodeId: 'B', status: 'queued',
+      });
+      const stepC = makeStep({
+        id: 'step-c', nodeId: 'C', status: 'waiting_intervention',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([stepA]));
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B'), makeNode('C')],
+        [makeEdge('A', 'B'), makeEdge('A', 'C')],
+      );
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ definitionSnapshot: snapshot }]))
+        .mockReturnValueOnce(createSelectChain([stepA, stepB, stepC]));
+
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['A'], ['B', 'C']],
+          new Map([['A', ['B', 'C']], ['B', []], ['C', []]]),
+          new Map([['A', 0], ['B', 1], ['C', 1]]),
+        ),
+      );
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-b', 'cancelled',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-c', 'cancelled',
+      );
+    });
+
+    it('已在终态的下游步骤不应被取消', async () => {
+      const stepA = makeStep({
+        id: 'step-a', nodeId: 'A', status: 'failed',
+      });
+      const stepB = makeStep({
+        id: 'step-b', nodeId: 'B', status: 'completed',
+        result: { data: 'done' },
+      });
+      const stepC = makeStep({
+        id: 'step-c', nodeId: 'C', status: 'pending',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([stepA]));
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B'), makeNode('C')],
+        [makeEdge('A', 'B'), makeEdge('A', 'C')],
+      );
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ definitionSnapshot: snapshot }]))
+        .mockReturnValueOnce(createSelectChain([stepA, stepB, stepC]));
+
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['A'], ['B', 'C']],
+          new Map([['A', ['B', 'C']], ['B', []], ['C', []]]),
+          new Map([['A', 0], ['B', 1], ['C', 1]]),
+        ),
+      );
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
+
+      // B(completed) 不应被取消
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+        TENANT_ID, 'step-b', 'cancelled',
+      );
+      // C(pending) 应被取消
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-c', 'cancelled',
+      );
+    });
+
+    it('无下游节点时应仅更新执行状态', async () => {
+      const stepA = makeStep({
+        id: 'step-a', nodeId: 'A', status: 'failed',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([stepA]));
+      const snapshot = makeSnapshot([makeNode('A')], []);
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ definitionSnapshot: snapshot }]))
+        .mockReturnValueOnce(createSelectChain([stepA]));
+
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([['A']], new Map([['A', []]]), new Map([['A', 0]])),
+      );
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID, TENANT_ID,
+      );
+    });
+
+    it('步骤不存在时应静默返回', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-ghost', TENANT_ID);
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
+    });
+
+    it('个别步骤取消失败时不应中断级联', async () => {
+      const stepA = makeStep({
+        id: 'step-a', nodeId: 'A', status: 'failed',
+      });
+      const stepB = makeStep({
+        id: 'step-b', nodeId: 'B', status: 'pending',
+      });
+      const stepC = makeStep({
+        id: 'step-c', nodeId: 'C', status: 'pending',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([stepA]));
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B'), makeNode('C')],
+        [makeEdge('A', 'B'), makeEdge('A', 'C')],
+      );
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ definitionSnapshot: snapshot }]))
+        .mockReturnValueOnce(createSelectChain([stepA, stepB, stepC]));
+
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['A'], ['B', 'C']],
+          new Map([['A', ['B', 'C']], ['B', []], ['C', []]]),
+          new Map([['A', 0], ['B', 1], ['C', 1]]),
+        ),
+      );
+
+      // B 取消失败
+      mockStateMachine.updateStepStatus
+        .mockRejectedValueOnce(new Error('取消 B 失败'))
+        .mockResolvedValueOnce(undefined);
+
+      await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
+
+      // C 仍应被取消
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID, 'step-c', 'cancelled',
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalled();
     });
   });
 });

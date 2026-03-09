@@ -122,6 +122,7 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', failExtra);
+      await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       throw error;
     }
   }
@@ -133,7 +134,7 @@ export class AgentTaskWorker extends WorkerHost {
       return;
     }
 
-    const { stepId, tenantId } = job.data;
+    const { executionId, stepId, tenantId } = job.data;
     this.logger.error(`Agent task failed: ${JSON.stringify({ stepId, error: error.message })}`);
 
     try {
@@ -143,6 +144,14 @@ export class AgentTaskWorker extends WorkerHost {
     } catch (updateError) {
       this.logger.error(
         `Failed to update step status on failure: ${updateError instanceof Error ? updateError.message : String(updateError)}`,
+      );
+    }
+
+    try {
+      await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
+    } catch (cascadeError) {
+      this.logger.error(
+        `Failed to cascade failure: ${cascadeError instanceof Error ? cascadeError.message : String(cascadeError)}`,
       );
     }
   }

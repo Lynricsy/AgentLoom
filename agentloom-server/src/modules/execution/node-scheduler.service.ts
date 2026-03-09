@@ -230,6 +230,62 @@ export class NodeSchedulerService {
     return input;
   }
 
+  /**
+   * 节点失败后的级联处理：取消下游 pending/queued/waiting_intervention 步骤。
+   */
+  async onNodeFailed(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [failedStep] = await this.tenantDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.id, stepId));
+
+    if (!failedStep) return;
+
+    const { snapshot, steps } = await this.loadExecutionContext(executionId);
+    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+
+    // BFS 找出所有下游节点
+    const downstream = new Set<string>();
+    const queue = [...(plan.adjacencyMap.get(failedStep.nodeId) ?? [])];
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (downstream.has(nodeId)) continue;
+      downstream.add(nodeId);
+      queue.push(...(plan.adjacencyMap.get(nodeId) ?? []));
+    }
+
+    // 取消所有可取消的下游步骤
+    const cancellableStatuses = new Set([
+      'pending',
+      'queued',
+      'waiting_intervention',
+    ]);
+
+    for (const nodeId of downstream) {
+      const step = steps.find((s) => s.nodeId === nodeId);
+      if (step && cancellableStatuses.has(step.status)) {
+        try {
+          await this.stepStateMachine.updateStepStatus(
+            tenantId,
+            step.id,
+            'cancelled',
+          );
+        } catch (error) {
+          this.logger.warn(
+            `级联取消步骤 ${step.id} 失败: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+  }
+
   async resolveIntervention(
     executionId: string,
     stepId: string,
@@ -325,6 +381,7 @@ export class NodeSchedulerService {
         'failed',
         { errorMessage: message },
       );
+      await this.onNodeFailed(executionId, step.id, tenantId);
     }
   }
 
@@ -383,6 +440,7 @@ export class NodeSchedulerService {
         'failed',
         { errorMessage: message },
       );
+      await this.onNodeFailed(executionId, step.id, tenantId);
     }
   }
 
