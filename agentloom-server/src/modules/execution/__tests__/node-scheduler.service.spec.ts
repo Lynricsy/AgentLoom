@@ -10,6 +10,7 @@ import { EventBridgeService } from '../services/event-bridge.service';
 import { AGENT_TASK_QUEUE, type InterventionResolution } from '../execution.constants';
 import {
   AgentExecutionException,
+  InvalidStepTransitionException,
   InterventionNotAllowedException,
   NodeInputResolutionException,
 } from '../execution.exceptions';
@@ -20,6 +21,7 @@ import type { DagExecutionPlan } from '../dag-resolver.service';
 
 const EXECUTION_ID = '019577a0-0000-7000-8000-000000000001';
 const TENANT_ID = '019577a0-0000-7000-8000-000000000099';
+const USER_ID = '019577a0-0000-7000-8000-000000000100';
 const NOW = new Date('2025-01-01T00:00:00Z');
 
 function makeStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
@@ -98,9 +100,12 @@ function makePlan(
 }
 
 function createSelectChain(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const whereResult = Object.assign(Promise.resolve(result), { limit });
+
   return {
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(result),
+      where: vi.fn().mockReturnValue(whereResult),
     }),
   };
 }
@@ -791,6 +796,7 @@ describe('NodeSchedulerService', () => {
     const SESSION_ID = 'session-abc-123';
 
     it('会校验 waiting_intervention 并把结构化 resolution 入队', async () => {
+      const requestedAt = '2024-12-31T23:59:00.000Z';
       const step = makeStep({
         id: STEP_ID,
         status: 'waiting_intervention',
@@ -800,6 +806,8 @@ describe('NodeSchedulerService', () => {
           sessionId: SESSION_ID,
           partialContent: '之前的内容',
           stopReason: 'intervention_required',
+          interventionRequestedAt: requestedAt,
+          interventionNodeName: '人工审核节点',
         },
       });
       const resolution: InterventionResolution = {
@@ -810,7 +818,39 @@ describe('NodeSchedulerService', () => {
 
       db.select.mockReturnValueOnce(createSelectChain([step]));
 
-      await service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, resolution);
+      await service.resolveIntervention(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        USER_ID,
+        resolution,
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'running',
+        {
+          checkpointData: {
+            sessionId: SESSION_ID,
+            partialContent: '之前的内容',
+            stopReason: 'intervention_required',
+            interventionRequestedAt: requestedAt,
+            interventionNodeName: '人工审核节点',
+            intervention: {
+              requested_at: requestedAt,
+              resolved_at: NOW.toISOString(),
+              action: 'modify',
+              instruction: '人工修订后的内容',
+              resolved_by_user_id: USER_ID,
+            },
+          },
+        },
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
 
       expect(mockEventBridge.emitInterventionResolved).toHaveBeenCalledWith(
         TENANT_ID,
@@ -820,6 +860,8 @@ describe('NodeSchedulerService', () => {
           nodeId: step.nodeId,
           action: 'modify',
           feedback: '请按这个版本提交',
+          resolvedBy: USER_ID,
+          resolvedAt: NOW.toISOString(),
         },
       );
       expect(mockQueue.getJob).toHaveBeenCalledWith(`intervention-timeout:${STEP_ID}`);
@@ -830,8 +872,49 @@ describe('NodeSchedulerService', () => {
         input: { upstream: { draft: '初稿' } },
         nodeData: { agentId: 'agent-001', autonomyMode: 'LLM_SUGGEST' },
         resumeSessionId: SESSION_ID,
-        intervention: resolution,
+        intervention: {
+          ...resolution,
+          requestedAt,
+          resolvedAt: NOW.toISOString(),
+          resolvedByUserId: USER_ID,
+          nodeName: '人工审核节点',
+        },
       });
+    });
+
+    it('抢占失败时抛出 InterventionNotAllowedException，避免重复解决', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          interventionRequestedAt: '2024-12-31T23:59:00.000Z',
+        },
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([step]))
+        .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
+      mockStateMachine.updateStepStatus.mockRejectedValueOnce(
+        new InvalidStepTransitionException(
+          STEP_ID,
+          'waiting_intervention',
+          'running',
+        ),
+      );
+
+      await expect(
+        service.resolveIntervention(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+          USER_ID,
+          { action: 'approve' },
+        ),
+      ).rejects.toThrow(InterventionNotAllowedException);
+
+      expect(mockEventBridge.emitInterventionResolved).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
     it('状态非法时抛出 InterventionNotAllowedException', async () => {
@@ -840,9 +923,15 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, {
-          action: 'approve',
-        }),
+        service.resolveIntervention(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+          USER_ID,
+          {
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(InterventionNotAllowedException);
     });
 
@@ -854,9 +943,15 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, {
-          action: 'approve',
-        }),
+        service.resolveIntervention(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+          USER_ID,
+          {
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(AgentExecutionException);
     });
 
@@ -873,9 +968,15 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, {
-          action: 'approve',
-        }),
+        service.resolveIntervention(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+          USER_ID,
+          {
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
@@ -912,13 +1013,22 @@ describe('NodeSchedulerService', () => {
       const step = makeStep({
         id: '019391d4-0000-7000-0000-000000000099',
         status: 'waiting_intervention',
-        checkpointData: { sessionId: 'session-abc-123' },
+        checkpointData: {
+          sessionId: 'session-abc-123',
+          interventionRequestedAt: '2025-01-01T00:00:00.000Z',
+        },
       });
       db.select.mockReturnValueOnce(createSelectChain([step]));
 
-      await service.resolveIntervention(EXECUTION_ID, '019391d4-0000-7000-0000-000000000099', TENANT_ID, {
-        action: 'approve',
-      });
+      await service.resolveIntervention(
+        EXECUTION_ID,
+        '019391d4-0000-7000-0000-000000000099',
+        TENANT_ID,
+        USER_ID,
+        {
+          action: 'approve',
+        },
+      );
 
       expect(mockQueue.getJob).toHaveBeenCalledWith('intervention-timeout:019391d4-0000-7000-0000-000000000099');
       expect(mockJob.remove).toHaveBeenCalled();

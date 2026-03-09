@@ -41,7 +41,8 @@ WorkflowCanvasPage.tsx
     │   ├── ConnectionStateOverlay.tsx (连接状态覆盖层)
     │   └── NodeInfoOverlay.tsx
     ├── panels/
-│   ├── NodeConfigPanel.tsx (节点配置 + 实时输出)
+    │   ├── NodeConfigPanel.tsx (节点配置 + 实时输出)
+    │   ├── InterventionPanel.tsx (人工介入面板)
     │   ├── FieldMappingPanel.tsx (字段映射)
     │   ├── KnowledgeBasePanel.tsx
     │   ├── McpPanel.tsx
@@ -78,4 +79,5 @@ WorkflowCanvasPage.tsx
 - `canvasStore` 自动清理：删除 edge 时同步清理 binding mapping
 - `CanvasNode` 使用 `React.memo` 避免重渲染
 - SmartEdge 有粒子动画效果
+- `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动
 - 端口兼容性检查在拖拽连线时实时触发

@@ -33,6 +33,7 @@ const versionToolbarMock = vi.fn()
 const versionHistoryPanelMock = vi.fn()
 const useExecutionMonitorMock = vi.fn()
 const startExecutionMock = vi.fn()
+const submitInterventionMock = vi.fn()
 
 let mockAuthToken: string | undefined
 let mockExecutionId: string | null = null
@@ -73,6 +74,9 @@ vi.mock('@/features/execution/stores/executionStore', () => ({
   useIsExecutionActive: () => mockIsExecutionActive,
   useNodeExecutionState: () => null,
   useNodeIntervention: () => null,
+  useExecutionActions: () => ({
+    submitIntervention: submitInterventionMock,
+  }),
 }))
 
 vi.mock('./NodePalette', () => ({

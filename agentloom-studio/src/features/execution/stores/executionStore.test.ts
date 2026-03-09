@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useExecutionStore, type NodeExecutionState } from './executionStore'
+import { resolveIntervention } from '../api/executionApi'
 import type {
   ExecutionEvent,
   ExecutionStateSnapshot,
@@ -10,6 +11,10 @@ import type {
   StepRetryingPayload,
   StepStatusChangedPayload,
 } from '../types'
+
+vi.mock('../api/executionApi', () => ({
+  resolveIntervention: vi.fn(),
+}))
 
 /** 从 store 获取节点状态，不存在则抛出（仅测试用） */
 function getNode(nodeId: string): NodeExecutionState {
@@ -299,6 +304,59 @@ describe('executionStore', () => {
       expect(getNode('node-r1').output).toBe('Agent response text')
     })
 
+    it('restores output from step.result.content string', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap-content',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-content',
+            nodeId: 'node-content',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: '2025-01-01T00:01:00Z',
+            result: { content: '服务端真实输出', stopReason: 'end_turn' },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-content').output).toBe('服务端真实输出')
+    })
+
+    it('restores structured output from step.result.content as formatted JSON', () => {
+      const { actions } = useExecutionStore.getState()
+      const content = { summary: '结构化输出', score: 0.98 }
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap-content-object',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-content-object',
+            nodeId: 'node-content-object',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: '2025-01-01T00:01:00Z',
+            result: { content },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-content-object').output).toBe(
+        JSON.stringify(content, null, 2),
+      )
+    })
+
     it('restores output as JSON.stringify when result has no output key', () => {
       const { actions } = useExecutionStore.getState()
       const resultObj = { answer: 42, model: 'gpt-4' }
@@ -366,6 +424,89 @@ describe('executionStore', () => {
 
       expect(useExecutionStore.getState().nodes['node-1']).toBeUndefined()
     })
+
+    it('restores intervention data from waiting_intervention checkpointData', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-intervention',
+        status: 'paused',
+        completedSteps: 0,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-i1',
+            nodeId: 'node-i1',
+            status: 'waiting_intervention',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: null,
+            checkpointData: {
+              partialContent: '待人工确认的内容',
+              interventionRequestedAt: '2025-01-01T00:00:30Z',
+              interventionNodeName: '人工审核节点',
+              decision: {
+                suggestedContent: '建议版本',
+                confidence: 0.9,
+                rationale: '风险较高，需要确认',
+              },
+            },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-i1').intervention).toEqual({
+        nodeName: '人工审核节点',
+        requestedAt: '2025-01-01T00:00:30Z',
+        partialContent: '待人工确认的内容',
+        decision: {
+          suggestedContent: '建议版本',
+          confidence: 0.9,
+          rationale: '风险较高，需要确认',
+        },
+      })
+    })
+
+    it('restores structured suggestedContent from waiting_intervention checkpointData', () => {
+      const { actions } = useExecutionStore.getState()
+      const suggestedContent = { summary: '结构化建议', channels: ['email'] }
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-intervention-structured',
+        status: 'paused',
+        completedSteps: 0,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-i2',
+            nodeId: 'node-i2',
+            status: 'waiting_intervention',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: null,
+            checkpointData: {
+              interventionRequestedAt: '2025-01-01T00:00:30Z',
+              interventionNodeName: '结构化审核节点',
+              decision: {
+                suggestedContent,
+                confidence: 0.88,
+              },
+            },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-i2').intervention).toEqual({
+        nodeName: '结构化审核节点',
+        requestedAt: '2025-01-01T00:00:30Z',
+        decision: {
+          suggestedContent,
+          confidence: 0.88,
+        },
+      })
+    })
   })
 
   describe('recentEvents', () => {
@@ -412,24 +553,29 @@ describe('executionStore', () => {
           data: {
             stepId: 'step-1',
             nodeId: 'node-1',
+            nodeName: '人工审核节点',
             decision: {
               suggestedContent: 'AI 建议内容',
               confidence: 0.92,
               rationale: '基于分析结果',
             },
             partialContent: '部分输出',
+            requestedAt: '2025-01-01T00:00:30Z',
           },
         }),
       )
 
       const node = getNode('node-1')
       expect(node.intervention).toEqual({
+        nodeName: '人工审核节点',
+        requestedAt: '2025-01-01T00:00:30Z',
         decision: {
           suggestedContent: 'AI 建议内容',
           confidence: 0.92,
           rationale: '基于分析结果',
         },
         partialContent: '部分输出',
+        submitting: false,
       })
     })
 
@@ -442,13 +588,66 @@ describe('executionStore', () => {
           data: {
             stepId: 'step-new',
             nodeId: 'node-new',
+            nodeName: 'node-new',
+            requestedAt: '2025-01-01T00:00:30Z',
           },
         }),
       )
 
       const node = getNode('node-new')
       expect(node.stepId).toBe('step-new')
-      expect(node.intervention).toEqual({})
+      expect(node.intervention).toEqual({
+        nodeName: 'node-new',
+        requestedAt: '2025-01-01T00:00:30Z',
+        submitting: false,
+      })
+    })
+  })
+
+  describe('submitIntervention', () => {
+    it('calls API and manages submitting state', async () => {
+      let resolveRequest: (() => void) | undefined
+      const pendingRequest = new Promise<void>((resolve) => {
+        resolveRequest = resolve
+      })
+      vi.mocked(resolveIntervention).mockReturnValueOnce(
+        pendingRequest.then(() => ({
+          data: {
+            executionId: 'exec-1',
+            stepId: 'step-1',
+            status: 'intervention_accepted',
+          },
+        })),
+      )
+
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(makeStepStatusEvent({ to: 'waiting_intervention' }))
+      actions.setNodeIntervention(
+        makeEvent<InterventionRequiredPayload>({
+          event: 'execution.node.intervention-required',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            nodeName: '人工审核节点',
+            requestedAt: '2025-01-01T00:00:30Z',
+          },
+        }),
+      )
+
+      const request = actions.submitIntervention('exec-1', 'step-1', {
+        action: 'approve',
+      })
+
+      expect(getNode('node-1').intervention?.submitting).toBe(true)
+
+      resolveRequest?.()
+      await request
+
+      expect(resolveIntervention).toHaveBeenCalledWith('exec-1', 'step-1', {
+        action: 'approve',
+      })
+      expect(getNode('node-1').intervention?.submitting).toBe(false)
     })
   })
 
@@ -463,7 +662,9 @@ describe('executionStore', () => {
           data: {
             stepId: 'step-1',
             nodeId: 'node-1',
+            nodeName: '人工审核节点',
             decision: { suggestedContent: 'test' },
+            requestedAt: '2025-01-01T00:00:30Z',
           },
         }),
       )
@@ -477,6 +678,8 @@ describe('executionStore', () => {
             stepId: 'step-1',
             nodeId: 'node-1',
             action: 'approve',
+            resolvedBy: 'user-1',
+            resolvedAt: '2025-01-01T00:01:00Z',
           },
         }),
       )

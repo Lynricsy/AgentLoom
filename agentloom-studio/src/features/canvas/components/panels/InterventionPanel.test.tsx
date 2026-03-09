@@ -27,6 +27,9 @@ vi.mock('@/features/execution/stores/executionStore', () => ({
   useNodeIntervention: () => mocks.intervention,
   useNodeExecutionState: () => mocks.nodeState,
   useExecutionId: () => mocks.executionId,
+  useExecutionActions: () => ({
+    submitIntervention: (...args: unknown[]) => mocks.resolveIntervention(...args),
+  }),
 }))
 
 vi.mock('@/features/execution/api/executionApi', () => ({

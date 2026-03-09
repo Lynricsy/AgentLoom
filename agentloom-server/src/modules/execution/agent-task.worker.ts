@@ -19,10 +19,18 @@ import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { ThrottleService } from './services/throttle.service';
 import { EventBridgeService } from './services/event-bridge.service';
-import { AgentExecutionException } from './execution.exceptions';
-import type { InterventionRequiredPayload } from './types/execution-event.types';
+import {
+  AgentExecutionException,
+  InterventionNotAllowedException,
+} from './execution.exceptions';
+import type {
+  InterventionCheckpointRecord,
+  InterventionDecision,
+  InterventionRequiredPayload,
+} from './types/execution-event.types';
 import {
   AGENT_TASK_QUEUE,
+  SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
 } from './execution.constants';
@@ -118,10 +126,6 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
 
     try {
-      await this.withTenantContext(tenantId, async () => {
-        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running');
-      });
-
       if (intervention) {
         await this.withTenantContext(tenantId, async () => {
           await this.handleIntervention({
@@ -134,6 +138,10 @@ export class AgentTaskWorker extends WorkerHost {
         });
         return;
       }
+
+      await this.withTenantContext(tenantId, async () => {
+        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running');
+      });
 
       if (!sessionId) {
         const session = await runtime.createSession({
@@ -186,6 +194,8 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       if (lastStopReason === 'intervention_required') {
+        const requestedAt = new Date().toISOString();
+        const nodeName = this.resolveNodeName(step);
         await this.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
             tenantId,
@@ -196,6 +206,8 @@ export class AgentTaskWorker extends WorkerHost {
                 sessionId,
                 partialContent: accumulatedContent,
                 stopReason: lastStopReason,
+                interventionRequestedAt: requestedAt,
+                interventionNodeName: nodeName,
                 ...(decision ? { decision } : {}),
               },
               result: {
@@ -210,8 +222,10 @@ export class AgentTaskWorker extends WorkerHost {
         this.eventBridge.emitInterventionRequired(tenantId, executionId, {
           stepId,
           nodeId: step.nodeId,
+          nodeName,
           ...(decision ? { decision: decision as InterventionRequiredPayload['decision'] } : {}),
           ...(accumulatedContent ? { partialContent: accumulatedContent } : {}),
+          requestedAt,
         });
         await this.nodeScheduler.enqueueInterventionTimeout(executionId, stepId, tenantId);
         this.logger.log(`Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`);
@@ -322,6 +336,10 @@ export class AgentTaskWorker extends WorkerHost {
   }): Promise<void> {
     const { executionId, stepId, tenantId, step, intervention } = params;
     const checkpointData = (step.checkpointData ?? {}) as Record<string, unknown>;
+    const interventionRecord = this.resolveInterventionRecord(
+      checkpointData,
+      intervention,
+    );
     const resolvedContent = this.resolveInterventionContent(
       intervention,
       checkpointData,
@@ -334,7 +352,7 @@ export class AgentTaskWorker extends WorkerHost {
         },
         checkpointData: {
           ...checkpointData,
-          intervention,
+          intervention: interventionRecord,
         },
       });
       await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
@@ -366,16 +384,56 @@ export class AgentTaskWorker extends WorkerHost {
       result,
       checkpointData: {
         ...checkpointData,
-        intervention,
+        intervention: interventionRecord,
       },
     });
     await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
   }
 
+  private resolveInterventionRecord(
+    checkpointData: Record<string, unknown>,
+    intervention: InterventionResolution,
+  ): InterventionCheckpointRecord {
+    const existing = checkpointData.intervention;
+    if (
+      existing &&
+      typeof existing === 'object' &&
+      typeof (existing as { requested_at?: unknown }).requested_at === 'string' &&
+      typeof (existing as { resolved_at?: unknown }).resolved_at === 'string' &&
+      typeof (existing as { action?: unknown }).action === 'string' &&
+      typeof (existing as { resolved_by_user_id?: unknown }).resolved_by_user_id ===
+        'string'
+    ) {
+      return {
+        ...(existing as InterventionCheckpointRecord),
+        ...(intervention.timeout ? { timeout: true } : {}),
+      };
+    }
+
+    const requestedAt =
+      intervention.requestedAt ??
+      (typeof checkpointData.interventionRequestedAt === 'string'
+        ? checkpointData.interventionRequestedAt
+        : new Date().toISOString());
+    const resolvedAt = intervention.resolvedAt ?? new Date().toISOString();
+    const instruction =
+      intervention.modifiedContent ?? intervention.feedback ?? null;
+
+    return {
+      requested_at: requestedAt,
+      resolved_at: resolvedAt,
+      action: intervention.action,
+      instruction,
+      resolved_by_user_id:
+        intervention.resolvedByUserId ?? SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+      ...(intervention.timeout ? { timeout: true } : {}),
+    };
+  }
+
   private resolveInterventionContent(
     intervention: InterventionResolution,
     checkpointData: Record<string, unknown>,
-  ): string {
+  ): unknown {
     if (intervention.action === 'modify') {
       return intervention.modifiedContent ?? '';
     }
@@ -384,8 +442,7 @@ export class AgentTaskWorker extends WorkerHost {
     if (
       decision &&
       typeof decision === 'object' &&
-      'suggestedContent' in decision &&
-      typeof decision.suggestedContent === 'string'
+      'suggestedContent' in decision
     ) {
       return decision.suggestedContent;
     }
@@ -400,6 +457,15 @@ export class AgentTaskWorker extends WorkerHost {
 
   private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
     return [{ type: 'text', text: JSON.stringify(input) }];
+  }
+
+  private resolveNodeName(step: typeof schema.executionSteps.$inferSelect): string {
+    const nodeData = step.nodeData as Record<string, unknown> | null;
+    if (nodeData && typeof nodeData.label === 'string' && nodeData.label.trim()) {
+      return nodeData.label.trim();
+    }
+
+    return step.nodeId;
   }
 
   private async handleInterventionTimeout(job: Job<AgentTaskJobData>): Promise<void> {
@@ -418,12 +484,30 @@ export class AgentTaskWorker extends WorkerHost {
       return;
     }
 
-    await this.withTenantContext(tenantId, () =>
-      this.nodeScheduler.resolveIntervention(executionId, stepId, tenantId, {
-        action: 'reject',
-        feedback: '干预超时，系统自动拒绝',
-      }),
-    );
+    try {
+      await this.withTenantContext(tenantId, () =>
+        this.nodeScheduler.resolveIntervention(
+          executionId,
+          stepId,
+          tenantId,
+          SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+          {
+            action: 'reject',
+            feedback: '干预超时，系统自动拒绝',
+            timeout: true,
+          },
+        ),
+      );
+    } catch (error) {
+      if (error instanceof InterventionNotAllowedException) {
+        this.logger.warn(
+          `Intervention timeout skipped because step already resumed: ${JSON.stringify({ executionId, stepId })}`,
+        );
+        return;
+      }
+
+      throw error;
+    }
     this.logger.log(`Intervention timeout auto-rejected: ${JSON.stringify({ executionId, stepId })}`);
   }
 

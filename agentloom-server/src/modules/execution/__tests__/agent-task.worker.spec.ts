@@ -48,6 +48,22 @@ const STEP_ID = '019391d4-d000-7000-0000-000000000002';
 const TENANT_ID = 'tenant-001';
 const SESSION_ID = 'session-001';
 const AGENT_ID = 'agent-001';
+const REQUESTED_AT = '2025-01-01T00:00:00.000Z';
+const RESOLVED_AT = '2025-01-01T00:05:00.000Z';
+const RESOLVED_BY_USER_ID = 'user-operator-001';
+
+function makeInterventionAudit(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    requested_at: REQUESTED_AT,
+    resolved_at: RESOLVED_AT,
+    action: 'approve',
+    instruction: '批准发布',
+    resolved_by_user_id: RESOLVED_BY_USER_ID,
+    ...overrides,
+  };
+}
 
 function createMockJob(
   overrides: Partial<Job<AgentTaskJobData>> = {},
@@ -289,11 +305,13 @@ describe('AgentTaskWorker', () => {
         TENANT_ID,
         STEP_ID,
         'waiting_intervention',
-        {
+        expect.objectContaining({
           checkpointData: {
             sessionId: SESSION_ID,
             partialContent: '建议给主人展示摘要',
             stopReason: 'intervention_required',
+            interventionRequestedAt: expect.any(String),
+            interventionNodeName: 'node-1',
             decision: {
               suggestedContent: '建议给主人展示摘要',
               confidence: 0.8,
@@ -307,7 +325,7 @@ describe('AgentTaskWorker', () => {
               confidence: 0.8,
             },
           },
-        },
+        }),
       );
       expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -319,11 +337,13 @@ describe('AgentTaskWorker', () => {
         {
           stepId: STEP_ID,
           nodeId: 'node-1',
+          nodeName: 'node-1',
           decision: {
             suggestedContent: '建议给主人展示摘要',
             confidence: 0.8,
           },
           partialContent: '建议给主人展示摘要',
+          requestedAt: expect.any(String),
         },
       );
       expect(mockNodeScheduler.enqueueInterventionTimeout).toHaveBeenCalledWith(
@@ -508,12 +528,18 @@ describe('AgentTaskWorker', () => {
           sessionId: SESSION_ID,
           partialContent: '草稿',
           stopReason: 'intervention_required',
+          interventionRequestedAt: REQUESTED_AT,
+          interventionNodeName: 'node-1',
           decision: { suggestedContent: '建议稿', confidence: 0.9 },
+          intervention: makeInterventionAudit(),
         },
       });
       const intervention: InterventionResolution = {
         action: 'approve',
         feedback: '批准发布',
+        requestedAt: REQUESTED_AT,
+        resolvedAt: RESOLVED_AT,
+        resolvedByUserId: RESOLVED_BY_USER_ID,
       };
 
       mockDb.select.mockReturnValue(createSelectChain(step));
@@ -539,7 +565,10 @@ describe('AgentTaskWorker', () => {
         {
           result: {
             content: '建议稿',
-            intervention,
+            intervention: {
+              action: 'approve',
+              feedback: '批准发布',
+            },
             stopReason: 'intervention_required',
             decision: { suggestedContent: '建议稿', confidence: 0.9 },
           },
@@ -547,8 +576,10 @@ describe('AgentTaskWorker', () => {
             sessionId: SESSION_ID,
             partialContent: '草稿',
             stopReason: 'intervention_required',
+            interventionRequestedAt: REQUESTED_AT,
+            interventionNodeName: 'node-1',
             decision: { suggestedContent: '建议稿', confidence: 0.9 },
-            intervention,
+            intervention: makeInterventionAudit(),
           },
         },
       );
@@ -559,6 +590,52 @@ describe('AgentTaskWorker', () => {
       );
     });
 
+    it('approve 干预会保留结构化 suggestedContent 作为最终输出', async () => {
+      const structuredSuggestion = { summary: '建议稿', tags: ['safe', 'reviewed'] };
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          partialContent: '草稿',
+          stopReason: 'intervention_required',
+          interventionRequestedAt: REQUESTED_AT,
+          interventionNodeName: 'node-1',
+          decision: { suggestedContent: structuredSuggestion, confidence: 0.9 },
+          intervention: makeInterventionAudit(),
+        },
+      });
+
+      mockDb.select.mockReturnValue(createSelectChain(step));
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            resumeSessionId: SESSION_ID,
+            intervention: {
+              action: 'approve',
+              requestedAt: REQUESTED_AT,
+              resolvedAt: RESOLVED_AT,
+              resolvedByUserId: RESOLVED_BY_USER_ID,
+            },
+          },
+        }),
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            content: structuredSuggestion,
+          }),
+        }),
+      );
+    });
+
     it('modify 干预会优先使用 modifiedContent 作为最终输出', async () => {
       const step = makeStep({
         status: 'waiting_intervention',
@@ -566,12 +643,21 @@ describe('AgentTaskWorker', () => {
           sessionId: SESSION_ID,
           partialContent: '草稿',
           stopReason: 'intervention_required',
+          interventionRequestedAt: REQUESTED_AT,
+          interventionNodeName: 'node-1',
           decision: { suggestedContent: '建议稿' },
+          intervention: makeInterventionAudit({
+            action: 'modify',
+            instruction: '人工改写后的版本',
+          }),
         },
       });
       const intervention: InterventionResolution = {
         action: 'modify',
         modifiedContent: '人工改写后的版本',
+        requestedAt: REQUESTED_AT,
+        resolvedAt: RESOLVED_AT,
+        resolvedByUserId: RESOLVED_BY_USER_ID,
       };
 
       mockDb.select.mockReturnValue(createSelectChain(step));
@@ -595,7 +681,16 @@ describe('AgentTaskWorker', () => {
         expect.objectContaining({
           result: expect.objectContaining({
             content: '人工改写后的版本',
-            intervention,
+            intervention: {
+              action: 'modify',
+              modifiedContent: '人工改写后的版本',
+            },
+          }),
+          checkpointData: expect.objectContaining({
+            intervention: makeInterventionAudit({
+              action: 'modify',
+              instruction: '人工改写后的版本',
+            }),
           }),
         }),
       );
@@ -607,11 +702,20 @@ describe('AgentTaskWorker', () => {
         checkpointData: {
           sessionId: SESSION_ID,
           partialContent: '草稿',
+          interventionRequestedAt: REQUESTED_AT,
+          interventionNodeName: 'node-1',
+          intervention: makeInterventionAudit({
+            action: 'reject',
+            instruction: '内容不符合要求',
+          }),
         },
       });
       const intervention: InterventionResolution = {
         action: 'reject',
         feedback: '内容不符合要求',
+        requestedAt: REQUESTED_AT,
+        resolvedAt: RESOLVED_AT,
+        resolvedByUserId: RESOLVED_BY_USER_ID,
       };
 
       mockDb.select.mockReturnValue(createSelectChain(step));
@@ -639,7 +743,12 @@ describe('AgentTaskWorker', () => {
           checkpointData: {
             sessionId: SESSION_ID,
             partialContent: '草稿',
-            intervention,
+            interventionRequestedAt: REQUESTED_AT,
+            interventionNodeName: 'node-1',
+            intervention: makeInterventionAudit({
+              action: 'reject',
+              instruction: '内容不符合要求',
+            }),
           },
         },
       );
@@ -672,9 +781,11 @@ describe('AgentTaskWorker', () => {
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
+        'system_timeout',
         {
           action: 'reject',
           feedback: '干预超时，系统自动拒绝',
+          timeout: true,
         },
       );
     });

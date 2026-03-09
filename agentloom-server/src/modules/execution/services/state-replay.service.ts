@@ -60,6 +60,7 @@ export class StateReplayService {
         completedAt: schema.executionSteps.completedAt,
         errorMessage: schema.executionSteps.errorMessage,
         result: schema.executionSteps.result,
+        checkpointData: schema.executionSteps.checkpointData,
       })
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.executionId, executionId));
@@ -86,6 +87,7 @@ export class StateReplayService {
               }
             : {}),
           result: step.result ?? null,
+          checkpointData: step.checkpointData ?? null,
         }),
       ),
       snapshotAt: new Date().toISOString(),

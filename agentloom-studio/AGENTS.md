@@ -64,13 +64,16 @@ src/
   - `executionKeys`: TanStack Query key factory (all/lists/details)
   - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
   - `executionMutations`: `useRunWorkflow`, `useCancelExecution` (TanStack mutations + cache)
+- **executionStore** (`features/execution/stores/executionStore.ts`): 维护 `executionId/status/nodes/recentEvents`，并在 `waiting_intervention` 时缓存 `nodeName/requestedAt/decision(partial/structured suggestedContent)/partialContent/submitting`
+- **提交动作**: `submitIntervention(executionId, stepId, payload)` 由 store 统一调用执行 API，并负责切换 `intervention.submitting`，让组件层只处理视图与错误呈现
+- **快照恢复**: `applySnapshot()` 会优先读取 `step.result.content` 恢复输出，并从 `step.checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` 恢复人工介入面板状态
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流
-- **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。展示 AI 决策建议(confidence/rationale)和部分内容预览
+- **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。组件通过 `useExecutionActions().submitIntervention()` 提交动作，展示 AI 决策建议(confidence/rationale)、部分内容预览以及请求时间上下文，并会把结构化建议内容格式化为可读文本
 
 ## 样式
 

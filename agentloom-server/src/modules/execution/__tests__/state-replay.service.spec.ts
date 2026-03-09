@@ -30,6 +30,8 @@ const makeStep = (id: string, nodeId: string, overrides = {}) => ({
   startedAt: new Date('2025-01-01T00:00:00Z'),
   completedAt: new Date('2025-01-01T00:01:00Z'),
   errorMessage: null,
+  result: null,
+  checkpointData: null,
   ...overrides,
 });
 
@@ -161,6 +163,24 @@ describe('StateReplayService', () => {
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0].result).toEqual(result);
+  });
+
+  it('should include checkpointData in step snapshot when present', async () => {
+    const checkpointData = {
+      sessionId: 'session-1',
+      interventionRequestedAt: '2025-01-01T00:00:30.000Z',
+      interventionNodeName: '人工审核节点',
+    };
+    mockDb.select
+      .mockReturnValueOnce(createSelectChain([makeExecution()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          makeStep('step-1', 'node-a', { checkpointData }),
+        ]),
+      );
+
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
+    expect(snapshot!.steps[0].checkpointData).toEqual(checkpointData);
   });
 
   it('should set result to null when step has no result', async () => {

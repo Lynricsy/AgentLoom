@@ -147,12 +147,14 @@ export class ExecutionController {
     @Param('stepId', ParseUUIDPipe) stepId: string,
     @Body() dto: InterveneStepDto,
     @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
   ) {
     const resolution = interveneStepSchema.parse(dto);
     await this.nodeScheduler.resolveIntervention(
       executionId,
       stepId,
       tenantId,
+      userId,
       resolution,
     );
     return { data: { executionId, stepId, status: 'intervention_accepted' } };

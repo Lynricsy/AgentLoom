@@ -18,13 +18,19 @@ export const AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS = {
 } as const;
 
 export const INTERVENTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+export const SYSTEM_TIMEOUT_INTERVENTION_USER_ID = 'system_timeout';
 
 export type InterventionAction = 'approve' | 'modify' | 'reject';
 
 export interface InterventionResolution {
   action: InterventionAction;
   feedback?: string;
-  modifiedContent?: string;
+  modifiedContent?: unknown;
+  requestedAt?: string;
+  resolvedAt?: string;
+  resolvedByUserId?: string;
+  timeout?: boolean;
+  nodeName?: string;
 }
 
 /**

@@ -260,6 +260,7 @@ describe('ExecutionController', () => {
         STEP_ID,
         resolution,
         TENANT_ID,
+        USER_ID,
       );
 
       expect(result).toEqual({
@@ -273,6 +274,7 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
+        USER_ID,
         resolution,
       );
     });

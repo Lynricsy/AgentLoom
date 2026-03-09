@@ -64,15 +64,28 @@ export interface OutputChunkPayload {
   index: number
 }
 
+export interface InterventionDecision {
+  suggestedContent?: unknown
+  confidence?: number
+  rationale?: string
+}
+
+export interface InterventionCheckpointRecord {
+  requested_at: string
+  resolved_at: string
+  action: 'approve' | 'modify' | 'reject'
+  instruction: unknown | null
+  resolved_by_user_id: string
+  timeout?: boolean
+}
+
 export interface InterventionRequiredPayload {
   stepId: string
   nodeId: string
-  decision?: {
-    suggestedContent?: string
-    confidence?: number
-    rationale?: string
-  }
+  nodeName: string
+  decision?: InterventionDecision
   partialContent?: string
+  requestedAt: string
 }
 
 export interface InterventionResolvedPayload {
@@ -80,6 +93,9 @@ export interface InterventionResolvedPayload {
   nodeId: string
   action: 'approve' | 'modify' | 'reject'
   feedback?: string
+  resolvedBy: string
+  resolvedAt: string
+  timeout?: boolean
 }
 
 export interface ExecutionEvent<T = unknown> {
@@ -99,6 +115,7 @@ export interface StepSnapshot {
   completedAt: string | null
   errorMessage?: string
   result?: Record<string, unknown> | null
+  checkpointData?: Record<string, unknown> | null
 }
 
 export interface ExecutionStateSnapshot {

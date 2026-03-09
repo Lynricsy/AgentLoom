@@ -80,11 +80,13 @@ HTTP POST /executions
 ## 人工介入系统 (Story 5-6) ✅
 
 - **事件**: `EventBridgeService` 新增 `emitInterventionRequired()` + `emitInterventionResolved()`，走统一信封 + broadcast 管线
-- **触发**: `AgentTaskWorker` 处理 `intervention_required` stopReason → `updateStepStatus('waiting_intervention')` → `emitInterventionRequired()` → `enqueueInterventionTimeout()`
-- **解决**: `NodeSchedulerService.resolveIntervention()` → `emitInterventionResolved()` → `removeInterventionTimeout()` → 入队后续 agent-task 任务
-- **超时**: 24h 延迟 BullMQ 任务 (`intervention-timeout:{stepId}`)，到期后 `AgentTaskWorker.handleInterventionTimeout()` 检查 step 是否仍为 `waiting_intervention`，若是则自动以 `reject` 动作解决
+- **触发**: `AgentTaskWorker` 处理 `intervention_required` stopReason → `updateStepStatus('waiting_intervention')` → 写入 `checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` → `emitInterventionRequired()` → `enqueueInterventionTimeout()`
+- **解决**: `NodeSchedulerService.resolveIntervention()` 现在接收 `userId`，先通过 `StepStateMachineService.updateStepStatus(tenantId, stepId, 'running', ...)` 原子抢占 `waiting_intervention -> running` 并写入 `checkpointData.intervention { requested_at, resolved_at, action, instruction, resolved_by_user_id, timeout? }`，再 `updateExecutionStatus()`、`emitInterventionResolved()`、`removeInterventionTimeout()` 并入队后续 `agent-task`
+- **超时**: 24h 延迟 BullMQ 任务 (`intervention-timeout:{stepId}`)，到期后 `AgentTaskWorker.handleInterventionTimeout()` 检查 step 是否仍为 `waiting_intervention`；若是则以 `resolved_by_user_id = 'system_timeout'`、`timeout: true` 自动 `reject`
 - **API**: `POST /executions/:executionId/steps/:stepId/intervene` (202 Accepted)，Body: `{ action: 'approve'|'modify'|'reject', feedback?, modifiedContent? }`
-- **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, decision?, partialContent? }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback? }`
+- **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, nodeName, decision?, partialContent?, requestedAt }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback?, resolvedBy, resolvedAt, timeout? }`
+- **结构化内容**: `decision.suggestedContent`、`modifiedContent` 和审计 `instruction` 均允许 `unknown`，worker 会保留结构化内容并在 snapshot/output 恢复时继续透传
+- **快照恢复**: `StateReplayService.getExecutionSnapshot()` 现包含 `step.checkpointData`，所以订阅 ACK / 重连快照即可恢复 `waiting_intervention` 面板，无需只依赖 event replay
 
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 

@@ -46,15 +46,28 @@ export interface OutputChunkPayload {
   readonly index: number;
 }
 
+export interface InterventionDecision {
+  readonly suggestedContent?: unknown;
+  readonly confidence?: number;
+  readonly rationale?: string;
+}
+
+export interface InterventionCheckpointRecord {
+  readonly requested_at: string;
+  readonly resolved_at: string;
+  readonly action: 'approve' | 'modify' | 'reject';
+  readonly instruction: unknown | null;
+  readonly resolved_by_user_id: string;
+  readonly timeout?: boolean;
+}
+
 export interface InterventionRequiredPayload {
   readonly stepId: string;
   readonly nodeId: string;
-  readonly decision?: {
-    readonly suggestedContent?: string;
-    readonly confidence?: number;
-    readonly rationale?: string;
-  };
+  readonly nodeName: string;
+  readonly decision?: InterventionDecision;
   readonly partialContent?: string;
+  readonly requestedAt: string;
 }
 
 export interface InterventionResolvedPayload {
@@ -62,6 +75,9 @@ export interface InterventionResolvedPayload {
   readonly nodeId: string;
   readonly action: 'approve' | 'modify' | 'reject';
   readonly feedback?: string;
+  readonly resolvedBy: string;
+  readonly resolvedAt: string;
+  readonly timeout?: boolean;
 }
 
 export interface ExecutionEventPayloadMap {
@@ -94,6 +110,7 @@ export interface StepSnapshot {
   readonly completedAt: string | null;
   readonly errorMessage?: string;
   readonly result?: Record<string, unknown> | null;
+  readonly checkpointData?: Record<string, unknown> | null;
 }
 
 export interface ExecutionStateSnapshot {

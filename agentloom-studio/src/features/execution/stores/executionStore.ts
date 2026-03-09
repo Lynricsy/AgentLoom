@@ -2,6 +2,10 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useShallow } from 'zustand/react/shallow'
+import {
+  resolveIntervention,
+  type InterventionResolveRequest,
+} from '../api/executionApi'
 
 import type {
   ExecutionEvent,
@@ -17,12 +21,15 @@ import type {
 } from '../types'
 
 export interface InterventionState {
+  nodeName?: string
+  requestedAt?: string
   decision?: {
-    suggestedContent?: string
+    suggestedContent?: unknown
     confidence?: number
     rationale?: string
   }
   partialContent?: string
+  submitting?: boolean
 }
 
 export interface NodeExecutionState {
@@ -66,6 +73,11 @@ export interface ExecutionStoreActions {
     clearNodeIntervention: (
       event: ExecutionEvent<InterventionResolvedPayload>,
     ) => void
+    submitIntervention: (
+      executionId: string,
+      stepId: string,
+      payload: InterventionResolveRequest,
+    ) => Promise<void>
     applySnapshot: (snapshot: ExecutionStateSnapshot) => void
     initExecution: (executionId: string) => void
     reset: () => void
@@ -109,12 +121,98 @@ function ensureNode(
   return state.nodes[nodeId]
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function formatDisplayValue(value: unknown): string {
+  if (value == null) {
+    return ''
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
+function restoreOutput(result: Record<string, unknown> | null | undefined): string {
+  if (!result || typeof result !== 'object') {
+    return ''
+  }
+
+  if ('content' in result) {
+    return formatDisplayValue(result.content)
+  }
+
+  if (typeof result.output === 'string') {
+    return result.output
+  }
+
+  return JSON.stringify(result)
+}
+
+function restoreIntervention(
+  nodeId: string,
+  checkpointData: Record<string, unknown> | null | undefined,
+): InterventionState | undefined {
+  if (!checkpointData) {
+    return undefined
+  }
+
+  const decision = isRecord(checkpointData.decision)
+    ? {
+        ...('suggestedContent' in checkpointData.decision
+          ? { suggestedContent: checkpointData.decision.suggestedContent }
+          : {}),
+        ...(typeof checkpointData.decision.confidence === 'number'
+          ? { confidence: checkpointData.decision.confidence }
+          : {}),
+        ...(typeof checkpointData.decision.rationale === 'string'
+          ? { rationale: checkpointData.decision.rationale }
+          : {}),
+      }
+    : undefined
+
+  const requestedAt =
+    typeof checkpointData.interventionRequestedAt === 'string'
+      ? checkpointData.interventionRequestedAt
+      : isRecord(checkpointData.intervention) &&
+          typeof checkpointData.intervention.requested_at === 'string'
+        ? checkpointData.intervention.requested_at
+        : undefined
+  const partialContent =
+    typeof checkpointData.partialContent === 'string'
+      ? checkpointData.partialContent
+      : undefined
+  const nodeName =
+    typeof checkpointData.interventionNodeName === 'string'
+      ? checkpointData.interventionNodeName
+      : nodeId
+
+  if (
+    !requestedAt &&
+    !partialContent &&
+    (!decision || Object.keys(decision).length === 0)
+  ) {
+    return undefined
+  }
+
+  return {
+    nodeName,
+    requestedAt,
+    ...(decision && Object.keys(decision).length > 0 ? { decision } : {}),
+    ...(partialContent ? { partialContent } : {}),
+  }
+}
+
 export const useExecutionStore = create<
   ExecutionStoreState & ExecutionStoreActions
 >()(
   devtools(
     subscribeWithSelector(
-      immer((set) => ({
+      immer((set, get) => ({
         ...createInitialState(),
 
         actions: {
@@ -200,8 +298,11 @@ export const useExecutionStore = create<
                 event.data.stepId,
               )
               node.intervention = {
+                nodeName: event.data.nodeName,
+                requestedAt: event.data.requestedAt,
                 decision: event.data.decision,
                 partialContent: event.data.partialContent,
+                submitting: false,
               }
               pushEvent(state, event)
             })
@@ -221,6 +322,38 @@ export const useExecutionStore = create<
             })
           },
 
+          submitIntervention: async (
+            executionId: string,
+            stepId: string,
+            payload: InterventionResolveRequest,
+          ) => {
+            const nodeId = Object.values(get().nodes).find(
+              (node) => node.stepId === stepId,
+            )?.nodeId
+
+            if (nodeId) {
+              set((state) => {
+                const node = state.nodes[nodeId]
+                if (node?.intervention) {
+                  node.intervention.submitting = true
+                }
+              })
+            }
+
+            try {
+              await resolveIntervention(executionId, stepId, payload)
+            } finally {
+              if (nodeId) {
+                set((state) => {
+                  const node = state.nodes[nodeId]
+                  if (node?.intervention) {
+                    node.intervention.submitting = false
+                  }
+                })
+              }
+            }
+          },
+
           applySnapshot: (snapshot: ExecutionStateSnapshot) => {
             set((state) => {
               state.executionId = snapshot.executionId
@@ -230,22 +363,19 @@ export const useExecutionStore = create<
 
               state.nodes = {}
               for (const step of snapshot.steps) {
-                // 从 result 中恢复输出内容（如果存在）
-                const restoredOutput =
-                  step.result && typeof step.result === 'object'
-                    ? (typeof step.result.output === 'string'
-                        ? step.result.output
-                        : JSON.stringify(step.result))
-                    : ''
                 state.nodes[step.nodeId] = {
                   stepId: step.stepId,
                   nodeId: step.nodeId,
                   status: step.status,
-                  output: restoredOutput,
+                  output: restoreOutput(step.result),
                   isStreaming: false,
                   errorMessage: step.errorMessage,
                   startedAt: step.startedAt,
                   completedAt: step.completedAt,
+                  intervention:
+                    step.status === 'waiting_intervention'
+                      ? restoreIntervention(step.nodeId, step.checkpointData)
+                      : undefined,
                 }
               }
             })

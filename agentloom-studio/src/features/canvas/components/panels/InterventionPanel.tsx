@@ -4,11 +4,23 @@ import { Button } from '@/shared/ui/button'
 import {
   useNodeIntervention,
   useNodeExecutionState,
+  useExecutionActions,
   useExecutionId,
 } from '@/features/execution/stores/executionStore'
-import { resolveIntervention } from '@/features/execution/api/executionApi'
 
 type InterventionMode = 'idle' | 'modifying' | 'rejecting'
+
+function formatInterventionContent(value: unknown): string {
+  if (value == null) {
+    return ''
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value, null, 2)
+}
 
 interface InterventionPanelProps {
   nodeId: string
@@ -25,33 +37,31 @@ export const InterventionPanel = memo(function InterventionPanel({
   const intervention = useNodeIntervention(nodeId)
   const nodeState = useNodeExecutionState(nodeId)
   const executionId = useExecutionId()
+  const { submitIntervention } = useExecutionActions()
 
   const [mode, setMode] = useState<InterventionMode>('idle')
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [modifiedContent, setModifiedContent] = useState('')
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const stepId = nodeState?.stepId
+  const isSubmitting = intervention?.submitting ?? false
 
   const handleApprove = useCallback(async () => {
     if (!executionId || !stepId) return
-    setIsSubmitting(true)
     setError(null)
     try {
-      await resolveIntervention(executionId, stepId, { action: 'approve' })
+      await submitIntervention(executionId, stepId, { action: 'approve' })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '操作失败'
       setError(msg)
-    } finally {
-      setIsSubmitting(false)
     }
-  }, [executionId, stepId])
+  }, [executionId, stepId, submitIntervention])
 
   const handleStartModify = useCallback(() => {
     setMode('modifying')
     setModifiedContent(
-      intervention?.decision?.suggestedContent ||
+      formatInterventionContent(intervention?.decision?.suggestedContent) ||
         intervention?.partialContent ||
         '',
     )
@@ -67,10 +77,9 @@ export const InterventionPanel = memo(function InterventionPanel({
 
   const handleSubmitModify = useCallback(async () => {
     if (!executionId || !stepId) return
-    setIsSubmitting(true)
     setError(null)
     try {
-      await resolveIntervention(executionId, stepId, {
+      await submitIntervention(executionId, stepId, {
         action: 'modify',
         modifiedContent,
         feedback: feedback || undefined,
@@ -78,27 +87,22 @@ export const InterventionPanel = memo(function InterventionPanel({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '操作失败'
       setError(msg)
-    } finally {
-      setIsSubmitting(false)
     }
-  }, [executionId, stepId, modifiedContent, feedback])
+  }, [executionId, stepId, modifiedContent, feedback, submitIntervention])
 
   const handleSubmitReject = useCallback(async () => {
     if (!executionId || !stepId) return
-    setIsSubmitting(true)
     setError(null)
     try {
-      await resolveIntervention(executionId, stepId, {
+      await submitIntervention(executionId, stepId, {
         action: 'reject',
         feedback: feedback || undefined,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '操作失败'
       setError(msg)
-    } finally {
-      setIsSubmitting(false)
     }
-  }, [executionId, stepId, feedback])
+  }, [executionId, stepId, feedback, submitIntervention])
 
   const handleCancel = useCallback(() => {
     setMode('idle')
@@ -116,6 +120,7 @@ export const InterventionPanel = memo(function InterventionPanel({
   }
 
   const { decision } = intervention
+  const suggestedContentText = formatInterventionContent(decision?.suggestedContent)
 
   return (
     <div
@@ -147,11 +152,11 @@ export const InterventionPanel = memo(function InterventionPanel({
               </dd>
             </div>
           )}
-          {decision.suggestedContent && (
+          {suggestedContentText && (
             <div>
               <dt className="text-muted-foreground">建议内容</dt>
               <dd className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-[#050816] px-2 py-1.5 font-mono leading-5 text-slate-100">
-                {decision.suggestedContent}
+                {suggestedContentText}
               </dd>
             </div>
           )}

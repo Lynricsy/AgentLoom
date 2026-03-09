@@ -17,13 +17,18 @@ import {
 import {
   AGENT_TASK_QUEUE,
   INTERVENTION_TIMEOUT_MS,
+  SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
 } from './execution.constants';
+import type {
+  InterventionCheckpointRecord,
+} from './types/execution-event.types';
 import {
   NodeInputResolutionException,
   InterventionNotAllowedException,
   AgentExecutionException,
+  InvalidStepTransitionException,
 } from './execution.exceptions';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
@@ -367,10 +372,13 @@ export class NodeSchedulerService {
       { message: failureMessage },
     );
     await this.cleanupSandboxIfTerminal(executionId, tenantId);
-  }  async resolveIntervention(
+  }
+
+  async resolveIntervention(
     executionId: string,
     stepId: string,
     tenantId: string,
+    userId: string,
     resolution: InterventionResolution,
   ): Promise<void> {
     const [step] = await this.tenantDb
@@ -392,18 +400,76 @@ export class NodeSchedulerService {
       throw new InterventionNotAllowedException(stepId, step.status);
     }
 
-    const checkpoint = step.checkpointData as Record<string, unknown> | null;
-    const sessionId = checkpoint?.sessionId as string | undefined;
+    const checkpoint =
+      (step.checkpointData as Record<string, unknown> | null) ?? {};
+    const sessionId =
+      typeof checkpoint.sessionId === 'string' ? checkpoint.sessionId : undefined;
 
     if (!sessionId) {
       throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
     }
+
+    const requestedAt =
+      resolution.requestedAt ??
+      (typeof checkpoint.interventionRequestedAt === 'string'
+        ? checkpoint.interventionRequestedAt
+        : new Date().toISOString());
+    const resolvedAt = resolution.resolvedAt ?? new Date().toISOString();
+    const timeout =
+      resolution.timeout === true ||
+      userId === SYSTEM_TIMEOUT_INTERVENTION_USER_ID;
+    const interventionRecord: InterventionCheckpointRecord = {
+      requested_at: requestedAt,
+      resolved_at: resolvedAt,
+      action: resolution.action,
+      instruction: resolution.modifiedContent ?? resolution.feedback ?? null,
+      resolved_by_user_id: userId,
+      ...(timeout ? { timeout: true } : {}),
+    };
+
+    const nodeName = this.resolveNodeName(step, checkpoint);
+
+    try {
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        stepId,
+        'running',
+        {
+          checkpointData: {
+            ...checkpoint,
+            interventionRequestedAt: requestedAt,
+            interventionNodeName: nodeName,
+            intervention: interventionRecord,
+          },
+        },
+      );
+    } catch (error) {
+      if (error instanceof InvalidStepTransitionException) {
+        const [latestStep] = await this.tenantDb
+          .select({ status: schema.executionSteps.status })
+          .from(schema.executionSteps)
+          .where(eq(schema.executionSteps.id, stepId))
+          .limit(1);
+
+        throw new InterventionNotAllowedException(
+          stepId,
+          latestStep?.status ?? step.status,
+        );
+      }
+
+      throw error;
+    }
+
+    await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
 
     this.eventBridge.emitInterventionResolved(tenantId, executionId, {
       stepId,
       nodeId: step.nodeId,
       action: resolution.action,
       ...(resolution.feedback ? { feedback: resolution.feedback } : {}),
+      resolvedBy: userId,
+      resolvedAt,
+      ...(timeout ? { timeout: true } : {}),
     });
     await this.removeInterventionTimeout(stepId);
 
@@ -414,10 +480,36 @@ export class NodeSchedulerService {
       input: ((step.input ?? {}) as Record<string, unknown>) ?? {},
       nodeData: ((step.nodeData ?? {}) as Record<string, unknown>) ?? {},
       resumeSessionId: sessionId,
-      intervention: resolution,
+      intervention: {
+        ...resolution,
+        requestedAt,
+        resolvedAt,
+        resolvedByUserId: userId,
+        ...(timeout ? { timeout: true } : {}),
+        nodeName,
+      },
     } satisfies AgentTaskJobData);
 
     this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
+  }
+
+  private resolveNodeName(
+    step: ExecutionStep,
+    checkpoint: Record<string, unknown>,
+  ): string {
+    if (
+      typeof checkpoint.interventionNodeName === 'string' &&
+      checkpoint.interventionNodeName.trim()
+    ) {
+      return checkpoint.interventionNodeName.trim();
+    }
+
+    const nodeData = step.nodeData as Record<string, unknown> | null;
+    if (nodeData && typeof nodeData.label === 'string' && nodeData.label.trim()) {
+      return nodeData.label.trim();
+    }
+
+    return step.nodeId;
   }
 
   async enqueueInterventionTimeout(
