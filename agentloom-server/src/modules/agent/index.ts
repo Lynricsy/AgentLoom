@@ -67,3 +67,9 @@ export {
 
 export { AGENT_RUNTIME, type IAgentRuntime } from './ports/index';
 export { InProcessAgentAdapter } from './in-process-agent.adapter';
+export { SandboxAgentAdapter } from './sandbox-agent.adapter';
+export {
+  AGENT_RUNTIME_FACTORY,
+  AgentAdapterFactory,
+  type IAgentAdapterFactory,
+} from './agent-adapter.factory';
