@@ -12,6 +12,17 @@ export class ExecutionNotFoundException extends DomainException {
   }
 }
 
+export class DeadLetterJobNotFoundException extends DomainException {
+  constructor(jobId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/dead-letter-job-not-found',
+      title: '死信任务不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `死信任务 ${jobId} 不存在，或不属于当前租户`,
+    });
+  }
+}
+
 export class WorkflowNotPublishedException extends DomainException {
   constructor(workflowId: string) {
     super({

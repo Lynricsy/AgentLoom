@@ -52,9 +52,9 @@ export class StepStateMachineService {
     stepId: string,
     newStatus: StepStatus,
     extra?: {
-      result?: Record<string, unknown>;
-      errorMessage?: Record<string, unknown>;
-      checkpointData?: Record<string, unknown>;
+      result?: schema.NewExecutionStep['result'];
+      errorMessage?: schema.NewExecutionStep['errorMessage'];
+      checkpointData?: schema.NewExecutionStep['checkpointData'];
     },
   ): Promise<schema.ExecutionStep> {
     const [step] = await this.tenantDb

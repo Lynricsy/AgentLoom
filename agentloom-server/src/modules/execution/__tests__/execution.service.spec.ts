@@ -5,6 +5,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { ExecutionService } from '../execution.service';
 import { EventBridgeService } from '../services/event-bridge.service';
 import {
+  DeadLetterJobNotFoundException,
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
@@ -665,29 +666,39 @@ describe('ExecutionService', () => {
   });
 
   describe('Dead Letter Queue', () => {
-    it('应返回分页的失败任务列表', async () => {
-      const mockJob = {
+    it('应仅返回当前租户的失败任务列表', async () => {
+      const ownJob = {
         id: 'job-1',
         name: 'agent-task',
-        data: { executionId: EXECUTION_ID, stepId: 'step-1' },
+        data: { executionId: EXECUTION_ID, stepId: 'step-1', tenantId: TENANT_ID },
         failedReason: 'LLM 调用失败',
-        attemptsMade: 3,
+        attemptsMade: 4,
         timestamp: 1000,
         finishedOn: 2000,
         processedOn: 1500,
       };
-      mockAgentTaskQueue.getFailed.mockResolvedValue([mockJob]);
-      mockAgentTaskQueue.getJobCounts.mockResolvedValue({ failed: 1 });
+      const foreignJob = {
+        id: 'job-2',
+        name: 'agent-task',
+        data: { executionId: 'other-exec', stepId: 'step-9', tenantId: 'other-tenant' },
+        failedReason: '其他租户失败',
+        attemptsMade: 4,
+        timestamp: 1100,
+        finishedOn: 2100,
+        processedOn: 1600,
+      };
+      mockAgentTaskQueue.getFailed.mockResolvedValue([ownJob, foreignJob]);
+      mockAgentTaskQueue.getJobCounts.mockResolvedValue({ failed: 2 });
 
-      const result = await service.getDeadLetterJobs(1, 20);
+      const result = await service.getDeadLetterJobs(TENANT_ID, 1, 20);
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toEqual({
         jobId: 'job-1',
         name: 'agent-task',
-        data: mockJob.data,
+        data: ownJob.data,
         failedReason: 'LLM 调用失败',
-        attemptsMade: 3,
+        attemptsMade: 4,
         timestamp: 1000,
         finishedOn: 2000,
         processedOn: 1500,
@@ -698,41 +709,71 @@ describe('ExecutionService', () => {
         limit: 20,
         totalPages: 1,
       });
-      expect(mockAgentTaskQueue.getFailed).toHaveBeenCalledWith(0, 19);
+      expect(mockAgentTaskQueue.getFailed).toHaveBeenCalledWith(0, 1);
     });
 
     it('应重试指定的失败任务', async () => {
-      const mockJob = { id: 'job-1', retry: vi.fn() };
+      const mockJob = {
+        id: 'job-1',
+        data: { tenantId: TENANT_ID },
+        retry: vi.fn(),
+      };
       mockAgentTaskQueue.getJob.mockResolvedValue(mockJob);
 
-      await service.retryDeadLetterJob('job-1');
+      await service.retryDeadLetterJob(TENANT_ID, 'job-1');
 
       expect(mockAgentTaskQueue.getJob).toHaveBeenCalledWith('job-1');
       expect(mockJob.retry).toHaveBeenCalled();
     });
 
-    it('应在重试不存在的任务时抛出异常', async () => {
+    it('应在重试不存在或越权任务时抛出异常', async () => {
+      mockAgentTaskQueue.getJob.mockResolvedValue({
+        id: 'job-foreign',
+        data: { tenantId: 'other-tenant' },
+        retry: vi.fn(),
+      });
+
+      await expect(
+        service.retryDeadLetterJob(TENANT_ID, 'nonexistent'),
+      ).rejects.toBeInstanceOf(DeadLetterJobNotFoundException);
+
       mockAgentTaskQueue.getJob.mockResolvedValue(null);
 
-      await expect(service.retryDeadLetterJob('nonexistent')).rejects.toThrow();
+      await expect(
+        service.retryDeadLetterJob(TENANT_ID, 'missing'),
+      ).rejects.toBeInstanceOf(DeadLetterJobNotFoundException);
     });
 
     it('应丢弃指定的失败任务', async () => {
-      const mockJob = { id: 'job-1', remove: vi.fn() };
+      const mockJob = {
+        id: 'job-1',
+        data: { tenantId: TENANT_ID },
+        remove: vi.fn(),
+      };
       mockAgentTaskQueue.getJob.mockResolvedValue(mockJob);
 
-      await service.discardDeadLetterJob('job-1');
+      await service.discardDeadLetterJob(TENANT_ID, 'job-1');
 
       expect(mockAgentTaskQueue.getJob).toHaveBeenCalledWith('job-1');
       expect(mockJob.remove).toHaveBeenCalled();
     });
 
-    it('应在丢弃不存在的任务时抛出异常', async () => {
+    it('应在丢弃不存在或越权任务时抛出异常', async () => {
+      mockAgentTaskQueue.getJob.mockResolvedValue({
+        id: 'job-foreign',
+        data: { tenantId: 'other-tenant' },
+        remove: vi.fn(),
+      });
+
+      await expect(
+        service.discardDeadLetterJob(TENANT_ID, 'nonexistent'),
+      ).rejects.toBeInstanceOf(DeadLetterJobNotFoundException);
+
       mockAgentTaskQueue.getJob.mockResolvedValue(null);
 
       await expect(
-        service.discardDeadLetterJob('nonexistent'),
-      ).rejects.toThrow();
+        service.discardDeadLetterJob(TENANT_ID, 'missing'),
+      ).rejects.toBeInstanceOf(DeadLetterJobNotFoundException);
     });
   });
 });

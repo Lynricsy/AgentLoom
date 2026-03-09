@@ -163,10 +163,12 @@ export class ExecutionController {
   @ApiOperation({ summary: '查询死信队列中的失败任务' })
   @ApiResponse({ status: 200, description: '返回失败任务列表' })
   async listDeadLetterJobs(
+    @CurrentTenant() tenantId: string,
     @Query('page') page = 1,
     @Query('limit') limit = 20,
   ) {
     return this.executionService.getDeadLetterJobs(
+      tenantId,
       Number(page),
       Number(limit),
     );
@@ -177,8 +179,11 @@ export class ExecutionController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: '重试死信队列中的失败任务' })
   @ApiResponse({ status: 202, description: '任务已重新入队' })
-  async retryDeadLetterJob(@Param('jobId') jobId: string) {
-    await this.executionService.retryDeadLetterJob(jobId);
+  async retryDeadLetterJob(
+    @Param('jobId') jobId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.executionService.retryDeadLetterJob(tenantId, jobId);
     return { data: { jobId, status: 'retrying' } };
   }
 
@@ -187,8 +192,11 @@ export class ExecutionController {
   @Roles('owner', 'admin')
   @ApiOperation({ summary: '丢弃死信队列中的失败任务' })
   @ApiResponse({ status: 200, description: '任务已丢弃' })
-  async discardDeadLetterJob(@Param('jobId') jobId: string) {
-    await this.executionService.discardDeadLetterJob(jobId);
+  async discardDeadLetterJob(
+    @Param('jobId') jobId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.executionService.discardDeadLetterJob(tenantId, jobId);
     return { data: { jobId, status: 'discarded' } };
   }
 

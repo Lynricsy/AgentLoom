@@ -351,7 +351,7 @@ describe('AgentTaskWorker', () => {
         worker.process(
           createMockJob({
             attemptsMade: 0,
-            opts: { attempts: 3 },
+            opts: { attempts: 4 },
           }),
         ),
       ).rejects.toThrow('LLM 调用失败');
@@ -386,7 +386,7 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         {
           attempt: 1,
-          maxAttempts: 3,
+          maxAttempts: 4,
           errorMessage: 'LLM 调用失败',
         },
       );
@@ -410,8 +410,8 @@ describe('AgentTaskWorker', () => {
       await expect(
         worker.process(
           createMockJob({
-            attemptsMade: 2,
-            opts: { attempts: 3 },
+            attemptsMade: 3,
+            opts: { attempts: 4 },
           }),
         ),
       ).rejects.toThrow('最终失败');
@@ -419,7 +419,7 @@ describe('AgentTaskWorker', () => {
       expect(mockDb.update).toHaveBeenCalled();
       const setArg =
         mockDb.update.mock.results[0].value.set.mock.calls[0][0];
-      expect(setArg).toEqual({ attemptCount: 3 });
+      expect(setArg).toEqual({ attemptCount: 4 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
@@ -430,7 +430,7 @@ describe('AgentTaskWorker', () => {
             message: '最终失败',
             attempts: [
               {
-                attempt: 3,
+                attempt: 4,
                 error: '最终失败',
                 timestamp: expect.any(String),
               },
@@ -441,7 +441,7 @@ describe('AgentTaskWorker', () => {
             sessionId: SESSION_ID,
             attempts: [
               {
-                attempt: 3,
+                attempt: 4,
                 error: '最终失败',
                 timestamp: expect.any(String),
               },

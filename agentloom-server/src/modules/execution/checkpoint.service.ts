@@ -171,12 +171,19 @@ export class CheckpointService {
       }
     }
 
+    const resetStepIds = new Set(stepsToReset.map((step) => step.id));
+    const completedSteps = steps.filter(
+      (step) =>
+        COMPLETED_STEP_STATUSES.has(step.status) && !resetStepIds.has(step.id),
+    ).length;
+
     // 恢复执行状态为 running
     const now = new Date();
     const [updated] = await this.tenantDb
       .update(schema.workflowExecutions)
       .set({
         status: 'running',
+        completedSteps,
         updatedAt: now,
         failedAt: null,
       })
@@ -187,9 +194,7 @@ export class CheckpointService {
     this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
       status: 'running',
-      completedSteps: steps.filter((s) =>
-        COMPLETED_STEP_STATUSES.has(s.status),
-      ).length,
+      completedSteps,
       totalSteps: steps.length,
     });
 

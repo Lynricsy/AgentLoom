@@ -1,6 +1,22 @@
 export const EXECUTION_QUEUE = 'workflow-execution';
 export const AGENT_TASK_QUEUE = 'agent-task';
 
+export const EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS = {
+  removeOnComplete: 1000,
+  removeOnFail: 5000,
+  attempts: 1,
+} as const;
+
+export const AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS = {
+  removeOnComplete: 1000,
+  removeOnFail: 5000,
+  attempts: 4,
+  backoff: {
+    type: 'exponential',
+    delay: 2000,
+  },
+} as const;
+
 export type InterventionAction = 'approve' | 'modify' | 'reject';
 
 export interface InterventionResolution {

@@ -76,14 +76,14 @@ HTTP POST /executions
 - 恢复流程: Controller → `executionQueue.add('resume-execution', ...)` → ExecutionWorker 分发 → `nodeScheduler.resumeScheduling()`，确保通过 BullMQ 统一 job 生命周期
 - `STEP_TRANSITIONS` 已新增 `failed→pending`、`cancelled→pending`，`NodeSchedulerService.resumeScheduling()` 会跳过 `completed` 节点并继续调度 `pending` 节点
 - Agent 重试追踪已写入 `checkpointData.attempts[]`，记录每次重试的 `{ attempt, error, timestamp }`
-- DLQ 管理 API: `GET /executions/dlq` (分页查询死信队列)、`POST /executions/dlq/:jobId/retry` (重试)、`POST /executions/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`
+- DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
 ## BullMQ 队列
 
 | 队列 | 重试 | 用途 |
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
-| agent-task-queue | 3次 exp (2s base) | 单节点 Agent 任务 |
+| agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
 | document-processing-queue | — | 文档解析 |
 | document-indexing-queue | — | Qdrant 向量索引 |

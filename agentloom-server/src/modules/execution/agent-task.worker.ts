@@ -25,6 +25,18 @@ import {
   type InterventionResolution,
 } from './execution.constants';
 
+const isExecutionStepAttemptError = (
+  value: unknown,
+): value is schema.ExecutionStepAttemptError =>
+  typeof value === 'object' &&
+  value !== null &&
+  'attempt' in value &&
+  typeof value.attempt === 'number' &&
+  'error' in value &&
+  typeof value.error === 'string' &&
+  'timestamp' in value &&
+  typeof value.timestamp === 'string';
+
 @Processor(AGENT_TASK_QUEUE, { concurrency: 10 })
 export class AgentTaskWorker extends WorkerHost {
   private readonly logger = new Logger(AgentTaskWorker.name);
@@ -215,7 +227,7 @@ export class AgentTaskWorker extends WorkerHost {
         unknown
       >;
       const existingAttempts = Array.isArray(existingCheckpoint.attempts)
-        ? (existingCheckpoint.attempts as Record<string, unknown>[])
+        ? existingCheckpoint.attempts.filter(isExecutionStepAttemptError)
         : [];
       const attemptRecord = {
         attempt: job.attemptsMade + 1,

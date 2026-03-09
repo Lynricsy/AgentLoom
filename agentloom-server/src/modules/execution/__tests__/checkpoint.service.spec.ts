@@ -394,6 +394,77 @@ describe('CheckpointService', () => {
       expect(dagResolver.resolveDag).toHaveBeenCalled();
     });
 
+    it('应在 fromNodeId 重置已完成下游后重新计算 completedSteps', async () => {
+      const execution = makeExecution({ completedSteps: 3 });
+      const steps = [
+        makeStep({
+          id: STEP_ID_1,
+          nodeId: 'node-1',
+          status: 'completed',
+          result: { out: 1 },
+        }),
+        makeStep({
+          id: STEP_ID_2,
+          nodeId: 'node-2',
+          status: 'completed',
+          result: { out: 2 },
+        }),
+        makeStep({
+          id: STEP_ID_3,
+          nodeId: 'node-3',
+          status: 'skipped',
+          result: { out: 3 },
+        }),
+      ];
+      const updatedExecution = makeExecution({
+        status: 'running',
+        failedAt: null,
+        completedSteps: 1,
+      });
+
+      const adjacencyMap = new Map([
+        ['node-1', ['node-2']],
+        ['node-2', ['node-3']],
+        ['node-3', []],
+      ]);
+      dagResolver.resolveDag.mockReturnValue({
+        layers: [['node-1'], ['node-2'], ['node-3']],
+        adjacencyMap,
+        inDegreeMap: new Map([
+          ['node-1', 0],
+          ['node-2', 1],
+          ['node-3', 1],
+        ]),
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(createSelectChain(steps));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainReturning([updatedExecution]));
+
+      await service.resumeExecution(TENANT_ID, EXECUTION_ID, 'node-2');
+
+      const executionSetArg = db.update.mock.results[2].value.set.mock.calls[0][0];
+      expect(executionSetArg).toMatchObject({
+        status: 'running',
+        completedSteps: 1,
+        failedAt: null,
+      });
+      expect(eventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          executionId: EXECUTION_ID,
+          status: 'running',
+          completedSteps: 1,
+          totalSteps: 3,
+        },
+      );
+    });
+
     it('当执行不存在时应抛出 ExecutionNotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 

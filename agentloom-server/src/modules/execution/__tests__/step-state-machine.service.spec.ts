@@ -333,7 +333,7 @@ describe('StepStateMachineService', () => {
     it('会广播 step:retrying 事件', () => {
       service.broadcastStepRetry(TENANT_ID, EXECUTION_ID, STEP_ID, {
         attempt: 1,
-        maxAttempts: 3,
+        maxAttempts: 4,
         errorMessage: 'LLM 调用失败',
       });
 
@@ -343,7 +343,7 @@ describe('StepStateMachineService', () => {
         {
           stepId: STEP_ID,
           attempt: 1,
-          maxAttempts: 3,
+          maxAttempts: 4,
           errorMessage: 'LLM 调用失败',
         },
       );

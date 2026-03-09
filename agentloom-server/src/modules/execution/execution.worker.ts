@@ -26,7 +26,9 @@ export class ExecutionWorker extends WorkerHost {
     );
 
     if (job.name === 'resume-execution') {
-      await this.nodeScheduler.resumeScheduling(executionId, tenantId);
+      await runInTenantTransaction(this.db, tenantId, async () => {
+        await this.nodeScheduler.resumeScheduling(executionId, tenantId);
+      });
       return;
     }
 

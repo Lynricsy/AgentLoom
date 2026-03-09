@@ -82,6 +82,8 @@ export {
 export {
   stepStatusEnum,
   executionSteps,
+  type ExecutionStepAttemptError,
+  type ExecutionStepErrorMessage,
   type ExecutionStep,
   type NewExecutionStep,
 } from './execution-steps.schema';

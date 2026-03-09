@@ -12,6 +12,18 @@ import {
 import { createJoinTenantPolicies } from './rls-policies';
 import { workflowExecutions } from './workflow-executions.schema';
 
+export interface ExecutionStepAttemptError {
+  attempt: number;
+  error: string;
+  timestamp: string;
+}
+
+export interface ExecutionStepErrorMessage {
+  message: string;
+  stack?: string;
+  attempts?: ExecutionStepAttemptError[];
+}
+
 export const stepStatusEnum = pgEnum('step_status_enum', [
   'pending',
   'queued',
@@ -52,10 +64,7 @@ export const executionSteps = pgTable(
 
     checkpointData: jsonb('checkpoint_data').$type<Record<string, unknown>>(),
 
-    errorMessage: jsonb('error_message').$type<{
-      message: string;
-      stack?: string;
-    }>(),
+    errorMessage: jsonb('error_message').$type<ExecutionStepErrorMessage>(),
 
     startedAt: timestamp('started_at', { withTimezone: true }),
 

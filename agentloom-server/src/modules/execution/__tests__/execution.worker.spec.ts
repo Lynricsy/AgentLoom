@@ -111,6 +111,11 @@ describe('ExecutionWorker', () => {
         EXECUTION_ID,
         TENANT_ID,
       );
+      expect(runInTenantTransaction).toHaveBeenCalledWith(
+        mockDb,
+        TENANT_ID,
+        expect.any(Function),
+      );
       expect(mockExecutionService.initializeSteps).not.toHaveBeenCalled();
       expect(mockNodeScheduler.startExecution).not.toHaveBeenCalled();
     });

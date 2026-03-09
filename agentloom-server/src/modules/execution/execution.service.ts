@@ -1,12 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue, type JobType } from 'bullmq';
+import { Queue, type Job, type JobType } from 'bullmq';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import {
+  DeadLetterJobNotFoundException,
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
@@ -14,7 +15,11 @@ import {
 } from './execution.exceptions';
 import { ExecutionGateway } from './execution.gateway';
 import { EventBridgeService } from './services/event-bridge.service';
-import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
+import {
+  EXECUTION_QUEUE,
+  AGENT_TASK_QUEUE,
+  type AgentTaskJobData,
+} from './execution.constants';
 import type { RunWorkflowDto } from './dto/run-workflow.dto';
 
 export interface ExecutionJobData {
@@ -427,14 +432,32 @@ export class ExecutionService {
 
   // ──── Dead Letter Queue (DLQ) ────
 
-  async getDeadLetterJobs(page = 1, limit = 20) {
-    const start = (page - 1) * limit;
-    const end = start + limit - 1;
-    const jobs = await this.agentTaskQueue.getFailed(start, end);
+  async getDeadLetterJobs(tenantId: string, page = 1, limit = 20) {
     const counts = await this.agentTaskQueue.getJobCounts('failed');
+    const failedCount = counts.failed;
+
+    if (failedCount === 0) {
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        },
+      };
+    }
+
+    const jobs = await this.agentTaskQueue.getFailed(0, failedCount - 1);
+    const tenantJobs = jobs.filter(
+      (job) => this.getDeadLetterJobTenantId(job) === tenantId,
+    );
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const paginatedJobs = tenantJobs.slice(start, end);
 
     return {
-      data: jobs.map((job) => ({
+      data: paginatedJobs.map((job) => ({
         jobId: job.id,
         name: job.name,
         data: job.data,
@@ -445,29 +468,53 @@ export class ExecutionService {
         processedOn: job.processedOn,
       })),
       meta: {
-        total: counts.failed,
+        total: tenantJobs.length,
         page,
         limit,
-        totalPages: Math.ceil(counts.failed / limit),
+        totalPages: Math.ceil(tenantJobs.length / limit),
       },
     };
   }
 
-  async retryDeadLetterJob(jobId: string): Promise<void> {
+  async retryDeadLetterJob(tenantId: string, jobId: string): Promise<void> {
     const job = await this.agentTaskQueue.getJob(jobId);
-    if (!job) {
-      throw new ExecutionNotFoundException(jobId);
-    }
+    this.assertDeadLetterJobAccess(job, tenantId, jobId);
     await job.retry();
     this.logger.log(`DLQ job retried: ${jobId}`);
   }
 
-  async discardDeadLetterJob(jobId: string): Promise<void> {
+  async discardDeadLetterJob(tenantId: string, jobId: string): Promise<void> {
     const job = await this.agentTaskQueue.getJob(jobId);
-    if (!job) {
-      throw new ExecutionNotFoundException(jobId);
-    }
+    this.assertDeadLetterJobAccess(job, tenantId, jobId);
     await job.remove();
     this.logger.log(`DLQ job discarded: ${jobId}`);
+  }
+
+  private getDeadLetterJobTenantId(
+    job: {
+      data?: unknown;
+    } | null | undefined,
+  ): string | undefined {
+    const data = job?.data;
+
+    if (!this.hasTenantIdField(data) || typeof data.tenantId !== 'string') {
+      return undefined;
+    }
+
+    return data.tenantId;
+  }
+
+  private hasTenantIdField(data: unknown): data is { tenantId?: unknown } {
+    return typeof data === 'object' && data !== null && 'tenantId' in data;
+  }
+
+  private assertDeadLetterJobAccess(
+    job: Job<unknown, unknown, string> | null | undefined,
+    tenantId: string,
+    jobId: string,
+  ): asserts job is Job<AgentTaskJobData> {
+    if (!job || this.getDeadLetterJobTenantId(job) !== tenantId) {
+      throw new DeadLetterJobNotFoundException(jobId);
+    }
   }
 }

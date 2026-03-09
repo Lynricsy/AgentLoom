@@ -287,7 +287,7 @@ describe('ExecutionController', () => {
             name: 'agent-task',
             data: { executionId: EXECUTION_ID, stepId: STEP_ID },
             failedReason: 'LLM 调用失败',
-            attemptsMade: 3,
+            attemptsMade: 4,
             timestamp: Date.now(),
             finishedOn: Date.now(),
             processedOn: Date.now(),
@@ -297,30 +297,40 @@ describe('ExecutionController', () => {
       };
       mockService.getDeadLetterJobs.mockResolvedValue(dlqResult);
 
-      const result = await controller.listDeadLetterJobs(1, 20);
+      const result = await controller.listDeadLetterJobs(TENANT_ID, 1, 20);
 
       expect(result).toEqual(dlqResult);
-      expect(mockService.getDeadLetterJobs).toHaveBeenCalledWith(1, 20);
+      expect(mockService.getDeadLetterJobs).toHaveBeenCalledWith(
+        TENANT_ID,
+        1,
+        20,
+      );
     });
 
     it('应重试死信队列中的任务并返回 202', async () => {
       mockService.retryDeadLetterJob.mockResolvedValue(undefined);
 
-      const result = await controller.retryDeadLetterJob('job-1');
+      const result = await controller.retryDeadLetterJob('job-1', TENANT_ID);
 
       expect(result).toEqual({ data: { jobId: 'job-1', status: 'retrying' } });
-      expect(mockService.retryDeadLetterJob).toHaveBeenCalledWith('job-1');
+      expect(mockService.retryDeadLetterJob).toHaveBeenCalledWith(
+        TENANT_ID,
+        'job-1',
+      );
     });
 
     it('应丢弃死信队列中的任务并返回 200', async () => {
       mockService.discardDeadLetterJob.mockResolvedValue(undefined);
 
-      const result = await controller.discardDeadLetterJob('job-1');
+      const result = await controller.discardDeadLetterJob('job-1', TENANT_ID);
 
       expect(result).toEqual({
         data: { jobId: 'job-1', status: 'discarded' },
       });
-      expect(mockService.discardDeadLetterJob).toHaveBeenCalledWith('job-1');
+      expect(mockService.discardDeadLetterJob).toHaveBeenCalledWith(
+        TENANT_ID,
+        'job-1',
+      );
     });
   });
 });

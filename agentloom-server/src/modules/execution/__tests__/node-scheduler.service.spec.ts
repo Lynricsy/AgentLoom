@@ -582,6 +582,66 @@ describe('NodeSchedulerService', () => {
     });
   });
 
+  describe('resumeScheduling', () => {
+    it('应只调度可继续执行的 pending 节点，并跳过 completed 节点', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B'), makeNode('C')],
+        [makeEdge('A', 'B'), makeEdge('B', 'C')],
+      );
+      const execution = makeExecution(snapshot);
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { answer: 'hello' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          status: 'pending',
+        }),
+        makeStep({
+          id: 'step-c',
+          nodeId: 'C',
+          status: 'pending',
+        }),
+      ];
+      const plan = makePlan(
+        [['A'], ['B'], ['C']],
+        new Map([
+          ['A', ['B']],
+          ['B', ['C']],
+          ['C', []],
+        ]),
+        new Map([
+          ['A', 0],
+          ['B', 1],
+          ['C', 1],
+        ]),
+      );
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(createSelectChain(steps));
+      mockDagResolver.resolveDag.mockReturnValue(plan);
+      const scheduleNode = vi
+        .spyOn(service, 'scheduleNode')
+        .mockResolvedValue(undefined);
+
+      await service.resumeScheduling(EXECUTION_ID, TENANT_ID);
+
+      expect(scheduleNode).toHaveBeenCalledTimes(1);
+      expect(scheduleNode).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'B',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
+    });
+  });
+
   describe('cleanupSandboxIfTerminal', () => {
     it('execution 为 completed 时应触发 destroySandbox', async () => {
       db.select.mockReturnValueOnce(createSelectChain([{ status: 'completed' }]));

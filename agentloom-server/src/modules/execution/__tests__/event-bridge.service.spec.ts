@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { EventBridgeService } from '../services/event-bridge.service';
@@ -191,7 +192,7 @@ describe('EventBridgeService', () => {
       const payload: StepRetryingPayload = {
         stepId: 's1',
         attempt: 2,
-        maxAttempts: 3,
+        maxAttempts: 4,
         errorMessage: 'timeout',
       };
 

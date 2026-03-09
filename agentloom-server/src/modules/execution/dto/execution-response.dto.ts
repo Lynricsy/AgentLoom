@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+const executionStepAttemptErrorSchema = z.object({
+  attempt: z.number().int(),
+  error: z.string(),
+  timestamp: z.string(),
+});
+
+const executionStepErrorMessageSchema = z
+  .object({
+    message: z.string(),
+    stack: z.string().optional(),
+    attempts: z.array(executionStepAttemptErrorSchema).optional(),
+  })
+  .nullable();
+
+const executionErrorMessageSchema = z
+  .object({ message: z.string(), stack: z.string().optional() })
+  .nullable();
+
 export const executionStepSchema = z.object({
   id: z.string().uuid(),
   executionId: z.string().uuid(),
@@ -19,9 +37,7 @@ export const executionStepSchema = z.object({
   nodeData: z.record(z.string(), z.unknown()).nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   checkpointData: z.record(z.string(), z.unknown()).nullable(),
-  errorMessage: z
-    .object({ message: z.string(), stack: z.string().optional() })
-    .nullable(),
+  errorMessage: executionStepErrorMessageSchema,
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -49,9 +65,7 @@ export const executionResponseSchema = z.object({
   completedAt: z.string().nullable(),
   failedAt: z.string().nullable(),
   cancelledAt: z.string().nullable(),
-  errorMessage: z
-    .object({ message: z.string(), stack: z.string().optional() })
-    .nullable(),
+  errorMessage: executionErrorMessageSchema,
   totalSteps: z.number().int(),
   completedSteps: z.number().int(),
   createdBy: z.string().uuid(),
@@ -62,3 +76,6 @@ export const executionResponseSchema = z.object({
 
 export type ExecutionResponseDto = z.infer<typeof executionResponseSchema>;
 export type ExecutionStepResponseDto = z.infer<typeof executionStepSchema>;
+export type ExecutionStepErrorResponseDto = z.infer<
+  typeof executionStepErrorMessageSchema
+>;

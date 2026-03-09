@@ -15,7 +15,12 @@ import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
-import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
+import {
+  EXECUTION_QUEUE,
+  AGENT_TASK_QUEUE,
+  EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
+  AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS,
+} from './execution.constants';
 
 @Module({
   imports: [
@@ -24,23 +29,11 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     SandboxModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
-      defaultJobOptions: {
-        removeOnComplete: 1000,
-        removeOnFail: 5000,
-        attempts: 1,
-      },
+      defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
     }),
     BullModule.registerQueue({
       name: AGENT_TASK_QUEUE,
-      defaultJobOptions: {
-        removeOnComplete: 1000,
-        removeOnFail: 5000,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-      },
+      defaultJobOptions: AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS,
     }),
   ],
   controllers: [ExecutionController],

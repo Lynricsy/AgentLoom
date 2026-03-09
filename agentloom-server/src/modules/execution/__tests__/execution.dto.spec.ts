@@ -78,4 +78,43 @@ describe('execution dto schemas', () => {
 
     expect(executionResponseSchema.parse(payload)).toEqual(payload);
   });
+
+  it('应允许步骤错误消息携带重试 attempts', () => {
+    const step = {
+      id: stepId,
+      executionId,
+      nodeId: 'node-1',
+      stepOrder: 1,
+      status: 'failed' as const,
+      nodeType: 'agent',
+      nodeData: { label: 'LLM' },
+      result: null,
+      checkpointData: {
+        attempts: [
+          {
+            attempt: 1,
+            error: '第一次失败',
+            timestamp,
+          },
+        ],
+      },
+      errorMessage: {
+        message: '节点执行失败',
+        stack: 'Error: boom',
+        attempts: [
+          {
+            attempt: 1,
+            error: '第一次失败',
+            timestamp,
+          },
+        ],
+      },
+      startedAt: timestamp,
+      completedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    expect(executionStepSchema.parse(step)).toEqual(step);
+  });
 });
