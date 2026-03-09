@@ -11,6 +11,7 @@ import { StepStateMachineService } from './step-state-machine.service';
 import { DagResolverService } from './dag-resolver.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { AgentTaskWorker } from './agent-task.worker';
+import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
@@ -51,6 +52,7 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     DagResolverService,
     NodeSchedulerService,
     AgentTaskWorker,
+    CheckpointService,
     EventBridgeService,
     ThrottleService,
     StateReplayService,
@@ -64,6 +66,7 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     StepStateMachineService,
     DagResolverService,
     NodeSchedulerService,
+    CheckpointService,
   ],
 })
 export class ExecutionModule {}

@@ -356,7 +356,17 @@ describe('AgentTaskWorker', () => {
         'pending',
         {
           errorMessage: expect.objectContaining({ message: 'LLM 调用失败' }),
-          checkpointData: { partialContent: '部分结果', sessionId: SESSION_ID },
+          checkpointData: {
+            partialContent: '部分结果',
+            sessionId: SESSION_ID,
+            attempts: [
+              {
+                attempt: 1,
+                error: 'LLM 调用失败',
+                timestamp: expect.any(String),
+              },
+            ],
+          },
         },
       );
       expect(mockStateMachine.broadcastStepRetry).toHaveBeenCalledWith(
@@ -396,8 +406,27 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         'failed',
         {
-          errorMessage: expect.objectContaining({ message: '最终失败' }),
-          checkpointData: { partialContent: '最后一次尝试', sessionId: SESSION_ID },
+          errorMessage: expect.objectContaining({
+            message: '最终失败',
+            attempts: [
+              {
+                attempt: 3,
+                error: '最终失败',
+                timestamp: expect.any(String),
+              },
+            ],
+          }),
+          checkpointData: {
+            partialContent: '最后一次尝试',
+            sessionId: SESSION_ID,
+            attempts: [
+              {
+                attempt: 3,
+                error: '最终失败',
+                timestamp: expect.any(String),
+              },
+            ],
+          },
         },
       );
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(

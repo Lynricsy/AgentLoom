@@ -99,3 +99,14 @@ export class InterventionNotAllowedException extends DomainException {
     });
   }
 }
+
+export class ExecutionNotResumableException extends DomainException {
+  constructor(executionId: string, currentStatus: string) {
+    super({
+      type: 'https://agentloom.dev/errors/execution-not-resumable',
+      title: '执行不可恢复',
+      status: HttpStatus.CONFLICT,
+      detail: `执行 ${executionId} 当前状态为 ${currentStatus}，无法恢复。仅 failed 状态的执行可以恢复，paused 状态请先进行人工干预`,
+    });
+  }
+}

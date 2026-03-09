@@ -15,8 +15,10 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExecutionService } from './execution.service';
 import { NodeSchedulerService } from './node-scheduler.service';
+import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
+import { ResumeExecutionDto } from './dto/resume-execution.dto';
 import {
   InterveneStepDto,
   interveneStepSchema,
@@ -28,6 +30,7 @@ export class ExecutionController {
   constructor(
     private readonly executionService: ExecutionService,
     private readonly nodeScheduler: NodeSchedulerService,
+    private readonly checkpointService: CheckpointService,
   ) {}
 
   @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
@@ -102,6 +105,27 @@ export class ExecutionController {
       executionId,
       tenantId,
     );
+    return { data: this.serializeExecution(execution) };
+  }
+
+  @Post('executions/:executionId/resume')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '恢复失败的执行' })
+  @ApiResponse({ status: 202, description: '执行恢复已启动' })
+  @ApiResponse({ status: 404, description: '执行不存在' })
+  @ApiResponse({ status: 409, description: '执行不可恢复' })
+  async resumeExecution(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Body() dto: ResumeExecutionDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const execution = await this.checkpointService.resumeExecution(
+      tenantId,
+      executionId,
+      dto.fromNodeId,
+    );
+    await this.nodeScheduler.resumeScheduling(executionId, tenantId);
     return { data: this.serializeExecution(execution) };
   }
 

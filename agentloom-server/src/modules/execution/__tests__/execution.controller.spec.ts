@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { ExecutionController } from '../execution.controller';
 import { ExecutionService } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
+import { CheckpointService } from '../checkpoint.service';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -38,6 +39,11 @@ const mockService: Record<string, ReturnType<typeof vi.fn>> = {
 
 const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
   resolveIntervention: vi.fn(),
+  resumeScheduling: vi.fn(),
+};
+
+const mockCheckpointService: Record<string, ReturnType<typeof vi.fn>> = {
+  resumeExecution: vi.fn(),
 };
 
 describe('ExecutionController', () => {
@@ -51,6 +57,7 @@ describe('ExecutionController', () => {
       providers: [
         { provide: ExecutionService, useValue: mockService },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
+        { provide: CheckpointService, useValue: mockCheckpointService },
       ],
     }).compile();
 
@@ -165,6 +172,60 @@ describe('ExecutionController', () => {
       expect(mockService.cancelExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
+      );
+    });
+  });
+
+  describe('resumeExecution', () => {
+    it('应恢复失败的执行并返回 202 { data }', async () => {
+      const resumedExecution = {
+        ...mockExecution,
+        status: 'running' as const,
+      };
+      mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
+      mockNodeScheduler.resumeScheduling.mockResolvedValue(undefined);
+
+      const result = await controller.resumeExecution(
+        EXECUTION_ID,
+        {},
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: { ...resumedExecution, workflowId: WORKFLOW_ID },
+      });
+      expect(mockCheckpointService.resumeExecution).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        undefined,
+      );
+      expect(mockNodeScheduler.resumeScheduling).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('应支持 fromNodeId 参数', async () => {
+      const resumedExecution = {
+        ...mockExecution,
+        status: 'running' as const,
+      };
+      mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
+      mockNodeScheduler.resumeScheduling.mockResolvedValue(undefined);
+
+      const result = await controller.resumeExecution(
+        EXECUTION_ID,
+        { fromNodeId: 'node-2' },
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: { ...resumedExecution, workflowId: WORKFLOW_ID },
+      });
+      expect(mockCheckpointService.resumeExecution).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        'node-2',
       );
     });
   });

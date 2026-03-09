@@ -25,6 +25,7 @@ import {
   AgentExecutionException,
 } from './execution.exceptions';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { CheckpointService } from './checkpoint.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -38,6 +39,7 @@ export class NodeSchedulerService {
     private readonly dagResolver: DagResolverService,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly sandboxService: SandboxService,
+    private readonly checkpointService: CheckpointService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {}
@@ -151,6 +153,7 @@ export class NodeSchedulerService {
 
     await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
     await this.cleanupSandboxIfTerminal(executionId, tenantId);
+    await this.checkpointService.saveCheckpoint(tenantId, executionId, stepId);
   }
   async scheduleNode(
     executionId: string,
@@ -277,6 +280,41 @@ export class NodeSchedulerService {
     }
 
     return input;
+  }
+
+  /**
+   * 恢复调度：找出所有前驱已完成的 pending 节点并调度。
+   *
+   * 在 CheckpointService.resumeExecution 重置步骤后调用。
+   */
+  async resumeScheduling(
+    executionId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const { snapshot, steps } = await this.loadExecutionContext(executionId);
+    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+
+    for (const layer of plan.layers) {
+      for (const nodeId of layer) {
+        const step = steps.find((s) => s.nodeId === nodeId);
+        if (!step || step.status !== 'pending') continue;
+
+        const decision = this.getSchedulingDecision(
+          nodeId,
+          snapshot.edges,
+          steps,
+        );
+        if (decision === 'schedule') {
+          await this.scheduleNode(
+            executionId,
+            nodeId,
+            tenantId,
+            snapshot,
+            steps,
+          );
+        }
+      }
+    }
   }
 
   /**

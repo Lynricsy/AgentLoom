@@ -13,6 +13,7 @@ import {
   NodeInputResolutionException,
 } from '../execution.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { CheckpointService } from '../checkpoint.service';
 import type { ExecutionStep, ReactFlowEdge, ReactFlowNode } from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
 
@@ -127,6 +128,9 @@ describe('NodeSchedulerService', () => {
     getSandboxSession: ReturnType<typeof vi.fn>;
     destroySandbox: ReturnType<typeof vi.fn>;
   };
+  let mockCheckpointService: {
+    saveCheckpoint: ReturnType<typeof vi.fn>;
+  };
 
   beforeAll(() => {
     vi.useFakeTimers();
@@ -166,6 +170,9 @@ describe('NodeSchedulerService', () => {
       getSandboxSession: vi.fn().mockResolvedValue(null),
       destroySandbox: vi.fn().mockResolvedValue(undefined),
     };
+    mockCheckpointService = {
+      saveCheckpoint: vi.fn().mockResolvedValue(undefined),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -175,6 +182,7 @@ describe('NodeSchedulerService', () => {
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockQueue },
         { provide: SandboxService, useValue: mockSandboxService },
+        { provide: CheckpointService, useValue: mockCheckpointService },
       ],
     }).compile();
 

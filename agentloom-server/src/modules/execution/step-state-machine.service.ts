@@ -24,6 +24,8 @@ export const STEP_TRANSITIONS: Readonly<Record<string, ReadonlySet<string>>> = {
     'cancelled',
   ]),
   waiting_intervention: new Set(['running', 'cancelled']),
+  failed: new Set(['pending']),
+  cancelled: new Set(['pending']),
 };
 
 export const COMPLETED_STEP_STATUSES = new Set<string>(['completed', 'skipped']);
@@ -51,7 +53,7 @@ export class StepStateMachineService {
     newStatus: StepStatus,
     extra?: {
       result?: Record<string, unknown>;
-      errorMessage?: { message: string; stack?: string };
+      errorMessage?: Record<string, unknown>;
       checkpointData?: Record<string, unknown>;
     },
   ): Promise<schema.ExecutionStep> {
