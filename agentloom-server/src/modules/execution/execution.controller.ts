@@ -14,13 +14,18 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExecutionService } from './execution.service';
+import { NodeSchedulerService } from './node-scheduler.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
+import { InterveneStepDto } from './dto/intervene-step.dto';
 
 @ApiTags('Executions')
 @Controller()
 export class ExecutionController {
-  constructor(private readonly executionService: ExecutionService) {}
+  constructor(
+    private readonly executionService: ExecutionService,
+    private readonly nodeScheduler: NodeSchedulerService,
+  ) {}
 
   @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
   @HttpCode(HttpStatus.ACCEPTED)
@@ -95,6 +100,27 @@ export class ExecutionController {
       tenantId,
     );
     return { data: this.serializeExecution(execution) };
+  }
+
+  @Post('executions/:executionId/steps/:stepId/intervene')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '对等待干预的步骤提交反馈' })
+  @ApiResponse({ status: 202, description: '干预反馈已接受' })
+  @ApiResponse({ status: 409, description: '步骤状态不允许干预' })
+  async interveneStep(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+    @Body() dto: InterveneStepDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.nodeScheduler.resolveIntervention(
+      executionId,
+      stepId,
+      tenantId,
+      dto.feedback,
+    );
+    return { data: { executionId, stepId, status: 'intervention_accepted' } };
   }
 
   private serializeExecution<

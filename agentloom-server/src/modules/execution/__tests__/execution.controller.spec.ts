@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { ExecutionController } from '../execution.controller';
 import { ExecutionService } from '../execution.service';
+import { NodeSchedulerService } from '../node-scheduler.service';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
 const WORKFLOW_ID = '019391d4-c000-7000-0000-000000000003';
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
+const STEP_ID = '019391d4-f000-7000-0000-000000000006';
 
 const mockExecution = {
   id: EXECUTION_ID,
@@ -34,6 +36,10 @@ const mockService: Record<string, ReturnType<typeof vi.fn>> = {
   cancelExecution: vi.fn(),
 };
 
+const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
+  resolveIntervention: vi.fn(),
+};
+
 describe('ExecutionController', () => {
   let controller: ExecutionController;
 
@@ -42,7 +48,10 @@ describe('ExecutionController', () => {
 
     const module = await Test.createTestingModule({
       controllers: [ExecutionController],
-      providers: [{ provide: ExecutionService, useValue: mockService }],
+      providers: [
+        { provide: ExecutionService, useValue: mockService },
+        { provide: NodeSchedulerService, useValue: mockNodeScheduler },
+      ],
     }).compile();
 
     controller = module.get(ExecutionController);
@@ -156,6 +165,33 @@ describe('ExecutionController', () => {
       expect(mockService.cancelExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
+      );
+    });
+  });
+
+  describe('interveneStep', () => {
+    it('应调用 resolveIntervention 并返回 202 数据', async () => {
+      mockNodeScheduler.resolveIntervention.mockResolvedValue(undefined);
+
+      const result = await controller.interveneStep(
+        EXECUTION_ID,
+        STEP_ID,
+        { feedback: '请继续执行该操作' },
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          status: 'intervention_accepted',
+        },
+      });
+      expect(mockNodeScheduler.resolveIntervention).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        '请继续执行该操作',
       );
     });
   });

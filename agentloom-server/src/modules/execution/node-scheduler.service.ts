@@ -16,7 +16,11 @@ import {
   AGENT_TASK_QUEUE,
   type AgentTaskJobData,
 } from './execution.constants';
-import { NodeInputResolutionException } from './execution.exceptions';
+import {
+  NodeInputResolutionException,
+  InterventionNotAllowedException,
+  AgentExecutionException,
+} from './execution.exceptions';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -224,6 +228,43 @@ export class NodeSchedulerService {
     }
 
     return input;
+  }
+
+  async resolveIntervention(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+    feedback: string,
+  ): Promise<void> {
+    const [step] = await this.tenantDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.id, stepId));
+
+    if (!step) {
+      throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
+    }
+
+    if (step.status !== 'waiting_intervention') {
+      throw new InterventionNotAllowedException(stepId, step.status);
+    }
+
+    const checkpoint = step.checkpointData as Record<string, unknown> | null;
+    const sessionId = checkpoint?.sessionId as string | undefined;
+
+    if (!sessionId) {
+      throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
+    }
+
+    await this.agentTaskQueue.add('agent-task', {
+      executionId,
+      stepId,
+      tenantId,
+      resumeSessionId: sessionId,
+      feedbackContent: feedback,
+    } satisfies AgentTaskJobData);
+
+    this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
   }
 
   /**

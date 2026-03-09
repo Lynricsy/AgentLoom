@@ -9,7 +9,11 @@ import {
   COMPLETED_STEP_STATUSES,
 } from '../step-state-machine.service';
 import { AGENT_TASK_QUEUE } from '../execution.constants';
-import { NodeInputResolutionException } from '../execution.exceptions';
+import {
+  NodeInputResolutionException,
+  InterventionNotAllowedException,
+  AgentExecutionException,
+} from '../execution.exceptions';
 import type { ExecutionStep } from '../../../database/schema';
 import type { ReactFlowEdge, ReactFlowNode } from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
@@ -1025,6 +1029,80 @@ describe('NodeSchedulerService', () => {
         stepId: 'step-c',
         tenantId: TENANT_ID,
       });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // resolveIntervention
+  // ────────────────────────────────────────────────────────────
+  describe('resolveIntervention', () => {
+    const STEP_ID = '019391d4-0000-7000-0000-000000000099';
+    const SESSION_ID = 'session-abc-123';
+
+    it('应读取步骤并验证为 waiting_intervention 后排队恢复任务', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          partialContent: '之前的内容',
+          stopReason: 'tool_use',
+        },
+      });
+      db.select.mockReturnValue(createSelectChain([step]));
+
+      await service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '请继续执行');
+
+      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        resumeSessionId: SESSION_ID,
+        feedbackContent: '请继续执行',
+      });
+    });
+
+    it('应在步骤状态非 waiting_intervention 时抛出 InterventionNotAllowedException', async () => {
+      const step = makeStep({ id: STEP_ID, status: 'running' });
+      db.select.mockReturnValue(createSelectChain([step]));
+
+      await expect(
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '反馈'),
+      ).rejects.toThrow(InterventionNotAllowedException);
+    });
+
+    it('应在步骤不存在时抛出 AgentExecutionException', async () => {
+      db.select.mockReturnValue(createSelectChain([]));
+
+      await expect(
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '反馈'),
+      ).rejects.toThrow(AgentExecutionException);
+    });
+
+    it('应在检查点缺少 sessionId 时抛出 AgentExecutionException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: { partialContent: '内容' },
+      });
+      db.select.mockReturnValue(createSelectChain([step]));
+
+      await expect(
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '反馈'),
+      ).rejects.toThrow(AgentExecutionException);
+    });
+
+    it('应在步骤无检查点数据时抛出 AgentExecutionException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: null,
+      });
+      db.select.mockReturnValue(createSelectChain([step]));
+
+      await expect(
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, '反馈'),
+      ).rejects.toThrow(AgentExecutionException);
     });
   });
 });

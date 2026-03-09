@@ -88,3 +88,14 @@ export class NodeInputResolutionException extends DomainException {
     });
   }
 }
+
+export class InterventionNotAllowedException extends DomainException {
+  constructor(stepId: string, currentStatus: string) {
+    super({
+      type: 'https://agentloom.dev/errors/intervention-not-allowed',
+      title: '步骤不允许干预',
+      status: HttpStatus.CONFLICT,
+      detail: `步骤 ${stepId} 当前状态为 ${currentStatus}，无法进行人工干预`,
+    });
+  }
+}

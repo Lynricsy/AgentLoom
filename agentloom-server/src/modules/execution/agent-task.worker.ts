@@ -13,7 +13,11 @@ import type { ContentBlock } from '../agent/types/content-block.types';
 import type { AgentEvent } from '../agent/types/agent-event.types';
 import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
-import { AGENT_TASK_QUEUE, type AgentTaskJobData } from './execution.constants';
+import {
+  AGENT_TASK_QUEUE,
+  INTERVENTION_STOP_REASONS,
+  type AgentTaskJobData,
+} from './execution.constants';
 
 @Processor(AGENT_TASK_QUEUE, { concurrency: 10 })
 export class AgentTaskWorker extends WorkerHost {
@@ -33,8 +37,8 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   async process(job: Job<AgentTaskJobData>): Promise<void> {
-    const { executionId, stepId, tenantId } = job.data;
-    this.logger.log(`Processing agent task: ${JSON.stringify({ executionId, stepId })}`);
+    const { executionId, stepId, tenantId, resumeSessionId, feedbackContent } = job.data;
+    this.logger.log(`Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`);
 
     const [step] = await this.tenantDb
       .select()
@@ -49,21 +53,25 @@ export class AgentTaskWorker extends WorkerHost {
 
     const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
     const input = (step.input ?? {}) as Record<string, unknown>;
-    let sessionId: string | undefined;
+    let sessionId = resumeSessionId;
     let accumulatedContent = '';
     let lastStopReason: string | undefined;
 
     try {
-      const session = await this.agentRuntime.createSession({
-        agentId: nodeData.agentId as string,
-        mode: 'workflow',
-        context: input,
-      });
-      sessionId = session.id;
+      if (!sessionId) {
+        const session = await this.agentRuntime.createSession({
+          agentId: nodeData.agentId as string,
+          mode: 'workflow',
+          context: input,
+        });
+        sessionId = session.id;
+      }
 
-      const contentBlocks = this.buildContentBlocks(nodeData, input);
+      const contentBlocks = resumeSessionId && feedbackContent
+        ? [{ type: 'text' as const, text: feedbackContent }]
+        : this.buildContentBlocks(nodeData, input);
 
-      for await (const event of this.agentRuntime.prompt(session.id, contentBlocks)) {
+      for await (const event of this.agentRuntime.prompt(sessionId, contentBlocks)) {
         this.stepStateMachine.broadcastAgentEvent(tenantId, executionId, stepId, event);
 
         if (event.type === 'message_chunk') {
@@ -71,6 +79,20 @@ export class AgentTaskWorker extends WorkerHost {
         } else if (event.type === 'done') {
           lastStopReason = event.stopReason;
         }
+      }
+
+      if (lastStopReason && INTERVENTION_STOP_REASONS.has(lastStopReason)) {
+        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'waiting_intervention', {
+          checkpointData: {
+            sessionId,
+            partialContent: accumulatedContent,
+            stopReason: lastStopReason,
+          },
+          result: { content: accumulatedContent, stopReason: lastStopReason },
+        });
+        await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+        this.logger.log(`Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`);
+        return;
       }
 
       const result: Record<string, unknown> = { content: accumulatedContent };

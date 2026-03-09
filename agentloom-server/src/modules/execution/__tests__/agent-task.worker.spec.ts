@@ -421,12 +421,12 @@ describe('AgentTaskWorker', () => {
       );
     });
 
-    it('应在 tool_use 时完成并记录结果', async () => {
+    it('应在 tool_use 时转为 waiting_intervention 并保存检查点', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         createEventStream([
-          { type: 'message_chunk', content: '工具调用结果' },
+          { type: 'message_chunk', content: '工具调用建议' },
           { type: 'done', stopReason: 'tool_use' },
         ]),
       );
@@ -436,9 +436,34 @@ describe('AgentTaskWorker', () => {
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
-        'completed',
-        { result: { content: '工具调用结果', stopReason: 'tool_use' } },
+        'waiting_intervention',
+        {
+          checkpointData: {
+            sessionId: SESSION_ID,
+            partialContent: '工具调用建议',
+            stopReason: 'tool_use',
+          },
+          result: { content: '工具调用建议', stopReason: 'tool_use' },
+        },
       );
+    });
+
+    it('应在 tool_use 时调用 updateExecutionStatus 而非 onNodeCompleted', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'done', stopReason: 'tool_use' },
+        ]),
+      );
+
+      await worker.process(createMockJob());
+
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
     });
   });
 
@@ -507,6 +532,103 @@ describe('AgentTaskWorker', () => {
         type: 'text',
         text: JSON.stringify({ source: { text: 'hello' } }),
       });
+    });
+  });
+
+  describe('process — 干预恢复流程', () => {
+    it('应在恢复时跳过 createSession 直接使用已有 sessionId', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: SESSION_ID, partialContent: '之前的内容' },
+      });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.process(createMockJob({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          resumeSessionId: SESSION_ID,
+          feedbackContent: '请继续执行',
+        },
+      }));
+
+      expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
+      expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
+        { type: 'text', text: '请继续执行' },
+      ]);
+    });
+
+    it('应在恢复后正常完成并调用 onNodeCompleted', async () => {
+      const step = makeStep({ status: 'waiting_intervention' });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '恢复后的结果' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+      await worker.process(createMockJob({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          resumeSessionId: SESSION_ID,
+          feedbackContent: '同意执行',
+        },
+      }));
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'completed',
+        { result: { content: '恢复后的结果' } },
+      );
+      expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('应在恢复后再次 tool_use 时再次进入 waiting_intervention', async () => {
+      const step = makeStep({ status: 'waiting_intervention' });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '再次建议' },
+          { type: 'done', stopReason: 'tool_use' },
+        ]),
+      );
+
+      await worker.process(createMockJob({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          resumeSessionId: SESSION_ID,
+          feedbackContent: '请重新分析',
+        },
+      }));
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'waiting_intervention',
+        {
+          checkpointData: {
+            sessionId: SESSION_ID,
+            partialContent: '再次建议',
+            stopReason: 'tool_use',
+          },
+          result: { content: '再次建议', stopReason: 'tool_use' },
+        },
+      );
+      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
     });
   });
 });
