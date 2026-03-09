@@ -18,7 +18,9 @@ import type { ContentBlock } from '../agent/types/content-block.types';
 import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { ThrottleService } from './services/throttle.service';
+import { EventBridgeService } from './services/event-bridge.service';
 import { AgentExecutionException } from './execution.exceptions';
+import type { InterventionRequiredPayload } from './types/execution-event.types';
 import {
   AGENT_TASK_QUEUE,
   type AgentTaskJobData,
@@ -49,6 +51,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly stepStateMachine: StepStateMachineService,
     private readonly nodeScheduler: NodeSchedulerService,
     private readonly throttleService: ThrottleService,
+    private readonly eventBridge: EventBridgeService,
   ) {
     super();
   }
@@ -58,6 +61,11 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   async process(job: Job<AgentTaskJobData>): Promise<void> {
+    if (job.name === 'intervention-timeout') {
+      await this.handleInterventionTimeout(job);
+      return;
+    }
+
     const {
       executionId,
       stepId,
@@ -199,6 +207,13 @@ export class AgentTaskWorker extends WorkerHost {
           );
           await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
         });
+        this.eventBridge.emitInterventionRequired(tenantId, executionId, {
+          stepId,
+          nodeId: step.nodeId,
+          ...(decision ? { decision: decision as InterventionRequiredPayload['decision'] } : {}),
+          ...(accumulatedContent ? { partialContent: accumulatedContent } : {}),
+        });
+        await this.nodeScheduler.enqueueInterventionTimeout(executionId, stepId, tenantId);
         this.logger.log(`Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`);
         return;
       }
@@ -385,6 +400,31 @@ export class AgentTaskWorker extends WorkerHost {
 
   private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
     return [{ type: 'text', text: JSON.stringify(input) }];
+  }
+
+  private async handleInterventionTimeout(job: Job<AgentTaskJobData>): Promise<void> {
+    const { executionId, stepId, tenantId } = job.data;
+    this.logger.log(`Processing intervention timeout: ${JSON.stringify({ executionId, stepId })}`);
+
+    const [step] = await this.withTenantContext(tenantId, () =>
+      this.tenantDb
+        .select()
+        .from(schema.executionSteps)
+        .where(eq(schema.executionSteps.id, stepId)),
+    );
+
+    if (!step || step.status !== 'waiting_intervention') {
+      this.logger.log(`Intervention timeout skipped (status: ${step?.status ?? 'not-found'}): ${JSON.stringify({ executionId, stepId })}`);
+      return;
+    }
+
+    await this.withTenantContext(tenantId, () =>
+      this.nodeScheduler.resolveIntervention(executionId, stepId, tenantId, {
+        action: 'reject',
+        feedback: '干预超时，系统自动拒绝',
+      }),
+    );
+    this.logger.log(`Intervention timeout auto-rejected: ${JSON.stringify({ executionId, stepId })}`);
   }
 
   private shouldRetry(job: Job<AgentTaskJobData>): boolean {

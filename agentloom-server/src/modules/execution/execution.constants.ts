@@ -17,6 +17,8 @@ export const AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS = {
   },
 } as const;
 
+export const INTERVENTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 export type InterventionAction = 'approve' | 'modify' | 'reject';
 
 export interface InterventionResolution {

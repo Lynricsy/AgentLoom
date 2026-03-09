@@ -11,6 +11,8 @@ import type {
   StepAgentEventPayload,
   StepRetryingPayload,
   OutputChunkPayload,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
 } from '../types/execution-event.types';
 
 const TENANT = 'tenant-1';
@@ -215,6 +217,66 @@ describe('EventBridgeService', () => {
 
       expect(result.event).toBe(ExecutionEventName.OUTPUT_CHUNK);
       expect(result.data.chunk).toBe('Hello world');
+    });
+  });
+
+  describe('emitInterventionRequired', () => {
+    it('应创建标准信封并广播', () => {
+      const payload: InterventionRequiredPayload = {
+        stepId: 's1',
+        nodeId: 'n1',
+        decision: {
+          suggestedContent: '建议内容',
+          confidence: 0.85,
+          rationale: '基于上下文分析',
+        },
+        partialContent: '部分输出内容',
+      };
+
+      const result = service.emitInterventionRequired(TENANT, EXEC, payload);
+
+      expect(result).toMatchObject({
+        eventId: 1,
+        event: ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+        executionId: EXEC,
+        tenantId: TENANT,
+        data: payload,
+      });
+      expect(result.timestamp).toBeDefined();
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
+        TENANT,
+        EXEC,
+        ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+        expect.objectContaining({ eventId: 1 }),
+      );
+    });
+  });
+
+  describe('emitInterventionResolved', () => {
+    it('应创建标准信封并广播', () => {
+      const payload: InterventionResolvedPayload = {
+        stepId: 's1',
+        nodeId: 'n1',
+        action: 'approve',
+        feedback: '批准发布',
+      };
+
+      const result = service.emitInterventionResolved(TENANT, EXEC, payload);
+
+      expect(result).toMatchObject({
+        eventId: 1,
+        event: ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+        executionId: EXEC,
+        tenantId: TENANT,
+        data: payload,
+      });
+      expect(result.timestamp).toBeDefined();
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
+        TENANT,
+        EXEC,
+        ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+        expect.objectContaining({ eventId: 1 }),
+      );
     });
   });
 

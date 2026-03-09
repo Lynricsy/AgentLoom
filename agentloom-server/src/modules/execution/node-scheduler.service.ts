@@ -16,6 +16,7 @@ import {
 } from './step-state-machine.service';
 import {
   AGENT_TASK_QUEUE,
+  INTERVENTION_TIMEOUT_MS,
   type AgentTaskJobData,
   type InterventionResolution,
 } from './execution.constants';
@@ -26,6 +27,7 @@ import {
 } from './execution.exceptions';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
+import { EventBridgeService } from './services/event-bridge.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -40,6 +42,7 @@ export class NodeSchedulerService {
     private readonly stepStateMachine: StepStateMachineService,
     private readonly sandboxService: SandboxService,
     private readonly checkpointService: CheckpointService,
+    private readonly eventBridge: EventBridgeService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {}
@@ -396,6 +399,14 @@ export class NodeSchedulerService {
       throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
     }
 
+    this.eventBridge.emitInterventionResolved(tenantId, executionId, {
+      stepId,
+      nodeId: step.nodeId,
+      action: resolution.action,
+      ...(resolution.feedback ? { feedback: resolution.feedback } : {}),
+    });
+    await this.removeInterventionTimeout(stepId);
+
     await this.agentTaskQueue.add('agent-task', {
       executionId,
       stepId,
@@ -407,6 +418,34 @@ export class NodeSchedulerService {
     } satisfies AgentTaskJobData);
 
     this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
+  }
+
+  async enqueueInterventionTimeout(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+  ): Promise<void> {
+    await this.agentTaskQueue.add(
+      'intervention-timeout',
+      { executionId, stepId, tenantId } satisfies AgentTaskJobData,
+      {
+        delay: INTERVENTION_TIMEOUT_MS,
+        jobId: `intervention-timeout:${stepId}`,
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+    this.logger.log(`Intervention timeout enqueued (24h): ${JSON.stringify({ executionId, stepId })}`);
+  }
+
+  private async removeInterventionTimeout(stepId: string): Promise<void> {
+    const jobId = `intervention-timeout:${stepId}`;
+    const job = await this.agentTaskQueue.getJob(jobId);
+    if (job) {
+      await job.remove();
+      this.logger.log(`Intervention timeout removed: ${jobId}`);
+    }
   }
 
   /**

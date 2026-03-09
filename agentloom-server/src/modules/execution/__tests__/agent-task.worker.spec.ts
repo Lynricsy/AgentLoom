@@ -6,6 +6,7 @@ import { AgentTaskWorker } from '../agent-task.worker';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
 import { ThrottleService } from '../services/throttle.service';
+import { EventBridgeService } from '../services/event-bridge.service';
 import { AgentExecutionException } from '../execution.exceptions';
 import {
   AGENT_TASK_QUEUE,
@@ -126,10 +127,16 @@ describe('AgentTaskWorker', () => {
   const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
     onNodeCompleted: vi.fn().mockResolvedValue(undefined),
     onNodeFailed: vi.fn().mockResolvedValue(undefined),
+    enqueueInterventionTimeout: vi.fn().mockResolvedValue(undefined),
+    resolveIntervention: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockThrottle: Record<string, ReturnType<typeof vi.fn>> = {
     bufferOutputChunk: vi.fn(),
+  };
+
+  const mockEventBridge: Record<string, ReturnType<typeof vi.fn>> = {
+    emitInterventionRequired: vi.fn(),
   };
 
   const mockAgentRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
@@ -174,6 +181,7 @@ describe('AgentTaskWorker', () => {
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
         { provide: ThrottleService, useValue: mockThrottle },
+        { provide: EventBridgeService, useValue: mockEventBridge },
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
@@ -303,6 +311,24 @@ describe('AgentTaskWorker', () => {
       );
       expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
         EXECUTION_ID,
+        TENANT_ID,
+      );
+      expect(mockEventBridge.emitInterventionRequired).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: STEP_ID,
+          nodeId: 'node-1',
+          decision: {
+            suggestedContent: '建议给主人展示摘要',
+            confidence: 0.8,
+          },
+          partialContent: '建议给主人展示摘要',
+        },
+      );
+      expect(mockNodeScheduler.enqueueInterventionTimeout).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
         TENANT_ID,
       );
       expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
@@ -622,6 +648,53 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         TENANT_ID,
       );
+    });
+
+    it('intervention-timeout 任务在步骤仍为 waiting_intervention 时自动拒绝', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: SESSION_ID },
+      });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+
+      await worker.process(
+        createMockJob({
+          name: 'intervention-timeout',
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+          },
+        }),
+      );
+
+      expect(mockNodeScheduler.resolveIntervention).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        {
+          action: 'reject',
+          feedback: '干预超时，系统自动拒绝',
+        },
+      );
+    });
+
+    it('intervention-timeout 任务在步骤已非 waiting_intervention 时跳过', async () => {
+      const step = makeStep({ status: 'completed' });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+
+      await worker.process(
+        createMockJob({
+          name: 'intervention-timeout',
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+          },
+        }),
+      );
+
+      expect(mockNodeScheduler.resolveIntervention).not.toHaveBeenCalled();
     });
 
     it('hasSandbox 为 true 时应使用 adapterFactory 选择沙箱适配器', async () => {

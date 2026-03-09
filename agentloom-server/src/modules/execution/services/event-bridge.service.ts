@@ -16,6 +16,8 @@ import {
   type StepAgentEventPayload,
   type StepRetryingPayload,
   type OutputChunkPayload,
+  type InterventionRequiredPayload,
+  type InterventionResolvedPayload,
   type LegacyEventName,
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
@@ -132,6 +134,36 @@ export class EventBridgeService implements OnModuleDestroy {
   ): ExecutionEvent<typeof ExecutionEventName.OUTPUT_CHUNK> {
     const envelope = this.createEnvelope(
       ExecutionEventName.OUTPUT_CHUNK,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  emitInterventionRequired(
+    tenantId: string,
+    executionId: string,
+    payload: InterventionRequiredPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_REQUIRED> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  emitInterventionResolved(
+    tenantId: string,
+    executionId: string,
+    payload: InterventionResolvedPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_RESOLVED> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.NODE_INTERVENTION_RESOLVED,
       tenantId,
       executionId,
       payload,

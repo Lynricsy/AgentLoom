@@ -6,6 +6,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import { NodeSchedulerService } from '../node-scheduler.service';
 import { DagResolverService } from '../dag-resolver.service';
 import { StepStateMachineService } from '../step-state-machine.service';
+import { EventBridgeService } from '../services/event-bridge.service';
 import { AGENT_TASK_QUEUE, type InterventionResolution } from '../execution.constants';
 import {
   AgentExecutionException,
@@ -122,7 +123,7 @@ describe('NodeSchedulerService', () => {
     broadcastAgentEvent: ReturnType<typeof vi.fn>;
     markExecutionFailed: ReturnType<typeof vi.fn>;
   };
-  let mockQueue: { add: ReturnType<typeof vi.fn> };
+  let mockQueue: { add: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> };
   let mockSandboxService: {
     createSandboxSession: ReturnType<typeof vi.fn>;
     getSandboxSession: ReturnType<typeof vi.fn>;
@@ -130,6 +131,9 @@ describe('NodeSchedulerService', () => {
   };
   let mockCheckpointService: {
     saveCheckpoint: ReturnType<typeof vi.fn>;
+  };
+  let mockEventBridge: {
+    emitInterventionResolved: ReturnType<typeof vi.fn>;
   };
 
   beforeAll(() => {
@@ -161,7 +165,7 @@ describe('NodeSchedulerService', () => {
       broadcastAgentEvent: vi.fn(),
       markExecutionFailed: vi.fn().mockResolvedValue(undefined),
     };
-    mockQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    mockQueue = { add: vi.fn().mockResolvedValue(undefined), getJob: vi.fn().mockResolvedValue(null) };
     mockSandboxService = {
       createSandboxSession: vi.fn().mockResolvedValue({
         id: '019577a0-0000-7000-8000-sandbox00001',
@@ -173,6 +177,9 @@ describe('NodeSchedulerService', () => {
     mockCheckpointService = {
       saveCheckpoint: vi.fn().mockResolvedValue(undefined),
     };
+    mockEventBridge = {
+      emitInterventionResolved: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -183,6 +190,7 @@ describe('NodeSchedulerService', () => {
         { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockQueue },
         { provide: SandboxService, useValue: mockSandboxService },
         { provide: CheckpointService, useValue: mockCheckpointService },
+        { provide: EventBridgeService, useValue: mockEventBridge },
       ],
     }).compile();
 
@@ -804,6 +812,17 @@ describe('NodeSchedulerService', () => {
 
       await service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, resolution);
 
+      expect(mockEventBridge.emitInterventionResolved).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: STEP_ID,
+          nodeId: step.nodeId,
+          action: 'modify',
+          feedback: '请按这个版本提交',
+        },
+      );
+      expect(mockQueue.getJob).toHaveBeenCalledWith(`intervention-timeout:${STEP_ID}`);
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
@@ -860,6 +879,49 @@ describe('NodeSchedulerService', () => {
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('enqueueInterventionTimeout', () => {
+    it('应以 24 小时延迟将超时任务入队', async () => {
+      await service.enqueueInterventionTimeout(EXECUTION_ID, 'step-x', TENANT_ID);
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'intervention-timeout',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-x',
+          tenantId: TENANT_ID,
+        },
+        expect.objectContaining({
+          delay: 24 * 60 * 60 * 1000,
+          jobId: 'intervention-timeout:step-x',
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: true,
+        }),
+      );
+    });
+  });
+
+  describe('removeInterventionTimeout (via resolveIntervention)', () => {
+    it('存在超时任务时应移除', async () => {
+      const mockJob = { remove: vi.fn().mockResolvedValue(undefined) };
+      mockQueue.getJob.mockResolvedValueOnce(mockJob);
+
+      const step = makeStep({
+        id: '019391d4-0000-7000-0000-000000000099',
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: 'session-abc-123' },
+      });
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await service.resolveIntervention(EXECUTION_ID, '019391d4-0000-7000-0000-000000000099', TENANT_ID, {
+        action: 'approve',
+      });
+
+      expect(mockQueue.getJob).toHaveBeenCalledWith('intervention-timeout:019391d4-0000-7000-0000-000000000099');
+      expect(mockJob.remove).toHaveBeenCalled();
     });
   });
 

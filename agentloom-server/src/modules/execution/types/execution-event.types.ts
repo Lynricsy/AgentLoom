@@ -6,6 +6,8 @@ export const ExecutionEventName = {
   STEP_AGENT_EVENT: 'execution.node.agent-event',
   STEP_RETRYING: 'execution.node.retrying',
   OUTPUT_CHUNK: 'execution.node.output-chunk',
+  NODE_INTERVENTION_REQUIRED: 'execution.node.intervention-required',
+  NODE_INTERVENTION_RESOLVED: 'execution.node.intervention-resolved',
 } as const;
 
 export type ExecutionEventName =
@@ -44,12 +46,32 @@ export interface OutputChunkPayload {
   readonly index: number;
 }
 
+export interface InterventionRequiredPayload {
+  readonly stepId: string;
+  readonly nodeId: string;
+  readonly decision?: {
+    readonly suggestedContent?: string;
+    readonly confidence?: number;
+    readonly rationale?: string;
+  };
+  readonly partialContent?: string;
+}
+
+export interface InterventionResolvedPayload {
+  readonly stepId: string;
+  readonly nodeId: string;
+  readonly action: 'approve' | 'modify' | 'reject';
+  readonly feedback?: string;
+}
+
 export interface ExecutionEventPayloadMap {
   [ExecutionEventName.EXECUTION_STATUS_CHANGED]: ExecutionStatusChangedPayload;
   [ExecutionEventName.STEP_STATUS_CHANGED]: StepStatusChangedPayload;
   [ExecutionEventName.STEP_AGENT_EVENT]: StepAgentEventPayload;
   [ExecutionEventName.STEP_RETRYING]: StepRetryingPayload;
   [ExecutionEventName.OUTPUT_CHUNK]: OutputChunkPayload;
+  [ExecutionEventName.NODE_INTERVENTION_REQUIRED]: InterventionRequiredPayload;
+  [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: InterventionResolvedPayload;
 }
 
 export interface ExecutionEvent<
@@ -152,6 +174,12 @@ export interface ServerToClientEvents {
   ) => void;
   [ExecutionEventName.OUTPUT_CHUNK]: (
     event: ExecutionEvent<typeof ExecutionEventName.OUTPUT_CHUNK>,
+  ) => void;
+  [ExecutionEventName.NODE_INTERVENTION_REQUIRED]: (
+    event: ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_REQUIRED>,
+  ) => void;
+  [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: (
+    event: ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_RESOLVED>,
   ) => void;
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void;
   error: (error: { message: string; code?: string }) => void;
