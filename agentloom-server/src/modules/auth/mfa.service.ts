@@ -25,7 +25,8 @@ export class MfaService {
 
   async enrollTotp(supabaseAccessToken: string) {
     try {
-      const factors = await this.supabaseService.listFactors(supabaseAccessToken);
+      const factors =
+        await this.supabaseService.listFactors(supabaseAccessToken);
       const hasVerifiedTotpFactor = factors.totp.some(
         (factor) => factor.status === 'verified',
       );
@@ -53,11 +54,7 @@ export class MfaService {
     }
   }
 
-  async verifyTotp(
-    authToken: string,
-    factorId: string,
-    code: string,
-  ) {
+  async verifyTotp(authToken: string, factorId: string, code: string) {
     try {
       const supabaseAccessToken = this.resolveSupabaseAccessToken(authToken);
       const session = await this.supabaseService.challengeAndVerifyTotp(
@@ -234,11 +231,18 @@ export class MfaService {
   }
 
   private hasSessionTokens(
-    session: {
-      access_token?: string;
-      refresh_token?: string;
-    } | null | undefined,
-  ): session is { access_token: string; refresh_token: string; expires_in?: number | null } {
+    session:
+      | {
+          access_token?: string;
+          refresh_token?: string;
+        }
+      | null
+      | undefined,
+  ): session is {
+    access_token: string;
+    refresh_token: string;
+    expires_in?: number | null;
+  } {
     return (
       typeof session?.access_token === 'string' &&
       session.access_token.length > 0 &&

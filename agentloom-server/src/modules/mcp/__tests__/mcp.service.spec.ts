@@ -56,9 +56,8 @@ const mcpMocks = vi.hoisted(() => {
 });
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -351,11 +350,11 @@ describe('McpService', () => {
       expect(result.success).toBe(true);
       expect(mcpMocks.SSEClientTransport).toHaveBeenCalledOnce();
 
-      const sseCalls = mcpMocks.SSEClientTransport.mock.calls as unknown as Array<[
-        URL,
-        { requestInit: { headers: Record<string, string> } },
-      ]>;
-      const [url, options] = sseCalls[0]!;
+      const sseCalls = mcpMocks.SSEClientTransport.mock
+        .calls as unknown as Array<
+        [URL, { requestInit: { headers: Record<string, string> } }]
+      >;
+      const [url, options] = sseCalls[0];
       expect(url).toBeInstanceOf(URL);
       expect(url.toString()).toBe('https://mcp.example.com/sse');
       expect(options).toEqual({
@@ -380,12 +379,11 @@ describe('McpService', () => {
       expect(result.success).toBe(true);
       expect(mcpMocks.StreamableHTTPClientTransport).toHaveBeenCalledOnce();
 
-      const streamableHttpCalls =
-        mcpMocks.StreamableHTTPClientTransport.mock.calls as unknown as Array<[
-          URL,
-          { requestInit: { headers: Record<string, string> } },
-        ]>;
-      const [url, options] = streamableHttpCalls[0]!;
+      const streamableHttpCalls = mcpMocks.StreamableHTTPClientTransport.mock
+        .calls as unknown as Array<
+        [URL, { requestInit: { headers: Record<string, string> } }]
+      >;
+      const [url, options] = streamableHttpCalls[0];
       expect(url).toBeInstanceOf(URL);
       expect(url.toString()).toBe('https://mcp.example.com/http');
       expect(options).toEqual({
@@ -483,7 +481,9 @@ describe('McpService', () => {
 
     it('应当在工具发现失败时映射为 McpConnectionFailedException', async () => {
       mcpMocks.mockClient.connect.mockResolvedValue(undefined);
-      mcpMocks.mockClient.listTools.mockRejectedValue(new Error('列出工具失败'));
+      mcpMocks.mockClient.listTools.mockRejectedValue(
+        new Error('列出工具失败'),
+      );
 
       const promise = service.discoverTools({
         connection: createStdioConnection(),

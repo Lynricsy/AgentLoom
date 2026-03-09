@@ -11,7 +11,9 @@ function normalizeStatusQuery(value: unknown): unknown {
 
   if (Array.isArray(value)) {
     return value.flatMap((item) =>
-      typeof item === 'string' ? item.split(',').map((entry) => entry.trim()) : item,
+      typeof item === 'string'
+        ? item.split(',').map((entry) => entry.trim())
+        : item,
     );
   }
 

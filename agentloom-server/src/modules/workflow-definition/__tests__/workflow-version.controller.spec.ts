@@ -130,7 +130,11 @@ describe('WorkflowVersionController', () => {
   describe('rollback', () => {
     it('应当调用 service 并返回 { data }', async () => {
       setup();
-      const result = await controller.rollback(WORKFLOW_ID, VERSION_ID, USER_ID);
+      const result = await controller.rollback(
+        WORKFLOW_ID,
+        VERSION_ID,
+        USER_ID,
+      );
 
       expect(service.rollback).toHaveBeenCalledWith(
         WORKFLOW_ID,

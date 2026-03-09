@@ -17,20 +17,24 @@ export class TenantGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const targets = [context.getHandler(), context.getClass()];
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets);
+    const isPublic = this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_KEY,
+      targets,
+    );
 
     if (isPublic) return true;
 
-    const requiredRoles = this.reflector.getAllAndOverride<OrgRole[] | undefined>(
-      ROLES_KEY,
-      targets,
-    );
+    const requiredRoles = this.reflector.getAllAndOverride<
+      OrgRole[] | undefined
+    >(ROLES_KEY, targets);
 
     if (!requiredRoles?.length) {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<FastifyRequest & { user: JwtPayload }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<FastifyRequest & { user: JwtPayload }>();
     const tenantId = request.user?.tenantId;
 
     if (!tenantId) {

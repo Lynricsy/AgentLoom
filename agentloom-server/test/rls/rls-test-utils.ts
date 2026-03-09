@@ -141,7 +141,11 @@ export async function seedAuthUser(
   `;
 }
 
-export async function seedAppUser(sqlClient: TestSql, id: string, email: string) {
+export async function seedAppUser(
+  sqlClient: TestSql,
+  id: string,
+  email: string,
+) {
   await seedAuthUser(sqlClient, id, email);
   await sqlClient`
     INSERT INTO "users" (id, supabase_user_id, email)

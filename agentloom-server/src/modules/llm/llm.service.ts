@@ -22,11 +22,7 @@ export class LlmService {
     return getTenantDb(this.db);
   }
 
-  async create(
-    dto: CreateLlmModelConfigDto,
-    tenantId: string,
-    userId: string,
-  ) {
+  async create(dto: CreateLlmModelConfigDto, tenantId: string, userId: string) {
     const orgResult = await this.tenantDb
       .select({ id: organizations.id })
       .from(organizations)
@@ -97,10 +93,7 @@ export class LlmService {
       .select()
       .from(llmModelConfigs)
       .where(
-        and(
-          eq(llmModelConfigs.id, id),
-          eq(llmModelConfigs.tenantId, tenantId),
-        ),
+        and(eq(llmModelConfigs.id, id), eq(llmModelConfigs.tenantId, tenantId)),
       );
 
     if (results.length === 0) {
@@ -110,11 +103,7 @@ export class LlmService {
     return results[0];
   }
 
-  async update(
-    id: string,
-    dto: UpdateLlmModelConfigDto,
-    tenantId: string,
-  ) {
+  async update(id: string, dto: UpdateLlmModelConfigDto, tenantId: string) {
     const existing = await this.findById(id, tenantId);
 
     if (dto.name && dto.name !== existing.name) {
@@ -144,10 +133,7 @@ export class LlmService {
         updatedAt: new Date(),
       })
       .where(
-        and(
-          eq(llmModelConfigs.id, id),
-          eq(llmModelConfigs.tenantId, tenantId),
-        ),
+        and(eq(llmModelConfigs.id, id), eq(llmModelConfigs.tenantId, tenantId)),
       )
       .returning();
 
@@ -161,10 +147,7 @@ export class LlmService {
     await this.tenantDb
       .delete(llmModelConfigs)
       .where(
-        and(
-          eq(llmModelConfigs.id, id),
-          eq(llmModelConfigs.tenantId, tenantId),
-        ),
+        and(eq(llmModelConfigs.id, id), eq(llmModelConfigs.tenantId, tenantId)),
       );
 
     this.logger.log(`删除 LLM 模型配置: ${id}`);

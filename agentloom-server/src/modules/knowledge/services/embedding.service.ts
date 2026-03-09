@@ -114,9 +114,7 @@ export class EmbeddingService {
 
     const json = (await response.json()) as EmbeddingApiResponse;
 
-    return json.data
-      .sort((a, b) => a.index - b.index)
-      .map((d) => d.embedding);
+    return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
 
   private sleep(ms: number): Promise<void> {
@@ -132,7 +130,10 @@ export class EmbeddingService {
   }
 
   private getRetryDelay(error: Error, attempt: number): number {
-    if (error instanceof EmbeddingApiError && error.retryAfterMs !== undefined) {
+    if (
+      error instanceof EmbeddingApiError &&
+      error.retryAfterMs !== undefined
+    ) {
       return error.retryAfterMs;
     }
 

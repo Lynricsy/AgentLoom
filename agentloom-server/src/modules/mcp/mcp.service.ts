@@ -16,7 +16,10 @@ import {
 } from '../../database/schema';
 import type { TestMcpConnectionResponse } from './dto/test-mcp-connection.dto';
 import type { DiscoverMcpToolsResponse } from './dto/discover-mcp-tools.dto';
-import type { ImportMcpToolsResponse, PortMapping } from './dto/import-mcp-tools.dto';
+import type {
+  ImportMcpToolsResponse,
+  PortMapping,
+} from './dto/import-mcp-tools.dto';
 import type { TestMcpConnectionDto } from './dto/test-mcp-connection.dto';
 import type { DiscoverMcpToolsDto } from './dto/discover-mcp-tools.dto';
 import type { ImportMcpToolsDto } from './dto/import-mcp-tools.dto';
@@ -198,8 +201,9 @@ export class McpService {
               mcpServerConfigId: config.id,
               source: 'mcp',
               name: tool.name,
-              title:
-                (tool as Record<string, unknown>).title as string | undefined,
+              title: (tool as Record<string, unknown>).title as
+                | string
+                | undefined,
               description: tool.description,
               inputSchema: tool.inputSchema as Record<string, unknown>,
               annotations: (tool as Record<string, unknown>).annotations as
@@ -228,13 +232,8 @@ export class McpService {
     });
   }
 
-  async listTools(
-    tenantId: string,
-    source?: string,
-  ) {
-    const conditions = [
-      eq(toolDefinitions.tenantId, tenantId),
-    ];
+  async listTools(tenantId: string, source?: string) {
+    const conditions = [eq(toolDefinitions.tenantId, tenantId)];
 
     if (source) {
       conditions.push(
@@ -320,7 +319,7 @@ export class McpService {
         return new StdioClientTransport({
           command: connection.command,
           args: connection.args,
-          env: connection.env as Record<string, string> | undefined,
+          env: connection.env,
         });
       case 'sse':
         return new SSEClientTransport(
@@ -363,9 +362,9 @@ export class McpService {
     }
   }
 
-  private generatePortMapping(
-    tool: { inputSchema?: Record<string, unknown> },
-  ): { inputs: PortMapping[]; outputs: PortMapping[] } | null {
+  private generatePortMapping(tool: {
+    inputSchema?: Record<string, unknown>;
+  }): { inputs: PortMapping[]; outputs: PortMapping[] } | null {
     const schema = tool.inputSchema;
     if (!schema || typeof schema !== 'object') return null;
 
@@ -449,7 +448,9 @@ export class McpService {
     try {
       await transport.close();
     } catch (error) {
-      this.logger.warn(`MCP transport 关闭失败: ${this.getErrorMessage(error)}`);
+      this.logger.warn(
+        `MCP transport 关闭失败: ${this.getErrorMessage(error)}`,
+      );
     }
   }
 
@@ -493,9 +494,7 @@ export class McpService {
       throw error;
     }
 
-    throw new McpConnectionFailedException(
-      `MCP ${operation}失败: ${message}`,
-    );
+    throw new McpConnectionFailedException(`MCP ${operation}失败: ${message}`);
   }
 
   private async withTimeout<T>(

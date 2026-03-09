@@ -12,9 +12,7 @@ import { envSchema } from './env.schema';
           const formatted = result.error.issues
             .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
             .join('\n');
-          throw new Error(
-            `环境变量验证失败:\n${formatted}`,
-          );
+          throw new Error(`环境变量验证失败:\n${formatted}`);
         }
         return result.data;
       },

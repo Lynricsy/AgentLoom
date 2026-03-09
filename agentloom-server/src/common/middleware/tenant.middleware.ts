@@ -6,7 +6,11 @@ import { validate as isUuid } from 'uuid';
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
 
-  use(req: IncomingMessage, _res: ServerResponse, next: (error?: Error) => void) {
+  use(
+    req: IncomingMessage,
+    _res: ServerResponse,
+    next: (error?: Error) => void,
+  ) {
     const tenantId = this.extractTenantId(req);
 
     if (tenantId) {
@@ -25,7 +29,9 @@ export class TenantMiddleware implements NestMiddleware {
       const payloadPart = token.split('.')[1];
       if (!payloadPart) return undefined;
 
-      const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString()) as {
+      const payload = JSON.parse(
+        Buffer.from(payloadPart, 'base64url').toString(),
+      ) as {
         tenantId?: string;
         tenant_id?: string;
       };

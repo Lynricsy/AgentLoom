@@ -442,7 +442,9 @@ export class AuthService {
   private extractProviders(user: SupabaseUser | null) {
     const providers = new Set<string>();
     const appMetadata =
-      user && typeof user.app_metadata === 'object' && user.app_metadata !== null
+      user &&
+      typeof user.app_metadata === 'object' &&
+      user.app_metadata !== null
         ? user.app_metadata
         : null;
     const configuredProviders = appMetadata?.providers;

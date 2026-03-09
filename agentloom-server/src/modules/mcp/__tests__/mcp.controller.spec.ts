@@ -8,8 +8,13 @@ import type {
 } from '../dto';
 import type { McpService } from '../mcp.service';
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
-  const handler = (controller as Record<string, unknown>)[methodName] as Function;
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
+  const handler = (controller as Record<string, unknown>)[
+    methodName
+  ] as Function;
   return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
 }
 
@@ -104,7 +109,10 @@ describe('McpController', () => {
 
   describe('角色元数据', () => {
     it('testConnection 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'testConnection')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'testConnection')).toEqual([
+        'owner',
+        'admin',
+      ]);
     });
 
     it('discoverTools 应当需要 owner 和 admin 角色', () => {

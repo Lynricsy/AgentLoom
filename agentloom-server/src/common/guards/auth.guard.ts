@@ -1,8 +1,4 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
@@ -120,7 +116,9 @@ export class AuthGuard implements CanActivate {
       typeof payload.exp !== 'number' ||
       typeof payload.iat !== 'number'
     ) {
-      throw this.createInvalidTokenException('Token payload is missing required claims');
+      throw this.createInvalidTokenException(
+        'Token payload is missing required claims',
+      );
     }
 
     return {

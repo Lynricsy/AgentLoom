@@ -10,9 +10,7 @@ describe('EncryptionService', () => {
   let service: EncryptionService;
   let configService: ConfigService;
 
-  const createModule = async (
-    masterKey?: string,
-  ): Promise<TestingModule> => {
+  const createModule = async (masterKey?: string): Promise<TestingModule> => {
     return Test.createTestingModule({
       providers: [
         EncryptionService,

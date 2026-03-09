@@ -14,7 +14,9 @@ import type { JwtPayload } from '../guards/auth.guard';
  */
 export const CurrentTenant = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string | undefined => {
-    const request = ctx.switchToHttp().getRequest<FastifyRequest & { user: JwtPayload }>();
+    const request = ctx
+      .switchToHttp()
+      .getRequest<FastifyRequest & { user: JwtPayload }>();
     return request.user?.tenantId;
   },
 );

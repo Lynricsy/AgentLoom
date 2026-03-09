@@ -16,19 +16,19 @@ export type ToolCallStatus =
   | 'denied'
   | 'in_progress'
   | 'completed'
-  | 'failed'
+  | 'failed';
 
 export interface ToolPermissionRequest {
-  readonly description: string
-  readonly resourcePaths?: readonly string[]
+  readonly description: string;
+  readonly resourcePaths?: readonly string[];
 }
 
 export interface ToolCallEvent {
-  readonly id: string
-  readonly tool: string
-  readonly args: Record<string, unknown>
-  readonly status: ToolCallStatus
-  readonly result?: unknown
-  readonly error?: string
-  readonly permissionRequest?: ToolPermissionRequest
+  readonly id: string;
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+  readonly status: ToolCallStatus;
+  readonly result?: unknown;
+  readonly error?: string;
+  readonly permissionRequest?: ToolPermissionRequest;
 }

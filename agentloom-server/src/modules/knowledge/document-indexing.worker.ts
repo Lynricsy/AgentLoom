@@ -69,12 +69,19 @@ export class DocumentIndexingWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<DocumentIndexingJobData>, error: Error): Promise<void> {
+  async onFailed(
+    job: Job<DocumentIndexingJobData>,
+    error: Error,
+  ): Promise<void> {
     const { documentId } = job.data;
     this.logger.error(
       `Document ${documentId} indexing failed after ${job.attemptsMade} attempts: ${error.message}`,
     );
-    await this.documentService.updateStatus(documentId, 'failed', error.message);
+    await this.documentService.updateStatus(
+      documentId,
+      'failed',
+      error.message,
+    );
 
     let document;
     try {
@@ -90,7 +97,7 @@ export class DocumentIndexingWorker extends WorkerHost {
       this.logger.warn(
         `Failed to load document ${documentId} for failure finalization`,
         lookupError instanceof Error
-          ? lookupError.stack ?? lookupError.message
+          ? (lookupError.stack ?? lookupError.message)
           : String(lookupError),
       );
       return;
@@ -105,7 +112,11 @@ export class DocumentIndexingWorker extends WorkerHost {
       : error.message;
 
     if (cleanupError) {
-      await this.documentService.updateStatus(documentId, 'failed', errorMessage);
+      await this.documentService.updateStatus(
+        documentId,
+        'failed',
+        errorMessage,
+      );
     }
 
     try {
@@ -123,7 +134,7 @@ export class DocumentIndexingWorker extends WorkerHost {
       this.logger.warn(
         `Failed to emit document status event for document ${documentId}`,
         emitError instanceof Error
-          ? emitError.stack ?? emitError.message
+          ? (emitError.stack ?? emitError.message)
           : String(emitError),
       );
     }
@@ -137,7 +148,7 @@ export class DocumentIndexingWorker extends WorkerHost {
       this.logger.warn(
         `Failed to emit knowledge base update event for document ${documentId}`,
         emitError instanceof Error
-          ? emitError.stack ?? emitError.message
+          ? (emitError.stack ?? emitError.message)
           : String(emitError),
       );
     }

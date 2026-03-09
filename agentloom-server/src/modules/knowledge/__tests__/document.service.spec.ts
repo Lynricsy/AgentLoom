@@ -38,12 +38,12 @@ const PDF_BUFFER = Buffer.from(
   '%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF',
   'utf-8',
 );
-const TEXT_BUFFER = Buffer.from('# 知识库文档\n\n这是一段 Markdown 文本。', 'utf-8');
+const TEXT_BUFFER = Buffer.from(
+  '# 知识库文档\n\n这是一段 Markdown 文本。',
+  'utf-8',
+);
 
-function createMultipartFile(
-  filename: string,
-  content: Buffer,
-): MultipartFile {
+function createMultipartFile(filename: string, content: Buffer): MultipartFile {
   const fileStream = Readable.from([content]) as MultipartFile['file'];
   fileStream.truncated = false;
 
@@ -95,10 +95,12 @@ describe('DocumentService', () => {
       delete: vi.fn().mockResolvedValue(undefined),
       exists: vi.fn().mockResolvedValue(true),
       removeIncompleteUpload: vi.fn().mockResolvedValue(undefined),
-      buildStorageKey: vi.fn().mockImplementation(
-        (tenantId: string, kbId: string, docId: string, fileName: string) =>
-          `tenants/${tenantId}/kb/${kbId}/${docId}/${fileName}`,
-      ),
+      buildStorageKey: vi
+        .fn()
+        .mockImplementation(
+          (tenantId: string, kbId: string, docId: string, fileName: string) =>
+            `tenants/${tenantId}/kb/${kbId}/${docId}/${fileName}`,
+        ),
     };
 
     processingQueue = {
@@ -223,9 +225,7 @@ describe('DocumentService', () => {
       Object.defineProperty(tooLargeError, 'code', {
         value: 'FST_REQ_FILE_TOO_LARGE',
       });
-      multipartFile.toBuffer = vi.fn().mockRejectedValue(
-        tooLargeError,
-      );
+      multipartFile.toBuffer = vi.fn().mockRejectedValue(tooLargeError);
       const request = { file: vi.fn().mockResolvedValue(multipartFile) };
 
       await expect(
@@ -303,9 +303,7 @@ describe('DocumentService', () => {
 
       expect(storageService.upload).toHaveBeenCalled();
       expect(storageService.exists).toHaveBeenCalledWith(STORAGE_KEY);
-      expect(storageService.delete).toHaveBeenCalledWith(
-        STORAGE_KEY,
-      );
+      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
     });
 
     it('MinIO 清理失败时不应阻止错误抛出', async () => {
@@ -422,12 +420,7 @@ describe('DocumentService', () => {
         .mockReturnValueOnce(selectChain1)
         .mockReturnValueOnce(selectChain2);
 
-      const result = await service.findByKnowledgeBase(
-        KB_ID,
-        TENANT_ID,
-        1,
-        10,
-      );
+      const result = await service.findByKnowledgeBase(KB_ID, TENANT_ID, 1, 10);
 
       expect(result.data).toEqual(docRows);
       expect(result.total).toBe(1);
@@ -520,15 +513,15 @@ describe('DocumentService', () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([
-              { id: DOC_ID, storageKey: STORAGE_KEY },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]),
           }),
         }),
       });
-      const returning = vi.fn().mockResolvedValue([
-        { id: DOC_ID, storageKey: STORAGE_KEY },
-      ]);
+      const returning = vi
+        .fn()
+        .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]);
       db.delete.mockReturnValue({
         where: vi.fn().mockReturnValue({ returning }),
       });
@@ -544,9 +537,7 @@ describe('DocumentService', () => {
       expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
       expect(
         ragService.deleteByDocument.mock.invocationCallOrder[0],
-      ).toBeLessThan(
-        returning.mock.invocationCallOrder[0],
-      );
+      ).toBeLessThan(returning.mock.invocationCallOrder[0]);
     });
 
     it('文档不存在时应抛出 DocumentNotFoundException', async () => {
@@ -570,17 +561,17 @@ describe('DocumentService', () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([
-              { id: DOC_ID, storageKey: STORAGE_KEY },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]),
           }),
         }),
       });
       db.delete.mockReturnValue({
         where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            { id: DOC_ID, storageKey: STORAGE_KEY },
-          ]),
+          returning: vi
+            .fn()
+            .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]),
         }),
       });
       storageService.delete.mockRejectedValueOnce(new Error('MinIO 不可达'));
@@ -594,9 +585,9 @@ describe('DocumentService', () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([
-              { id: DOC_ID, storageKey: STORAGE_KEY },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]),
           }),
         }),
       });
@@ -632,11 +623,19 @@ describe('DocumentService', () => {
         }),
       });
 
-      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).resolves.toBe(2);
+      await expect(
+        service.deleteByKnowledgeBase(KB_ID, TENANT_ID),
+      ).resolves.toBe(2);
 
       expect(storageService.delete).toHaveBeenNthCalledWith(1, STORAGE_KEY);
-      expect(storageService.delete).toHaveBeenNthCalledWith(2, `${STORAGE_KEY}-2`);
-      expect(ragService.deleteByDocument).toHaveBeenCalledWith(DOC_ID, TENANT_ID);
+      expect(storageService.delete).toHaveBeenNthCalledWith(
+        2,
+        `${STORAGE_KEY}-2`,
+      );
+      expect(ragService.deleteByDocument).toHaveBeenCalledWith(
+        DOC_ID,
+        TENANT_ID,
+      );
       expect(ragService.deleteByDocument).toHaveBeenCalledWith(
         `${DOC_ID}-2`,
         TENANT_ID,
@@ -664,7 +663,9 @@ describe('DocumentService', () => {
         .mockRejectedValueOnce(new Error('MinIO 不可达'))
         .mockResolvedValueOnce(undefined);
 
-      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).resolves.toBe(2);
+      await expect(
+        service.deleteByKnowledgeBase(KB_ID, TENANT_ID),
+      ).resolves.toBe(2);
     });
 
     it('向量索引清理失败时应中止知识库级删除', async () => {
@@ -680,9 +681,9 @@ describe('DocumentService', () => {
         new Error('Qdrant 不可达'),
       );
 
-      await expect(service.deleteByKnowledgeBase(KB_ID, TENANT_ID)).rejects.toThrow(
-        'Qdrant 不可达',
-      );
+      await expect(
+        service.deleteByKnowledgeBase(KB_ID, TENANT_ID),
+      ).rejects.toThrow('Qdrant 不可达');
 
       expect(db.delete).not.toHaveBeenCalled();
       expect(storageService.delete).not.toHaveBeenCalled();
@@ -750,7 +751,12 @@ describe('DocumentService', () => {
         }),
       });
 
-      await service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID);
+      await service.uploadFromRequest(
+        request as never,
+        KB_ID,
+        TENANT_ID,
+        USER_ID,
+      );
 
       expect(processingQueue.add).toHaveBeenCalledWith(
         'process',

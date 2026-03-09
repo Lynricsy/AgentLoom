@@ -23,10 +23,7 @@ export class PiAiAdapter {
     private readonly decryptionBoundaryService: DecryptionBoundaryService,
   ) {}
 
-  async getModel(
-    config: LlmModelConfig,
-    apiKey?: string,
-  ): Promise<unknown> {
+  async getModel(config: LlmModelConfig, apiKey?: string): Promise<unknown> {
     const resolvedApiKey = apiKey ?? (await this.resolveApiKey(config));
     const provider = await this.resolveProvider(
       config.provider,
@@ -59,9 +56,7 @@ export class PiAiAdapter {
         });
       }
       case 'google': {
-        const { createGoogleGenerativeAI } = await import(
-          '@ai-sdk/google'
-        );
+        const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
         return createGoogleGenerativeAI({
           apiKey,
           ...(baseUrl && { baseURL: baseUrl }),
@@ -173,8 +168,7 @@ export class PiAiAdapter {
       throw error;
     }
 
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     throw new LlmProviderException(provider, message);
   }
 
@@ -203,10 +197,7 @@ export class PiAiAdapter {
       get: (target, property, receiver) => {
         const value = Reflect.get(target, property, receiver);
 
-        if (
-          typeof value !== 'function' ||
-          !this.shouldWrapMethod(property)
-        ) {
+        if (typeof value !== 'function' || !this.shouldWrapMethod(property)) {
           return value;
         }
 

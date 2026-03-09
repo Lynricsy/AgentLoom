@@ -46,7 +46,10 @@ export class OAuthController {
       throw new OAuthProviderNotSupportedException(provider);
     }
 
-    return this.oauthService.initiateOAuth(parsedProvider.data, body.redirectUrl);
+    return this.oauthService.initiateOAuth(
+      parsedProvider.data,
+      body.redirectUrl,
+    );
   }
 
   @Get('callback')

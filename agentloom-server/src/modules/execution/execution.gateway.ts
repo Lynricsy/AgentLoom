@@ -29,14 +29,20 @@ export class ExecutionGateway
   }
 
   @SubscribeMessage('join')
-  handleJoin(client: Socket, payload: { tenantId: string; executionId: string }) {
+  handleJoin(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ) {
     const room = this.buildRoom(payload.tenantId, payload.executionId);
     void client.join(room);
     this.logger.debug(`Client ${client.id} joined room ${room}`);
   }
 
   @SubscribeMessage('leave')
-  handleLeave(client: Socket, payload: { tenantId: string; executionId: string }) {
+  handleLeave(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ) {
     const room = this.buildRoom(payload.tenantId, payload.executionId);
     void client.leave(room);
     this.logger.debug(`Client ${client.id} left room ${room}`);

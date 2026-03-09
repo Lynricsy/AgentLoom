@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const executionStepSchema = z.object({
+export const executionStepSchema = z.object({
   id: z.string().uuid(),
   executionId: z.string().uuid(),
   nodeId: z.string(),
@@ -27,7 +27,7 @@ const executionStepSchema = z.object({
   updatedAt: z.string(),
 });
 
-const executionResponseSchema = z.object({
+export const executionResponseSchema = z.object({
   id: z.string().uuid(),
   workflowDefinitionId: z.string().uuid(),
   workflowVersionId: z.string().uuid(),

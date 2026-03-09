@@ -10,8 +10,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import { OAuthService } from '../oauth.service';
 import { SupabaseService } from '../supabase/supabase.service';
 
-const MOCK_REDIRECT_URL =
-  'http://localhost:3000/api/v1/auth/oauth/callback';
+const MOCK_REDIRECT_URL = 'http://localhost:3000/api/v1/auth/oauth/callback';
 const MOCK_FRONTEND_URL = 'http://localhost:5173';
 const MOCK_GOOGLE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const MOCK_CODE = 'oauth-code-123';

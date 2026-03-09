@@ -50,7 +50,9 @@ describe('ExecutionWorker', () => {
       const job = createMockJob();
       await worker.process(job);
 
-      expect(mockExecutionService.initializeSteps).toHaveBeenCalledWith(EXECUTION_ID);
+      expect(mockExecutionService.initializeSteps).toHaveBeenCalledWith(
+        EXECUTION_ID,
+      );
     });
 
     it('应在 initializeSteps 失败时抛出错误', async () => {
@@ -71,7 +73,10 @@ describe('ExecutionWorker', () => {
       const error = new Error('队列处理失败');
       await worker.onFailed(job, error);
 
-      expect(mockExecutionService.markFailed).toHaveBeenCalledWith(EXECUTION_ID, error);
+      expect(mockExecutionService.markFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        error,
+      );
     });
   });
 });

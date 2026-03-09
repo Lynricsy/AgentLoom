@@ -98,9 +98,7 @@ describe('PdfParser', () => {
       // 段落A offset = 0
       expect(result.sections[0].location.charOffset).toBe(0);
       // 段落B offset = '段落A'.length + '\n\n'.length
-      expect(result.sections[1].location.charOffset).toBe(
-        page1Text.length + 2,
-      );
+      expect(result.sections[1].location.charOffset).toBe(page1Text.length + 2);
       // 验证 charOffset 能正确定位到 fullText 中的文本
       for (const section of result.sections) {
         expect(

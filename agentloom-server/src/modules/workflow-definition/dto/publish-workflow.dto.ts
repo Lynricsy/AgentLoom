@@ -10,10 +10,7 @@ const publishWorkflowSchema = z.object({
     .string()
     .max(1000, { message: '发布说明不能超过 1000 个字符' })
     .optional(),
-  versionId: z
-    .string()
-    .uuid({ message: '版本 ID 格式无效' })
-    .optional(),
+  versionId: z.string().uuid({ message: '版本 ID 格式无效' }).optional(),
 });
 
 export class PublishWorkflowDto extends createZodDto(publishWorkflowSchema) {}

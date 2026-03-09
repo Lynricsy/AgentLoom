@@ -11,10 +11,10 @@ import {
 import { sql } from 'drizzle-orm';
 import { createDirectTenantPolicies } from './rls-policies';
 
-export const knowledgeBaseVisibilityEnum = pgEnum(
-  'knowledge_base_visibility',
-  ['private', 'organization'],
-);
+export const knowledgeBaseVisibilityEnum = pgEnum('knowledge_base_visibility', [
+  'private',
+  'organization',
+]);
 
 export const documentStatusEnum = pgEnum('document_status', [
   'uploaded',

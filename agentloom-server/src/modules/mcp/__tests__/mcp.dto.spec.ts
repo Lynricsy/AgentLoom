@@ -118,7 +118,9 @@ describe('MCP DTO', () => {
       }
 
       expect(
-        result.error.issues.some((issue) => issue.path.join('.') === 'connection'),
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'connection',
+        ),
       ).toBe(true);
     });
   });
@@ -154,7 +156,9 @@ describe('MCP DTO', () => {
       }
 
       expect(
-        result.error.issues.some((issue) => issue.path.join('.') === 'serverName'),
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'serverName',
+        ),
       ).toBe(true);
     });
 
@@ -174,7 +178,9 @@ describe('MCP DTO', () => {
       }
 
       expect(
-        result.error.issues.some((issue) => issue.path.join('.') === 'toolNames'),
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'toolNames',
+        ),
       ).toBe(true);
     });
 
@@ -193,7 +199,9 @@ describe('MCP DTO', () => {
       }
 
       expect(
-        result.error.issues.some((issue) => issue.path.join('.') === 'toolNames'),
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'toolNames',
+        ),
       ).toBe(true);
     });
   });

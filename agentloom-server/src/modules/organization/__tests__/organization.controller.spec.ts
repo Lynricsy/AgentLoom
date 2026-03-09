@@ -35,7 +35,9 @@ describe('OrganizationController', () => {
       removeMember: vi.fn(),
     };
 
-    controller = new OrganizationController(service as unknown as OrganizationService);
+    controller = new OrganizationController(
+      service as unknown as OrganizationService,
+    );
   });
 
   it('applies owner/admin roles only to organization management routes', () => {
@@ -60,7 +62,10 @@ describe('OrganizationController', () => {
   });
 
   it('passes the authenticated user id to inviteMember', async () => {
-    const dto: InviteMemberDto = { email: 'member@example.com', role: 'viewer' };
+    const dto: InviteMemberDto = {
+      email: 'member@example.com',
+      role: 'viewer',
+    };
     service.inviteMember.mockResolvedValue({ id: 'invite-1' });
 
     const result = await controller.inviteMember('org-1', dto, {

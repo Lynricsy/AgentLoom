@@ -10,11 +10,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { Public } from '../../common/decorators/public.decorator';
-import {
-  MfaDisableDto,
-  MfaLoginVerifyDto,
-  MfaVerifyDto,
-} from './dto/mfa.dto';
+import { MfaDisableDto, MfaLoginVerifyDto, MfaVerifyDto } from './dto/mfa.dto';
 import { MfaService } from './mfa.service';
 
 @ApiTags('Auth')
@@ -38,10 +34,7 @@ export class MfaController {
   @ApiOperation({ summary: '验证 TOTP MFA 验证码' })
   @ApiResponse({ status: 200, description: 'MFA 验证成功' })
   @ApiResponse({ status: 401, description: 'MFA 验证失败' })
-  verifyTotp(
-    @Body() body: MfaVerifyDto,
-    @Req() request: FastifyRequest,
-  ) {
+  verifyTotp(@Body() body: MfaVerifyDto, @Req() request: FastifyRequest) {
     return this.mfaService.verifyTotp(
       this.extractAccessToken(request),
       this.extractFactorId(body),
@@ -68,10 +61,7 @@ export class MfaController {
   @ApiOperation({ summary: '禁用当前账号的 TOTP MFA' })
   @ApiResponse({ status: 200, description: 'MFA 已禁用' })
   @ApiResponse({ status: 401, description: '未认证或验证码无效' })
-  disableMfa(
-    @Body() body: MfaDisableDto,
-    @Req() request: FastifyRequest,
-  ) {
+  disableMfa(@Body() body: MfaDisableDto, @Req() request: FastifyRequest) {
     return this.mfaService.disableMfa(
       this.extractAccessToken(request),
       body.code,

@@ -123,14 +123,11 @@ describe('MfaController', () => {
   it('DELETE / 只传递访问令牌和验证码给服务', async () => {
     service.disableMfa.mockResolvedValue({ message: 'MFA 已禁用' });
 
-    const result = await controller.disableMfa(
-      { code: '123456' },
-      {
-        headers: {
-          authorization: 'Bearer access-token',
-        },
-      } as never,
-    );
+    const result = await controller.disableMfa({ code: '123456' }, {
+      headers: {
+        authorization: 'Bearer access-token',
+      },
+    } as never);
 
     expect(service.disableMfa).toHaveBeenCalledWith('access-token', '123456');
     expect(result).toEqual({ message: 'MFA 已禁用' });

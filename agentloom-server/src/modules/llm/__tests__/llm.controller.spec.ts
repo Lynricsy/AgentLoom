@@ -34,7 +34,9 @@ function getRoles(target: object, methodName: string): string[] | undefined {
     methodName,
   );
   if (!descriptor?.value) return undefined;
-  return Reflect.getMetadata(ROLES_KEY, descriptor.value) as string[] | undefined;
+  return Reflect.getMetadata(ROLES_KEY, descriptor.value) as
+    | string[]
+    | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,12 +70,16 @@ describe('LlmController', () => {
 
     it('findAll 应需要 owner、admin 或 viewer', () => {
       const roles = getRoles(controller, 'findAll');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin', 'viewer']));
+      expect(roles).toEqual(
+        expect.arrayContaining(['owner', 'admin', 'viewer']),
+      );
     });
 
     it('findById 应需要 owner、admin 或 viewer', () => {
       const roles = getRoles(controller, 'findById');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin', 'viewer']));
+      expect(roles).toEqual(
+        expect.arrayContaining(['owner', 'admin', 'viewer']),
+      );
     });
 
     it('update 应需要 owner 或 admin', () => {
@@ -93,7 +99,11 @@ describe('LlmController', () => {
 
   describe('create', () => {
     it('应当调用 service.create 并返回 { data }', async () => {
-      const dto = { name: 'Config', provider: 'openai' as const, modelName: 'gpt-4o' };
+      const dto = {
+        name: 'Config',
+        provider: 'openai' as const,
+        modelName: 'gpt-4o',
+      };
       const result = await controller.create(dto as never, USER_ID, TENANT_ID);
 
       expect(service.create).toHaveBeenCalledWith(dto, TENANT_ID, USER_ID);
@@ -122,7 +132,11 @@ describe('LlmController', () => {
   describe('update', () => {
     it('应当调用 service.update 并返回 { data }', async () => {
       const dto = { modelName: 'gpt-4o-mini' };
-      const result = await controller.update(CONFIG_ID, dto as never, TENANT_ID);
+      const result = await controller.update(
+        CONFIG_ID,
+        dto as never,
+        TENANT_ID,
+      );
 
       expect(service.update).toHaveBeenCalledWith(CONFIG_ID, dto, TENANT_ID);
       expect(result).toEqual({ data: MOCK_CONFIG });

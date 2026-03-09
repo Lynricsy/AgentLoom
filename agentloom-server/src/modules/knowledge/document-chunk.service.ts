@@ -61,9 +61,7 @@ export class DocumentChunkService {
 
       await db.insert(documentChunks).values(values);
 
-      this.logger.debug(
-        `为文档 ${documentId} 创建了 ${chunks.length} 个分块`,
-      );
+      this.logger.debug(`为文档 ${documentId} 创建了 ${chunks.length} 个分块`);
       return chunks.length;
     } catch (error) {
       if (error instanceof DocumentChunkException) throw error;
@@ -103,9 +101,7 @@ export class DocumentChunkService {
       )
       .returning();
 
-    this.logger.debug(
-      `删除文档 ${documentId} 的 ${result.length} 个分块`,
-    );
+    this.logger.debug(`删除文档 ${documentId} 的 ${result.length} 个分块`);
     return result.length;
   }
 

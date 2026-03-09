@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CACHE_INVALIDATION_CHANNEL, REDIS_CLIENT } from './redis.constants';
@@ -14,10 +20,13 @@ export class RedisPubSubService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly cacheService: RedisCacheService,
   ) {
-    this.subscriber = new Redis(this.configService.get<string>('APP_REDIS_URL')!, {
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times: number) => Math.min(times * 200, 2000),
-    });
+    this.subscriber = new Redis(
+      this.configService.get<string>('APP_REDIS_URL')!,
+      {
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times: number) => Math.min(times * 200, 2000),
+      },
+    );
   }
 
   async onModuleInit() {

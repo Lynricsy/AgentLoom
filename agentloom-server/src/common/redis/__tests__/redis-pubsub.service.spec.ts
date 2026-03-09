@@ -13,7 +13,11 @@ vi.mock('ioredis', () => {
     quit: vi.fn().mockResolvedValue('OK'),
     on: vi.fn(),
   };
-  return { default: vi.fn(function () { return mockSubscriber; }) };
+  return {
+    default: vi.fn(function () {
+      return mockSubscriber;
+    }),
+  };
 });
 
 describe('RedisPubSubService', () => {
@@ -34,7 +38,7 @@ describe('RedisPubSubService', () => {
 
     expect(latestResult?.value).toBeDefined();
 
-    return latestResult!.value as {
+    return latestResult.value as {
       subscribe: ReturnType<typeof vi.fn>;
       unsubscribe: ReturnType<typeof vi.fn>;
       quit: ReturnType<typeof vi.fn>;
@@ -72,7 +76,10 @@ describe('RedisPubSubService', () => {
       providers: [
         RedisPubSubService,
         { provide: REDIS_CLIENT, useValue: mockPublisher },
-        { provide: ConfigService, useValue: { get: vi.fn().mockReturnValue('redis://localhost:6379') } },
+        {
+          provide: ConfigService,
+          useValue: { get: vi.fn().mockReturnValue('redis://localhost:6379') },
+        },
         { provide: RedisCacheService, useValue: mockCacheService },
       ],
     }).compile();
@@ -97,8 +104,13 @@ describe('RedisPubSubService', () => {
 
       const mockInstance = await getSubscriberMock();
 
-      expect(mockInstance.subscribe).toHaveBeenCalledWith(CACHE_INVALIDATION_CHANNEL);
-      expect(mockInstance.on).toHaveBeenCalledWith('message', expect.any(Function));
+      expect(mockInstance.subscribe).toHaveBeenCalledWith(
+        CACHE_INVALIDATION_CHANNEL,
+      );
+      expect(mockInstance.on).toHaveBeenCalledWith(
+        'message',
+        expect.any(Function),
+      );
     });
 
     it('收到正确频道的有效消息时删除对应缓存键', async () => {
@@ -117,7 +129,10 @@ describe('RedisPubSubService', () => {
       await service.onModuleInit();
       const messageHandler = await getMessageHandler();
 
-      await messageHandler('other-channel', JSON.stringify({ key: 'tenant:rbac:user' }));
+      await messageHandler(
+        'other-channel',
+        JSON.stringify({ key: 'tenant:rbac:user' }),
+      );
 
       expect(mockCacheService.del).not.toHaveBeenCalled();
     });
@@ -151,7 +166,9 @@ describe('RedisPubSubService', () => {
 
       const mockInstance = await getSubscriberMock();
 
-      expect(mockInstance.unsubscribe).toHaveBeenCalledWith(CACHE_INVALIDATION_CHANNEL);
+      expect(mockInstance.unsubscribe).toHaveBeenCalledWith(
+        CACHE_INVALIDATION_CHANNEL,
+      );
       expect(mockInstance.quit).toHaveBeenCalled();
     });
   });

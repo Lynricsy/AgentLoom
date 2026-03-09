@@ -58,7 +58,10 @@ describe('EmbeddingService', () => {
     });
 
     it('should generate embeddings for a single batch', async () => {
-      const embeddings = [[0.1, 0.2], [0.3, 0.4]];
+      const embeddings = [
+        [0.1, 0.2],
+        [0.3, 0.4],
+      ];
       fetchSpy.mockResolvedValue(createEmbeddingResponse(embeddings));
 
       const result = await service.generateEmbeddings(
@@ -90,7 +93,9 @@ describe('EmbeddingService', () => {
 
       await service.generateEmbeddings(['text'], ORG_ID, TENANT_ID);
 
-      expect(decryptionBoundaryService.decryptConfiguredApiKey).toHaveBeenCalledWith(
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).toHaveBeenCalledWith(
         {
           apiKeyId: null,
           organizationId: ORG_ID,
@@ -102,8 +107,14 @@ describe('EmbeddingService', () => {
     });
 
     it('should batch texts when exceeding EMBEDDING_BATCH_SIZE', async () => {
-      const texts = Array.from({ length: EMBEDDING_BATCH_SIZE + 5 }, (_, i) => `text-${i}`);
-      const batch1Embeddings = Array.from({ length: EMBEDDING_BATCH_SIZE }, () => [0.1]);
+      const texts = Array.from(
+        { length: EMBEDDING_BATCH_SIZE + 5 },
+        (_, i) => `text-${i}`,
+      );
+      const batch1Embeddings = Array.from(
+        { length: EMBEDDING_BATCH_SIZE },
+        () => [0.1],
+      );
       const batch2Embeddings = Array.from({ length: 5 }, () => [0.2]);
 
       fetchSpy
@@ -135,13 +146,15 @@ describe('EmbeddingService', () => {
         TENANT_ID,
       );
 
-      expect(result).toEqual([[0.1, 0.2], [0.3, 0.4]]);
+      expect(result).toEqual([
+        [0.1, 0.2],
+        [0.3, 0.4],
+      ]);
     });
 
     it('should throw on API error after retries exhausted', async () => {
-      fetchSpy.mockImplementation(
-        () =>
-          Promise.resolve(new Response('rate limited', { status: 429 })),
+      fetchSpy.mockImplementation(() =>
+        Promise.resolve(new Response('rate limited', { status: 429 })),
       );
 
       await expect(
@@ -162,8 +175,8 @@ describe('EmbeddingService', () => {
 
     it('should retry on failure and succeed', async () => {
       fetchSpy
-        .mockImplementationOnce(
-          () => Promise.resolve(new Response('error', { status: 500 })),
+        .mockImplementationOnce(() =>
+          Promise.resolve(new Response('error', { status: 500 })),
         )
         .mockResolvedValueOnce(createEmbeddingResponse([[0.1, 0.2]]));
 

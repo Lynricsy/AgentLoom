@@ -24,9 +24,7 @@ type AuthenticatedRequest = FastifyRequest & { user: JwtPayload };
 @ApiTags('Organizations')
 @Controller()
 export class OrganizationController {
-  constructor(
-    private readonly organizationService: OrganizationService,
-  ) {}
+  constructor(private readonly organizationService: OrganizationService) {}
 
   @Post('organizations')
   @HttpCode(HttpStatus.CREATED)
@@ -104,7 +102,10 @@ export class OrganizationController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '更新成员角色' })
   @ApiResponse({ status: 200, description: '角色更新成功' })
-  @ApiResponse({ status: 403, description: '无权限修改角色（仅 Owner 可操作）' })
+  @ApiResponse({
+    status: 403,
+    description: '无权限修改角色（仅 Owner 可操作）',
+  })
   @ApiResponse({ status: 404, description: '组织或成员不存在' })
   @ApiResponse({ status: 409, description: '不能移除唯一的所有者' })
   async updateMemberRole(
@@ -135,10 +136,6 @@ export class OrganizationController {
     @Param('userId') userId: string,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.organizationService.removeMember(
-      id,
-      userId,
-      request.user.sub,
-    );
+    await this.organizationService.removeMember(id, userId, request.user.sub);
   }
 }

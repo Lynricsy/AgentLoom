@@ -21,9 +21,9 @@ const CONFIG_ID = '00000000-0000-0000-0000-000000000100';
 
 function createSelectChain(result: unknown) {
   const limit = vi.fn().mockResolvedValue(result);
-  const where = vi.fn().mockReturnValue(
-    Object.assign(Promise.resolve(result), { limit }),
-  );
+  const where = vi
+    .fn()
+    .mockReturnValue(Object.assign(Promise.resolve(result), { limit }));
   const from = vi.fn().mockReturnValue({ where });
   return { from, where, limit };
 }
@@ -36,9 +36,9 @@ function createInsertChain(result: unknown) {
 
 function createUpdateChain(result?: unknown) {
   const returning = vi.fn().mockResolvedValue(result);
-  const where = vi.fn().mockReturnValue(
-    Object.assign(Promise.resolve(result), { returning }),
-  );
+  const where = vi
+    .fn()
+    .mockReturnValue(Object.assign(Promise.resolve(result), { returning }));
   const set = vi.fn().mockReturnValue({ where });
   return { set, where, returning };
 }
@@ -82,10 +82,7 @@ describe('LlmService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LlmService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [LlmService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get<LlmService>(LlmService);
@@ -207,7 +204,10 @@ describe('LlmService', () => {
 
   describe('findAll', () => {
     it('应当返回所有模型配置', async () => {
-      const configs = [mockConfig(), mockConfig({ id: 'id-2', name: 'Config 2' })];
+      const configs = [
+        mockConfig(),
+        mockConfig({ id: 'id-2', name: 'Config 2' }),
+      ];
 
       // org lookup
       db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
@@ -254,7 +254,11 @@ describe('LlmService', () => {
       const updated = mockConfig({ modelName: 'gpt-4o-mini' });
       db.update.mockReturnValueOnce(createUpdateChain([updated]));
 
-      const result = await service.update(CONFIG_ID, { modelName: 'gpt-4o-mini' }, TENANT_ID);
+      const result = await service.update(
+        CONFIG_ID,
+        { modelName: 'gpt-4o-mini' },
+        TENANT_ID,
+      );
       expect(result.modelName).toBe('gpt-4o-mini');
     });
 
@@ -276,9 +280,15 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
       // clearDefaultInOrg
       db.update.mockReturnValueOnce(createUpdateChain());
-      db.update.mockReturnValueOnce(createUpdateChain([mockConfig({ isDefault: true })]));
+      db.update.mockReturnValueOnce(
+        createUpdateChain([mockConfig({ isDefault: true })]),
+      );
 
-      const result = await service.update(CONFIG_ID, { isDefault: true }, TENANT_ID);
+      const result = await service.update(
+        CONFIG_ID,
+        { isDefault: true },
+        TENANT_ID,
+      );
       expect(result.isDefault).toBe(true);
       expect(db.update).toHaveBeenCalledTimes(2);
     });

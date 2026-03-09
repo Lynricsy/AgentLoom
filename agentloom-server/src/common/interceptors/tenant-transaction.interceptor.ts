@@ -23,9 +23,7 @@ export const transactionStorage = new AsyncLocalStorage<DrizzleDB>();
 export class TenantTransactionInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantTransactionInterceptor.name);
 
-  constructor(
-    @Inject(DRIZZLE) private readonly db: DrizzleDB,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest();

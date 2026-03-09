@@ -1,4 +1,10 @@
-import { type MiddlewareConsumer, Module, type NestModule, Controller, Get } from '@nestjs/common';
+import {
+  type MiddlewareConsumer,
+  Module,
+  type NestModule,
+  Controller,
+  Get,
+} from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -6,7 +12,15 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import * as jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { Public } from '../src/common/decorators/public.decorator';
 import { Roles } from '../src/common/decorators/roles.decorator';
 import { CurrentTenant } from '../src/common/decorators/current-tenant.decorator';
@@ -46,10 +60,7 @@ class GuardChainTestController {
     return { userId };
   }
 
-  getTenantProtected(
-    userId: string,
-    tenantId: string,
-  ) {
+  getTenantProtected(userId: string, tenantId: string) {
     return { userId, tenantId };
   }
 }
@@ -61,7 +72,11 @@ const publicDescriptor = Object.getOwnPropertyDescriptor(
   'getPublic',
 )!;
 Public()(GuardChainTestController.prototype, 'getPublic', publicDescriptor);
-Get('public')(GuardChainTestController.prototype, 'getPublic', publicDescriptor);
+Get('public')(
+  GuardChainTestController.prototype,
+  'getPublic',
+  publicDescriptor,
+);
 
 const authenticatedDescriptor = Object.getOwnPropertyDescriptor(
   GuardChainTestController.prototype,
@@ -101,7 +116,9 @@ const mockTxExecute = vi.fn().mockResolvedValue(undefined);
       provide: DRIZZLE,
       useValue: {
         execute: vi.fn().mockResolvedValue(undefined),
-        transaction: vi.fn(async (cb: Function) => cb({ execute: mockTxExecute })),
+        transaction: vi.fn(async (cb: Function) =>
+          cb({ execute: mockTxExecute }),
+        ),
       },
     },
     {
@@ -154,7 +171,10 @@ class GuardChainTestModule implements NestModule {
 
 describe('Guard chain E2E', () => {
   let app: NestFastifyApplication;
-  let db: { execute: ReturnType<typeof vi.fn>; transaction: ReturnType<typeof vi.fn> };
+  let db: {
+    execute: ReturnType<typeof vi.fn>;
+    transaction: ReturnType<typeof vi.fn>;
+  };
   let rbacCacheService: { getUserRole: ReturnType<typeof vi.fn> };
 
   beforeAll(async () => {
@@ -162,7 +182,9 @@ describe('Guard chain E2E', () => {
       imports: [GuardChainTestModule],
     }).compile();
 
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     app.useGlobalFilters(new AllExceptionsFilter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -217,18 +239,25 @@ describe('Guard chain E2E', () => {
       tenantId: TEST_TENANT_ID,
     });
     expect(db.execute).not.toHaveBeenCalled();
-    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(TEST_TENANT_ID, 'user-1');
+    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
+      'user-1',
+    );
 
     expect(db.transaction).toHaveBeenCalledOnce();
     expect(mockTxExecute).toHaveBeenCalledTimes(2);
 
     const firstCall = mockTxExecute.mock.calls[0][0];
     expect(firstCall.queryChunks).toBeDefined();
-    const firstSql = firstCall.queryChunks.map((c: { value: unknown[] }) => c.value?.[0] ?? c).join('');
+    const firstSql = firstCall.queryChunks
+      .map((c: { value: unknown[] }) => c.value?.[0] ?? c)
+      .join('');
     expect(firstSql).toContain('SET LOCAL ROLE authenticated');
 
     const secondCall = mockTxExecute.mock.calls[1][0];
-    const secondSql = secondCall.queryChunks.map((c: { value: unknown[] }) => c.value?.[0] ?? c).join('');
+    const secondSql = secondCall.queryChunks
+      .map((c: { value: unknown[] }) => c.value?.[0] ?? c)
+      .join('');
     expect(secondSql).toContain('set_config');
   });
 
@@ -240,7 +269,9 @@ describe('Guard chain E2E', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(400);
-    expect(response.body.type).toBe('https://agentloom.dev/errors/tenant-required');
+    expect(response.body.type).toBe(
+      'https://agentloom.dev/errors/tenant-required',
+    );
     expect(rbacCacheService.getUserRole).not.toHaveBeenCalled();
   });
 
@@ -256,6 +287,8 @@ describe('Guard chain E2E', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(403);
-    expect(response.body.type).toBe('https://agentloom.dev/errors/insufficient-permissions');
+    expect(response.body.type).toBe(
+      'https://agentloom.dev/errors/insufficient-permissions',
+    );
   });
 });

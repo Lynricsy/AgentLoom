@@ -99,17 +99,18 @@ export class KnowledgeBaseService {
     page: number,
     pageSize: number,
   ): Promise<{ data: KnowledgeBaseSummary[]; total: number }> {
-    const { data, total } = await this.findAllByTenant(tenantId, page, pageSize);
+    const { data, total } = await this.findAllByTenant(
+      tenantId,
+      page,
+      pageSize,
+    );
     return {
       data: await this.hydrateSummaries(data, tenantId),
       total,
     };
   }
 
-  async findByIdOrThrow(
-    id: string,
-    tenantId: string,
-  ): Promise<KnowledgeBase> {
+  async findByIdOrThrow(id: string, tenantId: string): Promise<KnowledgeBase> {
     const db = getTenantDb(this.db);
     const [knowledgeBase] = await db
       .select()
@@ -145,10 +146,7 @@ export class KnowledgeBaseService {
     await db
       .delete(knowledgeBases)
       .where(
-        and(
-          eq(knowledgeBases.id, id),
-          eq(knowledgeBases.tenantId, tenantId),
-        ),
+        and(eq(knowledgeBases.id, id), eq(knowledgeBases.tenantId, tenantId)),
       );
   }
 
@@ -162,18 +160,17 @@ export class KnowledgeBaseService {
     const db = getTenantDb(this.db);
     const updateData: Record<string, unknown> = {};
     if (dto.chunkSize !== undefined) updateData.chunkSize = dto.chunkSize;
-    if (dto.chunkOverlap !== undefined) updateData.chunkOverlap = dto.chunkOverlap;
-    if (dto.embeddingModel !== undefined) updateData.embeddingModel = dto.embeddingModel;
+    if (dto.chunkOverlap !== undefined)
+      updateData.chunkOverlap = dto.chunkOverlap;
+    if (dto.embeddingModel !== undefined)
+      updateData.embeddingModel = dto.embeddingModel;
 
     if (Object.keys(updateData).length > 0) {
       await db
         .update(knowledgeBases)
         .set({ ...updateData, updatedAt: new Date() })
         .where(
-          and(
-            eq(knowledgeBases.id, id),
-            eq(knowledgeBases.tenantId, tenantId),
-          ),
+          and(eq(knowledgeBases.id, id), eq(knowledgeBases.tenantId, tenantId)),
         );
     }
 
@@ -221,7 +218,9 @@ export class KnowledgeBaseService {
 
     const statusMap = new Map<string, KnowledgeBaseStatusCounters>();
     for (const row of documentRows) {
-      const counters = statusMap.get(row.knowledgeBaseId) ?? { ...EMPTY_COUNTERS };
+      const counters = statusMap.get(row.knowledgeBaseId) ?? {
+        ...EMPTY_COUNTERS,
+      };
       counters.documentCount += 1;
       this.bumpStatusCounter(counters, row.status);
       statusMap.set(row.knowledgeBaseId, counters);

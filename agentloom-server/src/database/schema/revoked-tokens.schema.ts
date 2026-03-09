@@ -18,9 +18,7 @@ export const revokedTokens = pgTable(
       .notNull()
       .default(sql`now()`),
   },
-  (table) => [
-    index('idx_revoked_tokens_expires_at').on(table.expiresAt),
-  ],
+  (table) => [index('idx_revoked_tokens_expires_at').on(table.expiresAt)],
 );
 
 export type RevokedToken = typeof revokedTokens.$inferSelect;

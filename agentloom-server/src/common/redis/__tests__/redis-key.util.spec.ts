@@ -12,7 +12,9 @@ describe('redisKey', () => {
   });
 
   it('should format key with string domain', () => {
-    expect(redisKey(tenantId, 'custom', entityId)).toBe(`${tenantId}:custom:${entityId}`);
+    expect(redisKey(tenantId, 'custom', entityId)).toBe(
+      `${tenantId}:custom:${entityId}`,
+    );
   });
 
   it('should produce correct keys for all domains', () => {
@@ -25,7 +27,9 @@ describe('redisKey', () => {
     ] as const;
 
     for (const [domain, expected] of domains) {
-      expect(redisKey(tenantId, domain, entityId)).toBe(`${tenantId}:${expected}:${entityId}`);
+      expect(redisKey(tenantId, domain, entityId)).toBe(
+        `${tenantId}:${expected}:${entityId}`,
+      );
     }
   });
 

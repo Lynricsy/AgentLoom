@@ -292,11 +292,7 @@ export class OrganizationService {
     return updated;
   }
 
-  async removeMember(
-    orgId: string,
-    targetUserId: string,
-    actorUserId: string,
-  ) {
+  async removeMember(orgId: string, targetUserId: string, actorUserId: string) {
     const org = await this.tenantDb.query.organizations.findFirst({
       where: eq(organizations.id, orgId),
     });

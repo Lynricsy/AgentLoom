@@ -20,7 +20,9 @@ const VERSION_ID = '00000000-0000-0000-0000-000000000004';
 const VERSION_ID_2 = '00000000-0000-0000-0000-000000000005';
 const NOW = new Date('2025-01-01T00:00:00Z');
 
-const MOCK_NODES = [{ id: 'node-1', type: 'test', position: { x: 0, y: 0 }, data: {} }];
+const MOCK_NODES = [
+  { id: 'node-1', type: 'test', position: { x: 0, y: 0 }, data: {} },
+];
 const MOCK_EDGES = [{ id: 'edge-1', source: 'node-1', target: 'node-2' }];
 const MOCK_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
@@ -120,7 +122,7 @@ describe('WorkflowVersionService', () => {
       delete: vi.fn(),
       execute: vi.fn().mockResolvedValue(undefined),
       transaction: vi.fn(async (callback: (tx: typeof db) => unknown) =>
-        callback(db as typeof db),
+        callback(db),
       ),
     };
 
@@ -153,14 +155,18 @@ describe('WorkflowVersionService', () => {
       const selectWf = createSelectChain([createDraftWorkflow()]);
       // maxVersion
       const selectMax = createSelectChain([{ maxVersion: 2 }]);
-      db.select
-        .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectMax);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
-      const insertChain = createInsertChain([createMockVersion({ versionNumber: 3 })]);
+      const insertChain = createInsertChain([
+        createMockVersion({ versionNumber: 3 }),
+      ]);
       db.insert.mockReturnValueOnce(insertChain);
 
-      const result = await service.createVersion(WORKFLOW_ID, { label: '标签' }, USER_ID);
+      const result = await service.createVersion(
+        WORKFLOW_ID,
+        { label: '标签' },
+        USER_ID,
+      );
 
       expect(result.versionNumber).toBe(3);
       expect(result.workflowDefinitionId).toBe(WORKFLOW_ID);
@@ -172,9 +178,7 @@ describe('WorkflowVersionService', () => {
     it('应当在无历史版本时从 1 开始编号', async () => {
       const selectWf = createSelectChain([createDraftWorkflow()]);
       const selectMax = createSelectChain([{ maxVersion: null }]);
-      db.select
-        .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectMax);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
       const version = createMockVersion({ versionNumber: 1 });
       const insertChain = createInsertChain([version]);
@@ -186,7 +190,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ status: 'archived' })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ status: 'archived' }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -223,7 +229,10 @@ describe('WorkflowVersionService', () => {
         .mockReturnValueOnce(selectVersions)
         .mockReturnValueOnce(selectCount);
 
-      const result = await service.listVersions(WORKFLOW_ID, { page: 1, pageSize: 10 });
+      const result = await service.listVersions(WORKFLOW_ID, {
+        page: 1,
+        pageSize: 10,
+      });
 
       expect(result.data).toHaveLength(2);
       expect(result.meta.total).toBe(2);
@@ -281,7 +290,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ status: 'archived' })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ status: 'archived' }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -308,9 +319,7 @@ describe('WorkflowVersionService', () => {
     it('应当从当前快照创建新版本并发布', async () => {
       const selectWf = createSelectChain([createDraftWorkflow()]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select
-        .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectMax);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 2,
@@ -325,7 +334,11 @@ describe('WorkflowVersionService', () => {
 
       redis.del.mockResolvedValueOnce(undefined);
 
-      const result = await service.publish(WORKFLOW_ID, { label: '发布版本' }, USER_ID);
+      const result = await service.publish(
+        WORKFLOW_ID,
+        { label: '发布版本' },
+        USER_ID,
+      );
 
       expect(result.versionNumber).toBe(2);
       expect(result.publishedAt).toBe(NOW.toISOString());
@@ -363,7 +376,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ status: 'archived' })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ status: 'archived' }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -372,7 +387,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('非 draft 状态时应当抛出 InvalidStatusTransitionException', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ status: 'published' })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ status: 'published' }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -390,7 +407,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('工作流 nodes 为 null 时应当抛出验证异常', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ nodes: null })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ nodes: null }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -420,7 +439,10 @@ describe('WorkflowVersionService', () => {
 
     it('应当归档 published 状态的工作流', async () => {
       const selectWf = createSelectChain([
-        createDraftWorkflow({ status: 'published', publishedVersionId: VERSION_ID }),
+        createDraftWorkflow({
+          status: 'published',
+          publishedVersionId: VERSION_ID,
+        }),
       ]);
       db.select.mockReturnValueOnce(selectWf);
 
@@ -438,7 +460,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
-      const selectWf = createSelectChain([createDraftWorkflow({ status: 'archived' })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ status: 'archived' }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       await expect(
@@ -482,7 +506,9 @@ describe('WorkflowVersionService', () => {
     it('缓存未命中且无 publishedVersionId 时应当缓存空值标记并返回 null', async () => {
       redis.get.mockResolvedValueOnce(null);
 
-      const selectWf = createSelectChain([createDraftWorkflow({ publishedVersionId: null })]);
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ publishedVersionId: null }),
+      ]);
       db.select.mockReturnValueOnce(selectWf);
 
       redis.set.mockResolvedValueOnce(undefined);
@@ -554,7 +580,9 @@ describe('WorkflowVersionService', () => {
         const selectMax = createSelectChain([{ maxVersion: 0 }]);
         db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
-        const insertChain = createInsertChain([createMockVersion({ publishedAt: NOW })]);
+        const insertChain = createInsertChain([
+          createMockVersion({ publishedAt: NOW }),
+        ]);
         db.insert.mockReturnValueOnce(insertChain);
 
         db.update
@@ -697,7 +725,9 @@ describe('WorkflowVersionService', () => {
       const selectMax = createSelectChain([{ maxVersion: 0 }]);
       db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
-      db.insert.mockReturnValueOnce(createInsertChain([createMockVersion({ versionNumber: 1 })]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([createMockVersion({ versionNumber: 1 })]),
+      );
 
       await service.createVersion(WORKFLOW_ID, {}, USER_ID);
 

@@ -1,10 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-} from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   HttpException,
   HttpStatus,
@@ -21,7 +15,10 @@ import type { FastifyRequest } from 'fastify';
 import { ZodValidationException } from 'nestjs-zod';
 import { z } from 'zod';
 import { DomainException } from '../../exceptions/domain.exception';
-import type { FieldError, ProblemDetails } from '../../types/problem-details.type';
+import type {
+  FieldError,
+  ProblemDetails,
+} from '../../types/problem-details.type';
 import { AllExceptionsFilter } from '../all-exceptions.filter';
 
 type RequestMock = Pick<FastifyRequest, 'url'>;

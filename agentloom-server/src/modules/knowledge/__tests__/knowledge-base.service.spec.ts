@@ -73,10 +73,7 @@ describe('KnowledgeBaseService', () => {
     mocks.getTenantDb.mockReturnValue(db);
 
     const module = await Test.createTestingModule({
-      providers: [
-        KnowledgeBaseService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [KnowledgeBaseService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get<KnowledgeBaseService>(KnowledgeBaseService);
@@ -127,9 +124,7 @@ describe('KnowledgeBaseService', () => {
 
   describe('findAllByTenant', () => {
     it('应返回分页的知识库列表和总数', async () => {
-      const kbList = [
-        { id: KB_ID, name: '知识库1', tenantId: TENANT_ID },
-      ];
+      const kbList = [{ id: KB_ID, name: '知识库1', tenantId: TENANT_ID }];
       const totalResult = [{ total: 1 }];
 
       const selectChain1 = createSelectChain(kbList);
@@ -178,9 +173,9 @@ describe('KnowledgeBaseService', () => {
       };
       db.select.mockReturnValue(selectChain);
 
-      await expect(
-        service.findByIdOrThrow(KB_ID, TENANT_ID),
-      ).rejects.toThrow(KnowledgeBaseNotFoundException);
+      await expect(service.findByIdOrThrow(KB_ID, TENANT_ID)).rejects.toThrow(
+        KnowledgeBaseNotFoundException,
+      );
     });
   });
 
@@ -253,7 +248,9 @@ describe('KnowledgeBaseService', () => {
         .mockReturnValueOnce(createSelectChain([originalKnowledgeBase]))
         .mockReturnValueOnce(createSelectChain([updatedKnowledgeBase]))
         .mockReturnValueOnce(
-          createWhereResolvedChain([{ knowledgeBaseId: KB_ID, status: 'ready' }]),
+          createWhereResolvedChain([
+            { knowledgeBaseId: KB_ID, status: 'ready' },
+          ]),
         )
         .mockReturnValueOnce(
           createGroupedWhereChain([{ knowledgeBaseId: KB_ID, chunkCount: 3 }]),

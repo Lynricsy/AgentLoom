@@ -13,7 +13,12 @@ const mockExecution = {
   workflowDefinitionId: WORKFLOW_ID,
   tenantId: TENANT_ID,
   status: 'pending' as const,
-  definitionSnapshot: { nodes: [], edges: [], viewport: null, metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 } },
+  definitionSnapshot: {
+    nodes: [],
+    edges: [],
+    viewport: null,
+    metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+  },
   createdBy: USER_ID,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -34,9 +39,7 @@ describe('ExecutionController', () => {
 
     const module = await Test.createTestingModule({
       controllers: [ExecutionController],
-      providers: [
-        { provide: ExecutionService, useValue: mockService },
-      ],
+      providers: [{ provide: ExecutionService, useValue: mockService }],
     }).compile();
 
     controller = module.get(ExecutionController);
@@ -46,10 +49,18 @@ describe('ExecutionController', () => {
     it('应启动工作流执行并返回 { data }', async () => {
       mockService.runWorkflow.mockResolvedValue(mockExecution);
 
-      const result = await controller.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID);
+      const result = await controller.runWorkflow(
+        WORKFLOW_ID,
+        TENANT_ID,
+        USER_ID,
+      );
 
       expect(result).toEqual({ data: mockExecution });
-      expect(mockService.runWorkflow).toHaveBeenCalledWith(WORKFLOW_ID, TENANT_ID, USER_ID);
+      expect(mockService.runWorkflow).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        TENANT_ID,
+        USER_ID,
+      );
     });
   });
 
@@ -80,7 +91,12 @@ describe('ExecutionController', () => {
       } as any);
 
       expect(result).toEqual(paginatedResult);
-      expect(mockService.listExecutions).toHaveBeenCalledWith(WORKFLOW_ID, 1, 20, undefined);
+      expect(mockService.listExecutions).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        1,
+        20,
+        undefined,
+      );
     });
 
     it('应支持状态过滤', async () => {
@@ -97,19 +113,30 @@ describe('ExecutionController', () => {
       } as any);
 
       expect(result).toEqual(paginatedResult);
-      expect(mockService.listExecutions).toHaveBeenCalledWith(WORKFLOW_ID, 1, 20, 'running');
+      expect(mockService.listExecutions).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        1,
+        20,
+        'running',
+      );
     });
   });
 
   describe('cancelExecution', () => {
     it('应取消执行并返回 { data }', async () => {
-      const cancelledExecution = { ...mockExecution, status: 'cancelled' as const };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
       mockService.cancelExecution.mockResolvedValue(cancelledExecution);
 
       const result = await controller.cancelExecution(EXECUTION_ID, TENANT_ID);
 
       expect(result).toEqual({ data: cancelledExecution });
-      expect(mockService.cancelExecution).toHaveBeenCalledWith(EXECUTION_ID, TENANT_ID);
+      expect(mockService.cancelExecution).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
     });
   });
 });

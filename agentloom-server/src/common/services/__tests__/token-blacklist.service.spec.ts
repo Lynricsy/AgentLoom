@@ -75,10 +75,7 @@ describe('TokenBlacklistService (DB-backed)', () => {
     mockDeleteReturning = mdr;
 
     const module = await Test.createTestingModule({
-      providers: [
-        TokenBlacklistService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [TokenBlacklistService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(TokenBlacklistService);

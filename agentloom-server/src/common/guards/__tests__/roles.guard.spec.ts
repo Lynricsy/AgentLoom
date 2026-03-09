@@ -127,7 +127,10 @@ describe('RolesGuard', () => {
     const result = await guard.canActivate(context as never);
 
     expect(result).toBe(true);
-    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(TEST_TENANT_ID, 'user-1');
+    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
+      'user-1',
+    );
   });
 
   it('ユーザーの役割が不足している場合 InsufficientPermissionsException を投げる', async () => {
@@ -155,7 +158,9 @@ describe('RolesGuard', () => {
       expect(error).toBeInstanceOf(InsufficientPermissionsException);
       const ie = error as InsufficientPermissionsException;
       expect(ie.getStatus()).toBe(403);
-      expect(ie.type).toBe('https://agentloom.dev/errors/insufficient-permissions');
+      expect(ie.type).toBe(
+        'https://agentloom.dev/errors/insufficient-permissions',
+      );
     }
   });
 

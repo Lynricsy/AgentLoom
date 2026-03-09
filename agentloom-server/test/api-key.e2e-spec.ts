@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -167,13 +175,9 @@ describe('API Key (E2E)', () => {
   }
 
   beforeAll(async () => {
-    Reflect.set(
-      String.prototype,
-      'toISOString',
-      function (this: string) {
-        return this;
-      },
-    );
+    Reflect.set(String.prototype, 'toISOString', function (this: string) {
+      return this;
+    });
 
     container = await new PostgreSqlContainer('postgres:16-alpine')
       .withDatabase('test_db')
@@ -194,20 +198,14 @@ describe('API Key (E2E)', () => {
     await sql`CREATE SCHEMA IF NOT EXISTS auth`;
     await sql`CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text UNIQUE)`;
 
-    const migrationsDir = path.join(
-      __dirname,
-      '../src/database/migrations',
-    );
+    const migrationsDir = path.join(__dirname, '../src/database/migrations');
     const migrationFiles = fs
       .readdirSync(migrationsDir)
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
     for (const file of migrationFiles) {
-      const content = fs.readFileSync(
-        path.join(migrationsDir, file),
-        'utf-8',
-      );
+      const content = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
       const statements = content
         .split('--> statement-breakpoint')
         .map((s) => s.trim())
@@ -254,11 +252,7 @@ describe('API Key (E2E)', () => {
   }, 120_000);
 
   afterAll(async () => {
-    Reflect.set(
-      String.prototype,
-      'toISOString',
-      originalStringToISOString,
-    );
+    Reflect.set(String.prototype, 'toISOString', originalStringToISOString);
     await app?.close();
     await drizzleClient?.end();
     await sql?.end();
@@ -583,7 +577,11 @@ describe('API Key (E2E)', () => {
       expect(dbRecord.auth_tag).toBeNull();
       expect(dbRecord.status).toBe('revoked');
       await expect(
-        decryptionBoundary.decryptApiKey(keyId, organization.tenant_id, 'api-key-e2e'),
+        decryptionBoundary.decryptApiKey(
+          keyId,
+          organization.tenant_id,
+          'api-key-e2e',
+        ),
       ).rejects.toBeInstanceOf(ApiKeyRevokedException);
     });
 

@@ -72,7 +72,10 @@ describe('DocumentIndexingWorker', () => {
 
       expect(documentService.findById).toHaveBeenCalledWith(DOC_ID);
       expect(ragService.indexDocument).toHaveBeenCalledWith(DOC_ID, 'tenant-1');
-      expect(documentService.updateStatus).toHaveBeenCalledWith(DOC_ID, 'ready');
+      expect(documentService.updateStatus).toHaveBeenCalledWith(
+        DOC_ID,
+        'ready',
+      );
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
         'tenant-1',
         'kb-1',
@@ -95,7 +98,9 @@ describe('DocumentIndexingWorker', () => {
     });
 
     it('should ignore stale jobs for documents deleted before indexing runs', async () => {
-      documentService.findById.mockRejectedValue(new DocumentNotFoundException(DOC_ID));
+      documentService.findById.mockRejectedValue(
+        new DocumentNotFoundException(DOC_ID),
+      );
 
       await expect(worker.process(createMockJob())).resolves.toBeUndefined();
 
@@ -185,7 +190,8 @@ describe('DocumentIndexingWorker', () => {
         expect.objectContaining({
           documentId: DOC_ID,
           status: 'failed',
-          errorMessage: 'index failed | vector cleanup failed: Qdrant unavailable',
+          errorMessage:
+            'index failed | vector cleanup failed: Qdrant unavailable',
         }),
       );
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(

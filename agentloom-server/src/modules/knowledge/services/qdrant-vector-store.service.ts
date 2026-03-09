@@ -26,7 +26,9 @@ export class QdrantVectorStoreService implements VectorStore {
   ): Promise<void> {
     const exists = await this.collectionExists(name);
     if (exists) {
-      this.logger.debug(`Collection "${name}" already exists, skipping creation`);
+      this.logger.debug(
+        `Collection "${name}" already exists, skipping creation`,
+      );
       return;
     }
 
@@ -44,10 +46,7 @@ export class QdrantVectorStoreService implements VectorStore {
     return exists;
   }
 
-  async upsert(
-    collectionName: string,
-    points: VectorPoint[],
-  ): Promise<void> {
+  async upsert(collectionName: string, points: VectorPoint[]): Promise<void> {
     if (points.length === 0) return;
 
     await this.client.upsert(collectionName, {
@@ -64,8 +63,13 @@ export class QdrantVectorStoreService implements VectorStore {
   }
 
   async search(options: VectorSearchOptions): Promise<VectorSearchResult[]> {
-    const { collectionName, vector, limit = 10, scoreThreshold, filter } =
-      options;
+    const {
+      collectionName,
+      vector,
+      limit = 10,
+      scoreThreshold,
+      filter,
+    } = options;
 
     const results = await this.client.search(collectionName, {
       vector,
@@ -77,7 +81,7 @@ export class QdrantVectorStoreService implements VectorStore {
     return results.map((r) => ({
       id: typeof r.id === 'string' ? r.id : String(r.id),
       score: r.score,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
+      payload: r.payload ?? {},
     }));
   }
 
@@ -105,9 +109,7 @@ export class QdrantVectorStoreService implements VectorStore {
     this.logger.log(`Deleted collection "${name}"`);
   }
 
-  private toQdrantFilter(
-    filter: VectorFilter,
-  ): Record<string, unknown> {
+  private toQdrantFilter(filter: VectorFilter): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
     if (filter.must) {

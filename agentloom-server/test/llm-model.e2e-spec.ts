@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -302,7 +310,9 @@ describe('LLM Model E2E', () => {
     const owner = await seedTenant('llm-list-owner');
     const otherTenantOwner = await seedTenant('llm-list-other-owner');
 
-    const ownerModel = await createModel(owner.headers, { name: 'owner-model' });
+    const ownerModel = await createModel(owner.headers, {
+      name: 'owner-model',
+    });
     await createModel(otherTenantOwner.headers, { name: 'other-tenant-model' });
 
     const ownerResponse = await request(app.getHttpServer())
@@ -330,7 +340,9 @@ describe('LLM Model E2E', () => {
   it('应当按 ID 读取当前租户的模型配置，并对跨租户访问返回 404', async () => {
     const owner = await seedTenant('llm-find-owner');
     const otherTenant = await seedTenant('llm-find-other', 'viewer');
-    const model = await createModel(owner.headers, { name: 'owner-find-model' });
+    const model = await createModel(owner.headers, {
+      name: 'owner-find-model',
+    });
 
     const response = await request(app.getHttpServer())
       .get(`/api/v1/llm-models/${model.id}`)

@@ -94,17 +94,17 @@ describe('MfaService', () => {
       totp: [{ id: TEST_FACTOR_ID, status: 'verified' }],
     });
 
-    await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBeInstanceOf(
-      MfaAlreadyEnrolledException,
-    );
+    await expect(
+      mfaService.enrollTotp(TEST_SUPABASE_TOKEN),
+    ).rejects.toBeInstanceOf(MfaAlreadyEnrolledException);
   });
 
   it('enrollTotp 在 Supabase 出错时抛出 MfaEnrollmentException', async () => {
     supabaseService.enrollTotp.mockRejectedValue(new Error('enroll failed'));
 
-    await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBeInstanceOf(
-      MfaEnrollmentException,
-    );
+    await expect(
+      mfaService.enrollTotp(TEST_SUPABASE_TOKEN),
+    ).rejects.toBeInstanceOf(MfaEnrollmentException);
   });
 
   it('verifyTotp 使用 access token 成功返回 AAL2 会话令牌', async () => {

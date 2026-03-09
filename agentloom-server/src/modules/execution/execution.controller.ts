@@ -45,9 +45,7 @@ export class ExecutionController {
   @ApiOperation({ summary: '获取执行详情' })
   @ApiResponse({ status: 200, description: '执行详情' })
   @ApiResponse({ status: 404, description: '执行不存在' })
-  async getExecution(
-    @Param('executionId', ParseUUIDPipe) executionId: string,
-  ) {
+  async getExecution(@Param('executionId', ParseUUIDPipe) executionId: string) {
     const execution = await this.executionService.getExecution(executionId);
     return { data: execution };
   }

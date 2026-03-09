@@ -46,7 +46,10 @@ describe('TextChunkerService', () => {
     };
   }
 
-  function expectChunksMatchFullText(doc: ParsedDocument, chunks: DocumentChunk[]): void {
+  function expectChunksMatchFullText(
+    doc: ParsedDocument,
+    chunks: DocumentChunk[],
+  ): void {
     for (const chunk of chunks) {
       const { charOffset, charLength } = chunk.location;
       expect(charOffset).toBeGreaterThanOrEqual(0);
@@ -219,7 +222,8 @@ describe('TextChunkerService', () => {
     it('跨 section overlap 时 chunk content 应等于 fullText 对应子串', () => {
       const sections = Array.from(
         { length: 8 },
-        (_, i) => `段落${i + 1}：这是用于验证重叠定位语义的测试文本，确保内容足够长。`,
+        (_, i) =>
+          `段落${i + 1}：这是用于验证重叠定位语义的测试文本，确保内容足够长。`,
       );
       const doc = createDocument(sections);
 
@@ -246,15 +250,21 @@ describe('TextChunkerService', () => {
     it('跨 Markdown 标题边界时应保留原始单换行', async () => {
       const parser = new MarkdownParser();
       const doc = await parser.parse(
-        Buffer.from('正文段落用于验证标题前的单换行边界。\n# 标题\n标题下的正文继续延伸。'),
+        Buffer.from(
+          '正文段落用于验证标题前的单换行边界。\n# 标题\n标题下的正文继续延伸。',
+        ),
         'boundary.md',
       );
 
       const chunks = chunker.chunk(doc, { maxTokens: 200, overlapTokens: 16 });
 
       expect(chunks).toHaveLength(1);
-      expect(chunks[0].content).toContain('正文段落用于验证标题前的单换行边界。\n# 标题');
-      expect(chunks[0].content).not.toContain('正文段落用于验证标题前的单换行边界。\n\n# 标题');
+      expect(chunks[0].content).toContain(
+        '正文段落用于验证标题前的单换行边界。\n# 标题',
+      );
+      expect(chunks[0].content).not.toContain(
+        '正文段落用于验证标题前的单换行边界。\n\n# 标题',
+      );
       expectChunksMatchFullText(doc, chunks);
     });
   });

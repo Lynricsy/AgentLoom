@@ -75,7 +75,10 @@ function createApiKeyRecord(overrides: Record<string, unknown> = {}) {
 
 describe('ApiKeyService', () => {
   let service: ApiKeyService;
-  let encryptionService: { encrypt: ReturnType<typeof vi.fn>; decrypt: ReturnType<typeof vi.fn> };
+  let encryptionService: {
+    encrypt: ReturnType<typeof vi.fn>;
+    decrypt: ReturnType<typeof vi.fn>;
+  };
   let db: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
@@ -246,7 +249,11 @@ describe('ApiKeyService', () => {
     it('应当返回安全字段列表', async () => {
       const records = [
         createApiKeyRecord(),
-        createApiKeyRecord({ id: 'id-2', provider: 'anthropic', label: 'Key 2' }),
+        createApiKeyRecord({
+          id: 'id-2',
+          provider: 'anthropic',
+          label: 'Key 2',
+        }),
       ];
       const selectChain = createSelectChain(records);
       db.select.mockReturnValueOnce(selectChain);
@@ -428,7 +435,10 @@ describe('ApiKeyService', () => {
 
   describe('findDefaultActiveByOrganizationInternal', () => {
     it('应当按组织与 provider 返回默认活跃密钥', async () => {
-      const record = createApiKeyRecord({ isDefault: true, provider: 'anthropic' });
+      const record = createApiKeyRecord({
+        isDefault: true,
+        provider: 'anthropic',
+      });
       const selectChain = createSelectChain([record]);
       db.select.mockReturnValueOnce(selectChain);
 

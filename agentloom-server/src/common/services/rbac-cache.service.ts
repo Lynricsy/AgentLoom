@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import { organizations, organizationMembers } from '../../database/schema/organizations.schema';
+import {
+  organizations,
+  organizationMembers,
+} from '../../database/schema/organizations.schema';
 import { RedisCacheService } from '../redis/redis-cache.service';
 import { redisKey, RedisDomain } from '../redis/redis-key.util';
 import { RedisPubSubService } from '../redis/redis-pubsub.service';
@@ -29,7 +32,10 @@ export class RbacCacheService {
     const result = await this.db
       .select({ role: organizationMembers.role })
       .from(organizationMembers)
-      .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationMembers.organizationId),
+      )
       .where(
         and(
           eq(organizations.tenantId, tenantId),

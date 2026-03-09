@@ -26,9 +26,7 @@ export class EncryptionService implements OnModuleInit {
       'APP_MASTER_ENCRYPTION_KEY',
     );
     if (!masterKey) {
-      throw new Error(
-        'APP_MASTER_ENCRYPTION_KEY 环境变量未配置',
-      );
+      throw new Error('APP_MASTER_ENCRYPTION_KEY 环境变量未配置');
     }
 
     this.kek = Buffer.from(masterKey, 'base64');

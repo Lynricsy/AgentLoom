@@ -1,4 +1,9 @@
-import { Processor, WorkerHost, OnWorkerEvent, InjectQueue } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  OnWorkerEvent,
+  InjectQueue,
+} from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import type { Readable } from 'node:stream';
@@ -153,7 +158,11 @@ export class DocumentProcessingWorker extends WorkerHost {
 
     this.emitProcessingProgress(document, 'queueing');
 
-    await this.indexingQueue.add('index', { documentId }, { jobId: `index-${documentId}` });
+    await this.indexingQueue.add(
+      'index',
+      { documentId },
+      { jobId: `index-${documentId}` },
+    );
 
     this.logger.log(
       `Document ${documentId} processed: ${chunkCount} chunks created and queued for indexing`,
@@ -161,7 +170,10 @@ export class DocumentProcessingWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<DocumentProcessingJobData>, error: Error): Promise<void> {
+  async onFailed(
+    job: Job<DocumentProcessingJobData>,
+    error: Error,
+  ): Promise<void> {
     this.logger.error(
       `Document ${job.data.documentId} processing failed after ${job.attemptsMade} attempts: ${error.message}`,
     );
@@ -188,7 +200,9 @@ export class DocumentProcessingWorker extends WorkerHost {
         document.knowledgeBaseId,
       );
     } catch {
-      this.logger.warn(`Failed to emit WebSocket event for document ${job.data.documentId}`);
+      this.logger.warn(
+        `Failed to emit WebSocket event for document ${job.data.documentId}`,
+      );
     }
   }
 }

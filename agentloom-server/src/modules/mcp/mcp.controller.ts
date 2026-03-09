@@ -56,7 +56,11 @@ export class McpController {
   @Get('tools')
   @Roles('owner', 'admin')
   @ApiOperation({ summary: 'List tool definitions' })
-  @ApiQuery({ name: 'source', required: false, enum: ['mcp', 'builtin', 'custom'] })
+  @ApiQuery({
+    name: 'source',
+    required: false,
+    enum: ['mcp', 'builtin', 'custom'],
+  })
   async listTools(
     @CurrentTenant() tenantId: string,
     @Query('source') source?: string,

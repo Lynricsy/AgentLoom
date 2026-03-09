@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -133,9 +141,7 @@ function createTestUser(prefix: string): TestUser {
 }
 
 function parseHookEvent(value: HookEvent | string) {
-  return typeof value === 'string'
-    ? (JSON.parse(value) as HookEvent)
-    : value;
+  return typeof value === 'string' ? (JSON.parse(value) as HookEvent) : value;
 }
 
 describe('Organization E2E (testcontainers)', () => {
@@ -504,7 +510,9 @@ describe('Organization E2E (testcontainers)', () => {
 
       expect(res.statusCode).toBe(404);
       const body = res.json();
-      expect(body.type).toBe('https://agentloom.dev/errors/organization-not-found');
+      expect(body.type).toBe(
+        'https://agentloom.dev/errors/organization-not-found',
+      );
     });
 
     it('组织不存在返回 404', async () => {
@@ -519,7 +527,9 @@ describe('Organization E2E (testcontainers)', () => {
 
       expect(res.statusCode).toBe(404);
       const body = res.json();
-      expect(body.type).toBe('https://agentloom.dev/errors/organization-not-found');
+      expect(body.type).toBe(
+        'https://agentloom.dev/errors/organization-not-found',
+      );
     });
   });
 
@@ -540,7 +550,9 @@ describe('Organization E2E (testcontainers)', () => {
           email: 'new-member@example.com',
           role: 'viewer',
         },
-        headers: authHeaders(withTenantContext(owner, organization.tenant_id, 'owner')),
+        headers: authHeaders(
+          withTenantContext(owner, organization.tenant_id, 'owner'),
+        ),
       });
 
       expect(res.statusCode).toBe(201);
@@ -575,12 +587,16 @@ describe('Organization E2E (testcontainers)', () => {
           email: 'blocked-member@example.com',
           role: 'creator',
         },
-        headers: authHeaders(withTenantContext(viewer, organization.tenant_id, 'viewer')),
+        headers: authHeaders(
+          withTenantContext(viewer, organization.tenant_id, 'viewer'),
+        ),
       });
 
       expect(res.statusCode).toBe(403);
       const body = res.json();
-      expect(body.type).toBe('https://agentloom.dev/errors/insufficient-permissions');
+      expect(body.type).toBe(
+        'https://agentloom.dev/errors/insufficient-permissions',
+      );
     });
 
     it('admin 邀请 owner 角色返回 403', async () => {
@@ -607,7 +623,9 @@ describe('Organization E2E (testcontainers)', () => {
           email: 'future-owner@example.com',
           role: 'owner',
         },
-        headers: authHeaders(withTenantContext(admin, organization.tenant_id, 'admin')),
+        headers: authHeaders(
+          withTenantContext(admin, organization.tenant_id, 'admin'),
+        ),
       });
 
       expect(res.statusCode).toBe(403);
@@ -676,7 +694,9 @@ describe('Organization E2E (testcontainers)', () => {
 
       expect(res.statusCode).toBe(404);
       const body = res.json();
-      expect(body.type).toBe('https://agentloom.dev/errors/invitation-not-found');
+      expect(body.type).toBe(
+        'https://agentloom.dev/errors/invitation-not-found',
+      );
     });
   });
 
@@ -702,7 +722,9 @@ describe('Organization E2E (testcontainers)', () => {
         method: 'PUT',
         url: `/api/v1/organizations/${organization.id}/members/${member.id}/role`,
         payload: { role: 'admin' },
-        headers: authHeaders(withTenantContext(owner, organization.tenant_id, 'owner')),
+        headers: authHeaders(
+          withTenantContext(owner, organization.tenant_id, 'owner'),
+        ),
       });
 
       expect(res.statusCode).toBe(200);
@@ -747,7 +769,9 @@ describe('Organization E2E (testcontainers)', () => {
       const res = await app.inject({
         method: 'DELETE',
         url: `/api/v1/organizations/${organization.id}/members/${member.id}`,
-        headers: authHeaders(withTenantContext(owner, organization.tenant_id, 'owner')),
+        headers: authHeaders(
+          withTenantContext(owner, organization.tenant_id, 'owner'),
+        ),
       });
 
       expect(res.statusCode).toBe(204);
@@ -863,7 +887,9 @@ describe('Organization E2E (testcontainers)', () => {
 
       await sql.unsafe('BEGIN');
       try {
-        await sql.unsafe('ALTER TABLE "organization_members" DROP COLUMN "role"');
+        await sql.unsafe(
+          'ALTER TABLE "organization_members" DROP COLUMN "role"',
+        );
         result = await callAccessTokenHook(eventPayload);
       } finally {
         await sql.unsafe('ROLLBACK');

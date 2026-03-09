@@ -120,9 +120,7 @@ export class ApiKeyService {
         rotatedAt,
         updatedAt: rotatedAt,
       })
-      .where(
-        and(eq(apiKeys.id, existing.id), eq(apiKeys.tenantId, tenantId)),
-      )
+      .where(and(eq(apiKeys.id, existing.id), eq(apiKeys.tenantId, tenantId)))
       .returning();
 
     this.logAuditEvent('rotate', actorId, updated.id, tenantId);
@@ -200,10 +198,7 @@ export class ApiKeyService {
     return key;
   }
 
-  private async findByIdOrThrow(
-    id: string,
-    tenantId: string,
-  ): Promise<ApiKey> {
+  private async findByIdOrThrow(id: string, tenantId: string): Promise<ApiKey> {
     const key = await this.findByIdInternal(id, tenantId);
     if (!key) {
       throw new ApiKeyNotFoundException(id);
@@ -235,11 +230,11 @@ export class ApiKeyService {
   ): ApiKeyResponseDto {
     return {
       id: key.id,
-      provider: key.provider as ApiKeyResponseDto['provider'],
+      provider: key.provider,
       label: key.label,
       keyPreview: key.keyPreview,
       isDefault: key.isDefault ?? false,
-      status: key.status as ApiKeyResponseDto['status'],
+      status: key.status,
       lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
       rotatedAt: key.rotatedAt?.toISOString() ?? null,
       expiresAt: key.expiresAt?.toISOString() ?? null,

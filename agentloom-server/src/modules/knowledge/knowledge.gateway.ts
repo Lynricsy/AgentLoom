@@ -8,7 +8,11 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
-export type DocumentRealtimeStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+export type DocumentRealtimeStatus =
+  | 'uploaded'
+  | 'processing'
+  | 'ready'
+  | 'failed';
 
 export type DocumentProgressStage =
   | 'preparing'
@@ -57,14 +61,20 @@ export class KnowledgeGateway
   }
 
   @SubscribeMessage('join')
-  handleJoin(client: Socket, payload: { tenantId: string; knowledgeBaseId: string }) {
+  handleJoin(
+    client: Socket,
+    payload: { tenantId: string; knowledgeBaseId: string },
+  ) {
     const room = this.buildRoom(payload.tenantId, payload.knowledgeBaseId);
     void client.join(room);
     this.logger.debug(`Client ${client.id} joined room ${room}`);
   }
 
   @SubscribeMessage('leave')
-  handleLeave(client: Socket, payload: { tenantId: string; knowledgeBaseId: string }) {
+  handleLeave(
+    client: Socket,
+    payload: { tenantId: string; knowledgeBaseId: string },
+  ) {
     const room = this.buildRoom(payload.tenantId, payload.knowledgeBaseId);
     void client.leave(room);
     this.logger.debug(`Client ${client.id} left room ${room}`);
@@ -79,10 +89,7 @@ export class KnowledgeGateway
     this.server.to(room).emit('document:status-changed', event);
   }
 
-  emitKnowledgeBaseUpdated(
-    tenantId: string,
-    knowledgeBaseId: string,
-  ) {
+  emitKnowledgeBaseUpdated(tenantId: string, knowledgeBaseId: string) {
     const room = this.buildRoom(tenantId, knowledgeBaseId);
     this.server.to(room).emit('knowledge-base:updated', {
       knowledgeBaseId,

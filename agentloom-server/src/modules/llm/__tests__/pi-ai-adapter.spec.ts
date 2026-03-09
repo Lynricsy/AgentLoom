@@ -36,7 +36,9 @@ const {
 
 vi.mock('@ai-sdk/openai', () => ({ createOpenAI: mockCreateOpenAI }));
 vi.mock('@ai-sdk/anthropic', () => ({ createAnthropic: mockCreateAnthropic }));
-vi.mock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: mockCreateGoogle }));
+vi.mock('@ai-sdk/google', () => ({
+  createGoogleGenerativeAI: mockCreateGoogle,
+}));
 
 function createConfig(overrides: Partial<LlmModelConfig> = {}): LlmModelConfig {
   return {
@@ -76,14 +78,15 @@ describe('PiAiAdapter', () => {
     vi.spyOn(
       adapter as unknown as { sleep: (ms: number) => Promise<void> },
       'sleep',
-    ).mockResolvedValue(
-      undefined as never,
-    );
+    ).mockResolvedValue(undefined as never);
   });
 
   describe('getModel - 各提供商', () => {
     it('应当为 openai 创建模型', async () => {
-      const result = await adapter.getModel(createConfig({ provider: 'openai' }), 'sk-key');
+      const result = await adapter.getModel(
+        createConfig({ provider: 'openai' }),
+        'sk-key',
+      );
 
       expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
@@ -148,7 +151,9 @@ describe('PiAiAdapter', () => {
     it('应当在未显式传入 apiKey 时通过 DecryptionBoundary 解密配置绑定的密钥', async () => {
       await adapter.getModel(createConfig({ apiKeyId: 'config-key-id' }));
 
-      expect(decryptionBoundaryService.decryptConfiguredApiKey).toHaveBeenCalledWith(
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).toHaveBeenCalledWith(
         {
           apiKeyId: 'config-key-id',
           organizationId: 'org-id',
@@ -162,7 +167,9 @@ describe('PiAiAdapter', () => {
     it('应当在配置未绑定 apiKey 时回退到组织默认 API Key', async () => {
       await adapter.getModel(createConfig({ apiKeyId: null }));
 
-      expect(decryptionBoundaryService.decryptConfiguredApiKey).toHaveBeenCalledWith(
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).toHaveBeenCalledWith(
         {
           apiKeyId: null,
           organizationId: 'org-id',
@@ -221,9 +228,9 @@ describe('PiAiAdapter', () => {
         'sk-key',
       )) as WrappedModel;
 
-      await expect(
-        result.doGenerate('prompt'),
-      ).rejects.toBeInstanceOf(LlmProviderException);
+      await expect(result.doGenerate('prompt')).rejects.toBeInstanceOf(
+        LlmProviderException,
+      );
 
       expect(mockModel.doGenerate).toHaveBeenCalledTimes(1);
     });
@@ -238,9 +245,9 @@ describe('PiAiAdapter', () => {
         'sk-key',
       )) as WrappedModel;
 
-      await expect(
-        result.doGenerate('prompt'),
-      ).rejects.toBeInstanceOf(LlmProviderException);
+      await expect(result.doGenerate('prompt')).rejects.toBeInstanceOf(
+        LlmProviderException,
+      );
 
       expect(mockModel.doGenerate).toHaveBeenCalledTimes(3);
     });

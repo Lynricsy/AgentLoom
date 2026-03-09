@@ -37,7 +37,9 @@ describe('ApiKeyController', () => {
       create: vi.fn().mockResolvedValue(MOCK_RESPONSE),
       findAllByTenant: vi.fn().mockResolvedValue([MOCK_RESPONSE]),
       rotate: vi.fn().mockResolvedValue(MOCK_RESPONSE),
-      revoke: vi.fn().mockResolvedValue({ ...MOCK_RESPONSE, status: 'revoked' }),
+      revoke: vi
+        .fn()
+        .mockResolvedValue({ ...MOCK_RESPONSE, status: 'revoked' }),
     };
 
     controller = new ApiKeyController(service as unknown as ApiKeyService);
@@ -95,7 +97,12 @@ describe('ApiKeyController', () => {
       const result = await controller.rotate(KEY_ID, dto, USER_ID, TENANT_ID);
 
       expect(result).toEqual({ data: MOCK_RESPONSE });
-      expect(service.rotate).toHaveBeenCalledWith(KEY_ID, dto, TENANT_ID, USER_ID);
+      expect(service.rotate).toHaveBeenCalledWith(
+        KEY_ID,
+        dto,
+        TENANT_ID,
+        USER_ID,
+      );
     });
   });
 

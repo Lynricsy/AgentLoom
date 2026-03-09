@@ -89,10 +89,7 @@ describe('StorageService', () => {
 
       const result = await service.download(key);
 
-      expect(mockMinioClient.getObject).toHaveBeenCalledWith(
-        BUCKET_NAME,
-        key,
-      );
+      expect(mockMinioClient.getObject).toHaveBeenCalledWith(BUCKET_NAME, key);
       expect(result).toBe(mockStream);
     });
   });
@@ -133,10 +130,7 @@ describe('StorageService', () => {
       const result = await service.exists(key);
 
       expect(result).toBe(true);
-      expect(mockMinioClient.statObject).toHaveBeenCalledWith(
-        BUCKET_NAME,
-        key,
-      );
+      expect(mockMinioClient.statObject).toHaveBeenCalledWith(BUCKET_NAME, key);
     });
 
     it('文件不存在时应返回 false', async () => {
@@ -158,9 +152,7 @@ describe('StorageService', () => {
         'report.pdf',
       );
 
-      expect(result).toBe(
-        'tenants/tenant-123/kb/kb-456/doc-789/report.pdf',
-      );
+      expect(result).toBe('tenants/tenant-123/kb/kb-456/doc-789/report.pdf');
     });
   });
 });

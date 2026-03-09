@@ -24,7 +24,10 @@ function getDecoratorFactory() {
     ROUTE_ARGS_METADATA,
     TestController,
     'getCurrentTenant',
-  ) as Record<string, { factory: (data: unknown, ctx: unknown) => unknown; data: unknown }>;
+  ) as Record<
+    string,
+    { factory: (data: unknown, ctx: unknown) => unknown; data: unknown }
+  >;
 
   return Object.values(metadata)[0];
 }
@@ -38,7 +41,10 @@ describe('CurrentTenant decorator', () => {
     };
     const metadata = getDecoratorFactory();
 
-    const result = metadata.factory(metadata.data, createExecutionContext(request));
+    const result = metadata.factory(
+      metadata.data,
+      createExecutionContext(request),
+    );
 
     expect(result).toBe('11111111-1111-4111-8111-111111111111');
   });

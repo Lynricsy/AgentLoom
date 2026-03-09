@@ -52,11 +52,12 @@ export class KnowledgeBaseController {
     @Query() query: ListKnowledgeBasesQueryDto,
     @CurrentTenant() tenantId: string,
   ) {
-    const { data, total } = await this.knowledgeBaseService.findSummariesByTenant(
-      tenantId,
-      query.page,
-      query.pageSize,
-    );
+    const { data, total } =
+      await this.knowledgeBaseService.findSummariesByTenant(
+        tenantId,
+        query.page,
+        query.pageSize,
+      );
     return {
       data,
       meta: {
@@ -74,10 +75,11 @@ export class KnowledgeBaseController {
     @Param('id') knowledgeBaseId: string,
     @CurrentTenant() tenantId: string,
   ) {
-    const knowledgeBase = await this.knowledgeBaseService.findSummaryByIdOrThrow(
-      knowledgeBaseId,
-      tenantId,
-    );
+    const knowledgeBase =
+      await this.knowledgeBaseService.findSummaryByIdOrThrow(
+        knowledgeBaseId,
+        tenantId,
+      );
 
     return { data: knowledgeBase };
   }
@@ -90,10 +92,7 @@ export class KnowledgeBaseController {
     @CurrentUser('sub') userId: string,
     @Req() request: FastifyRequest,
   ) {
-    await this.knowledgeBaseService.findByIdOrThrow(
-      knowledgeBaseId,
-      tenantId,
-    );
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
 
     const document = await this.documentService.uploadFromRequest(
       request,
@@ -112,10 +111,7 @@ export class KnowledgeBaseController {
     @Query() query: ListDocumentsQueryDto,
     @CurrentTenant() tenantId: string,
   ) {
-    await this.knowledgeBaseService.findByIdOrThrow(
-      knowledgeBaseId,
-      tenantId,
-    );
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
 
     const { data, total } = await this.documentService.findByKnowledgeBase(
       knowledgeBaseId,

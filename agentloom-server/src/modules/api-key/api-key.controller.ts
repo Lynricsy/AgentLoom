@@ -32,11 +32,7 @@ export class ApiKeyController {
     @CurrentUser('sub') userId: string,
     @CurrentTenant() tenantId: string,
   ) {
-    const data = await this.apiKeyService.create(
-      dto,
-      userId,
-      tenantId,
-    );
+    const data = await this.apiKeyService.create(dto, userId, tenantId);
     return { data };
   }
 

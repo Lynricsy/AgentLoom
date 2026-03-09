@@ -65,7 +65,11 @@ describe('RbacCacheService', () => {
 
       expect(role).toBe('owner');
       expect(mockDb.select).toHaveBeenCalled();
-      expect(mockCacheService.set).toHaveBeenCalledWith('tenant-1:rbac:user-1', 'owner', 900);
+      expect(mockCacheService.set).toHaveBeenCalledWith(
+        'tenant-1:rbac:user-1',
+        'owner',
+        900,
+      );
     });
 
     it('DB にメンバーがいない場合 null を返す', async () => {
@@ -87,7 +91,9 @@ describe('RbacCacheService', () => {
       await service.invalidateUserRole('tenant-1', 'user-1');
 
       expect(mockCacheService.del).toHaveBeenCalledWith('tenant-1:rbac:user-1');
-      expect(mockPubSubService.publish).toHaveBeenCalledWith('tenant-1:rbac:user-1');
+      expect(mockPubSubService.publish).toHaveBeenCalledWith(
+        'tenant-1:rbac:user-1',
+      );
     });
   });
 });

@@ -4,9 +4,7 @@ import { REDIS_CLIENT } from './redis.constants';
 
 @Injectable()
 export class RedisCacheService implements OnModuleDestroy {
-  constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
-  ) {}
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   async get(key: string): Promise<string | null> {
     return this.redis.get(key);

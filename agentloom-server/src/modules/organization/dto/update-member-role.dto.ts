@@ -7,6 +7,4 @@ const UpdateMemberRoleSchema = z.object({
   }),
 });
 
-export class UpdateMemberRoleDto extends createZodDto(
-  UpdateMemberRoleSchema,
-) {}
+export class UpdateMemberRoleDto extends createZodDto(UpdateMemberRoleSchema) {}

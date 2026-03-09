@@ -47,9 +47,7 @@ export const workflowVersions = pgTable(
 
     label: varchar('label', { length: 255 }),
 
-    snapshot: jsonb('snapshot')
-      .$type<WorkflowVersionSnapshot>()
-      .notNull(),
+    snapshot: jsonb('snapshot').$type<WorkflowVersionSnapshot>().notNull(),
 
     publishedAt: timestamp('published_at', { withTimezone: true }),
 

@@ -50,9 +50,7 @@ function createInvalidSignatureToken(): string {
   );
 }
 
-function createMockExecutionContext(
-  authorizationHeader?: string,
-): {
+function createMockExecutionContext(authorizationHeader?: string): {
   context: ReturnType<typeof vi.fn> & {
     switchToHttp: ReturnType<typeof vi.fn>;
     getHandler: ReturnType<typeof vi.fn>;
@@ -117,9 +115,7 @@ describe('AuthGuard', () => {
 
   it('有効なトークンでアクセスを許可し、request.user を設定する', async () => {
     const token = createValidToken();
-    const { context, request } = createMockExecutionContext(
-      `Bearer ${token}`,
-    );
+    const { context, request } = createMockExecutionContext(`Bearer ${token}`);
 
     const result = await authGuard.canActivate(context as never);
 

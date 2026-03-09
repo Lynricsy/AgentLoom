@@ -4,7 +4,11 @@ import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ExecutionService } from '../execution.service';
 import { ExecutionGateway } from '../execution.gateway';
-import { ExecutionNotFoundException, WorkflowNotPublishedException, ExecutionNotCancellableException } from '../execution.exceptions';
+import {
+  ExecutionNotFoundException,
+  WorkflowNotPublishedException,
+  ExecutionNotCancellableException,
+} from '../execution.exceptions';
 import { EXECUTION_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
 
@@ -18,8 +22,18 @@ const NOW = new Date('2025-01-01T00:00:00Z');
 
 const mockSnapshot = {
   nodes: [
-    { id: 'node-1', type: 'trigger', data: { label: 'Start' }, position: { x: 0, y: 0 } },
-    { id: 'node-2', type: 'action', data: { label: 'Process' }, position: { x: 100, y: 0 } },
+    {
+      id: 'node-1',
+      type: 'trigger',
+      data: { label: 'Start' },
+      position: { x: 0, y: 0 },
+    },
+    {
+      id: 'node-2',
+      type: 'action',
+      data: { label: 'Process' },
+      position: { x: 100, y: 0 },
+    },
   ],
   edges: [{ id: 'edge-1', source: 'node-1', target: 'node-2' }],
   viewport: { x: 0, y: 0, zoom: 1 },
@@ -165,7 +179,9 @@ describe('ExecutionService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
         .mockReturnValueOnce(createSelectChain([mockVersion]));
-      db.insert.mockReturnValueOnce(createInsertChainReturning([mockExecution]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
       mockQueue.add.mockResolvedValue(undefined);
 
       const result = await service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID);
@@ -180,34 +196,57 @@ describe('ExecutionService', () => {
     });
 
     it('应拒绝草稿工作流 (WorkflowNotPublishedException)', async () => {
-      const draftWorkflow = { ...mockPublishedWorkflow, status: 'draft', publishedVersionId: null };
+      const draftWorkflow = {
+        ...mockPublishedWorkflow,
+        status: 'draft',
+        publishedVersionId: null,
+      };
       db.select.mockReturnValueOnce(createSelectChain([draftWorkflow]));
 
-      await expect(service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID))
-        .rejects.toThrow(WorkflowNotPublishedException);
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(WorkflowNotPublishedException);
     });
 
     it('应拒绝已归档的工作流', async () => {
-      const archivedWorkflow = { ...mockPublishedWorkflow, status: 'archived', publishedVersionId: null };
+      const archivedWorkflow = {
+        ...mockPublishedWorkflow,
+        status: 'archived',
+        publishedVersionId: null,
+      };
       db.select.mockReturnValueOnce(createSelectChain([archivedWorkflow]));
 
-      await expect(service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID))
-        .rejects.toThrow(WorkflowNotPublishedException);
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(WorkflowNotPublishedException);
     });
 
     it('应在工作流不存在时抛出异常', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID))
-        .rejects.toThrow(WorkflowNotPublishedException);
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
+      ).rejects.toThrow(WorkflowNotPublishedException);
     });
   });
 
   describe('getExecution', () => {
     it('应返回执行详情和步骤列表', async () => {
       const mockSteps = [
-        { id: 'step-1', executionId: EXECUTION_ID, nodeId: 'node-1', stepOrder: 0, status: 'pending' },
-        { id: 'step-2', executionId: EXECUTION_ID, nodeId: 'node-2', stepOrder: 1, status: 'pending' },
+        {
+          id: 'step-1',
+          executionId: EXECUTION_ID,
+          nodeId: 'node-1',
+          stepOrder: 0,
+          status: 'pending',
+        },
+        {
+          id: 'step-2',
+          executionId: EXECUTION_ID,
+          nodeId: 'node-2',
+          stepOrder: 1,
+          status: 'pending',
+        },
       ];
       db.select
         .mockReturnValueOnce(createSelectChain([mockExecution]))
@@ -222,8 +261,9 @@ describe('ExecutionService', () => {
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.getExecution(EXECUTION_ID))
-        .rejects.toThrow(ExecutionNotFoundException);
+      await expect(service.getExecution(EXECUTION_ID)).rejects.toThrow(
+        ExecutionNotFoundException,
+      );
     });
   });
 
@@ -259,7 +299,12 @@ describe('ExecutionService', () => {
         .mockReturnValueOnce(createSelectChainPaginated([]))
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 
-      const result = await service.listExecutions(WORKFLOW_ID, 1, 20, 'running');
+      const result = await service.listExecutions(
+        WORKFLOW_ID,
+        1,
+        20,
+        'running',
+      );
 
       expect(result.data).toEqual([]);
       expect(db.select).toHaveBeenCalledTimes(2);
@@ -269,7 +314,11 @@ describe('ExecutionService', () => {
   describe('cancelExecution', () => {
     it('应取消运行中的执行', async () => {
       const runningExecution = { ...mockExecution, status: 'running' as const };
-      const cancelledExecution = { ...mockExecution, status: 'cancelled' as const, cancelledAt: NOW };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+        cancelledAt: NOW,
+      };
       db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
@@ -281,14 +330,19 @@ describe('ExecutionService', () => {
 
       expect(result.status).toBe('cancelled');
       expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
-        TENANT_ID, EXECUTION_ID, 'execution:cancelled',
+        TENANT_ID,
+        EXECUTION_ID,
+        'execution:cancelled',
         { executionId: EXECUTION_ID, status: 'cancelled' },
       );
     });
 
     it('应取消 pending 状态的执行', async () => {
       const pendingExecution = { ...mockExecution, status: 'pending' as const };
-      const cancelledExecution = { ...mockExecution, status: 'cancelled' as const };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
       db.select.mockReturnValueOnce(createSelectChain([pendingExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
@@ -303,7 +357,10 @@ describe('ExecutionService', () => {
 
     it('应移除匹配的 BullMQ 任务', async () => {
       const runningExecution = { ...mockExecution, status: 'running' as const };
-      const cancelledExecution = { ...mockExecution, status: 'cancelled' as const };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
       db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
@@ -311,7 +368,10 @@ describe('ExecutionService', () => {
         .mockReturnValueOnce(createUpdateChainVoid());
 
       const mockRemove = vi.fn().mockResolvedValue(undefined);
-      const matchingJob = { data: { executionId: EXECUTION_ID }, remove: mockRemove };
+      const matchingJob = {
+        data: { executionId: EXECUTION_ID },
+        remove: mockRemove,
+      };
       const otherJob = { data: { executionId: 'other-id' }, remove: vi.fn() };
       mockQueue.getJobs.mockResolvedValue([matchingJob, otherJob]);
 
@@ -324,24 +384,30 @@ describe('ExecutionService', () => {
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.cancelExecution(EXECUTION_ID, TENANT_ID))
-        .rejects.toThrow(ExecutionNotFoundException);
+      await expect(
+        service.cancelExecution(EXECUTION_ID, TENANT_ID),
+      ).rejects.toThrow(ExecutionNotFoundException);
     });
 
     it('应在执行已完成时抛出 ExecutionNotCancellableException', async () => {
-      const completedExecution = { ...mockExecution, status: 'completed' as const };
+      const completedExecution = {
+        ...mockExecution,
+        status: 'completed' as const,
+      };
       db.select.mockReturnValueOnce(createSelectChain([completedExecution]));
 
-      await expect(service.cancelExecution(EXECUTION_ID, TENANT_ID))
-        .rejects.toThrow(ExecutionNotCancellableException);
+      await expect(
+        service.cancelExecution(EXECUTION_ID, TENANT_ID),
+      ).rejects.toThrow(ExecutionNotCancellableException);
     });
 
     it('应在执行已失败时抛出 ExecutionNotCancellableException', async () => {
       const failedExecution = { ...mockExecution, status: 'failed' as const };
       db.select.mockReturnValueOnce(createSelectChain([failedExecution]));
 
-      await expect(service.cancelExecution(EXECUTION_ID, TENANT_ID))
-        .rejects.toThrow(ExecutionNotCancellableException);
+      await expect(
+        service.cancelExecution(EXECUTION_ID, TENANT_ID),
+      ).rejects.toThrow(ExecutionNotCancellableException);
     });
   });
 
@@ -358,7 +424,9 @@ describe('ExecutionService', () => {
       expect(db.update).toHaveBeenCalledTimes(2);
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
-        TENANT_ID, EXECUTION_ID, 'execution:completed',
+        TENANT_ID,
+        EXECUTION_ID,
+        'execution:completed',
         { executionId: EXECUTION_ID, status: 'completed', totalSteps: 2 },
       );
     });
@@ -366,8 +434,9 @@ describe('ExecutionService', () => {
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.initializeSteps(EXECUTION_ID))
-        .rejects.toThrow(ExecutionNotFoundException);
+      await expect(service.initializeSteps(EXECUTION_ID)).rejects.toThrow(
+        ExecutionNotFoundException,
+      );
     });
 
     it('应在没有节点时跳过步骤插入', async () => {
@@ -389,14 +458,18 @@ describe('ExecutionService', () => {
   describe('markFailed', () => {
     it('应标记执行为失败并广播事件', async () => {
       db.update.mockReturnValueOnce(createUpdateChainVoid());
-      db.select.mockReturnValueOnce(createSelectChain([{ tenantId: TENANT_ID }]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ tenantId: TENANT_ID }]),
+      );
 
       const error = new Error('执行失败');
       await service.markFailed(EXECUTION_ID, error);
 
       expect(db.update).toHaveBeenCalledTimes(1);
       expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
-        TENANT_ID, EXECUTION_ID, 'execution:failed',
+        TENANT_ID,
+        EXECUTION_ID,
+        'execution:failed',
         { executionId: EXECUTION_ID, status: 'failed', error: '执行失败' },
       );
     });

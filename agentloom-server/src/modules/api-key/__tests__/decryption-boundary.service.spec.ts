@@ -45,8 +45,7 @@ function expectAuditLog(
   const matchedCall = calls.find((call) => {
     const [message] = call as [unknown, ...unknown[]];
     return (
-      typeof message === 'string' &&
-      message.includes(`"outcome":"${outcome}"`)
+      typeof message === 'string' && message.includes(`"outcome":"${outcome}"`)
     );
   });
 
@@ -93,7 +92,11 @@ describe('DecryptionBoundaryService', () => {
         activeKey as never,
       );
 
-      const result = await service.decryptApiKey(KEY_ID, TENANT_ID, 'llm-gateway');
+      const result = await service.decryptApiKey(
+        KEY_ID,
+        TENANT_ID,
+        'llm-gateway',
+      );
 
       expect(result).toBe('sk-decrypted-plain-key');
       expect(encryptionService.decrypt).toHaveBeenCalledWith({
@@ -206,9 +209,9 @@ describe('DecryptionBoundaryService', () => {
         throw new Error('decrypt failed');
       });
 
-      await expect(
-        service.decryptApiKey(KEY_ID, TENANT_ID),
-      ).rejects.toThrow('decrypt failed');
+      await expect(service.decryptApiKey(KEY_ID, TENANT_ID)).rejects.toThrow(
+        'decrypt failed',
+      );
 
       expect(apiKeyService.updateLastUsedAt).not.toHaveBeenCalled();
       expectAuditLog(logSpy, 'decrypt_failed');
@@ -240,7 +243,10 @@ describe('DecryptionBoundaryService', () => {
     });
 
     it('应当在未显式绑定时回退到同 provider 的默认 API Key', async () => {
-      const defaultKey = createActiveApiKey({ id: 'default-key-id', isDefault: true });
+      const defaultKey = createActiveApiKey({
+        id: 'default-key-id',
+        isDefault: true,
+      });
       vi.mocked(
         apiKeyService.findDefaultActiveByOrganizationInternal!,
       ).mockResolvedValue(defaultKey as never);

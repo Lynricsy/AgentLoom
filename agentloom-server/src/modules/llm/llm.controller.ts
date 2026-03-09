@@ -54,10 +54,7 @@ export class LlmController {
   @ApiOperation({ summary: '获取指定 LLM 模型配置' })
   @ApiResponse({ status: 200, description: '返回 LLM 模型配置详情' })
   @ApiResponse({ status: 404, description: '模型配置未找到' })
-  async findById(
-    @Param('id') id: string,
-    @CurrentTenant() tenantId: string,
-  ) {
+  async findById(@Param('id') id: string, @CurrentTenant() tenantId: string) {
     const result = await this.llmService.findById(id, tenantId);
     return { data: result };
   }
@@ -84,10 +81,7 @@ export class LlmController {
   @ApiOperation({ summary: '删除 LLM 模型配置' })
   @ApiResponse({ status: 204, description: 'LLM 模型配置删除成功' })
   @ApiResponse({ status: 404, description: '模型配置未找到' })
-  async delete(
-    @Param('id') id: string,
-    @CurrentTenant() tenantId: string,
-  ) {
+  async delete(@Param('id') id: string, @CurrentTenant() tenantId: string) {
     await this.llmService.delete(id, tenantId);
   }
 }

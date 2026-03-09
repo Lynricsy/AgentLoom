@@ -24,8 +24,14 @@ function createExecutionContext(request: Record<string, unknown>) {
   };
 }
 
-function getDecoratorFactory(methodName: 'getCurrentUser' | 'getCurrentUserId') {
-  const metadata = Reflect.getMetadata(ROUTE_ARGS_METADATA, TestController, methodName) as Record<
+function getDecoratorFactory(
+  methodName: 'getCurrentUser' | 'getCurrentUserId',
+) {
+  const metadata = Reflect.getMetadata(
+    ROUTE_ARGS_METADATA,
+    TestController,
+    methodName,
+  ) as Record<
     string,
     { factory: (data: unknown, ctx: unknown) => unknown; data: unknown }
   >;
@@ -43,7 +49,10 @@ describe('CurrentUser decorator', () => {
     };
     const metadata = getDecoratorFactory('getCurrentUser');
 
-    const result = metadata.factory(metadata.data, createExecutionContext(request));
+    const result = metadata.factory(
+      metadata.data,
+      createExecutionContext(request),
+    );
 
     expect(result).toEqual(request.user);
   });
@@ -57,7 +66,10 @@ describe('CurrentUser decorator', () => {
     };
     const metadata = getDecoratorFactory('getCurrentUserId');
 
-    const result = metadata.factory(metadata.data, createExecutionContext(request));
+    const result = metadata.factory(
+      metadata.data,
+      createExecutionContext(request),
+    );
 
     expect(result).toBe('user-1');
   });

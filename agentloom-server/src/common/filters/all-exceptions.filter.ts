@@ -72,8 +72,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const detail =
         typeof response === 'string'
           ? response
-          : (response as Record<string, unknown>).message?.toString() ??
-            exception.message;
+          : ((response as Record<string, unknown>).message?.toString() ??
+            exception.message);
 
       return {
         type: 'https://agentloom.dev/errors/http-error',

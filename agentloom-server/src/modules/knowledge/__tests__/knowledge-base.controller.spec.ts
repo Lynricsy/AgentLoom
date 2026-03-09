@@ -55,21 +55,42 @@ describe('KnowledgeBaseController', () => {
 
   describe('create', () => {
     it('应创建知识库并返回 { data } 格式', async () => {
-      const dto = { name: '测试知识库', description: '描述', visibility: 'private' as const };
-      const createdKB = { id: KB_ID, ...dto, tenantId: TENANT_ID, createdBy: USER_ID };
+      const dto = {
+        name: '测试知识库',
+        description: '描述',
+        visibility: 'private' as const,
+      };
+      const createdKB = {
+        id: KB_ID,
+        ...dto,
+        tenantId: TENANT_ID,
+        createdBy: USER_ID,
+      };
       knowledgeBaseService.create.mockResolvedValue(createdKB);
 
       const result = await controller.create(dto, TENANT_ID, USER_ID);
 
       expect(result).toEqual({ data: createdKB });
-      expect(knowledgeBaseService.create).toHaveBeenCalledWith(dto, TENANT_ID, USER_ID);
+      expect(knowledgeBaseService.create).toHaveBeenCalledWith(
+        dto,
+        TENANT_ID,
+        USER_ID,
+      );
     });
   });
 
   describe('findAll', () => {
     it('应返回分页知识库列表 { data, meta }', async () => {
       const query = { page: 1, pageSize: 10 };
-      const kbList = [{ id: KB_ID, name: '知识库1', documentCount: 2, chunkCount: 6, status: 'ready' }];
+      const kbList = [
+        {
+          id: KB_ID,
+          name: '知识库1',
+          documentCount: 2,
+          chunkCount: 6,
+          status: 'ready',
+        },
+      ];
       knowledgeBaseService.findSummariesByTenant.mockResolvedValue({
         data: kbList,
         total: 1,
@@ -146,18 +167,16 @@ describe('KnowledgeBaseController', () => {
   describe('listDocuments', () => {
     it('应验证知识库存在后返回分页文档列表', async () => {
       const query = { page: 1, pageSize: 20, status: undefined };
-      const docs = [{ id: '00000000-0000-0000-0000-000000000020', fileName: 'file.pdf' }];
+      const docs = [
+        { id: '00000000-0000-0000-0000-000000000020', fileName: 'file.pdf' },
+      ];
       knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
       documentService.findByKnowledgeBase.mockResolvedValue({
         data: docs,
         total: 1,
       });
 
-      const result = await controller.listDocuments(
-        KB_ID,
-        query,
-        TENANT_ID,
-      );
+      const result = await controller.listDocuments(KB_ID, query, TENANT_ID);
 
       expect(result).toEqual({
         data: docs,

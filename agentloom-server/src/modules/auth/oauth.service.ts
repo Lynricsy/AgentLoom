@@ -26,8 +26,12 @@ export class OAuthService {
   async initiateOAuth(provider: OAuthProvider, redirectUrl?: string) {
     try {
       const redirectTo =
-        redirectUrl ?? this.configService.get<string>('APP_OAUTH_REDIRECT_URL')!;
-      const data = await this.supabaseService.signInWithOAuth(provider, redirectTo);
+        redirectUrl ??
+        this.configService.get<string>('APP_OAUTH_REDIRECT_URL')!;
+      const data = await this.supabaseService.signInWithOAuth(
+        provider,
+        redirectTo,
+      );
 
       if (!data.url) {
         throw new OAuthInitiationException(provider);

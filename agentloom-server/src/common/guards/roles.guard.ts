@@ -22,18 +22,22 @@ export class RolesGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets);
-
-    if (isPublic) return true;
-
-    const requiredRoles = this.reflector.getAllAndOverride<OrgRole[] | undefined>(
-      ROLES_KEY,
+    const isPublic = this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_KEY,
       targets,
     );
 
+    if (isPublic) return true;
+
+    const requiredRoles = this.reflector.getAllAndOverride<
+      OrgRole[] | undefined
+    >(ROLES_KEY, targets);
+
     if (!requiredRoles || requiredRoles.length === 0) return true;
 
-    const request = context.switchToHttp().getRequest<FastifyRequest & { user: JwtPayload }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<FastifyRequest & { user: JwtPayload }>();
     const userId = request.user?.sub;
     const tenantId = request.user?.tenantId;
 
@@ -52,7 +56,10 @@ export class RolesGuard implements CanActivate {
     const userRole = await this.rbacCacheService.getUserRole(tenantId, userId);
 
     if (!userRole || !requiredRoles.includes(userRole)) {
-      throw new InsufficientPermissionsException(requiredRoles, userRole ?? undefined);
+      throw new InsufficientPermissionsException(
+        requiredRoles,
+        userRole ?? undefined,
+      );
     }
 
     return true;

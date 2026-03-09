@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -235,16 +243,14 @@ describe('WorkflowVersion E2E', () => {
       slug: options.slug ?? `workflow-${crypto.randomUUID().slice(0, 8)}`,
       createdBy: options.createdBy,
       updatedBy: options.createdBy,
-      nodes:
-        options.nodes ??
-        [
-          {
-            id: 'node-start',
-            type: 'agent',
-            position: { x: 0, y: 0 },
-            data: { label: 'Start' },
-          },
-        ],
+      nodes: options.nodes ?? [
+        {
+          id: 'node-start',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { label: 'Start' },
+        },
+      ],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 },
       status: options.status,
@@ -284,10 +290,14 @@ describe('WorkflowVersion E2E', () => {
     });
 
     expect(storedVersions).toHaveLength(2);
-    expect(storedVersions.map((version) => version.versionNumber)).toEqual([1, 2]);
+    expect(storedVersions.map((version) => version.versionNumber)).toEqual([
+      1, 2,
+    ]);
 
     const listResponse = await request(app.getHttpServer())
-      .get(`/api/v1/workflow-definitions/${workflow.id}/versions?page=1&pageSize=10`)
+      .get(
+        `/api/v1/workflow-definitions/${workflow.id}/versions?page=1&pageSize=10`,
+      )
       .set(owner.headers);
 
     expect(listResponse.status).toBe(200);
@@ -316,7 +326,9 @@ describe('WorkflowVersion E2E', () => {
       });
 
     expect(publishResponse.status).toBe(200);
-    expect(publishResponse.body.data.snapshot.metadata.releaseNotes).toBe('首次发布');
+    expect(publishResponse.body.data.snapshot.metadata.releaseNotes).toBe(
+      '首次发布',
+    );
 
     const cacheKey = `${owner.tenantId}:cache:wf:published:${workflow.id}`;
     expect(
@@ -327,7 +339,9 @@ describe('WorkflowVersion E2E', () => {
       where: eq(schema.workflowDefinitions.id, workflow.id),
     });
     expect(storedWorkflow?.status).toBe('published');
-    expect(storedWorkflow?.publishedVersionId).toBe(publishResponse.body.data.id);
+    expect(storedWorkflow?.publishedVersionId).toBe(
+      publishResponse.body.data.id,
+    );
 
     vi.clearAllMocks();
     redisCacheMock.get.mockResolvedValue(null);
@@ -385,9 +399,9 @@ describe('WorkflowVersion E2E', () => {
       where: eq(schema.workflowVersions.workflowDefinitionId, workflow.id),
     });
     expect(storedVersions).not.toHaveLength(0);
-    expect(storedVersions.every((version) => version.archivedAt instanceof Date)).toBe(
-      true,
-    );
+    expect(
+      storedVersions.every((version) => version.archivedAt instanceof Date),
+    ).toBe(true);
   });
 
   it('应当通过租户上下文隔离其他组织对版本接口的访问', async () => {

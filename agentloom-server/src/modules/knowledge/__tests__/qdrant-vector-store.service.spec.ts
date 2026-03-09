@@ -89,7 +89,9 @@ describe('QdrantVectorStoreService', () => {
     });
 
     it('should rethrow infrastructure errors from Qdrant', async () => {
-      client.collectionExists.mockRejectedValue(new Error('Qdrant unavailable'));
+      client.collectionExists.mockRejectedValue(
+        new Error('Qdrant unavailable'),
+      );
 
       await expect(service.collectionExists(COLLECTION)).rejects.toThrow(
         'Qdrant unavailable',

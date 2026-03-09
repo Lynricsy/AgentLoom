@@ -44,7 +44,11 @@ export class ExecutionService {
       .from(schema.workflowDefinitions)
       .where(eq(schema.workflowDefinitions.id, workflowId));
 
-    if (!workflow || workflow.status !== 'published' || !workflow.publishedVersionId) {
+    if (
+      !workflow ||
+      workflow.status !== 'published' ||
+      !workflow.publishedVersionId
+    ) {
       throw new WorkflowNotPublishedException(workflowId);
     }
 
@@ -77,9 +81,9 @@ export class ExecutionService {
     return execution;
   }
 
-  async getExecution(executionId: string): Promise<
-    schema.WorkflowExecution & { steps: schema.ExecutionStep[] }
-  > {
+  async getExecution(
+    executionId: string,
+  ): Promise<schema.WorkflowExecution & { steps: schema.ExecutionStep[] }> {
     const [execution] = await this.tenantDb
       .select()
       .from(schema.workflowExecutions)
@@ -210,10 +214,15 @@ export class ExecutionService {
       }
     }
 
-    this.executionGateway.broadcastEvent(tenantId, executionId, 'execution:cancelled', {
+    this.executionGateway.broadcastEvent(
+      tenantId,
       executionId,
-      status: 'cancelled',
-    });
+      'execution:cancelled',
+      {
+        executionId,
+        status: 'cancelled',
+      },
+    );
 
     this.logger.log(`Execution cancelled: ${JSON.stringify({ executionId })}`);
 
@@ -250,9 +259,7 @@ export class ExecutionService {
     }));
 
     if (stepValues.length > 0) {
-      await this.tenantDb
-        .insert(schema.executionSteps)
-        .values(stepValues);
+      await this.tenantDb.insert(schema.executionSteps).values(stepValues);
     }
 
     await this.tenantDb

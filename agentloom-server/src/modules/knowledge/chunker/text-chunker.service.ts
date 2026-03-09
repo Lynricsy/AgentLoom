@@ -48,7 +48,11 @@ export class TextChunkerService {
     let currentLocation: ParsedSection['location'] | null = null;
 
     const flushChunk = (): void => {
-      if (currentSpanStart === null || currentSpanEnd === null || !currentLocation) {
+      if (
+        currentSpanStart === null ||
+        currentSpanEnd === null ||
+        !currentLocation
+      ) {
         return;
       }
 
@@ -96,7 +100,8 @@ export class TextChunkerService {
       if (
         currentSpanStart !== null &&
         currentSpanEnd !== null &&
-        encode(document.fullText.slice(currentSpanStart, sectionEnd)).length > maxTokens &&
+        encode(document.fullText.slice(currentSpanStart, sectionEnd)).length >
+          maxTokens &&
         currentLocation
       ) {
         const previousSpanStart = currentSpanStart;
@@ -182,7 +187,8 @@ export class TextChunkerService {
       if (
         currentStartLocal !== null &&
         currentEndLocal !== null &&
-        encode(section.text.slice(currentStartLocal, sentenceEnd)).length > maxTokens
+        encode(section.text.slice(currentStartLocal, sentenceEnd)).length >
+          maxTokens
       ) {
         const previousStartLocal = currentStartLocal;
         const previousEndLocal = currentEndLocal;
@@ -241,8 +247,12 @@ export class TextChunkerService {
     return null;
   }
 
-  private getSentenceRanges(text: string): Array<{ start: number; end: number }> {
-    const matches = Array.from(text.matchAll(/[\s\S]+?(?:[.。!！?？]\s*|\n+|$)/g));
+  private getSentenceRanges(
+    text: string,
+  ): Array<{ start: number; end: number }> {
+    const matches = Array.from(
+      text.matchAll(/[\s\S]+?(?:[.。!！?？]\s*|\n+|$)/g),
+    );
 
     return matches
       .map((match) => ({

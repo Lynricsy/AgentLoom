@@ -154,7 +154,9 @@ describe('RagService', () => {
       ]);
       embeddingService.generateEmbeddings.mockResolvedValue([[0.1]]);
       vectorStore.upsert.mockRejectedValue(new Error('upsert failed'));
-      vectorStore.deleteByFilter.mockRejectedValue(new Error('rollback failed'));
+      vectorStore.deleteByFilter.mockRejectedValue(
+        new Error('rollback failed'),
+      );
 
       await expect(service.indexDocument(DOC_ID, TENANT_ID)).rejects.toThrow(
         'upsert failed',

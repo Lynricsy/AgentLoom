@@ -50,21 +50,19 @@ export class RagService {
       .limit(1);
 
     if (!org) {
-      throw new Error(
-        `Organization not found for tenantId: ${tenantId}`,
-      );
+      throw new Error(`Organization not found for tenantId: ${tenantId}`);
     }
 
     return org.id;
   }
 
-  async indexDocument(
-    documentId: string,
-    tenantId: string,
-  ): Promise<void> {
+  async indexDocument(documentId: string, tenantId: string): Promise<void> {
     const collectionName = this.getCollectionName(tenantId);
 
-    await this.vectorStore.createCollection(collectionName, EMBEDDING_DIMENSIONS);
+    await this.vectorStore.createCollection(
+      collectionName,
+      EMBEDDING_DIMENSIONS,
+    );
 
     const chunks = await this.documentChunkService.findByDocumentId(
       documentId,
@@ -72,7 +70,9 @@ export class RagService {
     );
 
     if (chunks.length === 0) {
-      this.logger.warn(`No chunks found for document ${documentId}, skipping indexing`);
+      this.logger.warn(
+        `No chunks found for document ${documentId}, skipping indexing`,
+      );
       return;
     }
 
@@ -170,10 +170,7 @@ export class RagService {
     }));
   }
 
-  async deleteByDocument(
-    documentId: string,
-    tenantId: string,
-  ): Promise<void> {
+  async deleteByDocument(documentId: string, tenantId: string): Promise<void> {
     const collectionName = this.getCollectionName(tenantId);
 
     const exists = await this.vectorStore.collectionExists(collectionName);

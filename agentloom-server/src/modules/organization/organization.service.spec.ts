@@ -411,7 +411,9 @@ describe('OrganizationService', () => {
     it('slug 冲突且后缀也冲突时抛出 OrganizationSlugConflictException', async () => {
       db.query.organizations.findFirst
         .mockResolvedValueOnce(createOrganizationRecord())
-        .mockResolvedValueOnce(createOrganizationRecord({ slug: 'acme-team-abcd' }));
+        .mockResolvedValueOnce(
+          createOrganizationRecord({ slug: 'acme-team-abcd' }),
+        );
 
       await expect(
         service.createOrganization(USER_ID, {
@@ -426,7 +428,10 @@ describe('OrganizationService', () => {
 
     it('创建时同时创建 owner 成员记录', async () => {
       const org = createOrganizationRecord();
-      const { tx, memberInsertChain } = setupCreateOrganizationTransaction(db, org);
+      const { tx, memberInsertChain } = setupCreateOrganizationTransaction(
+        db,
+        org,
+      );
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
       await service.createOrganization(USER_ID, {
@@ -446,7 +451,10 @@ describe('OrganizationService', () => {
 
     it('创建时设置 currentOrganizationId', async () => {
       const org = createOrganizationRecord();
-      const { tx, userUpdateChain } = setupCreateOrganizationTransaction(db, org);
+      const { tx, userUpdateChain } = setupCreateOrganizationTransaction(
+        db,
+        org,
+      );
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
       await service.createOrganization(USER_ID, {
@@ -483,20 +491,22 @@ describe('OrganizationService', () => {
     it('组织不存在时抛出 OrganizationNotFoundException', async () => {
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.getOrganization(ORG_ID, USER_ID)).rejects.toBeInstanceOf(
-        OrganizationNotFoundException,
-      );
+      await expect(
+        service.getOrganization(ORG_ID, USER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
 
       expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
     });
 
     it('非成员访问时抛出 OrganizationNotFoundException', async () => {
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.getOrganization(ORG_ID, USER_ID)).rejects.toBeInstanceOf(
-        OrganizationNotFoundException,
-      );
+      await expect(
+        service.getOrganization(ORG_ID, USER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
 
       expect(db.select).not.toHaveBeenCalled();
     });
@@ -538,7 +548,9 @@ describe('OrganizationService', () => {
       const invitation = createInvitationRecord({ role: 'admin' });
       const insertChain = createInsertChain([invitation]);
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ role: 'admin' }),
       );
@@ -564,7 +576,9 @@ describe('OrganizationService', () => {
     });
 
     it('admin 尝试邀请 owner 角色时抛出 AdminCannotInviteOwnerException', async () => {
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ role: 'admin' }),
       );
@@ -582,8 +596,12 @@ describe('OrganizationService', () => {
     });
 
     it('已有待处理邀请时抛出 PendingInvitationExistsException', async () => {
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
-      db.query.organizationMembers.findFirst.mockResolvedValue(createMemberRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        createMemberRecord(),
+      );
       db.query.organizationInvitations.findFirst.mockResolvedValue(
         createInvitationRecord(),
       );
@@ -601,7 +619,9 @@ describe('OrganizationService', () => {
     });
 
     it('已是组织成员时抛出 AlreadyOrganizationMemberException', async () => {
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst
         .mockResolvedValueOnce(createMemberRecord({ role: 'owner' }))
         .mockResolvedValueOnce(
@@ -640,7 +660,10 @@ describe('OrganizationService', () => {
     it('正常接受邀请并创建成员', async () => {
       const invitation = createInvitationRecord({ role: 'admin' });
       const org = createOrganizationRecord();
-      const member = createMemberRecord({ userId: TARGET_USER_ID, role: 'admin' });
+      const member = createMemberRecord({
+        userId: TARGET_USER_ID,
+        role: 'admin',
+      });
       const { tx, invitationUpdateChain, memberInsertChain } =
         setupAcceptInvitationTransaction(db, member);
 
@@ -648,7 +671,10 @@ describe('OrganizationService', () => {
       db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
       tx.query.organizations.findFirst.mockResolvedValue(org);
 
-      const result = await service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID);
+      const result = await service.acceptInvitation(
+        TOKEN_BASE64URL,
+        TARGET_USER_ID,
+      );
 
       expect(result).toEqual({ organization: org, member });
       expect(tx.update).toHaveBeenCalledWith(organizationInvitations);
@@ -669,9 +695,9 @@ describe('OrganizationService', () => {
     it('邀请不存在时抛出 InvitationNotFoundException', async () => {
       db.query.organizationInvitations.findFirst.mockResolvedValue(undefined);
 
-      await expect(service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID)).rejects.toBeInstanceOf(
-        InvitationNotFoundException,
-      );
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toBeInstanceOf(InvitationNotFoundException);
 
       expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
     });
@@ -681,9 +707,9 @@ describe('OrganizationService', () => {
         createInvitationRecord({ status: 'accepted' }),
       );
 
-      await expect(service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID)).rejects.toBeInstanceOf(
-        InvitationExpiredOrUsedException,
-      );
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toBeInstanceOf(InvitationExpiredOrUsedException);
 
       expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
       expect(db.transaction).not.toHaveBeenCalled();
@@ -696,9 +722,9 @@ describe('OrganizationService', () => {
       );
       db.update.mockReturnValue(updateChain);
 
-      await expect(service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID)).rejects.toBeInstanceOf(
-        InvitationExpiredOrUsedException,
-      );
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toBeInstanceOf(InvitationExpiredOrUsedException);
 
       expect(db.update).toHaveBeenCalledWith(organizationInvitations);
       expect(updateChain.set).toHaveBeenCalledWith({ status: 'expired' });
@@ -707,14 +733,16 @@ describe('OrganizationService', () => {
     });
 
     it('已是成员时抛出 AlreadyOrganizationMemberException', async () => {
-      db.query.organizationInvitations.findFirst.mockResolvedValue(createInvitationRecord());
+      db.query.organizationInvitations.findFirst.mockResolvedValue(
+        createInvitationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ userId: TARGET_USER_ID }),
       );
 
-      await expect(service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID)).rejects.toBeInstanceOf(
-        AlreadyOrganizationMemberException,
-      );
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toBeInstanceOf(AlreadyOrganizationMemberException);
 
       expect(db.transaction).not.toHaveBeenCalled();
     });
@@ -722,14 +750,18 @@ describe('OrganizationService', () => {
 
   describe('updateMemberRole', () => {
     it('owner 正常更新成员角色', async () => {
-      const updatedMember = createMemberRecord({ userId: TARGET_USER_ID, role: 'admin' });
+      const updatedMember = createMemberRecord({
+        userId: TARGET_USER_ID,
+        role: 'admin',
+      });
       const updateChain = createUpdateChain([updatedMember]);
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
-      db.query.organizationMembers.findFirst
-        .mockResolvedValueOnce(
-          createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
-        );
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst.mockResolvedValueOnce(
+        createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
+      );
       db.update.mockReturnValue(updateChain);
 
       const result = await service.updateMemberRole(
@@ -752,9 +784,12 @@ describe('OrganizationService', () => {
     it('唯一 owner 降级时抛出 SoleOwnerConstraintException', async () => {
       const selectChain = createSelectChain([{ count: 1 }]);
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
-      db.query.organizationMembers.findFirst
-        .mockResolvedValueOnce(createMemberRecord({ role: 'owner' }));
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst.mockResolvedValueOnce(
+        createMemberRecord({ role: 'owner' }),
+      );
       db.select.mockReturnValue(selectChain);
 
       await expect(
@@ -773,7 +808,9 @@ describe('OrganizationService', () => {
       const deleteChain = createDeleteChain();
       const updateChain = createUpdateChain();
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst
         .mockResolvedValueOnce(
           createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
@@ -791,7 +828,9 @@ describe('OrganizationService', () => {
       expect(tx.delete).toHaveBeenCalledWith(organizationMembers);
       expect(deleteChain.where).toHaveBeenCalledTimes(1);
       expect(tx.update).toHaveBeenCalledWith(users);
-      expect(updateChain.set).toHaveBeenCalledWith({ currentOrganizationId: null });
+      expect(updateChain.set).toHaveBeenCalledWith({
+        currentOrganizationId: null,
+      });
       expect(rbacCacheService.invalidateUserRole).toHaveBeenCalledWith(
         createOrganizationRecord().tenantId,
         TARGET_USER_ID,
@@ -803,7 +842,9 @@ describe('OrganizationService', () => {
       const deleteChain = createDeleteChain();
       const updateChain = createUpdateChain();
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ userId: USER_ID, role: 'viewer' }),
       );
@@ -811,7 +852,9 @@ describe('OrganizationService', () => {
       tx.update.mockReturnValue(updateChain);
       setupTransaction(db, tx);
 
-      await expect(service.removeMember(ORG_ID, USER_ID, USER_ID)).resolves.toBeUndefined();
+      await expect(
+        service.removeMember(ORG_ID, USER_ID, USER_ID),
+      ).resolves.toBeUndefined();
 
       expect(db.query.organizationMembers.findFirst).toHaveBeenCalledTimes(1);
       expect(db.transaction).toHaveBeenCalledTimes(1);
@@ -824,7 +867,9 @@ describe('OrganizationService', () => {
     });
 
     it('admin 尝试移除 owner 时抛出 AdminCannotRemoveOwnerException', async () => {
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst
         .mockResolvedValueOnce(
           createMemberRecord({ userId: TARGET_USER_ID, role: 'owner' }),
@@ -841,15 +886,17 @@ describe('OrganizationService', () => {
     it('唯一 owner 退出时抛出 SoleOwnerConstraintException', async () => {
       const selectChain = createSelectChain([{ count: 1 }]);
 
-      db.query.organizations.findFirst.mockResolvedValue(createOrganizationRecord());
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
       db.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ userId: USER_ID, role: 'owner' }),
       );
       db.select.mockReturnValue(selectChain);
 
-      await expect(service.removeMember(ORG_ID, USER_ID, USER_ID)).rejects.toBeInstanceOf(
-        SoleOwnerConstraintException,
-      );
+      await expect(
+        service.removeMember(ORG_ID, USER_ID, USER_ID),
+      ).rejects.toBeInstanceOf(SoleOwnerConstraintException);
 
       expect(db.select).toHaveBeenCalledTimes(1);
       expect(db.transaction).not.toHaveBeenCalled();

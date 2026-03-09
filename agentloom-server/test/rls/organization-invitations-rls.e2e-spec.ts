@@ -125,8 +125,10 @@ describe('Organization invitations RLS isolation (testcontainers)', () => {
   });
 
   it('T1 SELECT 只返回 T1 organization invitations', async () => {
-    const rows = await withTenantContext(context.db, fixture.tenantOneId, (tx) =>
-      tx.query.organizationInvitations.findMany(),
+    const rows = await withTenantContext(
+      context.db,
+      fixture.tenantOneId,
+      (tx) => tx.query.organizationInvitations.findMany(),
     );
 
     expect(rows).toHaveLength(2);
@@ -139,8 +141,10 @@ describe('Organization invitations RLS isolation (testcontainers)', () => {
   });
 
   it('T2 SELECT 只返回 T2 organization invitations', async () => {
-    const rows = await withTenantContext(context.db, fixture.tenantTwoId, (tx) =>
-      tx.query.organizationInvitations.findMany(),
+    const rows = await withTenantContext(
+      context.db,
+      fixture.tenantTwoId,
+      (tx) => tx.query.organizationInvitations.findMany(),
     );
 
     expect(rows).toHaveLength(1);
@@ -173,12 +177,15 @@ describe('Organization invitations RLS isolation (testcontainers)', () => {
   });
 
   it('T1 无法 UPDATE T2 organization invitations', async () => {
-    const updatedRows = await withTenantContext(context.db, fixture.tenantOneId, (tx) =>
-      tx
-        .update(organizationInvitations)
-        .set({ status: 'accepted' })
-        .where(eq(organizationInvitations.id, fixture.invitationThreeId))
-        .returning({ id: organizationInvitations.id }),
+    const updatedRows = await withTenantContext(
+      context.db,
+      fixture.tenantOneId,
+      (tx) =>
+        tx
+          .update(organizationInvitations)
+          .set({ status: 'accepted' })
+          .where(eq(organizationInvitations.id, fixture.invitationThreeId))
+          .returning({ id: organizationInvitations.id }),
     );
 
     expect(updatedRows).toHaveLength(0);
@@ -193,11 +200,14 @@ describe('Organization invitations RLS isolation (testcontainers)', () => {
   });
 
   it('T1 无法 DELETE T2 organization invitations', async () => {
-    const deletedRows = await withTenantContext(context.db, fixture.tenantOneId, (tx) =>
-      tx
-        .delete(organizationInvitations)
-        .where(eq(organizationInvitations.id, fixture.invitationThreeId))
-        .returning({ id: organizationInvitations.id }),
+    const deletedRows = await withTenantContext(
+      context.db,
+      fixture.tenantOneId,
+      (tx) =>
+        tx
+          .delete(organizationInvitations)
+          .where(eq(organizationInvitations.id, fixture.invitationThreeId))
+          .returning({ id: organizationInvitations.id }),
     );
 
     expect(deletedRows).toHaveLength(0);

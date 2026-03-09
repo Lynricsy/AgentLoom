@@ -43,10 +43,7 @@ describe('TenantGuard', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [
-        TenantGuard,
-        { provide: Reflector, useValue: reflector },
-      ],
+      providers: [TenantGuard, { provide: Reflector, useValue: reflector }],
     }).compile();
 
     guard = module.get(TenantGuard);

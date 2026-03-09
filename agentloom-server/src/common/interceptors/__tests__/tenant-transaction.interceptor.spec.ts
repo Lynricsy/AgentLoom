@@ -159,9 +159,9 @@ describe('TenantTransactionInterceptor', () => {
         }),
     );
 
-    await expect(lastValueFrom(interceptor.intercept(context, next))).rejects.toBe(
-      testError,
-    );
+    await expect(
+      lastValueFrom(interceptor.intercept(context, next)),
+    ).rejects.toBe(testError);
     expect(mockDb.transaction).toHaveBeenCalledTimes(1);
   });
 });

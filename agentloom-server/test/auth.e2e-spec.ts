@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -10,7 +18,10 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
 import { AuthApiError } from '@supabase/supabase-js';
 import { AppModule } from '../src/app.module';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
@@ -264,7 +275,8 @@ describe('Auth E2E (testcontainers)', () => {
       expect(body.data.tokens.access_token).toBeDefined();
       expect(body.data.tokens.refresh_token).toBe('mock-refresh-token');
 
-      const [dbUser] = await sql`SELECT * FROM "users" WHERE email = ${MOCK_EMAIL}`;
+      const [dbUser] =
+        await sql`SELECT * FROM "users" WHERE email = ${MOCK_EMAIL}`;
       expect(dbUser).toBeDefined();
       expect(dbUser.supabase_user_id).toBe(MOCK_SUPABASE_UUID);
       expect(dbUser.is_active).toBe(true);
@@ -340,7 +352,11 @@ describe('Auth E2E (testcontainers)', () => {
 
     it('パスワード不正 → 401 invalid-credentials', async () => {
       supabaseService.signIn.mockRejectedValue(
-        new AuthApiError('Invalid login credentials', 400, 'invalid_credentials'),
+        new AuthApiError(
+          'Invalid login credentials',
+          400,
+          'invalid_credentials',
+        ),
       );
 
       const res = await app.inject({
@@ -351,7 +367,9 @@ describe('Auth E2E (testcontainers)', () => {
 
       expect(res.statusCode).toBe(401);
       const body = res.json();
-      expect(body.type).toBe('https://agentloom.dev/errors/invalid-credentials');
+      expect(body.type).toBe(
+        'https://agentloom.dev/errors/invalid-credentials',
+      );
       expect(body.detail).toContain('Invalid email or password');
     });
   });
@@ -453,7 +471,9 @@ describe('Auth E2E (testcontainers)', () => {
       });
 
       expect(res.statusCode).toBe(401);
-      expect(res.json().type).toBe('https://agentloom.dev/errors/token-expired');
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/token-expired',
+      );
     });
 
     it('不正署名トークン → 401 token-invalid', async () => {
@@ -470,7 +490,9 @@ describe('Auth E2E (testcontainers)', () => {
       });
 
       expect(res.statusCode).toBe(401);
-      expect(res.json().type).toBe('https://agentloom.dev/errors/token-invalid');
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/token-invalid',
+      );
     });
   });
 });

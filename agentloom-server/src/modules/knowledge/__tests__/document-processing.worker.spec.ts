@@ -12,9 +12,7 @@ import { TextChunkerService } from '../chunker/text-chunker.service';
 import { KnowledgeBaseService } from '../knowledge-base.service';
 import { KnowledgeGateway } from '../knowledge.gateway';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
-import {
-  DOCUMENT_INDEXING_QUEUE,
-} from '../knowledge.constants';
+import { DOCUMENT_INDEXING_QUEUE } from '../knowledge.constants';
 import { Readable } from 'node:stream';
 
 const DOC_ID = '00000000-0000-0000-0000-000000000001';
@@ -112,7 +110,13 @@ describe('DocumentProcessingWorker', () => {
     const mockChunks = [
       {
         content: 'Hello world',
-        location: { page: 1, paragraph: 1, heading: null, charOffset: 0, charLength: 11 },
+        location: {
+          page: 1,
+          paragraph: 1,
+          heading: null,
+          charOffset: 0,
+          charLength: 11,
+        },
         tokenCount: 3,
       },
     ];
@@ -135,19 +139,29 @@ describe('DocumentProcessingWorker', () => {
 
       await worker.process(job);
 
-      expect(documentService.updateStatus).toHaveBeenCalledWith(DOC_ID, 'processing');
+      expect(documentService.updateStatus).toHaveBeenCalledWith(
+        DOC_ID,
+        'processing',
+      );
       expect(documentService.findById).toHaveBeenCalledWith(DOC_ID);
       expect(knowledgeBaseService.findByIdOrThrow).toHaveBeenCalledWith(
         'kb-1',
         'tenant-1',
       );
       expect(storageService.download).toHaveBeenCalledWith(STORAGE_KEY);
-      expect(parserService.parse).toHaveBeenCalledWith(fileBuffer, 'application/pdf', 'test.pdf');
+      expect(parserService.parse).toHaveBeenCalledWith(
+        fileBuffer,
+        'application/pdf',
+        'test.pdf',
+      );
       expect(chunkerService.chunk).toHaveBeenCalledWith(mockParsed, {
         maxTokens: 1024,
         overlapTokens: 128,
       });
-      expect(documentChunkService.createChunks).toHaveBeenCalledWith(DOC_ID, mockChunks);
+      expect(documentChunkService.createChunks).toHaveBeenCalledWith(
+        DOC_ID,
+        mockChunks,
+      );
       expect(indexingQueue.add).toHaveBeenCalledWith(
         'index',
         { documentId: DOC_ID },
@@ -174,7 +188,10 @@ describe('DocumentProcessingWorker', () => {
           'kb-1',
           expect.objectContaining({
             status: 'processing',
-            progress: expect.objectContaining({ stage: 'parsing', percentage: 35 }),
+            progress: expect.objectContaining({
+              stage: 'parsing',
+              percentage: 35,
+            }),
           }),
         ],
         [
@@ -182,7 +199,10 @@ describe('DocumentProcessingWorker', () => {
           'kb-1',
           expect.objectContaining({
             status: 'processing',
-            progress: expect.objectContaining({ stage: 'chunking', percentage: 65 }),
+            progress: expect.objectContaining({
+              stage: 'chunking',
+              percentage: 65,
+            }),
           }),
         ],
         [
@@ -190,11 +210,16 @@ describe('DocumentProcessingWorker', () => {
           'kb-1',
           expect.objectContaining({
             status: 'processing',
-            progress: expect.objectContaining({ stage: 'queueing', percentage: 90 }),
+            progress: expect.objectContaining({
+              stage: 'queueing',
+              percentage: 90,
+            }),
           }),
         ],
       ]);
-      expect(documentService.updateStatus.mock.calls).toEqual([[DOC_ID, 'processing']]);
+      expect(documentService.updateStatus.mock.calls).toEqual([
+        [DOC_ID, 'processing'],
+      ]);
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
     });
 
@@ -205,13 +230,17 @@ describe('DocumentProcessingWorker', () => {
 
       const statusCalls = documentService.updateStatus.mock.calls;
       expect(statusCalls).toHaveLength(0);
-      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledTimes(4);
+      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledTimes(
+        4,
+      );
     });
 
     it('should propagate parser errors for BullMQ retry', async () => {
       parserService.parse.mockRejectedValue(new Error('Corrupt PDF'));
 
-      await expect(worker.process(createMockJob())).rejects.toThrow('Corrupt PDF');
+      await expect(worker.process(createMockJob())).rejects.toThrow(
+        'Corrupt PDF',
+      );
     });
 
     it('should propagate storage download errors', async () => {

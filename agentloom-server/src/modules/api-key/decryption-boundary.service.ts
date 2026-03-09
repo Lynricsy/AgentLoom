@@ -79,9 +79,7 @@ export class DecryptionBoundaryService {
   }
 
   private async decryptStoredKey(
-    apiKey:
-      | Awaited<ReturnType<ApiKeyService['findByIdInternal']>>
-      | Awaited<ReturnType<ApiKeyService['findDefaultActiveByOrganizationInternal']>>,
+    apiKey: Awaited<ReturnType<ApiKeyService['findByIdInternal']>>,
     keyId: string,
     tenantId: string,
     caller: string,

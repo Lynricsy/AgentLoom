@@ -36,24 +36,15 @@ export interface VectorSearchOptions {
 }
 
 export interface VectorStore {
-  createCollection(
-    name: string,
-    vectorSize: number,
-  ): Promise<void>;
+  createCollection(name: string, vectorSize: number): Promise<void>;
 
   collectionExists(name: string): Promise<boolean>;
 
-  upsert(
-    collectionName: string,
-    points: VectorPoint[],
-  ): Promise<void>;
+  upsert(collectionName: string, points: VectorPoint[]): Promise<void>;
 
   search(options: VectorSearchOptions): Promise<VectorSearchResult[]>;
 
-  deleteByFilter(
-    collectionName: string,
-    filter: VectorFilter,
-  ): Promise<void>;
+  deleteByFilter(collectionName: string, filter: VectorFilter): Promise<void>;
 
   deleteCollection(name: string): Promise<void>;
 }

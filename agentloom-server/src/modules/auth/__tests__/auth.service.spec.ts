@@ -105,7 +105,10 @@ function createMockConfigService() {
 describe('AuthService', () => {
   let authService: AuthService;
   let supabaseService: ReturnType<typeof createMockSupabaseService>;
-  let tokenBlacklist: { add: ReturnType<typeof vi.fn>; isBlacklisted: ReturnType<typeof vi.fn> };
+  let tokenBlacklist: {
+    add: ReturnType<typeof vi.fn>;
+    isBlacklisted: ReturnType<typeof vi.fn>;
+  };
   let mockInsert: ReturnType<typeof vi.fn>;
   let mockInsertReturning: ReturnType<typeof vi.fn>;
   let mockFindFirst: ReturnType<typeof vi.fn>;
@@ -114,7 +117,10 @@ describe('AuthService', () => {
   beforeEach(async () => {
     supabaseService = createMockSupabaseService();
     supabaseService.listFactors.mockResolvedValue({ totp: [] });
-    tokenBlacklist = { add: vi.fn().mockResolvedValue(undefined), isBlacklisted: vi.fn().mockResolvedValue(false) };
+    tokenBlacklist = {
+      add: vi.fn().mockResolvedValue(undefined),
+      isBlacklisted: vi.fn().mockResolvedValue(false),
+    };
     const {
       db,
       mockInsert: mi,
@@ -203,7 +209,11 @@ describe('AuthService', () => {
 
     it('Supabase が非冲突 422 を返した場合: registration-failed で 500', async () => {
       supabaseService.signUp.mockRejectedValue(
-        new AuthApiError('Password should contain a symbol', 422, 'weak_password'),
+        new AuthApiError(
+          'Password should contain a symbol',
+          422,
+          'weak_password',
+        ),
       );
 
       try {
@@ -213,7 +223,9 @@ describe('AuthService', () => {
         expect(error).toBeInstanceOf(DomainException);
         const de = error as DomainException;
         expect(de.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
-        expect(de.type).toBe('https://agentloom.dev/errors/registration-failed');
+        expect(de.type).toBe(
+          'https://agentloom.dev/errors/registration-failed',
+        );
       }
     });
 
@@ -334,10 +346,7 @@ describe('AuthService', () => {
         throw new Error('expected MFA token for verified TOTP login');
       }
 
-      const payload = jwt.verify(
-        mfaToken,
-        TEST_JWT_SECRET,
-      ) as jwt.JwtPayload;
+      const payload = jwt.verify(mfaToken, TEST_JWT_SECRET) as jwt.JwtPayload;
 
       expect(result.data).toEqual({
         mfaRequired: true,
@@ -379,7 +388,11 @@ describe('AuthService', () => {
 
     it('認証情報が不正: 401 Unauthorized', async () => {
       supabaseService.signIn.mockRejectedValue(
-        new AuthApiError('Invalid login credentials', 400, 'invalid_credentials'),
+        new AuthApiError(
+          'Invalid login credentials',
+          400,
+          'invalid_credentials',
+        ),
       );
 
       try {
@@ -415,7 +428,11 @@ describe('AuthService', () => {
       'Supabase 登录 API 返回泛化 %i 时: 仍然是 login-failed で 500',
       async (status) => {
         supabaseService.signIn.mockRejectedValue(
-          new AuthApiError('Generic auth gateway failure', status, 'unexpected_failure'),
+          new AuthApiError(
+            'Generic auth gateway failure',
+            status,
+            'unexpected_failure',
+          ),
         );
 
         try {
@@ -503,7 +520,9 @@ describe('AuthService', () => {
       });
       mockExecute.mockResolvedValue({ rows: [{ active_count: 2 }] });
 
-      const result = await authService.getSecurityInfo(mockSession.access_token);
+      const result = await authService.getSecurityInfo(
+        mockSession.access_token,
+      );
 
       expect(result).toEqual({
         mfa: {
@@ -567,7 +586,11 @@ describe('AuthService', () => {
 
     it('Supabase refresh API 返回 5xx 时: refresh-failed で 500', async () => {
       supabaseService.refreshToken.mockRejectedValue(
-        new AuthApiError('Refresh service unavailable', 500, 'unexpected_failure'),
+        new AuthApiError(
+          'Refresh service unavailable',
+          500,
+          'unexpected_failure',
+        ),
       );
 
       try {
@@ -627,7 +650,11 @@ describe('AuthService', () => {
 
       await expect(authService.logout(token)).resolves.not.toThrow();
       expect(supabaseService.signOut).toHaveBeenCalled();
-      expect(tokenBlacklist.add).toHaveBeenCalledWith(token, 1999999999, 'test');
+      expect(tokenBlacklist.add).toHaveBeenCalledWith(
+        token,
+        1999999999,
+        'test',
+      );
     });
 
     it('Supabase signOut エラー時: 先にブラックリスト化してから logout-failed で 500', async () => {
@@ -646,7 +673,11 @@ describe('AuthService', () => {
         expect(de.type).toBe('https://agentloom.dev/errors/logout-failed');
       }
 
-      expect(tokenBlacklist.add).toHaveBeenCalledWith(token, 1999999999, 'test');
+      expect(tokenBlacklist.add).toHaveBeenCalledWith(
+        token,
+        1999999999,
+        'test',
+      );
     });
 
     it('ブラックリスト永続化が非 Error 値で失敗した場合: logout-failed で 500 かつ stack は undefined', async () => {
@@ -701,7 +732,9 @@ describe('AuthService', () => {
       const token =
         Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64url') +
         '.' +
-        Buffer.from(JSON.stringify('plain-text-payload')).toString('base64url') +
+        Buffer.from(JSON.stringify('plain-text-payload')).toString(
+          'base64url',
+        ) +
         '.fake-sig';
 
       await expect(authService.logout(token)).resolves.not.toThrow();

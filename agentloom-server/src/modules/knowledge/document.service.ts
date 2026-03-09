@@ -151,9 +151,7 @@ export class DocumentService {
     const baseCondition = and(
       eq(documents.knowledgeBaseId, knowledgeBaseId),
       eq(documents.tenantId, tenantId),
-      statuses?.length
-        ? inArray(documents.status, statuses)
-        : undefined,
+      statuses?.length ? inArray(documents.status, statuses) : undefined,
     );
 
     const [rows, [{ total }]] = await Promise.all([
@@ -176,10 +174,7 @@ export class DocumentService {
         .orderBy(desc(documents.createdAt))
         .limit(pageSize)
         .offset(offset),
-      db
-        .select({ total: count() })
-        .from(documents)
-        .where(baseCondition),
+      db.select({ total: count() }).from(documents).where(baseCondition),
     ]);
 
     return { data: rows, total };
@@ -217,9 +212,7 @@ export class DocumentService {
 
     const [document] = await db
       .delete(documents)
-      .where(
-        deletionCondition,
-      )
+      .where(deletionCondition)
       .returning({
         id: documents.id,
         storageKey: documents.storageKey,
@@ -320,11 +313,15 @@ export class DocumentService {
     documentId: string,
   ): void {
     try {
-      this.knowledgeGateway.emitDocumentStatusChanged(tenantId, knowledgeBaseId, {
-        documentId,
+      this.knowledgeGateway.emitDocumentStatusChanged(
+        tenantId,
         knowledgeBaseId,
-        status: 'uploaded',
-      });
+        {
+          documentId,
+          knowledgeBaseId,
+          status: 'uploaded',
+        },
+      );
       this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
     } catch (error) {
       this.logger.warn(
@@ -333,7 +330,9 @@ export class DocumentService {
     }
   }
 
-  private async readMultipartFile(request: FastifyRequest): Promise<MultipartFile> {
+  private async readMultipartFile(
+    request: FastifyRequest,
+  ): Promise<MultipartFile> {
     try {
       const multipartFile = await request.file();
 
@@ -348,7 +347,9 @@ export class DocumentService {
     }
   }
 
-  private async readMultipartBuffer(multipartFile: MultipartFile): Promise<Buffer> {
+  private async readMultipartBuffer(
+    multipartFile: MultipartFile,
+  ): Promise<Buffer> {
     try {
       const buffer = await multipartFile.toBuffer();
 
@@ -387,7 +388,9 @@ export class DocumentService {
     const detectedFileType = await fileTypeFromBuffer(buffer);
 
     if (detectedFileType) {
-      if (!this.supportedMimeTypes.has(detectedFileType.mime as SupportedMimeType)) {
+      if (
+        !this.supportedMimeTypes.has(detectedFileType.mime as SupportedMimeType)
+      ) {
         throw new UnsupportedFileTypeException(fileName);
       }
 
@@ -395,7 +398,7 @@ export class DocumentService {
         throw new UnsupportedFileTypeException(fileName);
       }
 
-      return detectedFileType.mime as SupportedMimeType;
+      return detectedFileType.mime;
     }
 
     if (this.textExtensions.has(ext) && this.isTextBuffer(buffer)) {
@@ -420,9 +423,11 @@ export class DocumentService {
 
   private async cleanupUploadedObject(storageKey: string): Promise<void> {
     this.logger.error(`数据库写入失败，清理已上传文件: ${storageKey}`);
-    await this.storageService.delete(storageKey).catch((cleanupError: unknown) => {
-      this.logger.error(`清理 MinIO 文件失败: ${storageKey}`, cleanupError);
-    });
+    await this.storageService
+      .delete(storageKey)
+      .catch((cleanupError: unknown) => {
+        this.logger.error(`清理 MinIO 文件失败: ${storageKey}`, cleanupError);
+      });
   }
 
   private async rollbackPersistedDocument(
@@ -434,15 +439,12 @@ export class DocumentService {
       await db
         .delete(documents)
         .where(
-          and(
-            eq(documents.id, documentId),
-            eq(documents.tenantId, tenantId),
-          ),
+          and(eq(documents.id, documentId), eq(documents.tenantId, tenantId)),
         );
     } catch (error) {
       this.logger.warn(
         `回滚文档记录失败: ${documentId}`,
-        error instanceof Error ? error.stack ?? error.message : String(error),
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
       );
     }
   }
@@ -456,7 +458,7 @@ export class DocumentService {
     } catch (error) {
       this.logger.warn(
         `元数据已删除，但对象存储清理失败: ${context} (${storageKey})`,
-        error instanceof Error ? error.stack ?? error.message : String(error),
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
       );
     }
   }
@@ -471,7 +473,7 @@ export class DocumentService {
     } catch (error) {
       this.logger.error(
         `删除操作中止，向量索引清理失败: ${context}`,
-        error instanceof Error ? error.stack ?? error.message : String(error),
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
       );
       throw error;
     }
