@@ -38,7 +38,7 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
         attempts: 3,
         backoff: {
           type: 'exponential',
-          delay: 1000,
+          delay: 2000,
         },
       },
     }),
