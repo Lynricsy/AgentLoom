@@ -14,7 +14,7 @@ import {
 } from './execution.exceptions';
 import { ExecutionGateway } from './execution.gateway';
 import { EventBridgeService } from './services/event-bridge.service';
-import { EXECUTION_QUEUE } from './execution.constants';
+import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 import type { RunWorkflowDto } from './dto/run-workflow.dto';
 
 export interface ExecutionJobData {
@@ -37,6 +37,7 @@ export class ExecutionService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
+    @InjectQueue(AGENT_TASK_QUEUE) private readonly agentTaskQueue: Queue,
     private readonly eventBridge: EventBridgeService,
   ) {}
 
@@ -422,5 +423,51 @@ export class ExecutionService {
     }
 
     return execution;
+  }
+
+  // ──── Dead Letter Queue (DLQ) ────
+
+  async getDeadLetterJobs(page = 1, limit = 20) {
+    const start = (page - 1) * limit;
+    const end = start + limit - 1;
+    const jobs = await this.agentTaskQueue.getFailed(start, end);
+    const counts = await this.agentTaskQueue.getJobCounts('failed');
+
+    return {
+      data: jobs.map((job) => ({
+        jobId: job.id,
+        name: job.name,
+        data: job.data,
+        failedReason: job.failedReason,
+        attemptsMade: job.attemptsMade,
+        timestamp: job.timestamp,
+        finishedOn: job.finishedOn,
+        processedOn: job.processedOn,
+      })),
+      meta: {
+        total: counts.failed,
+        page,
+        limit,
+        totalPages: Math.ceil(counts.failed / limit),
+      },
+    };
+  }
+
+  async retryDeadLetterJob(jobId: string): Promise<void> {
+    const job = await this.agentTaskQueue.getJob(jobId);
+    if (!job) {
+      throw new ExecutionNotFoundException(jobId);
+    }
+    await job.retry();
+    this.logger.log(`DLQ job retried: ${jobId}`);
+  }
+
+  async discardDeadLetterJob(jobId: string): Promise<void> {
+    const job = await this.agentTaskQueue.getJob(jobId);
+    if (!job) {
+      throw new ExecutionNotFoundException(jobId);
+    }
+    await job.remove();
+    this.logger.log(`DLQ job discarded: ${jobId}`);
   }
 }

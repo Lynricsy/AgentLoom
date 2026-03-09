@@ -10,7 +10,7 @@ import {
   ExecutionNotCancellableException,
   WorkflowArchivedException,
 } from '../execution.exceptions';
-import { EXECUTION_QUEUE } from '../execution.constants';
+import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
@@ -168,6 +168,12 @@ const mockEventBridge: Record<string, Mock> = {
   emitExecutionStatusChanged: vi.fn(),
 };
 
+const mockAgentTaskQueue: Record<string, Mock> = {
+  getFailed: vi.fn(),
+  getJobCounts: vi.fn(),
+  getJob: vi.fn(),
+};
+
 describe('ExecutionService', () => {
   let service: ExecutionService;
 
@@ -188,6 +194,9 @@ describe('ExecutionService', () => {
     mockQueue.getJobs.mockReset();
     mockQueue.getJob.mockReset();
     mockEventBridge.emitExecutionStatusChanged.mockReset();
+    mockAgentTaskQueue.getFailed.mockReset();
+    mockAgentTaskQueue.getJobCounts.mockReset();
+    mockAgentTaskQueue.getJob.mockReset();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -200,6 +209,10 @@ describe('ExecutionService', () => {
         ExecutionService,
         { provide: DRIZZLE, useValue: db },
         { provide: getQueueToken(EXECUTION_QUEUE), useValue: mockQueue },
+        {
+          provide: getQueueToken(AGENT_TASK_QUEUE),
+          useValue: mockAgentTaskQueue,
+        },
         { provide: EventBridgeService, useValue: mockEventBridge },
       ],
     }).compile();
@@ -648,6 +661,78 @@ describe('ExecutionService', () => {
 
       expect(db.transaction).not.toHaveBeenCalled();
       expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Dead Letter Queue', () => {
+    it('应返回分页的失败任务列表', async () => {
+      const mockJob = {
+        id: 'job-1',
+        name: 'agent-task',
+        data: { executionId: EXECUTION_ID, stepId: 'step-1' },
+        failedReason: 'LLM 调用失败',
+        attemptsMade: 3,
+        timestamp: 1000,
+        finishedOn: 2000,
+        processedOn: 1500,
+      };
+      mockAgentTaskQueue.getFailed.mockResolvedValue([mockJob]);
+      mockAgentTaskQueue.getJobCounts.mockResolvedValue({ failed: 1 });
+
+      const result = await service.getDeadLetterJobs(1, 20);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toEqual({
+        jobId: 'job-1',
+        name: 'agent-task',
+        data: mockJob.data,
+        failedReason: 'LLM 调用失败',
+        attemptsMade: 3,
+        timestamp: 1000,
+        finishedOn: 2000,
+        processedOn: 1500,
+      });
+      expect(result.meta).toEqual({
+        total: 1,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      });
+      expect(mockAgentTaskQueue.getFailed).toHaveBeenCalledWith(0, 19);
+    });
+
+    it('应重试指定的失败任务', async () => {
+      const mockJob = { id: 'job-1', retry: vi.fn() };
+      mockAgentTaskQueue.getJob.mockResolvedValue(mockJob);
+
+      await service.retryDeadLetterJob('job-1');
+
+      expect(mockAgentTaskQueue.getJob).toHaveBeenCalledWith('job-1');
+      expect(mockJob.retry).toHaveBeenCalled();
+    });
+
+    it('应在重试不存在的任务时抛出异常', async () => {
+      mockAgentTaskQueue.getJob.mockResolvedValue(null);
+
+      await expect(service.retryDeadLetterJob('nonexistent')).rejects.toThrow();
+    });
+
+    it('应丢弃指定的失败任务', async () => {
+      const mockJob = { id: 'job-1', remove: vi.fn() };
+      mockAgentTaskQueue.getJob.mockResolvedValue(mockJob);
+
+      await service.discardDeadLetterJob('job-1');
+
+      expect(mockAgentTaskQueue.getJob).toHaveBeenCalledWith('job-1');
+      expect(mockJob.remove).toHaveBeenCalled();
+    });
+
+    it('应在丢弃不存在的任务时抛出异常', async () => {
+      mockAgentTaskQueue.getJob.mockResolvedValue(null);
+
+      await expect(
+        service.discardDeadLetterJob('nonexistent'),
+      ).rejects.toThrow();
     });
   });
 });

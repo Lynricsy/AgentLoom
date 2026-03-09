@@ -10,11 +10,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExecutionService } from './execution.service';
-import { NodeSchedulerService } from './node-scheduler.service';
 import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
@@ -23,6 +24,8 @@ import {
   InterveneStepDto,
   interveneStepSchema,
 } from './dto/intervene-step.dto';
+import { EXECUTION_QUEUE } from './execution.constants';
+import { NodeSchedulerService } from './node-scheduler.service';
 
 @ApiTags('Executions')
 @Controller()
@@ -31,6 +34,7 @@ export class ExecutionController {
     private readonly executionService: ExecutionService,
     private readonly nodeScheduler: NodeSchedulerService,
     private readonly checkpointService: CheckpointService,
+    @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
   ) {}
 
   @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
@@ -125,7 +129,10 @@ export class ExecutionController {
       executionId,
       dto.fromNodeId,
     );
-    await this.nodeScheduler.resumeScheduling(executionId, tenantId);
+    await this.executionQueue.add('resume-execution', {
+      executionId,
+      tenantId,
+    });
     return { data: this.serializeExecution(execution) };
   }
 
@@ -149,6 +156,40 @@ export class ExecutionController {
       resolution,
     );
     return { data: { executionId, stepId, status: 'intervention_accepted' } };
+  }
+
+  @Get('dlq')
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: '查询死信队列中的失败任务' })
+  @ApiResponse({ status: 200, description: '返回失败任务列表' })
+  async listDeadLetterJobs(
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.executionService.getDeadLetterJobs(
+      Number(page),
+      Number(limit),
+    );
+  }
+
+  @Post('dlq/:jobId/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: '重试死信队列中的失败任务' })
+  @ApiResponse({ status: 202, description: '任务已重新入队' })
+  async retryDeadLetterJob(@Param('jobId') jobId: string) {
+    await this.executionService.retryDeadLetterJob(jobId);
+    return { data: { jobId, status: 'retrying' } };
+  }
+
+  @Post('dlq/:jobId/discard')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: '丢弃死信队列中的失败任务' })
+  @ApiResponse({ status: 200, description: '任务已丢弃' })
+  async discardDeadLetterJob(@Param('jobId') jobId: string) {
+    await this.executionService.discardDeadLetterJob(jobId);
+    return { data: { jobId, status: 'discarded' } };
   }
 
   private serializeExecution<

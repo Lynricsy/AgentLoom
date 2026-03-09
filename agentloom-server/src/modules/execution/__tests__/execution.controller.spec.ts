@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import { ExecutionController } from '../execution.controller';
 import { ExecutionService } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
 import { CheckpointService } from '../checkpoint.service';
+import { EXECUTION_QUEUE } from '../execution.constants';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -35,6 +37,9 @@ const mockService: Record<string, ReturnType<typeof vi.fn>> = {
   getExecution: vi.fn(),
   listExecutions: vi.fn(),
   cancelExecution: vi.fn(),
+  getDeadLetterJobs: vi.fn(),
+  retryDeadLetterJob: vi.fn(),
+  discardDeadLetterJob: vi.fn(),
 };
 
 const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
@@ -44,6 +49,10 @@ const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
 
 const mockCheckpointService: Record<string, ReturnType<typeof vi.fn>> = {
   resumeExecution: vi.fn(),
+};
+
+const mockExecutionQueue: Record<string, ReturnType<typeof vi.fn>> = {
+  add: vi.fn(),
 };
 
 describe('ExecutionController', () => {
@@ -58,6 +67,10 @@ describe('ExecutionController', () => {
         { provide: ExecutionService, useValue: mockService },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
         { provide: CheckpointService, useValue: mockCheckpointService },
+        {
+          provide: getQueueToken(EXECUTION_QUEUE),
+          useValue: mockExecutionQueue,
+        },
       ],
     }).compile();
 
@@ -183,7 +196,7 @@ describe('ExecutionController', () => {
         status: 'running' as const,
       };
       mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
-      mockNodeScheduler.resumeScheduling.mockResolvedValue(undefined);
+      mockExecutionQueue.add.mockResolvedValue(undefined);
 
       const result = await controller.resumeExecution(
         EXECUTION_ID,
@@ -199,9 +212,9 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         undefined,
       );
-      expect(mockNodeScheduler.resumeScheduling).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        TENANT_ID,
+      expect(mockExecutionQueue.add).toHaveBeenCalledWith(
+        'resume-execution',
+        { executionId: EXECUTION_ID, tenantId: TENANT_ID },
       );
     });
 
@@ -211,7 +224,7 @@ describe('ExecutionController', () => {
         status: 'running' as const,
       };
       mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
-      mockNodeScheduler.resumeScheduling.mockResolvedValue(undefined);
+      mockExecutionQueue.add.mockResolvedValue(undefined);
 
       const result = await controller.resumeExecution(
         EXECUTION_ID,
@@ -226,6 +239,10 @@ describe('ExecutionController', () => {
         TENANT_ID,
         EXECUTION_ID,
         'node-2',
+      );
+      expect(mockExecutionQueue.add).toHaveBeenCalledWith(
+        'resume-execution',
+        { executionId: EXECUTION_ID, tenantId: TENANT_ID },
       );
     });
   });
@@ -258,6 +275,52 @@ describe('ExecutionController', () => {
         TENANT_ID,
         resolution,
       );
+    });
+  });
+
+  describe('DLQ endpoints', () => {
+    it('应返回死信队列中的失败任务列表', async () => {
+      const dlqResult = {
+        data: [
+          {
+            jobId: 'job-1',
+            name: 'agent-task',
+            data: { executionId: EXECUTION_ID, stepId: STEP_ID },
+            failedReason: 'LLM 调用失败',
+            attemptsMade: 3,
+            timestamp: Date.now(),
+            finishedOn: Date.now(),
+            processedOn: Date.now(),
+          },
+        ],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      };
+      mockService.getDeadLetterJobs.mockResolvedValue(dlqResult);
+
+      const result = await controller.listDeadLetterJobs(1, 20);
+
+      expect(result).toEqual(dlqResult);
+      expect(mockService.getDeadLetterJobs).toHaveBeenCalledWith(1, 20);
+    });
+
+    it('应重试死信队列中的任务并返回 202', async () => {
+      mockService.retryDeadLetterJob.mockResolvedValue(undefined);
+
+      const result = await controller.retryDeadLetterJob('job-1');
+
+      expect(result).toEqual({ data: { jobId: 'job-1', status: 'retrying' } });
+      expect(mockService.retryDeadLetterJob).toHaveBeenCalledWith('job-1');
+    });
+
+    it('应丢弃死信队列中的任务并返回 200', async () => {
+      mockService.discardDeadLetterJob.mockResolvedValue(undefined);
+
+      const result = await controller.discardDeadLetterJob('job-1');
+
+      expect(result).toEqual({
+        data: { jobId: 'job-1', status: 'discarded' },
+      });
+      expect(mockService.discardDeadLetterJob).toHaveBeenCalledWith('job-1');
     });
   });
 });

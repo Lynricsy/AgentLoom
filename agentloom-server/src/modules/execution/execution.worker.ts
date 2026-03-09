@@ -22,8 +22,13 @@ export class ExecutionWorker extends WorkerHost {
   async process(job: Job<ExecutionJobData>): Promise<void> {
     const { executionId, tenantId } = job.data;
     this.logger.log(
-      `Processing execution: ${JSON.stringify({ executionId, jobId: job.id })}`,
+      `Processing execution: ${JSON.stringify({ executionId, jobId: job.id, jobName: job.name })}`,
     );
+
+    if (job.name === 'resume-execution') {
+      await this.nodeScheduler.resumeScheduling(executionId, tenantId);
+      return;
+    }
 
     await runInTenantTransaction(this.db, tenantId, async () => {
       await this.executionService.initializeSteps(executionId);

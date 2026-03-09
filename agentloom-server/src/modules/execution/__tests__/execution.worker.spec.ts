@@ -27,6 +27,7 @@ const mockExecutionService: Record<string, Mock> = {
 
 const mockNodeScheduler: Record<string, Mock> = {
   startExecution: vi.fn(),
+  resumeScheduling: vi.fn(),
 };
 
 const mockDb = {};
@@ -97,6 +98,21 @@ describe('ExecutionWorker', () => {
       const job = createMockJob();
 
       await expect(worker.process(job)).rejects.toThrow('DAG 调度失败');
+    });
+
+    it('应处理 resume-execution 任务并调用 resumeScheduling', async () => {
+      mockNodeScheduler.resumeScheduling.mockResolvedValue(undefined);
+
+      const job = createMockJob({ name: 'resume-execution' });
+
+      await worker.process(job);
+
+      expect(mockNodeScheduler.resumeScheduling).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+      expect(mockExecutionService.initializeSteps).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.startExecution).not.toHaveBeenCalled();
     });
   });
 
