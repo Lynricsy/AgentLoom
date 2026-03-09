@@ -16,8 +16,19 @@ import type {
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 300_000;
+const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
+const RETRYABLE_SESSION_INIT_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 @Injectable()
 export class SandboxAgentAdapter implements IAgentRuntime {
@@ -70,24 +81,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           sandboxSession.containerId,
         );
 
-        const response = await fetch(sessionUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: session.id,
-            cwd: CONTAINER_WORKSPACE,
-            systemPrompt: params.systemPrompt,
-            mcpServers: params.mcpServers,
-            createCodingTools: true,
-          }),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        await this.initializeContainerSession(sessionUrl, {
+          sessionId: session.id,
+          cwd: CONTAINER_WORKSPACE,
+          systemPrompt: params.systemPrompt,
+          mcpServers: params.mcpServers,
+          createCodingTools: true,
         });
-
-        if (!response.ok) {
-          throw new Error(
-            `Container session init failed with status ${response.status}`,
-          );
-        }
       } catch (error) {
         session.status = 'error';
         session.updatedAt = new Date();
@@ -256,6 +256,92 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     throw new Error(`Sandbox session is not ready for execution ${executionId}`);
+  }
+
+  private async initializeContainerSession(
+    sessionUrl: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    let lastError: Error | null = null;
+    let attempt = 0;
+
+    while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
+      attempt += 1;
+
+      try {
+        const response = await fetch(sessionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(SESSION_INIT_REQUEST_TIMEOUT_MS),
+        });
+
+        if (response.ok) {
+          return;
+        }
+
+        const responseError = new Error(
+          `Container session init failed with status ${response.status}`,
+        );
+        if (!this.isRetryableSessionInitStatus(response.status)) {
+          throw responseError;
+        }
+
+        lastError = responseError;
+      } catch (error) {
+        if (!this.isRetryableSessionInitError(error)) {
+          throw error;
+        }
+
+        lastError =
+          error instanceof Error ? error : new Error(String(error));
+      }
+
+      this.logger.warn(
+        `Sandbox 容器会话初始化未就绪，${SANDBOX_READY_POLL_INTERVAL_MS}ms 后重试（第 ${attempt} 次）: ${lastError.message}`,
+      );
+      await this.delay(SANDBOX_READY_POLL_INTERVAL_MS);
+    }
+
+    throw (
+      lastError ??
+      new Error(
+        `Container session init did not become ready within ${SANDBOX_READY_TIMEOUT_MS}ms`,
+      )
+    );
+  }
+
+  private isRetryableSessionInitStatus(status: number): boolean {
+    return RETRYABLE_SESSION_INIT_STATUSES.has(status);
+  }
+
+  private isRetryableSessionInitError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      return true;
+    }
+
+    if (
+      error.message.includes('fetch failed') ||
+      error.message.includes('ECONNREFUSED') ||
+      error.message.includes('ETIMEDOUT')
+    ) {
+      return true;
+    }
+
+    const { cause } = error;
+    if (!cause || typeof cause !== 'object' || !('code' in cause)) {
+      return false;
+    }
+
+    return (
+      typeof cause.code === 'string' &&
+      RETRYABLE_SESSION_INIT_ERROR_CODES.has(cause.code)
+    );
   }
 
   private parseServerSentEvent(frame: string): AgentEvent | null {

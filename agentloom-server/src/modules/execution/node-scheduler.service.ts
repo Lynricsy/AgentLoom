@@ -528,13 +528,26 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
       const config: SandboxConfig = {
-        cpu: typeof nodeData.cpu === 'number' ? nodeData.cpu : 1,
-        memory: typeof nodeData.memory === 'number' ? nodeData.memory : 512,
-        disk: typeof nodeData.disk === 'number' ? nodeData.disk : 2,
-        timeout: typeof nodeData.timeout === 'number' ? nodeData.timeout : 2,
-        ...(typeof nodeData.persistencePath === 'string'
-          ? { persistencePath: nodeData.persistencePath }
+        cpu:
+          typeof sandboxConfigSource.cpu === 'number'
+            ? sandboxConfigSource.cpu
+            : 1,
+        memory:
+          typeof sandboxConfigSource.memory === 'number'
+            ? sandboxConfigSource.memory
+            : 512,
+        disk:
+          typeof sandboxConfigSource.disk === 'number'
+            ? sandboxConfigSource.disk
+            : 2,
+        timeout:
+          typeof sandboxConfigSource.timeout === 'number'
+            ? sandboxConfigSource.timeout
+            : 2,
+        ...(typeof sandboxConfigSource.persistencePath === 'string'
+          ? { persistencePath: sandboxConfigSource.persistencePath }
           : {}),
       };
 
@@ -576,6 +589,22 @@ export class NodeSchedulerService {
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
+  }
+
+  private getSandboxConfigSource(
+    nodeData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const nestedConfig = nodeData.config;
+
+    if (this.isRecord(nestedConfig)) {
+      return nestedConfig;
+    }
+
+    return nodeData;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private hasSandboxUpstream(

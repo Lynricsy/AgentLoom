@@ -140,7 +140,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, tenantId, persistencePath } = data;
+    const { sessionId, containerId, executionId, tenantId, persistencePath } = data;
 
     if (containerId) {
       if (persistencePath) {
@@ -149,7 +149,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
             containerId,
             CONTAINER_WORKSPACE,
           );
-          const storageKey = `sandboxes/${tenantId}/${sessionId}/workspace.tar`;
+          const storageKey = this.resolvePersistenceStorageKey(
+            tenantId,
+            executionId,
+            persistencePath,
+          );
           await this.storageService.upload(
             storageKey,
             archiveStream,
@@ -274,6 +278,29 @@ export class SandboxLifecycleWorker extends WorkerHost {
         message,
       });
     });
+  }
+
+  private resolvePersistenceStorageKey(
+    tenantId: string,
+    executionId: string,
+    persistencePath: string,
+  ): string {
+    const normalizedSegments = persistencePath
+      .replace(/\\/g, '/')
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter((segment) => segment && segment !== '.' && segment !== '..');
+
+    const normalizedPath = normalizedSegments.join('/');
+    const tenantScopedPath = normalizedPath.startsWith(`tenants/${tenantId}/`)
+      ? normalizedPath
+      : normalizedPath
+        ? `tenants/${tenantId}/${normalizedPath}`
+        : `tenants/${tenantId}/sandboxes/${executionId}`;
+
+    return tenantScopedPath.endsWith('.tar')
+      ? tenantScopedPath
+      : `${tenantScopedPath}/workspace.tar`;
   }
 
   @OnWorkerEvent('failed')

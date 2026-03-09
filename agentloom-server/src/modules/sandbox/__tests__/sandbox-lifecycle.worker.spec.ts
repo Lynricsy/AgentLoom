@@ -228,7 +228,7 @@ describe('SandboxLifecycleWorker', () => {
         '/workspace/',
       );
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        'sandboxes/t1/s1/workspace.tar',
+        'tenants/t1/outputs/result/workspace.tar',
         expect.any(Readable),
         undefined,
         'application/x-tar',
@@ -273,6 +273,26 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'stopped' }),
+      );
+    });
+
+    it('已包含租户前缀的 persistencePath 不应重复拼接', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          persistencePath: 'tenants/t1/sandboxes/custom/workspace.tar',
+        }),
+      );
+
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        'tenants/t1/sandboxes/custom/workspace.tar',
+        expect.any(Readable),
+        undefined,
+        'application/x-tar',
       );
     });
   });

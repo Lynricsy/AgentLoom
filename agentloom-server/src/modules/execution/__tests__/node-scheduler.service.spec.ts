@@ -388,7 +388,17 @@ describe('NodeSchedulerService', () => {
 
     it('sandbox 节点会创建沙箱会话并自动完成', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('S', 'sandbox', { cpu: 2, memory: 1024, disk: 5, timeout: 4 })],
+        [
+          makeNode('S', 'sandbox', {
+            config: {
+              cpu: 2,
+              memory: 1024,
+              disk: 5,
+              timeout: 4,
+              persistencePath: 'outputs/review',
+            },
+          }),
+        ],
         [],
       );
       const steps = [
@@ -397,7 +407,15 @@ describe('NodeSchedulerService', () => {
           nodeId: 'S',
           status: 'pending',
           nodeType: 'sandbox',
-          nodeData: { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+          nodeData: {
+            config: {
+              cpu: 2,
+              memory: 1024,
+              disk: 5,
+              timeout: 4,
+              persistencePath: 'outputs/review',
+            },
+          },
         }),
       ];
 
@@ -411,7 +429,13 @@ describe('NodeSchedulerService', () => {
       expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
         EXECUTION_ID,
         'S',
-        { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+        {
+          cpu: 2,
+          memory: 1024,
+          disk: 5,
+          timeout: 4,
+          persistencePath: 'outputs/review',
+        },
         TENANT_ID,
       );
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
@@ -432,6 +456,31 @@ describe('NodeSchedulerService', () => {
       );
       expect(onNodeCompleted).toHaveBeenCalledWith(EXECUTION_ID, 'step-s', TENANT_ID);
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('sandbox 节点对历史扁平 nodeData 仍保持兼容', async () => {
+      const snapshot = makeSnapshot([makeNode('S', 'sandbox', { cpu: 3 })], []);
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'pending',
+          nodeType: 'sandbox',
+          nodeData: { cpu: 3, memory: 2048, disk: 8, timeout: 6 },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
+
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'S',
+        { cpu: 3, memory: 2048, disk: 8, timeout: 6 },
+        TENANT_ID,
+      );
     });
 
     it('agent 节点上游有 sandbox 时 job 数据应包含 hasSandbox: true', async () => {

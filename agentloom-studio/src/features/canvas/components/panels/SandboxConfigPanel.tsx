@@ -28,6 +28,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function parseNumericValue(value: string, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 export const SandboxConfigPanel = memo(
   function SandboxConfigPanel({
     config,
@@ -45,23 +50,26 @@ export const SandboxConfigPanel = memo(
 
     const handleCpu = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        applyField('cpu', clamp(Number(e.target.value), 0.5, 4))
+        applyField('cpu', clamp(parseNumericValue(e.target.value, sandbox.cpu), 0.5, 4))
       },
-      [applyField],
+      [applyField, sandbox.cpu],
     )
 
     const handleMemory = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        applyField('memory', clamp(Number(e.target.value), 256, 4096))
+        applyField(
+          'memory',
+          clamp(parseNumericValue(e.target.value, sandbox.memory), 256, 4096),
+        )
       },
-      [applyField],
+      [applyField, sandbox.memory],
     )
 
     const handleDisk = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        applyField('disk', clamp(Number(e.target.value), 1, 10))
+        applyField('disk', clamp(parseNumericValue(e.target.value, sandbox.disk), 1, 10))
       },
-      [applyField],
+      [applyField, sandbox.disk],
     )
 
     const handlePersistencePath = useCallback(
@@ -73,9 +81,12 @@ export const SandboxConfigPanel = memo(
 
     const handleTimeout = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        applyField('timeout', clamp(Number(e.target.value), 1, 24))
+        applyField(
+          'timeout',
+          clamp(parseNumericValue(e.target.value, sandbox.timeout), 1, 24),
+        )
       },
-      [applyField],
+      [applyField, sandbox.timeout],
     )
 
     return (
@@ -88,14 +99,27 @@ export const SandboxConfigPanel = memo(
         </div>
 
         <div>
-          <label
-            htmlFor="sandbox-cpu"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            CPU ({sandbox.cpu} 核)
-          </label>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label
+              htmlFor="sandbox-cpu"
+              className="block text-xs font-medium text-foreground"
+            >
+              CPU ({sandbox.cpu} 核)
+            </label>
+            <input
+              aria-label="CPU 数值"
+              type="number"
+              min={0.5}
+              max={4}
+              step={0.5}
+              value={sandbox.cpu}
+              onChange={handleCpu}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+            />
+          </div>
           <input
             id="sandbox-cpu"
+            aria-label="CPU 滑块"
             type="range"
             min={0.5}
             max={4}
@@ -111,14 +135,27 @@ export const SandboxConfigPanel = memo(
         </div>
 
         <div>
-          <label
-            htmlFor="sandbox-memory"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            Memory ({sandbox.memory} MB)
-          </label>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label
+              htmlFor="sandbox-memory"
+              className="block text-xs font-medium text-foreground"
+            >
+              Memory ({sandbox.memory} MB)
+            </label>
+            <input
+              aria-label="Memory 数值"
+              type="number"
+              min={256}
+              max={4096}
+              step={256}
+              value={sandbox.memory}
+              onChange={handleMemory}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+            />
+          </div>
           <input
             id="sandbox-memory"
+            aria-label="Memory 滑块"
             type="range"
             min={256}
             max={4096}
@@ -134,14 +171,27 @@ export const SandboxConfigPanel = memo(
         </div>
 
         <div>
-          <label
-            htmlFor="sandbox-disk"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            Disk ({sandbox.disk} GB)
-          </label>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label
+              htmlFor="sandbox-disk"
+              className="block text-xs font-medium text-foreground"
+            >
+              Disk ({sandbox.disk} GB)
+            </label>
+            <input
+              aria-label="Disk 数值"
+              type="number"
+              min={1}
+              max={10}
+              step={1}
+              value={sandbox.disk}
+              onChange={handleDisk}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+            />
+          </div>
           <input
             id="sandbox-disk"
+            aria-label="Disk 滑块"
             type="range"
             min={1}
             max={10}
@@ -174,14 +224,27 @@ export const SandboxConfigPanel = memo(
         </div>
 
         <div>
-          <label
-            htmlFor="sandbox-timeout"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            Timeout ({sandbox.timeout} 小时)
-          </label>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label
+              htmlFor="sandbox-timeout"
+              className="block text-xs font-medium text-foreground"
+            >
+              Timeout ({sandbox.timeout} 小时)
+            </label>
+            <input
+              aria-label="Timeout 数值"
+              type="number"
+              min={1}
+              max={24}
+              step={0.5}
+              value={sandbox.timeout}
+              onChange={handleTimeout}
+              className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+            />
+          </div>
           <input
             id="sandbox-timeout"
+            aria-label="Timeout 滑块"
             type="range"
             min={1}
             max={24}

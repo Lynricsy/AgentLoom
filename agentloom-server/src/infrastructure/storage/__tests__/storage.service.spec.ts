@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from '../storage.service';
 import { MINIO_CLIENT } from '../storage.constants';
@@ -78,6 +79,44 @@ describe('StorageService', () => {
         size,
         { 'Content-Type': contentType },
       );
+    });
+
+    it('可读流未提供大小时应先解析精确长度再上传', async () => {
+      const key = 'tenant/kb/doc/workspace.tar';
+      const payload = 'sandbox archive';
+      const uploadedChunks: Buffer[] = [];
+
+      mockMinioClient.putObject.mockImplementation(
+        async (
+          _bucket: string,
+          _objectKey: string,
+          uploaded: Buffer | Readable,
+        ) => {
+          if (uploaded instanceof Readable) {
+            for await (const chunk of uploaded) {
+              uploadedChunks.push(
+                Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+              );
+            }
+          }
+        },
+      );
+
+      await service.upload(
+        key,
+        Readable.from([payload]),
+        undefined,
+        'application/x-tar',
+      );
+
+      expect(mockMinioClient.putObject).toHaveBeenCalledWith(
+        BUCKET_NAME,
+        key,
+        expect.any(Readable),
+        Buffer.byteLength(payload),
+        { 'Content-Type': 'application/x-tar' },
+      );
+      expect(Buffer.concat(uploadedChunks).toString()).toBe(payload);
     });
   });
 

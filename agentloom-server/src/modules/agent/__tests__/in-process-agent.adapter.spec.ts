@@ -271,7 +271,7 @@ describe('InProcessAgentAdapter', () => {
           ({
             fullStream: (async function* () {
               await Promise.resolve();
-              if (abortSignal.aborted) {
+              if (abortSignal?.aborted) {
                 yield { type: 'abort' };
                 return;
               }

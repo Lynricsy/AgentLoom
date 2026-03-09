@@ -33,11 +33,15 @@ describe('SandboxConfigPanel', () => {
   it('renders all config fields with default values', () => {
     render(<SandboxConfigPanel config={{}} onApply={vi.fn()} />)
 
-    expect(screen.getByLabelText(/CPU/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Memory/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Disk/)).toBeInTheDocument()
+    expect(screen.getByLabelText('CPU 滑块')).toBeInTheDocument()
+    expect(screen.getByLabelText('CPU 数值')).toBeInTheDocument()
+    expect(screen.getByLabelText('Memory 滑块')).toBeInTheDocument()
+    expect(screen.getByLabelText('Memory 数值')).toBeInTheDocument()
+    expect(screen.getByLabelText('Disk 滑块')).toBeInTheDocument()
+    expect(screen.getByLabelText('Disk 数值')).toBeInTheDocument()
     expect(screen.getByLabelText(/Persistence Path/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Timeout/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Timeout 滑块')).toBeInTheDocument()
+    expect(screen.getByLabelText('Timeout 数值')).toBeInTheDocument()
   })
 
   it('displays current config values in summary', () => {
@@ -60,11 +64,23 @@ describe('SandboxConfigPanel', () => {
     const onApply = vi.fn()
     render(<SandboxConfigPanel config={{}} onApply={onApply} />)
 
-    const cpuInput = screen.getByLabelText(/CPU/)
+    const cpuInput = screen.getByLabelText('CPU 滑块')
     fireEvent.change(cpuInput, { target: { value: '2' } })
 
     expect(onApply).toHaveBeenCalledWith({
       config: expect.objectContaining({ cpu: 2 }),
+    })
+  })
+
+  it('calls onApply when timeout number input is changed', () => {
+    const onApply = vi.fn()
+    render(<SandboxConfigPanel config={{}} onApply={onApply} />)
+
+    const timeoutInput = screen.getByLabelText('Timeout 数值')
+    fireEvent.change(timeoutInput, { target: { value: '6' } })
+
+    expect(onApply).toHaveBeenCalledWith({
+      config: expect.objectContaining({ timeout: 6 }),
     })
   })
 
@@ -84,7 +100,7 @@ describe('SandboxConfigPanel', () => {
     const onApply = vi.fn()
     render(<SandboxConfigPanel config={{}} onApply={onApply} />)
 
-    const cpuInput = screen.getByLabelText(/CPU/)
+    const cpuInput = screen.getByLabelText('CPU 滑块')
     fireEvent.change(cpuInput, { target: { value: '0.1' } })
 
     expect(onApply).toHaveBeenCalledWith({
@@ -96,7 +112,7 @@ describe('SandboxConfigPanel', () => {
     const onApply = vi.fn()
     render(<SandboxConfigPanel config={{}} onApply={onApply} />)
 
-    const memoryInput = screen.getByLabelText(/Memory/)
+    const memoryInput = screen.getByLabelText('Memory 滑块')
     fireEvent.change(memoryInput, { target: { value: '9999' } })
 
     expect(onApply).toHaveBeenCalledWith({

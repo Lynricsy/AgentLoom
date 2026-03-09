@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SandboxAgentAdapter } from '../sandbox-agent.adapter';
 import type { CreateSessionParams } from '../types/agent-session.types';
@@ -140,6 +140,34 @@ describe('SandboxAgentAdapter', () => {
       await expect(
         adapter.createSession(defaultParams),
       ).rejects.toThrow('Container session init failed');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('容器端点尚未监听时应重试 session 初始化', async () => {
+      vi.useFakeTimers();
+      const connectionRefusedError = new Error('fetch failed', {
+        cause: { code: 'ECONNREFUSED' },
+      });
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValueOnce(connectionRefusedError)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ success: true }),
+        } as unknown as Response);
+
+      try {
+        const createSessionPromise = adapter.createSession(defaultParams);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        const session = await createSessionPromise;
+
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        expect(session.status).toBe('active');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('无 executionId 时应跳过容器 session 初始化', async () => {

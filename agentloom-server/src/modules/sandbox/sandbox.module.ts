@@ -13,8 +13,8 @@ import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
     BullModule.registerQueue({
       name: SANDBOX_LIFECYCLE_QUEUE,
       defaultJobOptions: {
-        removeOnComplete: true,
-        removeOnFail: 50,
+        removeOnComplete: 1000,
+        removeOnFail: 5000,
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
       },
