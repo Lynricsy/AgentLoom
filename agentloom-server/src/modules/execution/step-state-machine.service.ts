@@ -25,7 +25,7 @@ export const STEP_TRANSITIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   waiting_intervention: new Set(['running', 'cancelled']),
 };
 
-const COMPLETED_STEP_STATUSES = new Set<string>(['completed', 'skipped']);
+export const COMPLETED_STEP_STATUSES = new Set<string>(['completed', 'skipped']);
 
 @Injectable()
 export class StepStateMachineService {

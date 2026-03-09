@@ -6,7 +6,9 @@ import { ExecutionService } from './execution.service';
 import { ExecutionWorker } from './execution.worker';
 import { ExecutionGateway } from './execution.gateway';
 import { StepStateMachineService } from './step-state-machine.service';
-import { EXECUTION_QUEUE } from './execution.constants';
+import { DagResolverService } from './dag-resolver.service';
+import { NodeSchedulerService } from './node-scheduler.service';
+import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 
 @Module({
   imports: [
@@ -19,9 +21,30 @@ import { EXECUTION_QUEUE } from './execution.constants';
         attempts: 1,
       },
     }),
+    BullModule.registerQueue({
+      name: AGENT_TASK_QUEUE,
+      defaultJobOptions: {
+        removeOnComplete: 1000,
+        removeOnFail: 5000,
+        attempts: 3,
+      },
+    }),
   ],
   controllers: [ExecutionController],
-  providers: [ExecutionService, ExecutionWorker, ExecutionGateway, StepStateMachineService],
-  exports: [ExecutionService, ExecutionGateway, StepStateMachineService],
+  providers: [
+    ExecutionService,
+    ExecutionWorker,
+    ExecutionGateway,
+    StepStateMachineService,
+    DagResolverService,
+    NodeSchedulerService,
+  ],
+  exports: [
+    ExecutionService,
+    ExecutionGateway,
+    StepStateMachineService,
+    DagResolverService,
+    NodeSchedulerService,
+  ],
 })
 export class ExecutionModule {}
