@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useExecutionStore } from './executionStore'
+import { useExecutionStore, type NodeExecutionState } from './executionStore'
 import type {
   ExecutionEvent,
   ExecutionStateSnapshot,
@@ -8,6 +8,13 @@ import type {
   StepRetryingPayload,
   StepStatusChangedPayload,
 } from '../types'
+
+/** 从 store 获取节点状态，不存在则抛出（仅测试用） */
+function getNode(nodeId: string): NodeExecutionState {
+  const node = useExecutionStore.getState().nodes[nodeId]
+  if (!node) throw new Error(`Node ${nodeId} not found in store`)
+  return node
+}
 
 function makeEvent<T>(
   overrides: Partial<ExecutionEvent<T>> & { data: T },
@@ -102,8 +109,7 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeStatus(makeStepStatusEvent())
 
-      const node = useExecutionStore.getState().nodes['node-1']
-      expect(node).toBeDefined()
+      const node = getNode('node-1')
       expect(node.stepId).toBe('step-1')
       expect(node.nodeId).toBe('node-1')
       expect(node.status).toBe('running')
@@ -114,7 +120,7 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeStatus(makeStepStatusEvent({ to: 'running' }))
 
-      expect(useExecutionStore.getState().nodes['node-1'].isStreaming).toBe(true)
+      expect(getNode('node-1').isStreaming).toBe(true)
     })
 
     it('sets isStreaming=false on terminal states', () => {
@@ -122,14 +128,14 @@ describe('executionStore', () => {
       for (const terminal of ['completed', 'failed', 'skipped', 'cancelled'] as const) {
         actions.updateNodeStatus(makeStepStatusEvent({ to: 'running' }))
         actions.updateNodeStatus(makeStepStatusEvent({ from: 'running', to: terminal }))
-        expect(useExecutionStore.getState().nodes['node-1'].isStreaming).toBe(false)
+        expect(getNode('node-1').isStreaming).toBe(false)
       }
     })
 
     it('preserves isStreaming for non-terminal transitions', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeStatus(makeStepStatusEvent({ to: 'queued' }))
-      expect(useExecutionStore.getState().nodes['node-1'].isStreaming).toBe(false)
+      expect(getNode('node-1').isStreaming).toBe(false)
     })
   })
 
@@ -153,7 +159,7 @@ describe('executionStore', () => {
         }),
       )
 
-      expect(useExecutionStore.getState().nodes['node-1'].output).toBe('hello world')
+      expect(getNode('node-1').output).toBe('hello world')
     })
 
     it('ignores chunk for unknown stepId', () => {
@@ -173,7 +179,7 @@ describe('executionStore', () => {
       actions.updateNodeStatus(
         makeStepStatusEvent({ to: 'completed' }),
       )
-      expect(useExecutionStore.getState().nodes['node-1'].isStreaming).toBe(false)
+      expect(getNode('node-1').isStreaming).toBe(false)
 
       actions.appendNodeOutput(
         makeEvent<OutputChunkPayload>({
@@ -182,7 +188,7 @@ describe('executionStore', () => {
           data: { stepId: 'step-1', chunk: 'late chunk', index: 0 },
         }),
       )
-      expect(useExecutionStore.getState().nodes['node-1'].isStreaming).toBe(true)
+      expect(getNode('node-1').isStreaming).toBe(true)
     })
   })
 
@@ -204,7 +210,7 @@ describe('executionStore', () => {
         }),
       )
 
-      const node = useExecutionStore.getState().nodes['node-1']
+      const node = getNode('node-1')
       expect(node.retryAttempt).toBe(2)
       expect(node.retryMaxAttempts).toBe(3)
       expect(node.errorMessage).toBe('timeout')
@@ -261,9 +267,9 @@ describe('executionStore', () => {
       expect(state.completedSteps).toBe(3)
       expect(state.totalSteps).toBe(5)
       expect(Object.keys(state.nodes)).toHaveLength(2)
-      expect(state.nodes['node-a'].status).toBe('completed')
-      expect(state.nodes['node-a'].isStreaming).toBe(false)
-      expect(state.nodes['node-b'].errorMessage).toBe('partial error')
+      expect(getNode('node-a').status).toBe('completed')
+      expect(getNode('node-a').isStreaming).toBe(false)
+      expect(getNode('node-b').errorMessage).toBe('partial error')
     })
 
     it('clears previous nodes', () => {
@@ -311,8 +317,8 @@ describe('executionStore', () => {
 
       const events = useExecutionStore.getState().recentEvents
       expect(events).toHaveLength(50)
-      expect(events[0].eventId).toBe(11)
-      expect(events[49].eventId).toBe(60)
+      expect(events[0]!.eventId).toBe(11)
+      expect(events[49]!.eventId).toBe(60)
     })
   })
 

@@ -110,7 +110,7 @@ export function useExecutionSocket(
   }, [])
 
   useEffect(() => {
-    if (!executionId) {
+    if (!executionId || !tenantId) {
       setConnectionStatus('disconnected')
       setError(null)
       lastEventIdRef.current = 0

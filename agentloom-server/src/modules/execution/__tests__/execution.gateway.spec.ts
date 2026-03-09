@@ -40,7 +40,7 @@ function makeSnapshot(
 describe('ExecutionGateway', () => {
   let gateway: ExecutionGateway;
   let mockConfig: { get: Mock };
-  let mockStateReplay: { getExecutionSnapshot: Mock };
+  let mockStateReplay: { getExecutionSnapshot: Mock; checkExecutionExists: Mock };
   let mockThrottle: {
     registerFlushHandler: Mock;
     tryConsume: Mock;
@@ -51,6 +51,7 @@ describe('ExecutionGateway', () => {
   };
   let mockEventBridge: {
     getLastEventId: Mock;
+    getEventsSince: Mock;
     emitOutputChunk: Mock;
     emitStepStatusChanged: Mock;
     emitExecutionStatusChanged: Mock;
@@ -63,6 +64,7 @@ describe('ExecutionGateway', () => {
     mockConfig = { get: vi.fn().mockReturnValue('test-secret') };
     mockStateReplay = {
       getExecutionSnapshot: vi.fn().mockResolvedValue(makeSnapshot()),
+      checkExecutionExists: vi.fn().mockResolvedValue(false),
     };
     mockThrottle = {
       registerFlushHandler: vi.fn(),
@@ -74,6 +76,7 @@ describe('ExecutionGateway', () => {
     };
     mockEventBridge = {
       getLastEventId: vi.fn().mockReturnValue(0),
+      getEventsSince: vi.fn().mockReturnValue(null),
       emitOutputChunk: vi.fn(),
       emitStepStatusChanged: vi.fn(),
       emitExecutionStatusChanged: vi.fn(),
@@ -289,6 +292,70 @@ describe('ExecutionGateway', () => {
       });
       expect(client.join).not.toHaveBeenCalled();
     });
+
+    it('returns FORBIDDEN when execution exists in different tenant', async () => {
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(null);
+      mockStateReplay.checkExecutionExists.mockResolvedValue(true);
+
+      const client = makeSocket();
+      const result = await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-foreign',
+      });
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'FORBIDDEN',
+        currentState: null,
+      });
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it('replays missed events incrementally when buffer covers the gap', async () => {
+      const snapshot = makeSnapshot();
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      mockEventBridge.getLastEventId.mockReturnValue(5);
+
+      const missedEvents = [
+        { eventId: 4, event: 'execution.node.status-changed', data: {} },
+        { eventId: 5, event: 'execution.node.output-chunk', data: {} },
+      ];
+      mockEventBridge.getEventsSince.mockReturnValue(missedEvents);
+
+      const client = makeSocket();
+      await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-1',
+        lastEventId: 3,
+      });
+
+      expect(mockEventBridge.getEventsSince).toHaveBeenCalledWith('exec-1', 3);
+      expect(client.emit).toHaveBeenCalledTimes(2);
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.node.status-changed',
+        missedEvents[0],
+      );
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.node.output-chunk',
+        missedEvents[1],
+      );
+    });
+
+    it('falls back to full snapshot when buffer does not cover the gap', async () => {
+      const snapshot = makeSnapshot();
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      mockEventBridge.getLastEventId.mockReturnValue(10);
+      mockEventBridge.getEventsSince.mockReturnValue(null);
+
+      const client = makeSocket();
+      await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-1',
+        lastEventId: 3,
+      });
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.state.snapshot',
+        snapshot,
+      );
+    });
   });
 
   describe('handleUnsubscribe / handleLeave', () => {
@@ -310,7 +377,7 @@ describe('ExecutionGateway', () => {
       );
     });
 
-    it('falls back to payload tenantId when no user', () => {
+    it('uses empty tenantId when no user context', () => {
       const client = makeSocket({ data: {} });
       gateway.handleUnsubscribe(client as any, {
         tenantId: 'tenant-x',
@@ -318,7 +385,7 @@ describe('ExecutionGateway', () => {
       });
 
       expect(client.leave).toHaveBeenCalledWith(
-        'execution:tenant-x:exec-1',
+        'execution::exec-1',
       );
     });
   });

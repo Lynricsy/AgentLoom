@@ -55,7 +55,7 @@ src/
 - **TanStack Query**: staleTime=30s, retry=1, 禁用 focus-refetch
 - **Query Key Factory**: 每个 feature 独立 `xxxKeys` + `xxxApi` + `useXxx` hooks
 - **Socket.IO**: `/execution` namespace，typed events (`execution:subscribe`/`execution:unsubscribe` 带 ACK)，`lastEventId` 断线续传，5s 重连 (max 30s)，`callbacksRef` 模式
-  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status-changed`
+  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status.changed`
   - Subscribe ACK: `{status: 'subscribed' | 'error', currentState, error?}`，错误时调用 `onError` 回调
   - `useExecutionSocket`: 底层 Socket.IO 连接管理，事件监听，ACK 错误处理
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions

@@ -26,8 +26,11 @@ export function WorkflowCanvasPage() {
   const mappingPanelEdgeId = useMappingPanelEdgeId()
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
 
+  const { data: workflow, isLoading, error } = useWorkflow(workflowId)
+  const isWorkflowArchived = workflow?.status === 'archived'
+
   const activeExecutionId = useExecutionId() ?? undefined
-  useExecutionMonitor({ executionId: activeExecutionId, tenantId: undefined })
+  useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId })
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
@@ -54,9 +57,6 @@ export function WorkflowCanvasPage() {
   const mappingTargetNode = useCanvasStore((s) =>
     mappingPanelEdge ? s.nodes.find((n) => n.id === mappingPanelEdge.target) ?? null : null
   )
-
-  const { data: workflow, isLoading, error } = useWorkflow(workflowId)
-  const isWorkflowArchived = workflow?.status === 'archived'
 
   useAutoSave(workflowId, workflow?.status)
 

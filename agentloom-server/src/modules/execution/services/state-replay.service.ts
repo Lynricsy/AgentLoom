@@ -16,6 +16,19 @@ export class StateReplayService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
   ) {}
 
+  /**
+   * 检查执行记录是否存在（不限租户）。
+   * 用于区分 NOT_FOUND (不存在) 和 FORBIDDEN (属于其他租户)。
+   */
+  async checkExecutionExists(executionId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: schema.workflowExecutions.id })
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId))
+      .limit(1);
+    return !!row;
+  }
+
   async getExecutionSnapshot(
     executionId: string,
     tenantId: string,

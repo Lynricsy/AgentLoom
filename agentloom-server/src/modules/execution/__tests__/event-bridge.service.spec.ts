@@ -278,5 +278,68 @@ describe('EventBridgeService', () => {
       const result = service.emitStepStatusChanged(TENANT, EXEC, payload);
       expect(result.eventId).toBe(1);
     });
+
+    it('应同时清除事件缓冲区', () => {
+      const payload: StepStatusChangedPayload = {
+        stepId: 's1',
+        nodeId: 'n1',
+        from: 'pending',
+        to: 'running',
+      };
+
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+      service.clearExecution(EXEC);
+
+      expect(service.getEventsSince(EXEC, 0)).toBeNull();
+    });
+  });
+
+  describe('getEventsSince', () => {
+    const payload: StepStatusChangedPayload = {
+      stepId: 's1',
+      nodeId: 'n1',
+      from: 'pending',
+      to: 'running',
+    };
+
+    it('缓冲区为空时返回 null', () => {
+      expect(service.getEventsSince('unknown', 0)).toBeNull();
+    });
+
+    it('返回指定 eventId 之后的所有事件', () => {
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+
+      const events = service.getEventsSince(EXEC, 1);
+
+      expect(events).not.toBeNull();
+      expect(events).toHaveLength(2);
+      expect(events![0]!.eventId).toBe(2);
+      expect(events![1]!.eventId).toBe(3);
+    });
+
+    it('lastEventId 等于最新 eventId 时返回空数组', () => {
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+      service.emitStepStatusChanged(TENANT, EXEC, payload);
+
+      const events = service.getEventsSince(EXEC, 2);
+
+      expect(events).not.toBeNull();
+      expect(events).toHaveLength(0);
+    });
+
+    it('lastEventId 超出缓冲区范围时返回 null', () => {
+      service.setEventCounter(EXEC, 10);
+
+      for (let i = 0; i < 3; i++) {
+        service.emitStepStatusChanged(TENANT, EXEC, payload);
+      }
+
+      const events = service.getEventsSince(EXEC, 5);
+
+      expect(events).toBeNull();
+    });
   });
 });

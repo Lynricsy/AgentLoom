@@ -13,10 +13,13 @@ import {
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
 
+const EVENT_BUFFER_CAPACITY = 500;
+
 /**
  * 事件桥接服务。
  * 将内部遗留事件格式转换为标准化 ExecutionEvent 信封，
  * 并维护每个执行实例的单调递增 eventId 计数器（用于断线重连回放追踪）。
+ * 同时保存最近 N 个事件用于断线重连时的增量回放。
  */
 @Injectable()
 export class EventBridgeService {
@@ -24,6 +27,9 @@ export class EventBridgeService {
 
   /** 每个执行实例独立的事件计数器 */
   private readonly eventCounters = new Map<string, number>();
+
+  /** 每个执行实例的事件环形缓冲区（用于断线重连增量回放） */
+  private readonly eventBuffers = new Map<string, ExecutionEvent[]>();
 
   constructor(
     @Inject(forwardRef(() => ExecutionGateway))
@@ -141,9 +147,30 @@ export class EventBridgeService {
     this.eventCounters.set(executionId, value);
   }
 
-  /** 执行到达终态后清理计数器，释放内存 */
+  /** 执行到达终态后清理计数器和事件缓冲区，释放内存 */
   clearExecution(executionId: string): void {
     this.eventCounters.delete(executionId);
+    this.eventBuffers.delete(executionId);
+  }
+
+  /**
+   * 获取指定 eventId 之后的所有缓冲事件。
+   * 用于断线重连时的增量回放，避免发送完整快照。
+   * 返回 null 表示缓冲区不包含所有遗漏事件（需回退到全量快照）。
+   */
+  getEventsSince(
+    executionId: string,
+    lastEventId: number,
+  ): ExecutionEvent[] | null {
+    const buffer = this.eventBuffers.get(executionId);
+    if (!buffer || buffer.length === 0) return null;
+
+    const oldestBuffered = buffer[0]!.eventId;
+    if (lastEventId < oldestBuffered - 1) {
+      return null;
+    }
+
+    return buffer.filter((e) => e.eventId > lastEventId);
   }
 
   private nextEventId(executionId: string): number {
@@ -174,11 +201,27 @@ export class EventBridgeService {
     executionId: string,
     envelope: ExecutionEvent<T>,
   ): void {
+    this.bufferEvent(executionId, envelope);
     this.executionGateway.broadcastTypedEvent(
       tenantId,
       executionId,
       envelope.event,
       envelope as unknown as Record<string, unknown>,
     );
+  }
+
+  private bufferEvent(
+    executionId: string,
+    envelope: ExecutionEvent,
+  ): void {
+    let buffer = this.eventBuffers.get(executionId);
+    if (!buffer) {
+      buffer = [];
+      this.eventBuffers.set(executionId, buffer);
+    }
+    buffer.push(envelope);
+    if (buffer.length > EVENT_BUFFER_CAPACITY) {
+      buffer.shift();
+    }
   }
 }

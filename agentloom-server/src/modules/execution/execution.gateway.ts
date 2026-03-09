@@ -322,9 +322,11 @@ export class ExecutionGateway
     );
 
     if (!snapshot) {
+      const exists =
+        await this.stateReplayService.checkExecutionExists(executionId);
       return {
         status: 'error',
-        error: 'NOT_FOUND',
+        error: exists ? 'FORBIDDEN' : 'NOT_FOUND',
         currentState: null,
       };
     }
@@ -340,7 +342,7 @@ export class ExecutionGateway
 
   private unsubscribe(client: Socket, payload: UnsubscribePayload): void {
     const user = client.data?.user as JwtPayload | undefined;
-    const tenantId = user?.tenantId ?? payload.tenantId ?? '';
+    const tenantId = user?.tenantId ?? '';
     const room = this.buildRoom(tenantId, payload.executionId);
     void client.leave(room);
     this.logger.debug(`Client ${client.id} left room ${room}`);
@@ -355,6 +357,17 @@ export class ExecutionGateway
       const currentEventId =
         this.eventBridgeService.getLastEventId(snapshot.executionId) ?? 0;
       if (lastEventId >= currentEventId) {
+        return;
+      }
+
+      const missedEvents = this.eventBridgeService.getEventsSince(
+        snapshot.executionId,
+        lastEventId,
+      );
+      if (missedEvents && missedEvents.length > 0) {
+        for (const event of missedEvents) {
+          client.emit(event.event satisfies `${string}`, event);
+        }
         return;
       }
     }

@@ -101,6 +101,6 @@ wasm-pack build --target bundler --release  # 构建 WASM
 
 - **WASM 集成尚未完成**: `agentloom-studio/src/features/canvas/lib/connectionCompatibility.ts` 是 JS fallback，待 Story-2.4a 替换为 WASM
 - **PortDataType 漂移**: Rust(8值) vs Studio TS(8值) vs Server Zod(6值，缺少 model/tool/sandbox/knowledge)
-- **Socket.IO `/execution` 事件协议已统一**: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)，`execution:subscribe`/`execution:unsubscribe` + ACK，事件经 EventBridgeService → ThrottleService → broadcastTypedEvent() 管线。事件名称统一为 `execution.node.*` 前缀 (`status-changed`, `agent-event`, `retrying`, `output-chunk`) + `execution.status-changed`。Gateway 含背压队列 (500 cap, 100ms drain)。认证失败返回 close code 4001，订阅拒绝返回 `{status:'error', error:'FORBIDDEN'}`。但 `/knowledge` namespace 仍为隐式契约
+- **Socket.IO `/execution` 事件协议已统一**: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)，`execution:subscribe`/`execution:unsubscribe` + ACK，事件经 EventBridgeService → ThrottleService → broadcastTypedEvent() 管线。事件名称统一为 `execution.node.*` 前缀 (`status-changed`, `agent-event`, `retrying`, `output-chunk`) + `execution.status.changed`。Gateway 含背压队列 (500 cap, 100ms drain)。认证失败返回 close code 4001，订阅拒绝返回 `{status:'error', error:'FORBIDDEN'}`。断线重连支持 `lastEventId` 增量回放 (EventBridgeService 环形缓冲 500 事件)。但 `/knowledge` namespace 仍为隐式契约
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 .wasm 文件
