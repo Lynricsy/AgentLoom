@@ -25,6 +25,11 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## AgentLoom server notes
+
+- Notification module is available at `src/modules/notification/` and includes REST APIs, BullMQ dispatch, and `/notification` Socket.IO delivery.
+- Execution status changes now emit `execution.status.changed` through `EventBridgeService`, which drives user notifications via `@nestjs/event-emitter`.
+
 ## Project setup
 
 ```bash
