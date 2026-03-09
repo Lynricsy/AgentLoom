@@ -5,7 +5,6 @@ import { ExecutionWorker } from '../execution.worker';
 import { ExecutionService, type ExecutionJobData } from '../execution.service';
 
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
-const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 
 const mockExecutionService: Record<string, Mock> = {
   initializeSteps: vi.fn(),
@@ -18,7 +17,6 @@ function createMockJob(
   return {
     data: {
       executionId: EXECUTION_ID,
-      tenantId: TENANT_ID,
     },
     id: 'job-1',
     attemptsMade: 0,

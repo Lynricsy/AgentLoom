@@ -1,24 +1,32 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { Queue, type JobType } from 'bullmq';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import {
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
+  WorkflowArchivedException,
 } from './execution.exceptions';
 import { ExecutionGateway } from './execution.gateway';
 import { EXECUTION_QUEUE } from './execution.constants';
+import type { RunWorkflowDto } from './dto/run-workflow.dto';
 
 export interface ExecutionJobData {
   executionId: string;
-  tenantId: string;
 }
 
 const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'paused']);
+const REMOVABLE_JOB_STATES: JobType[] = ['waiting', 'delayed', 'prioritized'];
+const TERMINAL_EXECUTION_STATUSES = new Set(['cancelled', 'completed', 'failed']);
+
+function isRemovableJobState(state: string): state is JobType {
+  return REMOVABLE_JOB_STATES.includes(state as JobType);
+}
 
 @Injectable()
 export class ExecutionService {
@@ -36,6 +44,7 @@ export class ExecutionService {
 
   async runWorkflow(
     workflowId: string,
+    runRequest: RunWorkflowDto | undefined,
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
@@ -43,6 +52,10 @@ export class ExecutionService {
       .select()
       .from(schema.workflowDefinitions)
       .where(eq(schema.workflowDefinitions.id, workflowId));
+
+    if (workflow?.status === 'archived') {
+      throw new WorkflowArchivedException(workflowId);
+    }
 
     if (
       !workflow ||
@@ -64,15 +77,22 @@ export class ExecutionService {
         workflowVersionId: workflow.publishedVersionId,
         tenantId,
         status: 'pending',
+        triggerType: 'manual',
+        inputParams: runRequest?.inputParams ?? {},
         definitionSnapshot: publishedVersion.snapshot,
         createdBy: userId,
       })
       .returning();
 
-    await this.executionQueue.add('execute', {
-      executionId: execution.id,
-      tenantId,
-    } satisfies ExecutionJobData);
+    await this.executionQueue.add(
+      'execute',
+      {
+        executionId: execution.id,
+      } satisfies ExecutionJobData,
+      {
+        jobId: execution.id,
+      },
+    );
 
     this.logger.log(
       `Workflow execution created: ${JSON.stringify({ executionId: execution.id, workflowId })}`,
@@ -105,7 +125,7 @@ export class ExecutionService {
   async listExecutions(
     workflowId: string,
     page: number,
-    pageSize: number,
+    limit: number,
     status?: string,
   ) {
     const conditions = [
@@ -129,8 +149,8 @@ export class ExecutionService {
         .from(schema.workflowExecutions)
         .where(whereClause)
         .orderBy(desc(schema.workflowExecutions.createdAt))
-        .limit(pageSize)
-        .offset((page - 1) * pageSize),
+        .limit(limit)
+        .offset((page - 1) * limit),
       this.tenantDb
         .select({ count: sql<number>`count(*)::int` })
         .from(schema.workflowExecutions)
@@ -144,8 +164,9 @@ export class ExecutionService {
       meta: {
         total,
         page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
+        limit,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }
@@ -186,31 +207,29 @@ export class ExecutionService {
       .where(
         and(
           eq(schema.executionSteps.executionId, executionId),
-          eq(schema.executionSteps.status, 'pending'),
+          inArray(schema.executionSteps.status, ['pending', 'queued']),
         ),
       );
 
-    await this.tenantDb
-      .update(schema.executionSteps)
-      .set({
-        status: 'cancelled',
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.executionSteps.executionId, executionId),
-          eq(schema.executionSteps.status, 'queued'),
-        ),
-      );
+    const queuedJob = await this.executionQueue.getJob(executionId);
 
-    const jobs = await this.executionQueue.getJobs([
-      'waiting',
-      'delayed',
-      'active',
-    ]);
-    for (const job of jobs) {
-      if ((job.data as ExecutionJobData).executionId === executionId) {
-        await job.remove();
+    if (queuedJob) {
+      const state = await queuedJob.getState();
+
+      if (isRemovableJobState(state)) {
+        await queuedJob.remove();
+      } else {
+        this.logger.warn(
+          `Skip removing active execution job: ${JSON.stringify({ executionId, state })}`,
+        );
+      }
+    } else {
+      const jobs = await this.executionQueue.getJobs(REMOVABLE_JOB_STATES);
+      for (const job of jobs) {
+        if ((job.data as ExecutionJobData).executionId === executionId) {
+          await job.remove();
+          break;
+        }
       }
     }
 
@@ -221,6 +240,8 @@ export class ExecutionService {
       {
         executionId,
         status: 'cancelled',
+        type: 'execution.cancelled',
+        timestamp: new Date().toISOString(),
       },
     );
 
@@ -230,7 +251,198 @@ export class ExecutionService {
   }
 
   async initializeSteps(executionId: string): Promise<void> {
-    const [execution] = await this.tenantDb
+    const execution = await this.getExecutionRecord(executionId);
+
+    await runInTenantTransaction(
+      this.db,
+      execution.tenantId,
+      async (tenantDb) => {
+        const [scopedExecution] = await tenantDb
+          .select()
+          .from(schema.workflowExecutions)
+          .where(eq(schema.workflowExecutions.id, executionId));
+
+        if (!scopedExecution) {
+          throw new ExecutionNotFoundException(executionId);
+        }
+
+        if (TERMINAL_EXECUTION_STATUSES.has(scopedExecution.status)) {
+          this.logger.warn(
+            `Skip step initialization for terminal execution: ${JSON.stringify({ executionId, status: scopedExecution.status })}`,
+          );
+          return;
+        }
+
+        if (scopedExecution.status !== 'pending') {
+          this.logger.warn(
+            `Skip step initialization for non-pending execution: ${JSON.stringify({ executionId, status: scopedExecution.status })}`,
+          );
+          return;
+        }
+
+        const [runningExecution] = await tenantDb
+          .update(schema.workflowExecutions)
+          .set({
+            status: 'running',
+            startedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.workflowExecutions.id, executionId),
+              eq(schema.workflowExecutions.status, 'pending'),
+            ),
+          )
+          .returning({ id: schema.workflowExecutions.id });
+
+        if (!runningExecution) {
+          this.logger.warn(
+            `Skip step initialization after concurrent status change: ${JSON.stringify({ executionId })}`,
+          );
+          return;
+        }
+
+        const { nodes } = scopedExecution.definitionSnapshot;
+        const stepValues = nodes.map((node, index) => ({
+          executionId,
+          nodeId: node.id,
+          stepOrder: index,
+          status: 'pending' as const,
+          nodeType: node.type ?? null,
+          nodeData: node.data ?? null,
+        }));
+
+        if (stepValues.length > 0) {
+          await tenantDb.insert(schema.executionSteps).values(stepValues);
+        }
+
+        const [completedExecution] = await tenantDb
+          .update(schema.workflowExecutions)
+          .set({
+            totalSteps: stepValues.length,
+            status: 'completed',
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.workflowExecutions.id, executionId),
+              eq(schema.workflowExecutions.status, 'running'),
+            ),
+          )
+          .returning({ status: schema.workflowExecutions.status });
+
+        if (!completedExecution) {
+          const [latestExecution] = await tenantDb
+            .select({ status: schema.workflowExecutions.status })
+            .from(schema.workflowExecutions)
+            .where(eq(schema.workflowExecutions.id, executionId));
+
+          if (latestExecution?.status === 'cancelled') {
+            await tenantDb
+              .update(schema.executionSteps)
+              .set({
+                status: 'cancelled',
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(schema.executionSteps.executionId, executionId),
+                  inArray(schema.executionSteps.status, ['pending', 'queued']),
+                ),
+              );
+          }
+
+          this.logger.warn(
+            `Skip completion update after concurrent status change: ${JSON.stringify({ executionId, status: latestExecution?.status ?? 'unknown' })}`,
+          );
+          return;
+        }
+
+        this.executionGateway.broadcastEvent(
+          scopedExecution.tenantId,
+          executionId,
+          'execution:completed',
+          { executionId, status: 'completed', totalSteps: stepValues.length },
+        );
+
+        this.logger.log(
+          `Steps initialized: ${JSON.stringify({ executionId, totalSteps: stepValues.length })}`,
+        );
+      },
+    );
+  }
+
+  async markFailed(executionId: string, error: Error): Promise<void> {
+    const [execution] = await this.db
+      .select({ tenantId: schema.workflowExecutions.tenantId })
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId));
+
+    if (!execution) {
+      this.logger.warn(
+        `Skip failure update for missing execution: ${JSON.stringify({ executionId })}`,
+      );
+      return;
+    }
+
+    await runInTenantTransaction(
+      this.db,
+      execution.tenantId,
+      async (tenantDb) => {
+        const [updatedExecution] = await tenantDb
+          .update(schema.workflowExecutions)
+          .set({
+            status: 'failed',
+            failedAt: new Date(),
+            errorMessage: {
+              message: error.message,
+              stack: error.stack,
+            },
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.workflowExecutions.id, executionId),
+              inArray(schema.workflowExecutions.status, [
+                'pending',
+                'running',
+                'paused',
+              ]),
+            ),
+          )
+          .returning({ id: schema.workflowExecutions.id });
+
+        if (!updatedExecution) {
+          const [currentExecution] = await tenantDb
+            .select({ status: schema.workflowExecutions.status })
+            .from(schema.workflowExecutions)
+            .where(eq(schema.workflowExecutions.id, executionId));
+
+          this.logger.warn(
+            `Skip failure update for terminal execution: ${JSON.stringify({ executionId, status: currentExecution?.status ?? 'unknown' })}`,
+          );
+          return;
+        }
+
+        this.executionGateway.broadcastEvent(
+          execution.tenantId,
+          executionId,
+          'execution:failed',
+          { executionId, status: 'failed', error: error.message },
+        );
+      },
+    );
+
+    this.logger.error(
+      `Execution failed: ${JSON.stringify({ executionId, error: error.message })}`,
+    );
+  }
+
+  private async getExecutionRecord(
+    executionId: string,
+  ): Promise<schema.WorkflowExecution> {
+    const [execution] = await this.db
       .select()
       .from(schema.workflowExecutions)
       .where(eq(schema.workflowExecutions.id, executionId));
@@ -239,81 +451,6 @@ export class ExecutionService {
       throw new ExecutionNotFoundException(executionId);
     }
 
-    await this.tenantDb
-      .update(schema.workflowExecutions)
-      .set({
-        status: 'running',
-        startedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.workflowExecutions.id, executionId));
-
-    const { nodes } = execution.definitionSnapshot;
-    const stepValues = nodes.map((node, index) => ({
-      executionId,
-      nodeId: node.id,
-      stepOrder: index,
-      status: 'pending' as const,
-      nodeType: node.type ?? null,
-      nodeData: node.data ?? null,
-    }));
-
-    if (stepValues.length > 0) {
-      await this.tenantDb.insert(schema.executionSteps).values(stepValues);
-    }
-
-    await this.tenantDb
-      .update(schema.workflowExecutions)
-      .set({
-        totalSteps: stepValues.length,
-        status: 'completed',
-        completedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.workflowExecutions.id, executionId));
-
-    this.executionGateway.broadcastEvent(
-      execution.tenantId,
-      executionId,
-      'execution:completed',
-      { executionId, status: 'completed', totalSteps: stepValues.length },
-    );
-
-    this.logger.log(
-      `Steps initialized: ${JSON.stringify({ executionId, totalSteps: stepValues.length })}`,
-    );
-  }
-
-  async markFailed(executionId: string, error: Error): Promise<void> {
-    await this.tenantDb
-      .update(schema.workflowExecutions)
-      .set({
-        status: 'failed',
-        failedAt: new Date(),
-        errorMessage: {
-          message: error.message,
-          stack: error.stack,
-        },
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.workflowExecutions.id, executionId));
-
-    const [execution] = await this.tenantDb
-      .select({ tenantId: schema.workflowExecutions.tenantId })
-      .from(schema.workflowExecutions)
-      .where(eq(schema.workflowExecutions.id, executionId));
-
-    if (execution) {
-      this.executionGateway.broadcastEvent(
-        execution.tenantId,
-        executionId,
-        'execution:failed',
-        { executionId, status: 'failed', error: error.message },
-      );
-    }
-
-    this.logger.error(
-      `Execution failed: ${JSON.stringify({ executionId, error: error.message })}`,
-    );
+    return execution;
   }
 }

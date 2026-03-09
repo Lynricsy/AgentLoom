@@ -11,8 +11,11 @@ const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const mockExecution = {
   id: EXECUTION_ID,
   workflowDefinitionId: WORKFLOW_ID,
+  workflowVersionId: '019391d4-e000-7000-0000-000000000005',
   tenantId: TENANT_ID,
   status: 'pending' as const,
+  triggerType: 'manual' as const,
+  inputParams: {},
   definitionSnapshot: {
     nodes: [],
     edges: [],
@@ -48,16 +51,21 @@ describe('ExecutionController', () => {
   describe('runWorkflow', () => {
     it('应启动工作流执行并返回 { data }', async () => {
       mockService.runWorkflow.mockResolvedValue(mockExecution);
+      const dto = { inputParams: { source: 'manual' } };
 
       const result = await controller.runWorkflow(
         WORKFLOW_ID,
+        dto,
         TENANT_ID,
         USER_ID,
       );
 
-      expect(result).toEqual({ data: mockExecution });
+      expect(result).toEqual({
+        data: { ...mockExecution, workflowId: WORKFLOW_ID },
+      });
       expect(mockService.runWorkflow).toHaveBeenCalledWith(
         WORKFLOW_ID,
+        dto,
         TENANT_ID,
         USER_ID,
       );
@@ -71,7 +79,9 @@ describe('ExecutionController', () => {
 
       const result = await controller.getExecution(EXECUTION_ID);
 
-      expect(result).toEqual({ data: executionWithSteps });
+      expect(result).toEqual({
+        data: { ...executionWithSteps, workflowId: WORKFLOW_ID },
+      });
       expect(mockService.getExecution).toHaveBeenCalledWith(EXECUTION_ID);
     });
   });
@@ -80,17 +90,20 @@ describe('ExecutionController', () => {
     it('应返回分页执行列表 { data, meta }', async () => {
       const paginatedResult = {
         data: [mockExecution],
-        meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 },
+        meta: { total: 1, page: 1, limit: 20, pageSize: 20, totalPages: 1 },
       };
       mockService.listExecutions.mockResolvedValue(paginatedResult);
 
       const result = await controller.listExecutions(WORKFLOW_ID, {
         page: 1,
-        pageSize: 20,
+        limit: 20,
         status: undefined,
-      } as any);
+      });
 
-      expect(result).toEqual(paginatedResult);
+      expect(result).toEqual({
+        ...paginatedResult,
+        data: [{ ...mockExecution, workflowId: WORKFLOW_ID }],
+      });
       expect(mockService.listExecutions).toHaveBeenCalledWith(
         WORKFLOW_ID,
         1,
@@ -102,17 +115,22 @@ describe('ExecutionController', () => {
     it('应支持状态过滤', async () => {
       const paginatedResult = {
         data: [{ ...mockExecution, status: 'running' }],
-        meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 },
+        meta: { total: 1, page: 1, limit: 20, pageSize: 20, totalPages: 1 },
       };
       mockService.listExecutions.mockResolvedValue(paginatedResult);
 
       const result = await controller.listExecutions(WORKFLOW_ID, {
         page: 1,
-        pageSize: 20,
+        limit: 20,
         status: 'running',
-      } as any);
+      });
 
-      expect(result).toEqual(paginatedResult);
+      expect(result).toEqual({
+        ...paginatedResult,
+        data: [
+          { ...mockExecution, status: 'running', workflowId: WORKFLOW_ID },
+        ],
+      });
       expect(mockService.listExecutions).toHaveBeenCalledWith(
         WORKFLOW_ID,
         1,
@@ -132,7 +150,9 @@ describe('ExecutionController', () => {
 
       const result = await controller.cancelExecution(EXECUTION_ID, TENANT_ID);
 
-      expect(result).toEqual({ data: cancelledExecution });
+      expect(result).toEqual({
+        data: { ...cancelledExecution, workflowId: WORKFLOW_ID },
+      });
       expect(mockService.cancelExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,

@@ -8,6 +8,7 @@ import {
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
+  WorkflowArchivedException,
 } from '../execution.exceptions';
 import { EXECUTION_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
@@ -59,6 +60,8 @@ const mockExecution = {
   workflowVersionId: VERSION_ID,
   tenantId: TENANT_ID,
   status: 'pending' as const,
+  triggerType: 'manual' as const,
+  inputParams: {},
   definitionSnapshot: mockSnapshot,
   totalSteps: 0,
   completedSteps: 0,
@@ -70,6 +73,14 @@ const mockExecution = {
   errorMessage: null,
   createdAt: NOW,
   updatedAt: NOW,
+};
+
+const txDb = {
+  select: vi.fn(),
+  insert: vi.fn(),
+  update: vi.fn(),
+  delete: vi.fn(),
+  execute: vi.fn(),
 };
 
 function createSelectChain(result: unknown) {
@@ -141,11 +152,16 @@ const db = {
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  execute: vi.fn(),
+  transaction: vi.fn(async (callback: (tx: typeof txDb) => Promise<unknown>) =>
+    callback(txDb),
+  ),
 };
 
 const mockQueue: Record<string, Mock> = {
   add: vi.fn(),
   getJobs: vi.fn(),
+  getJob: vi.fn(),
 };
 
 const mockGateway: Record<string, Mock> = {
@@ -161,6 +177,8 @@ describe('ExecutionService', () => {
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    txDb.execute.mockResolvedValue(undefined);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -184,15 +202,25 @@ describe('ExecutionService', () => {
       );
       mockQueue.add.mockResolvedValue(undefined);
 
-      const result = await service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID);
+      const result = await service.runWorkflow(
+        WORKFLOW_ID,
+        { inputParams: { source: 'manual-trigger' } },
+        TENANT_ID,
+        USER_ID,
+      );
 
       expect(result).toEqual(mockExecution);
       expect(db.select).toHaveBeenCalledTimes(2);
       expect(db.insert).toHaveBeenCalledTimes(1);
-      expect(mockQueue.add).toHaveBeenCalledWith('execute', {
-        executionId: EXECUTION_ID,
-        tenantId: TENANT_ID,
-      });
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'execute',
+        {
+          executionId: EXECUTION_ID,
+        },
+        {
+          jobId: EXECUTION_ID,
+        },
+      );
     });
 
     it('应拒绝草稿工作流 (WorkflowNotPublishedException)', async () => {
@@ -204,7 +232,7 @@ describe('ExecutionService', () => {
       db.select.mockReturnValueOnce(createSelectChain([draftWorkflow]));
 
       await expect(
-        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
       ).rejects.toThrow(WorkflowNotPublishedException);
     });
 
@@ -217,15 +245,15 @@ describe('ExecutionService', () => {
       db.select.mockReturnValueOnce(createSelectChain([archivedWorkflow]));
 
       await expect(
-        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
-      ).rejects.toThrow(WorkflowNotPublishedException);
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toThrow(WorkflowArchivedException);
     });
 
     it('应在工作流不存在时抛出异常', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
-        service.runWorkflow(WORKFLOW_ID, TENANT_ID, USER_ID),
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
       ).rejects.toThrow(WorkflowNotPublishedException);
     });
   });
@@ -278,7 +306,7 @@ describe('ExecutionService', () => {
 
       expect(result).toEqual({
         data: executions,
-        meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 },
+        meta: { total: 1, page: 1, limit: 20, pageSize: 20, totalPages: 1 },
       });
     });
 
@@ -322,8 +350,8 @@ describe('ExecutionService', () => {
       db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid())
         .mockReturnValueOnce(createUpdateChainVoid());
+      mockQueue.getJob.mockResolvedValue(null);
       mockQueue.getJobs.mockResolvedValue([]);
 
       const result = await service.cancelExecution(EXECUTION_ID, TENANT_ID);
@@ -333,7 +361,11 @@ describe('ExecutionService', () => {
         TENANT_ID,
         EXECUTION_ID,
         'execution:cancelled',
-        { executionId: EXECUTION_ID, status: 'cancelled' },
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          status: 'cancelled',
+          type: 'execution.cancelled',
+        }),
       );
     });
 
@@ -346,8 +378,8 @@ describe('ExecutionService', () => {
       db.select.mockReturnValueOnce(createSelectChain([pendingExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid())
         .mockReturnValueOnce(createUpdateChainVoid());
+      mockQueue.getJob.mockResolvedValue(null);
       mockQueue.getJobs.mockResolvedValue([]);
 
       const result = await service.cancelExecution(EXECUTION_ID, TENANT_ID);
@@ -364,21 +396,72 @@ describe('ExecutionService', () => {
       db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid())
         .mockReturnValueOnce(createUpdateChainVoid());
 
       const mockRemove = vi.fn().mockResolvedValue(undefined);
       const matchingJob = {
-        data: { executionId: EXECUTION_ID },
         remove: mockRemove,
+        getState: vi.fn().mockResolvedValue('waiting'),
       };
-      const otherJob = { data: { executionId: 'other-id' }, remove: vi.fn() };
-      mockQueue.getJobs.mockResolvedValue([matchingJob, otherJob]);
+      mockQueue.getJob.mockResolvedValue(matchingJob);
 
       await service.cancelExecution(EXECUTION_ID, TENANT_ID);
 
       expect(mockRemove).toHaveBeenCalled();
-      expect(otherJob.remove).not.toHaveBeenCalled();
+      expect(mockQueue.getJobs).not.toHaveBeenCalled();
+    });
+
+    it('应在 getJob 回退时扫描 prioritized 队列任务', async () => {
+      const runningExecution = { ...mockExecution, status: 'running' as const };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      const mockRemove = vi.fn().mockResolvedValue(undefined);
+      mockQueue.getJob.mockResolvedValue(null);
+      mockQueue.getJobs.mockResolvedValue([
+        {
+          data: { executionId: EXECUTION_ID },
+          remove: mockRemove,
+        },
+      ]);
+
+      await service.cancelExecution(EXECUTION_ID, TENANT_ID);
+
+      expect(mockQueue.getJobs).toHaveBeenCalledWith([
+        'waiting',
+        'delayed',
+        'prioritized',
+      ]);
+      expect(mockRemove).toHaveBeenCalled();
+    });
+
+    it('应跳过移除 active 状态的 BullMQ 任务', async () => {
+      const runningExecution = { ...mockExecution, status: 'running' as const };
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      const mockRemove = vi.fn().mockResolvedValue(undefined);
+      const activeJob = {
+        remove: mockRemove,
+        getState: vi.fn().mockResolvedValue('active'),
+      };
+      mockQueue.getJob.mockResolvedValue(activeJob);
+
+      await service.cancelExecution(EXECUTION_ID, TENANT_ID);
+
+      expect(mockRemove).not.toHaveBeenCalled();
     });
 
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
@@ -414,15 +497,18 @@ describe('ExecutionService', () => {
   describe('initializeSteps', () => {
     it('应从快照节点创建步骤并标记执行完成', async () => {
       db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainVoid())
-        .mockReturnValueOnce(createUpdateChainVoid());
-      db.insert.mockReturnValueOnce(createInsertChainVoid());
+      txDb.select.mockReturnValueOnce(createSelectChain([mockExecution]));
+      txDb.update
+        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
+        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]));
+      txDb.insert.mockReturnValueOnce(createInsertChainVoid());
 
       await service.initializeSteps(EXECUTION_ID);
 
-      expect(db.update).toHaveBeenCalledTimes(2);
-      expect(db.insert).toHaveBeenCalledTimes(1);
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(txDb.execute).toHaveBeenCalledTimes(2);
+      expect(txDb.update).toHaveBeenCalledTimes(2);
+      expect(txDb.insert).toHaveBeenCalledTimes(1);
       expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
@@ -445,27 +531,63 @@ describe('ExecutionService', () => {
         definitionSnapshot: { ...mockSnapshot, nodes: [] },
       };
       db.select.mockReturnValueOnce(createSelectChain([emptyExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainVoid())
-        .mockReturnValueOnce(createUpdateChainVoid());
+      txDb.select.mockReturnValueOnce(createSelectChain([emptyExecution]));
+      txDb.update
+        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
+        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]));
 
       await service.initializeSteps(EXECUTION_ID);
 
-      expect(db.insert).not.toHaveBeenCalled();
+      expect(txDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('应在完成前被取消时撤销待处理步骤并跳过完成广播', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([mockExecution]))
+        .mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
+      txDb.update
+        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
+        .mockReturnValueOnce(createUpdateChainReturning([]))
+        .mockReturnValueOnce(createUpdateChainVoid());
+      txDb.insert.mockReturnValueOnce(createInsertChainVoid());
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(txDb.update).toHaveBeenCalledTimes(3);
+      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+    });
+
+    it('应在执行已取消时跳过步骤初始化', async () => {
+      const cancelledExecution = {
+        ...mockExecution,
+        status: 'cancelled' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([cancelledExecution]));
+      txDb.select.mockReturnValueOnce(createSelectChain([cancelledExecution]));
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(txDb.update).not.toHaveBeenCalled();
+      expect(txDb.insert).not.toHaveBeenCalled();
     });
   });
 
   describe('markFailed', () => {
     it('应标记执行为失败并广播事件', async () => {
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
       db.select.mockReturnValueOnce(
         createSelectChain([{ tenantId: TENANT_ID }]),
+      );
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: EXECUTION_ID }]),
       );
 
       const error = new Error('执行失败');
       await service.markFailed(EXECUTION_ID, error);
 
-      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(txDb.execute).toHaveBeenCalledTimes(2);
+      expect(txDb.update).toHaveBeenCalledTimes(1);
       expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
@@ -474,13 +596,26 @@ describe('ExecutionService', () => {
       );
     });
 
+    it('应在执行已取消时跳过失败覆盖', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ tenantId: TENANT_ID }]),
+      );
+      txDb.update.mockReturnValueOnce(createUpdateChainReturning([]));
+      txDb.select.mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
+
+      const error = new Error('执行失败');
+      await service.markFailed(EXECUTION_ID, error);
+
+      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+    });
+
     it('应在执行不存在时不广播事件', async () => {
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       const error = new Error('执行失败');
       await service.markFailed(EXECUTION_ID, error);
 
+      expect(db.transaction).not.toHaveBeenCalled();
       expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
     });
   });

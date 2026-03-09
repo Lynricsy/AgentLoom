@@ -1,5 +1,13 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  afterEach,
+  type Mock,
+} from 'vitest';
 
 import { EmbeddingService } from '../services/embedding.service';
 import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';

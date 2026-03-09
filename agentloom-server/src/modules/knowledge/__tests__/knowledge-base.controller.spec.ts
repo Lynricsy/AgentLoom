@@ -59,6 +59,9 @@ describe('KnowledgeBaseController', () => {
         name: '测试知识库',
         description: '描述',
         visibility: 'private' as const,
+        chunkSize: 1024,
+        chunkOverlap: 128,
+        embeddingModel: 'text-embedding-3-small' as const,
       };
       const createdKB = {
         id: KB_ID,

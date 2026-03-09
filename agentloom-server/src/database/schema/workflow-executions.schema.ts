@@ -13,7 +13,6 @@ import { workflowVersions } from './workflow-versions.schema';
 import type { WorkflowVersionSnapshot } from './workflow-versions.schema';
 import { users } from './users.schema';
 import { createDirectTenantPolicies } from './rls-policies';
-import { createJoinTenantPolicies } from './rls-policies';
 
 export const executionStatusEnum = pgEnum('execution_status_enum', [
   'pending',
@@ -24,15 +23,11 @@ export const executionStatusEnum = pgEnum('execution_status_enum', [
   'cancelled',
 ]);
 
-export const stepStatusEnum = pgEnum('step_status_enum', [
-  'pending',
-  'queued',
-  'running',
-  'waiting_intervention',
-  'completed',
-  'failed',
-  'skipped',
-  'cancelled',
+export const executionTriggerTypeEnum = pgEnum('execution_trigger_type_enum', [
+  'manual',
+  'api',
+  'webhook',
+  'system',
 ]);
 
 export const workflowExecutions = pgTable(
@@ -53,6 +48,15 @@ export const workflowExecutions = pgTable(
     tenantId: uuid('tenant_id').notNull(),
 
     status: executionStatusEnum('status').notNull().default('pending'),
+
+    triggerType: executionTriggerTypeEnum('trigger_type')
+      .notNull()
+      .default('manual'),
+
+    inputParams: jsonb('input_params')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
 
     definitionSnapshot: jsonb('definition_snapshot')
       .$type<WorkflowVersionSnapshot>()
@@ -103,57 +107,3 @@ export const workflowExecutions = pgTable(
 
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 export type NewWorkflowExecution = typeof workflowExecutions.$inferInsert;
-
-export const executionSteps = pgTable(
-  'execution_steps',
-  {
-    id: uuid('id')
-      .primaryKey()
-      .default(sql`uuid_generate_v7()`),
-
-    executionId: uuid('execution_id')
-      .notNull()
-      .references(() => workflowExecutions.id, { onDelete: 'cascade' }),
-
-    nodeId: uuid('node_id').notNull(),
-
-    stepOrder: integer('step_order').notNull(),
-
-    status: stepStatusEnum('status').notNull().default('pending'),
-
-    nodeType: jsonb('node_type').$type<string>(),
-
-    nodeData: jsonb('node_data').$type<Record<string, unknown>>(),
-
-    result: jsonb('result').$type<Record<string, unknown>>(),
-
-    errorMessage: jsonb('error_message').$type<{
-      message: string;
-      stack?: string;
-    }>(),
-
-    startedAt: timestamp('started_at', { withTimezone: true }),
-
-    completedAt: timestamp('completed_at', { withTimezone: true }),
-
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    index('idx_execution_steps_execution_id').on(table.executionId),
-    index('idx_execution_steps_status').on(table.executionId, table.status),
-    ...createJoinTenantPolicies(
-      'execution_steps',
-      'execution_id',
-      'workflow_executions',
-    ),
-  ],
-);
-
-export type ExecutionStep = typeof executionSteps.$inferSelect;
-export type NewExecutionStep = typeof executionSteps.$inferInsert;

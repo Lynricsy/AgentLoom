@@ -134,6 +134,13 @@
       "when": 1773019115645,
       "tag": "0018_execution-engine",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773021013276,
+      "tag": "0019_execution-engine-contract-fixes",
+      "breakpoints": true
     }
   ]
 }

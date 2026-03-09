@@ -18,6 +18,7 @@ export const executionStepSchema = z.object({
   nodeType: z.string().nullable(),
   nodeData: z.record(z.string(), z.unknown()).nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
+  checkpointData: z.record(z.string(), z.unknown()).nullable(),
   errorMessage: z
     .object({ message: z.string(), stack: z.string().optional() })
     .nullable(),
@@ -29,6 +30,7 @@ export const executionStepSchema = z.object({
 
 export const executionResponseSchema = z.object({
   id: z.string().uuid(),
+  workflowId: z.string().uuid(),
   workflowDefinitionId: z.string().uuid(),
   workflowVersionId: z.string().uuid(),
   tenantId: z.string().uuid(),
@@ -40,6 +42,8 @@ export const executionResponseSchema = z.object({
     'failed',
     'cancelled',
   ]),
+  triggerType: z.enum(['manual', 'api', 'webhook', 'system']),
+  inputParams: z.record(z.string(), z.unknown()),
   definitionSnapshot: z.record(z.string(), z.unknown()),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),

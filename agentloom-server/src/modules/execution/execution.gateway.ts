@@ -28,14 +28,28 @@ export class ExecutionGateway
     this.logger.debug(`Client disconnected: ${client.id}`);
   }
 
+  @SubscribeMessage('execution:subscribe')
+  handleSubscribe(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ) {
+    this.joinRoom(client, payload);
+  }
+
   @SubscribeMessage('join')
   handleJoin(
     client: Socket,
     payload: { tenantId: string; executionId: string },
   ) {
-    const room = this.buildRoom(payload.tenantId, payload.executionId);
-    void client.join(room);
-    this.logger.debug(`Client ${client.id} joined room ${room}`);
+    this.joinRoom(client, payload);
+  }
+
+  @SubscribeMessage('execution:unsubscribe')
+  handleUnsubscribe(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ) {
+    this.leaveRoom(client, payload);
   }
 
   @SubscribeMessage('leave')
@@ -43,6 +57,22 @@ export class ExecutionGateway
     client: Socket,
     payload: { tenantId: string; executionId: string },
   ) {
+    this.leaveRoom(client, payload);
+  }
+
+  private joinRoom(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ): void {
+    const room = this.buildRoom(payload.tenantId, payload.executionId);
+    void client.join(room);
+    this.logger.debug(`Client ${client.id} joined room ${room}`);
+  }
+
+  private leaveRoom(
+    client: Socket,
+    payload: { tenantId: string; executionId: string },
+  ): void {
     const room = this.buildRoom(payload.tenantId, payload.executionId);
     void client.leave(room);
     this.logger.debug(`Client ${client.id} left room ${room}`);

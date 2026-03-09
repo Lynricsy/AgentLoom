@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -14,13 +15,14 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ExecutionService } from './execution.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
+import { RunWorkflowDto } from './dto/run-workflow.dto';
 
 @ApiTags('Executions')
 @Controller()
 export class ExecutionController {
   constructor(private readonly executionService: ExecutionService) {}
 
-  @Post('workflow-definitions/:workflowId/run')
+  @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
   @HttpCode(HttpStatus.ACCEPTED)
   @Roles('owner', 'admin', 'creator', 'operator')
   @ApiOperation({ summary: '启动工作流执行' })
@@ -28,15 +30,17 @@ export class ExecutionController {
   @ApiResponse({ status: 409, description: '工作流未发布' })
   async runWorkflow(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
+    @Body() dto: RunWorkflowDto,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ) {
     const execution = await this.executionService.runWorkflow(
       workflowId,
+      dto,
       tenantId,
       userId,
     );
-    return { data: execution };
+    return { data: this.serializeExecution(execution) };
   }
 
   @Get('executions/:executionId')
@@ -47,10 +51,13 @@ export class ExecutionController {
   @ApiResponse({ status: 404, description: '执行不存在' })
   async getExecution(@Param('executionId', ParseUUIDPipe) executionId: string) {
     const execution = await this.executionService.getExecution(executionId);
-    return { data: execution };
+    return { data: this.serializeExecution(execution) };
   }
 
-  @Get('workflow-definitions/:workflowId/executions')
+  @Get([
+    'workflow-definitions/:workflowId/executions',
+    'workflows/:workflowId/executions',
+  ])
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取工作流执行历史' })
@@ -59,12 +66,17 @@ export class ExecutionController {
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Query() query: ListExecutionsQueryDto,
   ) {
-    return this.executionService.listExecutions(
+    const result = await this.executionService.listExecutions(
       workflowId,
       query.page,
-      query.pageSize,
+      query.limit,
       query.status,
     );
+
+    return {
+      ...result,
+      data: result.data.map((execution) => this.serializeExecution(execution)),
+    };
   }
 
   @Post('executions/:executionId/cancel')
@@ -82,6 +94,18 @@ export class ExecutionController {
       executionId,
       tenantId,
     );
-    return { data: execution };
+    return { data: this.serializeExecution(execution) };
+  }
+
+  private serializeExecution<
+    T extends {
+      workflowDefinitionId: string;
+      steps?: Array<Record<string, unknown>>;
+    },
+  >(execution: T): T & { workflowId: string } {
+    return {
+      ...execution,
+      workflowId: execution.workflowDefinitionId,
+    };
   }
 }

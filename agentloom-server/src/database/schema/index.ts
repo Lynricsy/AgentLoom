@@ -75,14 +75,16 @@ export {
 } from './document-chunks.schema';
 export {
   executionStatusEnum,
-  stepStatusEnum,
   workflowExecutions,
-  executionSteps,
   type WorkflowExecution,
   type NewWorkflowExecution,
+} from './workflow-executions.schema';
+export {
+  stepStatusEnum,
+  executionSteps,
   type ExecutionStep,
   type NewExecutionStep,
-} from './workflow-executions.schema';
+} from './execution-steps.schema';
 export { getTenantId } from './rls-helpers';
 export {
   createDirectTenantPolicies,

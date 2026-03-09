@@ -1,4 +1,4 @@
-import { transactionStorage } from '../interceptors/tenant-transaction.interceptor';
+import { transactionStorage } from '../interceptors/tenant-transaction.context';
 import type { DrizzleDB } from '../../database/database.module';
 
 /**
