@@ -162,6 +162,18 @@ export class DockerService {
     return `http://127.0.0.1:${hostPort}/v1/prompt`;
   }
 
+  async getArchive(containerId: string, path: string): Promise<Buffer> {
+    const container = this.docker.getContainer(containerId);
+    const stream = await container.getArchive({ path });
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
+  }
+
   async getContainerStats(containerId: string): Promise<ContainerStats> {
     const container = this.docker.getContainer(containerId);
     const stats = await container.stats({ stream: false });

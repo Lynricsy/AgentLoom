@@ -8,6 +8,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { DockerService } from './docker.service';
 import { SandboxService } from './sandbox.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
@@ -39,6 +40,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     private readonly dockerService: DockerService,
     private readonly sandboxService: SandboxService,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
+    private readonly storageService: StorageService,
   ) {
     super();
   }
@@ -138,9 +140,33 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, tenantId } = data;
+    const { sessionId, containerId, tenantId, persistencePath } = data;
 
     if (containerId) {
+      if (persistencePath) {
+        try {
+          const archive = await this.dockerService.getArchive(
+            containerId,
+            CONTAINER_WORKSPACE,
+          );
+          const storageKey = `sandboxes/${tenantId}/${sessionId}/workspace.tar`;
+          await this.storageService.upload(
+            storageKey,
+            archive,
+            archive.length,
+            'application/x-tar',
+          );
+          this.logger.log(
+            `Workspace synced to MinIO for session ${sessionId}: ${storageKey}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to sync workspace for session ${sessionId}`,
+            error instanceof Error ? error.stack : error,
+          );
+        }
+      }
+
       await this.dockerService.stopContainer(containerId);
       await this.dockerService.removeContainer(containerId);
     }

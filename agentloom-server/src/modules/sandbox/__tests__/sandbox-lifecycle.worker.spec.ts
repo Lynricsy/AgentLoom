@@ -7,6 +7,7 @@ const mockDockerService = {
   stopContainer: vi.fn().mockResolvedValue(undefined),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   attachLogs: vi.fn().mockResolvedValue(undefined),
+  getArchive: vi.fn().mockResolvedValue(Buffer.from('fake-archive')),
 };
 
 const mockSandboxService = {
@@ -15,6 +16,10 @@ const mockSandboxService = {
 
 const mockLifecycleProducer = {
   addTimeoutCheckTask: vi.fn().mockResolvedValue({ id: 'timeout-job' }),
+};
+
+const mockStorageService = {
+  upload: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockUpdate = vi.fn().mockReturnThis();
@@ -90,6 +95,7 @@ describe('SandboxLifecycleWorker', () => {
       mockDockerService as any,
       mockSandboxService as any,
       mockLifecycleProducer as any,
+      mockStorageService as any,
     );
   });
 
@@ -199,6 +205,71 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
       expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'stopped' }),
+      );
+    });
+
+    it('有 persistencePath 时应在删除前同步 workspace 到 MinIO', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          persistencePath: '/outputs/result',
+        }),
+      );
+
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        'c-123',
+        '/workspace/',
+      );
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        'sandboxes/t1/s1/workspace.tar',
+        expect.any(Buffer),
+        expect.any(Number),
+        'application/x-tar',
+      );
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('无 persistencePath 时不应同步 workspace', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+        }),
+      );
+
+      expect(mockDockerService.getArchive).not.toHaveBeenCalled();
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('workspace 同步失败时不应阻止销毁流程', async () => {
+      mockDockerService.getArchive.mockRejectedValueOnce(
+        new Error('archive failed'),
+      );
+
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          persistencePath: '/outputs/result',
+        }),
+      );
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'stopped' }),
       );
