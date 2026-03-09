@@ -13,6 +13,7 @@ import { NodeSchedulerService } from './node-scheduler.service';
 import { AgentTaskWorker } from './agent-task.worker';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ThrottleService } from './services/throttle.service';
+import { StateReplayService } from './services/state-replay.service';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 
 @Module({
@@ -52,12 +53,14 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     AgentTaskWorker,
     EventBridgeService,
     ThrottleService,
+    StateReplayService,
   ],
   exports: [
     ExecutionService,
     ExecutionGateway,
     EventBridgeService,
     ThrottleService,
+    StateReplayService,
     StepStateMachineService,
     DagResolverService,
     NodeSchedulerService,
