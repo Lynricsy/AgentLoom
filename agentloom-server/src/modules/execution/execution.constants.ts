@@ -21,4 +21,6 @@ export interface AgentTaskJobData {
   /** 干预恢复时传入已有会话 ID */
   resumeSessionId?: string;
   intervention?: InterventionResolution;
+  /** 标记该 agent 任务应使用沙箱适配器 */
+  hasSandbox?: boolean;
 }

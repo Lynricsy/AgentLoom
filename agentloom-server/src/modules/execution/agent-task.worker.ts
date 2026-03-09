@@ -10,6 +10,10 @@ import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME_FACTORY,
+  type IAgentAdapterFactory,
+} from '../agent/agent-adapter.factory';
 import type { ContentBlock } from '../agent/types/content-block.types';
 import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
@@ -27,6 +31,8 @@ export class AgentTaskWorker extends WorkerHost {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     @Inject(AGENT_RUNTIME) private readonly agentRuntime: IAgentRuntime,
+    @Inject(AGENT_RUNTIME_FACTORY)
+    private readonly adapterFactory: IAgentAdapterFactory,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly nodeScheduler: NodeSchedulerService,
   ) {
@@ -44,6 +50,7 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       resumeSessionId,
       intervention,
+      hasSandbox,
     } = job.data;
     this.logger.log(`Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`);
 
@@ -63,6 +70,10 @@ export class AgentTaskWorker extends WorkerHost {
         `步骤 ${stepId} 不属于执行 ${executionId}`,
       );
     }
+
+    const runtime = hasSandbox
+      ? this.adapterFactory.selectAdapter(true)
+      : this.agentRuntime;
 
     const nodeData = (job.data.nodeData ?? step.nodeData ?? {}) as Record<
       string,
@@ -93,7 +104,7 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       if (!sessionId) {
-        const session = await this.agentRuntime.createSession({
+        const session = await runtime.createSession({
           agentId: nodeData.agentId as string,
           mode: 'workflow',
           tenantId,
@@ -116,7 +127,7 @@ export class AgentTaskWorker extends WorkerHost {
 
       const contentBlocks = this.buildContentBlocks(input);
 
-      for await (const event of this.agentRuntime.prompt(sessionId, contentBlocks)) {
+      for await (const event of runtime.prompt(sessionId, contentBlocks)) {
         this.stepStateMachine.broadcastAgentEvent(tenantId, executionId, stepId, event);
 
         if (event.type === 'message_chunk') {

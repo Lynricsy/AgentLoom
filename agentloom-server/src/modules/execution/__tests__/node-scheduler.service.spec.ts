@@ -12,6 +12,7 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
 } from '../execution.exceptions';
+import { SandboxService } from '../../sandbox/sandbox.service';
 import type { ExecutionStep, ReactFlowEdge, ReactFlowNode } from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
 
@@ -121,6 +122,11 @@ describe('NodeSchedulerService', () => {
     markExecutionFailed: ReturnType<typeof vi.fn>;
   };
   let mockQueue: { add: ReturnType<typeof vi.fn> };
+  let mockSandboxService: {
+    createSandboxSession: ReturnType<typeof vi.fn>;
+    getSandboxSession: ReturnType<typeof vi.fn>;
+    destroySandbox: ReturnType<typeof vi.fn>;
+  };
 
   beforeAll(() => {
     vi.useFakeTimers();
@@ -152,6 +158,14 @@ describe('NodeSchedulerService', () => {
       markExecutionFailed: vi.fn().mockResolvedValue(undefined),
     };
     mockQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    mockSandboxService = {
+      createSandboxSession: vi.fn().mockResolvedValue({
+        id: '019577a0-0000-7000-8000-sandbox00001',
+        status: 'creating',
+      }),
+      getSandboxSession: vi.fn().mockResolvedValue(null),
+      destroySandbox: vi.fn().mockResolvedValue(undefined),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -160,6 +174,7 @@ describe('NodeSchedulerService', () => {
         { provide: DagResolverService, useValue: mockDagResolver },
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockQueue },
+        { provide: SandboxService, useValue: mockSandboxService },
       ],
     }).compile();
 
@@ -264,6 +279,7 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: {},
         nodeData: { agentId: 'agent-a' },
+        hasSandbox: false,
       });
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
@@ -271,6 +287,7 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: {},
         nodeData: { agentId: 'agent-b' },
+        hasSandbox: false,
       });
     });
 
@@ -326,6 +343,7 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: { A: { answer: 'hello' } },
         nodeData: { agentId: 'agent-b' },
+        hasSandbox: false,
       });
     });
 
@@ -367,6 +385,125 @@ describe('NodeSchedulerService', () => {
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
+
+    it('sandbox 节点会创建沙箱会话并自动完成', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('S', 'sandbox', { cpu: 2, memory: 1024, disk: 5, timeout: 4 })],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'pending',
+          nodeType: 'sandbox',
+          nodeData: { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
+
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'S',
+        { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+        TENANT_ID,
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-s',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-s',
+        'completed',
+        {
+          result: {
+            sessionId: '019577a0-0000-7000-8000-sandbox00001',
+            status: 'creating',
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(EXECUTION_ID, 'step-s', TENANT_ID);
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('agent 节点上游有 sandbox 时 job 数据应包含 hasSandbox: true', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('S', 'sandbox'), makeNode('A', 'agent')],
+        [makeEdge('S', 'A')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'completed',
+          nodeType: 'sandbox',
+          result: { sessionId: 'sandbox-session-001', status: 'ready' },
+        }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-1' },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
+
+      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
+        executionId: EXECUTION_ID,
+        stepId: 'step-a',
+        tenantId: TENANT_ID,
+        input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
+        nodeData: { agentId: 'agent-1' },
+        hasSandbox: true,
+      });
+    });
+
+    it('agent 节点无 sandbox 上游时 hasSandbox 应为 false', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B')],
+        [makeEdge('A', 'B')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { answer: 'hello' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-b' },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, steps);
+
+      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
+        executionId: EXECUTION_ID,
+        stepId: 'step-b',
+        tenantId: TENANT_ID,
+        input: { A: { answer: 'hello' } },
+        nodeData: { agentId: 'agent-b' },
+        hasSandbox: false,
+      });
+    });
   });
 
   describe('onNodeCompleted', () => {
@@ -385,6 +522,36 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
       expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
       expect(mockDagResolver.resolveDag).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cleanupSandboxIfTerminal', () => {
+    it('execution 为 completed 时应触发 destroySandbox', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ status: 'completed' }]));
+
+      await service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID);
+
+      expect(mockSandboxService.destroySandbox).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('execution 为 running 时不应触发 destroySandbox', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
+
+      await service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID);
+
+      expect(mockSandboxService.destroySandbox).not.toHaveBeenCalled();
+    });
+
+    it('destroySandbox 异常时应 warn 而非抛出', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ status: 'failed' }]));
+      mockSandboxService.destroySandbox.mockRejectedValueOnce(new Error('container not found'));
+
+      await expect(
+        service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -591,7 +758,8 @@ describe('NodeSchedulerService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([failedStep]))
         .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
-        .mockReturnValueOnce(createSelectChain(steps));
+        .mockReturnValueOnce(createSelectChain(steps))
+        .mockReturnValueOnce(createSelectChain([{ status: 'failed' }]));
 
       await service.onNodeFailed(EXECUTION_ID, 'step-a', TENANT_ID);
 

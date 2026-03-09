@@ -8,6 +8,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import type { ReactFlowEdge } from '../../database/schema';
 import type { ExecutionStep } from '../../database/schema';
+import type { SandboxConfig } from '../../database/schema';
 import { DagResolverService } from './dag-resolver.service';
 import {
   StepStateMachineService,
@@ -23,6 +24,7 @@ import {
   InterventionNotAllowedException,
   AgentExecutionException,
 } from './execution.exceptions';
+import { SandboxService } from '../sandbox/sandbox.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -35,6 +37,7 @@ export class NodeSchedulerService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly dagResolver: DagResolverService,
     private readonly stepStateMachine: StepStateMachineService,
+    private readonly sandboxService: SandboxService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {}
@@ -147,11 +150,8 @@ export class NodeSchedulerService {
     }
 
     await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+    await this.cleanupSandboxIfTerminal(executionId, tenantId);
   }
-
-  /**
-   * 调度单个节点执行。
-   */
   async scheduleNode(
     executionId: string,
     nodeId: string,
@@ -184,7 +184,12 @@ export class NodeSchedulerService {
           tenantId,
           input,
           nodeData: (step.nodeData ?? {}) as Record<string, unknown>,
+          hasSandbox: this.hasSandboxUpstream(nodeId, snapshot.edges, steps),
         } satisfies AgentTaskJobData);
+        break;
+
+      case 'sandbox':
+        await this.executeSandboxNode(step, input, tenantId, executionId);
         break;
 
       case 'data_transform':
@@ -320,9 +325,8 @@ export class NodeSchedulerService {
       tenantId,
       { message: failureMessage },
     );
-  }
-
-  async resolveIntervention(
+    await this.cleanupSandboxIfTerminal(executionId, tenantId);
+  }  async resolveIntervention(
     executionId: string,
     stepId: string,
     tenantId: string,
@@ -509,6 +513,106 @@ export class NodeSchedulerService {
   }
 
   // ── 私有辅助 ───────────────────────────────────────────────
+
+  async executeSandboxNode(
+    step: ExecutionStep,
+    _input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(
+      tenantId,
+      step.id,
+      'running',
+    );
+
+    try {
+      const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const config: SandboxConfig = {
+        cpu: typeof nodeData.cpu === 'number' ? nodeData.cpu : 1,
+        memory: typeof nodeData.memory === 'number' ? nodeData.memory : 512,
+        disk: typeof nodeData.disk === 'number' ? nodeData.disk : 2,
+        timeout: typeof nodeData.timeout === 'number' ? nodeData.timeout : 2,
+        ...(typeof nodeData.persistencePath === 'string'
+          ? { persistencePath: nodeData.persistencePath }
+          : {}),
+      };
+
+      const session = await this.sandboxService.createSandboxSession(
+        executionId,
+        step.nodeId,
+        config,
+        tenantId,
+      );
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            sessionId: session.id,
+            status: session.status,
+          },
+        },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message =
+        error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        { errorMessage: { message } },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private hasSandboxUpstream(
+    nodeId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): boolean {
+    const incomingEdges = edges.filter((e) => e.target === nodeId);
+    return incomingEdges.some((edge) => {
+      const sourceStep = steps.find((s) => s.nodeId === edge.source);
+      return sourceStep?.nodeType === 'sandbox';
+    });
+  }
+
+  async cleanupSandboxIfTerminal(
+    executionId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const tenantDb = getTenantDb(this.db, tenantId);
+    const [execution] = await tenantDb
+      .select({ status: schema.workflowExecutions.status })
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId));
+
+    if (
+      execution &&
+      (execution.status === 'completed' || execution.status === 'failed')
+    ) {
+      try {
+        await this.sandboxService.destroySandbox(executionId, tenantId);
+      } catch (error) {
+        this.logger.warn(
+          `沙箱清理失败: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
 
   /**
    * 读取 execution 的 definitionSnapshot 与所有 steps。

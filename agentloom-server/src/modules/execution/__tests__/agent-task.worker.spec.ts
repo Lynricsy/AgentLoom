@@ -14,6 +14,10 @@ import {
 import { DRIZZLE } from '../../../database/database.module';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME_FACTORY,
+  type IAgentAdapterFactory,
+} from '../../agent/agent-adapter.factory';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { AgentSession } from '../../agent/types/agent-session.types';
 
@@ -129,6 +133,19 @@ describe('AgentTaskWorker', () => {
     cancel: vi.fn(),
   };
 
+  const mockSandboxRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
+    createSession: vi.fn(),
+    loadSession: vi.fn(),
+    prompt: vi.fn(),
+    cancel: vi.fn(),
+  };
+
+  const mockAdapterFactory: IAgentAdapterFactory = {
+    selectAdapter: vi.fn((hasSandbox: boolean) =>
+      hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
+    ) as ReturnType<typeof vi.fn>,
+  };
+
   const mockDb = {
     select: vi.fn(),
   };
@@ -143,6 +160,7 @@ describe('AgentTaskWorker', () => {
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
+        { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
         {
           provide: getQueueToken(AGENT_TASK_QUEUE),
@@ -518,6 +536,31 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         TENANT_ID,
       );
+    });
+
+    it('hasSandbox 为 true 时应使用 adapterFactory 选择沙箱适配器', async () => {
+      const step = makeStep();
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockSandboxRuntime.createSession.mockResolvedValue(makeSession());
+      mockSandboxRuntime.prompt.mockReturnValue(
+        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            hasSandbox: true,
+          },
+        }),
+      );
+
+      expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
+      expect(mockSandboxRuntime.createSession).toHaveBeenCalled();
+      expect(mockSandboxRuntime.prompt).toHaveBeenCalled();
+      expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
     });
   });
 
