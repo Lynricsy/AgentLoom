@@ -275,36 +275,11 @@ export class ExecutionService {
           return;
         }
 
-        if (scopedExecution.status !== 'pending') {
-          this.logger.warn(
-            `Skip step initialization for non-pending execution: ${JSON.stringify({ executionId, status: scopedExecution.status })}`,
-          );
-          return;
-        }
-
-        const [runningExecution] = await tenantDb
-          .update(schema.workflowExecutions)
-          .set({
-            status: 'running',
-            startedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(schema.workflowExecutions.id, executionId),
-              eq(schema.workflowExecutions.status, 'pending'),
-            ),
-          )
-          .returning({ id: schema.workflowExecutions.id });
-
-        if (!runningExecution) {
-          this.logger.warn(
-            `Skip step initialization after concurrent status change: ${JSON.stringify({ executionId })}`,
-          );
-          return;
-        }
-
         const { nodes } = scopedExecution.definitionSnapshot;
+        const existingSteps = await tenantDb
+          .select()
+          .from(schema.executionSteps)
+          .where(eq(schema.executionSteps.executionId, executionId));
         const stepValues = nodes.map((node, index) => ({
           executionId,
           nodeId: node.id,
@@ -314,63 +289,60 @@ export class ExecutionService {
           nodeData: node.data ?? null,
         }));
 
-        if (stepValues.length > 0) {
-          await tenantDb.insert(schema.executionSteps).values(stepValues);
-        }
+        const shouldCompleteImmediately = stepValues.length === 0;
 
-        const [completedExecution] = await tenantDb
-          .update(schema.workflowExecutions)
-          .set({
-            totalSteps: stepValues.length,
-            status: 'completed',
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(schema.workflowExecutions.id, executionId),
-              eq(schema.workflowExecutions.status, 'running'),
-            ),
-          )
-          .returning({ status: schema.workflowExecutions.status });
+        if (scopedExecution.status === 'pending') {
+          const [preparedExecution] = await tenantDb
+            .update(schema.workflowExecutions)
+            .set({
+              status: shouldCompleteImmediately ? 'completed' : 'running',
+              totalSteps: stepValues.length,
+              startedAt: new Date(),
+              ...(shouldCompleteImmediately ? { completedAt: new Date() } : {}),
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.workflowExecutions.id, executionId),
+                eq(schema.workflowExecutions.status, 'pending'),
+              ),
+            )
+            .returning({ status: schema.workflowExecutions.status });
 
-        if (!completedExecution) {
-          const [latestExecution] = await tenantDb
-            .select({ status: schema.workflowExecutions.status })
-            .from(schema.workflowExecutions)
-            .where(eq(schema.workflowExecutions.id, executionId));
+          if (!preparedExecution) {
+            const [latestExecution] = await tenantDb
+              .select({ status: schema.workflowExecutions.status })
+              .from(schema.workflowExecutions)
+              .where(eq(schema.workflowExecutions.id, executionId));
 
-          if (latestExecution?.status === 'cancelled') {
-            await tenantDb
-              .update(schema.executionSteps)
-              .set({
-                status: 'cancelled',
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(schema.executionSteps.executionId, executionId),
-                  inArray(schema.executionSteps.status, ['pending', 'queued']),
-                ),
-              );
+            this.logger.warn(
+              `Skip step initialization after concurrent status change: ${JSON.stringify({ executionId, status: latestExecution?.status ?? 'unknown' })}`,
+            );
+            return;
           }
-
+        } else if (!['running', 'paused'].includes(scopedExecution.status)) {
           this.logger.warn(
-            `Skip completion update after concurrent status change: ${JSON.stringify({ executionId, status: latestExecution?.status ?? 'unknown' })}`,
+            `Skip step initialization for unsupported execution status: ${JSON.stringify({ executionId, status: scopedExecution.status })}`,
           );
           return;
         }
 
-        this.executionGateway.broadcastEvent(
-          scopedExecution.tenantId,
-          executionId,
-          'execution:completed',
-          { executionId, status: 'completed', totalSteps: stepValues.length },
-        );
+        if (stepValues.length > 0 && existingSteps.length === 0) {
+          await tenantDb.insert(schema.executionSteps).values(stepValues);
+        }
 
         this.logger.log(
-          `Steps initialized: ${JSON.stringify({ executionId, totalSteps: stepValues.length })}`,
+          `Execution prepared: ${JSON.stringify({ executionId, totalSteps: stepValues.length, existingSteps: existingSteps.length, status: shouldCompleteImmediately ? 'completed' : 'running' })}`,
         );
+
+        if (shouldCompleteImmediately) {
+          this.executionGateway.broadcastEvent(
+            scopedExecution.tenantId,
+            executionId,
+            'execution:completed',
+            { executionId, status: 'completed', totalSteps: 0 },
+          );
+        }
       },
     );
   }

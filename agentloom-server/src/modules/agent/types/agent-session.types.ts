@@ -16,7 +16,7 @@ export type SessionMode = 'workflow' | 'conversation';
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'error';
 
 export interface SessionContext {
-  readonly history: readonly ContentBlock[];
+  history: ContentBlock[];
   readonly cwd?: string;
   readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
   readonly workflowState?: Readonly<Record<string, unknown>>;
@@ -27,9 +27,13 @@ export interface AgentSession {
   readonly agentId: string;
   readonly mode: SessionMode;
   readonly context: SessionContext;
-  readonly status: SessionStatus;
+  status: SessionStatus;
+  readonly tenantId?: string;
+  llmModelConfigId?: string;
+  readonly systemPrompt?: string;
+  readonly autonomyMode?: string;
   readonly createdAt: Date;
-  readonly updatedAt: Date;
+  updatedAt: Date;
 }
 
 export interface CreateSessionParams {
@@ -37,6 +41,10 @@ export interface CreateSessionParams {
   readonly mode: SessionMode;
   readonly cwd?: string;
   readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
+  readonly tenantId?: string;
+  readonly llmModelConfigId?: string;
+  readonly systemPrompt?: string;
+  readonly autonomyMode?: string;
   /** 初始上下文数据（在 workflow 模式下映射为 SessionContext.workflowState） */
   readonly context?: Record<string, unknown>;
 }

@@ -1,20 +1,35 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Job } from 'bullmq';
+import { DRIZZLE } from '../../../database/database.module';
+import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { ExecutionWorker } from '../execution.worker';
 import { ExecutionService, type ExecutionJobData } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: vi.fn(
+    async (
+      db: unknown,
+      _tenantId: string,
+      operation: (tenantDb: unknown) => Promise<unknown>,
+    ) => operation(db),
+  ),
+}));
 
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const TENANT_ID = '019391d4-d000-7000-0000-000000000099';
 
 const mockExecutionService: Record<string, Mock> = {
+  initializeSteps: vi.fn(),
   markFailed: vi.fn(),
 };
 
 const mockNodeScheduler: Record<string, Mock> = {
   startExecution: vi.fn(),
 };
+
+const mockDb = {};
 
 function createMockJob(
   overrides: Partial<Job<ExecutionJobData>> = {},
@@ -40,6 +55,7 @@ describe('ExecutionWorker', () => {
     const module = await Test.createTestingModule({
       providers: [
         ExecutionWorker,
+        { provide: DRIZZLE, useValue: mockDb },
         { provide: ExecutionService, useValue: mockExecutionService },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
       ],
@@ -50,18 +66,31 @@ describe('ExecutionWorker', () => {
 
   describe('process', () => {
     it('应调用 nodeScheduler.startExecution 启动 DAG 调度', async () => {
+      mockExecutionService.initializeSteps.mockResolvedValue(undefined);
       mockNodeScheduler.startExecution.mockResolvedValue(undefined);
 
       const job = createMockJob();
       await worker.process(job);
 
+      expect(mockExecutionService.initializeSteps).toHaveBeenCalledWith(
+        EXECUTION_ID,
+      );
       expect(mockNodeScheduler.startExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
       );
+      expect(runInTenantTransaction).toHaveBeenCalledWith(
+        mockDb,
+        TENANT_ID,
+        expect.any(Function),
+      );
+      expect(
+        mockExecutionService.initializeSteps.mock.invocationCallOrder[0],
+      ).toBeLessThan(mockNodeScheduler.startExecution.mock.invocationCallOrder[0]);
     });
 
     it('应在 startExecution 失败时抛出错误', async () => {
+      mockExecutionService.initializeSteps.mockResolvedValue(undefined);
       const error = new Error('DAG 调度失败');
       mockNodeScheduler.startExecution.mockRejectedValue(error);
 

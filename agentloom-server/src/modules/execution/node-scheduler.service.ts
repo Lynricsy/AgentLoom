@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
+import { Script } from 'node:vm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
@@ -15,6 +16,7 @@ import {
 import {
   AGENT_TASK_QUEUE,
   type AgentTaskJobData,
+  type InterventionResolution,
 } from './execution.constants';
 import {
   NodeInputResolutionException,
@@ -64,10 +66,11 @@ export class NodeSchedulerService {
       return;
     }
 
-    // 顺序调度第一层（避免内联节点并发竞争）
-    for (const nodeId of plan.layers[0]) {
-      await this.scheduleNode(executionId, nodeId, tenantId, snapshot, steps);
-    }
+    await Promise.all(
+      plan.layers[0].map((nodeId) =>
+        this.scheduleNode(executionId, nodeId, tenantId, snapshot, steps),
+      ),
+    );
   }
 
   /**
@@ -87,7 +90,14 @@ export class NodeSchedulerService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    const { snapshot, steps } = await this.loadExecutionContext(executionId);
+    const { execution, snapshot, steps } = await this.loadExecutionContext(
+      executionId,
+    );
+
+    if (execution.status === 'failed' || execution.status === 'cancelled') {
+      return;
+    }
+
     const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
 
     const successors =
@@ -161,19 +171,19 @@ export class NodeSchedulerService {
       .set({ input })
       .where(eq(schema.executionSteps.id, step.id));
 
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      step.id,
-      'queued',
-    );
-
-    // 按 nodeType 分发
     switch (step.nodeType) {
       case 'agent':
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'queued',
+        );
         await this.agentTaskQueue.add('agent-task', {
           executionId,
           stepId: step.id,
           tenantId,
+          input,
+          nodeData: (step.nodeData ?? {}) as Record<string, unknown>,
         } satisfies AgentTaskJobData);
         break;
 
@@ -187,18 +197,23 @@ export class NodeSchedulerService {
 
       default:
         this.logger.warn(`未知节点类型 "${step.nodeType}"，按 agent 处理`);
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'queued',
+        );
         await this.agentTaskQueue.add('agent-task', {
           executionId,
           stepId: step.id,
           tenantId,
+          input,
+          nodeData: (step.nodeData ?? {}) as Record<string, unknown>,
         } satisfies AgentTaskJobData);
     }
   }
 
   /**
    * 解析节点输入：收集所有入边对应源节点的 result。
-   *
-   * 返回 `{ [sourceNodeId]: result }`。
    * 被跳过的源节点不提供输入，根节点返回空对象。
    */
   resolveNodeInput(
@@ -224,6 +239,35 @@ export class NodeSchedulerService {
         throw new NodeInputResolutionException(nodeId);
       }
 
+      const sourceHandle = edge.sourceHandle ?? undefined;
+      const targetHandle = edge.targetHandle ?? undefined;
+
+      if (targetHandle) {
+        this.setValueAtPath(
+          input,
+          targetHandle,
+          sourceHandle
+            ? this.resolveJsonPath(
+                sourceStep.result as Record<string, unknown>,
+                sourceHandle,
+              )
+            : sourceStep.result,
+        );
+        continue;
+      }
+
+      if (sourceHandle) {
+        this.setValueAtPath(
+          input,
+          sourceHandle,
+          this.resolveJsonPath(
+            sourceStep.result as Record<string, unknown>,
+            sourceHandle,
+          ),
+        );
+        continue;
+      }
+
       input[edge.source] = sourceStep.result;
     }
 
@@ -231,7 +275,7 @@ export class NodeSchedulerService {
   }
 
   /**
-   * 节点失败后的级联处理：取消下游 pending/queued/waiting_intervention 步骤。
+   * 节点失败后的级联处理。
    */
   async onNodeFailed(
     executionId: string,
@@ -245,30 +289,15 @@ export class NodeSchedulerService {
 
     if (!failedStep) return;
 
-    const { snapshot, steps } = await this.loadExecutionContext(executionId);
-    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
-
-    // BFS 找出所有下游节点
-    const downstream = new Set<string>();
-    const queue = [...(plan.adjacencyMap.get(failedStep.nodeId) ?? [])];
-
-    while (queue.length > 0) {
-      const nodeId = queue.shift()!;
-      if (downstream.has(nodeId)) continue;
-      downstream.add(nodeId);
-      queue.push(...(plan.adjacencyMap.get(nodeId) ?? []));
-    }
-
-    // 取消所有可取消的下游步骤
+    const { steps } = await this.loadExecutionContext(executionId);
     const cancellableStatuses = new Set([
       'pending',
       'queued',
       'waiting_intervention',
     ]);
 
-    for (const nodeId of downstream) {
-      const step = steps.find((s) => s.nodeId === nodeId);
-      if (step && cancellableStatuses.has(step.status)) {
+    for (const step of steps) {
+      if (step.id !== stepId && cancellableStatuses.has(step.status)) {
         try {
           await this.stepStateMachine.updateStepStatus(
             tenantId,
@@ -283,14 +312,21 @@ export class NodeSchedulerService {
       }
     }
 
-    await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+    const failureMessage =
+      this.extractErrorMessage(failedStep.errorMessage) ?? '节点执行失败';
+
+    await this.stepStateMachine.markExecutionFailed(
+      executionId,
+      tenantId,
+      { message: failureMessage },
+    );
   }
 
   async resolveIntervention(
     executionId: string,
     stepId: string,
     tenantId: string,
-    feedback: string,
+    resolution: InterventionResolution,
   ): Promise<void> {
     const [step] = await this.tenantDb
       .select()
@@ -299,6 +335,12 @@ export class NodeSchedulerService {
 
     if (!step) {
       throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
+    }
+
+    if (step.executionId !== executionId) {
+      throw new AgentExecutionException(
+        `步骤 ${stepId} 不属于执行 ${executionId}`,
+      );
     }
 
     if (step.status !== 'waiting_intervention') {
@@ -316,8 +358,10 @@ export class NodeSchedulerService {
       executionId,
       stepId,
       tenantId,
+      input: ((step.input ?? {}) as Record<string, unknown>) ?? {},
+      nodeData: ((step.nodeData ?? {}) as Record<string, unknown>) ?? {},
       resumeSessionId: sessionId,
-      feedbackContent: feedback,
+      intervention: resolution,
     } satisfies AgentTaskJobData);
 
     this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
@@ -340,13 +384,21 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const expression =
+        typeof nodeData.expression === 'string'
+          ? nodeData.expression.trim()
+          : '';
       const mapping = nodeData.mapping as
         | Record<string, string>
         | undefined;
 
       let result: Record<string, unknown>;
 
-      if (mapping) {
+      if (expression) {
+        result = this.normalizeTransformResult(
+          this.evaluateExpression(expression, input),
+        );
+      } else if (mapping) {
         result = {};
         for (const [outputKey, inputPath] of Object.entries(mapping)) {
           result[outputKey] = this.resolveJsonPath(input, inputPath);
@@ -379,7 +431,7 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'failed',
-        { errorMessage: message },
+        { errorMessage: { message } },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
@@ -402,19 +454,31 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const expression =
+        typeof nodeData.expression === 'string'
+          ? nodeData.expression.trim()
+          : '';
       const conditionField = nodeData.conditionField as string;
       const expectedValue = nodeData.expectedValue;
 
       const flatInput = this.flattenInput(input);
-      const actualValue = flatInput[conditionField];
-      const branch = actualValue === expectedValue ? 'true' : 'false';
+      const evaluation = expression
+        ? this.evaluateExpression(expression, input)
+        : flatInput[conditionField] === expectedValue;
+      const branch = Boolean(evaluation) ? 'true' : 'false';
 
-      const result = {
-        branch,
-        evaluatedField: conditionField,
-        actualValue,
-        expectedValue,
-      };
+      const result = expression
+        ? {
+            branch,
+            expression,
+            evaluatedValue: evaluation,
+          }
+        : {
+            branch,
+            evaluatedField: conditionField,
+            actualValue: flatInput[conditionField],
+            expectedValue,
+          };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -438,7 +502,7 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'failed',
-        { errorMessage: message },
+        { errorMessage: { message } },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
@@ -465,7 +529,30 @@ export class NodeSchedulerService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.executionId, executionId));
 
-    return { snapshot, steps };
+    return { execution, snapshot, steps };
+  }
+
+  private evaluateExpression(
+    expression: string,
+    input: Record<string, unknown>,
+  ): unknown {
+    const script = new Script(`(${expression})`);
+
+    return script.runInNewContext(
+      {
+        input,
+        flatInput: this.flattenInput(input),
+      },
+      { timeout: 1000 },
+    );
+  }
+
+  private normalizeTransformResult(result: unknown): Record<string, unknown> {
+    if (result !== null && typeof result === 'object' && !Array.isArray(result)) {
+      return result as Record<string, unknown>;
+    }
+
+    return { value: result };
   }
 
   /**
@@ -569,12 +656,45 @@ export class NodeSchedulerService {
     obj: Record<string, unknown>,
     path: string,
   ): unknown {
+    if (!path) {
+      return obj;
+    }
+
     return path.split('.').reduce<unknown>((acc, key) => {
       if (acc && typeof acc === 'object') {
         return (acc as Record<string, unknown>)[key];
       }
       return undefined;
     }, obj);
+  }
+
+  private setValueAtPath(
+    target: Record<string, unknown>,
+    path: string,
+    value: unknown,
+  ): void {
+    const segments = path.split('.').filter(Boolean);
+    if (segments.length === 0) {
+      return;
+    }
+
+    let cursor = target;
+
+    for (const [index, segment] of segments.entries()) {
+      const isLeaf = index === segments.length - 1;
+
+      if (isLeaf) {
+        cursor[segment] = value;
+        return;
+      }
+
+      const next = cursor[segment];
+      if (!next || typeof next !== 'object' || Array.isArray(next)) {
+        cursor[segment] = {};
+      }
+
+      cursor = cursor[segment] as Record<string, unknown>;
+    }
   }
 
   /**
@@ -586,11 +706,25 @@ export class NodeSchedulerService {
     input: Record<string, unknown>,
   ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
-    for (const value of Object.values(input)) {
+    for (const [key, value] of Object.entries(input)) {
+      result[key] = value;
       if (value && typeof value === 'object') {
         Object.assign(result, value);
       }
     }
     return result;
+  }
+
+  private extractErrorMessage(errorMessage: unknown): string | undefined {
+    if (typeof errorMessage === 'string') {
+      return errorMessage;
+    }
+
+    if (errorMessage && typeof errorMessage === 'object') {
+      const message = (errorMessage as { message?: unknown }).message;
+      return typeof message === 'string' ? message : undefined;
+    }
+
+    return undefined;
   }
 }

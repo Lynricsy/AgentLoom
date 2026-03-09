@@ -17,7 +17,10 @@ import { ExecutionService } from './execution.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
-import { InterveneStepDto } from './dto/intervene-step.dto';
+import {
+  InterveneStepDto,
+  interveneStepSchema,
+} from './dto/intervene-step.dto';
 
 @ApiTags('Executions')
 @Controller()
@@ -114,11 +117,12 @@ export class ExecutionController {
     @Body() dto: InterveneStepDto,
     @CurrentTenant() tenantId: string,
   ) {
+    const resolution = interveneStepSchema.parse(dto);
     await this.nodeScheduler.resolveIntervention(
       executionId,
       stepId,
       tenantId,
-      dto.feedback,
+      resolution,
     );
     return { data: { executionId, stepId, status: 'intervention_accepted' } };
   }

@@ -172,11 +172,15 @@ describe('ExecutionController', () => {
   describe('interveneStep', () => {
     it('应调用 resolveIntervention 并返回 202 数据', async () => {
       mockNodeScheduler.resolveIntervention.mockResolvedValue(undefined);
+      const resolution = {
+        action: 'approve' as const,
+        feedback: '请继续执行该操作',
+      };
 
       const result = await controller.interveneStep(
         EXECUTION_ID,
         STEP_ID,
-        { feedback: '请继续执行该操作' },
+        resolution,
         TENANT_ID,
       );
 
@@ -191,7 +195,7 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
-        '请继续执行该操作',
+        resolution,
       );
     });
   });

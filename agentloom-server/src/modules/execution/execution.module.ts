@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
+import { AgentModule } from '../agent/agent.module';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
 import { ExecutionWorker } from './execution.worker';
@@ -14,6 +15,7 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 @Module({
   imports: [
     ConfigModule,
+    AgentModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: {
@@ -28,6 +30,10 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
         removeOnComplete: 1000,
         removeOnFail: 5000,
         attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
       },
     }),
   ],

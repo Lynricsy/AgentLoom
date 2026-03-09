@@ -14,9 +14,10 @@ export type StepStatus = schema.ExecutionStep['status'];
  * 终态（completed, failed, skipped, cancelled）不包含任何合法转换目标。
  */
 export const STEP_TRANSITIONS: Readonly<Record<string, ReadonlySet<string>>> = {
-  pending: new Set(['queued', 'skipped', 'cancelled']),
+  pending: new Set(['queued', 'running', 'skipped', 'cancelled']),
   queued: new Set(['running', 'cancelled']),
   running: new Set([
+    'pending',
     'completed',
     'failed',
     'waiting_intervention',
@@ -131,6 +132,23 @@ export class StepStateMachineService {
     executionId: string,
     tenantId: string,
   ): Promise<void> {
+    const [execution] = await this.tenantDb
+      .select()
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId));
+
+    if (!execution) {
+      return;
+    }
+
+    if (
+      execution.status === 'failed' ||
+      execution.status === 'cancelled' ||
+      execution.status === 'completed'
+    ) {
+      return;
+    }
+
     const steps = await this.tenantDb
       .select()
       .from(schema.executionSteps)
@@ -207,6 +225,68 @@ export class StepStateMachineService {
       {
         stepId,
         event,
+      },
+    );
+  }
+
+  broadcastStepRetry(
+    tenantId: string,
+    executionId: string,
+    stepId: string,
+    payload: {
+      attempt: number;
+      maxAttempts: number;
+      errorMessage: string;
+    },
+  ): void {
+    this.executionGateway.broadcastEvent(
+      tenantId,
+      executionId,
+      'step:retrying',
+      {
+        stepId,
+        ...payload,
+      },
+    );
+  }
+
+  async markExecutionFailed(
+    executionId: string,
+    tenantId: string,
+    errorMessage?: { message: string; stack?: string },
+  ): Promise<void> {
+    const steps = await this.tenantDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.executionId, executionId));
+
+    const completedCount = steps.filter((step) =>
+      COMPLETED_STEP_STATUSES.has(step.status),
+    ).length;
+
+    const now = new Date();
+
+    await this.tenantDb
+      .update(schema.workflowExecutions)
+      .set({
+        status: 'failed',
+        completedSteps: completedCount,
+        updatedAt: now,
+        failedAt: now,
+        ...(errorMessage ? { errorMessage } : {}),
+      })
+      .where(eq(schema.workflowExecutions.id, executionId));
+
+    this.executionGateway.broadcastEvent(
+      tenantId,
+      executionId,
+      'execution:failed',
+      {
+        executionId,
+        status: 'failed',
+        completedSteps: completedCount,
+        totalSteps: steps.length,
+        ...(errorMessage ? { errorMessage } : {}),
       },
     );
   }

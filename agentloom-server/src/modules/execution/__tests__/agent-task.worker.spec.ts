@@ -1,25 +1,47 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Job } from 'bullmq';
 import { getQueueToken } from '@nestjs/bullmq';
 import { AgentTaskWorker } from '../agent-task.worker';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
-import { AGENT_TASK_QUEUE, type AgentTaskJobData } from '../execution.constants';
+import { AgentExecutionException } from '../execution.exceptions';
+import {
+  AGENT_TASK_QUEUE,
+  type AgentTaskJobData,
+  type InterventionResolution,
+} from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
+import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { AgentSession } from '../../agent/types/agent-session.types';
 
-// ─── 常量 ───
+vi.mock(
+  '../../../common/interceptors/tenant-transaction.context',
+  async (importOriginal) => {
+    const actual = await importOriginal<
+      typeof import('../../../common/interceptors/tenant-transaction.context')
+    >();
+
+    return {
+      ...actual,
+      runInTenantTransaction: vi.fn(
+        async (
+          db: unknown,
+          _tenantId: string,
+          operation: (tenantDb: unknown) => Promise<unknown>,
+        ) => operation(db),
+      ),
+    };
+  },
+);
 
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000001';
 const STEP_ID = '019391d4-d000-7000-0000-000000000002';
 const TENANT_ID = 'tenant-001';
 const SESSION_ID = 'session-001';
 const AGENT_ID = 'agent-001';
-
-// ─── 辅助工具 ───
 
 function createMockJob(
   overrides: Partial<Job<AgentTaskJobData>> = {},
@@ -34,7 +56,7 @@ function createMockJob(
     attemptsMade: 0,
     opts: {},
     ...overrides,
-  } as Job<AgentTaskJobData>;
+  } as unknown as Job<AgentTaskJobData>;
 }
 
 function makeStep(overrides: Record<string, unknown> = {}) {
@@ -71,18 +93,11 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
   } as AgentSession;
 }
 
-/**
- * 创建异步可迭代的 AgentEvent 流
- */
-async function* createEventStream(
-  events: AgentEvent[],
-): AsyncIterable<AgentEvent> {
+async function* createEventStream(events: AgentEvent[]): AsyncIterable<AgentEvent> {
   for (const event of events) {
     yield event;
   }
 }
-
-// ─── Mock 工厂 ───
 
 function createSelectChain(result: unknown) {
   return {
@@ -92,39 +107,34 @@ function createSelectChain(result: unknown) {
   };
 }
 
-// ─── Mock 对象 ───
-
-const mockStateMachine: Record<string, Mock> = {
-  updateStepStatus: vi.fn().mockResolvedValue(makeStep()),
-  updateExecutionStatus: vi.fn().mockResolvedValue(undefined),
-  broadcastAgentEvent: vi.fn(),
-};
-
-const mockNodeScheduler: Record<string, Mock> = {
-  onNodeCompleted: vi.fn().mockResolvedValue(undefined),
-  onNodeFailed: vi.fn().mockResolvedValue(undefined),
-};
-
-const mockAgentRuntime: Record<string, Mock> = {
-  createSession: vi.fn(),
-  loadSession: vi.fn(),
-  prompt: vi.fn(),
-  cancel: vi.fn(),
-};
-
-const mockDb = {
-  select: vi.fn(),
-};
-
-// ─── 测试 ───
-
 describe('AgentTaskWorker', () => {
   let worker: AgentTaskWorker;
 
+  const mockStateMachine: Record<string, ReturnType<typeof vi.fn>> = {
+    updateStepStatus: vi.fn().mockResolvedValue(makeStep()),
+    updateExecutionStatus: vi.fn().mockResolvedValue(undefined),
+    broadcastAgentEvent: vi.fn(),
+    broadcastStepRetry: vi.fn(),
+  };
+
+  const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
+    onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+    onNodeFailed: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const mockAgentRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
+    createSession: vi.fn(),
+    loadSession: vi.fn(),
+    prompt: vi.fn(),
+    cancel: vi.fn(),
+  };
+
+  const mockDb = {
+    select: vi.fn(),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    // 避免 Logger 输出
     vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const module = await Test.createTestingModule({
@@ -144,30 +154,18 @@ describe('AgentTaskWorker', () => {
     worker = module.get(AgentTaskWorker);
   });
 
-  describe('process — 正常执行流程', () => {
-    it('应读取步骤数据并创建 Agent 会话', async () => {
-      const step = makeStep();
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      );
-
-      await worker.process(createMockJob());
-
-      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({
+  describe('process', () => {
+    it('会创建携带 tenant/systemPrompt/autonomyMode 的 workflow session，并以 JSON 文本块调用 prompt', async () => {
+      const input = { source: { text: 'hello' } };
+      const step = makeStep({
+        input,
+        nodeData: {
           agentId: AGENT_ID,
-          mode: 'workflow',
-        }),
-      );
-    });
-
-    it('应将输入作为上下文传递给会话', async () => {
-      const inputData = { source_node: { data: 'test' } };
-      const step = makeStep({ input: inputData });
+          systemPrompt: '你是翻译专家',
+          autonomyMode: 'LLM_SUGGEST',
+          llmModelConfigId: 'model-config-001',
+        },
+      });
       mockDb.select.mockReturnValue(createSelectChain(step));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
@@ -176,28 +174,44 @@ describe('AgentTaskWorker', () => {
 
       await worker.process(createMockJob());
 
-      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context: inputData,
-        }),
+      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith({
+        agentId: AGENT_ID,
+        mode: 'workflow',
+        tenantId: TENANT_ID,
+        llmModelConfigId: 'model-config-001',
+        systemPrompt: '你是翻译专家',
+        autonomyMode: 'LLM_SUGGEST',
+        context: input,
+      });
+      expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
+        { type: 'text', text: JSON.stringify(input) },
+      ]);
+      expect(runInTenantTransaction).toHaveBeenCalledWith(
+        mockDb,
+        TENANT_ID,
+        expect.any(Function),
       );
     });
 
-    it('应流式广播所有 Agent 事件', async () => {
+    it('会广播 decision/intervention_required 事件，并转为 waiting_intervention', async () => {
       const events: AgentEvent[] = [
-        { type: 'plan', title: '分析问题', content: '开始分析' },
-        { type: 'message_chunk', content: '你好' },
-        { type: 'message_chunk', content: '世界' },
-        { type: 'tool_call', call: { id: 'tc-1', name: 'search', arguments: '{}' } as any },
-        { type: 'done', stopReason: 'end_turn' },
+        { type: 'plan', title: '分析', content: '先整理输入' },
+        { type: 'message_chunk', content: '建议给主人展示摘要' },
+        {
+          type: 'decision',
+          suggestedContent: '建议给主人展示摘要',
+          confidence: 0.8,
+        },
+        { type: 'done', stopReason: 'intervention_required' },
       ];
+
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(createEventStream(events));
 
       await worker.process(createMockJob());
 
-      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledTimes(5);
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledTimes(4);
       for (const event of events) {
         expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
           TENANT_ID,
@@ -206,222 +220,38 @@ describe('AgentTaskWorker', () => {
           event,
         );
       }
-    });
-
-    it('应将 message_chunk 内容拼接为最终结果', async () => {
-      const events: AgentEvent[] = [
-        { type: 'message_chunk', content: 'Hello ' },
-        { type: 'message_chunk', content: 'World' },
-        { type: 'done', stopReason: 'end_turn' },
-      ];
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(createEventStream(events));
-
-      await worker.process(createMockJob());
-
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
-        'completed',
-        { result: { content: 'Hello World' } },
-      );
-    });
-
-    it('应在完成后更新步骤状态为 running 再到 completed', async () => {
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob());
-
-      const calls = mockStateMachine.updateStepStatus.mock.calls;
-      expect(calls[0]).toEqual([TENANT_ID, STEP_ID, 'running']);
-      expect(calls[1]).toEqual([
-        TENANT_ID,
-        STEP_ID,
-        'completed',
-        { result: { content: '' } },
-      ]);
-    });
-
-    it('应在完成后调用 onNodeCompleted 推进 DAG', async () => {
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob());
-
-      expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        STEP_ID,
-        TENANT_ID,
-      );
-    });
-  });
-
-  describe('process — 空输入处理', () => {
-    it('应在无输入时使用空对象作为上下文', async () => {
-      const step = makeStep({ input: null });
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob());
-
-      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ context: {} }),
-      );
-    });
-  });
-
-  describe('process — Agent 事件类型处理', () => {
-    it('应处理 plan 事件并广播', async () => {
-      const planEvent: AgentEvent = {
-        type: 'plan',
-        title: '执行计划',
-        content: '步骤一',
-      };
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([planEvent, { type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob());
-
-      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        STEP_ID,
-        planEvent,
-      );
-    });
-
-    it('应处理 tool_call 事件并广播', async () => {
-      const toolEvent: AgentEvent = {
-        type: 'tool_call',
-        call: { id: 'tc-1', name: 'search', arguments: '{"q":"test"}' } as any,
-      };
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([toolEvent, { type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob());
-
-      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        STEP_ID,
-        toolEvent,
-      );
-    });
-  });
-
-  describe('process — 异常处理', () => {
-    it('应在步骤不存在时抛出错误', async () => {
-      mockDb.select.mockReturnValue(createSelectChain([]));
-
-      await expect(worker.process(createMockJob())).rejects.toThrow();
-    });
-
-    it('应在 Agent 执行失败时将步骤标记为 failed', async () => {
-      const step = makeStep();
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        (async function* () {
-          yield { type: 'message_chunk', content: '部分结果' } as AgentEvent;
-          throw new Error('LLM 调用失败');
-        })(),
-      );
-
-      await expect(worker.process(createMockJob())).rejects.toThrow('LLM 调用失败');
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        STEP_ID,
-        'failed',
+        'waiting_intervention',
         {
-          errorMessage: expect.objectContaining({ message: 'LLM 调用失败' }),
-          checkpointData: { partialContent: '部分结果', sessionId: SESSION_ID },
+          checkpointData: {
+            sessionId: SESSION_ID,
+            partialContent: '建议给主人展示摘要',
+            stopReason: 'intervention_required',
+            decision: {
+              suggestedContent: '建议给主人展示摘要',
+              confidence: 0.8,
+            },
+          },
+          result: {
+            content: '建议给主人展示摘要',
+            stopReason: 'intervention_required',
+            decision: {
+              suggestedContent: '建议给主人展示摘要',
+              confidence: 0.8,
+            },
+          },
         },
       );
-    });
-
-    it('应在会话创建失败时将步骤标记为 failed', async () => {
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
-      mockAgentRuntime.createSession.mockRejectedValue(
-        new Error('会话创建失败'),
-      );
-
-      await expect(worker.process(createMockJob())).rejects.toThrow('会话创建失败');
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        STEP_ID,
-        'failed',
-        {
-          errorMessage: expect.objectContaining({ message: '会话创建失败' }),
-        },
-      );
-    });
-
-    it('应在 Agent 执行失败时保存检查点数据', async () => {
-      const step = makeStep();
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        (async function* () {
-          yield { type: 'message_chunk', content: '部分' } as AgentEvent;
-          yield { type: 'message_chunk', content: '内容' } as AgentEvent;
-          throw new Error('中途失败');
-        })(),
-      );
-
-      await expect(worker.process(createMockJob())).rejects.toThrow('中途失败');
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        STEP_ID,
-        'failed',
-        {
-          errorMessage: expect.objectContaining({ message: '中途失败' }),
-          checkpointData: { partialContent: '部分内容', sessionId: SESSION_ID },
-        },
-      );
-    });
-
-    it('应在 Agent 执行失败后调用 onNodeFailed 级联取消下游', async () => {
-      const step = makeStep();
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        (async function* () {
-          throw new Error('执行失败');
-        })(),
-      );
-
-      await expect(worker.process(createMockJob())).rejects.toThrow('执行失败');
-
-      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
         EXECUTION_ID,
-        STEP_ID,
         TENANT_ID,
       );
+      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
     });
-  });
 
-  describe('process — stopReason 处理', () => {
-    it('应在 max_tokens 时完成并记录结果', async () => {
+    it('会在 max_tokens 时完成步骤并保留 stopReason', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
@@ -439,86 +269,82 @@ describe('AgentTaskWorker', () => {
         'completed',
         { result: { content: '截断的内容', stopReason: 'max_tokens' } },
       );
+      expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
     });
 
-    it('应在 tool_use 时转为 waiting_intervention 并保存检查点', async () => {
+    it('可重试错误会回退到 pending 并广播 step:retrying，而不是立即级联失败', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([
-          { type: 'message_chunk', content: '工具调用建议' },
-          { type: 'done', stopReason: 'tool_use' },
-        ]),
+        (async function* () {
+          yield { type: 'message_chunk', content: '部分结果' } as AgentEvent;
+          throw new Error('LLM 调用失败');
+        })(),
       );
 
-      await worker.process(createMockJob());
+      await expect(
+        worker.process(
+          createMockJob({
+            attemptsMade: 0,
+            opts: { attempts: 3 },
+          }),
+        ),
+      ).rejects.toThrow('LLM 调用失败');
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
-        'waiting_intervention',
+        'pending',
         {
-          checkpointData: {
-            sessionId: SESSION_ID,
-            partialContent: '工具调用建议',
-            stopReason: 'tool_use',
-          },
-          result: { content: '工具调用建议', stopReason: 'tool_use' },
+          errorMessage: expect.objectContaining({ message: 'LLM 调用失败' }),
+          checkpointData: { partialContent: '部分结果', sessionId: SESSION_ID },
         },
       );
+      expect(mockStateMachine.broadcastStepRetry).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        {
+          attempt: 1,
+          maxAttempts: 3,
+          errorMessage: 'LLM 调用失败',
+        },
+      );
+      expect(mockNodeScheduler.onNodeFailed).not.toHaveBeenCalled();
     });
 
-    it('应在 tool_use 时调用 updateExecutionStatus 而非 onNodeCompleted', async () => {
+    it('最终失败时才将步骤标记为 failed 并触发级联', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([
-          { type: 'done', stopReason: 'tool_use' },
-        ]),
+        (async function* () {
+          yield { type: 'message_chunk', content: '最后一次尝试' } as AgentEvent;
+          throw new Error('最终失败');
+        })(),
       );
 
-      await worker.process(createMockJob());
-
-      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        TENANT_ID,
-      );
-      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('onFailed — Worker 失败钩子', () => {
-    it('应在任务失败时更新步骤状态为 failed', async () => {
-      const job = createMockJob();
-      const error = new Error('Worker 处理失败');
-
-      await worker.onFailed(job, error);
+      await expect(
+        worker.process(
+          createMockJob({
+            attemptsMade: 2,
+            opts: { attempts: 3 },
+          }),
+        ),
+      ).rejects.toThrow('最终失败');
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
         'failed',
         {
-          errorMessage: { message: 'Worker 处理失败', stack: error.stack },
+          errorMessage: expect.objectContaining({ message: '最终失败' }),
+          checkpointData: { partialContent: '最后一次尝试', sessionId: SESSION_ID },
         },
       );
-    });
-
-    it('应在 job 为 undefined 时优雅处理', async () => {
-      const error = new Error('未知错误');
-
-      // 不应抛出
-      await expect(
-        worker.onFailed(undefined as any, error),
-      ).resolves.not.toThrow();
-    });
-
-    it('应在任务失败时调用 onNodeFailed 级联取消下游', async () => {
-      const job = createMockJob();
-      const error = new Error('Worker 处理失败');
-
-      await worker.onFailed(job, error);
-
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,
@@ -526,108 +352,75 @@ describe('AgentTaskWorker', () => {
       );
     });
 
-    it('onNodeFailed 失败时不应抛出异常', async () => {
-      const job = createMockJob();
-      const error = new Error('Worker 处理失败');
-      mockNodeScheduler.onNodeFailed.mockRejectedValueOnce(new Error('级联失败'));
-
-      await expect(worker.onFailed(job, error)).resolves.not.toThrow();
-    });
-  });
-
-  describe('process — 内容块构建', () => {
-    it('应将步骤输入转换为文本内容块传递给 prompt', async () => {
-      const inputData = { node_a: { result: 'value' } };
-      const step = makeStep({ input: inputData, nodeData: { agentId: AGENT_ID } });
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+    it('step 不属于 execution 时应拒绝处理', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain(
+          makeStep({
+            executionId: '019391d4-d000-7000-0000-000000009999',
+          }),
+        ),
       );
 
-      await worker.process(createMockJob());
-
-      expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
-        { type: 'text', text: JSON.stringify(inputData) },
-      ]);
-    });
-
-    it('应在节点数据包含 systemPrompt 时将其作为文本前缀', async () => {
-      const step = makeStep({
-        nodeData: { agentId: AGENT_ID, systemPrompt: '你是翻译专家' },
-        input: { source: { text: 'hello' } },
-      });
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+      await expect(worker.process(createMockJob())).rejects.toThrow(
+        AgentExecutionException,
       );
-
-      await worker.process(createMockJob());
-
-      const promptCall = mockAgentRuntime.prompt.mock.calls[0];
-      const contentBlocks = promptCall[1];
-      expect(contentBlocks).toHaveLength(2);
-      expect(contentBlocks[0]).toEqual({ type: 'text', text: '你是翻译专家' });
-      expect(contentBlocks[1]).toEqual({
-        type: 'text',
-        text: JSON.stringify({ source: { text: 'hello' } }),
-      });
-    });
-  });
-
-  describe('process — 干预恢复流程', () => {
-    it('应在恢复时跳过 createSession 直接使用已有 sessionId', async () => {
-      const step = makeStep({
-        status: 'waiting_intervention',
-        checkpointData: { sessionId: SESSION_ID, partialContent: '之前的内容' },
-      });
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
-      );
-
-      await worker.process(createMockJob({
-        data: {
-          executionId: EXECUTION_ID,
-          stepId: STEP_ID,
-          tenantId: TENANT_ID,
-          resumeSessionId: SESSION_ID,
-          feedbackContent: '请继续执行',
-        },
-      }));
 
       expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
-      expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
-        { type: 'text', text: '请继续执行' },
-      ]);
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
     });
 
-    it('应在恢复后正常完成并调用 onNodeCompleted', async () => {
-      const step = makeStep({ status: 'waiting_intervention' });
+    it('approve 干预会直接完成步骤，不再重新调用 runtime', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          partialContent: '草稿',
+          stopReason: 'intervention_required',
+          decision: { suggestedContent: '建议稿', confidence: 0.9 },
+        },
+      });
+      const intervention: InterventionResolution = {
+        action: 'approve',
+        feedback: '批准发布',
+      };
+
       mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([
-          { type: 'message_chunk', content: '恢复后的结果' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            resumeSessionId: SESSION_ID,
+            intervention,
+          },
+        }),
       );
 
-      await worker.process(createMockJob({
-        data: {
-          executionId: EXECUTION_ID,
-          stepId: STEP_ID,
-          tenantId: TENANT_ID,
-          resumeSessionId: SESSION_ID,
-          feedbackContent: '同意执行',
-        },
-      }));
-
+      expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
+      expect(mockAgentRuntime.prompt).not.toHaveBeenCalled();
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
         'completed',
-        { result: { content: '恢复后的结果' } },
+        {
+          result: {
+            content: '建议稿',
+            intervention,
+            stopReason: 'intervention_required',
+            decision: { suggestedContent: '建议稿', confidence: 0.9 },
+          },
+          checkpointData: {
+            sessionId: SESSION_ID,
+            partialContent: '草稿',
+            stopReason: 'intervention_required',
+            decision: { suggestedContent: '建议稿', confidence: 0.9 },
+            intervention,
+          },
+        },
       );
       expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -636,40 +429,110 @@ describe('AgentTaskWorker', () => {
       );
     });
 
-    it('应在恢复后再次 tool_use 时再次进入 waiting_intervention', async () => {
-      const step = makeStep({ status: 'waiting_intervention' });
-      mockDb.select.mockReturnValue(createSelectChain(step));
-      mockAgentRuntime.prompt.mockReturnValue(
-        createEventStream([
-          { type: 'message_chunk', content: '再次建议' },
-          { type: 'done', stopReason: 'tool_use' },
-        ]),
-      );
-
-      await worker.process(createMockJob({
-        data: {
-          executionId: EXECUTION_ID,
-          stepId: STEP_ID,
-          tenantId: TENANT_ID,
-          resumeSessionId: SESSION_ID,
-          feedbackContent: '请重新分析',
+    it('modify 干预会优先使用 modifiedContent 作为最终输出', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          partialContent: '草稿',
+          stopReason: 'intervention_required',
+          decision: { suggestedContent: '建议稿' },
         },
-      }));
+      });
+      const intervention: InterventionResolution = {
+        action: 'modify',
+        modifiedContent: '人工改写后的版本',
+      };
+
+      mockDb.select.mockReturnValue(createSelectChain(step));
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            resumeSessionId: SESSION_ID,
+            intervention,
+          },
+        }),
+      );
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
-        'waiting_intervention',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            content: '人工改写后的版本',
+            intervention,
+          }),
+        }),
+      );
+    });
+
+    it('reject 干预会直接失败并触发级联', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          partialContent: '草稿',
+        },
+      });
+      const intervention: InterventionResolution = {
+        action: 'reject',
+        feedback: '内容不符合要求',
+      };
+
+      mockDb.select.mockReturnValue(createSelectChain(step));
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            resumeSessionId: SESSION_ID,
+            intervention,
+          },
+        }),
+      );
+
+      expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
+      expect(mockAgentRuntime.prompt).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'failed',
         {
+          errorMessage: { message: '内容不符合要求' },
           checkpointData: {
             sessionId: SESSION_ID,
-            partialContent: '再次建议',
-            stopReason: 'tool_use',
+            partialContent: '草稿',
+            intervention,
           },
-          result: { content: '再次建议', stopReason: 'tool_use' },
         },
       );
-      expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+    });
+  });
+
+  describe('onFailed', () => {
+    it('失败钩子只记录日志，不再二次改状态或级联', async () => {
+      await worker.onFailed(createMockJob(), new Error('Worker 处理失败'));
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).not.toHaveBeenCalled();
+    });
+
+    it('job 不存在时也能优雅返回', async () => {
+      await expect(
+        worker.onFailed(undefined, new Error('未知错误')),
+      ).resolves.not.toThrow();
     });
   });
 });

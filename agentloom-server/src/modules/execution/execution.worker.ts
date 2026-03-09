@@ -1,6 +1,8 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { ExecutionService, type ExecutionJobData } from './execution.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { EXECUTION_QUEUE } from './execution.constants';
@@ -10,6 +12,7 @@ export class ExecutionWorker extends WorkerHost {
   private readonly logger = new Logger(ExecutionWorker.name);
 
   constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly executionService: ExecutionService,
     private readonly nodeScheduler: NodeSchedulerService,
   ) {
@@ -22,7 +25,10 @@ export class ExecutionWorker extends WorkerHost {
       `Processing execution: ${JSON.stringify({ executionId, jobId: job.id })}`,
     );
 
-    await this.nodeScheduler.startExecution(executionId, tenantId);
+    await runInTenantTransaction(this.db, tenantId, async () => {
+      await this.executionService.initializeSteps(executionId);
+      await this.nodeScheduler.startExecution(executionId, tenantId);
+    });
   }
 
   @OnWorkerEvent('failed')

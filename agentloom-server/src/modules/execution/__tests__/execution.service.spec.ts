@@ -173,6 +173,21 @@ describe('ExecutionService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    db.select.mockReset();
+    db.insert.mockReset();
+    db.update.mockReset();
+    db.delete.mockReset();
+    db.execute.mockReset();
+    db.transaction.mockReset();
+    txDb.select.mockReset();
+    txDb.insert.mockReset();
+    txDb.update.mockReset();
+    txDb.delete.mockReset();
+    txDb.execute.mockReset();
+    mockQueue.add.mockReset();
+    mockQueue.getJobs.mockReset();
+    mockQueue.getJob.mockReset();
+    mockGateway.broadcastEvent.mockReset();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -496,26 +511,23 @@ describe('ExecutionService', () => {
   });
 
   describe('initializeSteps', () => {
-    it('应从快照节点创建步骤并标记执行完成', async () => {
+    it('应从快照节点创建步骤并将执行准备为 running', async () => {
       db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
-      txDb.select.mockReturnValueOnce(createSelectChain([mockExecution]));
-      txDb.update
-        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
-        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([mockExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ status: 'running' }]),
+      );
       txDb.insert.mockReturnValueOnce(createInsertChainVoid());
 
       await service.initializeSteps(EXECUTION_ID);
 
       expect(db.transaction).toHaveBeenCalledTimes(1);
       expect(txDb.execute).toHaveBeenCalledTimes(2);
-      expect(txDb.update).toHaveBeenCalledTimes(2);
+      expect(txDb.update).toHaveBeenCalledTimes(1);
       expect(txDb.insert).toHaveBeenCalledTimes(1);
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        'execution:completed',
-        { executionId: EXECUTION_ID, status: 'completed', totalSteps: 2 },
-      );
+      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
     });
 
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
@@ -526,36 +538,64 @@ describe('ExecutionService', () => {
       );
     });
 
-    it('应在没有节点时跳过步骤插入', async () => {
+    it('应在没有节点时跳过步骤插入并直接完成 execution', async () => {
       const emptyExecution = {
         ...mockExecution,
         definitionSnapshot: { ...mockSnapshot, nodes: [] },
       };
       db.select.mockReturnValueOnce(createSelectChain([emptyExecution]));
-      txDb.select.mockReturnValueOnce(createSelectChain([emptyExecution]));
-      txDb.update
-        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
-        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([emptyExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ status: 'completed' }]),
+      );
 
       await service.initializeSteps(EXECUTION_ID);
 
       expect(txDb.insert).not.toHaveBeenCalled();
+      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        'execution:completed',
+        { executionId: EXECUTION_ID, status: 'completed', totalSteps: 0 },
+      );
     });
 
-    it('应在完成前被取消时撤销待处理步骤并跳过完成广播', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
+    it('应在执行已 running 且缺少步骤时补建步骤而不重复切换状态', async () => {
+      const runningExecution = {
+        ...mockExecution,
+        status: 'running' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
       txDb.select
-        .mockReturnValueOnce(createSelectChain([mockExecution]))
-        .mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
-      txDb.update
-        .mockReturnValueOnce(createUpdateChainReturning([{ id: EXECUTION_ID }]))
-        .mockReturnValueOnce(createUpdateChainReturning([]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
       txDb.insert.mockReturnValueOnce(createInsertChainVoid());
 
       await service.initializeSteps(EXECUTION_ID);
 
-      expect(txDb.update).toHaveBeenCalledTimes(3);
+      expect(txDb.update).not.toHaveBeenCalled();
+      expect(txDb.insert).toHaveBeenCalledTimes(1);
+      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+    });
+
+    it('应在执行已 running 且已有步骤时保持幂等', async () => {
+      const runningExecution = {
+        ...mockExecution,
+        status: 'running' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(
+          createSelectChain([{ executionId: EXECUTION_ID, nodeId: 'node-1' }]),
+        );
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(txDb.update).not.toHaveBeenCalled();
+      expect(txDb.insert).not.toHaveBeenCalled();
       expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
     });
 
@@ -607,6 +647,8 @@ describe('ExecutionService', () => {
       const error = new Error('执行失败');
       await service.markFailed(EXECUTION_ID, error);
 
+      expect(txDb.update).toHaveBeenCalledTimes(1);
+      expect(txDb.select).toHaveBeenCalledTimes(1);
       expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
     });
 
