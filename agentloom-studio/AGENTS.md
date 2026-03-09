@@ -54,7 +54,10 @@ src/
 - **ky** HTTP 客户端 (`shared/api/client.ts`)，全局 snake↔camel 转换 hook
 - **TanStack Query**: staleTime=30s, retry=1, 禁用 focus-refetch
 - **Query Key Factory**: 每个 feature 独立 `xxxKeys` + `xxxApi` + `useXxx` hooks
-- **Socket.IO**: `/execution` namespace，typed events，`lastEventId` 断线续传，`callbacksRef` 模式
+- **Socket.IO**: `/execution` namespace，typed events (`execution:subscribe`/`execution:unsubscribe` 带 ACK)，`lastEventId` 断线续传，5s 重连 (max 30s)，`callbacksRef` 模式
+  - `useExecutionSocket`: 底层 Socket.IO 连接管理，事件监听
+  - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
+  - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 
 ## 样式
 

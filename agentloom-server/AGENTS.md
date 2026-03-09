@@ -45,7 +45,23 @@ HTTP POST /executions
               → DAG 解析 → 并行执行就绪节点
                 → AgentTaskWorker (agent-task-queue)
                   → AgentAdapterFactory → InProcess|Sandbox
-                    → ExecutionGateway (Socket.IO 实时推送)
+
+实时推送管线 (所有广播统一走此路径):
+  StepStateMachineService ─┐
+  ExecutionService ────────┤── EventBridgeService (monotonic eventId 信封)
+  AgentTaskWorker ─────────┘        │
+                            ┌───────┴──────────┐
+                            │  output_chunk     │  其他事件
+                            ▼                   ▼
+                    ThrottleService        直接 broadcastTypedEvent()
+                    (50ms merge window)         │
+                    (100 events/s bucket)       │
+                            │                   │
+                            └───────┬───────────┘
+                                    ▼
+                          ExecutionGateway.broadcastTypedEvent()
+                                    │
+                          Socket.IO → 客户端
 ```
 
 ## BullMQ 队列
@@ -66,9 +82,13 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
 
 ## WebSocket
 
-- `/execution` namespace: subscribe/unsubscribe/state snapshot/throttled events
+- `/execution` namespace: `execution:subscribe`/`execution:unsubscribe` (带 ACK: `{status, currentState}`)
+  - 订阅时验证 JWT blacklist + MFA，tenant 归属校验 (DB lookup)
+  - 状态回放 tenant-scoped: `StateReplayService.getExecutionSnapshot(execId, tenantId)`
+  - 事件协议: `execution.state.snapshot`, typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
+  - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放
 - `/knowledge` namespace: document status/kb updates
-- 均使用 `WsJwtGuard` 认证
+- 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 
 ## common/ 目录
 

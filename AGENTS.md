@@ -1,6 +1,6 @@
 # AGENTLOOM 项目知识库
 
-> **Generated:** 2026-03-09 | **Commit:** d47cf6a | **Branch:** main
+> **Generated:** 2026-03-09 | **Commit:** 5092f50 | **Branch:** main
 
 ## 自动化开发循环规则
 
@@ -101,6 +101,6 @@ wasm-pack build --target bundler --release  # 构建 WASM
 
 - **WASM 集成尚未完成**: `agentloom-studio/src/features/canvas/lib/connectionCompatibility.ts` 是 JS fallback，待 Story-2.4a 替换为 WASM
 - **PortDataType 漂移**: Rust(8值) vs Studio TS(8值) vs Server Zod(6值，缺少 model/tool/sandbox/knowledge)
-- **Socket.IO 事件契约隐式**: 无共享类型定义，修改事件需同步 server gateway + studio hook
+- **Socket.IO `/execution` 事件协议已统一**: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)，`execution:subscribe`/`execution:unsubscribe` + ACK，事件经 EventBridgeService → ThrottleService → broadcastTypedEvent() 管线。但 `/knowledge` namespace 仍为隐式契约
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 .wasm 文件
