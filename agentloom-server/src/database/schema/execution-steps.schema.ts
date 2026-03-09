@@ -48,6 +48,8 @@ export const executionSteps = pgTable(
 
     result: jsonb('result').$type<Record<string, unknown>>(),
 
+    attemptCount: integer('attempt_count').notNull().default(0),
+
     checkpointData: jsonb('checkpoint_data').$type<Record<string, unknown>>(),
 
     errorMessage: jsonb('error_message').$type<{

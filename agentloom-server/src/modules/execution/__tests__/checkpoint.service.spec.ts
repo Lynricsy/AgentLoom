@@ -29,6 +29,7 @@ function makeStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
     nodeData: {},
     input: null,
     result: null,
+    attemptCount: 0,
     checkpointData: null,
     errorMessage: null,
     startedAt: null,
@@ -292,6 +293,7 @@ describe('CheckpointService', () => {
           id: STEP_ID_2,
           nodeId: 'node-2',
           status: 'failed',
+          attemptCount: 3,
           errorMessage: { message: 'boom' },
         }),
         makeStep({
@@ -316,6 +318,14 @@ describe('CheckpointService', () => {
 
       expect(result.status).toBe('running');
       expect(db.update).toHaveBeenCalledTimes(2);
+
+      const stepResetSetArg = db.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(stepResetSetArg).toMatchObject({
+        status: 'pending',
+        attemptCount: 0,
+        errorMessage: null,
+      });
+
       expect(eventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,

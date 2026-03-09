@@ -75,6 +75,7 @@ function makeStep(overrides: Record<string, unknown> = {}) {
     nodeData: { agentId: AGENT_ID, systemPrompt: '你是一个助手' },
     input: { upstream_node: { answer: '42' } },
     result: null,
+    attemptCount: 0,
     checkpointData: null,
     errorMessage: null,
     startedAt: null,
@@ -160,6 +161,7 @@ describe('AgentTaskWorker', () => {
 
   const mockDb = {
     select: vi.fn(),
+    update: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -333,6 +335,10 @@ describe('AgentTaskWorker', () => {
 
     it('可重试错误会回退到 pending 并广播 step:retrying，而不是立即级联失败', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
@@ -349,6 +355,11 @@ describe('AgentTaskWorker', () => {
           }),
         ),
       ).rejects.toThrow('LLM 调用失败');
+
+      expect(mockDb.update).toHaveBeenCalled();
+      const setArg =
+        mockDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setArg).toEqual({ attemptCount: 1 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
@@ -384,6 +395,10 @@ describe('AgentTaskWorker', () => {
 
     it('最终失败时才将步骤标记为 failed 并触发级联', async () => {
       mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
@@ -400,6 +415,11 @@ describe('AgentTaskWorker', () => {
           }),
         ),
       ).rejects.toThrow('最终失败');
+
+      expect(mockDb.update).toHaveBeenCalled();
+      const setArg =
+        mockDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setArg).toEqual({ attemptCount: 3 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,

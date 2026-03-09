@@ -234,6 +234,11 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (this.shouldRetry(job)) {
         await this.withTenantContext(tenantId, async () => {
+          await this.tenantDb
+            .update(schema.executionSteps)
+            .set({ attemptCount: job.attemptsMade + 1 })
+            .where(eq(schema.executionSteps.id, stepId));
+
           await this.stepStateMachine.updateStepStatus(
             tenantId,
             stepId,
@@ -253,6 +258,11 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       await this.withTenantContext(tenantId, async () => {
+        await this.tenantDb
+          .update(schema.executionSteps)
+          .set({ attemptCount: job.attemptsMade + 1 })
+          .where(eq(schema.executionSteps.id, stepId));
+
         await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', {
           errorMessage: { message: err.message, stack: err.stack, attempts: allAttempts },
           checkpointData,

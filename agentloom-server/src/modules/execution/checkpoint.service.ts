@@ -154,6 +154,7 @@ export class CheckpointService {
         .update(schema.executionSteps)
         .set({
           status: 'pending',
+          attemptCount: 0,
           errorMessage: null,
           startedAt: null,
           completedAt: null,
