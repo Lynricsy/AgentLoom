@@ -66,3 +66,4 @@ export {
 } from './types/index';
 
 export { AGENT_RUNTIME, type IAgentRuntime } from './ports/index';
+export { InProcessAgentAdapter } from './in-process-agent.adapter';
