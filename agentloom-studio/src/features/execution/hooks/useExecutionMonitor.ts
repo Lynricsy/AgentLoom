@@ -27,6 +27,8 @@ export function useExecutionMonitor(
     appendNodeOutput,
     updateNodeRetry,
     applySnapshot,
+    setNodeIntervention,
+    clearNodeIntervention,
   } = useExecutionActions()
 
   const onError = useCallback(
@@ -45,6 +47,8 @@ export function useExecutionMonitor(
     onOutputChunk: appendNodeOutput,
     onStepRetrying: updateNodeRetry,
     onSnapshot: applySnapshot,
+    onInterventionRequired: setNodeIntervention,
+    onInterventionResolved: clearNodeIntervention,
     onError,
   })
 }

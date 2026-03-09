@@ -8,11 +8,22 @@ import type {
   ExecutionStateSnapshot,
   ExecutionStatus,
   ExecutionStatusChangedPayload,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
   OutputChunkPayload,
   StepRetryingPayload,
   StepStatus,
   StepStatusChangedPayload,
 } from '../types'
+
+export interface InterventionState {
+  decision?: {
+    suggestedContent?: string
+    confidence?: number
+    rationale?: string
+  }
+  partialContent?: string
+}
 
 export interface NodeExecutionState {
   stepId: string
@@ -25,6 +36,7 @@ export interface NodeExecutionState {
   retryMaxAttempts?: number
   startedAt?: string | null
   completedAt?: string | null
+  intervention?: InterventionState
 }
 
 export interface ExecutionStoreState {
@@ -48,6 +60,12 @@ export interface ExecutionStoreActions {
     ) => void
     appendNodeOutput: (event: ExecutionEvent<OutputChunkPayload>) => void
     updateNodeRetry: (event: ExecutionEvent<StepRetryingPayload>) => void
+    setNodeIntervention: (
+      event: ExecutionEvent<InterventionRequiredPayload>,
+    ) => void
+    clearNodeIntervention: (
+      event: ExecutionEvent<InterventionResolvedPayload>,
+    ) => void
     applySnapshot: (snapshot: ExecutionStateSnapshot) => void
     initExecution: (executionId: string) => void
     reset: () => void
@@ -172,6 +190,37 @@ export const useExecutionStore = create<
             })
           },
 
+          setNodeIntervention: (
+            event: ExecutionEvent<InterventionRequiredPayload>,
+          ) => {
+            set((state) => {
+              const node = ensureNode(
+                state,
+                event.data.nodeId,
+                event.data.stepId,
+              )
+              node.intervention = {
+                decision: event.data.decision,
+                partialContent: event.data.partialContent,
+              }
+              pushEvent(state, event)
+            })
+          },
+
+          clearNodeIntervention: (
+            event: ExecutionEvent<InterventionResolvedPayload>,
+          ) => {
+            set((state) => {
+              const node = ensureNode(
+                state,
+                event.data.nodeId,
+                event.data.stepId,
+              )
+              node.intervention = undefined
+              pushEvent(state, event)
+            })
+          },
+
           applySnapshot: (snapshot: ExecutionStateSnapshot) => {
             set((state) => {
               state.executionId = snapshot.executionId
@@ -237,6 +286,9 @@ export const useExecutionProgress = () =>
 
 export const useNodeExecutionState = (nodeId: string) =>
   useExecutionStore((s) => s.nodes[nodeId] ?? null)
+
+export const useNodeIntervention = (nodeId: string) =>
+  useExecutionStore((s) => s.nodes[nodeId]?.intervention ?? null)
 
 export const useAllNodeStates = () =>
   useExecutionStore(useShallow((s) => s.nodes))

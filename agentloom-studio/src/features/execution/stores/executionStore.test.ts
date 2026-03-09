@@ -4,6 +4,8 @@ import type {
   ExecutionEvent,
   ExecutionStateSnapshot,
   ExecutionStatusChangedPayload,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
   OutputChunkPayload,
   StepRetryingPayload,
   StepStatusChangedPayload,
@@ -395,6 +397,91 @@ describe('executionStore', () => {
       expect(events).toHaveLength(50)
       expect(events[0]!.eventId).toBe(11)
       expect(events[49]!.eventId).toBe(60)
+    })
+  })
+
+  describe('setNodeIntervention', () => {
+    it('sets intervention data from event payload', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(makeStepStatusEvent({ to: 'waiting_intervention' }))
+
+      actions.setNodeIntervention(
+        makeEvent<InterventionRequiredPayload>({
+          event: 'execution.node.intervention-required',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            decision: {
+              suggestedContent: 'AI 建议内容',
+              confidence: 0.92,
+              rationale: '基于分析结果',
+            },
+            partialContent: '部分输出',
+          },
+        }),
+      )
+
+      const node = getNode('node-1')
+      expect(node.intervention).toEqual({
+        decision: {
+          suggestedContent: 'AI 建议内容',
+          confidence: 0.92,
+          rationale: '基于分析结果',
+        },
+        partialContent: '部分输出',
+      })
+    })
+
+    it('creates node if not already present', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.setNodeIntervention(
+        makeEvent<InterventionRequiredPayload>({
+          event: 'execution.node.intervention-required',
+          eventId: 1,
+          data: {
+            stepId: 'step-new',
+            nodeId: 'node-new',
+          },
+        }),
+      )
+
+      const node = getNode('node-new')
+      expect(node.stepId).toBe('step-new')
+      expect(node.intervention).toEqual({})
+    })
+  })
+
+  describe('clearNodeIntervention', () => {
+    it('clears intervention from node', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(makeStepStatusEvent({ to: 'waiting_intervention' }))
+      actions.setNodeIntervention(
+        makeEvent<InterventionRequiredPayload>({
+          event: 'execution.node.intervention-required',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            decision: { suggestedContent: 'test' },
+          },
+        }),
+      )
+      expect(getNode('node-1').intervention).toBeDefined()
+
+      actions.clearNodeIntervention(
+        makeEvent<InterventionResolvedPayload>({
+          event: 'execution.node.intervention-resolved',
+          eventId: 3,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            action: 'approve',
+          },
+        }),
+      )
+
+      expect(getNode('node-1').intervention).toBeUndefined()
     })
   })
 

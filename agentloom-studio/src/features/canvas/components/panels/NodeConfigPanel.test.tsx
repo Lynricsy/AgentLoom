@@ -52,6 +52,10 @@ vi.mock('./SandboxConfigPanel', () => ({
   SandboxConfigPanel: () => <div>Sandbox Panel</div>,
 }))
 
+vi.mock('./InterventionPanel', () => ({
+  InterventionPanel: () => <div data-testid="intervention-panel-mock">Intervention Panel</div>,
+}))
+
 function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
   return {
     id: 'node-1',

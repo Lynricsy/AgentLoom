@@ -4,6 +4,8 @@ export type {
   ExecutionStateSnapshot,
   ExecutionStatus,
   ExecutionStatusChangedPayload,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
   OutputChunkPayload,
   ServerToClientEvents,
   StepAgentEventPayload,

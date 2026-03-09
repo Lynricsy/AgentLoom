@@ -72,6 +72,7 @@ vi.mock('@/features/execution/stores/executionStore', () => ({
   useExecutionId: () => mockExecutionId,
   useIsExecutionActive: () => mockIsExecutionActive,
   useNodeExecutionState: () => null,
+  useNodeIntervention: () => null,
 }))
 
 vi.mock('./NodePalette', () => ({

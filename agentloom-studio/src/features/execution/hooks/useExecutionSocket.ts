@@ -6,6 +6,8 @@ import type {
   ExecutionEvent,
   ExecutionStateSnapshot,
   ExecutionStatusChangedPayload,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
   OutputChunkPayload,
   ServerToClientEvents,
   StepAgentEventPayload,
@@ -70,6 +72,12 @@ export interface ExecutionSocketCallbacks {
   onStepAgentEvent?: (event: ExecutionEvent<StepAgentEventPayload>) => void
   onStepRetrying?: (event: ExecutionEvent<StepRetryingPayload>) => void
   onOutputChunk?: (event: ExecutionEvent<OutputChunkPayload>) => void
+  onInterventionRequired?: (
+    event: ExecutionEvent<InterventionRequiredPayload>,
+  ) => void
+  onInterventionResolved?: (
+    event: ExecutionEvent<InterventionResolvedPayload>,
+  ) => void
   onSnapshot?: (snapshot: ExecutionStateSnapshot) => void
   onError?: (error: { message: string; code?: string }) => void
 }
@@ -203,6 +211,20 @@ export function useExecutionSocket(
       callbacksRef.current.onOutputChunk?.(event)
     }
 
+    const handleInterventionRequired = (
+      event: ExecutionEvent<InterventionRequiredPayload>,
+    ) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onInterventionRequired?.(event)
+    }
+
+    const handleInterventionResolved = (
+      event: ExecutionEvent<InterventionResolvedPayload>,
+    ) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onInterventionResolved?.(event)
+    }
+
     const handleSnapshot = (snapshot: ExecutionStateSnapshot) => {
       if (snapshot.lastEventId != null) {
         trackEventId(snapshot.lastEventId)
@@ -229,6 +251,14 @@ export function useExecutionSocket(
     socket.on(ExecutionEventName.STEP_AGENT_EVENT, handleStepAgentEvent)
     socket.on(ExecutionEventName.STEP_RETRYING, handleStepRetrying)
     socket.on(ExecutionEventName.OUTPUT_CHUNK, handleOutputChunk)
+    socket.on(
+      ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+      handleInterventionRequired,
+    )
+    socket.on(
+      ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+      handleInterventionResolved,
+    )
     socket.on('execution.state.snapshot', handleSnapshot)
     socket.on('error', handleError)
 

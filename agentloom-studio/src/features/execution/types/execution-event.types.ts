@@ -6,6 +6,8 @@ export const ExecutionEventName = {
   STEP_AGENT_EVENT: 'execution.node.agent-event',
   STEP_RETRYING: 'execution.node.retrying',
   OUTPUT_CHUNK: 'execution.node.output-chunk',
+  NODE_INTERVENTION_REQUIRED: 'execution.node.intervention-required',
+  NODE_INTERVENTION_RESOLVED: 'execution.node.intervention-resolved',
 } as const
 
 export type ExecutionEventNameValue =
@@ -60,6 +62,24 @@ export interface OutputChunkPayload {
   stepId: string
   chunk: string
   index: number
+}
+
+export interface InterventionRequiredPayload {
+  stepId: string
+  nodeId: string
+  decision?: {
+    suggestedContent?: string
+    confidence?: number
+    rationale?: string
+  }
+  partialContent?: string
+}
+
+export interface InterventionResolvedPayload {
+  stepId: string
+  nodeId: string
+  action: 'approve' | 'modify' | 'reject'
+  feedback?: string
 }
 
 export interface ExecutionEvent<T = unknown> {
@@ -117,6 +137,12 @@ export interface ServerToClientEvents {
   ) => void
   [ExecutionEventName.OUTPUT_CHUNK]: (
     event: ExecutionEvent<OutputChunkPayload>,
+  ) => void
+  [ExecutionEventName.NODE_INTERVENTION_REQUIRED]: (
+    event: ExecutionEvent<InterventionRequiredPayload>,
+  ) => void
+  [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: (
+    event: ExecutionEvent<InterventionResolvedPayload>,
   ) => void
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void
   error: (error: { message: string; code?: string }) => void

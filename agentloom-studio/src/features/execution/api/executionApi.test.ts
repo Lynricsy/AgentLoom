@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelExecution, getExecution, runWorkflow } from './executionApi'
+import {
+  cancelExecution,
+  getExecution,
+  resolveIntervention,
+  runWorkflow,
+} from './executionApi'
 
 const mocks = vi.hoisted(() => {
   const jsonMock = vi.fn()
@@ -90,6 +95,34 @@ describe('executionApi', () => {
 
     it('返回 API 响应', async () => {
       const result = await cancelExecution('exec-001')
+      expect(result).toEqual(mockResponse)
+    })
+  })
+
+  describe('resolveIntervention', () => {
+    it('发送 POST 请求到正确路径并转换请求体为 snake_case', async () => {
+      await resolveIntervention('exec-001', 'step-001', {
+        action: 'modify',
+        modifiedContent: '修改内容',
+        feedback: '修改原因',
+      })
+
+      expect(mocks.postMock).toHaveBeenCalledWith(
+        'executions/exec-001/steps/step-001/intervene',
+        {
+          json: {
+            action: 'modify',
+            modified_content: '修改内容',
+            feedback: '修改原因',
+          },
+        },
+      )
+    })
+
+    it('返回 API 响应', async () => {
+      const result = await resolveIntervention('exec-001', 'step-001', {
+        action: 'approve',
+      })
       expect(result).toEqual(mockResponse)
     })
   })

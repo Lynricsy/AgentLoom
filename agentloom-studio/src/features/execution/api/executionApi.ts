@@ -18,6 +18,18 @@ export interface ExecutionResponse {
   updatedAt: string
 }
 
+export interface InterventionResolveRequest {
+  action: 'approve' | 'modify' | 'reject'
+  feedback?: string
+  modifiedContent?: string
+}
+
+export interface InterventionResolveResponse {
+  executionId: string
+  stepId: string
+  status: 'intervention_accepted'
+}
+
 /** 启动工作流执行 — POST /workflow-definitions/:workflowId/run → 202 */
 export async function runWorkflow(
   workflowId: string,
@@ -42,4 +54,17 @@ export async function cancelExecution(executionId: string) {
   return apiClient
     .post(`executions/${executionId}/cancel`)
     .json<ApiResponse<ExecutionResponse>>()
+}
+
+/** 人工干预处理 — POST /executions/:id/steps/:stepId/intervene → 202 */
+export async function resolveIntervention(
+  executionId: string,
+  stepId: string,
+  body: InterventionResolveRequest,
+) {
+  return apiClient
+    .post(`executions/${executionId}/steps/${stepId}/intervene`, {
+      json: toSnakeBody(body),
+    })
+    .json<ApiResponse<InterventionResolveResponse>>()
 }

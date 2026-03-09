@@ -17,6 +17,7 @@ import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
 import { McpToolConfigPanel } from './McpToolConfigPanel'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { SandboxConfigPanel } from './SandboxConfigPanel'
+import { InterventionPanel } from './InterventionPanel'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -323,6 +324,8 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
           )}
         </dl>
       )}
+
+      <InterventionPanel nodeId={nodeId} />
 
       {nodeState?.errorMessage && (
         <div
