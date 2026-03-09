@@ -7,6 +7,7 @@ import type { DocumentIndexingJobData } from '../document-processing.worker';
 import { DocumentService } from '../document.service';
 import { KnowledgeGateway } from '../knowledge.gateway';
 import { DocumentNotFoundException } from '../knowledge.exceptions';
+import { RagService } from '../services/rag.service';
 
 const DOC_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -28,6 +29,7 @@ describe('DocumentIndexingWorker', () => {
     emitDocumentStatusChanged: Mock;
     emitKnowledgeBaseUpdated: Mock;
   };
+  let ragService: { indexDocument: Mock; deleteByDocument: Mock };
 
   beforeEach(async () => {
     documentService = {
@@ -38,12 +40,17 @@ describe('DocumentIndexingWorker', () => {
       emitDocumentStatusChanged: vi.fn(),
       emitKnowledgeBaseUpdated: vi.fn(),
     };
+    ragService = {
+      indexDocument: vi.fn().mockResolvedValue(undefined),
+      deleteByDocument: vi.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentIndexingWorker,
         { provide: DocumentService, useValue: documentService },
         { provide: KnowledgeGateway, useValue: knowledgeGateway },
+        { provide: RagService, useValue: ragService },
       ],
     }).compile();
 
@@ -64,6 +71,7 @@ describe('DocumentIndexingWorker', () => {
       await worker.process(createMockJob());
 
       expect(documentService.findById).toHaveBeenCalledWith(DOC_ID);
+      expect(ragService.indexDocument).toHaveBeenCalledWith(DOC_ID, 'tenant-1');
       expect(documentService.updateStatus).toHaveBeenCalledWith(DOC_ID, 'ready');
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
         'tenant-1',
@@ -91,6 +99,7 @@ describe('DocumentIndexingWorker', () => {
 
       await expect(worker.process(createMockJob())).resolves.toBeUndefined();
 
+      expect(ragService.indexDocument).not.toHaveBeenCalled();
       expect(documentService.updateStatus).not.toHaveBeenCalled();
       expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
@@ -115,6 +124,10 @@ describe('DocumentIndexingWorker', () => {
         DOC_ID,
         'failed',
         'index failed',
+      );
+      expect(ragService.deleteByDocument).toHaveBeenCalledWith(
+        DOC_ID,
+        'tenant-1',
       );
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
         'tenant-1',
