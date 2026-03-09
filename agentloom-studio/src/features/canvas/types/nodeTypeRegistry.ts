@@ -14,6 +14,7 @@ export const NODE_TYPES = [
   'http-tool',
   'code-tool',
   'mcp-tool',
+  'sandbox',
   'manual-trigger',
   'schedule-trigger',
   'knowledge-base',
@@ -345,6 +346,33 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       description: '连接到 Agent 的工具端口',
     })],
     configSchema: EMPTY_CONFIG_SCHEMA,
+  },
+  sandbox: {
+    type: 'sandbox',
+    category: 'tool',
+    label: 'Sandbox',
+    icon: 'Container',
+    description: '代码执行沙箱环境',
+    colorToken: CATEGORY_COLOR_TOKENS.tool,
+    inputPorts: [],
+    outputPorts: [
+      createPort('sandbox-output', 'Sandbox 环境', 'output', 'sandbox', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 可用的沙箱环境',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        cpu: createConfigField('number', 'CPU', { default: 1 }),
+        memory: createConfigField('number', 'Memory', { default: 512 }),
+        disk: createConfigField('number', 'Disk', { default: 2 }),
+        persistencePath: createConfigField('string', 'Persistence Path', { default: '' }),
+        timeout: createConfigField('number', 'Timeout', { default: 2 }),
+      },
+      required: [],
+    },
   },
   'manual-trigger': {
     type: 'manual-trigger',

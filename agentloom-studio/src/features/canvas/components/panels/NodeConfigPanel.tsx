@@ -11,6 +11,7 @@ import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
 import { McpToolConfigPanel } from './McpToolConfigPanel'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
+import { SandboxConfigPanel } from './SandboxConfigPanel'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -114,6 +115,13 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
     case 'knowledge-base':
       return (
         <KnowledgeBaseConfigPanel
+          config={node.data.config}
+          onApply={onConfigChange}
+        />
+      )
+    case 'sandbox':
+      return (
+        <SandboxConfigPanel
           config={node.data.config}
           onApply={onConfigChange}
         />

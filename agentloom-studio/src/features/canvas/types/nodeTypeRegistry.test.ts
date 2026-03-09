@@ -23,6 +23,7 @@ describe('nodeTypeRegistry', () => {
       'http-tool',
       'code-tool',
       'mcp-tool',
+      'sandbox',
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',
