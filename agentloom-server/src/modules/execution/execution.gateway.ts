@@ -26,6 +26,7 @@ import type { JwtPayload } from '../../common/guards/auth.guard';
 import type {
   ExecutionEventName,
   ExecutionStateSnapshot,
+  SubscribeAck,
 } from './types/execution-event.types';
 
 /** 认证失败的 WebSocket 关闭代码 */
@@ -51,12 +52,6 @@ interface UnsubscribePayload {
 interface QueuedEvent {
   readonly event: string;
   readonly data: Record<string, unknown>;
-}
-
-interface SubscribeResult {
-  status: string;
-  error?: string;
-  currentState: ExecutionStateSnapshot | null;
 }
 
 @WebSocketGateway({
@@ -286,7 +281,7 @@ export class ExecutionGateway
   private async subscribe(
     client: Socket,
     payload: SubscribePayload,
-  ): Promise<SubscribeResult> {
+  ): Promise<SubscribeAck> {
     const user = client.data?.user as JwtPayload | undefined;
     if (!user?.tenantId) {
       return {

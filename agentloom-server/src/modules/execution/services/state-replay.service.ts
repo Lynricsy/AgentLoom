@@ -59,6 +59,7 @@ export class StateReplayService {
         startedAt: schema.executionSteps.startedAt,
         completedAt: schema.executionSteps.completedAt,
         errorMessage: schema.executionSteps.errorMessage,
+        result: schema.executionSteps.result,
       })
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.executionId, executionId));
@@ -84,6 +85,7 @@ export class StateReplayService {
                 ).message,
               }
             : {}),
+          result: step.result ?? null,
         }),
       ),
       snapshotAt: new Date().toISOString(),

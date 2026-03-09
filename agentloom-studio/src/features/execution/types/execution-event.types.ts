@@ -78,6 +78,7 @@ export interface StepSnapshot {
   startedAt: string | null
   completedAt: string | null
   errorMessage?: string
+  result?: Record<string, unknown> | null
 }
 
 export interface ExecutionStateSnapshot {

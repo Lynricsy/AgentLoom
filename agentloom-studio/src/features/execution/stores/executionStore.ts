@@ -181,11 +181,18 @@ export const useExecutionStore = create<
 
               state.nodes = {}
               for (const step of snapshot.steps) {
+                // 从 result 中恢复输出内容（如果存在）
+                const restoredOutput =
+                  step.result && typeof step.result === 'object'
+                    ? (typeof step.result.output === 'string'
+                        ? step.result.output
+                        : JSON.stringify(step.result))
+                    : ''
                 state.nodes[step.nodeId] = {
                   stepId: step.stepId,
                   nodeId: step.nodeId,
                   status: step.status,
-                  output: '',
+                  output: restoredOutput,
                   isStreaming: false,
                   errorMessage: step.errorMessage,
                   startedAt: step.startedAt,

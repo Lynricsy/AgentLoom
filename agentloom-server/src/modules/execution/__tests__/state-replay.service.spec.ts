@@ -149,6 +149,33 @@ describe('StateReplayService', () => {
     expect(snapshot!.steps[0]).not.toHaveProperty('errorMessage');
   });
 
+  it('should include result in step snapshot when present', async () => {
+    const result = { output: 'Hello from agent', tokens: 42 };
+    mockDb.select
+      .mockReturnValueOnce(createSelectChain([makeExecution()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          makeStep('step-1', 'node-a', { result }),
+        ]),
+      );
+
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
+    expect(snapshot!.steps[0].result).toEqual(result);
+  });
+
+  it('should set result to null when step has no result', async () => {
+    mockDb.select
+      .mockReturnValueOnce(createSelectChain([makeExecution()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          makeStep('step-1', 'node-a', { result: null }),
+        ]),
+      );
+
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
+    expect(snapshot!.steps[0].result).toBeNull();
+  });
+
   it('should use eventBridge lastEventId when provided', async () => {
     const mockBridge = {
       getLastEventId: vi.fn().mockReturnValue(42),

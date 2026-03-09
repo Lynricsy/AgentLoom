@@ -30,6 +30,8 @@ export function WorkflowCanvasPage() {
   const isWorkflowArchived = workflow?.status === 'archived'
 
   const activeExecutionId = useExecutionId() ?? undefined
+  // TODO(auth): 当认证系统实现后，从 auth context/store 获取 JWT token 传入 useExecutionMonitor
+  // TODO(execution): 当工作流执行触发功能实现后，需要调用 executionStore.initExecution() 设置执行 ID
   useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId })
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)

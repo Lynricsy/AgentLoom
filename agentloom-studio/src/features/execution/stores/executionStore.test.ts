@@ -272,6 +272,82 @@ describe('executionStore', () => {
       expect(getNode('node-b').errorMessage).toBe('partial error')
     })
 
+    it('restores output from step.result.output string', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-r1',
+            nodeId: 'node-r1',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: '2025-01-01T00:01:00Z',
+            result: { output: 'Agent response text', tokens: 100 },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-r1').output).toBe('Agent response text')
+    })
+
+    it('restores output as JSON.stringify when result has no output key', () => {
+      const { actions } = useExecutionStore.getState()
+      const resultObj = { answer: 42, model: 'gpt-4' }
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap2',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-r2',
+            nodeId: 'node-r2',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: '2025-01-01T00:01:00Z',
+            result: resultObj,
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-r2').output).toBe(JSON.stringify(resultObj))
+    })
+
+    it('sets output to empty string when result is null', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap3',
+        status: 'running',
+        completedSteps: 0,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-r3',
+            nodeId: 'node-r3',
+            status: 'pending',
+            startedAt: null,
+            completedAt: null,
+            result: null,
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-r3').output).toBe('')
+    })
+
     it('clears previous nodes', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeStatus(makeStepStatusEvent())

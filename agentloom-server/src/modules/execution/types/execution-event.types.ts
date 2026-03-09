@@ -71,6 +71,7 @@ export interface StepSnapshot {
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly errorMessage?: string;
+  readonly result?: Record<string, unknown> | null;
 }
 
 export interface ExecutionStateSnapshot {
@@ -107,6 +108,7 @@ export const LEGACY_EVENT_MAP: Record<LegacyEventName, ExecutionEventName> = {
 export interface SubscribePayload {
   readonly tenantId: string;
   readonly executionId: string;
+  readonly lastEventId?: number;
 }
 
 export interface UnsubscribePayload {
@@ -114,11 +116,23 @@ export interface UnsubscribePayload {
   readonly executionId: string;
 }
 
+export interface SubscribeAck {
+  status: 'subscribed' | 'error';
+  error?: string;
+  currentState: ExecutionStateSnapshot | null;
+}
+
 export interface ClientToServerEvents {
-  'execution:subscribe': (payload: SubscribePayload) => void;
+  'execution:subscribe': (
+    payload: SubscribePayload,
+    ack?: (response: SubscribeAck) => void,
+  ) => void;
   'execution:unsubscribe': (payload: UnsubscribePayload) => void;
   /** @deprecated 使用 'execution:subscribe' 替代 */
-  subscribe: (payload: SubscribePayload) => void;
+  subscribe: (
+    payload: SubscribePayload,
+    ack?: (response: SubscribeAck) => void,
+  ) => void;
   /** @deprecated 使用 'execution:unsubscribe' 替代 */
   unsubscribe: (payload: UnsubscribePayload) => void;
 }
