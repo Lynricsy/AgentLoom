@@ -3,12 +3,17 @@ import { Test } from '@nestjs/testing';
 import { Job } from 'bullmq';
 import { ExecutionWorker } from '../execution.worker';
 import { ExecutionService, type ExecutionJobData } from '../execution.service';
+import { NodeSchedulerService } from '../node-scheduler.service';
 
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
+const TENANT_ID = '019391d4-d000-7000-0000-000000000099';
 
 const mockExecutionService: Record<string, Mock> = {
-  initializeSteps: vi.fn(),
   markFailed: vi.fn(),
+};
+
+const mockNodeScheduler: Record<string, Mock> = {
+  startExecution: vi.fn(),
 };
 
 function createMockJob(
@@ -17,6 +22,7 @@ function createMockJob(
   return {
     data: {
       executionId: EXECUTION_ID,
+      tenantId: TENANT_ID,
     },
     id: 'job-1',
     attemptsMade: 0,
@@ -35,6 +41,7 @@ describe('ExecutionWorker', () => {
       providers: [
         ExecutionWorker,
         { provide: ExecutionService, useValue: mockExecutionService },
+        { provide: NodeSchedulerService, useValue: mockNodeScheduler },
       ],
     }).compile();
 
@@ -42,24 +49,25 @@ describe('ExecutionWorker', () => {
   });
 
   describe('process', () => {
-    it('应调用 initializeSteps 处理执行任务', async () => {
-      mockExecutionService.initializeSteps.mockResolvedValue(undefined);
+    it('应调用 nodeScheduler.startExecution 启动 DAG 调度', async () => {
+      mockNodeScheduler.startExecution.mockResolvedValue(undefined);
 
       const job = createMockJob();
       await worker.process(job);
 
-      expect(mockExecutionService.initializeSteps).toHaveBeenCalledWith(
+      expect(mockNodeScheduler.startExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
+        TENANT_ID,
       );
     });
 
-    it('应在 initializeSteps 失败时抛出错误', async () => {
-      const error = new Error('初始化步骤失败');
-      mockExecutionService.initializeSteps.mockRejectedValue(error);
+    it('应在 startExecution 失败时抛出错误', async () => {
+      const error = new Error('DAG 调度失败');
+      mockNodeScheduler.startExecution.mockRejectedValue(error);
 
       const job = createMockJob();
 
-      await expect(worker.process(job)).rejects.toThrow('初始化步骤失败');
+      await expect(worker.process(job)).rejects.toThrow('DAG 调度失败');
     });
   });
 

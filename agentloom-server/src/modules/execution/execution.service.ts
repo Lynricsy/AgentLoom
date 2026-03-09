@@ -18,6 +18,7 @@ import type { RunWorkflowDto } from './dto/run-workflow.dto';
 
 export interface ExecutionJobData {
   executionId: string;
+  tenantId: string;
 }
 
 const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'paused']);
@@ -88,6 +89,7 @@ export class ExecutionService {
       'execute',
       {
         executionId: execution.id,
+        tenantId,
       } satisfies ExecutionJobData,
       {
         jobId: execution.id,

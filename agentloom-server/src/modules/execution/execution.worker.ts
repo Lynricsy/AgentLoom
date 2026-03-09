@@ -2,23 +2,27 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ExecutionService, type ExecutionJobData } from './execution.service';
+import { NodeSchedulerService } from './node-scheduler.service';
 import { EXECUTION_QUEUE } from './execution.constants';
 
 @Processor(EXECUTION_QUEUE)
 export class ExecutionWorker extends WorkerHost {
   private readonly logger = new Logger(ExecutionWorker.name);
 
-  constructor(private readonly executionService: ExecutionService) {
+  constructor(
+    private readonly executionService: ExecutionService,
+    private readonly nodeScheduler: NodeSchedulerService,
+  ) {
     super();
   }
 
   async process(job: Job<ExecutionJobData>): Promise<void> {
-    const { executionId } = job.data;
+    const { executionId, tenantId } = job.data;
     this.logger.log(
       `Processing execution: ${JSON.stringify({ executionId, jobId: job.id })}`,
     );
 
-    await this.executionService.initializeSteps(executionId);
+    await this.nodeScheduler.startExecution(executionId, tenantId);
   }
 
   @OnWorkerEvent('failed')

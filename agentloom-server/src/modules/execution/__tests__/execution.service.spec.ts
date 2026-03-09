@@ -216,6 +216,7 @@ describe('ExecutionService', () => {
         'execute',
         {
           executionId: EXECUTION_ID,
+          tenantId: TENANT_ID,
         },
         {
           jobId: EXECUTION_ID,
