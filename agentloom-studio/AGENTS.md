@@ -12,6 +12,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 |------|------|------|
 | `/` | — | 重定向到 `/workflows/draft` |
 | `/workflows/$workflowId` | WorkflowCanvasPage | ReactFlowProvider 包裹 |
+| `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图，三栏布局 |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
 | `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 |
 
@@ -27,6 +28,7 @@ src/
 │   ├── execution/    # 执行监控 (hooks, stores, types)
 │   ├── workflow/     # 工作流列表/管理
 │   ├── knowledge/    # 知识库管理
+│   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   └── llm/          # LLM 模型配置
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
@@ -60,16 +62,22 @@ src/
   - `useExecutionSocket`: 底层 Socket.IO 连接管理，事件监听，ACK 错误处理
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
+- **通知 Socket.IO**: `/notification` namespace，`useNotificationSocket` 复用 execution 的 `resolveSocketUrl + callbacksRef + 单 useEffect` 模式；根布局 `__root.tsx` 负责激活连接，并通过 `NotificationBell`/`NotificationDropdown` 暴露未读数与最近 20 条通知
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
-  - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
+  - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `listExecutions` (GET /workflow-definitions/:id/executions), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
+  - `useExecutionList` / `useExecution`: 列表分页查询 + 执行详情归一化（兼容 `definitionSnapshot` → `workflowVersion.graph`）
   - `executionMutations`: `useRunWorkflow`, `useCancelExecution` (TanStack mutations + cache)
 - **executionStore** (`features/execution/stores/executionStore.ts`): 维护 `executionId/status/nodes/recentEvents`，并在 `waiting_intervention` 时缓存 `nodeName/requestedAt/decision(partial/structured suggestedContent)/partialContent/submitting`
+- **notificationStore** (`features/notification/stores/notificationStore.ts`): 维护 `notifications/unreadCount/isDropdownOpen`，支持 socket 增量插入、服务端列表同步与已读状态本地乐观更新
 - **提交动作**: `submitIntervention(executionId, stepId, payload)` 由 store 统一调用执行 API，并负责切换 `intervention.submitting`，让组件层只处理视图与错误呈现
 - **快照恢复**: `applySnapshot()` 会优先读取 `step.result.content` 恢复输出，并从 `step.checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` 恢复人工介入面板状态
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
+- **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`
+- **执行调试视图** (`features/execution/components/ExecutionDebugView.tsx`): Desktop 三栏（ReadonlyCanvas + ExecutionTimeline + ExecutionNodeDetail）/ Mobile 纵向堆叠，支持节点联动选择
+- **庆祝效果** (`features/execution/components/CelebrationEffect.tsx`): 基于 `canvas-confetti`，使用 localStorage key `agentloom:first-success-celebrated` 仅首次成功触发
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流

@@ -51,7 +51,7 @@ type-engine (Rust/WASM)
   └── [计划中 Story-2.4a] → studio (目前为 JS fallback)
 
 studio (React) ──HTTP REST──→ server (/api/v1)
-              ──Socket.IO──→ server (/execution, /knowledge)
+              ──Socket.IO──→ server (/execution, /knowledge, /notification)
 
 server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + MinIO
 ```
@@ -99,9 +99,11 @@ wasm-pack build --target bundler --release  # 构建 WASM
 
 ## 注意事项
 
+- **Studio 执行历史/调试视图已接通**: `WorkflowCanvasPage` 可按需展开 `ExecutionHistoryPanel` 浏览 `/workflow-definitions/:id/executions`，点击 `RunCard` 跳转 `/executions/$executionId`；调试页为只读 React Flow + 时间线 + 节点详情三栏布局（移动端纵向堆叠）
 - **WASM 集成尚未完成**: `agentloom-studio/src/features/canvas/lib/connectionCompatibility.ts` 是 JS fallback，待 Story-2.4a 替换为 WASM
 - **PortDataType 漂移**: Rust(8值) vs Studio TS(8值) vs Server Zod(6值，缺少 model/tool/sandbox/knowledge)
 - **Socket.IO `/execution` 事件协议已统一**: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)，`execution:subscribe`/`execution:unsubscribe` + ACK，事件经 EventBridgeService → ThrottleService → broadcastTypedEvent() 管线。事件名称统一为 `execution.node.*` 前缀 (`status-changed`, `agent-event`, `retrying`, `output-chunk`) + `execution.status.changed`。Gateway 含背压队列 (500 cap, 100ms drain)。认证失败返回 close code 4001，订阅拒绝返回 `{status:'error', error:'FORBIDDEN'}`。断线重连支持 `lastEventId` 增量回放 (EventBridgeService 环形缓冲 500 事件)。但 `/knowledge` namespace 仍为隐式契约
+- **通知模块已接通**: Server 新增 `NotificationModule`（REST 列表/偏好、BullMQ `notification` 队列、`/notification` namespace）。`EventBridgeService.emitExecutionStatusChanged()` 会发出 `execution.status.changed` 领域事件，`NotificationListener` 负责把 `completed` / `failed` / `paused(人工介入)` 映射为通知并推送给执行创建者。
 - **Studio 认证占位**: `useAuthToken` 使用 localStorage('auth_token') + useSyncExternalStore，标记 TODO(auth) 待替换为真实 Supabase 认证。`useExecutionSocket` 已支持 `authToken?` 参数。Studio 无 Supabase 客户端/auth store
 - **执行触发已接通**: VersionToolbar Run 按钮 → `useStartExecution` → POST /workflow-definitions/:id/run → executionStore.initExecution(id)。WorkflowStatusBar 显示 ExecutionStatusIndicator (6 状态 + 进度)
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase

@@ -30,6 +30,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | agent | `modules/agent/` | **六边形架构**: ports/AgentRuntime → InProcess\|Sandbox 适配器 | LlmModule, SandboxModule |
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
+| notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -96,13 +97,14 @@ HTTP POST /executions
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
 | agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
+| notification | 3次 exp (1s base) | 通知分发与 WebSocket 推送 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
 | document-processing-queue | — | 文档解析 |
 | document-indexing-queue | — | Qdrant 向量索引 |
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)。
+Schema 在 `src/database/schema/`。20 张表，启用 RLS (`rls-policies.ts`)。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，`documentChunks` 含 vector 列。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。
 
@@ -118,6 +120,10 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
   - AC-1 认证失败: `createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame
   - AC-2 订阅拒绝: 返回 `{status:'error', error:'FORBIDDEN', currentState:null}` (非抛异常)
   - AC-6 背压: Gateway 内置队列 (`eventQueue` Map)，速率限制时排队而非丢弃，500 事件上限/执行，100ms drain 间隔
+- `/notification` namespace: 连接握手复用 JWT blacklist + MFA 校验，连接即加入 `tenant:{tenantId}:user:{userId}` 房间
+  - 事件: `notification:new`（完整通知记录）、`notification:unread-count`（`{ count }`）
+  - 订阅事件: `notification:subscribe` / `notification:unsubscribe`
+  - 处理链路: `EventBridgeService.emitExecutionStatusChanged()` → `EventEmitter2('execution.status.changed')` → `NotificationListener` → `NotificationService.create()` → `NotificationProcessor`
 - `/knowledge` namespace: document status/kb updates (隐式契约)
 - 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 
