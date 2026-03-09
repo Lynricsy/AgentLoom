@@ -45,7 +45,7 @@ src/
 | Store | 路径 | 职责 |
 |-------|------|------|
 | canvasStore | `features/canvas/stores/` | nodes/edges/viewport/selection/search/dirty/mapping |
-| executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming)/recentEvents(cap 50) |
+| executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming/intervention)/recentEvents(cap 50) |
 
 **自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
 
@@ -55,14 +55,14 @@ src/
 - **TanStack Query**: staleTime=30s, retry=1, 禁用 focus-refetch
 - **Query Key Factory**: 每个 feature 独立 `xxxKeys` + `xxxApi` + `useXxx` hooks
 - **Socket.IO**: `/execution` namespace，typed events (`execution:subscribe`/`execution:unsubscribe` 带 ACK)，`lastEventId` 断线续传，5s 重连 (max 30s)，`callbacksRef` 模式
-  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status.changed`
+  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.node.intervention-required`, `execution.node.intervention-resolved`, `execution.status.changed`
   - Subscribe ACK: `{status: 'subscribed' | 'error', currentState, error?}`，错误时调用 `onError` 回调
   - `useExecutionSocket`: 底层 Socket.IO 连接管理，事件监听，ACK 错误处理
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
-  - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `getExecution`, `cancelExecution`
+  - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
   - `executionMutations`: `useRunWorkflow`, `useCancelExecution` (TanStack mutations + cache)
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
@@ -70,6 +70,7 @@ src/
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流
+- **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。展示 AI 决策建议(confidence/rationale)和部分内容预览
 
 ## 样式
 

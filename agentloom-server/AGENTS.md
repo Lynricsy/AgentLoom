@@ -76,6 +76,16 @@ HTTP POST /executions
 - 恢复流程: Controller → `executionQueue.add('resume-execution', ...)` → ExecutionWorker 分发 → `nodeScheduler.resumeScheduling()`，确保通过 BullMQ 统一 job 生命周期
 - `STEP_TRANSITIONS` 已新增 `failed→pending`、`cancelled→pending`，`NodeSchedulerService.resumeScheduling()` 会跳过 `completed` 节点并继续调度 `pending` 节点
 - Agent 重试追踪已写入 `checkpointData.attempts[]`，记录每次重试的 `{ attempt, error, timestamp }`
+
+## 人工介入系统 (Story 5-6) ✅
+
+- **事件**: `EventBridgeService` 新增 `emitInterventionRequired()` + `emitInterventionResolved()`，走统一信封 + broadcast 管线
+- **触发**: `AgentTaskWorker` 处理 `intervention_required` stopReason → `updateStepStatus('waiting_intervention')` → `emitInterventionRequired()` → `enqueueInterventionTimeout()`
+- **解决**: `NodeSchedulerService.resolveIntervention()` → `emitInterventionResolved()` → `removeInterventionTimeout()` → 入队后续 agent-task 任务
+- **超时**: 24h 延迟 BullMQ 任务 (`intervention-timeout:{stepId}`)，到期后 `AgentTaskWorker.handleInterventionTimeout()` 检查 step 是否仍为 `waiting_intervention`，若是则自动以 `reject` 动作解决
+- **API**: `POST /executions/:executionId/steps/:stepId/intervene` (202 Accepted)，Body: `{ action: 'approve'|'modify'|'reject', feedback?, modifiedContent? }`
+- **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, decision?, partialContent? }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback? }`
+
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
 ## BullMQ 队列
@@ -100,7 +110,7 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
   - 订阅时验证 JWT blacklist + MFA，tenant 归属校验 (DB lookup)
   - 状态回放 tenant-scoped: `StateReplayService.getExecutionSnapshot(execId, tenantId)`
   - 事件协议: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
-  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status.changed`
+  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.node.intervention-required`, `execution.node.intervention-resolved`, `execution.status.changed`
   - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放状态快照
   - 执行终态清理: `EventBridgeService` 先排空 Gateway backpressure queue，再 `forceFlush()` merge-window 内残留 `output_chunk`，随后立即广播终态事件；`ThrottleService` / `ExecutionGateway` 运行态状态即时释放，replay ring buffer 保留 30s 后清理
   - AC-1 认证失败: `createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame
@@ -136,7 +146,7 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
 
 ## 复杂度热点
 
-- `node-scheduler.service.ts` (865L) — DAG 调度核心，条件分支/沙箱/变换/人工介入
+- `node-scheduler.service.ts` (940L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理
 - `workflow-version.service.ts` (555L) — 版本管理逻辑
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `mcp.service.ts` (519L) — MCP 协议集成
