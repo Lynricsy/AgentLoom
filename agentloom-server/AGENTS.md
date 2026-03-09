@@ -67,6 +67,16 @@ HTTP POST /executions
                                          (500 cap, 100ms interval)
 ```
 
+## 断点恢复与检查点 (Story 5-5)
+
+- **CheckpointService** (`checkpoint.service.ts`): 节点完成后保存 dagState 快照 (`saveCheckpoint`)，恢复失败执行 (`resumeExecution`)
+- 检查点数据存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
+- 恢复 API: `POST /executions/:id/resume` (202 Accepted, Editor+ 角色)，可选 `{ fromNodeId }` 指定恢复起点（BFS 重置目标+下游）
+- 仅 `failed` 状态可恢复，`paused` 返回 409 (需先通过 Story 5.6 干预)
+- `STEP_TRANSITIONS` 新增: `failed→pending`, `cancelled→pending`
+- Agent 重试追踪: `checkpointData.attempts[]` 记录每次重试的 `{attempt, error, timestamp}`
+- Dead letter: 3 次重试耗尽后 errorMessage 和 checkpointData 均记录所有 attempts
+
 ## BullMQ 队列
 
 | 队列 | 重试 | 用途 |
