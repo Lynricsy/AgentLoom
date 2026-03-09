@@ -80,10 +80,19 @@ export class DocumentIndexingWorker extends WorkerHost {
     try {
       const document = await this.documentService.findById(job.data.documentId);
 
-      await this.ragService.deleteByDocument(
-        job.data.documentId,
-        document.tenantId,
-      );
+      try {
+        await this.ragService.deleteByDocument(
+          job.data.documentId,
+          document.tenantId,
+        );
+      } catch (cleanupError) {
+        this.logger.warn(
+          `Failed to cleanup vectors for document ${job.data.documentId}`,
+          cleanupError instanceof Error
+            ? cleanupError.stack ?? cleanupError.message
+            : String(cleanupError),
+        );
+      }
 
       this.knowledgeGateway.emitDocumentStatusChanged(
         document.tenantId,

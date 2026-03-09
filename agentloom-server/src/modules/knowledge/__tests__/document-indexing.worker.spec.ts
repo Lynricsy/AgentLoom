@@ -144,5 +144,39 @@ describe('DocumentIndexingWorker', () => {
         'kb-1',
       );
     });
+
+    it('should still emit WS events when vector cleanup fails', async () => {
+      documentService.updateStatus.mockResolvedValue(undefined);
+      documentService.findById.mockResolvedValue({
+        id: DOC_ID,
+        tenantId: 'tenant-1',
+        knowledgeBaseId: 'kb-1',
+      });
+      ragService.deleteByDocument.mockRejectedValueOnce(
+        new Error('Qdrant unavailable'),
+      );
+
+      await worker.onFailed(
+        createMockJob({ attemptsMade: 3 }),
+        new Error('index failed'),
+      );
+
+      expect(ragService.deleteByDocument).toHaveBeenCalledWith(
+        DOC_ID,
+        'tenant-1',
+      );
+      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
+        'tenant-1',
+        'kb-1',
+        expect.objectContaining({
+          documentId: DOC_ID,
+          status: 'failed',
+        }),
+      );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
+        'tenant-1',
+        'kb-1',
+      );
+    });
   });
 });

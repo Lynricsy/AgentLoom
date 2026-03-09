@@ -29,6 +29,7 @@ import {
 } from './knowledge.exceptions';
 import type { DocumentProcessingJobData } from './document-processing.worker';
 import { KnowledgeGateway } from './knowledge.gateway';
+import { RagService } from './services/rag.service';
 
 export type DocumentResponse = Omit<
   (typeof documents)['$inferSelect'],
@@ -55,6 +56,7 @@ export class DocumentService {
     @InjectQueue(DOCUMENT_PROCESSING_QUEUE)
     private readonly processingQueue: Queue<DocumentProcessingJobData>,
     private readonly knowledgeGateway: KnowledgeGateway,
+    private readonly ragService: RagService,
   ) {}
 
   async uploadFromRequest(
@@ -211,6 +213,12 @@ export class DocumentService {
       document.storageKey,
       `document ${documentId} in knowledge base ${knowledgeBaseId}`,
     );
+
+    await this.cleanupVectors(
+      documentId,
+      tenantId,
+      `document ${documentId} in knowledge base ${knowledgeBaseId}`,
+    );
   }
 
   async deleteByKnowledgeBase(
@@ -233,10 +241,17 @@ export class DocumentService {
 
     await Promise.all(
       deletedDocuments.map((document) =>
-        this.cleanupDeletedObject(
-          document.storageKey,
-          `document ${document.id} in knowledge base ${knowledgeBaseId}`,
-        ),
+        Promise.all([
+          this.cleanupDeletedObject(
+            document.storageKey,
+            `document ${document.id} in knowledge base ${knowledgeBaseId}`,
+          ),
+          this.cleanupVectors(
+            document.id,
+            tenantId,
+            `document ${document.id} in knowledge base ${knowledgeBaseId}`,
+          ),
+        ]),
       ),
     );
 
@@ -416,6 +431,21 @@ export class DocumentService {
     } catch (error) {
       this.logger.warn(
         `元数据已删除，但对象存储清理失败: ${context} (${storageKey})`,
+        error instanceof Error ? error.stack ?? error.message : String(error),
+      );
+    }
+  }
+
+  private async cleanupVectors(
+    documentId: string,
+    tenantId: string,
+    context: string,
+  ): Promise<void> {
+    try {
+      await this.ragService.deleteByDocument(documentId, tenantId);
+    } catch (error) {
+      this.logger.warn(
+        `元数据已删除，但向量索引清理失败: ${context}`,
         error instanceof Error ? error.stack ?? error.message : String(error),
       );
     }
