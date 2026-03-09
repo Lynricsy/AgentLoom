@@ -160,13 +160,12 @@ export class ThrottleService implements OnModuleDestroy {
    * 清理指定执行实例的所有节流状态。
    * 在执行到达终态后调用以释放内存。
    */
-  clearExecution(executionId: string): void {
+  clearExecution(executionId: string, tenantId?: string): void {
     this.buckets.delete(executionId);
-    this.pendingChunks.delete(executionId);
-    const timer = this.flushTimers.get(executionId);
-    if (timer) {
-      clearTimeout(timer);
-      this.flushTimers.delete(executionId);
+    this.clearPendingState(executionId);
+
+    if (tenantId) {
+      this.clearPendingState(`${tenantId}:${executionId}`);
     }
   }
 
@@ -203,5 +202,14 @@ export class ThrottleService implements OnModuleDestroy {
 
     execChunks.clear();
     return result;
+  }
+
+  private clearPendingState(executionId: string): void {
+    this.pendingChunks.delete(executionId);
+    const timer = this.flushTimers.get(executionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.flushTimers.delete(executionId);
+    }
   }
 }

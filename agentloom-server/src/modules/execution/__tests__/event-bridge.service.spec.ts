@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { EventBridgeService } from '../services/event-bridge.service';
 import { ExecutionGateway } from '../execution.gateway';
+import { ThrottleService } from '../services/throttle.service';
 import { ExecutionEventName } from '../types/execution-event.types';
 import type {
   StepStatusChangedPayload,
@@ -16,18 +17,38 @@ const EXEC = 'exec-1';
 
 describe('EventBridgeService', () => {
   let service: EventBridgeService;
-  let gateway: { broadcastTypedEvent: ReturnType<typeof vi.fn> };
+  let gateway: {
+    broadcastTypedEvent: ReturnType<typeof vi.fn>;
+    broadcastTypedEventImmediately: ReturnType<typeof vi.fn>;
+    flushExecutionQueue: ReturnType<typeof vi.fn>;
+    clearExecutionQueue: ReturnType<typeof vi.fn>;
+  };
+  let throttle: {
+    forceFlush: ReturnType<typeof vi.fn>;
+    clearExecution: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
+    vi.useFakeTimers();
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
 
-    gateway = { broadcastTypedEvent: vi.fn() };
+    gateway = {
+      broadcastTypedEvent: vi.fn(),
+      broadcastTypedEventImmediately: vi.fn(),
+      flushExecutionQueue: vi.fn(),
+      clearExecutionQueue: vi.fn(),
+    };
+    throttle = {
+      forceFlush: vi.fn().mockReturnValue([]),
+      clearExecution: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
         EventBridgeService,
         { provide: ExecutionGateway, useValue: gateway },
+        { provide: ThrottleService, useValue: throttle },
       ],
     }).compile();
 
@@ -35,6 +56,8 @@ describe('EventBridgeService', () => {
   });
 
   afterEach(() => {
+    service.onModuleDestroy();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -67,7 +90,34 @@ describe('EventBridgeService', () => {
   });
 
   describe('emitExecutionStatusChanged', () => {
-    it('应创建标准信封并广播', () => {
+    it('非终态应创建标准信封并走常规广播', () => {
+      const payload: ExecutionStatusChangedPayload = {
+        executionId: EXEC,
+        status: 'running',
+        completedSteps: 5,
+        totalSteps: 10,
+      };
+
+      const result = service.emitExecutionStatusChanged(TENANT, EXEC, payload);
+
+      expect(result.event).toBe(ExecutionEventName.EXECUTION_STATUS_CHANGED);
+      expect(result.data).toEqual(payload);
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledOnce();
+      expect(gateway.broadcastTypedEventImmediately).not.toHaveBeenCalled();
+      expect(gateway.flushExecutionQueue).not.toHaveBeenCalled();
+      expect(throttle.forceFlush).not.toHaveBeenCalled();
+    });
+
+    it('终态应先排空队列与 pending output，再立即广播并延迟清理 replay buffer', () => {
+      throttle.forceFlush.mockReturnValue([
+        {
+          stepId: 'step-1',
+          chunk: 'tail output',
+          startIndex: 2,
+          endIndex: 3,
+        },
+      ]);
+
       const payload: ExecutionStatusChangedPayload = {
         executionId: EXEC,
         status: 'completed',
@@ -77,9 +127,48 @@ describe('EventBridgeService', () => {
 
       const result = service.emitExecutionStatusChanged(TENANT, EXEC, payload);
 
-      expect(result.event).toBe(ExecutionEventName.EXECUTION_STATUS_CHANGED);
-      expect(result.data).toEqual(payload);
-      expect(gateway.broadcastTypedEvent).toHaveBeenCalledOnce();
+      expect(gateway.flushExecutionQueue).toHaveBeenCalledWith(TENANT, EXEC);
+      expect(throttle.forceFlush).toHaveBeenCalledWith(`${TENANT}:${EXEC}`);
+      expect(gateway.broadcastTypedEventImmediately).toHaveBeenCalledTimes(2);
+
+      expect(gateway.broadcastTypedEventImmediately).toHaveBeenNthCalledWith(
+        1,
+        TENANT,
+        EXEC,
+        ExecutionEventName.OUTPUT_CHUNK,
+        expect.objectContaining({
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            chunk: 'tail output',
+            index: 2,
+          },
+        }),
+      );
+      expect(gateway.broadcastTypedEventImmediately).toHaveBeenNthCalledWith(
+        2,
+        TENANT,
+        EXEC,
+        ExecutionEventName.EXECUTION_STATUS_CHANGED,
+        expect.objectContaining({
+          eventId: 2,
+          data: payload,
+        }),
+      );
+      expect(result.eventId).toBe(2);
+      expect(throttle.clearExecution).toHaveBeenCalledWith(EXEC, TENANT);
+      expect(gateway.clearExecutionQueue).toHaveBeenCalledWith(TENANT, EXEC);
+
+      expect(service.getLastEventId(EXEC)).toBe(2);
+      expect(service.getEventsSince(EXEC, 0)?.map((event) => event.event)).toEqual([
+        ExecutionEventName.OUTPUT_CHUNK,
+        ExecutionEventName.EXECUTION_STATUS_CHANGED,
+      ]);
+
+      vi.advanceTimersByTime(30_000);
+
+      expect(service.getLastEventId(EXEC)).toBe(0);
+      expect(service.getEventsSince(EXEC, 0)).toBeNull();
     });
   });
 

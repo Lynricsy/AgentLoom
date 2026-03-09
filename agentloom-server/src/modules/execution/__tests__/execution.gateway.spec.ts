@@ -473,6 +473,56 @@ describe('ExecutionGateway', () => {
     });
   });
 
+  describe('broadcastTypedEventImmediately', () => {
+    it('bypasses throttle and emits directly to the room', () => {
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      gateway.broadcastTypedEventImmediately(
+        't1',
+        'e1',
+        'execution.status.changed',
+        { status: 'completed' },
+      );
+
+      expect(mockThrottle.tryConsume).not.toHaveBeenCalled();
+      expect(emitFn).toHaveBeenCalledWith('execution.status.changed', {
+        status: 'completed',
+      });
+    });
+  });
+
+  describe('flushExecutionQueue', () => {
+    it('drains queued events immediately without waiting for throttle recovery', () => {
+      vi.useFakeTimers();
+      mockThrottle.tryConsume.mockReturnValue(false);
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'queued',
+      });
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.output-chunk', {
+        chunk: 'tail',
+      });
+
+      gateway.flushExecutionQueue('t1', 'e1');
+
+      expect(emitFn).toHaveBeenCalledTimes(2);
+      expect(emitFn).toHaveBeenNthCalledWith(1, 'execution.node.status-changed', {
+        status: 'queued',
+      });
+      expect(emitFn).toHaveBeenNthCalledWith(2, 'execution.node.output-chunk', {
+        chunk: 'tail',
+      });
+
+      vi.advanceTimersByTime(200);
+      expect(emitFn).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+  });
+
   describe('clearExecutionQueue', () => {
     it('clears queue and timers for a specific execution', () => {
       vi.useFakeTimers();

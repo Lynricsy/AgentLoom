@@ -264,6 +264,37 @@ export class ExecutionGateway
     }
   }
 
+  broadcastTypedEventImmediately<
+    K extends (typeof ExecutionEventName)[keyof typeof ExecutionEventName],
+  >(
+    tenantId: string,
+    executionId: string,
+    event: K,
+    data: Record<string, unknown>,
+  ) {
+    const room = this.buildRoom(tenantId, executionId);
+    this.server.to(room).emit(event, data);
+  }
+
+  flushExecutionQueue(tenantId: string, executionId: string): void {
+    const queueKey = `${tenantId}:${executionId}`;
+    const queue = this.eventQueue.get(queueKey);
+    if (!queue || queue.length === 0) {
+      this.clearExecutionQueue(tenantId, executionId);
+      return;
+    }
+
+    this.clearDrainTimer(queueKey);
+
+    const room = this.buildRoom(tenantId, executionId);
+    const emitter = this.server.to(room);
+    for (const item of queue) {
+      emitter.emit(item.event, item.data);
+    }
+
+    this.eventQueue.delete(queueKey);
+  }
+
   /**
    * 清理指定执行实例的背压队列。
    * 在执行到达终态后调用以释放内存。
@@ -271,11 +302,7 @@ export class ExecutionGateway
   clearExecutionQueue(tenantId: string, executionId: string): void {
     const queueKey = `${tenantId}:${executionId}`;
     this.eventQueue.delete(queueKey);
-    const timer = this.drainTimers.get(queueKey);
-    if (timer) {
-      clearTimeout(timer);
-      this.drainTimers.delete(queueKey);
-    }
+    this.clearDrainTimer(queueKey);
   }
 
   private async subscribe(
@@ -466,5 +493,13 @@ export class ExecutionGateway
 
   private buildRoom(tenantId: string, executionId: string): string {
     return `execution:${tenantId}:${executionId}`;
+  }
+
+  private clearDrainTimer(queueKey: string): void {
+    const timer = this.drainTimers.get(queueKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.drainTimers.delete(queueKey);
+    }
   }
 }

@@ -1,5 +1,12 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  forwardRef,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import { ExecutionGateway } from '../execution.gateway';
+import { ThrottleService } from './throttle.service';
 import {
   ExecutionEventName,
   type ExecutionEvent,
@@ -14,6 +21,8 @@ import {
 } from '../types/execution-event.types';
 
 const EVENT_BUFFER_CAPACITY = 500;
+const TERMINAL_EVENT_RETENTION_MS = 30_000;
+const TERMINAL_EXECUTION_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 /**
  * 事件桥接服务。
@@ -22,7 +31,7 @@ const EVENT_BUFFER_CAPACITY = 500;
  * 同时保存最近 N 个事件用于断线重连时的增量回放。
  */
 @Injectable()
-export class EventBridgeService {
+export class EventBridgeService implements OnModuleDestroy {
   private readonly logger = new Logger(EventBridgeService.name);
 
   /** 每个执行实例独立的事件计数器 */
@@ -31,9 +40,15 @@ export class EventBridgeService {
   /** 每个执行实例的事件环形缓冲区（用于断线重连增量回放） */
   private readonly eventBuffers = new Map<string, ExecutionEvent[]>();
 
+  private readonly cleanupTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
   constructor(
     @Inject(forwardRef(() => ExecutionGateway))
     private readonly executionGateway: ExecutionGateway,
+    private readonly throttleService: ThrottleService,
   ) {}
 
   emitStepStatusChanged(
@@ -56,13 +71,27 @@ export class EventBridgeService {
     executionId: string,
     payload: ExecutionStatusChangedPayload,
   ): ExecutionEvent<typeof ExecutionEventName.EXECUTION_STATUS_CHANGED> {
+    const isTerminal = TERMINAL_EXECUTION_STATUSES.has(payload.status);
+    if (isTerminal) {
+      this.flushTerminalExecutionState(tenantId, executionId);
+    }
+
     const envelope = this.createEnvelope(
       ExecutionEventName.EXECUTION_STATUS_CHANGED,
       tenantId,
       executionId,
       payload,
     );
-    this.broadcast(tenantId, executionId, envelope);
+
+    if (isTerminal) {
+      this.broadcastImmediately(tenantId, executionId, envelope);
+      this.throttleService.clearExecution(executionId, tenantId);
+      this.executionGateway.clearExecutionQueue(tenantId, executionId);
+      this.scheduleTerminalCleanup(executionId);
+    } else {
+      this.broadcast(tenantId, executionId, envelope);
+    }
+
     return envelope;
   }
 
@@ -149,8 +178,18 @@ export class EventBridgeService {
 
   /** 执行到达终态后清理计数器和事件缓冲区，释放内存 */
   clearExecution(executionId: string): void {
+    this.cancelCleanup(executionId);
     this.eventCounters.delete(executionId);
     this.eventBuffers.delete(executionId);
+  }
+
+  onModuleDestroy(): void {
+    for (const timer of this.cleanupTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.cleanupTimers.clear();
+    this.eventCounters.clear();
+    this.eventBuffers.clear();
   }
 
   /**
@@ -210,6 +249,20 @@ export class EventBridgeService {
     );
   }
 
+  private broadcastImmediately<T extends ExecutionEventName>(
+    tenantId: string,
+    executionId: string,
+    envelope: ExecutionEvent<T>,
+  ): void {
+    this.bufferEvent(executionId, envelope);
+    this.executionGateway.broadcastTypedEventImmediately(
+      tenantId,
+      executionId,
+      envelope.event,
+      envelope as unknown as Record<string, unknown>,
+    );
+  }
+
   private bufferEvent(
     executionId: string,
     envelope: ExecutionEvent,
@@ -223,5 +276,53 @@ export class EventBridgeService {
     if (buffer.length > EVENT_BUFFER_CAPACITY) {
       buffer.shift();
     }
+  }
+
+  private flushTerminalExecutionState(
+    tenantId: string,
+    executionId: string,
+  ): void {
+    this.executionGateway.flushExecutionQueue(tenantId, executionId);
+
+    const mergedChunks = this.throttleService.forceFlush(
+      this.buildScopedExecutionId(tenantId, executionId),
+    );
+
+    for (const chunk of mergedChunks) {
+      const envelope = this.createEnvelope(
+        ExecutionEventName.OUTPUT_CHUNK,
+        tenantId,
+        executionId,
+        {
+          stepId: chunk.stepId,
+          chunk: chunk.chunk,
+          index: chunk.startIndex,
+        },
+      );
+      this.broadcastImmediately(tenantId, executionId, envelope);
+    }
+  }
+
+  private scheduleTerminalCleanup(executionId: string): void {
+    this.cancelCleanup(executionId);
+
+    const timer = setTimeout(() => {
+      this.cleanupTimers.delete(executionId);
+      this.clearExecution(executionId);
+    }, TERMINAL_EVENT_RETENTION_MS);
+
+    this.cleanupTimers.set(executionId, timer);
+  }
+
+  private cancelCleanup(executionId: string): void {
+    const timer = this.cleanupTimers.get(executionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.cleanupTimers.delete(executionId);
+    }
+  }
+
+  private buildScopedExecutionId(tenantId: string, executionId: string): string {
+    return `${tenantId}:${executionId}`;
   }
 }

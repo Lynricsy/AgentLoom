@@ -91,6 +91,7 @@ Schema 在 `src/database/schema/`。18 张表，启用 RLS (`rls-policies.ts`)�
   - 事件协议: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
   - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.status.changed`
   - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放状态快照
+  - 执行终态清理: `EventBridgeService` 先排空 Gateway backpressure queue，再 `forceFlush()` merge-window 内残留 `output_chunk`，随后立即广播终态事件；`ThrottleService` / `ExecutionGateway` 运行态状态即时释放，replay ring buffer 保留 30s 后清理
   - AC-1 认证失败: `createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame
   - AC-2 订阅拒绝: 返回 `{status:'error', error:'FORBIDDEN', currentState:null}` (非抛异常)
   - AC-6 背压: Gateway 内置队列 (`eventQueue` Map)，速率限制时排队而非丢弃，500 事件上限/执行，100ms drain 间隔

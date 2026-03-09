@@ -191,6 +191,24 @@ describe('ThrottleService', () => {
       expect(service.hasPending(EXEC_1)).toBe(false);
       expect(service.tryConsume(EXEC_1)).toBe(true);
     });
+
+    it('should clear token bucket and scoped merge-window state together when tenantId is provided', () => {
+      const scopedExecutionId = `tenant-1:${EXEC_1}`;
+
+      service.tryConsume(EXEC_1);
+      service.bufferOutputChunk(scopedExecutionId, STEP_A, 'tail', 0);
+
+      const handler = vi.fn();
+      service.registerFlushHandler(handler);
+
+      service.clearExecution(EXEC_1, 'tenant-1');
+
+      vi.advanceTimersByTime(ThrottleService.MERGE_WINDOW_MS * 2);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(service.hasPending(scopedExecutionId)).toBe(false);
+      expect(service.tryConsume(EXEC_1)).toBe(true);
+    });
   });
 
   describe('onModuleDestroy', () => {
