@@ -60,6 +60,15 @@ src/
   - `useExecutionSocket`: 底层 Socket.IO 连接管理，事件监听，ACK 错误处理
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
+- **执行 API 层** (`features/execution/api/`):
+  - `executionKeys`: TanStack Query key factory (all/lists/details)
+  - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `getExecution`, `cancelExecution`
+  - `executionMutations`: `useRunWorkflow`, `useCancelExecution` (TanStack mutations + cache)
+- **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
+- **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
+- **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
+- **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
+- **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 
 ## 样式
 
