@@ -3,6 +3,8 @@ import { BullModule } from '@nestjs/bullmq';
 
 import { SandboxService } from './sandbox.service';
 import { DockerService } from './docker.service';
+import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
+import { SandboxLifecycleWorker } from './sandbox-lifecycle.worker';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
 
 @Module({
@@ -17,7 +19,7 @@ import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
       },
     }),
   ],
-  providers: [SandboxService, DockerService],
-  exports: [SandboxService, DockerService],
+  providers: [SandboxService, DockerService, SandboxLifecycleProducer, SandboxLifecycleWorker],
+  exports: [SandboxService, DockerService, SandboxLifecycleProducer],
 })
 export class SandboxModule {}
