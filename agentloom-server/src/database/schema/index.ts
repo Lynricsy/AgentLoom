@@ -101,6 +101,15 @@ export {
   type NewSandboxLog,
 } from './sandbox-logs.schema';
 export {
+  notificationTypeEnum,
+  notifications,
+  notificationPreferences,
+  type Notification,
+  type NewNotification,
+  type NotificationPreference,
+  type NewNotificationPreference,
+} from './notifications.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
