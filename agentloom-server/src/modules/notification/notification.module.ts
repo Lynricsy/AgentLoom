@@ -5,6 +5,7 @@ import { NotificationController } from './notification.controller';
 import { NotificationService } from './notification.service';
 import { NotificationProcessor } from './notification.processor';
 import { NotificationGateway } from './notification.gateway';
+import { NotificationListener } from './notification.listener';
 import {
   NOTIFICATION_QUEUE,
   NOTIFICATION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -23,6 +24,7 @@ import {
     NotificationService,
     NotificationProcessor,
     NotificationGateway,
+    NotificationListener,
   ],
   exports: [NotificationService, NotificationGateway],
 })

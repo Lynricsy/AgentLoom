@@ -6,6 +6,7 @@ import {
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { TokenBlacklistModule } from './common/services/token-blacklist.module';
@@ -35,6 +36,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     DatabaseModule,
     TokenBlacklistModule,
     RedisModule,
+    EventEmitterModule.forRoot(),
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => {
         const redisUrl = configService.get<string>('APP_REDIS_URL')!;

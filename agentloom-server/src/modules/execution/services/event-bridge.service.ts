@@ -1,10 +1,12 @@
 import {
+  Optional,
   Injectable,
   Logger,
   Inject,
   forwardRef,
   type OnModuleDestroy,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ExecutionGateway } from '../execution.gateway';
 import { ThrottleService } from './throttle.service';
 import {
@@ -51,6 +53,7 @@ export class EventBridgeService implements OnModuleDestroy {
     @Inject(forwardRef(() => ExecutionGateway))
     private readonly executionGateway: ExecutionGateway,
     private readonly throttleService: ThrottleService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   emitStepStatusChanged(
@@ -93,6 +96,11 @@ export class EventBridgeService implements OnModuleDestroy {
     } else {
       this.broadcast(tenantId, executionId, envelope);
     }
+
+    this.eventEmitter?.emit('execution.status.changed', {
+      tenantId,
+      ...payload,
+    });
 
     return envelope;
   }
