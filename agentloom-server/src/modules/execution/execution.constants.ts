@@ -18,6 +18,7 @@ export interface AgentTaskJobData {
   tenantId: string;
   input?: Record<string, unknown>;
   nodeData?: Record<string, unknown>;
+  workflowContext?: Record<string, unknown>;
   /** 干预恢复时传入已有会话 ID */
   resumeSessionId?: string;
   intervention?: InterventionResolution;

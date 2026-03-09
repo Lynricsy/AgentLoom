@@ -602,7 +602,9 @@ export class NodeSchedulerService {
 
     if (
       execution &&
-      (execution.status === 'completed' || execution.status === 'failed')
+      (execution.status === 'completed' ||
+        execution.status === 'failed' ||
+        execution.status === 'cancelled')
     ) {
       try {
         await this.sandboxService.destroySandbox(executionId, tenantId);

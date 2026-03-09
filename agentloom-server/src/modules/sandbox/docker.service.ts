@@ -14,9 +14,14 @@ export interface ContainerStats {
 }
 
 const SANDBOX_IMAGE = 'agentloom/sandbox:latest';
+const SANDBOX_AGENT_PORT = '8080/tcp';
 const STOP_TIMEOUT_SECONDS = 10;
 const MB_TO_BYTES = 1024 * 1024;
 const CPU_CORE_TO_NANO = 1e9;
+const HEALTHCHECK_INTERVAL_NS = 30 * 1_000_000_000;
+const HEALTHCHECK_START_PERIOD_NS = 5 * 1_000_000_000;
+const HEALTHCHECK_TIMEOUT_NS = 5 * 1_000_000_000;
+const HEALTHCHECK_RETRIES = 3;
 
 @Injectable()
 export class DockerService {
@@ -34,9 +39,20 @@ export class DockerService {
     try {
       const container = await this.docker.createContainer({
         Image: SANDBOX_IMAGE,
+        ExposedPorts: { [SANDBOX_AGENT_PORT]: {} },
+        Healthcheck: {
+          Test: ['CMD-SHELL', 'test -d /workspace || exit 1'],
+          Interval: HEALTHCHECK_INTERVAL_NS,
+          StartPeriod: HEALTHCHECK_START_PERIOD_NS,
+          Timeout: HEALTHCHECK_TIMEOUT_NS,
+          Retries: HEALTHCHECK_RETRIES,
+        },
         name: `sandbox-${sessionId}`,
         Labels: { 'agentloom.session': sessionId },
         HostConfig: {
+          PortBindings: {
+            [SANDBOX_AGENT_PORT]: [{ HostPort: '0' }],
+          },
           NanoCpus: config.cpu * CPU_CORE_TO_NANO,
           Memory: config.memory * MB_TO_BYTES,
           StorageOpt: { size: `${config.disk}G` },
@@ -120,10 +136,30 @@ export class DockerService {
     try {
       const container = this.docker.getContainer(containerId);
       const info = await container.inspect();
-      return info.State.Running;
+      if (!info.State.Running) {
+        return false;
+      }
+
+      return info.State.Health?.Status
+        ? info.State.Health.Status === 'healthy'
+        : true;
     } catch {
       return false;
     }
+  }
+
+  async getPromptUrl(containerId: string): Promise<string> {
+    const container = this.docker.getContainer(containerId);
+    const info = await container.inspect();
+    const hostPort = info.NetworkSettings.Ports?.[SANDBOX_AGENT_PORT]?.[0]?.HostPort;
+
+    if (!hostPort) {
+      throw new SandboxCreationException(
+        `Sandbox agent port is not published for container ${containerId}`,
+      );
+    }
+
+    return `http://127.0.0.1:${hostPort}/v1/prompt`;
   }
 
   async getContainerStats(containerId: string): Promise<ContainerStats> {

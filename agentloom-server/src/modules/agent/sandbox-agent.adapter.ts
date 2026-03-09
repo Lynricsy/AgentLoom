@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
+import type { SandboxSession } from '../../database/schema';
+import { DockerService } from '../sandbox/docker.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
 import { SandboxService } from '../sandbox/sandbox.service';
 
@@ -12,10 +14,10 @@ import type {
   CreateSessionParams,
 } from './types';
 
-const SANDBOX_AGENT_PORT = 8080;
-const SANDBOX_PROMPT_PATH = '/v1/prompt';
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 300_000;
+const SANDBOX_READY_TIMEOUT_MS = 30_000;
+const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
 
 @Injectable()
 export class SandboxAgentAdapter implements IAgentRuntime {
@@ -23,7 +25,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
 
-  constructor(private readonly sandboxService: SandboxService) {}
+  constructor(
+    private readonly sandboxService: SandboxService,
+    private readonly dockerService: DockerService,
+  ) {}
 
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
     const session: AgentSession = {
@@ -71,21 +76,28 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     session.context.history.push(...content);
     session.updatedAt = new Date();
 
-    const sandboxSession = await this.sandboxService.getSandboxSession(
-      session.context.workflowState?.['executionId'] as string,
-    );
+    const workflowState = session.context.workflowState ?? {};
+    const executionId =
+      typeof workflowState['executionId'] === 'string'
+        ? workflowState['executionId']
+        : null;
+    const tenantId =
+      typeof workflowState['tenantId'] === 'string'
+        ? workflowState['tenantId']
+        : session.tenantId ?? null;
 
-    if (!sandboxSession?.containerId) {
-      yield {
-        type: 'done',
-        stopReason: 'end_turn',
-      };
-      return;
+    if (!executionId || !tenantId) {
+      throw new Error('Sandbox workflow context missing executionId or tenantId');
     }
 
-    const containerUrl = `http://${sandboxSession.containerId.slice(0, 12)}:${SANDBOX_AGENT_PORT}${SANDBOX_PROMPT_PATH}`;
-
     try {
+      const sandboxSession = await this.waitForSandboxReady(executionId, tenantId);
+      if (!sandboxSession.containerId) {
+        throw new Error(`Sandbox session ${sandboxSession.id} has no containerId`);
+      }
+      const containerUrl = await this.dockerService.getPromptUrl(
+        sandboxSession.containerId,
+      );
       const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       const combinedSignal = abortController
         ? AbortSignal.any([abortController.signal, timeoutSignal])
@@ -103,26 +115,33 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       });
 
       if (!response.ok || !response.body) {
-        yield { type: 'message_chunk', content: `Sandbox agent error: ${response.status}` };
-        yield { type: 'done', stopReason: 'end_turn' };
-        return;
+        throw new Error(`Sandbox agent request failed with status ${response.status}`);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n').filter((line) => line.trim());
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const eventData = JSON.parse(line.slice(6)) as AgentEvent;
-            yield eventData;
+        for (const frame of frames) {
+          const event = this.parseServerSentEvent(frame);
+          if (event) {
+            yield event;
           }
+        }
+
+        if (done) {
+          const finalEvent = this.parseServerSentEvent(buffer);
+          if (finalEvent) {
+            yield finalEvent;
+          }
+          break;
         }
       }
     } catch (error) {
@@ -134,12 +153,11 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         return;
       }
 
-      this.logger.error(`Sandbox prompt 失败: ${error}`);
-      yield {
-        type: 'message_chunk',
-        content: `Sandbox execution error: ${error instanceof Error ? error.message : String(error)}`,
-      };
-      yield { type: 'done', stopReason: 'end_turn' };
+      this.logger.error(
+        `Sandbox prompt 失败: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
     }
   }
 
@@ -156,5 +174,63 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
+  }
+
+  private async waitForSandboxReady(
+    executionId: string,
+    tenantId: string,
+  ): Promise<SandboxSession & { containerId: string }> {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
+      const sandboxSession = await this.sandboxService.getSandboxSession(
+        executionId,
+        tenantId,
+      );
+
+      if (!sandboxSession) {
+        throw new Error(`Sandbox session not found for execution ${executionId}`);
+      }
+
+      if (sandboxSession.status === 'failed' || sandboxSession.status === 'stopped') {
+        throw new Error(
+          `Sandbox session ${sandboxSession.id} is ${sandboxSession.status}`,
+        );
+      }
+
+      if (
+        sandboxSession.status === 'ready' &&
+        sandboxSession.containerId &&
+        (await this.dockerService.healthCheck(sandboxSession.containerId))
+      ) {
+        return {
+          ...sandboxSession,
+          containerId: sandboxSession.containerId,
+        };
+      }
+
+      await this.delay(SANDBOX_READY_POLL_INTERVAL_MS);
+    }
+
+    throw new Error(`Sandbox session is not ready for execution ${executionId}`);
+  }
+
+  private parseServerSentEvent(frame: string): AgentEvent | null {
+    const payload = frame
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n');
+
+    if (!payload || payload === '[DONE]') {
+      return null;
+    }
+
+    return JSON.parse(payload) as AgentEvent;
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

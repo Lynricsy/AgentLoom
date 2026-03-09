@@ -1,12 +1,11 @@
 import { Test } from '@nestjs/testing';
-import { getQueueToken } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
 import { SandboxService } from '../sandbox.service';
+import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import { SandboxNotFoundException } from '../sandbox.exceptions';
-import { SANDBOX_LIFECYCLE_QUEUE } from '../sandbox.constants';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 
 function createSelectChainWithLimit(result: unknown[]) {
@@ -80,7 +79,7 @@ function buildSession(
 describe('SandboxService', () => {
   let service: SandboxService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
-  let mockQueue: Record<string, ReturnType<typeof vi.fn>>;
+  let mockLifecycleProducer: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -94,8 +93,9 @@ describe('SandboxService', () => {
       transaction: vi.fn(),
     };
 
-    mockQueue = {
-      add: vi.fn().mockResolvedValue(undefined),
+    mockLifecycleProducer = {
+      addCreateTask: vi.fn().mockResolvedValue(undefined),
+      addDestroyTask: vi.fn().mockResolvedValue(undefined),
     };
 
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -108,8 +108,8 @@ describe('SandboxService', () => {
         SandboxService,
         { provide: DRIZZLE, useValue: db },
         {
-          provide: getQueueToken(SANDBOX_LIFECYCLE_QUEUE),
-          useValue: mockQueue,
+          provide: SandboxLifecycleProducer,
+          useValue: mockLifecycleProducer,
         },
       ],
     }).compile();
@@ -135,11 +135,11 @@ describe('SandboxService', () => {
 
       expect(result).toEqual(newSession);
       expect(db.insert).toHaveBeenCalledOnce();
-      expect(mockQueue.add).toHaveBeenCalledWith('create', {
+      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
         sessionId: TEST_SESSION_ID,
         executionId: TEST_EXECUTION_ID,
         tenantId: TEST_TENANT_ID,
-        jobType: 'create',
+        config: TEST_CONFIG,
       });
     });
 
@@ -159,7 +159,7 @@ describe('SandboxService', () => {
 
       expect(result).toEqual(existing);
       expect(db.insert).not.toHaveBeenCalled();
-      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
   });
 
@@ -170,14 +170,20 @@ describe('SandboxService', () => {
         createSelectChainWithLimit([session]),
       );
 
-      const result = await service.getSandboxSession(TEST_EXECUTION_ID);
+      const result = await service.getSandboxSession(
+        TEST_EXECUTION_ID,
+        TEST_TENANT_ID,
+      );
       expect(result).toEqual(session);
     });
 
     it('アクティブセッション未発見時に null を返す', async () => {
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
 
-      const result = await service.getSandboxSession(TEST_EXECUTION_ID);
+      const result = await service.getSandboxSession(
+        TEST_EXECUTION_ID,
+        TEST_TENANT_ID,
+      );
       expect(result).toBeNull();
     });
   });
@@ -209,7 +215,14 @@ describe('SandboxService', () => {
 
   describe('destroySandbox', () => {
     it('アクティブセッション発見時にステータス更新 → destroy キュー投入', async () => {
-      const session = buildSession({ status: 'ready' });
+      const session = buildSession({
+        status: 'ready',
+        containerId: 'container-abc',
+        config: {
+          ...TEST_CONFIG,
+          persistencePath: 'tenants/t1/sandboxes/e1',
+        },
+      });
 
       db.select.mockReturnValueOnce(
         createSelectChainWithLimit([session]),
@@ -221,11 +234,12 @@ describe('SandboxService', () => {
       await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
 
       expect(db.update).toHaveBeenCalledOnce();
-      expect(mockQueue.add).toHaveBeenCalledWith('destroy', {
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
         sessionId: TEST_SESSION_ID,
         executionId: TEST_EXECUTION_ID,
         tenantId: TEST_TENANT_ID,
-        jobType: 'destroy',
+        containerId: 'container-abc',
+        persistencePath: 'tenants/t1/sandboxes/e1',
       });
     });
 
@@ -235,7 +249,7 @@ describe('SandboxService', () => {
       await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
 
       expect(db.update).not.toHaveBeenCalled();
-      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
       expect(Logger.prototype.warn).toHaveBeenCalled();
     });
   });

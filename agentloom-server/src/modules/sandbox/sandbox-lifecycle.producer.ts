@@ -33,7 +33,8 @@ export class SandboxLifecycleProducer {
   async addDestroyTask(params: {
     sessionId: string;
     executionId: string;
-    containerId: string;
+    containerId?: string;
+    persistencePath?: string;
     tenantId: string;
   }): Promise<Job<SandboxLifecycleJobData>> {
     return this.queue.add('sandbox-destroy', {
@@ -41,7 +42,10 @@ export class SandboxLifecycleProducer {
       executionId: params.executionId,
       tenantId: params.tenantId,
       jobType: 'destroy',
-      containerId: params.containerId,
+      ...(params.containerId ? { containerId: params.containerId } : {}),
+      ...(params.persistencePath
+        ? { persistencePath: params.persistencePath }
+        : {}),
     });
   }
 
@@ -59,7 +63,11 @@ export class SandboxLifecycleProducer {
         tenantId: params.tenantId,
         jobType: 'timeout_check',
       },
-      { delay: params.delayMs },
+      {
+        attempts: 1,
+        delay: params.delayMs,
+        jobId: `sandbox-timeout:${params.sessionId}`,
+      },
     );
   }
 }

@@ -50,6 +50,7 @@ describe('SandboxLifecycleProducer', () => {
       sessionId: 's1',
       executionId: 'e1',
       containerId: 'c1',
+      persistencePath: 'tenants/t1/sandboxes/e1',
       tenantId: 't1',
     });
 
@@ -59,6 +60,7 @@ describe('SandboxLifecycleProducer', () => {
       tenantId: 't1',
       jobType: 'destroy',
       containerId: 'c1',
+      persistencePath: 'tenants/t1/sandboxes/e1',
     });
   });
 
@@ -78,7 +80,11 @@ describe('SandboxLifecycleProducer', () => {
         tenantId: 't1',
         jobType: 'timeout_check',
       },
-      { delay: 14_400_000 },
+      {
+        attempts: 1,
+        delay: 14_400_000,
+        jobId: 'sandbox-timeout:s1',
+      },
     );
   });
 });

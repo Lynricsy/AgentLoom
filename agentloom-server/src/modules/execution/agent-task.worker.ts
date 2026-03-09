@@ -80,6 +80,15 @@ export class AgentTaskWorker extends WorkerHost {
       unknown
     >;
     const input = (job.data.input ?? step.input ?? {}) as Record<string, unknown>;
+    const workflowContext = {
+      executionId,
+      hasSandbox: Boolean(hasSandbox),
+      input,
+      nodeId: step.nodeId,
+      stepId,
+      tenantId,
+      ...(job.data.workflowContext ?? {}),
+    };
     let sessionId = resumeSessionId;
     let accumulatedContent = '';
     let lastStopReason: string | undefined;
@@ -120,7 +129,7 @@ export class AgentTaskWorker extends WorkerHost {
             typeof nodeData.autonomyMode === 'string'
               ? nodeData.autonomyMode
               : undefined,
-          context: input,
+          context: workflowContext,
         });
         sessionId = session.id;
       }

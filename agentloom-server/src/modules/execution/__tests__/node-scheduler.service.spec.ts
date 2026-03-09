@@ -545,6 +545,17 @@ describe('NodeSchedulerService', () => {
       expect(mockSandboxService.destroySandbox).not.toHaveBeenCalled();
     });
 
+    it('execution 为 cancelled 时也应触发 destroySandbox', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
+
+      await service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID);
+
+      expect(mockSandboxService.destroySandbox).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+    });
+
     it('destroySandbox 异常时应 warn 而非抛出', async () => {
       db.select.mockReturnValueOnce(createSelectChain([{ status: 'failed' }]));
       mockSandboxService.destroySandbox.mockRejectedValueOnce(new Error('container not found'));

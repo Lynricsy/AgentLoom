@@ -114,8 +114,10 @@ describe('SandboxLifecycleWorker', () => {
         expect.objectContaining({
           containerId: 'c-123',
           status: 'ready',
+          workspacePath: '/workspace/',
         }),
       );
+      expect(mockInsert).toHaveBeenCalled();
       expect(mockDockerService.attachLogs).toHaveBeenCalledWith(
         'c-123',
         expect.any(Function),
@@ -125,7 +127,30 @@ describe('SandboxLifecycleWorker', () => {
         executionId: 'e1',
         tenantId: 't1',
         delayMs: 4 * 60 * 60 * 1000,
-      });
+        });
+    });
+
+    it('容器创建失败时应回写 session failed 并记录系统日志', async () => {
+      mockDockerService.createContainer.mockRejectedValueOnce(
+        new Error('image not found'),
+      );
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: DEFAULT_CONFIG,
+          }),
+        ),
+      ).rejects.toThrow('image not found');
+
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed' }),
+      );
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('config 缺失时应抛出 SandboxCreationException', async () => {
@@ -159,6 +184,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'stopped' }),
       );
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('无 containerId 时应仅更新状态', async () => {
@@ -199,11 +225,28 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith('e1', 't1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'failed' }),
+      const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
+      expect(updatePayloads).toContainEqual(
+        expect.objectContaining({ status: 'failed', stoppedAt: expect.any(Date) }),
       );
+      expect(updatePayloads).toContainEqual(
+        expect.objectContaining({
+          status: 'failed',
+          completedAt: expect.any(Date),
+          errorMessage: { message: 'sandbox_timeout' },
+        }),
+      );
+      expect(updatePayloads).toContainEqual(
+        expect.objectContaining({
+          status: 'failed',
+          failedAt: expect.any(Date),
+          errorMessage: { message: 'sandbox_timeout' },
+        }),
+      );
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('会话已停止时应跳过处理', async () => {

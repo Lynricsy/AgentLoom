@@ -6,7 +6,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, notInArray } from 'drizzle-orm';
 
 import { DockerService } from './docker.service';
 import { SandboxService } from './sandbox.service';
@@ -21,6 +21,14 @@ import {
 } from './sandbox.exceptions';
 
 const HOURS_TO_MS = 60 * 60 * 1000;
+const CONTAINER_WORKSPACE = '/workspace/';
+const ACTIVE_STEP_STATUSES = [
+  'pending',
+  'queued',
+  'running',
+  'waiting_intervention',
+] as const;
+const TERMINAL_SANDBOX_STATUSES = ['stopped', 'failed'] as const;
 
 @Processor(SANDBOX_LIFECYCLE_QUEUE)
 export class SandboxLifecycleWorker extends WorkerHost {
@@ -55,40 +63,78 @@ export class SandboxLifecycleWorker extends WorkerHost {
       throw new SandboxCreationException('Missing config in create job data');
     }
 
-    const { containerId } = await this.dockerService.createContainer(
-      sessionId,
-      config,
-    );
+    let containerId: string | undefined;
 
-    await runInTenantTransaction(this.db, tenantId, async () => {
-      const tenantDb = getTenantDb(this.db);
-      await tenantDb
-        .update(schema.sandboxSessions)
-        .set({
-          containerId,
-          status: 'ready',
-          startedAt: new Date(),
-        })
-        .where(eq(schema.sandboxSessions.id, sessionId));
-    });
+    try {
+      const container = await this.dockerService.createContainer(sessionId, config);
+      containerId = container.containerId;
 
-    await this.dockerService.attachLogs(containerId, (level, message) => {
-      this.insertLog(sessionId, level, message, tenantId).catch((err) => {
-        this.logger.error(`Failed to insert log for session ${sessionId}`, err);
+      await runInTenantTransaction(this.db, tenantId, async () => {
+        const tenantDb = getTenantDb(this.db);
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({
+            containerId,
+            status: 'ready',
+            startedAt: new Date(),
+            workspacePath: CONTAINER_WORKSPACE,
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
       });
-    });
 
-    const delayMs = config.timeout * HOURS_TO_MS;
-    await this.lifecycleProducer.addTimeoutCheckTask({
-      sessionId,
-      executionId,
-      tenantId,
-      delayMs,
-    });
+      await this.insertLog(
+        sessionId,
+        'system',
+        `Sandbox container ${containerId} created`,
+        tenantId,
+      );
 
-    this.logger.log(
-      `Sandbox ${sessionId} created with container ${containerId}`,
-    );
+      await this.dockerService.attachLogs(containerId, (level, message) => {
+        this.insertLog(sessionId, level, message, tenantId).catch((err) => {
+          this.logger.error(`Failed to insert log for session ${sessionId}`, err);
+        });
+      });
+
+      const delayMs = config.timeout * HOURS_TO_MS;
+      await this.lifecycleProducer.addTimeoutCheckTask({
+        sessionId,
+        executionId,
+        tenantId,
+        delayMs,
+      });
+
+      this.logger.log(
+        `Sandbox ${sessionId} created with container ${containerId}`,
+      );
+    } catch (error) {
+      if (containerId) {
+        await this.dockerService.removeContainer(containerId).catch((cleanupError) => {
+          this.logger.warn(
+            `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+          );
+        });
+      }
+
+      await runInTenantTransaction(this.db, tenantId, async () => {
+        const tenantDb = getTenantDb(this.db);
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({
+            status: 'failed',
+            stoppedAt: new Date(),
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
+      });
+
+      await this.insertLog(
+        sessionId,
+        'system',
+        `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
+        tenantId,
+      );
+
+      throw error;
+    }
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
@@ -110,6 +156,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         .where(eq(schema.sandboxSessions.id, sessionId));
     });
 
+    await this.insertLog(sessionId, 'system', 'Sandbox destroyed', tenantId);
+
     this.logger.log(`Sandbox ${sessionId} destroyed`);
   }
 
@@ -118,8 +166,16 @@ export class SandboxLifecycleWorker extends WorkerHost {
   ): Promise<void> {
     const { sessionId, executionId, tenantId } = data;
 
-    const session = await this.sandboxService.getSandboxSession(executionId);
-    if (!session || session.status === 'stopped' || session.status === 'failed') {
+    const session = await this.sandboxService.getSandboxSession(
+      executionId,
+      tenantId,
+    );
+    if (
+      !session ||
+      TERMINAL_SANDBOX_STATUSES.includes(
+        session.status as (typeof TERMINAL_SANDBOX_STATUSES)[number],
+      )
+    ) {
       return;
     }
 
@@ -139,7 +195,39 @@ export class SandboxLifecycleWorker extends WorkerHost {
           stoppedAt: new Date(),
         })
         .where(eq(schema.sandboxSessions.id, sessionId));
+
+      await tenantDb
+        .update(schema.executionSteps)
+        .set({
+          status: 'failed',
+          completedAt: new Date(),
+          updatedAt: new Date(),
+          errorMessage: { message: 'sandbox_timeout' },
+        })
+        .where(
+          and(
+            eq(schema.executionSteps.executionId, executionId),
+            inArray(schema.executionSteps.status, [...ACTIVE_STEP_STATUSES]),
+          ),
+        );
+
+      await tenantDb
+        .update(schema.workflowExecutions)
+        .set({
+          status: 'failed',
+          failedAt: new Date(),
+          updatedAt: new Date(),
+          errorMessage: { message: 'sandbox_timeout' },
+        })
+        .where(
+          and(
+            eq(schema.workflowExecutions.id, executionId),
+            notInArray(schema.workflowExecutions.status, ['failed', 'completed']),
+          ),
+        );
     });
+
+    await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
 
     throw new SandboxTimeoutException(
       session!.config.timeout,

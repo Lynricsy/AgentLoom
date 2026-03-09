@@ -9,7 +9,14 @@ const mockContainer = {
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
   remove: vi.fn().mockResolvedValue(undefined),
-  inspect: vi.fn().mockResolvedValue({ State: { Running: true } }),
+  inspect: vi.fn().mockResolvedValue({
+    State: { Running: true },
+    NetworkSettings: {
+      Ports: {
+        '8080/tcp': [{ HostPort: '49123' }],
+      },
+    },
+  }),
   logs: vi.fn(),
   stats: vi.fn(),
 };
@@ -45,10 +52,18 @@ describe('DockerService', () => {
       expect(result.containerId).toBe('container-abc123');
       expect(mockDocker.createContainer).toHaveBeenCalledWith(
         expect.objectContaining({
+          ExposedPorts: { '8080/tcp': {} },
+          Healthcheck: expect.objectContaining({
+            Interval: 30_000_000_000,
+            Retries: 3,
+            StartPeriod: 5_000_000_000,
+            Timeout: 5_000_000_000,
+          }),
           Image: 'agentloom/sandbox:latest',
           name: 'sandbox-session-1',
           Labels: { 'agentloom.session': 'session-1' },
           HostConfig: expect.objectContaining({
+            PortBindings: { '8080/tcp': [{ HostPort: '0' }] },
             NanoCpus: 2e9,
             Memory: 1024 * 1024 * 1024,
             StorageOpt: { size: '5G' },
@@ -178,6 +193,15 @@ describe('DockerService', () => {
       expect(result).toBe(true);
     });
 
+    it('health 状态 unhealthy 时应返回 false', async () => {
+      mockContainer.inspect.mockResolvedValueOnce({
+        State: { Running: true, Health: { Status: 'unhealthy' } },
+      });
+
+      const result = await service.healthCheck('container-abc123');
+      expect(result).toBe(false);
+    });
+
     it('inspect 失败时应返回 false', async () => {
       mockContainer.inspect.mockRejectedValueOnce(
         new Error('no such container'),
@@ -185,6 +209,14 @@ describe('DockerService', () => {
 
       const result = await service.healthCheck('container-abc123');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('getPromptUrl', () => {
+    it('应解析容器暴露的 agent HTTP 端口', async () => {
+      const url = await service.getPromptUrl('container-abc123');
+
+      expect(url).toBe('http://127.0.0.1:49123/v1/prompt');
     });
   });
 

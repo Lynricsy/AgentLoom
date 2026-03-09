@@ -140,10 +140,17 @@ describe('AgentTaskWorker', () => {
     cancel: vi.fn(),
   };
 
+  const selectAdapterSpy = vi.fn((hasSandbox: boolean) =>
+    hasSandbox
+      ? (mockSandboxRuntime as unknown as IAgentRuntime)
+      : (mockAgentRuntime as unknown as IAgentRuntime),
+  );
+
+  const selectAdapter: IAgentAdapterFactory['selectAdapter'] = (hasSandbox) =>
+    selectAdapterSpy(hasSandbox);
+
   const mockAdapterFactory: IAgentAdapterFactory = {
-    selectAdapter: vi.fn((hasSandbox: boolean) =>
-      hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
-    ) as ReturnType<typeof vi.fn>,
+    selectAdapter,
   };
 
   const mockDb = {
@@ -173,7 +180,7 @@ describe('AgentTaskWorker', () => {
   });
 
   describe('process', () => {
-    it('会创建携带 tenant/systemPrompt/autonomyMode 的 workflow session，并以 JSON 文本块调用 prompt', async () => {
+    it('会创建携带 workflow 上下文元数据的 session，并以 JSON 文本块调用 prompt', async () => {
       const input = { source: { text: 'hello' } };
       const step = makeStep({
         input,
@@ -199,7 +206,14 @@ describe('AgentTaskWorker', () => {
         llmModelConfigId: 'model-config-001',
         systemPrompt: '你是翻译专家',
         autonomyMode: 'LLM_SUGGEST',
-        context: input,
+        context: {
+          executionId: EXECUTION_ID,
+          hasSandbox: false,
+          input,
+          nodeId: 'node-1',
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+        },
       });
       expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
         { type: 'text', text: JSON.stringify(input) },
@@ -557,7 +571,7 @@ describe('AgentTaskWorker', () => {
         }),
       );
 
-      expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
+      expect(selectAdapterSpy).toHaveBeenCalledWith(true);
       expect(mockSandboxRuntime.createSession).toHaveBeenCalled();
       expect(mockSandboxRuntime.prompt).toHaveBeenCalled();
       expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();

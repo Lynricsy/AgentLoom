@@ -23,6 +23,10 @@ describe('SandboxAgentAdapter', () => {
   let mockSandboxService: {
     getSandboxSession: ReturnType<typeof vi.fn>;
   };
+  let mockDockerService: {
+    getPromptUrl: ReturnType<typeof vi.fn>;
+    healthCheck: ReturnType<typeof vi.fn>;
+  };
 
   const defaultParams: CreateSessionParams = {
     agentId: 'agent-001',
@@ -30,7 +34,7 @@ describe('SandboxAgentAdapter', () => {
     tenantId: 'tenant-001',
     llmModelConfigId: 'model-config-001',
     systemPrompt: 'You are a sandbox agent.',
-    mcpServers: [],
+    mcpServers: {},
     context: { executionId: 'exec-001' },
   };
 
@@ -39,8 +43,23 @@ describe('SandboxAgentAdapter', () => {
     mockSandboxService = {
       getSandboxSession: vi.fn(),
     };
-    adapter = new SandboxAgentAdapter(mockSandboxService as never);
+    mockDockerService = {
+      getPromptUrl: vi.fn(),
+      healthCheck: vi.fn(),
+    };
+    adapter = new SandboxAgentAdapter(
+      mockSandboxService as never,
+      mockDockerService as never,
+    );
   });
+
+  async function collectEvents(iterable: AsyncIterable<AgentEvent>) {
+    const events: AgentEvent[] = [];
+    for await (const event of iterable) {
+      events.push(event);
+    }
+    return events;
+  }
 
   describe('createSession', () => {
     it('应创建具有 sandbox 工作区路径的会话', async () => {
@@ -60,10 +79,12 @@ describe('SandboxAgentAdapter', () => {
     it('应保留 mcpServers 配置', async () => {
       const session = await adapter.createSession({
         ...defaultParams,
-        mcpServers: [{ url: 'http://mcp:3000' } as never],
+        mcpServers: {
+          sandbox: { url: 'http://mcp:3000' } as never,
+        },
       });
 
-      expect(session.context.mcpServers).toHaveLength(1);
+      expect(Object.keys(session.context.mcpServers ?? {})).toHaveLength(1);
     });
   });
 
@@ -82,60 +103,111 @@ describe('SandboxAgentAdapter', () => {
   });
 
   describe('prompt', () => {
-    it('无容器时应直接返回 done 事件', async () => {
-      const session = await adapter.createSession(defaultParams);
-      mockSandboxService.getSandboxSession.mockResolvedValue(null);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, [
-        { type: 'text', text: 'hello' },
-      ])) {
-        events.push(event);
-      }
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ type: 'done', stopReason: 'end_turn' });
-    });
-
-    it('容器无 containerId 时应直接返回 done 事件', async () => {
+    it('sandbox ready 后应请求容器端点并解析 SSE 事件', async () => {
       const session = await adapter.createSession(defaultParams);
       mockSandboxService.getSandboxSession.mockResolvedValue({
-        containerId: null,
-      });
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, [
-        { type: 'text', text: 'hello' },
-      ])) {
-        events.push(event);
-      }
-
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ type: 'done', stopReason: 'end_turn' });
-    });
-
-    it('fetch 失败时应返回错误消息和 done 事件', async () => {
-      const session = await adapter.createSession(defaultParams);
-      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
         containerId: 'abc123def456',
       });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      const originalFetch = globalThis.fetch;
+      const encoder = new TextEncoder();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => {
+            let emitted = false;
+            return {
+              read: vi.fn(async () => {
+                if (emitted) {
+                  return { done: true, value: undefined };
+                }
+                emitted = true;
+                return {
+                  done: false,
+                  value: encoder.encode(
+                    'data: {"type":"message_chunk","content":"hello"}\n\n' +
+                      'data: {"type":"done","stopReason":"end_turn"}\n\n',
+                  ),
+                };
+              }),
+            };
+          },
+        },
+      } as unknown as Response);
+
+      const events = await collectEvents(adapter.prompt(session.id, [
+        { type: 'text', text: 'hello' },
+      ]));
+
+      expect(events).toEqual([
+        { type: 'message_chunk', content: 'hello' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
+        'exec-001',
+        'tenant-001',
+      );
+      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(mockDockerService.getPromptUrl).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/prompt',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            sessionId: session.id,
+            content: [{ type: 'text', text: 'hello' }],
+            cwd: '/workspace/',
+          }),
+        }),
+      );
+
+      globalThis.fetch = originalFetch;
+    });
+
+    it('缺失 executionId 时应抛出错误', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: {},
+      });
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+        ),
+      ).rejects.toThrow('Sandbox workflow context missing executionId or tenantId');
+    });
+
+    it('fetch 失败时应将错误抛给上层', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
 
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockRejectedValue(new Error('Connection refused'));
 
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, [
-        { type: 'text', text: 'hello' },
-      ])) {
-        events.push(event);
-      }
-
-      expect(events).toHaveLength(2);
-      expect(events[0]).toEqual({
-        type: 'message_chunk',
-        content: 'Sandbox execution error: Connection refused',
-      });
-      expect(events[1]).toEqual({ type: 'done', stopReason: 'end_turn' });
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+        ),
+      ).rejects.toThrow('Connection refused');
 
       globalThis.fetch = originalFetch;
     });
@@ -143,8 +215,14 @@ describe('SandboxAgentAdapter', () => {
     it('AbortError 应返回 cancelled stopReason', async () => {
       const session = await adapter.createSession(defaultParams);
       mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
         containerId: 'abc123def456',
       });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
 
       const abortError = new Error('Aborted');
       abortError.name = 'AbortError';
@@ -152,12 +230,9 @@ describe('SandboxAgentAdapter', () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockRejectedValue(abortError);
 
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, [
+      const events = await collectEvents(adapter.prompt(session.id, [
         { type: 'text', text: 'hello' },
-      ])) {
-        events.push(event);
-      }
+      ]));
 
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual({ type: 'done', stopReason: 'cancelled' });
@@ -167,16 +242,28 @@ describe('SandboxAgentAdapter', () => {
 
     it('应将 content 推入 session history', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockSandboxService.getSandboxSession.mockResolvedValue(null);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn().mockRejectedValue(Object.assign(new Error('Aborted'), {
+        name: 'AbortError',
+      }));
 
       const content = [{ type: 'text' as const, text: 'hello' }];
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, content)) {
-        events.push(event);
-      }
+      await collectEvents(adapter.prompt(session.id, content));
 
       const loaded = await adapter.loadSession(session.id);
       expect(loaded.context.history).toHaveLength(1);
+
+      globalThis.fetch = originalFetch;
     });
   });
 

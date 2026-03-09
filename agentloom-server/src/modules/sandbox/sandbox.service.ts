@@ -1,17 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
 import { and, eq, notInArray, asc } from 'drizzle-orm';
-import { Queue } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import type { SandboxConfig, SandboxLog, SandboxSession } from '../../database/schema';
 import { SandboxNotFoundException } from './sandbox.exceptions';
-import {
-  SANDBOX_LIFECYCLE_QUEUE,
-  type SandboxLifecycleJobData,
-} from './sandbox.constants';
+import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 
@@ -21,8 +16,7 @@ export class SandboxService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    @InjectQueue(SANDBOX_LIFECYCLE_QUEUE)
-    private readonly lifecycleQueue: Queue<SandboxLifecycleJobData>,
+    private readonly lifecycleProducer: SandboxLifecycleProducer,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -41,6 +35,7 @@ export class SandboxService {
       .where(
         and(
           eq(schema.sandboxSessions.executionId, executionId),
+          eq(schema.sandboxSessions.tenantId, tenantId),
           notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
         ),
       )
@@ -64,11 +59,11 @@ export class SandboxService {
       })
       .returning();
 
-    await this.lifecycleQueue.add('create', {
+    await this.lifecycleProducer.addCreateTask({
       sessionId: session.id,
       executionId,
       tenantId,
-      jobType: 'create',
+      config,
     });
 
     this.logger.log(
@@ -80,6 +75,7 @@ export class SandboxService {
 
   async getSandboxSession(
     executionId: string,
+    tenantId: string,
   ): Promise<SandboxSession | null> {
     const [session] = await this.tenantDb
       .select()
@@ -87,6 +83,7 @@ export class SandboxService {
       .where(
         and(
           eq(schema.sandboxSessions.executionId, executionId),
+          eq(schema.sandboxSessions.tenantId, tenantId),
           notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
         ),
       )
@@ -118,7 +115,7 @@ export class SandboxService {
   }
 
   async destroySandbox(executionId: string, tenantId: string): Promise<void> {
-    const session = await this.getSandboxSession(executionId);
+    const session = await this.getSandboxSession(executionId, tenantId);
 
     if (!session) {
       this.logger.warn(
@@ -129,11 +126,14 @@ export class SandboxService {
 
     await this.updateSessionStatus(session.id, 'stopping');
 
-    await this.lifecycleQueue.add('destroy', {
+    await this.lifecycleProducer.addDestroyTask({
       sessionId: session.id,
       executionId,
       tenantId,
-      jobType: 'destroy',
+      ...(session.containerId ? { containerId: session.containerId } : {}),
+      ...(session.config.persistencePath
+        ? { persistencePath: session.config.persistencePath }
+        : {}),
     });
 
     this.logger.log(

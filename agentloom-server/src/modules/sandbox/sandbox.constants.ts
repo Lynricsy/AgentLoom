@@ -11,4 +11,5 @@ export interface SandboxLifecycleJobData {
   jobType: SandboxLifecycleJobType;
   config?: SandboxConfig;
   containerId?: string;
+  persistencePath?: string;
 }
