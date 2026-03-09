@@ -33,3 +33,10 @@ export const DOCUMENT_PROCESSING_QUEUE = 'document-processing';
 export const DOCUMENT_INDEXING_QUEUE = 'document-indexing';
 
 export const DOCUMENT_PROCESSING_MAX_ATTEMPTS = 3;
+
+export const VECTOR_STORE = Symbol('VECTOR_STORE');
+
+export const EMBEDDING_MODEL = 'text-embedding-3-small';
+export const EMBEDDING_DIMENSIONS = 1536;
+export const EMBEDDING_BATCH_SIZE = 100;
+export const EMBEDDING_MAX_RETRIES = 2;

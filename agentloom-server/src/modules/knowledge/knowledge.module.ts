@@ -18,7 +18,13 @@ import { KnowledgeGateway } from './knowledge.gateway';
 import {
   DOCUMENT_PROCESSING_QUEUE,
   DOCUMENT_INDEXING_QUEUE,
+  VECTOR_STORE,
 } from './knowledge.constants';
+import { ApiKeyModule } from '../api-key/api-key.module';
+import { qdrantClientProvider } from './qdrant.provider';
+import { QdrantVectorStoreService } from './services/qdrant-vector-store.service';
+import { EmbeddingService } from './services/embedding.service';
+import { RagService } from './services/rag.service';
 
 @Module({
   imports: [
@@ -38,6 +44,7 @@ import {
         },
       },
     ),
+    ApiKeyModule,
   ],
   controllers: [KnowledgeBaseController],
   providers: [
@@ -53,6 +60,13 @@ import {
     DocumentProcessingWorker,
     DocumentIndexingWorker,
     KnowledgeGateway,
+    qdrantClientProvider,
+    {
+      provide: VECTOR_STORE,
+      useClass: QdrantVectorStoreService,
+    },
+    EmbeddingService,
+    RagService,
   ],
   exports: [
     KnowledgeBaseService,
@@ -61,6 +75,7 @@ import {
     DocumentParserService,
     TextChunkerService,
     KnowledgeGateway,
+    RagService,
   ],
 })
 export class KnowledgeModule {}

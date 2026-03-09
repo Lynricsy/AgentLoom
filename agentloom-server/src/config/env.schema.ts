@@ -42,6 +42,8 @@ export const envSchema = z.object({
     .default('false')
     .transform((val) => val === 'true'),
   APP_MINIO_BUCKET: z.string().min(1).default('agentloom-documents'),
+
+  APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

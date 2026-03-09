@@ -36,6 +36,7 @@
     "@nestjs/platform-socket.io": "^11.1.16",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/websockets": "^11.1.16",
+    "@qdrant/js-client-rest": "^1.17.0",
     "@supabase/supabase-js": "^2.98.0",
     "ai": "^6.0.116",
     "bullmq": "^5.70.4",

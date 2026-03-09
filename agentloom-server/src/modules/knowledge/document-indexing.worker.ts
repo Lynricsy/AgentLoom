@@ -7,6 +7,7 @@ import { DocumentService } from './document.service';
 import { KnowledgeGateway } from './knowledge.gateway';
 import { DOCUMENT_INDEXING_QUEUE } from './knowledge.constants';
 import { DocumentNotFoundException } from './knowledge.exceptions';
+import { RagService } from './services/rag.service';
 
 const INDEXING_COMPLETED_PROGRESS = {
   percentage: 100,
@@ -22,6 +23,7 @@ export class DocumentIndexingWorker extends WorkerHost {
   constructor(
     private readonly documentService: DocumentService,
     private readonly knowledgeGateway: KnowledgeGateway,
+    private readonly ragService: RagService,
   ) {
     super();
   }
@@ -31,6 +33,8 @@ export class DocumentIndexingWorker extends WorkerHost {
 
     try {
       const document = await this.documentService.findById(documentId);
+
+      await this.ragService.indexDocument(documentId, document.tenantId);
 
       await this.documentService.updateStatus(documentId, 'ready');
 
@@ -75,6 +79,12 @@ export class DocumentIndexingWorker extends WorkerHost {
 
     try {
       const document = await this.documentService.findById(job.data.documentId);
+
+      await this.ragService.deleteByDocument(
+        job.data.documentId,
+        document.tenantId,
+      );
+
       this.knowledgeGateway.emitDocumentStatusChanged(
         document.tenantId,
         document.knowledgeBaseId,
