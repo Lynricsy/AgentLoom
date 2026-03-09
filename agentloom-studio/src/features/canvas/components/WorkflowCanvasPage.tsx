@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { useExecutionId } from '@/features/execution/stores/executionStore'
+import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
 import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
+import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
+import {
+  useExecutionId,
+  useIsExecutionActive,
+} from '@/features/execution/stores/executionStore'
 import { useWorkflow } from '@/features/workflow'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
@@ -30,9 +35,19 @@ export function WorkflowCanvasPage() {
   const isWorkflowArchived = workflow?.status === 'archived'
 
   const activeExecutionId = useExecutionId() ?? undefined
-  // TODO(auth): 当认证系统实现后，从 auth context/store 获取 JWT token 传入 useExecutionMonitor
-  // TODO(execution): 当工作流执行触发功能实现后，需要调用 executionStore.initExecution() 设置执行 ID
-  useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId })
+  const isExecutionActive = useIsExecutionActive()
+  const authToken = useAuthToken()
+  const { startExecution, isStarting } = useStartExecution()
+  useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId, authToken })
+
+  const handleRunWorkflow = useCallback(async () => {
+    if (!workflowId || isStarting || isExecutionActive) return
+    try {
+      await startExecution(workflowId)
+    } catch {
+      // mutation error 已通过 useStartExecution 暴露
+    }
+  }, [workflowId, isStarting, isExecutionActive, startExecution])
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
@@ -130,6 +145,8 @@ export function WorkflowCanvasPage() {
             workflowStatus={workflow.status}
             onOpenVersionHistory={handleOpenVersionHistory}
             onOpenPublish={handleOpenPublishSheet}
+            onRun={handleRunWorkflow}
+            isRunning={isStarting || isExecutionActive}
           />
         )}
       </div>

@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -10,6 +10,8 @@ interface VersionToolbarProps {
   workflowStatus: WorkflowStatus
   onOpenVersionHistory: () => void
   onOpenPublish: (versionId?: string) => void
+  onRun?: () => void
+  isRunning?: boolean
 }
 
 const statusConfig: Record<WorkflowStatus, { label: string; className: string }> = {
@@ -32,6 +34,8 @@ export const VersionToolbar = memo(function VersionToolbar({
   workflowStatus,
   onOpenVersionHistory,
   onOpenPublish,
+  onRun,
+  isRunning = false,
 }: VersionToolbarProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -95,6 +99,33 @@ export const VersionToolbar = memo(function VersionToolbar({
           >
             <Upload className="h-3.5 w-3.5" />
             发布
+          </button>
+        )}
+
+        {!isArchived && onRun && (
+          <button
+            type="button"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm',
+              isRunning
+                ? 'border border-amber-300 bg-amber-50 text-amber-700'
+                : 'bg-sky-600 text-white hover:bg-sky-700',
+            )}
+            onClick={onRun}
+            disabled={isRunning}
+            data-testid="btn-run-workflow"
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                执行中
+              </>
+            ) : (
+              <>
+                <Play className="h-3.5 w-3.5" />
+                运行
+              </>
+            )}
           </button>
         )}
 
