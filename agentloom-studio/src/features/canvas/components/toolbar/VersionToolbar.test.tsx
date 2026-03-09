@@ -108,4 +108,45 @@ describe('VersionToolbar', () => {
       expect(screen.getByTestId('mock-archive-dialog')).toBeInTheDocument();
     });
   });
+
+  describe('运行按钮', () => {
+    it('提供 onRun 时显示运行按钮', () => {
+      const onRun = vi.fn();
+      render(<VersionToolbar {...defaultProps} onRun={onRun} />);
+
+      const runBtn = screen.getByTestId('btn-run-workflow');
+      expect(runBtn).toBeInTheDocument();
+      expect(runBtn).toHaveTextContent('运行');
+    });
+
+    it('未提供 onRun 时不显示运行按钮', () => {
+      render(<VersionToolbar {...defaultProps} />);
+
+      expect(screen.queryByTestId('btn-run-workflow')).not.toBeInTheDocument();
+    });
+
+    it('点击运行按钮调用 onRun', () => {
+      const onRun = vi.fn();
+      render(<VersionToolbar {...defaultProps} onRun={onRun} />);
+
+      fireEvent.click(screen.getByTestId('btn-run-workflow'));
+      expect(onRun).toHaveBeenCalled();
+    });
+
+    it('isRunning 为 true 时运行按钮显示执行中且禁用', () => {
+      const onRun = vi.fn();
+      render(<VersionToolbar {...defaultProps} onRun={onRun} isRunning />);
+
+      const runBtn = screen.getByTestId('btn-run-workflow');
+      expect(runBtn).toBeDisabled();
+      expect(runBtn).toHaveTextContent('执行中');
+    });
+
+    it('已归档状态不显示运行按钮', () => {
+      const onRun = vi.fn();
+      render(<VersionToolbar {...defaultProps} workflowStatus="archived" onRun={onRun} />);
+
+      expect(screen.queryByTestId('btn-run-workflow')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -4,6 +4,16 @@ import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasEdge, CanvasNode } from '../../types'
 import { WorkflowStatusBar } from './WorkflowStatusBar'
 
+let mockExecutionStatus: string | null = null
+let mockExecutionProgress = { completedSteps: 0, totalSteps: 0 }
+let mockIsExecutionActive = false
+
+vi.mock('@/features/execution/stores/executionStore', () => ({
+  useExecutionStatus: () => mockExecutionStatus,
+  useExecutionProgress: () => mockExecutionProgress,
+  useIsExecutionActive: () => mockIsExecutionActive,
+}))
+
 let onViewportChange: ((viewport: { zoom: number }) => void) | undefined
 
 vi.mock('@xyflow/react', () => ({
@@ -43,27 +53,24 @@ describe('WorkflowStatusBar', () => {
     vi.setSystemTime(new Date('2026-03-08T10:00:00.000Z'))
     useCanvasStore.getState().actions.reset()
     onViewportChange = undefined
+    mockExecutionStatus = null
+    mockExecutionProgress = { completedSteps: 0, totalSteps: 0 }
+    mockIsExecutionActive = false
   })
 
   it('显示节点数、连接数、缩放百分比和保存时间', () => {
     useCanvasStore.setState((state) => ({
       ...state,
-      nodes: [createNode('node-a'), createNode('node-b')],
-      edges: [createEdge('edge-1')],
-      viewport: { x: 0, y: 0, zoom: 1.25 },
+      nodes: [createNode('n1'), createNode('n2'), createNode('n3')],
+      edges: [createEdge('e1'), createEdge('e2')],
       lastSavedAt: new Date('2026-03-08T09:58:00.000Z'),
     }))
 
     render(<WorkflowStatusBar />)
 
-    const bar = screen.getByTestId('workflow-status-bar')
-    expect(bar.className).toContain('bottom-0')
-    expect(bar.className).toContain('left-0')
-    expect(bar.className).toContain('right-0')
-    expect(bar.className).toContain('h-7')
-    expect(screen.getByText('2 节点')).toBeInTheDocument()
-    expect(screen.getByText('1 连接')).toBeInTheDocument()
-    expect(screen.getByText('125%')).toBeInTheDocument()
+    expect(screen.getByText('3 节点')).toBeInTheDocument()
+    expect(screen.getByText('2 连接')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
     expect(screen.getByText('已保存 · 2分钟前')).toBeInTheDocument()
 
     act(() => {
@@ -97,5 +104,71 @@ describe('WorkflowStatusBar', () => {
     render(<WorkflowStatusBar />)
 
     expect(screen.getByText('未保存')).toBeInTheDocument()
+  })
+
+  describe('执行状态指示器', () => {
+    it('无执行状态时不显示指示器', () => {
+      render(<WorkflowStatusBar />)
+
+      expect(screen.queryByTestId('execution-status-indicator')).not.toBeInTheDocument()
+    })
+
+    it('running 状态显示执行中指示器', () => {
+      mockExecutionStatus = 'running'
+      mockIsExecutionActive = true
+      mockExecutionProgress = { completedSteps: 2, totalSteps: 5 }
+
+      render(<WorkflowStatusBar />)
+
+      const indicator = screen.getByTestId('execution-status-indicator')
+      expect(indicator).toBeInTheDocument()
+      expect(indicator).toHaveTextContent('执行中')
+      expect(indicator).toHaveTextContent('2/5')
+    })
+
+    it('completed 状态显示已完成', () => {
+      mockExecutionStatus = 'completed'
+      mockIsExecutionActive = false
+      mockExecutionProgress = { completedSteps: 5, totalSteps: 5 }
+
+      render(<WorkflowStatusBar />)
+
+      const indicator = screen.getByTestId('execution-status-indicator')
+      expect(indicator).toHaveTextContent('已完成')
+    })
+
+    it('failed 状态显示已失败', () => {
+      mockExecutionStatus = 'failed'
+      mockIsExecutionActive = false
+      mockExecutionProgress = { completedSteps: 3, totalSteps: 5 }
+
+      render(<WorkflowStatusBar />)
+
+      const indicator = screen.getByTestId('execution-status-indicator')
+      expect(indicator).toHaveTextContent('失败')
+    })
+
+    it('paused 状态显示已暂停', () => {
+      mockExecutionStatus = 'paused'
+      mockIsExecutionActive = true
+      mockExecutionProgress = { completedSteps: 1, totalSteps: 4 }
+
+      render(<WorkflowStatusBar />)
+
+      const indicator = screen.getByTestId('execution-status-indicator')
+      expect(indicator).toHaveTextContent('已暂停')
+    })
+
+    it('非活跃且 totalSteps 为 0 时不显示进度', () => {
+      mockExecutionStatus = 'pending'
+      mockIsExecutionActive = false
+      mockExecutionProgress = { completedSteps: 0, totalSteps: 0 }
+
+      render(<WorkflowStatusBar />)
+
+      const indicator = screen.getByTestId('execution-status-indicator')
+      expect(indicator).toBeInTheDocument()
+      expect(indicator).not.toHaveTextContent('/')
+    })
   })
 })

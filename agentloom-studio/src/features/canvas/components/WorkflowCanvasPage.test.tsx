@@ -31,6 +31,13 @@ const workflowCanvasMock = vi.fn()
 const publishSheetMock = vi.fn()
 const versionToolbarMock = vi.fn()
 const versionHistoryPanelMock = vi.fn()
+const useExecutionMonitorMock = vi.fn()
+const startExecutionMock = vi.fn()
+
+let mockAuthToken: string | undefined
+let mockExecutionId: string | null = null
+let mockIsExecutionActive = false
+let mockIsStarting = false
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ workflowId: routeWorkflowId }),
@@ -42,6 +49,28 @@ vi.mock('@/features/workflow', () => ({
 
 vi.mock('../hooks/useAutoSave', () => ({
   useAutoSave: (...args: unknown[]) => useAutoSaveMock(...args),
+}))
+
+vi.mock('@/features/execution/hooks/useAuthToken', () => ({
+  useAuthToken: () => mockAuthToken,
+}))
+
+vi.mock('@/features/execution/hooks/useExecutionMonitor', () => ({
+  useExecutionMonitor: (...args: unknown[]) => useExecutionMonitorMock(...args),
+}))
+
+vi.mock('@/features/execution/hooks/useStartExecution', () => ({
+  useStartExecution: () => ({
+    startExecution: startExecutionMock,
+    isStarting: mockIsStarting,
+    error: null,
+    reset: vi.fn(),
+  }),
+}))
+
+vi.mock('@/features/execution/stores/executionStore', () => ({
+  useExecutionId: () => mockExecutionId,
+  useIsExecutionActive: () => mockIsExecutionActive,
 }))
 
 vi.mock('./NodePalette', () => ({
@@ -71,16 +100,30 @@ vi.mock('./toolbar/VersionToolbar', () => ({
   VersionToolbar: (props: {
     onOpenPublish: (versionId?: string) => void
     workflowStatus: WorkflowDefinition['status']
+    onRun?: () => void
+    isRunning?: boolean
   }) => {
     versionToolbarMock(props)
     return (
-      <button
-        type="button"
-        data-testid="version-toolbar-open-publish"
-        onClick={() => props.onOpenPublish('ver-002')}
-      >
-        Open publish
-      </button>
+      <>
+        <button
+          type="button"
+          data-testid="version-toolbar-open-publish"
+          onClick={() => props.onOpenPublish('ver-002')}
+        >
+          Open publish
+        </button>
+        {props.onRun && (
+          <button
+            type="button"
+            data-testid="btn-run-workflow"
+            disabled={props.isRunning}
+            onClick={props.onRun}
+          >
+            {props.isRunning ? '执行中' : '运行'}
+          </button>
+        )}
+      </>
     )
   },
 }))
@@ -159,6 +202,10 @@ describe('WorkflowCanvasPage', () => {
       isLoading: false,
       error: null,
     }
+    mockAuthToken = undefined
+    mockExecutionId = null
+    mockIsExecutionActive = false
+    mockIsStarting = false
     vi.clearAllMocks()
     useCanvasStore.getState().actions.reset()
   })
@@ -307,5 +354,59 @@ describe('WorkflowCanvasPage', () => {
     })
 
     expect(screen.queryByTestId('field-mapping-panel')).not.toBeInTheDocument()
+  })
+
+  it('将 authToken 和 executionId 传给 useExecutionMonitor', () => {
+    mockAuthToken = 'jwt-test-token'
+    mockExecutionId = 'exec-active'
+
+    render(<WorkflowCanvasPage />)
+
+    expect(useExecutionMonitorMock).toHaveBeenCalledWith({
+      executionId: 'exec-active',
+      tenantId: 'tenant-1',
+      authToken: 'jwt-test-token',
+    })
+  })
+
+  it('无 authToken 时仍调用 useExecutionMonitor', () => {
+    render(<WorkflowCanvasPage />)
+
+    expect(useExecutionMonitorMock).toHaveBeenCalledWith({
+      executionId: undefined,
+      tenantId: 'tenant-1',
+      authToken: undefined,
+    })
+  })
+
+  it('toolbar 接收 onRun 和 isRunning 属性', () => {
+    render(<WorkflowCanvasPage />)
+
+    expect(versionToolbarMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onRun: expect.any(Function),
+        isRunning: false,
+      }),
+    )
+  })
+
+  it('isStarting 为 true 时 toolbar 显示执行中', () => {
+    mockIsStarting = true
+
+    render(<WorkflowCanvasPage />)
+
+    expect(versionToolbarMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isRunning: true,
+      }),
+    )
+  })
+
+  it('点击运行按钮调用 startExecution', () => {
+    render(<WorkflowCanvasPage />)
+
+    fireEvent.click(screen.getByTestId('btn-run-workflow'))
+
+    expect(startExecutionMock).toHaveBeenCalledWith('wf-001')
   })
 })
