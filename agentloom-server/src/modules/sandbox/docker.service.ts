@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Docker from 'dockerode';
+import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../database/schema';
 import {
@@ -118,13 +119,39 @@ export class DockerService {
       timestamps: true,
     });
 
-    stream.on('data', (chunk: Buffer) => {
-      const header = chunk.readUInt8(0);
-      const payload = chunk.subarray(8).toString('utf-8').trimEnd();
-      if (!payload) return;
+    // Docker 多路复用流格式：
+    //   字节 0:   流类型 (1=stdout, 2=stderr)
+    //   字节 1-3: 填充 (0x00)
+    //   字节 4-7: 载荷长度 (big-endian uint32)
+    //   字节 8+:  载荷数据
+    // TCP 分片可能将一个帧拆分到多个 chunk，或一个 chunk 包含多个帧
+    const HEADER_SIZE = 8;
+    let buffer = Buffer.alloc(0);
 
-      const level = header === 2 ? 'stderr' : 'stdout';
-      callback(level, payload);
+    stream.on('data', (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
+
+      while (buffer.length >= HEADER_SIZE) {
+        const payloadSize = buffer.readUInt32BE(4);
+        const frameSize = HEADER_SIZE + payloadSize;
+
+        if (buffer.length < frameSize) {
+          break;
+        }
+
+        const streamType = buffer.readUInt8(0);
+        const payload = buffer
+          .subarray(HEADER_SIZE, frameSize)
+          .toString('utf-8')
+          .trimEnd();
+
+        buffer = buffer.subarray(frameSize);
+
+        if (!payload) continue;
+
+        const level = streamType === 2 ? 'stderr' : 'stdout';
+        callback(level, payload);
+      }
     });
 
     stream.on('error', (err: Error) => {
@@ -149,29 +176,19 @@ export class DockerService {
   }
 
   async getPromptUrl(containerId: string): Promise<string> {
-    const container = this.docker.getContainer(containerId);
-    const info = await container.inspect();
-    const hostPort = info.NetworkSettings.Ports?.[SANDBOX_AGENT_PORT]?.[0]?.HostPort;
-
-    if (!hostPort) {
-      throw new SandboxCreationException(
-        `Sandbox agent port is not published for container ${containerId}`,
-      );
-    }
-
-    return `http://127.0.0.1:${hostPort}/v1/prompt`;
+    const baseUrl = await this.getContainerBaseUrl(containerId);
+    return `${baseUrl}/v1/prompt`;
   }
 
-  async getArchive(containerId: string, path: string): Promise<Buffer> {
+  async getSessionUrl(containerId: string): Promise<string> {
+    const baseUrl = await this.getContainerBaseUrl(containerId);
+    return `${baseUrl}/v1/session`;
+  }
+
+  async getArchive(containerId: string, path: string): Promise<Readable> {
     const container = this.docker.getContainer(containerId);
     const stream = await container.getArchive({ path });
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream as AsyncIterable<Buffer>) {
-      chunks.push(Buffer.from(chunk));
-    }
-
-    return Buffer.concat(chunks);
+    return stream as unknown as Readable;
   }
 
   async getContainerStats(containerId: string): Promise<ContainerStats> {
@@ -192,6 +209,21 @@ export class DockerService {
       memoryUsageMb: Math.round(stats.memory_stats.usage / MB_TO_BYTES),
       memoryLimitMb: Math.round(stats.memory_stats.limit / MB_TO_BYTES),
     };
+  }
+
+  private async getContainerBaseUrl(containerId: string): Promise<string> {
+    const container = this.docker.getContainer(containerId);
+    const info = await container.inspect();
+    const hostPort =
+      info.NetworkSettings.Ports?.[SANDBOX_AGENT_PORT]?.[0]?.HostPort;
+
+    if (!hostPort) {
+      throw new SandboxCreationException(
+        `Sandbox agent port is not published for container ${containerId}`,
+      );
+    }
+
+    return `http://127.0.0.1:${hostPort}`;
   }
 
   private isContainerNotRunningError(error: unknown): boolean {

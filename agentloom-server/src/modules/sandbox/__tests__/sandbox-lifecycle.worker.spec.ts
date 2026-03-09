@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../../database/schema';
 
@@ -7,7 +8,7 @@ const mockDockerService = {
   stopContainer: vi.fn().mockResolvedValue(undefined),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   attachLogs: vi.fn().mockResolvedValue(undefined),
-  getArchive: vi.fn().mockResolvedValue(Buffer.from('fake-archive')),
+  getArchive: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-archive'))),
 };
 
 const mockSandboxService = {
@@ -228,8 +229,8 @@ describe('SandboxLifecycleWorker', () => {
       );
       expect(mockStorageService.upload).toHaveBeenCalledWith(
         'sandboxes/t1/s1/workspace.tar',
-        expect.any(Buffer),
-        expect.any(Number),
+        expect.any(Readable),
+        undefined,
         'application/x-tar',
       );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');

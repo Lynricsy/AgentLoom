@@ -52,6 +52,49 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
     this.sessions.set(session.id, session);
     this.abortControllers.set(session.id, new AbortController());
+
+    const workflowState = params.context ?? {};
+    const executionId =
+      typeof workflowState['executionId'] === 'string'
+        ? workflowState['executionId']
+        : null;
+    const tenantId = params.tenantId ?? null;
+
+    if (executionId && tenantId) {
+      try {
+        const sandboxSession = await this.waitForSandboxReady(
+          executionId,
+          tenantId,
+        );
+        const sessionUrl = await this.dockerService.getSessionUrl(
+          sandboxSession.containerId,
+        );
+
+        const response = await fetch(sessionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.id,
+            cwd: CONTAINER_WORKSPACE,
+            systemPrompt: params.systemPrompt,
+            mcpServers: params.mcpServers,
+            createCodingTools: true,
+          }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Container session init failed with status ${response.status}`,
+          );
+        }
+      } catch (error) {
+        session.status = 'error';
+        session.updatedAt = new Date();
+        throw error;
+      }
+    }
+
     this.logger.debug(`创建 Sandbox 会话: ${session.id}`);
     return session;
   }

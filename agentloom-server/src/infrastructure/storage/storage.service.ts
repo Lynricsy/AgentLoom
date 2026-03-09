@@ -45,12 +45,12 @@ export class StorageService implements OnModuleInit {
   async upload(
     key: string,
     data: Buffer | Readable,
-    size: number,
-    contentType: string,
+    size?: number,
+    contentType?: string,
   ): Promise<void> {
-    await this.minioClient.putObject(this.bucket, key, data, size, {
-      'Content-Type': contentType,
-    });
+    const resolvedSize = size ?? (Buffer.isBuffer(data) ? data.length : undefined);
+    const metaData = contentType ? { 'Content-Type': contentType } : undefined;
+    await this.minioClient.putObject(this.bucket, key, data, resolvedSize, metaData);
   }
 
   async download(key: string): Promise<Readable> {

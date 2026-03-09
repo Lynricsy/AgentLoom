@@ -145,15 +145,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
     if (containerId) {
       if (persistencePath) {
         try {
-          const archive = await this.dockerService.getArchive(
+          const archiveStream = await this.dockerService.getArchive(
             containerId,
             CONTAINER_WORKSPACE,
           );
           const storageKey = `sandboxes/${tenantId}/${sessionId}/workspace.tar`;
           await this.storageService.upload(
             storageKey,
-            archive,
-            archive.length,
+            archiveStream,
+            undefined,
             'application/x-tar',
           );
           this.logger.log(

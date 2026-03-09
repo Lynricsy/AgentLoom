@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,6 +20,7 @@ const mockContainer = {
   }),
   logs: vi.fn(),
   stats: vi.fn(),
+  getArchive: vi.fn(),
 };
 
 const mockDocker = {
@@ -151,12 +153,14 @@ describe('DockerService', () => {
       const stdoutPayload = Buffer.from('hello stdout');
       const stdoutChunk = Buffer.alloc(8 + stdoutPayload.length);
       stdoutChunk.writeUInt8(1, 0);
+      stdoutChunk.writeUInt32BE(stdoutPayload.length, 4);
       stdoutPayload.copy(stdoutChunk, 8);
       emitter.emit('data', stdoutChunk);
 
       const stderrPayload = Buffer.from('err msg');
       const stderrChunk = Buffer.alloc(8 + stderrPayload.length);
       stderrChunk.writeUInt8(2, 0);
+      stderrChunk.writeUInt32BE(stderrPayload.length, 4);
       stderrPayload.copy(stderrChunk, 8);
       emitter.emit('data', stderrChunk);
 
@@ -177,9 +181,70 @@ describe('DockerService', () => {
 
       const emptyChunk = Buffer.alloc(8);
       emptyChunk.writeUInt8(1, 0);
+      emptyChunk.writeUInt32BE(0, 4);
       emitter.emit('data', emptyChunk);
 
       expect(logs).toHaveLength(0);
+    });
+
+    it('单个 chunk 包含多帧时应正确解析所有帧', async () => {
+      const emitter = new EventEmitter();
+      mockContainer.logs.mockResolvedValueOnce(emitter);
+
+      const logs: { level: string; message: string }[] = [];
+      await service.attachLogs('container-abc123', (level, message) => {
+        logs.push({ level, message });
+      });
+
+      // 构建包含两帧的单个 chunk
+      const payload1 = Buffer.from('frame-one');
+      const payload2 = Buffer.from('frame-two');
+      const combined = Buffer.alloc(8 + payload1.length + 8 + payload2.length);
+      // 第一帧 (stdout)
+      combined.writeUInt8(1, 0);
+      combined.writeUInt32BE(payload1.length, 4);
+      payload1.copy(combined, 8);
+      // 第二帧 (stderr)
+      const offset2 = 8 + payload1.length;
+      combined.writeUInt8(2, offset2);
+      combined.writeUInt32BE(payload2.length, offset2 + 4);
+      payload2.copy(combined, offset2 + 8);
+
+      emitter.emit('data', combined);
+
+      expect(logs).toEqual([
+        { level: 'stdout', message: 'frame-one' },
+        { level: 'stderr', message: 'frame-two' },
+      ]);
+    });
+
+    it('帧跨越 chunk 边界时应正确累积并解析', async () => {
+      const emitter = new EventEmitter();
+      mockContainer.logs.mockResolvedValueOnce(emitter);
+
+      const logs: { level: string; message: string }[] = [];
+      await service.attachLogs('container-abc123', (level, message) => {
+        logs.push({ level, message });
+      });
+
+      // 构建完整帧然后在中间拆分
+      const payload = Buffer.from('cross-boundary');
+      const fullFrame = Buffer.alloc(8 + payload.length);
+      fullFrame.writeUInt8(1, 0);
+      fullFrame.writeUInt32BE(payload.length, 4);
+      payload.copy(fullFrame, 8);
+
+      // 在 header 中间拆分 (前4字节 / 后4字节+payload)
+      const chunk1 = fullFrame.subarray(0, 4);
+      const chunk2 = fullFrame.subarray(4);
+
+      emitter.emit('data', chunk1);
+      expect(logs).toHaveLength(0); // 不完整的 header，不应触发
+
+      emitter.emit('data', chunk2);
+      expect(logs).toEqual([
+        { level: 'stdout', message: 'cross-boundary' },
+      ]);
     });
   });
 
@@ -217,6 +282,28 @@ describe('DockerService', () => {
       const url = await service.getPromptUrl('container-abc123');
 
       expect(url).toBe('http://127.0.0.1:49123/v1/prompt');
+    });
+  });
+
+  describe('getSessionUrl', () => {
+    it('应返回容器的 session 创建端点', async () => {
+      const url = await service.getSessionUrl('container-abc123');
+
+      expect(url).toBe('http://127.0.0.1:49123/v1/session');
+    });
+  });
+
+  describe('getArchive', () => {
+    it('应返回 Readable 流', async () => {
+      const fakeStream = new Readable({ read() { this.push(null); } });
+      mockContainer.getArchive.mockResolvedValueOnce(fakeStream);
+
+      const result = await service.getArchive('container-abc123', '/workspace/');
+
+      expect(result).toBeInstanceOf(Readable);
+      expect(mockContainer.getArchive).toHaveBeenCalledWith({
+        path: '/workspace/',
+      });
     });
   });
 

@@ -26,6 +26,7 @@ describe('SandboxAgentAdapter', () => {
   let mockDockerService: {
     getPromptUrl: ReturnType<typeof vi.fn>;
     healthCheck: ReturnType<typeof vi.fn>;
+    getSessionUrl: ReturnType<typeof vi.fn>;
   };
 
   const defaultParams: CreateSessionParams = {
@@ -38,19 +39,39 @@ describe('SandboxAgentAdapter', () => {
     context: { executionId: 'exec-001' },
   };
 
+  let savedFetch: typeof globalThis.fetch;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    savedFetch = globalThis.fetch;
     mockSandboxService = {
-      getSandboxSession: vi.fn(),
+      getSandboxSession: vi.fn().mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      }),
     };
     mockDockerService = {
       getPromptUrl: vi.fn(),
-      healthCheck: vi.fn(),
+      healthCheck: vi.fn().mockResolvedValue(true),
+      getSessionUrl: vi.fn().mockResolvedValue(
+        'http://127.0.0.1:49123/v1/session',
+      ),
     };
+    // createSession 的容器初始化 POST 默认返回成功
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as Response);
     adapter = new SandboxAgentAdapter(
       mockSandboxService as never,
       mockDockerService as never,
     );
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
   });
 
   async function collectEvents(iterable: AsyncIterable<AgentEvent>) {
@@ -85,6 +106,51 @@ describe('SandboxAgentAdapter', () => {
       });
 
       expect(Object.keys(session.context.mcpServers ?? {})).toHaveLength(1);
+    });
+
+    it('有 executionId 和 tenantId 时应调用容器 session 初始化', async () => {
+      const session = await adapter.createSession(defaultParams);
+
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
+        'exec-001',
+        'tenant-001',
+      );
+      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(mockDockerService.getSessionUrl).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/session',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: expect.stringContaining('"createCodingTools":true'),
+        }),
+      );
+      expect(session.status).toBe('active');
+    });
+
+    it('容器 session 初始化失败时应设置会话状态为 error 并抛出', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(
+        new Error('Container session init failed'),
+      );
+
+      await expect(
+        adapter.createSession(defaultParams),
+      ).rejects.toThrow('Container session init failed');
+    });
+
+    it('无 executionId 时应跳过容器 session 初始化', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: {},
+      });
+
+      expect(mockSandboxService.getSandboxSession).not.toHaveBeenCalled();
+      expect(mockDockerService.getSessionUrl).not.toHaveBeenCalled();
+      expect(session.status).toBe('active');
     });
   });
 
