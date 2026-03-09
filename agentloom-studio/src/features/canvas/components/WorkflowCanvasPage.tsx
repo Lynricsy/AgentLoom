@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
+import { useExecutionId } from '@/features/execution/stores/executionStore'
+import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
 import { useWorkflow } from '@/features/workflow'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
@@ -23,6 +25,9 @@ export function WorkflowCanvasPage() {
   const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
   const mappingPanelEdgeId = useMappingPanelEdgeId()
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+
+  const activeExecutionId = useExecutionId() ?? undefined
+  useExecutionMonitor({ executionId: activeExecutionId, tenantId: undefined })
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)

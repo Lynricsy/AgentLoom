@@ -17,6 +17,7 @@ import {
 import type { ContentBlock } from '../agent/types/content-block.types';
 import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
+import { ThrottleService } from './services/throttle.service';
 import { AgentExecutionException } from './execution.exceptions';
 import {
   AGENT_TASK_QUEUE,
@@ -35,6 +36,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly adapterFactory: IAgentAdapterFactory,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly nodeScheduler: NodeSchedulerService,
+    private readonly throttleService: ThrottleService,
   ) {
     super();
   }
@@ -93,6 +95,7 @@ export class AgentTaskWorker extends WorkerHost {
     let accumulatedContent = '';
     let lastStopReason: string | undefined;
     let decision: Record<string, unknown> | undefined;
+    let chunkIndex = 0;
 
     try {
       await this.withTenantContext(tenantId, async () => {
@@ -137,20 +140,28 @@ export class AgentTaskWorker extends WorkerHost {
       const contentBlocks = this.buildContentBlocks(input);
 
       for await (const event of runtime.prompt(sessionId, contentBlocks)) {
-        this.stepStateMachine.broadcastAgentEvent(tenantId, executionId, stepId, event);
-
         if (event.type === 'message_chunk') {
           accumulatedContent += event.content;
-        } else if (event.type === 'decision') {
-          decision = {
-            suggestedContent: event.suggestedContent,
-            ...(typeof event.confidence === 'number'
-              ? { confidence: event.confidence }
-              : {}),
-            ...(event.rationale ? { rationale: event.rationale } : {}),
-          };
-        } else if (event.type === 'done') {
-          lastStopReason = event.stopReason;
+          this.throttleService.bufferOutputChunk(
+            `${tenantId}:${executionId}`,
+            stepId,
+            event.content,
+            chunkIndex++,
+          );
+        } else {
+          this.stepStateMachine.broadcastAgentEvent(tenantId, executionId, stepId, event);
+
+          if (event.type === 'decision') {
+            decision = {
+              suggestedContent: event.suggestedContent,
+              ...(typeof event.confidence === 'number'
+                ? { confidence: event.confidence }
+                : {}),
+              ...(event.rationale ? { rationale: event.rationale } : {}),
+            };
+          } else if (event.type === 'done') {
+            lastStopReason = event.stopReason;
+          }
         }
       }
 

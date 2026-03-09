@@ -4,7 +4,7 @@ import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { InvalidStepTransitionException } from './execution.exceptions';
-import { ExecutionGateway } from './execution.gateway';
+import { EventBridgeService } from './services/event-bridge.service';
 import type { AgentEvent } from '../agent/types/agent-event.types';
 
 export type StepStatus = schema.ExecutionStep['status'];
@@ -34,7 +34,7 @@ export class StepStateMachineService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    private readonly executionGateway: ExecutionGateway,
+    private readonly eventBridge: EventBridgeService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -101,10 +101,9 @@ export class StepStateMachineService {
       throw new InvalidStepTransitionException(step.status, newStatus);
     }
 
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitStepStatusChanged(
       tenantId,
       step.executionId,
-      'step:status-changed',
       {
         stepId,
         nodeId: step.nodeId,
@@ -195,10 +194,9 @@ export class StepStateMachineService {
       })
       .where(eq(schema.workflowExecutions.id, executionId));
 
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitExecutionStatusChanged(
       tenantId,
       executionId,
-      `execution:${executionStatus}`,
       {
         executionId,
         status: executionStatus,
@@ -218,10 +216,9 @@ export class StepStateMachineService {
     stepId: string,
     event: AgentEvent,
   ): void {
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitStepAgentEvent(
       tenantId,
       executionId,
-      'step:agent-event',
       {
         stepId,
         event,
@@ -239,10 +236,9 @@ export class StepStateMachineService {
       errorMessage: string;
     },
   ): void {
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitStepRetrying(
       tenantId,
       executionId,
-      'step:retrying',
       {
         stepId,
         ...payload,
@@ -277,16 +273,15 @@ export class StepStateMachineService {
       })
       .where(eq(schema.workflowExecutions.id, executionId));
 
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitExecutionStatusChanged(
       tenantId,
       executionId,
-      'execution:failed',
       {
         executionId,
         status: 'failed',
         completedSteps: completedCount,
         totalSteps: steps.length,
-        ...(errorMessage ? { errorMessage } : {}),
+        ...(errorMessage ? { errorMessage: errorMessage.message } : {}),
       },
     );
   }

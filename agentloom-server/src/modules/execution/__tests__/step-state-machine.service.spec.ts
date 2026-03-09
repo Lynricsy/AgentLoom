@@ -6,7 +6,7 @@ import {
   STEP_TRANSITIONS,
   type StepStatus,
 } from '../step-state-machine.service';
-import { ExecutionGateway } from '../execution.gateway';
+import { EventBridgeService } from '../services/event-bridge.service';
 import { InvalidStepTransitionException } from '../execution.exceptions';
 import { DRIZZLE } from '../../../database/database.module';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
@@ -87,7 +87,12 @@ function createUpdateChainVoid() {
 describe('StepStateMachineService', () => {
   let service: StepStateMachineService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
-  let mockGateway: { broadcastEvent: ReturnType<typeof vi.fn> };
+  let mockEventBridge: {
+    emitStepStatusChanged: ReturnType<typeof vi.fn>;
+    emitExecutionStatusChanged: ReturnType<typeof vi.fn>;
+    emitStepAgentEvent: ReturnType<typeof vi.fn>;
+    emitStepRetrying: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -104,15 +109,18 @@ describe('StepStateMachineService', () => {
       execute: vi.fn(),
     };
 
-    mockGateway = {
-      broadcastEvent: vi.fn(),
+    mockEventBridge = {
+      emitStepStatusChanged: vi.fn(),
+      emitExecutionStatusChanged: vi.fn(),
+      emitStepAgentEvent: vi.fn(),
+      emitStepRetrying: vi.fn(),
     };
 
     const module = await Test.createTestingModule({
       providers: [
         StepStateMachineService,
         { provide: DRIZZLE, useValue: db },
-        { provide: ExecutionGateway, useValue: mockGateway },
+        { provide: EventBridgeService, useValue: mockEventBridge },
       ],
     }).compile();
 
@@ -166,10 +174,9 @@ describe('StepStateMachineService', () => {
           updatedAt: NOW,
         }),
       );
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'step:status-changed',
         { stepId: STEP_ID, nodeId: NODE_ID, from: 'pending', to: 'running' },
       );
     });
@@ -257,10 +264,9 @@ describe('StepStateMachineService', () => {
           completedAt: NOW,
         }),
       );
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'execution:completed',
         expect.objectContaining({
           executionId: EXECUTION_ID,
           status: 'completed',
@@ -301,7 +307,7 @@ describe('StepStateMachineService', () => {
       await service.updateExecutionStatus(EXECUTION_ID, TENANT_ID);
 
       expect(db.update).not.toHaveBeenCalled();
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
   });
 
@@ -315,10 +321,9 @@ describe('StepStateMachineService', () => {
 
       service.broadcastAgentEvent(TENANT_ID, EXECUTION_ID, STEP_ID, event);
 
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitStepAgentEvent).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'step:agent-event',
         { stepId: STEP_ID, event },
       );
     });
@@ -332,10 +337,9 @@ describe('StepStateMachineService', () => {
         errorMessage: 'LLM 调用失败',
       });
 
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitStepRetrying).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'step:retrying',
         {
           stepId: STEP_ID,
           attempt: 1,
@@ -370,16 +374,15 @@ describe('StepStateMachineService', () => {
           errorMessage: { message: '节点执行失败' },
         }),
       );
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'execution:failed',
         {
           executionId: EXECUTION_ID,
           status: 'failed',
           completedSteps: 2,
           totalSteps: 3,
-          errorMessage: { message: '节点执行失败' },
+          errorMessage: '节点执行失败',
         },
       );
     });

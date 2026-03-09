@@ -105,7 +105,13 @@ describe('useExecutionSocket', () => {
 
     expect(ioMock).toHaveBeenCalledWith(
       resolveExecutionSocketUrl('/api/v1'),
-      { auth: { token: 'jwt-token-123' } },
+      {
+        auth: { token: 'jwt-token-123' },
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 5000,
+        reconnectionDelayMax: 30000,
+      },
     )
   })
 
@@ -122,7 +128,13 @@ describe('useExecutionSocket', () => {
 
     expect(ioMock).toHaveBeenCalledWith(
       resolveExecutionSocketUrl('/api/v1'),
-      { auth: undefined },
+      {
+        auth: undefined,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 5000,
+        reconnectionDelayMax: 30000,
+      },
     )
   })
 
@@ -142,11 +154,15 @@ describe('useExecutionSocket', () => {
     })
 
     expect(result.current.connectionStatus).toBe('connected')
-    expect(socket.emit).toHaveBeenCalledWith('subscribe', {
-      tenantId: 'tenant-1',
-      executionId: 'exec-1',
-      lastEventId: undefined,
-    })
+    expect(socket.emit).toHaveBeenCalledWith(
+      'execution:subscribe',
+      {
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        lastEventId: undefined,
+      },
+      expect.any(Function),
+    )
   })
 
   it('handles execution status changed events', () => {
@@ -431,7 +447,7 @@ describe('useExecutionSocket', () => {
 
     unmount()
 
-    expect(socket.emit).toHaveBeenCalledWith('unsubscribe', {
+    expect(socket.emit).toHaveBeenCalledWith('execution:unsubscribe', {
       tenantId: 'tenant-1',
       executionId: 'exec-1',
     })

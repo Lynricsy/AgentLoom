@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ExecutionGateway } from '../execution.gateway';
 import {
   ExecutionEventName,
@@ -25,7 +25,10 @@ export class EventBridgeService {
   /** 每个执行实例独立的事件计数器 */
   private readonly eventCounters = new Map<string, number>();
 
-  constructor(private readonly executionGateway: ExecutionGateway) {}
+  constructor(
+    @Inject(forwardRef(() => ExecutionGateway))
+    private readonly executionGateway: ExecutionGateway,
+  ) {}
 
   emitStepStatusChanged(
     tenantId: string,
@@ -171,7 +174,7 @@ export class EventBridgeService {
     executionId: string,
     envelope: ExecutionEvent<T>,
   ): void {
-    this.executionGateway.broadcastEvent(
+    this.executionGateway.broadcastTypedEvent(
       tenantId,
       executionId,
       envelope.event,

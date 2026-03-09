@@ -11,6 +11,7 @@ import type {
   StepAgentEventPayload,
   StepRetryingPayload,
   StepStatusChangedPayload,
+  SubscribeAck,
 } from '../types'
 import { ExecutionEventName } from '../types'
 
@@ -20,6 +21,9 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1').replace(
 )
 
 const DEFAULT_WINDOW_ORIGIN = 'http://localhost'
+
+const RECONNECT_DELAY_MS = 5_000
+const RECONNECT_DELAY_MAX_MS = 30_000
 
 function stripApiSuffix(pathname: string): string {
   const normalizedPath = pathname.replace(/\/$/, '')
@@ -106,7 +110,7 @@ export function useExecutionSocket(
   }, [])
 
   useEffect(() => {
-    if (!tenantId || !executionId) {
+    if (!executionId) {
       setConnectionStatus('disconnected')
       setError(null)
       lastEventIdRef.current = 0
@@ -119,18 +123,33 @@ export function useExecutionSocket(
 
     const socket: TypedSocket = io(socketUrl, {
       auth: authToken ? { token: authToken } : undefined,
+      reconnection: true,
+      reconnectionDelay: RECONNECT_DELAY_MS,
+      reconnectionDelayMax: RECONNECT_DELAY_MAX_MS,
+      reconnectionAttempts: Infinity,
     })
 
-    const subscribePayload = {
-      tenantId,
-      executionId,
-      lastEventId: lastEventIdRef.current || undefined,
+    const emitSubscribe = () => {
+      const payload = {
+        tenantId,
+        executionId,
+        lastEventId: lastEventIdRef.current || undefined,
+      }
+
+      socket.emit('execution:subscribe', payload, (ack: SubscribeAck) => {
+        if (ack?.currentState) {
+          if (ack.currentState.lastEventId != null) {
+            trackEventId(ack.currentState.lastEventId)
+          }
+          callbacksRef.current.onSnapshot?.(ack.currentState)
+        }
+      })
     }
 
     const handleConnect = () => {
       setConnectionStatus('connected')
       setError(null)
-      socket.emit('subscribe', subscribePayload)
+      emitSubscribe()
     }
 
     const handleDisconnect = () => {
@@ -207,7 +226,7 @@ export function useExecutionSocket(
     socket.on('error', handleError)
 
     return () => {
-      socket.emit('unsubscribe', { tenantId, executionId })
+      socket.emit('execution:unsubscribe', { tenantId, executionId })
       socket.removeAllListeners()
       socket.disconnect()
       setConnectionStatus('disconnected')

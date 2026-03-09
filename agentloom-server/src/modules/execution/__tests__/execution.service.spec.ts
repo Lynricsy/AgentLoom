@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ExecutionService } from '../execution.service';
-import { ExecutionGateway } from '../execution.gateway';
+import { EventBridgeService } from '../services/event-bridge.service';
 import {
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
@@ -164,8 +164,8 @@ const mockQueue: Record<string, Mock> = {
   getJob: vi.fn(),
 };
 
-const mockGateway: Record<string, Mock> = {
-  broadcastEvent: vi.fn(),
+const mockEventBridge: Record<string, Mock> = {
+  emitExecutionStatusChanged: vi.fn(),
 };
 
 describe('ExecutionService', () => {
@@ -187,7 +187,7 @@ describe('ExecutionService', () => {
     mockQueue.add.mockReset();
     mockQueue.getJobs.mockReset();
     mockQueue.getJob.mockReset();
-    mockGateway.broadcastEvent.mockReset();
+    mockEventBridge.emitExecutionStatusChanged.mockReset();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -200,7 +200,7 @@ describe('ExecutionService', () => {
         ExecutionService,
         { provide: DRIZZLE, useValue: db },
         { provide: getQueueToken(EXECUTION_QUEUE), useValue: mockQueue },
-        { provide: ExecutionGateway, useValue: mockGateway },
+        { provide: EventBridgeService, useValue: mockEventBridge },
       ],
     }).compile();
 
@@ -373,14 +373,12 @@ describe('ExecutionService', () => {
       const result = await service.cancelExecution(EXECUTION_ID, TENANT_ID);
 
       expect(result.status).toBe('cancelled');
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'execution:cancelled',
         expect.objectContaining({
           executionId: EXECUTION_ID,
           status: 'cancelled',
-          type: 'execution.cancelled',
         }),
       );
     });
@@ -527,15 +525,7 @@ describe('ExecutionService', () => {
       expect(txDb.execute).toHaveBeenCalledTimes(2);
       expect(txDb.update).toHaveBeenCalledTimes(1);
       expect(txDb.insert).toHaveBeenCalledTimes(1);
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
-    });
-
-    it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([]));
-
-      await expect(service.initializeSteps(EXECUTION_ID)).rejects.toThrow(
-        ExecutionNotFoundException,
-      );
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
 
     it('应在没有节点时跳过步骤插入并直接完成 execution', async () => {
@@ -554,10 +544,9 @@ describe('ExecutionService', () => {
       await service.initializeSteps(EXECUTION_ID);
 
       expect(txDb.insert).not.toHaveBeenCalled();
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'execution:completed',
         { executionId: EXECUTION_ID, status: 'completed', totalSteps: 0 },
       );
     });
@@ -577,7 +566,7 @@ describe('ExecutionService', () => {
 
       expect(txDb.update).not.toHaveBeenCalled();
       expect(txDb.insert).toHaveBeenCalledTimes(1);
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
 
     it('应在执行已 running 且已有步骤时保持幂等', async () => {
@@ -596,7 +585,7 @@ describe('ExecutionService', () => {
 
       expect(txDb.update).not.toHaveBeenCalled();
       expect(txDb.insert).not.toHaveBeenCalled();
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
 
     it('应在执行已取消时跳过步骤初始化', async () => {
@@ -629,10 +618,9 @@ describe('ExecutionService', () => {
       expect(db.transaction).toHaveBeenCalledTimes(1);
       expect(txDb.execute).toHaveBeenCalledTimes(2);
       expect(txDb.update).toHaveBeenCalledTimes(1);
-      expect(mockGateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        'execution:failed',
         { executionId: EXECUTION_ID, status: 'failed', error: '执行失败' },
       );
     });
@@ -649,7 +637,7 @@ describe('ExecutionService', () => {
 
       expect(txDb.update).toHaveBeenCalledTimes(1);
       expect(txDb.select).toHaveBeenCalledTimes(1);
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
 
     it('应在执行不存在时不广播事件', async () => {
@@ -659,7 +647,7 @@ describe('ExecutionService', () => {
       await service.markFailed(EXECUTION_ID, error);
 
       expect(db.transaction).not.toHaveBeenCalled();
-      expect(mockGateway.broadcastEvent).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
   });
 });

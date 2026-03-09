@@ -11,6 +11,7 @@ export type {
   StepSnapshot,
   StepStatus,
   StepStatusChangedPayload,
+  SubscribeAck,
   SubscribePayload,
   UnsubscribePayload,
 } from './execution-event.types'

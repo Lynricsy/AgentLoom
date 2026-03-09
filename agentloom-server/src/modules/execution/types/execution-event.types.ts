@@ -80,6 +80,7 @@ export interface ExecutionStateSnapshot {
   readonly totalSteps: number;
   readonly steps: StepSnapshot[];
   readonly snapshotAt: string;
+  readonly lastEventId?: number;
 }
 
 export type LegacyEventName =
@@ -114,7 +115,11 @@ export interface UnsubscribePayload {
 }
 
 export interface ClientToServerEvents {
+  'execution:subscribe': (payload: SubscribePayload) => void;
+  'execution:unsubscribe': (payload: UnsubscribePayload) => void;
+  /** @deprecated 使用 'execution:subscribe' 替代 */
   subscribe: (payload: SubscribePayload) => void;
+  /** @deprecated 使用 'execution:unsubscribe' 替代 */
   unsubscribe: (payload: UnsubscribePayload) => void;
 }
 

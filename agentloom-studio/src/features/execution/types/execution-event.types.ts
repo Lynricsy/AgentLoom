@@ -121,7 +121,22 @@ export interface ServerToClientEvents {
   error: (error: { message: string; code?: string }) => void
 }
 
+export interface SubscribeAck {
+  status: 'subscribed'
+  currentState: ExecutionStateSnapshot | null
+}
+
 export interface ClientToServerEvents {
-  subscribe: (payload: SubscribePayload) => void
+  'execution:subscribe': (
+    payload: SubscribePayload,
+    ack?: (response: SubscribeAck) => void,
+  ) => void
+  'execution:unsubscribe': (payload: UnsubscribePayload) => void
+  /** @deprecated — 使用 execution:subscribe */
+  subscribe: (
+    payload: SubscribePayload,
+    ack?: (response: SubscribeAck) => void,
+  ) => void
+  /** @deprecated — 使用 execution:unsubscribe */
   unsubscribe: (payload: UnsubscribePayload) => void
 }

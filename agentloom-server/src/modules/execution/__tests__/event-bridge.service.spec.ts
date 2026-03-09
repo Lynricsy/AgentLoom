@@ -16,13 +16,13 @@ const EXEC = 'exec-1';
 
 describe('EventBridgeService', () => {
   let service: EventBridgeService;
-  let gateway: { broadcastEvent: ReturnType<typeof vi.fn> };
+  let gateway: { broadcastTypedEvent: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
 
-    gateway = { broadcastEvent: vi.fn() };
+    gateway = { broadcastTypedEvent: vi.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -57,7 +57,7 @@ describe('EventBridgeService', () => {
         data: payload,
       });
       expect(result.timestamp).toBeDefined();
-      expect(gateway.broadcastEvent).toHaveBeenCalledWith(
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
         TENANT,
         EXEC,
         ExecutionEventName.STEP_STATUS_CHANGED,
@@ -79,7 +79,7 @@ describe('EventBridgeService', () => {
 
       expect(result.event).toBe(ExecutionEventName.EXECUTION_STATUS_CHANGED);
       expect(result.data).toEqual(payload);
-      expect(gateway.broadcastEvent).toHaveBeenCalledOnce();
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledOnce();
     });
   });
 

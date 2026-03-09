@@ -6,6 +6,7 @@ import type { StateReplayService } from '../services/state-replay.service';
 import type { ThrottleService } from '../services/throttle.service';
 import type { EventBridgeService } from '../services/event-bridge.service';
 import type { ConfigService } from '@nestjs/config';
+import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import type { ExecutionStateSnapshot } from '../types/execution-event.types';
 
 vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
@@ -56,12 +57,13 @@ describe('ExecutionGateway', () => {
     emitExecutionStatusChanged: Mock;
     clearExecution: Mock;
   };
+  let mockTokenBlacklist: { isBlacklisted: Mock };
   let mockServer: { to: Mock; use: Mock };
 
   beforeEach(() => {
     mockConfig = { get: vi.fn().mockReturnValue('test-secret') };
     mockStateReplay = {
-      getExecutionSnapshot: vi.fn().mockResolvedValue(null),
+      getExecutionSnapshot: vi.fn().mockResolvedValue(makeSnapshot()),
     };
     mockThrottle = {
       registerFlushHandler: vi.fn(),
@@ -82,12 +84,16 @@ describe('ExecutionGateway', () => {
       to: vi.fn().mockReturnValue({ emit: vi.fn() }),
       use: vi.fn(),
     };
+    mockTokenBlacklist = {
+      isBlacklisted: vi.fn().mockResolvedValue(false),
+    };
 
     gateway = new ExecutionGateway(
       mockConfig as unknown as ConfigService,
       mockStateReplay as unknown as StateReplayService,
       mockThrottle as unknown as ThrottleService,
       mockEventBridge as unknown as EventBridgeService,
+      mockTokenBlacklist as unknown as TokenBlacklistService,
     );
     gateway.server = mockServer as any;
   });
@@ -194,10 +200,11 @@ describe('ExecutionGateway', () => {
 
       expect(mockStateReplay.getExecutionSnapshot).toHaveBeenCalledWith(
         'exec-1',
+        'tenant-1',
         mockEventBridge,
       );
       expect(client.emit).toHaveBeenCalledWith(
-        'execution:state-snapshot',
+        'execution.state.snapshot',
         snapshot,
       );
     });
@@ -228,7 +235,7 @@ describe('ExecutionGateway', () => {
       });
 
       expect(client.emit).toHaveBeenCalledWith(
-        'execution:state-snapshot',
+        'execution.state.snapshot',
         snapshot,
       );
     });
@@ -239,10 +246,23 @@ describe('ExecutionGateway', () => {
       );
 
       const client = makeSocket();
-      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+      await expect(
+        gateway.handleSubscribe(client as any, { executionId: 'exec-1' }),
+      ).rejects.toThrow('DB down');
 
-      expect(client.join).toHaveBeenCalled();
+      expect(client.join).not.toHaveBeenCalled();
       expect(client.emit).not.toHaveBeenCalled();
+    });
+
+    it('throws WsException when execution not found (tenant verification)', async () => {
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(null);
+
+      const client = makeSocket();
+      await expect(
+        gateway.handleSubscribe(client as any, { executionId: 'exec-1' }),
+      ).rejects.toThrow(WsException);
+
+      expect(client.join).not.toHaveBeenCalled();
     });
   });
 

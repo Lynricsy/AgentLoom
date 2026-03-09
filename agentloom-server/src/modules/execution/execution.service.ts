@@ -13,6 +13,7 @@ import {
   WorkflowArchivedException,
 } from './execution.exceptions';
 import { ExecutionGateway } from './execution.gateway';
+import { EventBridgeService } from './services/event-bridge.service';
 import { EXECUTION_QUEUE } from './execution.constants';
 import type { RunWorkflowDto } from './dto/run-workflow.dto';
 
@@ -36,7 +37,7 @@ export class ExecutionService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
-    private readonly executionGateway: ExecutionGateway,
+    private readonly eventBridge: EventBridgeService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -235,14 +236,12 @@ export class ExecutionService {
       }
     }
 
-    this.executionGateway.broadcastEvent(
+    this.eventBridge.emitExecutionStatusChanged(
       tenantId,
       executionId,
-      'execution:cancelled',
       {
         executionId,
         status: 'cancelled',
-        type: 'execution.cancelled',
         timestamp: new Date().toISOString(),
       },
     );
@@ -336,10 +335,9 @@ export class ExecutionService {
         );
 
         if (shouldCompleteImmediately) {
-          this.executionGateway.broadcastEvent(
+          this.eventBridge.emitExecutionStatusChanged(
             scopedExecution.tenantId,
             executionId,
-            'execution:completed',
             { executionId, status: 'completed', totalSteps: 0 },
           );
         }
@@ -399,10 +397,9 @@ export class ExecutionService {
           return;
         }
 
-        this.executionGateway.broadcastEvent(
+        this.eventBridge.emitExecutionStatusChanged(
           execution.tenantId,
           executionId,
-          'execution:failed',
           { executionId, status: 'failed', error: error.message },
         );
       },

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import * as schema from '../../../database/schema';
 import type {
@@ -18,6 +18,7 @@ export class StateReplayService {
 
   async getExecutionSnapshot(
     executionId: string,
+    tenantId: string,
     eventBridge?: EventBridgeService,
   ): Promise<ExecutionStateSnapshot | null> {
     const [execution] = await this.db
@@ -28,7 +29,12 @@ export class StateReplayService {
         totalSteps: schema.workflowExecutions.totalSteps,
       })
       .from(schema.workflowExecutions)
-      .where(eq(schema.workflowExecutions.id, executionId));
+      .where(
+        and(
+          eq(schema.workflowExecutions.id, executionId),
+          eq(schema.workflowExecutions.tenantId, tenantId),
+        ),
+      );
 
     if (!execution) return null;
 
@@ -68,6 +74,7 @@ export class StateReplayService {
         }),
       ),
       snapshotAt: new Date().toISOString(),
+      lastEventId,
     };
 
     this.logger.log(

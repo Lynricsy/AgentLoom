@@ -5,6 +5,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { AgentTaskWorker } from '../agent-task.worker';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
+import { ThrottleService } from '../services/throttle.service';
 import { AgentExecutionException } from '../execution.exceptions';
 import {
   AGENT_TASK_QUEUE,
@@ -126,6 +127,10 @@ describe('AgentTaskWorker', () => {
     onNodeFailed: vi.fn().mockResolvedValue(undefined),
   };
 
+  const mockThrottle: Record<string, ReturnType<typeof vi.fn>> = {
+    bufferOutputChunk: vi.fn(),
+  };
+
   const mockAgentRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
     createSession: vi.fn(),
     loadSession: vi.fn(),
@@ -166,6 +171,7 @@ describe('AgentTaskWorker', () => {
         AgentTaskWorker,
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
+        { provide: ThrottleService, useValue: mockThrottle },
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
@@ -243,15 +249,32 @@ describe('AgentTaskWorker', () => {
 
       await worker.process(createMockJob());
 
-      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledTimes(4);
-      for (const event of events) {
-        expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
-          TENANT_ID,
-          EXECUTION_ID,
-          STEP_ID,
-          event,
-        );
-      }
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledTimes(3);
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        events[0], // plan
+      );
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        events[2], // decision
+      );
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        events[3], // done
+      );
+      expect(mockThrottle.bufferOutputChunk).toHaveBeenCalledTimes(1);
+      expect(mockThrottle.bufferOutputChunk).toHaveBeenCalledWith(
+        `${TENANT_ID}:${EXECUTION_ID}`,
+        STEP_ID,
+        '建议给主人展示摘要',
+        0,
+      );
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,

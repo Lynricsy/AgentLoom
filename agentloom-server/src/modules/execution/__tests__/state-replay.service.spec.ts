@@ -5,6 +5,7 @@ import { StateReplayService } from '../services/state-replay.service';
 import type { EventBridgeService } from '../services/event-bridge.service';
 
 const EXEC_ID = 'exec-uuid-1';
+const TENANT_ID = 'tenant-uuid-1';
 
 function createSelectChain(result: unknown) {
   return {
@@ -58,7 +59,7 @@ describe('StateReplayService', () => {
   it('should return null when execution not found', async () => {
     mockDb.select.mockReturnValueOnce(createSelectChain([]));
 
-    const result = await service.getExecutionSnapshot(EXEC_ID);
+    const result = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(result).toBeNull();
   });
 
@@ -77,7 +78,7 @@ describe('StateReplayService', () => {
       .mockReturnValueOnce(createSelectChain([execution]))
       .mockReturnValueOnce(createSelectChain(steps));
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
 
     expect(snapshot).not.toBeNull();
     expect(snapshot!.executionId).toBe(EXEC_ID);
@@ -95,7 +96,7 @@ describe('StateReplayService', () => {
         createSelectChain([makeStep('step-1', 'node-a')]),
       );
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     const step = snapshot!.steps[0];
 
     expect(step.startedAt).toBe('2025-01-01T00:00:00.000Z');
@@ -114,7 +115,7 @@ describe('StateReplayService', () => {
         ]),
       );
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     const step = snapshot!.steps[0];
 
     expect(step.startedAt).toBeNull();
@@ -133,7 +134,7 @@ describe('StateReplayService', () => {
         ]),
       );
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0].errorMessage).toBe('Something broke');
   });
 
@@ -144,7 +145,7 @@ describe('StateReplayService', () => {
         createSelectChain([makeStep('step-1', 'node-a')]),
       );
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0]).not.toHaveProperty('errorMessage');
   });
 
@@ -157,7 +158,7 @@ describe('StateReplayService', () => {
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
       .mockReturnValueOnce(createSelectChain([]));
 
-    await service.getExecutionSnapshot(EXEC_ID, mockBridge);
+    await service.getExecutionSnapshot(EXEC_ID, TENANT_ID, mockBridge);
 
     expect(mockBridge.getLastEventId).toHaveBeenCalledWith(EXEC_ID);
   });
@@ -171,7 +172,7 @@ describe('StateReplayService', () => {
       )
       .mockReturnValueOnce(createSelectChain([]));
 
-    const snapshot = await service.getExecutionSnapshot(EXEC_ID);
+    const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.completedSteps).toBe(0);
     expect(snapshot!.totalSteps).toBe(0);
   });
