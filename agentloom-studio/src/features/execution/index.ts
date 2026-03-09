@@ -1,6 +1,21 @@
-export type { ExecutionResponse } from './api/executionApi'
+export type {
+  ExecutionResponse,
+  ListExecutionsParams,
+} from './api/executionApi'
 export { executionKeys } from './api/executionKeys'
 export { useRunWorkflow, useCancelExecution } from './api/executionMutations'
+export { useExecutionList, useExecution } from './hooks/useExecutionList'
+export { RunCard } from './components/RunCard'
+export { ExecutionHistoryPanel } from './components/ExecutionHistoryPanel'
+export { ReadonlyCanvas } from './components/ReadonlyCanvas'
+export { ExecutionTimeline } from './components/ExecutionTimeline'
+export { ExecutionNodeDetail } from './components/ExecutionNodeDetail'
+export { ExecutionDebugView } from './components/ExecutionDebugView'
+export {
+  CelebrationEffect,
+  FIRST_SUCCESS_CELEBRATION_KEY,
+  useCelebrationEffect,
+} from './components/CelebrationEffect'
 
 export { useAuthToken, setAuthToken } from './hooks/useAuthToken'
 export { useStartExecution } from './hooks/useStartExecution'
@@ -9,7 +24,11 @@ export { useExecutionSocket } from './hooks/useExecutionSocket'
 
 export type {
   ClientToServerEvents,
+  ExecutionDetail,
   ExecutionEvent,
+  ExecutionStep,
+  ExecutionStepAttempt,
+  ExecutionStepStatus,
   ExecutionStateSnapshot,
   ExecutionStatus,
   ExecutionStatusChangedPayload,

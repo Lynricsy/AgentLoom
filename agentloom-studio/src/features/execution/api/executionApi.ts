@@ -1,4 +1,4 @@
-import type { ApiResponse } from '@/shared/types/api'
+import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ExecutionStatus } from '../types'
 
@@ -7,15 +7,34 @@ export interface ExecutionResponse {
   id: string
   tenantId: string
   workflowDefinitionId: string
+  workflowId?: string
   workflowVersionId: string | null
   status: ExecutionStatus
+  triggerType?: 'manual' | 'api' | 'webhook' | 'system' | 'scheduled'
   inputParams: Record<string, unknown> | null
   result: Record<string, unknown> | null
+  definitionSnapshot?: {
+    nodes: unknown[]
+    edges: unknown[]
+    viewport?: unknown | null
+    metadata?: Record<string, unknown>
+  } | null
   startedAt: string | null
   completedAt: string | null
+  failedAt?: string | null
+  cancelledAt?: string | null
   errorMessage: string | null
+  totalSteps?: number
+  completedSteps?: number
+  createdBy?: string
   createdAt: string
   updatedAt: string
+}
+
+export interface ListExecutionsParams {
+  page?: number
+  pageSize?: number
+  status?: string
 }
 
 export interface InterventionResolveRequest {
@@ -47,6 +66,21 @@ export async function getExecution(executionId: string) {
   return apiClient
     .get(`executions/${executionId}`)
     .json<ApiResponse<ExecutionResponse>>()
+}
+
+export async function listExecutions(
+  workflowDefinitionId: string,
+  params?: ListExecutionsParams,
+): Promise<PaginatedResponse<ExecutionResponse>> {
+  return apiClient
+    .get(`workflow-definitions/${workflowDefinitionId}/executions`, {
+      searchParams: params
+        ? Object.fromEntries(
+            Object.entries(params).filter(([, value]) => value != null),
+          )
+        : undefined,
+    })
+    .json()
 }
 
 /** 取消执行 — POST /executions/:id/cancel */

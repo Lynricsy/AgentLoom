@@ -3,6 +3,7 @@ import { useParams } from '@tanstack/react-router'
 import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
 import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
 import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
+import { ExecutionHistoryPanel } from '@/features/execution/components/ExecutionHistoryPanel'
 import {
   useExecutionId,
   useIsExecutionActive,
@@ -50,10 +51,17 @@ export function WorkflowCanvasPage() {
   }, [workflowId, isStarting, isExecutionActive, startExecution])
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  const [isExecutionHistoryOpen, setIsExecutionHistoryOpen] = useState(false)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
   const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
+  const handleToggleExecutionHistory = useCallback(() => {
+    setIsExecutionHistoryOpen((current) => !current)
+  }, [])
+  const handleCloseExecutionHistory = useCallback(() => {
+    setIsExecutionHistoryOpen(false)
+  }, [])
   const handleOpenPublishSheet = useCallback((versionId?: string) => {
     setPublishVersionId(versionId ?? null)
     setIsPublishSheetOpen(true)
@@ -148,6 +156,29 @@ export function WorkflowCanvasPage() {
             onRun={handleRunWorkflow}
             isRunning={isStarting || isExecutionActive}
           />
+        )}
+
+        {workflow && (
+          <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3">
+            <button
+              type="button"
+              className="pointer-events-auto inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
+              onClick={handleToggleExecutionHistory}
+              data-testid="toggle-execution-history"
+            >
+              {isExecutionHistoryOpen ? '隐藏执行记录' : '查看执行记录'}
+            </button>
+
+            {isExecutionHistoryOpen ? (
+              <div className="pointer-events-auto h-[min(68vh,640px)] w-[min(420px,calc(100vw-3rem))]">
+                <ExecutionHistoryPanel
+                  key={workflow.id}
+                  workflowDefinitionId={workflow.id}
+                  onClose={handleCloseExecutionHistory}
+                />
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
 
