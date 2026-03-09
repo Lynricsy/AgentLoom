@@ -15,6 +15,7 @@ import { NODE_CATEGORIES } from './nodeCategories'
 import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { KnowledgeBaseNodeBody } from './nodes/KnowledgeBaseNodeBody'
 import { McpToolNodeBody } from './nodes/McpToolNodeBody'
+import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 import { TypedPort } from './TypedPort'
 import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
 
@@ -182,6 +183,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           <McpToolNodeBody data={data} />
         ) : data.nodeType === 'knowledge-base' ? (
           <KnowledgeBaseNodeBody config={data.config} />
+        ) : data.nodeType === 'sandbox' ? (
+          <SandboxNodeBody data={data} />
         ) : (
           config.description
         )}
