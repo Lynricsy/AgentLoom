@@ -41,7 +41,7 @@ WorkflowCanvasPage.tsx
     │   ├── ConnectionStateOverlay.tsx (连接状态覆盖层)
     │   └── NodeInfoOverlay.tsx
     ├── panels/
-    │   ├── NodeConfigPanel.tsx (节点配置)
+│   ├── NodeConfigPanel.tsx (节点配置 + 实时输出)
     │   ├── FieldMappingPanel.tsx (字段映射)
     │   ├── KnowledgeBasePanel.tsx
     │   ├── McpPanel.tsx

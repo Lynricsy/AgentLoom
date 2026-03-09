@@ -1,14 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cancelExecution, getExecution, runWorkflow } from './executionApi'
 
-const jsonMock = vi.fn()
-const getMock = vi.fn(() => ({ json: jsonMock }))
-const postMock = vi.fn(() => ({ json: jsonMock }))
+const mocks = vi.hoisted(() => {
+  const jsonMock = vi.fn()
+  const getMock = vi.fn((..._args: unknown[]) => ({ json: jsonMock }))
+  const postMock = vi.fn((..._args: unknown[]) => ({ json: jsonMock }))
+
+  return {
+    jsonMock,
+    getMock,
+    postMock,
+  }
+})
 
 vi.mock('@/shared/api/client', () => ({
   apiClient: {
-    get: (...args: unknown[]) => getMock(...args),
-    post: (...args: unknown[]) => postMock(...args),
+    get: mocks.getMock,
+    post: mocks.postMock,
   },
   toSnakeBody: (data: Record<string, unknown>) => {
     const result: Record<string, unknown> = {}
@@ -34,14 +42,14 @@ const mockResponse = {
 describe('executionApi', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonMock.mockResolvedValue(mockResponse)
+    mocks.jsonMock.mockResolvedValue(mockResponse)
   })
 
   describe('runWorkflow', () => {
     it('发送 POST 请求到正确的路径', async () => {
       await runWorkflow('wf-001')
 
-      expect(postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/run', {
+      expect(mocks.postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/run', {
         json: undefined,
       })
     })
@@ -49,7 +57,7 @@ describe('executionApi', () => {
     it('带 inputParams 发送请求（转为 snake_case）', async () => {
       await runWorkflow('wf-001', { myParam: 'value' })
 
-      expect(postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/run', {
+      expect(mocks.postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/run', {
         json: { input_params: { myParam: 'value' } },
       })
     })
@@ -64,7 +72,7 @@ describe('executionApi', () => {
     it('发送 GET 请求到正确的路径', async () => {
       await getExecution('exec-001')
 
-      expect(getMock).toHaveBeenCalledWith('executions/exec-001')
+      expect(mocks.getMock).toHaveBeenCalledWith('executions/exec-001')
     })
 
     it('返回 API 响应', async () => {
@@ -77,7 +85,7 @@ describe('executionApi', () => {
     it('发送 POST 请求到正确的路径', async () => {
       await cancelExecution('exec-001')
 
-      expect(postMock).toHaveBeenCalledWith('executions/exec-001/cancel')
+      expect(mocks.postMock).toHaveBeenCalledWith('executions/exec-001/cancel')
     })
 
     it('返回 API 响应', async () => {

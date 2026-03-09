@@ -45,7 +45,7 @@ src/
 | Store | 路径 | 职责 |
 |-------|------|------|
 | canvasStore | `features/canvas/stores/` | nodes/edges/viewport/selection/search/dirty/mapping |
-| executionStore | `features/execution/stores/` | executionId/status/nodes/recentEvents(cap 50) |
+| executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming)/recentEvents(cap 50) |
 
 **自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
 
@@ -69,6 +69,7 @@ src/
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
+- **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流
 
 ## 样式
 

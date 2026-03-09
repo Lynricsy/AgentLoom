@@ -1,5 +1,10 @@
 import { memo, useCallback } from 'react'
 import { X } from 'lucide-react'
+import {
+  useIsExecutionActive,
+  useNodeExecutionState,
+} from '@/features/execution/stores/executionStore'
+import type { StepStatus } from '@/features/execution/types'
 import { cn } from '@/shared/lib/utils'
 import {
   LlmModelConfigPanel,
@@ -15,6 +20,98 @@ import { SandboxConfigPanel } from './SandboxConfigPanel'
 
 interface NodeConfigPanelProps {
   className?: string
+}
+
+const EXECUTION_STATUS_META: Record<
+  StepStatus,
+  { label: string; badgeClassName: string }
+> = {
+  pending: {
+    label: '等待中',
+    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+  },
+  queued: {
+    label: '排队中',
+    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+  },
+  running: {
+    label: '执行中',
+    badgeClassName: 'border-primary/30 bg-primary/10 text-primary',
+  },
+  completed: {
+    label: '已完成',
+    badgeClassName: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  },
+  failed: {
+    label: '失败',
+    badgeClassName: 'border-error/30 bg-error/10 text-error',
+  },
+  skipped: {
+    label: '已跳过',
+    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+  },
+  cancelled: {
+    label: '已取消',
+    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+  },
+  waiting_intervention: {
+    label: '等待干预',
+    badgeClassName: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  },
+}
+
+const EXECUTION_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+})
+
+function formatExecutionTimestamp(value?: string | null): string | null {
+  if (!value) {
+    return null
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  return EXECUTION_TIME_FORMATTER.format(parsed)
+}
+
+function getOutputPlaceholder(
+  status?: StepStatus,
+  isStreaming?: boolean,
+  isExecutionActive?: boolean,
+): string {
+  if (isStreaming) {
+    return '正在接收实时输出...'
+  }
+
+  if (!status && isExecutionActive) {
+    return '节点尚未开始运行，输出会在执行后显示。'
+  }
+
+  switch (status) {
+    case 'failed':
+      return '节点执行失败，暂无可展示的输出内容。'
+    case 'completed':
+      return '该节点已完成，但这次运行没有文本输出。'
+    case 'queued':
+    case 'pending':
+      return '节点尚未开始运行，输出会在执行后显示。'
+    case 'waiting_intervention':
+      return '节点正在等待人工干预，恢复后会继续写入输出。'
+    case 'skipped':
+      return '该节点在本次执行中被跳过，没有产生输出。'
+    case 'cancelled':
+      return '该节点执行已取消，没有产生输出。'
+    default:
+      return '选择节点后，这里会显示最近一次执行输出。'
+  }
 }
 
 export const NodeConfigPanel = memo(function NodeConfigPanel({
@@ -74,6 +171,8 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
           node={node}
           onConfigChange={handleConfigChange}
         />
+
+        <NodeExecutionSection nodeId={node.id} />
       </div>
     </aside>
   )
@@ -133,4 +232,130 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
         </div>
       )
   }
+})
+
+interface NodeExecutionSectionProps {
+  nodeId: string
+}
+
+const NodeExecutionSection = memo(function NodeExecutionSection({
+  nodeId,
+}: NodeExecutionSectionProps) {
+  const nodeState = useNodeExecutionState(nodeId)
+  const isExecutionActive = useIsExecutionActive()
+
+  const startedAt = formatExecutionTimestamp(nodeState?.startedAt)
+  const completedAt = formatExecutionTimestamp(nodeState?.completedAt)
+  const statusMeta = nodeState
+    ? EXECUTION_STATUS_META[nodeState.status]
+    : null
+  const outputPlaceholder = getOutputPlaceholder(
+    nodeState?.status,
+    nodeState?.isStreaming,
+    isExecutionActive,
+  )
+
+  return (
+    <section
+      className="border-t border-border px-4 py-4"
+      data-testid="node-execution-section"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">实时执行</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {nodeState
+              ? '节点状态、重试信息与输出流会在这里持续刷新。'
+              : isExecutionActive
+                ? '当前工作流正在执行，等待该节点开始运行。'
+                : '当前没有运行中的节点，保留最近一次执行结果供排查。'}
+          </p>
+        </div>
+
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
+            statusMeta?.badgeClassName ??
+              'border-border bg-muted/60 text-muted-foreground',
+          )}
+          data-testid="node-execution-status"
+        >
+          {statusMeta?.label ?? (isExecutionActive ? '待运行' : '空闲')}
+        </span>
+      </div>
+
+      {nodeState && (
+        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs">
+          <div>
+            <dt className="text-muted-foreground">步骤 ID</dt>
+            <dd className="mt-1 break-all font-mono text-foreground">
+              {nodeState.stepId}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">流式状态</dt>
+            <dd className="mt-1 text-foreground">
+              {nodeState.isStreaming ? '接收中' : '已停止'}
+            </dd>
+          </div>
+
+          {nodeState.retryAttempt != null && nodeState.retryMaxAttempts != null && (
+            <div>
+              <dt className="text-muted-foreground">重试进度</dt>
+              <dd className="mt-1 text-foreground">
+                {nodeState.retryAttempt}/{nodeState.retryMaxAttempts}
+              </dd>
+            </div>
+          )}
+
+          {startedAt && (
+            <div>
+              <dt className="text-muted-foreground">开始时间</dt>
+              <dd className="mt-1 text-foreground">{startedAt}</dd>
+            </div>
+          )}
+
+          {completedAt && (
+            <div>
+              <dt className="text-muted-foreground">完成时间</dt>
+              <dd className="mt-1 text-foreground">{completedAt}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      {nodeState?.errorMessage && (
+        <div
+          className="mt-4 rounded-xl border border-error/40 bg-error/10 px-3 py-2"
+          data-testid="node-execution-error"
+        >
+          <p className="text-xs font-medium text-error">执行错误</p>
+          <p className="mt-1 text-xs leading-5 text-foreground">
+            {nodeState.errorMessage}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            输出流
+          </h4>
+
+          {nodeState?.isStreaming && (
+            <span className="text-[11px] font-medium text-primary">
+              流式输出中
+            </span>
+          )}
+        </div>
+
+        <pre
+          className="min-h-40 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-[#050816] px-3 py-3 font-mono text-xs leading-6 text-slate-100"
+          data-testid="node-execution-output"
+        >
+          {nodeState?.output || outputPlaceholder}
+        </pre>
+      </div>
+    </section>
+  )
 })
