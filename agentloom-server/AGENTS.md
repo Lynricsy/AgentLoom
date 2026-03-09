@@ -67,22 +67,23 @@ HTTP POST /executions
                                          (500 cap, 100ms interval)
 ```
 
-## 断点恢复与检查点 (Story 5-5)
+## 断点恢复与检查点 (Story 5-5) ✅
 
-- 已落地基础能力：`CheckpointService` (`checkpoint.service.ts`) 会在节点完成后保存 dagState 快照 (`saveCheckpoint`)，并支持恢复失败执行 (`resumeExecution`)
-- 检查点数据当前存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
+- `CheckpointService` (`checkpoint.service.ts`) 在节点完成后保存 dagState 快照 (`saveCheckpoint`)，支持恢复失败执行 (`resumeExecution`)
+- 检查点数据存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
+- `execution_steps.attempt_count` (integer, default 0): 在 AgentTaskWorker 重试/最终失败时更新为 `job.attemptsMade+1`，恢复时重置为 0
 - 恢复 API: `POST /executions/:id/resume` (202 Accepted, Editor+ 角色)，可选 `{ fromNodeId }` 指定恢复起点（BFS 重置目标+下游）；仅 `failed` 状态可恢复，`paused` 返回 409
+- 恢复流程: Controller → `executionQueue.add('resume-execution', ...)` → ExecutionWorker 分发 → `nodeScheduler.resumeScheduling()`，确保通过 BullMQ 统一 job 生命周期
 - `STEP_TRANSITIONS` 已新增 `failed→pending`、`cancelled→pending`，`NodeSchedulerService.resumeScheduling()` 会跳过 `completed` 节点并继续调度 `pending` 节点
 - Agent 重试追踪已写入 `checkpointData.attempts[]`，记录每次重试的 `{ attempt, error, timestamp }`
-- **当前 Story 5-5 仍未闭合**：`execution_steps` 尚无 `attempt_count` 字段；resume 仍在 controller 中直接调用 `resumeScheduling()`，未重新创建 BullMQ job；`agent-task-queue` backoff 仍为 `delay: 1000`；dead letter queue 只保留错误信息，尚无管理 API / 查询入口
-- 因此 `/_bmad-output/implementation-artifacts/story-5-5-breakpoint-resume-and-checkpoint-mechanism.md` 与 `sprint-status.yaml` 目前都应保持 `in-progress`，待补齐上述 follow-ups 后再复审
+- DLQ 管理 API: `GET /executions/dlq` (分页查询死信队列)、`POST /executions/dlq/:jobId/retry` (重试)、`POST /executions/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`
 
 ## BullMQ 队列
 
 | 队列 | 重试 | 用途 |
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
-| agent-task-queue | 3次 exp | 单节点 Agent 任务 |
+| agent-task-queue | 3次 exp (2s base) | 单节点 Agent 任务 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
 | document-processing-queue | — | 文档解析 |
 | document-indexing-queue | — | Qdrant 向量索引 |
