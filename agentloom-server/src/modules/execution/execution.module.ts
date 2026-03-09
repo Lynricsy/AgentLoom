@@ -12,6 +12,7 @@ import { DagResolverService } from './dag-resolver.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { AgentTaskWorker } from './agent-task.worker';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ThrottleService } from './services/throttle.service';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
 
 @Module({
@@ -50,11 +51,13 @@ import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from './execution.constants';
     NodeSchedulerService,
     AgentTaskWorker,
     EventBridgeService,
+    ThrottleService,
   ],
   exports: [
     ExecutionService,
     ExecutionGateway,
     EventBridgeService,
+    ThrottleService,
     StepStateMachineService,
     DagResolverService,
     NodeSchedulerService,
