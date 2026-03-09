@@ -87,6 +87,18 @@ export {
 } from './execution-steps.schema';
 export { getTenantId } from './rls-helpers';
 export {
+  sandboxSessionStatusEnum,
+  sandboxSessions,
+  type SandboxConfig,
+  type SandboxSession,
+  type NewSandboxSession,
+} from './sandbox-sessions.schema';
+export {
+  sandboxLogs,
+  type SandboxLog,
+  type NewSandboxLog,
+} from './sandbox-logs.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
