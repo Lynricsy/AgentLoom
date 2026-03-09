@@ -510,12 +510,83 @@ body {
   transition: opacity 200ms ease;
 }
 
+/* ─── 节点执行状态覆盖层 ───────────────────────────────── */
+
+.exec-overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.exec-overlay__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  color: var(--exec-color);
+  background: hsl(from var(--exec-color) h s l / 0.12);
+  box-shadow: 0 1px 3px hsl(from var(--exec-color) h s l / 0.15);
+}
+
+.exec-overlay__retry {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: var(--exec-color);
+  background: hsl(from var(--exec-color) h s l / 0.1);
+}
+
+.exec-overlay__spinner {
+  animation: exec-spin 1s linear infinite;
+}
+
+.exec-overlay--running {
+  animation: exec-badge-pulse 1.6s ease-in-out infinite;
+}
+
+.exec-overlay--waiting {
+  animation: exec-badge-pulse 2s ease-in-out infinite;
+}
+
+.canvas-node-shell:has(.exec-overlay--running) {
+  box-shadow: 0 0 0 1px hsl(from var(--color-primary) h s l / 0.3);
+}
+
+.canvas-node-shell:has(.exec-overlay[data-exec-status="completed"]) {
+  border-color: hsl(from var(--color-success, #22c55e) h s l / 0.4);
+}
+
+.canvas-node-shell:has(.exec-overlay[data-exec-status="failed"]) {
+  border-color: hsl(from var(--color-error, #ef4444) h s l / 0.4);
+}
+
+@keyframes exec-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes exec-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ─── 无障碍 & reduced-motion ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .smart-edge-particle--running { animation: none; opacity: 0; }
   .smart-edge-path--checking { animation: none; }
   .connection-overlay__halo--compatible { animation: none; opacity: 0.6; }
   .search-match { animation: none; }
+  .exec-overlay__spinner { animation: none; }
+  .exec-overlay--running,
+  .exec-overlay--waiting { animation: none; }
   .edge-badge,
   .compatibility-preview,
   .mapping-panel,

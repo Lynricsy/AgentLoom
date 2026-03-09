@@ -18,6 +18,7 @@ import { McpToolNodeBody } from './nodes/McpToolNodeBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 import { TypedPort } from './TypedPort'
 import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
+import { NodeExecutionOverlay } from './NodeExecutionOverlay'
 
 function getNodeColorToken(
   nodeType: CanvasNode['data']['nodeType'],
@@ -113,7 +114,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-testid={`canvas-node-${id}`}
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'canvas-node-shell min-w-[180px] max-w-[260px] rounded-lg border bg-card text-card-foreground shadow-sm',
+        'canvas-node-shell relative min-w-[180px] max-w-[260px] rounded-lg border bg-card text-card-foreground shadow-sm',
         selected && 'ring-2 ring-primary shadow-md',
         data.nodeType === 'llm-model' && llmState === 'unconfigured' && 'border-border/80 bg-muted/10',
         data.nodeType === 'llm-model' && llmState === 'warning' && 'border-warning/40 bg-warning/5',
@@ -125,6 +126,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
+      <NodeExecutionOverlay nodeId={id} />
       <header data-slot="header" className="border-b border-border/50 px-3 py-2">
         <div className="mb-2 flex items-center gap-2">
           <span
