@@ -37,6 +37,16 @@ function createUpdateChainReturning(result: unknown[]) {
   };
 }
 
+function createSelectChainWithOrderBy(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        orderBy: vi.fn().mockResolvedValue(result),
+      }),
+    }),
+  };
+}
+
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_EXECUTION_ID = '00000000-0000-0000-0000-000000000002';
 const TEST_SESSION_ID = '00000000-0000-0000-0000-000000000003';
@@ -227,6 +237,29 @@ describe('SandboxService', () => {
       expect(db.update).not.toHaveBeenCalled();
       expect(mockQueue.add).not.toHaveBeenCalled();
       expect(Logger.prototype.warn).toHaveBeenCalled();
+    });
+  });
+
+  describe('getSandboxLogs', () => {
+    it('セッション ID でログを取得して時系列順で返す', async () => {
+      const logs = [
+        { id: 'log-1', sessionId: TEST_SESSION_ID, level: 'system', message: 'Created', createdAt: new Date('2025-01-01T00:00:00Z') },
+        { id: 'log-2', sessionId: TEST_SESSION_ID, level: 'stdout', message: 'Hello', createdAt: new Date('2025-01-01T00:00:01Z') },
+      ];
+      db.select.mockReturnValueOnce(createSelectChainWithOrderBy(logs));
+
+      const result = await service.getSandboxLogs(TEST_SESSION_ID);
+
+      expect(result).toEqual(logs);
+      expect(db.select).toHaveBeenCalledOnce();
+    });
+
+    it('ログが無い場合は空配列を返す', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithOrderBy([]));
+
+      const result = await service.getSandboxLogs(TEST_SESSION_ID);
+
+      expect(result).toEqual([]);
     });
   });
 });

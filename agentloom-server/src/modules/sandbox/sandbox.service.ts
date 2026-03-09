@@ -1,12 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, eq, notInArray, asc } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
-import type { SandboxConfig, SandboxSession } from '../../database/schema';
+import type { SandboxConfig, SandboxLog, SandboxSession } from '../../database/schema';
 import { SandboxNotFoundException } from './sandbox.exceptions';
 import {
   SANDBOX_LIFECYCLE_QUEUE,
@@ -139,5 +139,13 @@ export class SandboxService {
     this.logger.log(
       `Enqueued destroy for sandbox session ${session.id}`,
     );
+  }
+
+  async getSandboxLogs(sessionId: string): Promise<SandboxLog[]> {
+    return this.tenantDb
+      .select()
+      .from(schema.sandboxLogs)
+      .where(eq(schema.sandboxLogs.sessionId, sessionId))
+      .orderBy(asc(schema.sandboxLogs.createdAt));
   }
 }

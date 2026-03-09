@@ -5,6 +5,7 @@ import { SandboxService } from './sandbox.service';
 import { DockerService } from './docker.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import { SandboxLifecycleWorker } from './sandbox-lifecycle.worker';
+import { SandboxController } from './sandbox.controller';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
 
 @Module({
@@ -19,6 +20,7 @@ import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
       },
     }),
   ],
+  controllers: [SandboxController],
   providers: [SandboxService, DockerService, SandboxLifecycleProducer, SandboxLifecycleWorker],
   exports: [SandboxService, DockerService, SandboxLifecycleProducer],
 })
