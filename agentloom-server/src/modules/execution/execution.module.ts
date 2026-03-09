@@ -5,6 +5,7 @@ import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
 import { ExecutionWorker } from './execution.worker';
 import { ExecutionGateway } from './execution.gateway';
+import { StepStateMachineService } from './step-state-machine.service';
 import { EXECUTION_QUEUE } from './execution.constants';
 
 @Module({
@@ -20,7 +21,7 @@ import { EXECUTION_QUEUE } from './execution.constants';
     }),
   ],
   controllers: [ExecutionController],
-  providers: [ExecutionService, ExecutionWorker, ExecutionGateway],
-  exports: [ExecutionService, ExecutionGateway],
+  providers: [ExecutionService, ExecutionWorker, ExecutionGateway, StepStateMachineService],
+  exports: [ExecutionService, ExecutionGateway, StepStateMachineService],
 })
 export class ExecutionModule {}
