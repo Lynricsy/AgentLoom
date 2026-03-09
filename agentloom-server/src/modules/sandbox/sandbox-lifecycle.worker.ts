@@ -142,7 +142,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     });
 
     throw new SandboxTimeoutException(
-      `Sandbox ${sessionId} exceeded timeout limit`,
+      session!.config.timeout,
     );
   }
 

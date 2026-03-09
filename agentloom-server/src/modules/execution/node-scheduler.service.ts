@@ -594,7 +594,7 @@ export class NodeSchedulerService {
     executionId: string,
     tenantId: string,
   ): Promise<void> {
-    const tenantDb = getTenantDb(this.db, tenantId);
+    const tenantDb = getTenantDb(this.db);
     const [execution] = await tenantDb
       .select({ status: schema.workflowExecutions.status })
       .from(schema.workflowExecutions)

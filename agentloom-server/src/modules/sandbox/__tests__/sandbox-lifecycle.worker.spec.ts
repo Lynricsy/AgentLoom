@@ -185,6 +185,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         status: 'ready',
         containerId: 'c-123',
+        config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       });
 
       await expect(
