@@ -21,6 +21,7 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { StorageModule } from './infrastructure/storage';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { ExecutionModule } from './modules/execution/execution.module';
+import { NotificationModule } from './modules/notification/notification.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -60,6 +61,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     StorageModule,
     KnowledgeModule,
     ExecutionModule,
+    NotificationModule,
   ],
   providers: [
     RbacCacheService,
