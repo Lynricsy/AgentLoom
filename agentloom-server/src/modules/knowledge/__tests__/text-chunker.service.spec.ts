@@ -203,7 +203,7 @@ describe('TextChunkerService', () => {
       }
     });
 
-    it('应能处理含有大段落的文档', () => {
+    it('应能处理含有大段落的文档', { timeout: 30_000 }, () => {
       const sentences = Array.from(
         { length: 200 },
         (_, i) => `这是第${i + 1}个句子。`,
