@@ -38,6 +38,11 @@ vi.mock('../../stores/canvasStore', () => ({
 vi.mock('@/features/execution/stores/executionStore', () => ({
   useNodeExecutionState: () => mocks.nodeState,
   useIsExecutionActive: () => mocks.isExecutionActive,
+  useExecutionId: () => 'exec-1',
+  useToolCalls: () => null,
+  useExecutionActions: () => ({
+    submitToolPermission: vi.fn(),
+  }),
 }))
 
 vi.mock('./McpToolConfigPanel', () => ({
