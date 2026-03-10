@@ -297,6 +297,12 @@ export class AgentTaskWorker extends WorkerHost {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
+      const errorPartial =
+        typeof (error as Record<string, unknown>)?.partialContent === 'string'
+          ? ((error as Record<string, unknown>).partialContent as string)
+          : '';
+      const finalAccumulatedContent = errorPartial || accumulatedContent;
+
       const existingCheckpoint = (step.checkpointData ?? {}) as Record<
         string,
         unknown
@@ -313,7 +319,9 @@ export class AgentTaskWorker extends WorkerHost {
 
       const checkpointData: Record<string, unknown> = {
         ...existingCheckpoint,
-        ...(accumulatedContent ? { partialContent: accumulatedContent } : {}),
+        ...(finalAccumulatedContent
+          ? { partialContent: finalAccumulatedContent }
+          : {}),
         ...(sessionId ? { sessionId } : {}),
         ...(decision ? { decision } : {}),
         attempts: allAttempts,
@@ -552,10 +560,11 @@ export class AgentTaskWorker extends WorkerHost {
 
     const newStatus =
       toolPermission.action === 'approve' ? 'in_progress' : 'denied';
-    toolCall.status = this.toolCallStateMachine.transition(
+    const resolvedStatus = this.toolCallStateMachine.transition(
       toolCall.status,
       newStatus,
     );
+    const updatedToolCall = { ...toolCall, status: resolvedStatus };
 
     this.eventBridge.emitToolPermissionResolved(tenantId, executionId, {
       stepId,
@@ -565,7 +574,7 @@ export class AgentTaskWorker extends WorkerHost {
     });
 
     const updatedToolCalls = toolCalls.map((tc) =>
-      tc.id === toolPermission.toolCallId ? toolCall : tc,
+      tc.id === toolPermission.toolCallId ? updatedToolCall : tc,
     );
     await this.withTenantContext(tenantId, async () => {
       await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running', {
@@ -616,13 +625,14 @@ export class AgentTaskWorker extends WorkerHost {
         : 'FULL_AUTO';
 
     for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
-      const toolCalls: ToolCallEvent[] = [];
+      const toolCalls: Array<{ -readonly [K in keyof ToolCallEvent]: ToolCallEvent[K] }> = [];
       lastStopReason = undefined;
 
-      for await (const event of params.runtime.prompt(
-        params.sessionId,
-        contentBlocks,
-      )) {
+      try {
+        for await (const event of params.runtime.prompt(
+          params.sessionId,
+          contentBlocks,
+        )) {
         if (event.type === 'message_chunk') {
           accumulatedContent += event.content;
           chunkIndex++;
@@ -654,10 +664,22 @@ export class AgentTaskWorker extends WorkerHost {
             },
           );
         } else if (event.type === 'decision') {
-          decision = event.decision as Record<string, unknown>;
+          decision = {
+            suggestedContent: (event as { suggestedContent: string }).suggestedContent,
+            confidence: (event as { confidence?: number }).confidence,
+          };
         } else if (event.type === 'done') {
           lastStopReason = event.stopReason;
         }
+        }
+      } catch (loopError) {
+        const err =
+          loopError instanceof Error
+            ? loopError
+            : new Error(String(loopError));
+        (err as unknown as Record<string, unknown>).partialContent =
+          accumulatedContent;
+        throw err;
       }
 
       if (lastStopReason !== 'tool_use' || toolCalls.length === 0) {

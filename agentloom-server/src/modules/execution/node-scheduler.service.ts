@@ -504,7 +504,7 @@ export class NodeSchedulerService {
     tenantId: string,
     resolution: ToolPermissionResolution,
   ): Promise<void> {
-    const tenantDb = getTenantDb(this.db, tenantId);
+    const tenantDb = getTenantDb(this.db);
 
     const [step] = await tenantDb
       .select()
