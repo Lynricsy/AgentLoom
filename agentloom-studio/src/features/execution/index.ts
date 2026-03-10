@@ -12,6 +12,21 @@ export { ExecutionTimeline } from './components/ExecutionTimeline'
 export { ExecutionNodeDetail } from './components/ExecutionNodeDetail'
 export { ExecutionDebugView } from './components/ExecutionDebugView'
 export {
+  ExecutionTimelineVertical,
+  TimelineEntry,
+  TimelineHeader,
+  TimelineDuration,
+  TimelineIO,
+  DecisionAnnotation,
+  AutonomyBadge,
+  ReasoningBlock,
+  AlternativesList,
+  InterventionTag,
+  OutputLevelBadge,
+  EvidenceChips,
+  FailedNodeError,
+} from './components/timeline'
+export {
   CelebrationEffect,
   getCelebrationStorageKey,
   useCelebrationEffect,
@@ -22,6 +37,8 @@ export { useAuthToken, setAuthToken } from './hooks/useAuthToken'
 export { useStartExecution } from './hooks/useStartExecution'
 export { useExecutionMonitor } from './hooks/useExecutionMonitor'
 export { useExecutionSocket } from './hooks/useExecutionSocket'
+export { useTimelineData } from './hooks/useTimelineData'
+export type { TimelineData } from './hooks/useTimelineData'
 
 export type {
   ClientToServerEvents,

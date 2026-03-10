@@ -3,7 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useExecution } from '../hooks/useExecutionList'
 import { ReadonlyCanvas } from './ReadonlyCanvas'
-import { ExecutionTimeline } from './ExecutionTimeline'
+import { ExecutionTimelineVertical } from './timeline'
+import { useTimelineData } from '../hooks/useTimelineData'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
 import {
   executionStatusMeta,
@@ -30,6 +31,10 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const navigate = useNavigate()
   const { data: execution, isLoading, error } = useExecution(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const { timelineData } = useTimelineData(
+    executionId,
+    execution?.steps ?? [],
+  )
   const [leftWidth, setLeftWidth] = useState(38)
   const [rightWidth, setRightWidth] = useState(28)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -192,10 +197,12 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
           />
 
           <div style={{ width: `${centerWidth}%` }} className="min-w-0" data-testid="execution-debug-center-panel">
-            <ExecutionTimeline
-              steps={execution.steps}
+            <ExecutionTimelineVertical
+              timelineData={timelineData}
               selectedNodeId={selectedNodeId}
               onSelectNode={setSelectedNodeId}
+              executionStartedAt={execution.startedAt ?? null}
+              executionCompletedAt={execution.completedAt ?? null}
             />
           </div>
 
@@ -221,10 +228,12 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
           />
-          <ExecutionTimeline
-            steps={execution.steps}
+          <ExecutionTimelineVertical
+            timelineData={timelineData}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            executionStartedAt={execution.startedAt ?? null}
+            executionCompletedAt={execution.completedAt ?? null}
           />
           <ExecutionNodeDetail step={selectedStep} />
         </div>
