@@ -46,3 +46,16 @@ export {
   useEvidenceUiStore,
 } from './stores/evidenceUiStore';
 export type { DocumentViewerState } from './stores/evidenceUiStore';
+
+export { EvidenceCard } from './components/EvidenceCard';
+export { EvidenceReferencePanel } from './components/EvidenceReferencePanel';
+export { DocumentViewer } from './components/DocumentViewer';
+export { InlineEvidenceRef } from './components/InlineEvidenceRef';
+export { LocationLink } from './components/LocationLink';
+export { SourceStatusBadge } from './components/SourceStatusBadge';
+
+export {
+  parseEvidenceRefs,
+  hasEvidenceRefs,
+} from './lib/parseEvidenceRefs';
+export type { EvidenceRefSegment } from './lib/parseEvidenceRefs';

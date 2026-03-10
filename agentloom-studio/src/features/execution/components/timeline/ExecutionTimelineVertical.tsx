@@ -33,6 +33,7 @@ interface ExecutionTimelineVerticalProps {
   timelineData: TimelineData[]
   selectedNodeId: string | null
   onSelectNode: (nodeId: string) => void
+  executionId?: string
   executionStartedAt: string | null
   executionCompletedAt: string | null
 }
@@ -42,6 +43,7 @@ export const ExecutionTimelineVertical = memo(
     timelineData,
     selectedNodeId,
     onSelectNode,
+    executionId,
     executionStartedAt,
     executionCompletedAt,
   }: ExecutionTimelineVerticalProps) {
@@ -77,6 +79,7 @@ export const ExecutionTimelineVertical = memo(
             data={data}
             isSelected={data.step.nodeId === selectedNodeId}
             onSelect={() => onSelectNode(data.step.nodeId)}
+            executionId={executionId}
             executionStartedAt={executionStartedAt}
             executionCompletedAt={executionCompletedAt}
           />

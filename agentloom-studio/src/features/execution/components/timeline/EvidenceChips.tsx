@@ -3,29 +3,42 @@ import { FileSearch2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
 
+import { useEvidenceUiActions } from '@/features/evidence'
+
 interface EvidenceChipsProps {
   count: number
+  executionId?: string
   className?: string
 }
 
 export const EvidenceChips = memo(function EvidenceChips({
   count,
+  executionId,
   className,
 }: EvidenceChipsProps) {
+  const { openPanel } = useEvidenceUiActions()
+
   if (count <= 0) {
     return null
   }
 
   return (
-    <span
+    <button
+      type="button"
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground',
+        'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground transition',
+        executionId && 'cursor-pointer hover:bg-accent/10 hover:text-foreground',
         className,
       )}
+      onClick={(e) => {
+        if (!executionId) return
+        e.stopPropagation()
+        openPanel(executionId)
+      }}
       data-testid="evidence-chips"
     >
       <FileSearch2 className="h-3 w-3" />
       {count} 条证据
-    </span>
+    </button>
   )
 })

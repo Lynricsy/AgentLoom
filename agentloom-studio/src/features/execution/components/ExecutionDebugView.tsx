@@ -14,6 +14,7 @@ import {
 } from '../lib/presentation'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
+import { EvidenceReferencePanel } from '@/features/evidence/components/EvidenceReferencePanel'
 
 interface ExecutionDebugViewProps {
   executionId: string
@@ -201,6 +202,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               timelineData={timelineData}
               selectedNodeId={selectedNodeId}
               onSelectNode={setSelectedNodeId}
+              executionId={executionId}
               executionStartedAt={execution.startedAt ?? null}
               executionCompletedAt={execution.completedAt ?? null}
             />
@@ -232,12 +234,15 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
             timelineData={timelineData}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            executionId={executionId}
             executionStartedAt={execution.startedAt ?? null}
             executionCompletedAt={execution.completedAt ?? null}
           />
           <ExecutionNodeDetail step={selectedStep} />
         </div>
       </div>
+
+      <EvidenceReferencePanel />
     </div>
   )
 })

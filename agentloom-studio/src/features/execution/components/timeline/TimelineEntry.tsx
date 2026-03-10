@@ -15,6 +15,7 @@ interface TimelineEntryProps {
   data: TimelineData
   isSelected: boolean
   onSelect: () => void
+  executionId?: string
   executionStartedAt: string | null
   executionCompletedAt: string | null
 }
@@ -23,6 +24,7 @@ export const TimelineEntry = memo(function TimelineEntry({
   data,
   isSelected,
   onSelect,
+  executionId,
   executionStartedAt,
   executionCompletedAt,
 }: TimelineEntryProps) {
@@ -78,7 +80,7 @@ export const TimelineEntry = memo(function TimelineEntry({
 
         <div className="flex flex-wrap items-center gap-2">
           <OutputLevelBadge level={outputFormatLevel} />
-          <EvidenceChips count={evidenceCount} />
+          <EvidenceChips count={evidenceCount} executionId={executionId} />
         </div>
       </button>
 
@@ -101,6 +103,7 @@ export const TimelineEntry = memo(function TimelineEntry({
             startedAt={step.startedAt}
             completedAt={step.completedAt}
             retryCount={step.retryCount}
+            executionId={executionId}
           />
 
           {isFailed && (
