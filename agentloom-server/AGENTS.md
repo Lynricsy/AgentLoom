@@ -31,7 +31,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
-| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + Redis 缓存 | EventEmitter, RedisCacheService |
+| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 | EventEmitter, RedisCacheService |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -93,6 +93,8 @@ HTTP POST /executions
 - **Story 6-2 / Provenance Chain**: `EvidenceService.buildChain(tenantId, executionId, nodeId?)` 使用递归 CTE 沿 `parent_evidence_id` 向上追溯（`CHAIN_MAX_DEPTH=50` + `path` 防循环）；未传 `nodeId` 时从 execution 的叶子 evidence 锚定全量 ancestry，传入 `nodeId` 时通过 plain-text `execution_steps.node_id` 过滤特定 workflow node 的 ancestry，最终 flat→tree 为 ancestor-first roots。对 `rag_retrieval` 节点批量查询 `document_chunks`：缺失 chunk → `sourceUnavailable`，live `document_chunks.content` 的 SHA-256 与捕获时 `retrievedContent` 快照哈希不一致 → `sourceModified`，并保留 `packet.semanticLocation.context` 为 `originalSnapshot`；每节点继续执行 packet SHA-256 校验。响应为 `{ roots, chainCompleteness, totalNodes, integrityStatus, cachedAt? }`，其中 `integrityStatus` 含 `nodesWithPhysicalLocation`、`completenessLabel`、`integrityIssues`。Redis 缓存 key `evidence:chain:{executionId}:{nodeId||'all'}`，TTL 300s，evidence 写入时按 executionId pattern 自动失效；`GET /executions/:id/evidence/chain?nodeId=xxx` 响应含 `X-Cache-Hit` header。`verifyChainIntegrity()` 通过 `buildChain(..., { bypassCache: true })` 执行实时校验，不复用缓存。
 
 - **Story 6-3 / Evidence Query Filters**: `QueryEvidenceSchema` 新增 `sourceType` (EvidenceSourceType enum)、`stepId` (string, min 1) 和 `nodeId` (string, min 1) 可选过滤参数。`findByExecution()` 支持按 `sourceType` 直接 `eq()` 过滤、按 `stepId` 过滤单步证据、按 `nodeId` 先查 `execution_steps` 获取匹配的 step IDs 再 `inArray()` 过滤。实现中 `sourceType` 查询类型已收紧为 `EvidenceSourceType`，避免与 Drizzle enum 列类型漂移。Controller 直接透传 query 参数。
+
+- **Story 6-4 / Evidence UI Infrastructure**: `StorageService.getPresignedUrl(key, expirySeconds=3600)` 封装 `minioClient.presignedGetObject()`。`DocumentService.getDocumentContentUrl(kbId, docId, expirySeconds?)` 返回 `{url, fileName, mimeType, expiresIn}`。`KnowledgeBaseController GET :id/documents/:documentId/content`（VIEWER+）返回预签名 URL。`QueryEvidenceSchema.includeChunkContent` 布尔参数，`EvidenceService.enrichWithChunkContent()` 批量查询 `documentChunks.content` 并注入到 `rag_retrieval` 记录的 `packet.physicalLocation.chunkContent`。
 
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
@@ -164,5 +166,5 @@ Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)�
 - `node-scheduler.service.ts` (940L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理
 - `workflow-version.service.ts` (555L) — 版本管理逻辑
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
-- `mcp.service.ts` (519L) — MCP 协议集成
+- `evidence.service.ts` (1438L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入
 - `auth.service.ts` (508L) — 认证全流程
