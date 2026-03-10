@@ -141,8 +141,22 @@ export interface EvidenceQueryParams {
 
 export interface IntegrityIssue {
   evidenceId: string;
-  issue: string;
-  severity: 'warning' | 'error';
+  issueType: 'source_unavailable' | 'source_modified' | 'hash_mismatch';
+  description: string;
+}
+
+export interface EvidencePacketSummary {
+  title: string;
+  excerpt?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ChainIntegrityStatus {
+  chainCompleteness: number;
+  totalNodes: number;
+  nodesWithPhysicalLocation: number;
+  completenessLabel: string;
+  integrityIssues: IntegrityIssue[];
 }
 
 export interface EvidenceChainNode {
@@ -150,15 +164,16 @@ export interface EvidenceChainNode {
   executionId: string;
   stepId: string;
   sourceType: EvidenceSourceType;
-  packet: EvidencePacket;
+  packetSummary: EvidencePacketSummary;
   contentHash: string;
-  parentEvidenceId?: string;
+  parentEvidenceId?: string | null;
   createdAt: string;
   depth: number;
   hashValid: boolean;
-  sourceUnavailable: boolean;
-  sourceModified: boolean;
+  sourceUnavailable?: boolean;
+  sourceModified?: boolean;
   unavailableReason?: string;
+  originalSnapshot?: string;
   children: EvidenceChainNode[];
 }
 
@@ -166,5 +181,6 @@ export interface EvidenceChainResponse {
   roots: EvidenceChainNode[];
   chainCompleteness: number;
   totalNodes: number;
-  integrityIssues: IntegrityIssue[];
+  integrityStatus: ChainIntegrityStatus;
+  cachedAt?: string;
 }

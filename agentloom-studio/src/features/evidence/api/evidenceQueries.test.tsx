@@ -143,12 +143,39 @@ describe('evidence queries', () => {
   });
 
   describe('useEvidenceChain', () => {
+    const chainNode = {
+      evidenceId: 'ev-1',
+      executionId: EXECUTION_ID,
+      stepId: 'step-1',
+      sourceType: 'rag_retrieval',
+      packetSummary: {
+        title: 'RAG 检索 · knowledge.md',
+        excerpt: 'Retrieved chunk content',
+        metadata: {
+          documentId: 'doc-1',
+          chunkId: 'chunk-1',
+        },
+      },
+      contentHash: 'f'.repeat(64),
+      parentEvidenceId: null,
+      createdAt: '2026-03-10T10:00:00.000Z',
+      depth: 0,
+      hashValid: true,
+      children: [],
+    };
     const chainResponse = {
       data: {
-        roots: [{ evidenceId: 'ev-1', children: [] }],
+        roots: [chainNode],
         chainCompleteness: 1.0,
         totalNodes: 1,
-        integrityIssues: [],
+        integrityStatus: {
+          chainCompleteness: 1.0,
+          totalNodes: 1,
+          nodesWithPhysicalLocation: 1,
+          completenessLabel: 'complete',
+          integrityIssues: [],
+        },
+        cachedAt: '2026-03-10T10:00:00.000Z',
       },
     };
 

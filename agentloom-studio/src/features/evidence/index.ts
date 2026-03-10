@@ -1,8 +1,10 @@
 export type {
   AgentDecision,
+  ChainIntegrityStatus,
   EvidenceChainNode,
   EvidenceChainResponse,
   EvidencePacket,
+  EvidencePacketSummary,
   EvidenceQueryParams,
   EvidenceRecord,
   EvidenceSourceType,

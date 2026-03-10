@@ -7,7 +7,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { FastifyReply } from 'fastify';
+import type { FastifyReply } from 'fastify';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,11 +27,7 @@ export class EvidenceController {
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Query() query: QueryEvidenceDto,
   ) {
-    return this.evidenceService.findByExecution(
-      tenantId,
-      executionId,
-      query,
-    );
+    return this.evidenceService.findByExecution(tenantId, executionId, query);
   }
 
   @Get('chain')

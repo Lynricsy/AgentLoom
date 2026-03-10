@@ -126,30 +126,32 @@ export const EvidencePacketInputSchema = z.discriminatedUnion('sourceType', [
   }),
 ]);
 
-export const EvidencePacketSchema = z.discriminatedUnion('sourceType', [
-  z.object({
-    sourceType: z.literal('rag_retrieval'),
-    physicalLocation: PhysicalLocationSchema,
-    semanticLocation: SemanticLocationSchema,
-    retrievedContent: z.string().min(1),
-  }),
-  z.object({
-    sourceType: z.literal('agent_decision'),
-    agentDecision: AgentDecisionSchema,
-  }),
-  z.object({
-    sourceType: z.literal('tool_output'),
-    toolOutput: ToolOutputSchema,
-  }),
-  z.object({
-    sourceType: z.literal('user_input'),
-    userInput: UserInputSchema,
-  }),
-  z.object({
-    sourceType: z.literal('intervention'),
-    intervention: InterventionSchema,
-  }),
-]).and(StoredPacketMetadataSchema);
+export const EvidencePacketSchema = z
+  .discriminatedUnion('sourceType', [
+    z.object({
+      sourceType: z.literal('rag_retrieval'),
+      physicalLocation: PhysicalLocationSchema,
+      semanticLocation: SemanticLocationSchema,
+      retrievedContent: z.string().min(1),
+    }),
+    z.object({
+      sourceType: z.literal('agent_decision'),
+      agentDecision: AgentDecisionSchema,
+    }),
+    z.object({
+      sourceType: z.literal('tool_output'),
+      toolOutput: ToolOutputSchema,
+    }),
+    z.object({
+      sourceType: z.literal('user_input'),
+      userInput: UserInputSchema,
+    }),
+    z.object({
+      sourceType: z.literal('intervention'),
+      intervention: InterventionSchema,
+    }),
+  ])
+  .and(StoredPacketMetadataSchema);
 
 export type EvidencePacketInputDto = z.infer<typeof EvidencePacketInputSchema>;
 export type EvidencePacketDto = z.infer<typeof EvidencePacketSchema>;
@@ -170,20 +172,22 @@ export class QueryEvidenceDto extends createZodDto(QueryEvidenceSchema) {}
 
 // -- Create DTO --
 
-export const CreateEvidenceRecordSchema = z.object({
-  stepId: z.string().uuid(),
-  sourceType: EvidenceSourceType,
-  packet: EvidencePacketInputSchema,
-  parentEvidenceId: z.string().uuid().optional(),
-}).superRefine((value, ctx) => {
-  if (value.sourceType !== value.packet.sourceType) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['packet', 'sourceType'],
-      message: 'packet.sourceType must match sourceType',
-    });
-  }
-});
+export const CreateEvidenceRecordSchema = z
+  .object({
+    stepId: z.string().uuid(),
+    sourceType: EvidenceSourceType,
+    packet: EvidencePacketInputSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.sourceType !== value.packet.sourceType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['packet', 'sourceType'],
+        message: 'packet.sourceType must match sourceType',
+      });
+    }
+  });
 
 export class CreateEvidenceRecordDto extends createZodDto(
   CreateEvidenceRecordSchema,
@@ -219,26 +223,46 @@ export class VerifyEvidenceResponseDto extends createZodDto(
 
 // -- Chain schemas (Story 6-2) --
 
+export const EvidencePacketSummarySchema = z.object({
+  title: z.string(),
+  excerpt: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+});
+
+export type EvidencePacketSummary = z.infer<typeof EvidencePacketSummarySchema>;
+
 export const IntegrityIssueSchema = z.object({
   evidenceId: z.string().uuid(),
-  issue: z.string(),
-  severity: z.enum(['warning', 'error']),
+  issueType: z.enum(['source_unavailable', 'source_modified', 'hash_mismatch']),
+  description: z.string(),
 });
 
 export type IntegrityIssue = z.infer<typeof IntegrityIssueSchema>;
+
+export const ChainIntegrityStatusSchema = z.object({
+  chainCompleteness: z.number().min(0).max(1),
+  totalNodes: z.number().int().min(0),
+  nodesWithPhysicalLocation: z.number().int().min(0),
+  completenessLabel: z.string(),
+  integrityIssues: z.array(IntegrityIssueSchema),
+});
+
+export type ChainIntegrityStatus = z.infer<typeof ChainIntegrityStatusSchema>;
 
 export interface EvidenceChainNode {
   evidenceId: string;
   executionId: string;
   stepId: string;
   sourceType: EvidenceSourceType;
+  packetSummary: EvidencePacketSummary;
   contentHash: string;
   parentEvidenceId: string | null;
   createdAt: string;
   depth: number;
-  sourceAvailable: boolean;
-  sourceModified: boolean;
+  sourceUnavailable?: boolean;
+  sourceModified?: boolean;
   unavailableReason?: string;
+  originalSnapshot?: string;
   hashValid: boolean;
   children: EvidenceChainNode[];
 }
@@ -248,31 +272,35 @@ const BaseChainNodeSchema = z.object({
   executionId: z.string().uuid(),
   stepId: z.string().uuid(),
   sourceType: EvidenceSourceType,
+  packetSummary: EvidencePacketSummarySchema,
   contentHash: z.string().length(64),
   parentEvidenceId: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
   depth: z.number().int().min(0),
-  sourceAvailable: z.boolean(),
-  sourceModified: z.boolean(),
+  sourceUnavailable: z.boolean().optional(),
+  sourceModified: z.boolean().optional(),
   unavailableReason: z.string().optional(),
+  originalSnapshot: z.string().optional(),
   hashValid: z.boolean(),
 });
 
-export const EvidenceChainNodeSchema: z.ZodType<EvidenceChainNode> = BaseChainNodeSchema.extend({
-  children: z.lazy(() => z.array(EvidenceChainNodeSchema)),
-});
+export const EvidenceChainNodeSchema: z.ZodType<EvidenceChainNode> =
+  BaseChainNodeSchema.extend({
+    children: z.lazy(() => z.array(EvidenceChainNodeSchema)),
+  });
 
 export const EvidenceChainResponseSchema = z.object({
   roots: z.array(EvidenceChainNodeSchema),
   chainCompleteness: z.number().min(0).max(1),
   totalNodes: z.number().int().min(0),
-  integrityIssues: z.array(IntegrityIssueSchema),
+  integrityStatus: ChainIntegrityStatusSchema,
+  cachedAt: z.string().datetime().optional(),
 });
 
 export type EvidenceChainResponse = z.infer<typeof EvidenceChainResponseSchema>;
 
 export const QueryEvidenceChainSchema = z.object({
-  nodeId: z.string().uuid().optional(),
+  nodeId: z.string().min(1).optional(),
 });
 
 export class QueryEvidenceChainDto extends createZodDto(

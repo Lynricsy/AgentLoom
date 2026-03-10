@@ -31,6 +31,7 @@ import type {
   IntegrityIssue,
 } from './dto/evidence.dto';
 import {
+  EvidenceChainResponseSchema,
   EvidencePacketInputSchema,
   EvidencePacketSchema,
 } from './dto/evidence.dto';
@@ -89,7 +90,7 @@ interface FlatChainRecord {
   stepId: string;
   tenantId: string;
   sourceType: string;
-  packet: unknown;
+  packet: EvidencePacketDto;
   contentHash: string;
   parentEvidenceId: string | null;
   createdAt: Date;
@@ -97,9 +98,10 @@ interface FlatChainRecord {
 }
 
 interface SourceStatus {
-  sourceAvailable: boolean;
+  sourceUnavailable: boolean;
   sourceModified: boolean;
   unavailableReason?: string;
+  originalSnapshot?: string;
 }
 
 @Injectable()
@@ -109,12 +111,6 @@ export class EvidenceService {
   private batchTimer: ReturnType<typeof setTimeout> | null = null;
 
   private static readonly BATCH_DELAY_MS = 50;
-  private static readonly TOOL_EVIDENCE_STATUSES = new Set([
-    'completed',
-    'failed',
-    'denied',
-  ] as const);
-
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly cacheService: RedisCacheService,
@@ -279,37 +275,45 @@ export class EvidenceService {
       return;
     }
 
-    await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-      const step = await this.findExecutionStep(tenantDb, payload.stepId);
-      if (!step || step.executionId !== payload.executionId) {
-        this.logger.warn(
-          `Skip RAG evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
-        );
-        return;
-      }
+    await runInTenantTransaction(
+      this.db,
+      payload.tenantId,
+      async (tenantDb) => {
+        const step = await this.findExecutionStep(tenantDb, payload.stepId);
+        if (!step || step.executionId !== payload.executionId) {
+          this.logger.warn(
+            `Skip RAG evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+          );
+          return;
+        }
 
-      let parentEvidenceId =
-        payload.parentEvidenceId ??
-        (await this.findLatestEvidenceIdForStep(
-          tenantDb,
-          payload.executionId,
-          payload.stepId,
-        ));
+        let parentEvidenceId =
+          payload.parentEvidenceId ??
+          (await this.findLatestEvidenceIdForStep(
+            tenantDb,
+            payload.executionId,
+            payload.stepId,
+          ));
 
-      const prepared = payload.results.map((result) => {
-        const dto = this.buildRagEvidenceDto(payload.stepId, result, parentEvidenceId);
-        const next = this.prepareEvidenceInsert(
-          payload.tenantId,
-          payload.executionId,
-          dto,
-          parentEvidenceId,
-        );
-        parentEvidenceId = next.evidenceId;
-        return next;
-      });
+        const prepared = payload.results.map((result) => {
+          const dto = this.buildRagEvidenceDto(
+            payload.stepId,
+            result,
+            parentEvidenceId,
+          );
+          const next = this.prepareEvidenceInsert(
+            payload.tenantId,
+            payload.executionId,
+            dto,
+            parentEvidenceId,
+          );
+          parentEvidenceId = next.evidenceId;
+          return next;
+        });
 
-      await this.insertEvidenceRecords(tenantDb, prepared);
-    });
+        await this.insertEvidenceRecords(tenantDb, prepared);
+      },
+    );
   }
 
   @OnEvent(ExecutionEventName.STEP_AGENT_EVENT)
@@ -319,173 +323,184 @@ export class EvidenceService {
       return;
     }
 
-    await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-      const step = await this.findExecutionStep(tenantDb, payload.stepId);
-      if (!step || step.executionId !== payload.executionId) {
-        this.logger.warn(
-          `Skip decision evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+    await runInTenantTransaction(
+      this.db,
+      payload.tenantId,
+      async (tenantDb) => {
+        const step = await this.findExecutionStep(tenantDb, payload.stepId);
+        if (!step || step.executionId !== payload.executionId) {
+          this.logger.warn(
+            `Skip decision evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+          );
+          return;
+        }
+
+        const parentEvidenceId = await this.findLatestEvidenceIdForStep(
+          tenantDb,
+          payload.executionId,
+          payload.stepId,
         );
-        return;
-      }
 
-      const parentEvidenceId = await this.findLatestEvidenceIdForStep(
-        tenantDb,
-        payload.executionId,
-        payload.stepId,
-      );
-
-      const dto: CreateEvidenceRecordDto = {
-        stepId: payload.stepId,
-        sourceType: 'agent_decision',
-        ...(parentEvidenceId ? { parentEvidenceId } : {}),
-        packet: {
+        const dto: CreateEvidenceRecordDto = {
+          stepId: payload.stepId,
           sourceType: 'agent_decision',
           ...(parentEvidenceId ? { parentEvidenceId } : {}),
-          agentDecision: {
-            nodeId: step.nodeId,
-            agentName: this.resolveAgentName(step),
-            autonomyMode:
-              decisionEvent.autonomyMode ?? this.resolveAutonomyMode(step),
-            suggestedContent: decisionEvent.suggestedContent,
-            reasoning:
-              decisionEvent.rationale ?? 'Agent decision emitted by runtime',
-            selectedAction:
-              decisionEvent.selectedAction ?? 'request_intervention',
-            alternatives: decisionEvent.alternatives
-              ? [...decisionEvent.alternatives]
-              : ['approve', 'modify', 'reject'],
-            ...(decisionEvent.confidence !== undefined
-              ? { confidence: decisionEvent.confidence }
-              : {}),
+          packet: {
+            sourceType: 'agent_decision',
+            ...(parentEvidenceId ? { parentEvidenceId } : {}),
+            agentDecision: {
+              nodeId: step.nodeId,
+              agentName: this.resolveAgentName(step),
+              autonomyMode:
+                decisionEvent.autonomyMode ?? this.resolveAutonomyMode(step),
+              suggestedContent: decisionEvent.suggestedContent,
+              reasoning:
+                decisionEvent.rationale ?? 'Agent decision emitted by runtime',
+              selectedAction:
+                decisionEvent.selectedAction ?? 'request_intervention',
+              alternatives: decisionEvent.alternatives
+                ? [...decisionEvent.alternatives]
+                : ['approve', 'modify', 'reject'],
+              ...(decisionEvent.confidence !== undefined
+                ? { confidence: decisionEvent.confidence }
+                : {}),
+            },
           },
-        },
-      };
+        };
 
-      const prepared = this.prepareEvidenceInsert(
-        payload.tenantId,
-        payload.executionId,
-        dto,
-        parentEvidenceId,
-      );
-      await this.insertEvidenceRecords(tenantDb, [prepared]);
-    });
+        const prepared = this.prepareEvidenceInsert(
+          payload.tenantId,
+          payload.executionId,
+          dto,
+          parentEvidenceId,
+        );
+        await this.insertEvidenceRecords(tenantDb, [prepared]);
+      },
+    );
   }
 
   @OnEvent(ExecutionEventName.NODE_TOOL_CALL_STATUS)
-  async handleToolCallStatus(
-    payload: ToolCallEvidencePayload,
-  ): Promise<void> {
+  async handleToolCallStatus(payload: ToolCallEvidencePayload): Promise<void> {
     if (!this.isToolEvidenceStatus(payload.status)) {
       return;
     }
 
-    await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-      const step = await this.findExecutionStep(tenantDb, payload.stepId);
-      if (!step || step.executionId !== payload.executionId) {
-        this.logger.warn(
-          `Skip tool evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+    await runInTenantTransaction(
+      this.db,
+      payload.tenantId,
+      async (tenantDb) => {
+        const step = await this.findExecutionStep(tenantDb, payload.stepId);
+        if (!step || step.executionId !== payload.executionId) {
+          this.logger.warn(
+            `Skip tool evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+          );
+          return;
+        }
+
+        const parentEvidenceId = await this.findLatestEvidenceIdForStep(
+          tenantDb,
+          payload.executionId,
+          payload.stepId,
         );
-        return;
-      }
 
-      const parentEvidenceId = await this.findLatestEvidenceIdForStep(
-        tenantDb,
-        payload.executionId,
-        payload.stepId,
-      );
-
-      const dto: CreateEvidenceRecordDto = {
-        stepId: payload.stepId,
-        sourceType: 'tool_output',
-        ...(parentEvidenceId ? { parentEvidenceId } : {}),
-        packet: {
+        const dto: CreateEvidenceRecordDto = {
+          stepId: payload.stepId,
           sourceType: 'tool_output',
           ...(parentEvidenceId ? { parentEvidenceId } : {}),
-          toolOutput: {
-            toolCallId: payload.toolCallId,
-            toolName: payload.tool,
-            toolInput: payload.args ?? {},
-            toolOutput:
-              payload.result ??
-              (payload.error ? { error: payload.error } : { status: payload.status }),
-            ...(payload.transitions
-              ? {
-                  transitions: payload.transitions.map((transition) => ({
-                    ...(transition.from ? { from: transition.from } : {}),
-                    to: transition.to,
-                    source: transition.source,
-                    timestamp: transition.timestamp,
-                  })),
-                }
-              : {}),
+          packet: {
+            sourceType: 'tool_output',
+            ...(parentEvidenceId ? { parentEvidenceId } : {}),
+            toolOutput: {
+              toolCallId: payload.toolCallId,
+              toolName: payload.tool,
+              toolInput: payload.args ?? {},
+              toolOutput:
+                payload.result ??
+                (payload.error
+                  ? { error: payload.error }
+                  : { status: payload.status }),
+              ...(payload.transitions
+                ? {
+                    transitions: payload.transitions.map((transition) => ({
+                      ...(transition.from ? { from: transition.from } : {}),
+                      to: transition.to,
+                      source: transition.source,
+                      timestamp: transition.timestamp,
+                    })),
+                  }
+                : {}),
+            },
           },
-        },
-      };
+        };
 
-      const prepared = this.prepareEvidenceInsert(
-        payload.tenantId,
-        payload.executionId,
-        dto,
-        parentEvidenceId,
-      );
-      await this.insertEvidenceRecords(tenantDb, [prepared]);
-    });
+        const prepared = this.prepareEvidenceInsert(
+          payload.tenantId,
+          payload.executionId,
+          dto,
+          parentEvidenceId,
+        );
+        await this.insertEvidenceRecords(tenantDb, [prepared]);
+      },
+    );
   }
 
   @OnEvent(ExecutionEventName.NODE_INTERVENTION_RESOLVED)
   async handleInterventionResolved(
     payload: InterventionEvidencePayload,
   ): Promise<void> {
-    await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-      const step = await this.findExecutionStep(tenantDb, payload.stepId);
-      if (!step || step.executionId !== payload.executionId) {
-        this.logger.warn(
-          `Skip intervention evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+    await runInTenantTransaction(
+      this.db,
+      payload.tenantId,
+      async (tenantDb) => {
+        const step = await this.findExecutionStep(tenantDb, payload.stepId);
+        if (!step || step.executionId !== payload.executionId) {
+          this.logger.warn(
+            `Skip intervention evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+          );
+          return;
+        }
+
+        const checkpoint = step.checkpointData ?? {};
+        const requestedAt =
+          typeof checkpoint.interventionRequestedAt === 'string'
+            ? checkpoint.interventionRequestedAt
+            : undefined;
+        const parentEvidenceId = await this.findLatestEvidenceIdForStep(
+          tenantDb,
+          payload.executionId,
+          payload.stepId,
         );
-        return;
-      }
 
-      const checkpoint =
-        (step.checkpointData as Record<string, unknown> | null) ?? {};
-      const requestedAt =
-        typeof checkpoint.interventionRequestedAt === 'string'
-          ? checkpoint.interventionRequestedAt
-          : undefined;
-      const parentEvidenceId = await this.findLatestEvidenceIdForStep(
-        tenantDb,
-        payload.executionId,
-        payload.stepId,
-      );
-
-      const dto: CreateEvidenceRecordDto = {
-        stepId: payload.stepId,
-        sourceType: 'intervention',
-        ...(parentEvidenceId ? { parentEvidenceId } : {}),
-        packet: {
+        const dto: CreateEvidenceRecordDto = {
+          stepId: payload.stepId,
           sourceType: 'intervention',
           ...(parentEvidenceId ? { parentEvidenceId } : {}),
-          intervention: {
-            action: payload.action,
-            ...(payload.feedback ? { feedback: payload.feedback } : {}),
-            ...(payload.modifiedContent !== undefined
-              ? { modifiedContent: payload.modifiedContent }
-              : {}),
-            ...(requestedAt ? { requestedAt } : {}),
-            resolvedAt: payload.resolvedAt,
-            resolvedBy: payload.resolvedBy,
-            ...(payload.timeout ? { timeout: true } : {}),
+          packet: {
+            sourceType: 'intervention',
+            ...(parentEvidenceId ? { parentEvidenceId } : {}),
+            intervention: {
+              action: payload.action,
+              ...(payload.feedback ? { feedback: payload.feedback } : {}),
+              ...(payload.modifiedContent !== undefined
+                ? { modifiedContent: payload.modifiedContent }
+                : {}),
+              ...(requestedAt ? { requestedAt } : {}),
+              resolvedAt: payload.resolvedAt,
+              resolvedBy: payload.resolvedBy,
+              ...(payload.timeout ? { timeout: true } : {}),
+            },
           },
-        },
-      };
+        };
 
-      const prepared = this.prepareEvidenceInsert(
-        payload.tenantId,
-        payload.executionId,
-        dto,
-        parentEvidenceId,
-      );
-      await this.insertEvidenceRecords(tenantDb, [prepared]);
-    });
+        const prepared = this.prepareEvidenceInsert(
+          payload.tenantId,
+          payload.executionId,
+          dto,
+          parentEvidenceId,
+        );
+        await this.insertEvidenceRecords(tenantDb, [prepared]);
+      },
+    );
   }
 
   private scheduleBatchFlush(): void {
@@ -541,7 +556,9 @@ export class EvidenceService {
 
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
-        grouped[index]?.forEach((entry) => entry.reject(result.reason));
+        grouped[index]?.forEach((entry) => {
+          entry.reject(result.reason);
+        });
       }
     });
   }
@@ -554,7 +571,9 @@ export class EvidenceService {
   ): PreparedEvidenceInsert {
     const inputPacket = this.validateInputPacket(dto.packet);
     const parentEvidenceId =
-      overrideParentEvidenceId ?? dto.parentEvidenceId ?? inputPacket.parentEvidenceId;
+      overrideParentEvidenceId ??
+      dto.parentEvidenceId ??
+      inputPacket.parentEvidenceId;
 
     if (dto.sourceType !== inputPacket.sourceType) {
       throw new InvalidEvidencePacketException(
@@ -708,8 +727,7 @@ export class EvidenceService {
   }
 
   private resolveAgentName(step: ExecutionStepRecord): string {
-    const nodeData =
-      (step.nodeData as Record<string, unknown> | null) ?? {};
+    const nodeData = step.nodeData ?? {};
 
     return (
       this.readString(nodeData, ['agentName', 'name', 'label']) ?? step.nodeId
@@ -717,8 +735,7 @@ export class EvidenceService {
   }
 
   private resolveAutonomyMode(step: ExecutionStepRecord): string {
-    const nodeData =
-      (step.nodeData as Record<string, unknown> | null) ?? {};
+    const nodeData = step.nodeData ?? {};
 
     return (
       this.readString(nodeData, ['autonomyMode', 'autonomy_mode']) ??
@@ -825,6 +842,10 @@ export class EvidenceService {
     return timingSafeEqual(storedBuffer, computedBuffer);
   }
 
+  private computeTextHash(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
   private readString(
     source: Record<string, unknown>,
     keys: string[],
@@ -864,9 +885,7 @@ export class EvidenceService {
   private isToolEvidenceStatus(
     status: ToolCallEvidencePayload['status'],
   ): status is 'completed' | 'failed' | 'denied' {
-    return (
-      status === 'completed' || status === 'failed' || status === 'denied'
-    );
+    return ['completed', 'failed', 'denied'].includes(status);
   }
 
   // -- Chain methods (Story 6-2) --
@@ -878,16 +897,27 @@ export class EvidenceService {
     tenantId: string,
     executionId: string,
     nodeId?: string,
+    options?: { bypassCache?: boolean },
   ): Promise<{ response: EvidenceChainResponse; cached: boolean }> {
     const cacheKey = `evidence:chain:${executionId}:${nodeId ?? 'all'}`;
+    const bypassCache = options?.bypassCache ?? false;
 
-    try {
-      const cached = await this.cacheService.get(cacheKey);
-      if (cached) {
-        return { response: JSON.parse(cached), cached: true };
+    if (!bypassCache) {
+      try {
+        const cached = await this.cacheService.get(cacheKey);
+        if (cached) {
+          const parsedCached: unknown = JSON.parse(cached);
+
+          return {
+            response: EvidenceChainResponseSchema.parse(parsedCached),
+            cached: true,
+          };
+        }
+      } catch {
+        this.logger.warn(
+          'Redis cache read failed for chain, proceeding without cache',
+        );
       }
-    } catch {
-      this.logger.warn('Redis cache read failed for chain, proceeding without cache');
     }
 
     const flatRecords = await this.fetchChainRecords(
@@ -900,8 +930,7 @@ export class EvidenceService {
     const hashResults = new Map<string, boolean>();
     for (const record of flatRecords) {
       try {
-        const packet = this.validateStoredPacket(record.packet);
-        const computedHash = this.computeContentHash(packet);
+        const computedHash = this.computeContentHash(record.packet);
         hashResults.set(
           record.id,
           this.compareHashes(record.contentHash, computedHash),
@@ -911,34 +940,51 @@ export class EvidenceService {
       }
     }
 
-    const integrityIssues: IntegrityIssue[] = [];
-    const roots = this.flatToTree(
+    const { roots, integrityIssues } = this.flatToTree(
       flatRecords,
       sourceStatusMap,
       hashResults,
-      integrityIssues,
     );
 
     const totalNodes = flatRecords.length;
-    const issueNodeIds = new Set(integrityIssues.map((i) => i.evidenceId));
     const chainCompleteness =
-      totalNodes === 0 ? 1 : (totalNodes - issueNodeIds.size) / totalNodes;
+      totalNodes === 0
+        ? 1
+        : flatRecords.filter((record) =>
+            this.hasPhysicalLocation(record.packet),
+          ).length / totalNodes;
+    const nodesWithPhysicalLocation = flatRecords.filter((record) =>
+      this.hasPhysicalLocation(record.packet),
+    ).length;
+    const completenessLabel =
+      chainCompleteness >= 0.95
+        ? 'complete'
+        : `evidence_completeness: ${chainCompleteness.toFixed(2)}`;
 
     const response: EvidenceChainResponse = {
       roots,
       chainCompleteness,
       totalNodes,
-      integrityIssues,
+      integrityStatus: {
+        chainCompleteness,
+        totalNodes,
+        nodesWithPhysicalLocation,
+        completenessLabel,
+        integrityIssues,
+      },
+      cachedAt: new Date().toISOString(),
     };
 
-    try {
-      await this.cacheService.set(
-        cacheKey,
-        JSON.stringify(response),
-        EvidenceService.CHAIN_CACHE_TTL,
-      );
-    } catch {
-      this.logger.warn('Redis cache write failed for chain');
+    if (!bypassCache) {
+      try {
+        await this.cacheService.set(
+          cacheKey,
+          JSON.stringify(response),
+          EvidenceService.CHAIN_CACHE_TTL,
+        );
+      } catch {
+        this.logger.warn('Redis cache write failed for chain');
+      }
     }
 
     return { response, cached: false };
@@ -949,7 +995,9 @@ export class EvidenceService {
     executionId: string,
     nodeId?: string,
   ): Promise<EvidenceChainResponse> {
-    const { response } = await this.buildChain(tenantId, executionId, nodeId);
+    const { response } = await this.buildChain(tenantId, executionId, nodeId, {
+      bypassCache: true,
+    });
     return response;
   }
 
@@ -959,51 +1007,104 @@ export class EvidenceService {
     nodeId?: string,
   ): Promise<FlatChainRecord[]> {
     const tenantDb = getTenantDb(this.db);
-    const baseCondition = nodeId
-      ? sql`er.id = ${nodeId}`
-      : sql`er.parent_evidence_id IS NULL`;
+    const anchorJoin = nodeId
+      ? sql`INNER JOIN execution_steps es ON es.id = er.step_id`
+      : sql``;
+    const anchorCondition = nodeId
+      ? sql`es.node_id = ${nodeId}`
+      : sql`NOT EXISTS (
+          SELECT 1
+          FROM evidence_records child
+          WHERE child.parent_evidence_id = er.id
+            AND child.execution_id = er.execution_id
+            AND child.tenant_id = er.tenant_id
+        )`;
 
     const result = await tenantDb.execute(sql`
       WITH RECURSIVE chain AS (
-        SELECT er.id, er.execution_id, er.step_id, er.tenant_id,
-               er.source_type, er.packet, er.content_hash,
-               er.parent_evidence_id, er.created_at, 0 AS depth
+        SELECT er.id,
+               er.execution_id,
+               er.step_id,
+               er.tenant_id,
+               er.source_type,
+               er.packet,
+               er.content_hash,
+               er.parent_evidence_id,
+               er.created_at,
+               0 AS depth,
+               ARRAY[er.id]::uuid[] AS path
         FROM evidence_records er
+        ${anchorJoin}
         WHERE er.execution_id = ${executionId}
           AND er.tenant_id = ${tenantId}
-          AND ${baseCondition}
+          AND ${anchorCondition}
 
         UNION ALL
 
-        SELECT er.id, er.execution_id, er.step_id, er.tenant_id,
-               er.source_type, er.packet, er.content_hash,
-               er.parent_evidence_id, er.created_at, c.depth + 1
-        FROM evidence_records er
-        INNER JOIN chain c ON er.parent_evidence_id = c.id
-        WHERE c.depth < ${EvidenceService.CHAIN_MAX_DEPTH}
+        SELECT parent.id,
+               parent.execution_id,
+               parent.step_id,
+               parent.tenant_id,
+               parent.source_type,
+               parent.packet,
+               parent.content_hash,
+               parent.parent_evidence_id,
+               parent.created_at,
+               c.depth + 1,
+               c.path || parent.id
+        FROM evidence_records parent
+        INNER JOIN chain c ON c.parent_evidence_id = parent.id
+        WHERE parent.execution_id = ${executionId}
+          AND parent.tenant_id = ${tenantId}
+          AND c.depth < ${EvidenceService.CHAIN_MAX_DEPTH}
+          AND NOT parent.id = ANY(c.path)
       )
-      SELECT * FROM chain
-      ORDER BY depth ASC, created_at ASC
+      SELECT id,
+             execution_id,
+             step_id,
+             tenant_id,
+             source_type,
+             packet,
+             content_hash,
+             parent_evidence_id,
+             created_at,
+             MIN(depth)::int AS depth
+      FROM chain
+      GROUP BY id,
+               execution_id,
+               step_id,
+               tenant_id,
+               source_type,
+               packet,
+               content_hash,
+               parent_evidence_id,
+               created_at
+      ORDER BY created_at ASC, id ASC
     `);
 
     const rows = (result as { rows?: unknown[] }).rows ?? result;
-    return (rows as Record<string, unknown>[]).map((row) => ({
-      id: String(row.id),
-      executionId: String(row.execution_id),
-      stepId: String(row.step_id),
-      tenantId: String(row.tenant_id),
-      sourceType: String(row.source_type),
-      packet: row.packet,
-      contentHash: String(row.content_hash),
-      parentEvidenceId: row.parent_evidence_id
-        ? String(row.parent_evidence_id)
-        : null,
-      createdAt:
-        row.created_at instanceof Date
-          ? row.created_at
-          : new Date(String(row.created_at)),
-      depth: Number(row.depth),
-    }));
+    return (rows as Record<string, unknown>[]).map<FlatChainRecord>((row) => {
+      const packet = this.validateStoredPacket(row.packet);
+
+      return {
+        id: String(row.id),
+        executionId: String(row.execution_id),
+        stepId: String(row.step_id),
+        tenantId: String(row.tenant_id),
+        sourceType: String(row.source_type),
+        packet,
+        contentHash: String(row.content_hash),
+        parentEvidenceId:
+          row.parent_evidence_id == null
+            ? null
+            : this.serializePreview(row.parent_evidence_id),
+        createdAt:
+          row.created_at instanceof Date
+            ? row.created_at
+            : new Date(String(row.created_at)),
+        depth: Number(row.depth),
+      };
+    });
   }
 
   private async checkSourceAvailability(
@@ -1012,30 +1113,33 @@ export class EvidenceService {
     const statusMap = new Map<string, SourceStatus>();
     const chunkLookups = new Map<
       string,
-      { evidenceId: string; retrievedContent: string }
+      Array<{
+        evidenceId: string;
+        retrievedContent: string;
+        originalSnapshot?: string;
+      }>
     >();
 
     for (const record of records) {
-      if (record.sourceType === 'rag_retrieval') {
-        const packet = record.packet as Record<string, unknown>;
-        const physLoc = packet.physicalLocation as
-          | Record<string, unknown>
-          | undefined;
-        const chunkId = physLoc?.chunkId as string | undefined;
+      if (record.packet.sourceType === 'rag_retrieval') {
+        const chunkId = record.packet.physicalLocation.chunkId;
         if (chunkId) {
-          chunkLookups.set(chunkId, {
+          const lookups = chunkLookups.get(chunkId) ?? [];
+          lookups.push({
             evidenceId: record.id,
-            retrievedContent: (packet.retrievedContent as string) ?? '',
+            retrievedContent: record.packet.retrievedContent,
+            originalSnapshot: record.packet.semanticLocation.context,
           });
+          chunkLookups.set(chunkId, lookups);
         } else {
           statusMap.set(record.id, {
-            sourceAvailable: true,
+            sourceUnavailable: false,
             sourceModified: false,
           });
         }
       } else {
         statusMap.set(record.id, {
-          sourceAvailable: true,
+          sourceUnavailable: false,
           sourceModified: false,
         });
       }
@@ -1057,23 +1161,29 @@ export class EvidenceService {
       chunkContentMap.set(chunk.id, chunk.content);
     }
 
-    for (const [chunkId, info] of chunkLookups) {
+    for (const [chunkId, infos] of chunkLookups) {
       const chunkContent = chunkContentMap.get(chunkId);
-      if (chunkContent === undefined) {
+      for (const info of infos) {
+        if (chunkContent === undefined) {
+          statusMap.set(info.evidenceId, {
+            sourceUnavailable: true,
+            sourceModified: false,
+            unavailableReason: '来源不可用—原始文档已删除',
+          });
+          continue;
+        }
+
+        const modified = !this.compareHashes(
+          this.computeTextHash(info.retrievedContent),
+          this.computeTextHash(chunkContent),
+        );
         statusMap.set(info.evidenceId, {
-          sourceAvailable: false,
-          sourceModified: false,
-          unavailableReason: 'Source document chunk has been deleted',
-        });
-      } else {
-        const modified = chunkContent !== info.retrievedContent;
-        statusMap.set(info.evidenceId, {
-          sourceAvailable: true,
+          sourceUnavailable: false,
           sourceModified: modified,
           ...(modified
             ? {
-                unavailableReason:
-                  'Source document chunk content has been modified',
+                unavailableReason: '来源已修改—原始文档内容发生变化',
+                originalSnapshot: info.originalSnapshot,
               }
             : {}),
         });
@@ -1087,13 +1197,13 @@ export class EvidenceService {
     records: FlatChainRecord[],
     sourceStatus: Map<string, SourceStatus>,
     hashResults: Map<string, boolean>,
-    integrityIssues: IntegrityIssue[],
-  ): EvidenceChainNode[] {
+  ): { roots: EvidenceChainNode[]; integrityIssues: IntegrityIssue[] } {
     const nodeMap = new Map<string, EvidenceChainNode>();
+    const integrityIssues: IntegrityIssue[] = [];
 
     for (const record of records) {
       const status = sourceStatus.get(record.id) ?? {
-        sourceAvailable: true,
+        sourceUnavailable: false,
         sourceModified: false,
       };
       const hashValid = hashResults.get(record.id) ?? false;
@@ -1103,14 +1213,18 @@ export class EvidenceService {
         executionId: record.executionId,
         stepId: record.stepId,
         sourceType: record.sourceType as EvidenceChainNode['sourceType'],
+        packetSummary: this.buildPacketSummary(record.packet),
         contentHash: record.contentHash,
         parentEvidenceId: record.parentEvidenceId,
         createdAt: record.createdAt.toISOString(),
-        depth: record.depth,
-        sourceAvailable: status.sourceAvailable,
-        sourceModified: status.sourceModified,
+        depth: 0,
+        ...(status.sourceUnavailable ? { sourceUnavailable: true } : {}),
+        ...(status.sourceModified ? { sourceModified: true } : {}),
         ...(status.unavailableReason
           ? { unavailableReason: status.unavailableReason }
+          : {}),
+        ...(status.originalSnapshot
+          ? { originalSnapshot: status.originalSnapshot }
           : {}),
         hashValid,
         children: [],
@@ -1119,22 +1233,22 @@ export class EvidenceService {
       if (!hashValid) {
         integrityIssues.push({
           evidenceId: record.id,
-          issue: 'Content hash verification failed',
-          severity: 'error',
+          issueType: 'hash_mismatch',
+          description: '证据内容哈希校验失败',
         });
       }
-      if (!status.sourceAvailable) {
+      if (status.sourceUnavailable) {
         integrityIssues.push({
           evidenceId: record.id,
-          issue: status.unavailableReason ?? 'Source unavailable',
-          severity: 'warning',
+          issueType: 'source_unavailable',
+          description: status.unavailableReason ?? '来源不可用',
         });
       }
       if (status.sourceModified) {
         integrityIssues.push({
           evidenceId: record.id,
-          issue: status.unavailableReason ?? 'Source modified',
-          severity: 'warning',
+          issueType: 'source_modified',
+          description: status.unavailableReason ?? '来源已修改',
         });
       }
 
@@ -1142,22 +1256,144 @@ export class EvidenceService {
     }
 
     const roots: EvidenceChainNode[] = [];
-    for (const [, node] of nodeMap) {
-      if (node.parentEvidenceId && nodeMap.has(node.parentEvidenceId)) {
-        nodeMap.get(node.parentEvidenceId)!.children.push(node);
+    for (const record of records) {
+      const node = nodeMap.get(record.id);
+      if (!node) {
+        continue;
+      }
+
+      if (record.parentEvidenceId && nodeMap.has(record.parentEvidenceId)) {
+        nodeMap.get(record.parentEvidenceId)!.children.push(node);
       } else {
         roots.push(node);
       }
     }
 
-    return roots;
+    this.sortChainNodes(roots);
+    this.assignDepths(roots);
+
+    return { roots, integrityIssues };
+  }
+
+  private sortChainNodes(nodes: EvidenceChainNode[]): void {
+    nodes.sort((left, right) => {
+      if (left.createdAt === right.createdAt) {
+        return left.evidenceId.localeCompare(right.evidenceId);
+      }
+
+      return left.createdAt.localeCompare(right.createdAt);
+    });
+
+    for (const node of nodes) {
+      this.sortChainNodes(node.children);
+    }
+  }
+
+  private assignDepths(nodes: EvidenceChainNode[], depth = 0): void {
+    for (const node of nodes) {
+      node.depth = depth;
+      this.assignDepths(node.children, depth + 1);
+    }
+  }
+
+  private hasPhysicalLocation(packet: EvidencePacketDto): boolean {
+    return packet.sourceType === 'rag_retrieval';
+  }
+
+  private buildPacketSummary(
+    packet: EvidencePacketDto,
+  ): EvidenceChainNode['packetSummary'] {
+    switch (packet.sourceType) {
+      case 'rag_retrieval':
+        return {
+          title: `RAG 检索 · ${packet.physicalLocation.fileName}`,
+          excerpt: this.truncatePreview(packet.retrievedContent),
+          metadata: {
+            documentId: packet.physicalLocation.documentId,
+            chunkId: packet.physicalLocation.chunkId,
+            relevanceScore: packet.semanticLocation.relevanceScore.toFixed(2),
+            ...(packet.semanticLocation.sectionTitle
+              ? { sectionTitle: packet.semanticLocation.sectionTitle }
+              : {}),
+          },
+        };
+      case 'agent_decision':
+        return {
+          title: `Agent 决策 · ${packet.agentDecision.agentName}`,
+          excerpt: this.truncatePreview(packet.agentDecision.reasoning),
+          metadata: {
+            nodeId: packet.agentDecision.nodeId,
+            selectedAction: packet.agentDecision.selectedAction,
+            autonomyMode: packet.agentDecision.autonomyMode,
+            ...(packet.agentDecision.confidence !== undefined
+              ? { confidence: packet.agentDecision.confidence.toFixed(2) }
+              : {}),
+          },
+        };
+      case 'tool_output':
+        return {
+          title: `工具输出 · ${packet.toolOutput.toolName}`,
+          excerpt: this.truncatePreview(
+            this.serializePreview(packet.toolOutput.toolOutput),
+          ),
+          metadata: {
+            ...(packet.toolOutput.toolCallId
+              ? { toolCallId: packet.toolOutput.toolCallId }
+              : {}),
+          },
+        };
+      case 'user_input':
+        return {
+          title: '用户输入',
+          excerpt: this.truncatePreview(
+            this.serializePreview(packet.userInput.content),
+          ),
+        };
+      case 'intervention':
+        return {
+          title: `人工介入 · ${packet.intervention.action}`,
+          excerpt: this.truncatePreview(
+            packet.intervention.feedback ??
+              this.serializePreview(packet.intervention.modifiedContent),
+          ),
+          metadata: {
+            resolvedBy: packet.intervention.resolvedBy,
+            resolvedAt: packet.intervention.resolvedAt,
+          },
+        };
+    }
+  }
+
+  private truncatePreview(
+    value: string | undefined,
+    maxLength = 200,
+  ): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    return value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`;
+  }
+
+  private serializePreview(value: unknown): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (value === undefined) {
+      return 'undefined';
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return Object.prototype.toString.call(value);
+    }
   }
 
   private async invalidateChainCache(executionId: string): Promise<void> {
     try {
-      await this.cacheService.delByPattern(
-        `evidence:chain:${executionId}:*`,
-      );
+      await this.cacheService.delByPattern(`evidence:chain:${executionId}:*`);
     } catch {
       this.logger.warn('Failed to invalidate chain cache');
     }

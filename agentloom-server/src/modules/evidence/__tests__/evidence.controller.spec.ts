@@ -8,6 +8,25 @@ const EXECUTION_ID = '00000000-0000-4000-8000-000000000002';
 const EVIDENCE_ID = '00000000-0000-4000-8000-000000000003';
 const EXPECTED_ROLES = ['viewer', 'operator', 'creator', 'admin', 'owner'];
 
+type EvidenceControllerHandlerName =
+  | 'findByExecution'
+  | 'getEvidenceChain'
+  | 'findById'
+  | 'verifyContentHash';
+
+function getHandler(name: EvidenceControllerHandlerName): object {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    EvidenceController.prototype,
+    name,
+  );
+
+  if (typeof descriptor?.value !== 'function') {
+    throw new Error(`Handler ${name} is not defined on EvidenceController`);
+  }
+
+  return descriptor.value as object;
+}
+
 function createMockEvidenceService() {
   return {
     findByExecution: vi.fn(),
@@ -86,7 +105,14 @@ describe('EvidenceController', () => {
       roots: [],
       chainCompleteness: 1,
       totalNodes: 0,
-      integrityIssues: [],
+      integrityStatus: {
+        chainCompleteness: 1,
+        totalNodes: 0,
+        nodesWithPhysicalLocation: 0,
+        completenessLabel: 'complete',
+        integrityIssues: [],
+      },
+      cachedAt: '2026-03-10T10:00:00.000Z',
     };
     mockService.buildChain.mockResolvedValue({
       response: chainResponse,
@@ -111,32 +137,78 @@ describe('EvidenceController', () => {
 
   it('should set X-Cache-Hit: true header on cache hit', async () => {
     mockService.buildChain.mockResolvedValue({
-      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      response: {
+        roots: [],
+        chainCompleteness: 1,
+        totalNodes: 0,
+        integrityStatus: {
+          chainCompleteness: 1,
+          totalNodes: 0,
+          nodesWithPhysicalLocation: 0,
+          completenessLabel: 'complete',
+          integrityIssues: [],
+        },
+        cachedAt: '2026-03-10T10:00:00.000Z',
+      },
       cached: true,
     });
     const mockRes = { header: vi.fn() };
 
-    await controller.getEvidenceChain(TENANT_ID, EXECUTION_ID, {}, mockRes as never);
+    await controller.getEvidenceChain(
+      TENANT_ID,
+      EXECUTION_ID,
+      {},
+      mockRes as never,
+    );
 
     expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'true');
   });
 
   it('should set X-Cache-Hit: false header on cache miss', async () => {
     mockService.buildChain.mockResolvedValue({
-      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      response: {
+        roots: [],
+        chainCompleteness: 1,
+        totalNodes: 0,
+        integrityStatus: {
+          chainCompleteness: 1,
+          totalNodes: 0,
+          nodesWithPhysicalLocation: 0,
+          completenessLabel: 'complete',
+          integrityIssues: [],
+        },
+        cachedAt: '2026-03-10T10:00:00.000Z',
+      },
       cached: false,
     });
     const mockRes = { header: vi.fn() };
 
-    await controller.getEvidenceChain(TENANT_ID, EXECUTION_ID, {}, mockRes as never);
+    await controller.getEvidenceChain(
+      TENANT_ID,
+      EXECUTION_ID,
+      {},
+      mockRes as never,
+    );
 
     expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'false');
   });
 
   it('should pass nodeId from query to service', async () => {
-    const nodeId = '00000000-0000-4000-8000-000000000099';
+    const nodeId = 'node-abc';
     mockService.buildChain.mockResolvedValue({
-      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      response: {
+        roots: [],
+        chainCompleteness: 1,
+        totalNodes: 0,
+        integrityStatus: {
+          chainCompleteness: 1,
+          totalNodes: 0,
+          nodesWithPhysicalLocation: 0,
+          completenessLabel: 'complete',
+          integrityIssues: [],
+        },
+        cachedAt: '2026-03-10T10:00:00.000Z',
+      },
       cached: false,
     });
     const mockRes = { header: vi.fn() };
@@ -157,19 +229,16 @@ describe('EvidenceController', () => {
 
   it('should expose viewer through owner roles on every endpoint', () => {
     expect(
-      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findByExecution),
+      Reflect.getMetadata(ROLES_KEY, getHandler('findByExecution')),
     ).toEqual(EXPECTED_ROLES);
     expect(
-      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.getEvidenceChain),
+      Reflect.getMetadata(ROLES_KEY, getHandler('getEvidenceChain')),
     ).toEqual(EXPECTED_ROLES);
+    expect(Reflect.getMetadata(ROLES_KEY, getHandler('findById'))).toEqual(
+      EXPECTED_ROLES,
+    );
     expect(
-      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findById),
-    ).toEqual(EXPECTED_ROLES);
-    expect(
-      Reflect.getMetadata(
-        ROLES_KEY,
-        EvidenceController.prototype.verifyContentHash,
-      ),
+      Reflect.getMetadata(ROLES_KEY, getHandler('verifyContentHash')),
     ).toEqual(EXPECTED_ROLES);
   });
 });
