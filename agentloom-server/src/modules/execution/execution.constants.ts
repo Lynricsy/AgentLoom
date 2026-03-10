@@ -33,6 +33,13 @@ export interface InterventionResolution {
   nodeName?: string;
 }
 
+export type ToolPermissionAction = 'approve' | 'deny';
+
+export interface ToolPermissionResolution {
+  toolCallId: string;
+  action: ToolPermissionAction;
+}
+
 /**
  * AgentTaskWorker 消费的任务数据结构。
  */
@@ -46,6 +53,8 @@ export interface AgentTaskJobData {
   /** 干预恢复时传入已有会话 ID */
   resumeSessionId?: string;
   intervention?: InterventionResolution;
+  /** 工具权限审批恢复 */
+  toolPermission?: ToolPermissionResolution;
   /** 标记该 agent 任务应使用沙箱适配器 */
   hasSandbox?: boolean;
 }

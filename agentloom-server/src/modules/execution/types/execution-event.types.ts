@@ -1,4 +1,5 @@
 import type { AgentEvent } from '../../agent/types/agent-event.types';
+import type { ToolCallStatus } from '../../agent/types/tool-call-event.types';
 
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
@@ -8,6 +9,9 @@ export const ExecutionEventName = {
   OUTPUT_CHUNK: 'execution.node.output-chunk',
   NODE_INTERVENTION_REQUIRED: 'execution.node.intervention-required',
   NODE_INTERVENTION_RESOLVED: 'execution.node.intervention-resolved',
+  NODE_TOOL_CALL_STATUS: 'execution.node.tool-call-status',
+  NODE_TOOL_PERMISSION_REQUIRED: 'execution.node.tool-permission-required',
+  NODE_TOOL_PERMISSION_RESOLVED: 'execution.node.tool-permission-resolved',
 } as const;
 
 export type ExecutionEventName =
@@ -80,6 +84,36 @@ export interface InterventionResolvedPayload {
   readonly timeout?: boolean;
 }
 
+export interface ToolCallStatusPayload {
+  readonly stepId: string;
+  readonly nodeId: string;
+  readonly toolCallId: string;
+  readonly tool: string;
+  readonly status: ToolCallStatus;
+  readonly args?: Record<string, unknown>;
+  readonly result?: unknown;
+  readonly error?: string;
+}
+
+export interface ToolPermissionRequiredPayload {
+  readonly stepId: string;
+  readonly nodeId: string;
+  readonly toolCallId: string;
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+  readonly permissionRequest?: {
+    readonly description?: string;
+    readonly resourcePaths?: string[];
+  };
+}
+
+export interface ToolPermissionResolvedPayload {
+  readonly stepId: string;
+  readonly nodeId: string;
+  readonly toolCallId: string;
+  readonly action: 'approve' | 'deny';
+}
+
 export interface ExecutionEventPayloadMap {
   [ExecutionEventName.EXECUTION_STATUS_CHANGED]: ExecutionStatusChangedPayload;
   [ExecutionEventName.STEP_STATUS_CHANGED]: StepStatusChangedPayload;
@@ -88,6 +122,9 @@ export interface ExecutionEventPayloadMap {
   [ExecutionEventName.OUTPUT_CHUNK]: OutputChunkPayload;
   [ExecutionEventName.NODE_INTERVENTION_REQUIRED]: InterventionRequiredPayload;
   [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: InterventionResolvedPayload;
+  [ExecutionEventName.NODE_TOOL_CALL_STATUS]: ToolCallStatusPayload;
+  [ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED]: ToolPermissionRequiredPayload;
+  [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: ToolPermissionResolvedPayload;
 }
 
 export interface ExecutionEvent<
@@ -197,6 +234,15 @@ export interface ServerToClientEvents {
   ) => void;
   [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: (
     event: ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_RESOLVED>,
+  ) => void;
+  [ExecutionEventName.NODE_TOOL_CALL_STATUS]: (
+    event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_CALL_STATUS>,
+  ) => void;
+  [ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED]: (
+    event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED>,
+  ) => void;
+  [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: (
+    event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED>,
   ) => void;
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void;
   error: (error: { message: string; code?: string }) => void;
