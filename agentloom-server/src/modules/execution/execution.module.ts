@@ -15,6 +15,7 @@ import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
+import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
 import {
   EXECUTION_QUEUE,
   AGENT_TASK_QUEUE,
@@ -49,6 +50,7 @@ import {
     EventBridgeService,
     ThrottleService,
     StateReplayService,
+    ToolCallStateMachineService,
   ],
   exports: [
     ExecutionService,

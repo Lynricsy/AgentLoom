@@ -12,12 +12,16 @@ import { InProcessAgentAdapter } from './in-process-agent.adapter';
 import { OutputFormatService } from './output-format.service';
 import { AGENT_RUNTIME } from './ports/agent-runtime.port';
 import { SandboxAgentAdapter } from './sandbox-agent.adapter';
+import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
+import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 
 @Module({
   imports: [LlmModule, SandboxModule],
   providers: [
     AutonomyResolverService,
     OutputFormatService,
+    AgentSessionFactory,
+    SessionPersistenceService,
     InProcessAgentAdapter,
     SandboxAgentAdapter,
     { provide: AGENT_RUNTIME, useClass: InProcessAgentAdapter },
@@ -26,6 +30,8 @@ import { SandboxAgentAdapter } from './sandbox-agent.adapter';
   exports: [
     AutonomyResolverService,
     OutputFormatService,
+    AgentSessionFactory,
+    SessionPersistenceService,
     AGENT_RUNTIME,
     AGENT_RUNTIME_FACTORY,
   ],

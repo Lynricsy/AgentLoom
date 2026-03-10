@@ -7,6 +7,8 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
+import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
+import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import type { IAgentRuntime } from './ports/agent-runtime.port';
 import type {
   AgentSession,
@@ -16,59 +18,119 @@ import type {
 import type { AgentEvent, StopReason } from './types/agent-event.types';
 import type { ContentBlock } from './types/content-block.types';
 
+/** 轻量级 session 索引，仅保存用于从检查点加载 session 所需的元数据 */
+interface SessionMetadata {
+  readonly tenantId: string;
+  readonly stepId: string;
+}
+
 @Injectable()
 export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
-  private readonly sessions = new Map<string, AgentSession>();
+  private readonly sessionIndex = new Map<string, SessionMetadata>();
   private readonly abortControllers = new Map<string, AbortController>();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly piAiAdapter: PiAiAdapter,
+    private readonly agentSessionFactory: AgentSessionFactory,
+    private readonly sessionPersistence: SessionPersistenceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
   }
 
+  /**
+   * 为恢复场景注册 session 元数据（进程重启后内存索引丢失时使用）。
+   * Worker 在调用 loadSession 前应先调用此方法注册恢复所需的元数据。
+   */
+  registerSessionMetadata(
+    sessionId: string,
+    tenantId: string,
+    stepId: string,
+  ): void {
+    this.sessionIndex.set(sessionId, { tenantId, stepId });
+  }
+
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
-    const sessionId = randomUUID();
-    const now = new Date();
+    let session: AgentSession;
 
-    const context: SessionContext = {
-      history: [],
-      cwd: params.cwd,
-      mcpServers: params.mcpServers,
-      workflowState:
-        params.mode === 'workflow' ? params.context : undefined,
-    };
+    if (params.mode === 'workflow' && params.context) {
+      const ctx = params.context as Record<string, unknown>;
+      session = this.agentSessionFactory.createWorkflowSession({
+        agentId: params.agentId,
+        executionId: ctx.executionId as string,
+        stepId: ctx.stepId as string,
+        nodeId: ctx.nodeId as string,
+        tenantId: params.tenantId!,
+        llmModelConfigId: params.llmModelConfigId,
+        systemPrompt: params.systemPrompt,
+        autonomyMode: params.autonomyMode,
+      });
+    } else {
+      const sessionId = randomUUID();
+      const now = new Date();
 
-    const session: AgentSession = {
-      id: sessionId,
-      agentId: params.agentId,
-      mode: params.mode,
-      context,
-      status: 'active',
-      tenantId: params.tenantId,
-      llmModelConfigId: params.llmModelConfigId,
-      systemPrompt: params.systemPrompt,
-      autonomyMode: params.autonomyMode,
-      createdAt: now,
-      updatedAt: now,
-    };
+      const context: SessionContext = {
+        history: [],
+        cwd: params.cwd,
+        mcpServers: params.mcpServers,
+        workflowState:
+          params.mode === 'workflow' ? params.context : undefined,
+      };
 
-    this.sessions.set(sessionId, session);
+      session = {
+        id: sessionId,
+        agentId: params.agentId,
+        mode: params.mode,
+        context,
+        status: 'active',
+        tenantId: params.tenantId,
+        llmModelConfigId: params.llmModelConfigId,
+        systemPrompt: params.systemPrompt,
+        autonomyMode: params.autonomyMode,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (params.mode === 'workflow' && params.tenantId && params.context) {
+      const stepId = (params.context as Record<string, unknown>)
+        .stepId as string;
+      this.sessionIndex.set(session.id, {
+        tenantId: params.tenantId,
+        stepId,
+      });
+      await this.sessionPersistence.saveToCheckpoint(
+        params.tenantId,
+        stepId,
+        session,
+      );
+    }
+
     this.logger.debug(
-      `Session created: ${sessionId} for agent: ${params.agentId}`,
+      `Session created: ${session.id} for agent: ${params.agentId}`,
     );
     return session;
   }
 
   async loadSession(sessionId: string): Promise<AgentSession> {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${sessionId}`);
+    const meta = this.sessionIndex.get(sessionId);
+    if (!meta) {
+      throw new Error(`Session not found: ${sessionId} (no metadata in index)`);
     }
+
+    const session = await this.sessionPersistence.loadFromCheckpoint(
+      meta.tenantId,
+      meta.stepId,
+    );
+    if (!session) {
+      throw new Error(
+        `Session not found in checkpoint: ${sessionId} (step: ${meta.stepId})`,
+      );
+    }
+
     return session;
   }
 
@@ -77,6 +139,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     content: ContentBlock[],
   ): AsyncGenerator<AgentEvent> {
     const session = await this.loadSession(sessionId);
+    const meta = this.sessionIndex.get(sessionId);
 
     const abortController = new AbortController();
     this.abortControllers.set(sessionId, abortController);
@@ -152,9 +215,25 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       }
       session.status = 'active';
       session.updatedAt = new Date();
+
+      if (meta) {
+        await this.sessionPersistence.saveToCheckpoint(
+          meta.tenantId,
+          meta.stepId,
+          session,
+        );
+      }
     } catch (error) {
       session.status = 'error';
       session.updatedAt = new Date();
+
+      if (meta) {
+        await this.sessionPersistence.saveToCheckpoint(
+          meta.tenantId,
+          meta.stepId,
+          session,
+        );
+      }
       throw error;
     } finally {
       this.abortControllers.delete(sessionId);
@@ -168,10 +247,21 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       this.logger.debug(`Session cancelled: ${sessionId}`);
     }
 
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.status = 'completed';
-      session.updatedAt = new Date();
+    const meta = this.sessionIndex.get(sessionId);
+    if (meta) {
+      const session = await this.sessionPersistence.loadFromCheckpoint(
+        meta.tenantId,
+        meta.stepId,
+      );
+      if (session) {
+        session.status = 'completed';
+        session.updatedAt = new Date();
+        await this.sessionPersistence.saveToCheckpoint(
+          meta.tenantId,
+          meta.stepId,
+          session,
+        );
+      }
     }
   }
 

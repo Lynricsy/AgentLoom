@@ -26,4 +26,9 @@ export interface IAgentRuntime {
   loadSession(sessionId: string): Promise<AgentSession>;
   prompt(sessionId: string, content: ContentBlock[]): AsyncIterable<AgentEvent>;
   cancel(sessionId: string): Promise<void>;
+  registerSessionMetadata?(
+    sessionId: string,
+    tenantId: string,
+    stepId: string,
+  ): void;
 }

@@ -20,6 +20,7 @@ import {
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
+  type ToolPermissionResolution,
 } from './execution.constants';
 import type {
   InterventionCheckpointRecord,
@@ -29,7 +30,10 @@ import {
   InterventionNotAllowedException,
   AgentExecutionException,
   InvalidStepTransitionException,
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
 } from './execution.exceptions';
+import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
@@ -491,6 +495,108 @@ export class NodeSchedulerService {
     } satisfies AgentTaskJobData);
 
     this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
+  }
+
+  async resolveToolPermission(
+    executionId: string,
+    stepId: string,
+    toolCallId: string,
+    tenantId: string,
+    resolution: ToolPermissionResolution,
+  ): Promise<void> {
+    const tenantDb = getTenantDb(this.db, tenantId);
+
+    const [step] = await tenantDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.id, stepId));
+
+    if (!step) {
+      throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
+    }
+
+    if (step.executionId !== executionId) {
+      throw new AgentExecutionException(
+        `步骤 ${stepId} 不属于执行 ${executionId}`,
+      );
+    }
+
+    if (step.status !== 'waiting_intervention') {
+      throw new ToolPermissionResolutionNotAllowedException(
+        toolCallId,
+        step.status,
+      );
+    }
+
+    const checkpoint =
+      (step.checkpointData as Record<string, unknown> | null) ?? {};
+    const sessionId =
+      typeof checkpoint.sessionId === 'string'
+        ? checkpoint.sessionId
+        : undefined;
+
+    if (!sessionId) {
+      throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
+    }
+
+    const toolCalls = Array.isArray(checkpoint.toolCalls)
+      ? (checkpoint.toolCalls as ToolCallEvent[])
+      : [];
+    const toolCall = toolCalls.find((tc) => tc.id === toolCallId);
+
+    if (!toolCall) {
+      throw new ToolCallNotFoundException(toolCallId);
+    }
+
+    if (toolCall.status !== 'awaiting_permission') {
+      throw new ToolPermissionResolutionNotAllowedException(
+        toolCallId,
+        toolCall.status,
+      );
+    }
+
+    try {
+      await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running', {
+        checkpointData: checkpoint,
+      });
+    } catch (error) {
+      if (error instanceof InvalidStepTransitionException) {
+        const [latestStep] = await tenantDb
+          .select({ status: schema.executionSteps.status })
+          .from(schema.executionSteps)
+          .where(eq(schema.executionSteps.id, stepId))
+          .limit(1);
+
+        throw new ToolPermissionResolutionNotAllowedException(
+          toolCallId,
+          latestStep?.status ?? step.status,
+        );
+      }
+      throw error;
+    }
+
+    await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+
+    this.eventBridge.emitToolPermissionResolved(tenantId, executionId, {
+      stepId,
+      nodeId: step.nodeId,
+      toolCallId,
+      action: resolution.action,
+    });
+
+    await this.agentTaskQueue.add('agent-task', {
+      executionId,
+      stepId,
+      tenantId,
+      input: ((step.input ?? {}) as Record<string, unknown>) ?? {},
+      nodeData: ((step.nodeData ?? {}) as Record<string, unknown>) ?? {},
+      resumeSessionId: sessionId,
+      toolPermission: resolution,
+    } satisfies AgentTaskJobData);
+
+    this.logger.log(
+      `工具权限解析任务已排队: ${JSON.stringify({ executionId, stepId, toolCallId, action: resolution.action })}`,
+    );
   }
 
   private resolveNodeName(

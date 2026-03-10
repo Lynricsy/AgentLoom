@@ -24,6 +24,10 @@ import {
   InterveneStepDto,
   interveneStepSchema,
 } from './dto/intervene-step.dto';
+import {
+  ResolveToolPermissionDto,
+  resolveToolPermissionSchema,
+} from './dto/resolve-tool-permission.dto';
 import { EXECUTION_QUEUE } from './execution.constants';
 import { NodeSchedulerService } from './node-scheduler.service';
 
@@ -158,6 +162,39 @@ export class ExecutionController {
       resolution,
     );
     return { data: { executionId, stepId, status: 'intervention_accepted' } };
+  }
+
+  @Post(
+    'executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve-permission',
+  )
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '解析工具调用权限（批准/拒绝）' })
+  @ApiResponse({ status: 202, description: '权限解析已接受' })
+  @ApiResponse({ status: 409, description: '工具调用状态不允许解析' })
+  async resolveToolPermission(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+    @Param('toolCallId', ParseUUIDPipe) toolCallId: string,
+    @Body() dto: ResolveToolPermissionDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const resolution = resolveToolPermissionSchema.parse(dto);
+    await this.nodeScheduler.resolveToolPermission(
+      executionId,
+      stepId,
+      toolCallId,
+      tenantId,
+      { toolCallId, ...resolution },
+    );
+    return {
+      data: {
+        executionId,
+        stepId,
+        toolCallId,
+        status: 'permission_resolved',
+      },
+    };
   }
 
   @Get('dlq')
