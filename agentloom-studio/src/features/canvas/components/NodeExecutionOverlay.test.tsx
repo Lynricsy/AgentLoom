@@ -22,6 +22,8 @@ function makeNodeState(
     status: 'running',
     output: '',
     isStreaming: false,
+    toolCalls: {},
+    agentEvents: [],
     ...overrides,
   }
 }

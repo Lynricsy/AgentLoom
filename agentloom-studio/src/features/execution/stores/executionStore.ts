@@ -4,10 +4,12 @@ import { immer } from 'zustand/middleware/immer'
 import { useShallow } from 'zustand/react/shallow'
 import {
   resolveIntervention,
+  resolveToolPermission,
   type InterventionResolveRequest,
 } from '../api/executionApi'
 
 import type {
+  AgentEvent,
   ExecutionEvent,
   ExecutionStateSnapshot,
   ExecutionStatus,
@@ -18,6 +20,10 @@ import type {
   StepRetryingPayload,
   StepStatus,
   StepStatusChangedPayload,
+  ToolCallEventData,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
 } from '../types'
 
 export interface InterventionState {
@@ -44,6 +50,8 @@ export interface NodeExecutionState {
   startedAt?: string | null
   completedAt?: string | null
   intervention?: InterventionState
+  toolCalls: Record<string, ToolCallEventData>
+  agentEvents: AgentEvent[]
 }
 
 export interface ExecutionStoreState {
@@ -77,6 +85,23 @@ export interface ExecutionStoreActions {
       executionId: string,
       stepId: string,
       payload: InterventionResolveRequest,
+    ) => Promise<void>
+    updateToolCall: (
+      event: ExecutionEvent<ToolCallStatusPayload>,
+    ) => void
+    setToolPermissionRequired: (
+      event: ExecutionEvent<ToolPermissionRequiredPayload>,
+    ) => void
+    resolveToolPermissionEvent: (
+      event: ExecutionEvent<ToolPermissionResolvedPayload>,
+    ) => void
+    addAgentEvent: (nodeId: string, agentEvent: AgentEvent) => void
+    clearToolCalls: (nodeId: string) => void
+    submitToolPermission: (
+      executionId: string,
+      stepId: string,
+      toolCallId: string,
+      action: 'approve' | 'deny',
     ) => Promise<void>
     applySnapshot: (snapshot: ExecutionStateSnapshot) => void
     initExecution: (executionId: string) => void
@@ -116,6 +141,8 @@ function ensureNode(
       status: 'pending',
       output: '',
       isStreaming: false,
+      toolCalls: {},
+      agentEvents: [],
     }
   }
   return state.nodes[nodeId]
@@ -354,6 +381,96 @@ export const useExecutionStore = create<
             }
           },
 
+          updateToolCall: (
+            event: ExecutionEvent<ToolCallStatusPayload>,
+          ) => {
+            set((state) => {
+              const node = ensureNode(
+                state,
+                event.data.nodeId,
+                event.data.stepId,
+              )
+              const existing = node.toolCalls[event.data.toolCallId]
+              node.toolCalls[event.data.toolCallId] = {
+                id: event.data.toolCallId,
+                tool: event.data.tool,
+                status: event.data.status,
+                args: event.data.args ?? existing?.args,
+                result: event.data.result ?? existing?.result,
+                error: event.data.error ?? existing?.error,
+                permissionRequest: existing?.permissionRequest,
+              }
+              pushEvent(state, event)
+            })
+          },
+
+          setToolPermissionRequired: (
+            event: ExecutionEvent<ToolPermissionRequiredPayload>,
+          ) => {
+            set((state) => {
+              const node = ensureNode(
+                state,
+                event.data.nodeId,
+                event.data.stepId,
+              )
+              node.toolCalls[event.data.toolCallId] = {
+                id: event.data.toolCallId,
+                tool: event.data.tool,
+                status: 'awaiting_permission',
+                args: event.data.args,
+                permissionRequest: event.data.permissionRequest,
+              }
+              pushEvent(state, event)
+            })
+          },
+
+          resolveToolPermissionEvent: (
+            event: ExecutionEvent<ToolPermissionResolvedPayload>,
+          ) => {
+            set((state) => {
+              const node = ensureNode(
+                state,
+                event.data.nodeId,
+                event.data.stepId,
+              )
+              const tc = node.toolCalls[event.data.toolCallId]
+              if (tc) {
+                tc.status =
+                  event.data.action === 'approve' ? 'in_progress' : 'denied'
+              }
+              pushEvent(state, event)
+            })
+          },
+
+          addAgentEvent: (nodeId: string, agentEvent: AgentEvent) => {
+            set((state) => {
+              const node = state.nodes[nodeId]
+              if (node) {
+                node.agentEvents.push(agentEvent)
+              }
+            })
+          },
+
+          clearToolCalls: (nodeId: string) => {
+            set((state) => {
+              const node = state.nodes[nodeId]
+              if (node) {
+                node.toolCalls = {}
+              }
+            })
+          },
+
+          submitToolPermission: async (
+            executionId: string,
+            stepId: string,
+            toolCallId: string,
+            action: 'approve' | 'deny',
+          ) => {
+            await resolveToolPermission(executionId, stepId, toolCallId, {
+              action,
+            })
+          },
+
           applySnapshot: (snapshot: ExecutionStateSnapshot) => {
             set((state) => {
               state.executionId = snapshot.executionId
@@ -363,6 +480,18 @@ export const useExecutionStore = create<
 
               state.nodes = {}
               for (const step of snapshot.steps) {
+                const toolCalls: Record<string, ToolCallEventData> = {}
+                if (
+                  step.checkpointData &&
+                  Array.isArray(step.checkpointData.toolCalls)
+                ) {
+                  for (const tc of step.checkpointData.toolCalls as ToolCallEventData[]) {
+                    if (tc?.id) {
+                      toolCalls[tc.id] = tc
+                    }
+                  }
+                }
+
                 state.nodes[step.nodeId] = {
                   stepId: step.stepId,
                   nodeId: step.nodeId,
@@ -376,6 +505,8 @@ export const useExecutionStore = create<
                     step.status === 'waiting_intervention'
                       ? restoreIntervention(step.nodeId, step.checkpointData)
                       : undefined,
+                  toolCalls,
+                  agentEvents: [],
                 }
               }
             })
@@ -432,4 +563,21 @@ export const useExecutionActions = () =>
 export const useIsExecutionActive = () =>
   useExecutionStore(
     (s) => s.status === 'running' || s.status === 'paused',
+  )
+
+export const useToolCalls = (nodeId: string) =>
+  useExecutionStore((s) => s.nodes[nodeId]?.toolCalls ?? null)
+
+export const useActiveToolCalls = (nodeId: string) =>
+  useExecutionStore(
+    useShallow((s) => {
+      const toolCalls = s.nodes[nodeId]?.toolCalls
+      if (!toolCalls) return []
+      return Object.values(toolCalls).filter(
+        (tc) =>
+          tc.status === 'pending' ||
+          tc.status === 'in_progress' ||
+          tc.status === 'awaiting_permission',
+      )
+    }),
   )

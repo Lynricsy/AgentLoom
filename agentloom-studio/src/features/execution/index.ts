@@ -16,6 +16,7 @@ export {
   getCelebrationStorageKey,
   useCelebrationEffect,
 } from './components/CelebrationEffect'
+export { ToolCallList } from './components/ToolCallList'
 
 export { useAuthToken, setAuthToken } from './hooks/useAuthToken'
 export { useStartExecution } from './hooks/useStartExecution'
@@ -43,10 +44,25 @@ export type {
   StepStatusChangedPayload,
   SubscribeAck,
   SubscribePayload,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
   UnsubscribePayload,
 } from './types'
 export type {
   ExecutionEventName,
+} from './types'
+export type {
+  AgentEvent,
+  AgentEventType,
+  DecisionEvent,
+  DoneEvent,
+  MessageChunkEvent,
+  PlanEvent,
+  StopReason,
+  ToolCallAgentEvent,
+  ToolCallEventData,
+  ToolCallStatus,
 } from './types'
 export {
   useExecutionId,
@@ -58,4 +74,6 @@ export {
   useExecutionActions,
   useAllNodeStates,
   useRecentEvents,
+  useToolCalls,
+  useActiveToolCalls,
 } from './stores/executionStore'

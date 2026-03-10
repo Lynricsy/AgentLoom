@@ -22,6 +22,22 @@ export type {
 
 export { ExecutionEventName } from './execution-event.types'
 
+export type {
+  AgentEvent,
+  AgentEventType,
+  DecisionEvent,
+  DoneEvent,
+  MessageChunkEvent,
+  PlanEvent,
+  StopReason,
+  ToolCallAgentEvent,
+  ToolCallEventData,
+  ToolCallStatus,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
+} from './agentEvent.types'
+
 export type ExecutionStepStatus =
   | 'pending'
   | 'queued'

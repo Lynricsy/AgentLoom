@@ -137,3 +137,22 @@ export async function resolveIntervention(
     })
     .json<ApiResponse<InterventionResolveResponse>>()
 }
+
+export interface ToolPermissionResolveRequest {
+  action: 'approve' | 'deny'
+}
+
+/** 工具权限决议 — POST /executions/:id/steps/:stepId/tool-calls/:toolCallId/resolve-permission → 202 */
+export async function resolveToolPermission(
+  executionId: string,
+  stepId: string,
+  toolCallId: string,
+  body: ToolPermissionResolveRequest,
+) {
+  return apiClient
+    .post(
+      `executions/${executionId}/steps/${stepId}/tool-calls/${toolCallId}/resolve-permission`,
+      { json: toSnakeBody(body) },
+    )
+    .json<void>()
+}

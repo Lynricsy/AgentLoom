@@ -1,5 +1,11 @@
 // 客户端执行事件类型 — 与服务端 execution-event.types.ts 保持对齐
 
+import type {
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
+} from './agentEvent.types'
+
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
   STEP_STATUS_CHANGED: 'execution.node.status-changed',
@@ -8,6 +14,9 @@ export const ExecutionEventName = {
   OUTPUT_CHUNK: 'execution.node.output-chunk',
   NODE_INTERVENTION_REQUIRED: 'execution.node.intervention-required',
   NODE_INTERVENTION_RESOLVED: 'execution.node.intervention-resolved',
+  NODE_TOOL_CALL_STATUS: 'execution.node.tool-call-status',
+  NODE_TOOL_PERMISSION_REQUIRED: 'execution.node.tool-permission-required',
+  NODE_TOOL_PERMISSION_RESOLVED: 'execution.node.tool-permission-resolved',
 } as const
 
 export type ExecutionEventNameValue =
@@ -160,6 +169,15 @@ export interface ServerToClientEvents {
   ) => void
   [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: (
     event: ExecutionEvent<InterventionResolvedPayload>,
+  ) => void
+  [ExecutionEventName.NODE_TOOL_CALL_STATUS]: (
+    event: ExecutionEvent<ToolCallStatusPayload>,
+  ) => void
+  [ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED]: (
+    event: ExecutionEvent<ToolPermissionRequiredPayload>,
+  ) => void
+  [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: (
+    event: ExecutionEvent<ToolPermissionResolvedPayload>,
   ) => void
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void
   error: (error: { message: string; code?: string }) => void

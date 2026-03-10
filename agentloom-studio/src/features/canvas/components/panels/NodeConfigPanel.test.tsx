@@ -114,6 +114,8 @@ describe('NodeConfigPanel', () => {
       output: '第一行输出\n第二行输出',
       isStreaming: true,
       startedAt: '2026-03-10T10:00:00.000Z',
+      toolCalls: {},
+      agentEvents: [],
     }
 
     render(<NodeConfigPanel />)
@@ -137,6 +139,8 @@ describe('NodeConfigPanel', () => {
       retryMaxAttempts: 3,
       errorMessage: '调用模型超时',
       completedAt: '2026-03-10T10:05:00.000Z',
+      toolCalls: {},
+      agentEvents: [],
     }
 
     render(<NodeConfigPanel />)

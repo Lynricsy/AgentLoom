@@ -1,9 +1,11 @@
 import { memo, useCallback } from 'react'
 import { X } from 'lucide-react'
 import {
+  useExecutionId,
   useIsExecutionActive,
   useNodeExecutionState,
 } from '@/features/execution/stores/executionStore'
+import { ToolCallList } from '@/features/execution/components/ToolCallList'
 import type { StepStatus } from '@/features/execution/types'
 import { cn } from '@/shared/lib/utils'
 import {
@@ -244,6 +246,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
 }: NodeExecutionSectionProps) {
   const nodeState = useNodeExecutionState(nodeId)
   const isExecutionActive = useIsExecutionActive()
+  const executionId = useExecutionId()
 
   const startedAt = formatExecutionTimestamp(nodeState?.startedAt)
   const completedAt = formatExecutionTimestamp(nodeState?.completedAt)
@@ -326,6 +329,14 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
       )}
 
       <InterventionPanel nodeId={nodeId} />
+
+      {executionId && nodeState?.stepId && (
+        <ToolCallList
+          nodeId={nodeId}
+          executionId={executionId}
+          stepId={nodeState.stepId}
+        />
+      )}
 
       {nodeState?.errorMessage && (
         <div

@@ -29,6 +29,9 @@ export function useExecutionMonitor(
     applySnapshot,
     setNodeIntervention,
     clearNodeIntervention,
+    updateToolCall,
+    setToolPermissionRequired,
+    resolveToolPermissionEvent,
   } = useExecutionActions()
 
   const onError = useCallback(
@@ -49,6 +52,9 @@ export function useExecutionMonitor(
     onSnapshot: applySnapshot,
     onInterventionRequired: setNodeIntervention,
     onInterventionResolved: clearNodeIntervention,
+    onToolCallStatusChanged: updateToolCall,
+    onToolPermissionRequired: setToolPermissionRequired,
+    onToolPermissionResolved: resolveToolPermissionEvent,
     onError,
   })
 }

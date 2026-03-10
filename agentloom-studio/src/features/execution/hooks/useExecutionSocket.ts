@@ -14,6 +14,9 @@ import type {
   StepRetryingPayload,
   StepStatusChangedPayload,
   SubscribeAck,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
 } from '../types'
 import { ExecutionEventName } from '../types'
 
@@ -77,6 +80,15 @@ export interface ExecutionSocketCallbacks {
   ) => void
   onInterventionResolved?: (
     event: ExecutionEvent<InterventionResolvedPayload>,
+  ) => void
+  onToolCallStatusChanged?: (
+    event: ExecutionEvent<ToolCallStatusPayload>,
+  ) => void
+  onToolPermissionRequired?: (
+    event: ExecutionEvent<ToolPermissionRequiredPayload>,
+  ) => void
+  onToolPermissionResolved?: (
+    event: ExecutionEvent<ToolPermissionResolvedPayload>,
   ) => void
   onSnapshot?: (snapshot: ExecutionStateSnapshot) => void
   onError?: (error: { message: string; code?: string }) => void
@@ -225,6 +237,27 @@ export function useExecutionSocket(
       callbacksRef.current.onInterventionResolved?.(event)
     }
 
+    const handleToolCallStatusChanged = (
+      event: ExecutionEvent<ToolCallStatusPayload>,
+    ) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onToolCallStatusChanged?.(event)
+    }
+
+    const handleToolPermissionRequired = (
+      event: ExecutionEvent<ToolPermissionRequiredPayload>,
+    ) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onToolPermissionRequired?.(event)
+    }
+
+    const handleToolPermissionResolved = (
+      event: ExecutionEvent<ToolPermissionResolvedPayload>,
+    ) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onToolPermissionResolved?.(event)
+    }
+
     const handleSnapshot = (snapshot: ExecutionStateSnapshot) => {
       if (snapshot.lastEventId != null) {
         trackEventId(snapshot.lastEventId)
@@ -258,6 +291,18 @@ export function useExecutionSocket(
     socket.on(
       ExecutionEventName.NODE_INTERVENTION_RESOLVED,
       handleInterventionResolved,
+    )
+    socket.on(
+      ExecutionEventName.NODE_TOOL_CALL_STATUS,
+      handleToolCallStatusChanged,
+    )
+    socket.on(
+      ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED,
+      handleToolPermissionRequired,
+    )
+    socket.on(
+      ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
+      handleToolPermissionResolved,
     )
     socket.on('execution.state.snapshot', handleSnapshot)
     socket.on('error', handleError)
