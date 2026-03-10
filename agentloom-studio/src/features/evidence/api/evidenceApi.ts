@@ -17,6 +17,8 @@ export function fetchEvidenceByExecution(
   if (params?.page != null) searchParams.page = String(params.page);
   if (params?.limit != null) searchParams.limit = String(params.limit);
   if (params?.stepId) searchParams.stepId = params.stepId;
+  if (params?.sourceType) searchParams.sourceType = params.sourceType;
+  if (params?.nodeId) searchParams.nodeId = params.nodeId;
 
   return apiClient
     .get(`executions/${executionId}/evidence`, { searchParams })

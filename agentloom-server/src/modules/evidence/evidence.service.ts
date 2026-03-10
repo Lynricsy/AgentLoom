@@ -159,9 +159,15 @@ export class EvidenceService {
   async findByExecution(
     tenantId: string,
     executionId: string,
-    options: { page: number; limit: number; stepId?: string },
+    options: {
+      page: number;
+      limit: number;
+      stepId?: string;
+      sourceType?: string;
+      nodeId?: string;
+    },
   ): Promise<PaginatedEvidenceResult> {
-    const { page, limit, stepId } = options;
+    const { page, limit, stepId, sourceType, nodeId } = options;
     const offset = (page - 1) * limit;
 
     const tenantDb = getTenantDb(this.db);
@@ -172,6 +178,36 @@ export class EvidenceService {
 
     if (stepId) {
       conditions.push(eq(evidenceRecords.stepId, stepId));
+    }
+
+    if (sourceType) {
+      conditions.push(eq(evidenceRecords.sourceType, sourceType));
+    }
+
+    if (nodeId) {
+      const matchingSteps = await tenantDb
+        .select({ id: executionSteps.id })
+        .from(executionSteps)
+        .where(
+          and(
+            eq(executionSteps.executionId, executionId),
+            eq(executionSteps.nodeId, nodeId),
+          ),
+        );
+
+      if (matchingSteps.length === 0) {
+        return {
+          data: [],
+          meta: { page, pageSize: limit, total: 0, totalPages: 0 },
+        };
+      }
+
+      conditions.push(
+        inArray(
+          evidenceRecords.stepId,
+          matchingSteps.map((s) => s.id),
+        ),
+      );
     }
 
     const whereClause = and(...conditions);

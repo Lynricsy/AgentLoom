@@ -66,6 +66,29 @@ describe('EvidenceController', () => {
     );
   });
 
+  it('should pass sourceType and nodeId filters to service', async () => {
+    const response = {
+      data: [],
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    };
+    mockService.findByExecution.mockResolvedValue(response);
+
+    await expect(
+      controller.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+        sourceType: 'agent_decision',
+        nodeId: 'node-abc',
+      }),
+    ).resolves.toEqual(response);
+
+    expect(mockService.findByExecution).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      { page: 1, limit: 20, sourceType: 'agent_decision', nodeId: 'node-abc' },
+    );
+  });
+
   it('should return detail data scoped by executionId', async () => {
     const record = { id: EVIDENCE_ID, sourceType: 'rag_retrieval' };
     mockService.findById.mockResolvedValue(record);

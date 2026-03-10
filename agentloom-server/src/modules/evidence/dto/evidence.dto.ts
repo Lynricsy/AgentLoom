@@ -166,6 +166,8 @@ export const QueryEvidenceSchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   stepId: z.string().uuid().optional(),
+  sourceType: EvidenceSourceType.optional(),
+  nodeId: z.string().min(1).optional(),
 });
 
 export class QueryEvidenceDto extends createZodDto(QueryEvidenceSchema) {}

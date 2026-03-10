@@ -411,6 +411,89 @@ describe('EvidenceService', () => {
       });
     });
 
+    it('should filter evidence by sourceType', async () => {
+      const record = {
+        id: GENERATED_ID_1,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        sourceType: 'agent_decision',
+        packet: {
+          ...createRagPacketInput(),
+          evidenceId: GENERATED_ID_1,
+          contentHash: 'a'.repeat(64),
+          timestamp: NOW,
+        },
+        contentHash: 'a'.repeat(64),
+        parentEvidenceId: null,
+        createdAt: NOW,
+      };
+      queueSelectResult('offset', [record]);
+      queueSelectResult('where', [{ total: 1 }]);
+
+      const result = await service.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+        sourceType: 'agent_decision',
+      });
+
+      expect(result.data).toEqual([record]);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('should filter evidence by nodeId via execution_steps lookup', async () => {
+      const record = {
+        id: GENERATED_ID_1,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        sourceType: 'rag_retrieval',
+        packet: {
+          ...createRagPacketInput(),
+          evidenceId: GENERATED_ID_1,
+          contentHash: 'a'.repeat(64),
+          timestamp: NOW,
+        },
+        contentHash: 'a'.repeat(64),
+        parentEvidenceId: null,
+        createdAt: NOW,
+      };
+      // First select: step IDs matching nodeId
+      queueSelectResult('where', [{ id: STEP_ID }]);
+      // Second select: evidence data
+      queueSelectResult('offset', [record]);
+      // Third select: evidence count
+      queueSelectResult('where', [{ total: 1 }]);
+
+      const result = await service.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+        nodeId: NODE_ID,
+      });
+
+      expect(result.data).toEqual([record]);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('should return empty result when nodeId matches no steps', async () => {
+      // Step lookup returns empty
+      queueSelectResult('where', []);
+
+      const result = await service.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+        nodeId: 'nonexistent-node',
+      });
+
+      expect(result.data).toEqual([]);
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+      });
+    });
+
     it('should scope findById by executionId', async () => {
       const record = {
         id: GENERATED_ID_1,

@@ -137,6 +137,8 @@ export interface EvidenceQueryParams {
   page?: number;
   limit?: number;
   stepId?: string;
+  sourceType?: EvidenceSourceType;
+  nodeId?: string;
 }
 
 export interface IntegrityIssue {
