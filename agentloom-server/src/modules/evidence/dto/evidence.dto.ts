@@ -168,6 +168,10 @@ export const QueryEvidenceSchema = z.object({
   stepId: z.string().uuid().optional(),
   sourceType: EvidenceSourceType.optional(),
   nodeId: z.string().min(1).optional(),
+  includeChunkContent: z
+    .preprocess((v) => v === 'true' || v === true, z.boolean())
+    .optional()
+    .default(false),
 });
 
 export class QueryEvidenceDto extends createZodDto(QueryEvidenceSchema) {}

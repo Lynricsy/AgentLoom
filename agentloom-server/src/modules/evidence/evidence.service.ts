@@ -166,9 +166,11 @@ export class EvidenceService {
       stepId?: string;
       sourceType?: EvidenceSourceType;
       nodeId?: string;
+      includeChunkContent?: boolean;
     },
   ): Promise<PaginatedEvidenceResult> {
-    const { page, limit, stepId, sourceType, nodeId } = options;
+    const { page, limit, stepId, sourceType, nodeId, includeChunkContent } =
+      options;
     const offset = (page - 1) * limit;
 
     const tenantDb = getTenantDb(this.db);
@@ -228,7 +230,9 @@ export class EvidenceService {
     ]);
 
     return {
-      data,
+      data: includeChunkContent
+        ? await this.enrichWithChunkContent(tenantDb, data)
+        : data,
       meta: {
         page,
         pageSize: limit,
@@ -236,6 +240,54 @@ export class EvidenceService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  private async enrichWithChunkContent(
+    tenantDb: ReturnType<typeof getTenantDb>,
+    records: EvidenceRecord[],
+  ): Promise<EvidenceRecord[]> {
+    const ragRecords = records.filter(
+      (r) => r.sourceType === 'rag_retrieval',
+    );
+    if (ragRecords.length === 0) return records;
+
+    const chunkIds = ragRecords
+      .map((r) => {
+        const packet = r.packet as { physicalLocation?: { chunkId?: string } };
+        return packet.physicalLocation?.chunkId;
+      })
+      .filter((id): id is string => !!id);
+
+    if (chunkIds.length === 0) return records;
+
+    const uniqueChunkIds = [...new Set(chunkIds)];
+    const chunks = await tenantDb
+      .select({ id: documentChunks.id, content: documentChunks.content })
+      .from(documentChunks)
+      .where(inArray(documentChunks.id, uniqueChunkIds));
+
+    const chunkMap = new Map(chunks.map((c) => [c.id, c.content]));
+
+    return records.map((record) => {
+      if (record.sourceType !== 'rag_retrieval') return record;
+
+      const packet = record.packet as {
+        physicalLocation?: { chunkId?: string };
+      };
+      const chunkId = packet.physicalLocation?.chunkId;
+      if (!chunkId || !chunkMap.has(chunkId)) return record;
+
+      return {
+        ...record,
+        packet: {
+          ...(record.packet as Record<string, unknown>),
+          physicalLocation: {
+            ...packet.physicalLocation,
+            chunkContent: chunkMap.get(chunkId),
+          },
+        },
+      };
+    });
   }
 
   async findById(

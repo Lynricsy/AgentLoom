@@ -757,6 +757,7 @@ describe('EvidenceService', () => {
       expect(QueryEvidenceSchema.parse({})).toEqual({
         page: 1,
         limit: 20,
+        includeChunkContent: false,
       });
     });
   });
