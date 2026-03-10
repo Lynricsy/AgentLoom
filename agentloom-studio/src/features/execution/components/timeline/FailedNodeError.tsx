@@ -2,17 +2,20 @@ import { memo } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import type { ExecutionStepErrorDetail } from '../../types'
 
 interface Rfc7807Error {
   type?: string
   title?: string
   detail?: string
   nodeId?: string
+  message?: string
   [key: string]: unknown
 }
 
 interface FailedNodeErrorProps {
   errorMessage: string | null
+  errorDetail?: ExecutionStepErrorDetail | null
   className?: string
 }
 
@@ -28,21 +31,47 @@ function tryParseRfc7807(error: string): Rfc7807Error | null {
       return parsed as Rfc7807Error
     }
   } catch {
-    /* empty */
+    return null
   }
 
   return null
 }
 
+function resolveStructuredError(
+  errorMessage: string | null,
+  errorDetail?: ExecutionStepErrorDetail | null,
+): Rfc7807Error | null {
+  if (
+    errorDetail &&
+    (errorDetail.title || errorDetail.detail || errorDetail.type || errorDetail.nodeId)
+  ) {
+    return {
+      title: errorDetail.title ?? undefined,
+      detail: errorDetail.detail ?? undefined,
+      type: errorDetail.type ?? undefined,
+      nodeId: errorDetail.nodeId ?? undefined,
+      message: errorDetail.message ?? undefined,
+    }
+  }
+
+  if (!errorMessage) {
+    return null
+  }
+
+  return tryParseRfc7807(errorMessage)
+}
+
 export const FailedNodeError = memo(function FailedNodeError({
   errorMessage,
+  errorDetail,
   className,
 }: FailedNodeErrorProps) {
   if (!errorMessage) {
     return null
   }
 
-  const rfc = tryParseRfc7807(errorMessage)
+  const rfc = resolveStructuredError(errorMessage, errorDetail)
+  const detailText = rfc?.detail ?? rfc?.message
 
   return (
     <div
@@ -60,8 +89,8 @@ export const FailedNodeError = memo(function FailedNodeError({
               <p className="text-sm font-medium text-rose-300">
                 {rfc.title ?? '执行失败'}
               </p>
-              {rfc.detail && (
-                <p className="text-xs text-rose-300/80">{rfc.detail}</p>
+              {detailText && (
+                <p className="text-xs text-rose-300/80">{detailText}</p>
               )}
               {rfc.type && (
                 <p className="text-[11px] text-rose-300/60">

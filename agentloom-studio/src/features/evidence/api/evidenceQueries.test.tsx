@@ -4,12 +4,14 @@ import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  fetchAllEvidenceByExecution,
   fetchEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceChain,
   verifyEvidenceHash,
 } from './evidenceApi';
 import {
+  useAllEvidenceRecords,
   useEvidenceChain,
   useEvidenceDetail,
   useEvidenceList,
@@ -17,6 +19,7 @@ import {
 } from './evidenceQueries';
 
 vi.mock('./evidenceApi', () => ({
+  fetchAllEvidenceByExecution: vi.fn(),
   fetchEvidenceByExecution: vi.fn(),
   fetchEvidenceById: vi.fn(),
   fetchEvidenceChain: vi.fn(),
@@ -75,6 +78,36 @@ describe('evidence queries', () => {
 
       expect(result.current.fetchStatus).toBe('idle');
       expect(fetchEvidenceByExecution).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('useAllEvidenceRecords', () => {
+    it('should fetch all evidence records when executionId is provided', async () => {
+      const response = [{ id: 'ev-1', sourceType: 'rag_retrieval' }];
+      vi.mocked(fetchAllEvidenceByExecution).mockResolvedValue(response as never);
+
+      const { result } = renderHook(
+        () => useAllEvidenceRecords(EXECUTION_ID, { nodeId: 'node-1' }),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(fetchAllEvidenceByExecution).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        { nodeId: 'node-1' },
+      );
+      expect(result.current.data).toEqual(response);
+    });
+
+    it('should not fetch all evidence records when executionId is empty', () => {
+      const { result } = renderHook(
+        () => useAllEvidenceRecords(''),
+        { wrapper: createWrapper() },
+      );
+
+      expect(result.current.fetchStatus).toBe('idle');
+      expect(fetchAllEvidenceByExecution).not.toHaveBeenCalled();
     });
   });
 

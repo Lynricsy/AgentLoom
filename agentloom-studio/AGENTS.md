@@ -76,18 +76,18 @@ src/
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
-- **evidence feature** (`features/evidence/`): `types/index.ts` 使用 discriminated union `EvidencePacket`（`rag_retrieval | agent_decision | tool_output | user_input | intervention`），`EvidenceVerifyResult` 契约为 `{ evidenceId, valid, integrityWarning }`；Story 6.2 额外引入 `EvidencePacketSummary`、`IntegrityIssue`、`ChainIntegrityStatus`、`EvidenceChainNode`、`EvidenceChainResponse`，用于 provenance chain 展示。`evidenceApi.ts` 提供 list/detail/verify/chain 四个 API，其中 `fetchEvidenceChain(executionId, nodeId?)` 对接 `/executions/:executionId/evidence/chain`；`evidenceKeys.ts` 提供 `evidenceKeys.chain(executionId, nodeId?)`；`evidenceQueries.ts` 提供 `useEvidenceList()`、`useEvidenceDetail()`、`useEvidenceVerify()`、`useEvidenceChain()`，其中 verify 采用 lazy query（`enabled: false`，通过 `refetch()` 触发），chain query 使用 `staleTime: 5 * 60 * 1000` 与服务端 Redis TTL 对齐。链节点契约包含 `packetSummary`、`sourceUnavailable`、`sourceModified`、`unavailableReason`、`originalSnapshot`，顶层响应包含 `integrityStatus` 与可选 `cachedAt`。
+- **evidence feature** (`features/evidence/`): `types/index.ts` 使用 discriminated union `EvidencePacket`（`rag_retrieval | agent_decision | tool_output | user_input | intervention`），`EvidenceVerifyResult` 契约为 `{ evidenceId, valid, integrityWarning }`；Story 6.2 额外引入 `EvidencePacketSummary`、`IntegrityIssue`、`ChainIntegrityStatus`、`EvidenceChainNode`、`EvidenceChainResponse`，用于 provenance chain 展示。`evidenceApi.ts` 提供 list/detail/verify/chain API，并新增 `fetchAllEvidenceByExecution(executionId, params?)`：按页循环调用 `/executions/:executionId/evidence`（每页 100）并返回拼平后的 `EvidenceRecord[]`；`evidenceKeys.ts` 额外提供 `evidenceKeys.allRecords(executionId, filters?)`；`evidenceQueries.ts` 提供 `useEvidenceList()`、`useAllEvidenceRecords()`、`useEvidenceDetail()`、`useEvidenceVerify()`、`useEvidenceChain()`，其中 verify 采用 lazy query（`enabled: false`，通过 `refetch()` 触发），chain query 使用 `staleTime: 5 * 60 * 1000` 与服务端 Redis TTL 对齐。链节点契约包含 `packetSummary`、`sourceUnavailable`、`sourceModified`、`unavailableReason`、`originalSnapshot`，顶层响应包含 `integrityStatus` 与可选 `cachedAt`。
 - **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`，空态文案为“还没有执行记录”
 - **执行调试视图** (`features/execution/components/ExecutionDebugView.tsx`): Desktop 三栏（ReadonlyCanvas + ExecutionTimelineVertical + ExecutionNodeDetail）/ Mobile 纵向堆叠，支持节点联动选择；中间栏使用 `useTimelineData` hook 聚合步骤与证据数据，`ExecutionNodeDetail` 读取 server DTO 暴露的真实 `steps[].input`
 - **垂直时间线** (`features/execution/components/timeline/`): 替代旧 `ExecutionTimeline`（Gantt 风格），包含：
   - `ExecutionTimelineVertical`: CSS grid 容器 + `@tanstack/react-virtual` 虚拟滚动 (>50条)，按 `stepOrder` 分组（并行节点并排）
-  - `TimelineEntry`: 可展开条目（失败节点自动展开），包含 `TimelineHeader`、`TimelineDuration`
-  - `TimelineIO`: 折叠摘要 + 展开完整 JSON
-  - `DecisionAnnotation`: agent 决策注解（AutonomyBadge FIXED/LLM_SUGGEST/LLM_DECIDE、ReasoningBlock、AlternativesList、InterventionTag）
+  - `TimelineEntry`: 可展开条目（失败节点自动展开），折叠态也会显示 AutonomyBadge / InterventionTag，包含 `TimelineHeader`、`TimelineDuration`
+  - `TimelineIO`: 折叠摘要（输入预览/输出预览/耗时/重试次数）+ 展开结构化 JSON tree 与 timing meta
+  - `DecisionAnnotation`: agent 决策注解（AutonomyBadge FIXED/LLM_SUGGEST/LLM_DECIDE、通过 `react-markdown` + `skipHtml` 渲染的 ReasoningBlock、AlternativesList、InterventionTag 修改摘要）
   - `OutputLevelBadge`: L1-L4 输出格式等级徽章
   - `EvidenceChips`: 证据计数占位芯片
-  - `FailedNodeError`: RFC 7807 错误展示
-  - `useTimelineData`: 聚合 hook，合并 ExecutionStep[] + evidence records，返回 `TimelineData[]`（含 autonomyMode、outputFormatLevel、evidenceCount）
+  - `FailedNodeError`: RFC 7807 错误展示，优先消费 `errorDetail`，并兼容字符串 / JSON fallback
+  - `useTimelineData`: 聚合 hook，合并 ExecutionStep[] + evidence records；会通过 `useAllEvidenceRecords()` 跨页拉取 evidence、按 step 选择最新 `agent_decision` / `intervention`，并从 `checkpointData` / evidence / `nodeData` fallback 推导 autonomyMode，返回 `TimelineData[]`（含 autonomyMode、outputFormatLevel、evidenceCount）
 - **庆祝效果** (`features/execution/components/CelebrationEffect.tsx`): 基于 `canvas-confetti`，使用 workflow-scoped localStorage key `agentloom:workflow:{workflowId}:first-success-celebrated`，挂载在 `WorkflowCanvasPage`，只在当前会话内同一 execution 从非 `completed` 过渡到 `completed` 时触发
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)

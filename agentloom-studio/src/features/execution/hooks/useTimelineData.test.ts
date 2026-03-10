@@ -5,11 +5,12 @@ import type { ExecutionStep } from '../types'
 import type { EvidenceRecord } from '@/features/evidence'
 
 const mocks = vi.hoisted(() => ({
-  useEvidenceListMock: vi.fn(),
+  useAllEvidenceRecordsMock: vi.fn(),
 }))
 
 vi.mock('@/features/evidence', () => ({
-  useEvidenceList: (...args: unknown[]) => mocks.useEvidenceListMock(...args),
+  useAllEvidenceRecords: (...args: unknown[]) =>
+    mocks.useAllEvidenceRecordsMock(...args),
 }))
 
 function createStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
@@ -60,7 +61,7 @@ function createEvidenceRecord(overrides: Partial<EvidenceRecord> = {}): Evidence
 
 describe('useTimelineData', () => {
   it('返回空数据当 evidence 仍在加载', () => {
-    mocks.useEvidenceListMock.mockReturnValue({
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
       data: undefined,
       isLoading: true,
     })
@@ -82,6 +83,7 @@ describe('useTimelineData', () => {
       id: 'ev-intervention',
       stepId: 'step-1',
       sourceType: 'intervention',
+      createdAt: '2026-01-01T00:00:45Z',
       packet: {
         evidenceId: 'ev-intervention',
         sourceType: 'intervention',
@@ -98,6 +100,7 @@ describe('useTimelineData', () => {
       id: 'ev-tool',
       stepId: 'step-1',
       sourceType: 'tool_output',
+      createdAt: '2026-01-01T00:00:40Z',
       packet: {
         evidenceId: 'ev-tool',
         sourceType: 'tool_output',
@@ -111,13 +114,8 @@ describe('useTimelineData', () => {
       },
     })
 
-    mocks.useEvidenceListMock.mockReturnValue({
-      data: {
-        data: [agentDecisionEvidence, interventionEvidence, toolEvidence],
-        total: 3,
-        page: 1,
-        limit: 200,
-      },
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [agentDecisionEvidence, interventionEvidence, toolEvidence],
       isLoading: false,
     })
 
@@ -134,8 +132,8 @@ describe('useTimelineData', () => {
   })
 
   it('从 checkpointData 读取 autonomyMode', () => {
-    mocks.useEvidenceListMock.mockReturnValue({
-      data: { data: [], total: 0, page: 1, limit: 200 },
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [],
       isLoading: false,
     })
 
@@ -150,8 +148,8 @@ describe('useTimelineData', () => {
   })
 
   it('从 output.meta 读取 outputFormatLevel', () => {
-    mocks.useEvidenceListMock.mockReturnValue({
-      data: { data: [], total: 0, page: 1, limit: 200 },
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [],
       isLoading: false,
     })
 
@@ -184,8 +182,8 @@ describe('useTimelineData', () => {
       },
     })
 
-    mocks.useEvidenceListMock.mockReturnValue({
-      data: { data: [ev1, ev2], total: 2, page: 1, limit: 200 },
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [ev1, ev2],
       isLoading: false,
     })
 
@@ -219,8 +217,8 @@ describe('useTimelineData', () => {
       },
     })
 
-    mocks.useEvidenceListMock.mockReturnValue({
-      data: { data: [ev], total: 1, page: 1, limit: 200 },
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [ev],
       isLoading: false,
     })
 
@@ -228,5 +226,117 @@ describe('useTimelineData', () => {
     const { result } = renderHook(() => useTimelineData('exec-1', steps))
 
     expect(result.current.timelineData[0]!.autonomyMode).toBe('LLM_SUGGEST')
+  })
+
+  it('从 nodeData.autonomyMode 回退', () => {
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+    })
+
+    const steps = [
+      createStep({
+        nodeData: {
+          autonomyMode: 'LLM_DECIDE',
+        },
+      }),
+    ]
+    const { result } = renderHook(() => useTimelineData('exec-1', steps))
+
+    expect(result.current.timelineData[0]!.autonomyMode).toBe('LLM_DECIDE')
+  })
+
+  it('对 agent 节点缺省推断 FIXED autonomyMode', () => {
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+    })
+
+    const { result } = renderHook(() => useTimelineData('exec-1', [createStep()]))
+
+    expect(result.current.timelineData[0]!.autonomyMode).toBe('FIXED')
+  })
+
+  it('选择同一步骤中最新的 agent decision 和 intervention evidence', () => {
+    const olderDecision = createEvidenceRecord({
+      id: 'ev-agent-old',
+      createdAt: '2026-01-01T00:00:10Z',
+      packet: {
+        evidenceId: 'ev-agent-old',
+        sourceType: 'agent_decision',
+        contentHash: 'hash-old',
+        timestamp: '2026-01-01T00:00:10Z',
+        agentDecision: {
+          nodeId: 'node-1',
+          agentName: 'Old Agent',
+          autonomyMode: 'LLM_SUGGEST',
+          reasoning: 'old reasoning',
+          selectedAction: 'old-action',
+        },
+      },
+    })
+    const latestDecision = createEvidenceRecord({
+      id: 'ev-agent-new',
+      createdAt: '2026-01-01T00:00:50Z',
+      packet: {
+        evidenceId: 'ev-agent-new',
+        sourceType: 'agent_decision',
+        contentHash: 'hash-new',
+        timestamp: '2026-01-01T00:00:50Z',
+        agentDecision: {
+          nodeId: 'node-1',
+          agentName: 'New Agent',
+          autonomyMode: 'LLM_DECIDE',
+          reasoning: 'new reasoning',
+          selectedAction: 'new-action',
+        },
+      },
+    })
+    const olderIntervention = createEvidenceRecord({
+      id: 'ev-intervention-old',
+      sourceType: 'intervention',
+      createdAt: '2026-01-01T00:00:20Z',
+      packet: {
+        evidenceId: 'ev-intervention-old',
+        sourceType: 'intervention',
+        contentHash: 'hash-old-int',
+        timestamp: '2026-01-01T00:00:20Z',
+        intervention: {
+          action: 'approve',
+          resolvedAt: '2026-01-01T00:00:21Z',
+          resolvedBy: 'old-user',
+        },
+      },
+    })
+    const latestIntervention = createEvidenceRecord({
+      id: 'ev-intervention-new',
+      sourceType: 'intervention',
+      createdAt: '2026-01-01T00:00:55Z',
+      packet: {
+        evidenceId: 'ev-intervention-new',
+        sourceType: 'intervention',
+        contentHash: 'hash-new-int',
+        timestamp: '2026-01-01T00:00:55Z',
+        intervention: {
+          action: 'modify',
+          resolvedAt: '2026-01-01T00:00:56Z',
+          resolvedBy: 'new-user',
+        },
+      },
+    })
+
+    mocks.useAllEvidenceRecordsMock.mockReturnValue({
+      data: [olderDecision, olderIntervention, latestDecision, latestIntervention],
+      isLoading: false,
+    })
+
+    const { result } = renderHook(() => useTimelineData('exec-1', [createStep()]))
+
+    expect(result.current.timelineData[0]!.agentDecisionEvidence?.id).toBe(
+      'ev-agent-new',
+    )
+    expect(result.current.timelineData[0]!.interventionEvidence?.id).toBe(
+      'ev-intervention-new',
+    )
   })
 })

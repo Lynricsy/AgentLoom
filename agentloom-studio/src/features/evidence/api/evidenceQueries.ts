@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { EvidenceQueryParams } from '../types';
 import {
+  fetchAllEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
@@ -16,6 +17,20 @@ export function useEvidenceList(
   return useQuery({
     queryKey: evidenceKeys.list(executionId, params as Record<string, unknown>),
     queryFn: () => fetchEvidenceByExecution(executionId, params),
+    enabled: !!executionId,
+  });
+}
+
+export function useAllEvidenceRecords(
+  executionId: string,
+  params?: Omit<EvidenceQueryParams, 'page' | 'limit'>,
+) {
+  return useQuery({
+    queryKey: evidenceKeys.allRecords(
+      executionId,
+      params as Record<string, unknown>,
+    ),
+    queryFn: () => fetchAllEvidenceByExecution(executionId, params),
     enabled: !!executionId,
   });
 }

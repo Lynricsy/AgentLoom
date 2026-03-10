@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  fetchAllEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
@@ -56,8 +57,84 @@ describe('evidenceApi', () => {
 
       expect(getMock).toHaveBeenCalledWith(
         `executions/${EXECUTION_ID}/evidence`,
-        { searchParams: { page: '2', limit: '10', stepId: 'step-1' } },
+        {
+          searchParams: {
+            page: '2',
+            limit: '10',
+            stepId: 'step-1',
+          },
+        },
       );
+    });
+
+    it('should pass sourceType and nodeId filters', async () => {
+      const response = { data: [], meta: { page: 1, pageSize: 10, total: 0, totalPages: 0 } };
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(response),
+      });
+
+      await fetchEvidenceByExecution(EXECUTION_ID, {
+        sourceType: 'agent_decision',
+        nodeId: 'node-1',
+      });
+
+      expect(getMock).toHaveBeenCalledWith(
+        `executions/${EXECUTION_ID}/evidence`,
+        {
+          searchParams: {
+            sourceType: 'agent_decision',
+            nodeId: 'node-1',
+          },
+        },
+      );
+    });
+  });
+
+  describe('fetchAllEvidenceByExecution', () => {
+    it('should fetch all pages with max page size', async () => {
+      const page1 = {
+        data: [{ id: 'ev-1' }, { id: 'ev-2' }],
+        meta: { page: 1, pageSize: 100, total: 102, totalPages: 2 },
+      };
+      const page2 = {
+        data: [{ id: 'ev-3' }],
+        meta: { page: 2, pageSize: 100, total: 102, totalPages: 2 },
+      };
+
+      getMock
+        .mockReturnValueOnce({ json: vi.fn().mockResolvedValue(page1) })
+        .mockReturnValueOnce({ json: vi.fn().mockResolvedValue(page2) });
+
+      const result = await fetchAllEvidenceByExecution(EXECUTION_ID, {
+        sourceType: 'tool_output',
+        nodeId: 'node-2',
+      });
+
+      expect(getMock).toHaveBeenNthCalledWith(
+        1,
+        `executions/${EXECUTION_ID}/evidence`,
+        {
+          searchParams: {
+            page: '1',
+            limit: '100',
+            sourceType: 'tool_output',
+            nodeId: 'node-2',
+          },
+        },
+      );
+      expect(getMock).toHaveBeenNthCalledWith(
+        2,
+        `executions/${EXECUTION_ID}/evidence`,
+        {
+          searchParams: {
+            page: '2',
+            limit: '100',
+            sourceType: 'tool_output',
+            nodeId: 'node-2',
+          },
+        },
+      );
+      expect(result).toEqual([...page1.data, ...page2.data]);
     });
   });
 

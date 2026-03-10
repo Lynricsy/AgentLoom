@@ -8,6 +8,8 @@ import type {
   EvidenceVerifyResult,
 } from '../types';
 
+const MAX_EVIDENCE_PAGE_SIZE = 100;
+
 export function fetchEvidenceByExecution(
   executionId: string,
   params?: EvidenceQueryParams,
@@ -23,6 +25,30 @@ export function fetchEvidenceByExecution(
   return apiClient
     .get(`executions/${executionId}/evidence`, { searchParams })
     .json<PaginatedResponse<EvidenceRecord>>();
+}
+
+export async function fetchAllEvidenceByExecution(
+  executionId: string,
+  params?: Omit<EvidenceQueryParams, 'page' | 'limit'>,
+): Promise<EvidenceRecord[]> {
+  const records: EvidenceRecord[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetchEvidenceByExecution(executionId, {
+      ...params,
+      page,
+      limit: MAX_EVIDENCE_PAGE_SIZE,
+    });
+
+    records.push(...response.data);
+
+    if (page >= Math.max(response.meta.totalPages, 1)) {
+      return records;
+    }
+
+    page += 1;
+  }
 }
 
 export function fetchEvidenceById(

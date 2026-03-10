@@ -1,4 +1,7 @@
-import type { ExecutionResponse } from '../api/executionApi'
+import type {
+  ExecutionResponse,
+  ExecutionStepErrorResponse,
+} from '../api/executionApi'
 
 export type {
   ClientToServerEvents,
@@ -54,6 +57,8 @@ export interface ExecutionStepAttempt {
   timestamp: string
 }
 
+export type ExecutionStepErrorDetail = ExecutionStepErrorResponse
+
 export interface ExecutionStep {
   id: string
   executionId: string
@@ -62,8 +67,10 @@ export interface ExecutionStep {
   nodeType: string
   status: ExecutionStepStatus
   input: Record<string, unknown> | null
+  nodeData?: Record<string, unknown> | null
   output: Record<string, unknown> | null
   errorMessage: string | null
+  errorDetail?: ExecutionStepErrorDetail | null
   startedAt: string | null
   completedAt: string | null
   retryCount: number

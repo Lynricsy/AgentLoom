@@ -1,5 +1,11 @@
 import type { ExecutionResponse } from '../api/executionApi'
-import type { ExecutionDetail, ExecutionStep, ExecutionStepAttempt, ExecutionStepStatus } from '../types'
+import type {
+  ExecutionDetail,
+  ExecutionStep,
+  ExecutionStepAttempt,
+  ExecutionStepErrorDetail,
+  ExecutionStepStatus,
+} from '../types'
 
 interface RawExecutionStep {
   id: string
@@ -10,7 +16,7 @@ interface RawExecutionStep {
   nodeData?: Record<string, unknown> | null
   result?: Record<string, unknown> | null
   checkpointData?: Record<string, unknown> | null
-  errorMessage?: string | { message?: string | null } | null
+  errorMessage?: string | ExecutionStepErrorDetail | null
   startedAt?: string | null
   completedAt?: string | null
   stepOrder?: number
@@ -65,11 +71,33 @@ function toErrorMessage(value: RawExecutionStep['errorMessage']): string | null 
     return value
   }
 
-  if (isRecord(value) && typeof value.message === 'string') {
-    return value.message
+  const detail = toErrorDetail(value)
+
+  if (detail) {
+    return detail.detail ?? detail.title ?? detail.message ?? null
   }
 
   return null
+}
+
+function toErrorDetail(
+  value: RawExecutionStep['errorMessage'],
+): ExecutionStepErrorDetail | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const attempts = toRetryHistory(value.attempts)
+
+  return {
+    message: typeof value.message === 'string' ? value.message : null,
+    title: typeof value.title === 'string' ? value.title : null,
+    detail: typeof value.detail === 'string' ? value.detail : null,
+    type: typeof value.type === 'string' ? value.type : null,
+    nodeId: typeof value.nodeId === 'string' ? value.nodeId : null,
+    stack: typeof value.stack === 'string' ? value.stack : undefined,
+    attempts: attempts.length > 0 ? attempts : undefined,
+  }
 }
 
 function toStepStatus(status: RawExecutionStep['status']): ExecutionStepStatus {
@@ -124,6 +152,7 @@ function readNodeMeta(rawStep: RawExecutionStep, graphNodes: GraphNode[]): {
 function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): ExecutionStep {
   const { nodeName, nodeType } = readNodeMeta(rawStep, graphNodes)
   const retryHistory = toRetryHistory(rawStep.checkpointData?.attempts)
+  const errorDetail = toErrorDetail(rawStep.errorMessage)
 
   return {
     id: rawStep.id,
@@ -133,8 +162,10 @@ function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): Exec
     nodeType,
     status: toStepStatus(rawStep.status),
     input: toRecordOrNull(rawStep.input),
+    nodeData: toRecordOrNull(rawStep.nodeData),
     output: toRecordOrNull(rawStep.result),
     errorMessage: toErrorMessage(rawStep.errorMessage),
+    errorDetail,
     startedAt: rawStep.startedAt ?? null,
     completedAt: rawStep.completedAt ?? null,
     retryCount: retryHistory.length,

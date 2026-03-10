@@ -8,7 +8,11 @@ const executionStepAttemptErrorSchema = z.object({
 
 const executionStepErrorMessageSchema = z
   .object({
-    message: z.string(),
+    message: z.string().optional(),
+    title: z.string().optional(),
+    detail: z.string().optional(),
+    type: z.string().optional(),
+    nodeId: z.string().optional(),
     stack: z.string().optional(),
     attempts: z.array(executionStepAttemptErrorSchema).optional(),
   })

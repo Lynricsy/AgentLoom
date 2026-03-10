@@ -2,6 +2,22 @@ import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ExecutionStatus } from '../types'
 
+export interface ExecutionStepAttemptResponse {
+  attempt: number
+  error: string
+  timestamp: string
+}
+
+export interface ExecutionStepErrorResponse {
+  message?: string | null
+  title?: string | null
+  detail?: string | null
+  type?: string | null
+  nodeId?: string | null
+  stack?: string
+  attempts?: ExecutionStepAttemptResponse[]
+}
+
 /** 服务端执行记录响应（经 snake→camel 自动转换后） */
 export interface ExecutionStepResponse {
   id: string
@@ -23,7 +39,7 @@ export interface ExecutionStepResponse {
   nodeData?: Record<string, unknown> | null
   result?: Record<string, unknown> | null
   checkpointData?: Record<string, unknown> | null
-  errorMessage?: string | { message?: string | null } | null
+  errorMessage?: string | ExecutionStepErrorResponse | null
   startedAt?: string | null
   completedAt?: string | null
   createdAt: string

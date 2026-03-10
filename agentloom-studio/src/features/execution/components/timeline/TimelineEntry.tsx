@@ -82,6 +82,17 @@ export const TimelineEntry = memo(function TimelineEntry({
         </div>
       </button>
 
+      {(autonomyMode || interventionEvidence) && (
+        <div className={cn('px-4', expanded ? 'pb-2' : 'pb-3')}>
+          <DecisionAnnotation
+            autonomyMode={autonomyMode}
+            agentDecisionEvidence={agentDecisionEvidence}
+            interventionEvidence={interventionEvidence}
+            showDetails={expanded}
+          />
+        </div>
+      )}
+
       {expanded && (
         <div className="space-y-2 px-4 pb-3">
           <TimelineIO
@@ -92,13 +103,12 @@ export const TimelineEntry = memo(function TimelineEntry({
             retryCount={step.retryCount}
           />
 
-          <DecisionAnnotation
-            autonomyMode={autonomyMode}
-            agentDecisionEvidence={agentDecisionEvidence}
-            interventionEvidence={interventionEvidence}
-          />
-
-          {isFailed && <FailedNodeError errorMessage={step.errorMessage} />}
+          {isFailed && (
+            <FailedNodeError
+              errorMessage={step.errorMessage}
+              errorDetail={step.errorDetail}
+            />
+          )}
         </div>
       )}
     </div>

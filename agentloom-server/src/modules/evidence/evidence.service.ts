@@ -28,6 +28,7 @@ import type {
   EvidenceChainResponse,
   EvidencePacketDto,
   EvidencePacketInputDto,
+  EvidenceSourceType,
   IntegrityIssue,
 } from './dto/evidence.dto';
 import {
@@ -163,7 +164,7 @@ export class EvidenceService {
       page: number;
       limit: number;
       stepId?: string;
-      sourceType?: string;
+      sourceType?: EvidenceSourceType;
       nodeId?: string;
     },
   ): Promise<PaginatedEvidenceResult> {

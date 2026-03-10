@@ -23,6 +23,26 @@ describe('FailedNodeError', () => {
     expect(error).toHaveTextContent('Connection timed out')
   })
 
+  it('优先使用结构化 errorDetail 渲染 RFC 7807 字段', () => {
+    render(
+      <FailedNodeError
+        errorMessage="fallback message"
+        errorDetail={{
+          title: 'Structured Rate Limit',
+          detail: 'Structured detail',
+          type: 'https://api.example.com/errors/structured-rate-limit',
+          nodeId: 'node-2',
+        }}
+      />,
+    )
+
+    const error = screen.getByTestId('failed-node-error')
+    expect(error).toHaveTextContent('Structured Rate Limit')
+    expect(error).toHaveTextContent('Structured detail')
+    expect(error).toHaveTextContent('https://api.example.com/errors/structured-rate-limit')
+    expect(error).toHaveTextContent('node-2')
+  })
+
   it('RFC 7807 缺少 title 时使用默认标题', () => {
     const rfc7807 = JSON.stringify({
       detail: 'Something went wrong',

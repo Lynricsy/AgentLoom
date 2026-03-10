@@ -18,7 +18,9 @@ vi.mock('./TimelineIO', () => ({
 }))
 
 vi.mock('./DecisionAnnotation', () => ({
-  DecisionAnnotation: () => <div data-testid="mock-decision-annotation" />,
+  DecisionAnnotation: ({ showDetails }: { showDetails?: boolean }) => (
+    <div data-testid="mock-decision-annotation">{showDetails ? 'expanded' : 'collapsed'}</div>
+  ),
 }))
 
 vi.mock('./OutputLevelBadge', () => ({
@@ -48,12 +50,14 @@ function createTimelineData(overrides: Partial<TimelineData> = {}): TimelineData
       nodeName: 'Test Node',
       nodeType: 'llm-agent',
       status: 'completed',
-      input: { prompt: 'hello' },
-      output: { response: 'world' },
-      errorMessage: null,
-      startedAt: '2026-01-01T00:00:00Z',
-      completedAt: '2026-01-01T00:01:00Z',
-      retryCount: 0,
+        input: { prompt: 'hello' },
+        nodeData: null,
+        output: { response: 'world' },
+        errorMessage: null,
+        errorDetail: null,
+        startedAt: '2026-01-01T00:00:00Z',
+        completedAt: '2026-01-01T00:01:00Z',
+        retryCount: 0,
     },
     agentDecisionEvidence: undefined,
     interventionEvidence: undefined,
@@ -113,8 +117,10 @@ describe('TimelineEntry', () => {
         nodeType: 'http-tool',
         status: 'failed',
         input: null,
+        nodeData: null,
         output: null,
         errorMessage: 'Connection refused',
+        errorDetail: null,
         startedAt: '2026-01-01T00:00:00Z',
         completedAt: '2026-01-01T00:00:30Z',
         retryCount: 0,
@@ -143,6 +149,28 @@ describe('TimelineEntry', () => {
     )
     const entry = screen.getByTestId('timeline-entry-step-1')
     expect(entry.className).toContain('border-primary')
+  })
+
+  it('默认显示决策标注容器，展开后显示详细内容', () => {
+    const data = createTimelineData({ autonomyMode: 'FIXED' })
+    render(
+      <TimelineEntry
+        data={data}
+        isSelected={false}
+        onSelect={vi.fn()}
+        {...defaultProps}
+      />,
+    )
+
+    expect(screen.getByTestId('mock-decision-annotation')).toHaveTextContent(
+      'collapsed',
+    )
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(screen.getByTestId('mock-decision-annotation')).toHaveTextContent(
+      'expanded',
+    )
   })
 
   it('渲染 OutputLevelBadge 和 EvidenceChips', () => {

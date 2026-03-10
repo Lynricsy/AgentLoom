@@ -30,7 +30,7 @@ function createAgentDecisionEvidence(
         reasoning: 'The model chose action A because of X',
         selectedAction: 'action-a',
         alternatives: ['action-b', 'action-c'],
-        confidence: 92,
+        confidence: 0.92,
       },
     },
     contentHash: 'hash-1',
@@ -58,6 +58,10 @@ function createInterventionEvidence(
         resolvedAt: '2026-01-01T00:01:00Z',
         resolvedBy: 'user-admin',
         feedback: action === 'reject' ? 'Not appropriate' : undefined,
+        modifiedContent:
+          action === 'modify'
+            ? '将答案改为更保守的表述，并补充风险提示。'
+            : undefined,
       },
     },
     contentHash: 'hash-2',
@@ -101,6 +105,18 @@ describe('ReasoningBlock', () => {
   it('无推理内容不渲染', () => {
     const { container } = render(<ReasoningBlock reasoning={undefined} />)
     expect(container.firstChild).toBeNull()
+  })
+
+  it('按 markdown 渲染标题、列表与代码', () => {
+    render(
+      <ReasoningBlock
+        reasoning={['## 结论', '', '- 选择方案 A', '', '`tool.run()`'].join('\n')}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: '结论' })).toBeInTheDocument()
+    expect(screen.getByRole('list')).toHaveTextContent('选择方案 A')
+    expect(screen.getByText('tool.run()')).toBeInTheDocument()
   })
 })
 
@@ -146,6 +162,9 @@ describe('InterventionTag', () => {
     const evidence = createInterventionEvidence('modify')
     render(<InterventionTag evidence={evidence} />)
     expect(screen.getByTestId('intervention-tag')).toHaveTextContent('已修改')
+    expect(screen.getByTestId('intervention-modified-content')).toHaveTextContent(
+      '将答案改为更保守的表述，并补充风险提示。',
+    )
   })
 
   it('渲染 reject 干预标签及反馈', () => {
@@ -207,6 +226,22 @@ describe('DecisionAnnotation', () => {
       />,
     )
     expect(screen.getByTestId('intervention-tag')).toBeInTheDocument()
+  })
+
+  it('折叠状态仅渲染 badge 与干预标签', () => {
+    const agentEvidence = createAgentDecisionEvidence()
+    render(
+      <DecisionAnnotation
+        autonomyMode="LLM_DECIDE"
+        agentDecisionEvidence={agentEvidence}
+        interventionEvidence={undefined}
+        showDetails={false}
+      />,
+    )
+
+    expect(screen.getByTestId('autonomy-badge-LLM_DECIDE')).toBeInTheDocument()
+    expect(screen.queryByTestId('reasoning-block')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('alternatives-list')).not.toBeInTheDocument()
   })
 
   it('无 autonomyMode 和无干预 evidence 时不渲染', () => {

@@ -16,6 +16,7 @@ export type {
 } from './types';
 
 export {
+  fetchAllEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
@@ -25,6 +26,7 @@ export {
 export { evidenceKeys } from './api/evidenceKeys';
 
 export {
+  useAllEvidenceRecords,
   useEvidenceChain,
   useEvidenceDetail,
   useEvidenceList,
