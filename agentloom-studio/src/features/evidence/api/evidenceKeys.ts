@@ -11,4 +11,6 @@ export const evidenceKeys = {
   chains: () => [...evidenceKeys.all, 'chain'] as const,
   chain: (executionId: string, nodeId?: string) =>
     [...evidenceKeys.chains(), executionId, nodeId] as const,
+  documentContent: (knowledgeBaseId: string, documentId: string) =>
+    [...evidenceKeys.all, 'document-content', knowledgeBaseId, documentId] as const,
 };

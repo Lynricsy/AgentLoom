@@ -139,6 +139,7 @@ export interface EvidenceQueryParams {
   stepId?: string;
   sourceType?: EvidenceSourceType;
   nodeId?: string;
+  includeChunkContent?: boolean;
 }
 
 export interface IntegrityIssue {

@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { EvidenceQueryParams } from '../types';
 import {
+  fetchDocumentContent,
+} from './documentApi';
+import {
   fetchAllEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceByExecution,
@@ -65,6 +68,18 @@ export function useEvidenceChain(
     queryKey: evidenceKeys.chain(executionId, nodeId),
     queryFn: () => fetchEvidenceChain(executionId, nodeId),
     enabled: !!executionId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDocumentContent(
+  knowledgeBaseId: string | undefined,
+  documentId: string | undefined,
+) {
+  return useQuery({
+    queryKey: evidenceKeys.documentContent(knowledgeBaseId!, documentId!),
+    queryFn: () => fetchDocumentContent(knowledgeBaseId!, documentId!),
+    enabled: !!knowledgeBaseId && !!documentId,
     staleTime: 5 * 60 * 1000,
   });
 }

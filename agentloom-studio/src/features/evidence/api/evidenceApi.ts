@@ -21,6 +21,8 @@ export function fetchEvidenceByExecution(
   if (params?.stepId) searchParams.stepId = params.stepId;
   if (params?.sourceType) searchParams.sourceType = params.sourceType;
   if (params?.nodeId) searchParams.nodeId = params.nodeId;
+  if (params?.includeChunkContent)
+    searchParams.includeChunkContent = 'true';
 
   return apiClient
     .get(`executions/${executionId}/evidence`, { searchParams })

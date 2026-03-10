@@ -23,12 +23,26 @@ export {
   verifyEvidenceHash,
 } from './api/evidenceApi';
 
+export { fetchDocumentContent } from './api/documentApi';
+export type { DocumentContentResult } from './api/documentApi';
+
 export { evidenceKeys } from './api/evidenceKeys';
 
 export {
   useAllEvidenceRecords,
+  useDocumentContent,
   useEvidenceChain,
   useEvidenceDetail,
   useEvidenceList,
   useEvidenceVerify,
 } from './api/evidenceQueries';
+
+export {
+  useEvidenceUiActions,
+  useEvidenceUiDocumentViewer,
+  useEvidenceUiExecutionId,
+  useEvidenceUiIsOpen,
+  useEvidenceUiSelectedId,
+  useEvidenceUiStore,
+} from './stores/evidenceUiStore';
+export type { DocumentViewerState } from './stores/evidenceUiStore';
