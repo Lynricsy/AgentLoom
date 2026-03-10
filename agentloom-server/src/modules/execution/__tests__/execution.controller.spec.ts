@@ -12,6 +12,7 @@ const USER_ID = '019391d4-b000-7000-0000-000000000002';
 const WORKFLOW_ID = '019391d4-c000-7000-0000-000000000003';
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const STEP_ID = '019391d4-f000-7000-0000-000000000006';
+const TOOL_CALL_ID = '019391d4-a100-7000-0000-000000000007';
 
 const mockExecution = {
   id: EXECUTION_ID,
@@ -44,6 +45,7 @@ const mockService: Record<string, ReturnType<typeof vi.fn>> = {
 
 const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
   resolveIntervention: vi.fn(),
+  resolveToolPermission: vi.fn(),
   resumeScheduling: vi.fn(),
 };
 
@@ -276,6 +278,64 @@ describe('ExecutionController', () => {
         TENANT_ID,
         USER_ID,
         resolution,
+      );
+    });
+  });
+
+  describe('resolveToolPermission', () => {
+    it('应调用 resolveToolPermission 并返回 202 数据 (approve)', async () => {
+      mockNodeScheduler.resolveToolPermission.mockResolvedValue(undefined);
+
+      const result = await controller.resolveToolPermission(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        { action: 'approve' as const },
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          toolCallId: TOOL_CALL_ID,
+          status: 'permission_resolved',
+        },
+      });
+      expect(mockNodeScheduler.resolveToolPermission).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        TENANT_ID,
+        { toolCallId: TOOL_CALL_ID, action: 'approve' },
+      );
+    });
+
+    it('应调用 resolveToolPermission 并返回 202 数据 (deny)', async () => {
+      mockNodeScheduler.resolveToolPermission.mockResolvedValue(undefined);
+
+      const result = await controller.resolveToolPermission(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        { action: 'deny' as const },
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          toolCallId: TOOL_CALL_ID,
+          status: 'permission_resolved',
+        },
+      });
+      expect(mockNodeScheduler.resolveToolPermission).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        TENANT_ID,
+        { toolCallId: TOOL_CALL_ID, action: 'deny' },
       );
     });
   });

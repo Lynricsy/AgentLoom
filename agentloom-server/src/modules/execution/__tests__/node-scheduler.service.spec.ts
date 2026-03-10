@@ -7,12 +7,18 @@ import { NodeSchedulerService } from '../node-scheduler.service';
 import { DagResolverService } from '../dag-resolver.service';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { EventBridgeService } from '../services/event-bridge.service';
-import { AGENT_TASK_QUEUE, type InterventionResolution } from '../execution.constants';
+import {
+  AGENT_TASK_QUEUE,
+  type InterventionResolution,
+  type ToolPermissionResolution,
+} from '../execution.constants';
 import {
   AgentExecutionException,
   InvalidStepTransitionException,
   InterventionNotAllowedException,
   NodeInputResolutionException,
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
 } from '../execution.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
@@ -139,6 +145,7 @@ describe('NodeSchedulerService', () => {
   };
   let mockEventBridge: {
     emitInterventionResolved: ReturnType<typeof vi.fn>;
+    emitToolPermissionResolved: ReturnType<typeof vi.fn>;
   };
 
   beforeAll(() => {
@@ -184,6 +191,7 @@ describe('NodeSchedulerService', () => {
     };
     mockEventBridge = {
       emitInterventionResolved: vi.fn(),
+      emitToolPermissionResolved: vi.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -980,6 +988,239 @@ describe('NodeSchedulerService', () => {
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveToolPermission', () => {
+    const STEP_ID = '0195a1c0-0000-7000-8000-000000000010';
+    const TOOL_CALL_ID = '0195a1c0-0000-7000-8000-000000000011';
+    const SESSION_ID = 'session-tool-permission-001';
+
+    it('approve：会校验 waiting_intervention，并把 toolPermission 入队', async () => {
+      const checkpoint = {
+        sessionId: SESSION_ID,
+        toolCalls: [
+          {
+            id: TOOL_CALL_ID,
+            status: 'awaiting_permission',
+          },
+        ],
+      };
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        input: { upstream: { draft: 'hello' } },
+        nodeData: { agentId: 'agent-001' },
+        checkpointData: checkpoint,
+      });
+      const resolution: ToolPermissionResolution = {
+        toolCallId: TOOL_CALL_ID,
+        action: 'approve',
+      };
+
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await service.resolveToolPermission(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        TENANT_ID,
+        resolution,
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'running',
+        { checkpointData: checkpoint },
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+      expect(mockEventBridge.emitToolPermissionResolved).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: STEP_ID,
+          nodeId: step.nodeId,
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        },
+      );
+      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        input: { upstream: { draft: 'hello' } },
+        nodeData: { agentId: 'agent-001' },
+        resumeSessionId: SESSION_ID,
+        toolPermission: resolution,
+      });
+    });
+
+    it('deny：会校验 waiting_intervention，并把 toolPermission 入队', async () => {
+      const checkpoint = {
+        sessionId: SESSION_ID,
+        toolCalls: [
+          {
+            id: TOOL_CALL_ID,
+            status: 'awaiting_permission',
+          },
+        ],
+      };
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: checkpoint,
+      });
+      const resolution: ToolPermissionResolution = {
+        toolCallId: TOOL_CALL_ID,
+        action: 'deny',
+      };
+
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await service.resolveToolPermission(
+        EXECUTION_ID,
+        STEP_ID,
+        TOOL_CALL_ID,
+        TENANT_ID,
+        resolution,
+      );
+
+      expect(mockEventBridge.emitToolPermissionResolved).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: STEP_ID,
+          nodeId: step.nodeId,
+          toolCallId: TOOL_CALL_ID,
+          action: 'deny',
+        },
+      );
+      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        input: {},
+        nodeData: {},
+        resumeSessionId: SESSION_ID,
+        toolPermission: resolution,
+      });
+    });
+
+    it('步骤不存在时抛出 AgentExecutionException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(AgentExecutionException);
+    });
+
+    it('step 不属于 execution 时抛出 AgentExecutionException', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          makeStep({
+            id: STEP_ID,
+            executionId: '0195a1c0-0000-7000-8000-000000009999',
+            status: 'waiting_intervention',
+            checkpointData: { sessionId: SESSION_ID },
+          }),
+        ]),
+      );
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(AgentExecutionException);
+
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
+    });
+
+    it('步骤不在 waiting_intervention 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([makeStep({ id: STEP_ID, status: 'running' })]),
+      );
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
+    });
+
+    it('检查点找不到 tool call 时抛出 ToolCallNotFoundException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          toolCalls: [],
+        },
+      });
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(ToolCallNotFoundException);
+    });
+
+    it('tool call 不在 awaiting_permission 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          toolCalls: [
+            {
+              id: TOOL_CALL_ID,
+              status: 'completed',
+            },
+          ],
+        },
+      });
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
+    });
+
+    it('检查点缺少 sessionId 时抛出 AgentExecutionException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          toolCalls: [
+            {
+              id: TOOL_CALL_ID,
+              status: 'awaiting_permission',
+            },
+          ],
+        },
+      });
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await expect(
+        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        }),
+      ).rejects.toThrow(AgentExecutionException);
     });
   });
 
