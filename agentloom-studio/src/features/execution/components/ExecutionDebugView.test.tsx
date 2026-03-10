@@ -25,8 +25,12 @@ vi.mock('./ReadonlyCanvas', () => ({
   ),
 }))
 
-vi.mock('./ExecutionTimeline', () => ({
-  ExecutionTimeline: ({ selectedNodeId, onSelectNode }: { selectedNodeId: string | null; onSelectNode: (nodeId: string) => void }) => (
+vi.mock('../hooks/useTimelineData', () => ({
+  useTimelineData: () => ({ timelineData: [], isLoading: false }),
+}))
+
+vi.mock('./timeline', () => ({
+  ExecutionTimelineVertical: ({ selectedNodeId, onSelectNode }: { selectedNodeId: string | null; onSelectNode: (nodeId: string) => void }) => (
     <div data-testid="mock-execution-timeline">
       <div data-testid="mock-timeline-selected">{selectedNodeId ?? 'none'}</div>
       <button type="button" onClick={() => onSelectNode('node-2')}>select node 2</button>
