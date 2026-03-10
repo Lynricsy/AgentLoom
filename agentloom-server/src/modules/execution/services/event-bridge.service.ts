@@ -20,6 +20,9 @@ import {
   type OutputChunkPayload,
   type InterventionRequiredPayload,
   type InterventionResolvedPayload,
+  type ToolCallStatusPayload,
+  type ToolPermissionRequiredPayload,
+  type ToolPermissionResolvedPayload,
   type LegacyEventName,
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
@@ -177,6 +180,51 @@ export class EventBridgeService implements OnModuleDestroy {
   ): ExecutionEvent<typeof ExecutionEventName.NODE_INTERVENTION_RESOLVED> {
     const envelope = this.createEnvelope(
       ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  emitToolCallStatus(
+    tenantId: string,
+    executionId: string,
+    payload: ToolCallStatusPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_CALL_STATUS> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.NODE_TOOL_CALL_STATUS,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  emitToolPermissionRequired(
+    tenantId: string,
+    executionId: string,
+    payload: ToolPermissionRequiredPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  emitToolPermissionResolved(
+    tenantId: string,
+    executionId: string,
+    payload: ToolPermissionResolvedPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
       tenantId,
       executionId,
       payload,

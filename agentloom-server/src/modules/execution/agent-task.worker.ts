@@ -19,21 +19,29 @@ import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { ThrottleService } from './services/throttle.service';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
+import { SessionPersistenceService } from './services/session-persistence.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
 } from './execution.exceptions';
 import type {
   InterventionCheckpointRecord,
   InterventionDecision,
   InterventionRequiredPayload,
 } from './types/execution-event.types';
+import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import {
   AGENT_TASK_QUEUE,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
+  type ToolPermissionResolution,
 } from './execution.constants';
+
+const MAX_TOOL_CALL_ROUNDS = 10;
 
 const isExecutionStepAttemptError = (
   value: unknown,
@@ -60,6 +68,8 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly nodeScheduler: NodeSchedulerService,
     private readonly throttleService: ThrottleService,
     private readonly eventBridge: EventBridgeService,
+    private readonly toolCallStateMachine: ToolCallStateMachineService,
+    private readonly sessionPersistence: SessionPersistenceService,
   ) {
     super();
   }
@@ -80,6 +90,7 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       resumeSessionId,
       intervention,
+      toolPermission,
       hasSandbox,
     } = job.data;
     this.logger.log(`Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`);
@@ -139,58 +150,93 @@ export class AgentTaskWorker extends WorkerHost {
         return;
       }
 
-      await this.withTenantContext(tenantId, async () => {
-        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running');
-      });
-
-      if (!sessionId) {
-        const session = await runtime.createSession({
-          agentId: nodeData.agentId as string,
-          mode: 'workflow',
-          tenantId,
-          llmModelConfigId:
-            typeof nodeData.llmModelConfigId === 'string'
-              ? nodeData.llmModelConfigId
-              : undefined,
-          systemPrompt:
-            typeof nodeData.systemPrompt === 'string'
-              ? nodeData.systemPrompt
-              : undefined,
-          autonomyMode:
-            typeof nodeData.autonomyMode === 'string'
-              ? nodeData.autonomyMode
-              : undefined,
-          context: workflowContext,
-        });
-        sessionId = session.id;
-      }
-
-      const contentBlocks = this.buildContentBlocks(input);
-
-      for await (const event of runtime.prompt(sessionId, contentBlocks)) {
-        if (event.type === 'message_chunk') {
-          accumulatedContent += event.content;
-          this.throttleService.bufferOutputChunk(
-            `${tenantId}:${executionId}`,
+      if (toolPermission) {
+        accumulatedContent = this.loadPartialContentFromCheckpoint(step);
+        const contentBlocks = await this.resolveToolPermissionAndBuildBlocks({
+            executionId,
             stepId,
-            event.content,
-            chunkIndex++,
-          );
-        } else {
-          this.stepStateMachine.broadcastAgentEvent(tenantId, executionId, stepId, event);
+            tenantId,
+            step,
+            toolPermission,
+            nodeId: step.nodeId,
+          }),
+        );
+        const loopResult = await this.executeMultiTurnLoop({
+          runtime,
+          sessionId: sessionId!,
+          initialContentBlocks: contentBlocks,
+          executionId,
+          stepId,
+          tenantId,
+          nodeId: step.nodeId,
+          nodeData,
+          accumulatedContent,
+          decision,
+          chunkIndex,
+        });
 
-          if (event.type === 'decision') {
-            decision = {
-              suggestedContent: event.suggestedContent,
-              ...(typeof event.confidence === 'number'
-                ? { confidence: event.confidence }
-                : {}),
-              ...(event.rationale ? { rationale: event.rationale } : {}),
-            };
-          } else if (event.type === 'done') {
-            lastStopReason = event.stopReason;
-          }
+        if (loopResult.waitingPermission) {
+          this.logger.log(
+            `Agent task awaiting tool permission: ${JSON.stringify({ executionId, stepId })}`,
+          );
+          return;
         }
+
+        accumulatedContent = loopResult.accumulatedContent;
+        lastStopReason = loopResult.lastStopReason;
+        decision = loopResult.decision;
+      } else {
+        await this.withTenantContext(tenantId, async () => {
+          await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running');
+        });
+
+        if (!sessionId) {
+          const session = await runtime.createSession({
+            agentId: nodeData.agentId as string,
+            mode: 'workflow',
+            tenantId,
+            llmModelConfigId:
+              typeof nodeData.llmModelConfigId === 'string'
+                ? nodeData.llmModelConfigId
+                : undefined,
+            systemPrompt:
+              typeof nodeData.systemPrompt === 'string'
+                ? nodeData.systemPrompt
+                : undefined,
+            autonomyMode:
+              typeof nodeData.autonomyMode === 'string'
+                ? nodeData.autonomyMode
+                : undefined,
+            context: workflowContext,
+          });
+          sessionId = session.id;
+        }
+
+        const initialContentBlocks = this.buildContentBlocks(input);
+        const loopResult = await this.executeMultiTurnLoop({
+          runtime,
+          sessionId: sessionId!,
+          initialContentBlocks,
+          executionId,
+          stepId,
+          tenantId,
+          nodeId: step.nodeId,
+          nodeData,
+          accumulatedContent,
+          decision,
+          chunkIndex,
+        });
+
+        if (loopResult.waitingPermission) {
+          this.logger.log(
+            `Agent task awaiting tool permission: ${JSON.stringify({ executionId, stepId })}`,
+          );
+          return;
+        }
+
+        accumulatedContent = loopResult.accumulatedContent;
+        lastStopReason = loopResult.lastStopReason;
+        decision = loopResult.decision;
       }
 
       if (lastStopReason === 'intervention_required') {
