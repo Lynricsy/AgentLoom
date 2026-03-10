@@ -1016,7 +1016,7 @@ describe('AgentTaskWorker', () => {
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          {
+          expect.objectContaining({
             stepId: STEP_ID,
             nodeId: 'node-1',
             toolCallId: 'tc-1',
@@ -1025,7 +1025,15 @@ describe('AgentTaskWorker', () => {
             args: { q: 'test' },
             result: undefined,
             error: undefined,
-          },
+            transitions: [
+              expect.objectContaining({
+                from: 'awaiting_permission',
+                to: 'in_progress',
+                source: 'user',
+                timestamp: expect.any(String),
+              }),
+            ],
+          }),
         );
         expect(updateChain.set).toHaveBeenCalledWith({
           checkpointData: {
@@ -1110,7 +1118,7 @@ describe('AgentTaskWorker', () => {
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          {
+          expect.objectContaining({
             stepId: STEP_ID,
             nodeId: 'node-1',
             toolCallId: 'tc-1',
@@ -1119,7 +1127,15 @@ describe('AgentTaskWorker', () => {
             args: { q: 'test' },
             result: undefined,
             error: undefined,
-          },
+            transitions: [
+              expect.objectContaining({
+                from: 'awaiting_permission',
+                to: 'denied',
+                source: 'user',
+                timestamp: expect.any(String),
+              }),
+            ],
+          }),
         );
         expect(updateChain.set).toHaveBeenCalledWith({
           checkpointData: {
@@ -1284,26 +1300,46 @@ describe('AgentTaskWorker', () => {
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          {
+          expect.objectContaining({
             stepId: STEP_ID,
             nodeId: 'node-1',
             toolCallId: 'tc-1',
             tool: 'search',
             status: 'pending',
             args: { q: 'test' },
-          },
+            transitions: [
+              expect.objectContaining({
+                to: 'pending',
+                source: 'runtime',
+                timestamp: expect.any(String),
+              }),
+            ],
+          }),
         );
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          {
+          expect.objectContaining({
             stepId: STEP_ID,
             nodeId: 'node-1',
             toolCallId: 'tc-1',
             tool: 'search',
             status: 'in_progress',
             args: { q: 'test' },
-          },
+            transitions: [
+              expect.objectContaining({
+                to: 'pending',
+                source: 'runtime',
+                timestamp: expect.any(String),
+              }),
+              expect.objectContaining({
+                from: 'pending',
+                to: 'in_progress',
+                source: 'worker',
+                timestamp: expect.any(String),
+              }),
+            ],
+          }),
         );
         expect(updateChain.set).toHaveBeenLastCalledWith({
           checkpointData: expect.objectContaining({

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  foreignKey,
   index,
   jsonb,
   pgEnum,
@@ -35,6 +36,7 @@ export interface AgentDecision {
   nodeId: string;
   agentName: string;
   autonomyMode: string;
+  suggestedContent?: unknown;
   reasoning: string;
   selectedAction: string;
   alternatives?: string[];
@@ -42,32 +44,88 @@ export interface AgentDecision {
 }
 
 export interface ToolOutput {
+  toolCallId?: string;
   toolName: string;
   toolInput: unknown;
   toolOutput: unknown;
+  transitions?: Array<{
+    from?: string;
+    to: string;
+    source: string;
+    timestamp: string;
+  }>;
 }
 
-export interface EvidencePacket {
-  evidenceId: string;
-  sourceType: string;
-  physicalLocation?: PhysicalLocation;
-  semanticLocation?: SemanticLocation;
-  agentDecision?: AgentDecision;
-  toolOutput?: ToolOutput;
-  contentHash: string;
-  timestamp: string;
-  parentEvidenceId?: string;
+export interface UserInput {
+  content: unknown;
 }
 
-// -- Enum --
+export interface InterventionPayload {
+  action: 'approve' | 'modify' | 'reject';
+  feedback?: string;
+  modifiedContent?: unknown;
+  requestedAt?: string;
+  resolvedAt: string;
+  resolvedBy: string;
+  timeout?: boolean;
+}
 
-export const evidenceSourceTypeEnum = pgEnum('evidence_source_type', [
+export const evidenceSourceTypes = [
   'rag_retrieval',
   'agent_decision',
   'tool_output',
   'user_input',
   'intervention',
-]);
+] as const;
+
+export type EvidenceSourceType = (typeof evidenceSourceTypes)[number];
+
+interface BaseEvidencePacket {
+  evidenceId: string;
+  sourceType: EvidenceSourceType;
+  contentHash: string;
+  timestamp: string;
+  parentEvidenceId?: string;
+}
+
+export interface RagRetrievalEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'rag_retrieval';
+  physicalLocation?: PhysicalLocation;
+  semanticLocation?: SemanticLocation;
+  retrievedContent: string;
+}
+
+export interface AgentDecisionEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'agent_decision';
+  agentDecision: AgentDecision;
+}
+
+export interface ToolOutputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'tool_output';
+  toolOutput: ToolOutput;
+}
+
+export interface UserInputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'user_input';
+  userInput: UserInput;
+}
+
+export interface InterventionEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'intervention';
+  intervention: InterventionPayload;
+}
+
+export type EvidencePacket =
+  | RagRetrievalEvidencePacket
+  | AgentDecisionEvidencePacket
+  | ToolOutputEvidencePacket
+  | UserInputEvidencePacket
+  | InterventionEvidencePacket;
+
+export const evidenceSourceTypeEnum = pgEnum(
+  'evidence_source_type',
+  evidenceSourceTypes,
+);
 
 // -- Table --
 
@@ -93,6 +151,11 @@ export const evidenceRecords = pgTable(
       .defaultNow(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.parentEvidenceId],
+      foreignColumns: [table.id],
+      name: 'evidence_records_parent_evidence_id_fkey',
+    }).onDelete('set null'),
     index('idx_evidence_execution_step').on(table.executionId, table.stepId),
     index('idx_evidence_packet_gin').using('gin', table.packet),
     index('idx_evidence_parent').on(table.parentEvidenceId),

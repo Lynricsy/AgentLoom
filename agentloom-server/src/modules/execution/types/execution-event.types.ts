@@ -52,6 +52,9 @@ export interface OutputChunkPayload {
 
 export interface InterventionDecision {
   readonly suggestedContent?: unknown;
+  readonly autonomyMode?: string;
+  readonly selectedAction?: string;
+  readonly alternatives?: readonly string[];
   readonly confidence?: number;
   readonly rationale?: string;
 }
@@ -79,6 +82,7 @@ export interface InterventionResolvedPayload {
   readonly nodeId: string;
   readonly action: 'approve' | 'modify' | 'reject';
   readonly feedback?: string;
+  readonly modifiedContent?: unknown;
   readonly resolvedBy: string;
   readonly resolvedAt: string;
   readonly timeout?: boolean;
@@ -93,6 +97,12 @@ export interface ToolCallStatusPayload {
   readonly args?: Record<string, unknown>;
   readonly result?: unknown;
   readonly error?: string;
+  readonly transitions?: Array<{
+    readonly from?: ToolCallStatus;
+    readonly to: ToolCallStatus;
+    readonly timestamp: string;
+    readonly source: 'runtime' | 'worker' | 'user';
+  }>;
 }
 
 export interface ToolPermissionRequiredPayload {

@@ -31,7 +31,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
-| evidence | `modules/evidence/` | 证据记录 CRUD + 批量缓冲 + SHA-256 完整性校验 | EventEmitter |
+| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 | EventEmitter |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -86,9 +86,10 @@ HTTP POST /executions
 - **解决**: `NodeSchedulerService.resolveIntervention()` 现在接收 `userId`，先通过 `StepStateMachineService.updateStepStatus(tenantId, stepId, 'running', ...)` 原子抢占 `waiting_intervention -> running` 并写入 `checkpointData.intervention { requested_at, resolved_at, action, instruction, resolved_by_user_id, timeout? }`，再 `updateExecutionStatus()`、`emitInterventionResolved()`、`removeInterventionTimeout()` 并入队后续 `agent-task`
 - **超时**: 24h 延迟 BullMQ 任务 (`intervention-timeout:{stepId}`)，到期后 `AgentTaskWorker.handleInterventionTimeout()` 检查 step 是否仍为 `waiting_intervention`；若是则以 `resolved_by_user_id = 'system_timeout'`、`timeout: true` 自动 `reject`
 - **API**: `POST /executions/:executionId/steps/:stepId/intervene` (202 Accepted)，Body: `{ action: 'approve'|'modify'|'reject', feedback?, modifiedContent? }`
-- **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, nodeName, decision?, partialContent?, requestedAt }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback?, resolvedBy, resolvedAt, timeout? }`
+- **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, nodeName, decision?, partialContent?, requestedAt }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback?, modifiedContent?, resolvedBy, resolvedAt, timeout? }`
 - **结构化内容**: `decision.suggestedContent`、`modifiedContent` 和审计 `instruction` 均允许 `unknown`，worker 会保留结构化内容并在 snapshot/output 恢复时继续透传
 - **快照恢复**: `StateReplayService.getExecutionSnapshot()` 现包含 `step.checkpointData`，所以订阅 ACK / 重连快照即可恢复 `waiting_intervention` 面板，无需只依赖 event replay
+- **Story 6-1 / Evidence**: `EventBridgeService.emitStepAgentEvent()`、`emitToolCallStatus()`、`emitInterventionResolved()` 现都会同步转发到 `EventEmitter2`，`EvidenceService` 监听这些内部事件以及 `knowledge.rag.retrieved` 自动创建 evidence records。`RagService.search()` 支持可选 `evidenceContext { executionId, stepId, parentEvidenceId? }`，当提供时会 emit `knowledge.rag.retrieved`。`EvidenceService.verifyContentHash()` 基于 source payload 重算 SHA-256 并返回 `{ evidenceId, valid, integrityWarning }`。
 
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
@@ -105,7 +106,7 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。20 张表，启用 RLS (`rls-policies.ts`)。
+Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，`documentChunks` 含 vector 列。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。
 

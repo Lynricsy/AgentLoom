@@ -35,6 +35,7 @@ export const AgentDecisionSchema = z.object({
   nodeId: z.string(),
   agentName: z.string(),
   autonomyMode: z.string(),
+  suggestedContent: z.unknown().optional(),
   reasoning: z.string(),
   selectedAction: z.string(),
   alternatives: z.array(z.string()).optional(),
@@ -42,24 +43,120 @@ export const AgentDecisionSchema = z.object({
 });
 
 export const ToolOutputSchema = z.object({
+  toolCallId: z.string().uuid().optional(),
   toolName: z.string(),
   toolInput: z.unknown(),
   toolOutput: z.unknown(),
+  transitions: z
+    .array(
+      z.object({
+        from: z
+          .enum([
+            'pending',
+            'awaiting_permission',
+            'denied',
+            'in_progress',
+            'completed',
+            'failed',
+          ])
+          .optional(),
+        to: z.enum([
+          'pending',
+          'awaiting_permission',
+          'denied',
+          'in_progress',
+          'completed',
+          'failed',
+        ]),
+        source: z.enum(['runtime', 'worker', 'user']),
+        timestamp: z.string().datetime(),
+      }),
+    )
+    .optional(),
 });
 
-export const EvidencePacketSchema = z.object({
+export const UserInputSchema = z.object({
+  content: z.unknown(),
+});
+
+export const InterventionSchema = z.object({
+  action: z.enum(['approve', 'modify', 'reject']),
+  feedback: z.string().optional(),
+  modifiedContent: z.unknown().optional(),
+  requestedAt: z.string().datetime().optional(),
+  resolvedAt: z.string().datetime(),
+  resolvedBy: z.string(),
+  timeout: z.boolean().optional(),
+});
+
+const StoredPacketMetadataSchema = z.object({
   evidenceId: z.string().uuid(),
-  sourceType: EvidenceSourceType,
-  physicalLocation: PhysicalLocationSchema.optional(),
-  semanticLocation: SemanticLocationSchema.optional(),
-  agentDecision: AgentDecisionSchema.optional(),
-  toolOutput: ToolOutputSchema.optional(),
   contentHash: z.string().length(64),
   timestamp: z.string().datetime(),
   parentEvidenceId: z.string().uuid().optional(),
 });
 
+export const EvidencePacketInputSchema = z.discriminatedUnion('sourceType', [
+  z.object({
+    sourceType: z.literal('rag_retrieval'),
+    physicalLocation: PhysicalLocationSchema,
+    semanticLocation: SemanticLocationSchema,
+    retrievedContent: z.string().min(1),
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
+  z.object({
+    sourceType: z.literal('agent_decision'),
+    agentDecision: AgentDecisionSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
+  z.object({
+    sourceType: z.literal('tool_output'),
+    toolOutput: ToolOutputSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
+  z.object({
+    sourceType: z.literal('user_input'),
+    userInput: UserInputSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
+  z.object({
+    sourceType: z.literal('intervention'),
+    intervention: InterventionSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
+]);
+
+export const EvidencePacketSchema = z.discriminatedUnion('sourceType', [
+  z.object({
+    sourceType: z.literal('rag_retrieval'),
+    physicalLocation: PhysicalLocationSchema,
+    semanticLocation: SemanticLocationSchema,
+    retrievedContent: z.string().min(1),
+  }),
+  z.object({
+    sourceType: z.literal('agent_decision'),
+    agentDecision: AgentDecisionSchema,
+  }),
+  z.object({
+    sourceType: z.literal('tool_output'),
+    toolOutput: ToolOutputSchema,
+  }),
+  z.object({
+    sourceType: z.literal('user_input'),
+    userInput: UserInputSchema,
+  }),
+  z.object({
+    sourceType: z.literal('intervention'),
+    intervention: InterventionSchema,
+  }),
+]).and(StoredPacketMetadataSchema);
+
+export type EvidencePacketInputDto = z.infer<typeof EvidencePacketInputSchema>;
 export type EvidencePacketDto = z.infer<typeof EvidencePacketSchema>;
+export type EvidenceInterventionPacketInputDto = Extract<
+  EvidencePacketInputDto,
+  { sourceType: 'intervention' }
+>;
 
 // -- Query DTO --
 
@@ -76,8 +173,16 @@ export class QueryEvidenceDto extends createZodDto(QueryEvidenceSchema) {}
 export const CreateEvidenceRecordSchema = z.object({
   stepId: z.string().uuid(),
   sourceType: EvidenceSourceType,
-  packet: EvidencePacketSchema,
+  packet: EvidencePacketInputSchema,
   parentEvidenceId: z.string().uuid().optional(),
+}).superRefine((value, ctx) => {
+  if (value.sourceType !== value.packet.sourceType) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['packet', 'sourceType'],
+      message: 'packet.sourceType must match sourceType',
+    });
+  }
 });
 
 export class CreateEvidenceRecordDto extends createZodDto(
@@ -98,6 +203,16 @@ export const EvidenceRecordResponseSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const VerifyEvidenceResponseSchema = z.object({
+  evidenceId: z.string().uuid(),
+  valid: z.boolean(),
+  integrityWarning: z.boolean(),
+});
+
 export class EvidenceRecordResponseDto extends createZodDto(
   EvidenceRecordResponseSchema,
+) {}
+
+export class VerifyEvidenceResponseDto extends createZodDto(
+  VerifyEvidenceResponseSchema,
 ) {}

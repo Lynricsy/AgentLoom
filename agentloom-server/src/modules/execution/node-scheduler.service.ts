@@ -471,6 +471,9 @@ export class NodeSchedulerService {
       nodeId: step.nodeId,
       action: resolution.action,
       ...(resolution.feedback ? { feedback: resolution.feedback } : {}),
+      ...(resolution.modifiedContent !== undefined
+        ? { modifiedContent: resolution.modifiedContent }
+        : {}),
       resolvedBy: userId,
       resolvedAt,
       ...(timeout ? { timeout: true } : {}),

@@ -1,7 +1,9 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { organizations } from '../../../database/schema/organizations.schema';
+import { EvidenceEventName } from '../../evidence/evidence.events';
 import { VECTOR_STORE, EMBEDDING_DIMENSIONS } from '../knowledge.constants';
 import { DocumentChunkService } from '../document-chunk.service';
 import { EmbeddingService } from './embedding.service';
@@ -15,6 +17,11 @@ export interface RagSearchOptions {
   knowledgeBaseId?: string;
   limit?: number;
   scoreThreshold?: number;
+  evidenceContext?: {
+    executionId: string;
+    stepId: string;
+    parentEvidenceId?: string;
+  };
 }
 
 export interface RagSearchResult {
@@ -36,6 +43,7 @@ export class RagService {
     @Inject(VECTOR_STORE) private readonly vectorStore: VectorStore,
     private readonly embeddingService: EmbeddingService,
     private readonly documentChunkService: DocumentChunkService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   private getCollectionName(tenantId: string): string {
@@ -151,7 +159,7 @@ export class RagService {
         }
       : undefined;
 
-    const results = await this.vectorStore.search({
+    const rawResults = await this.vectorStore.search({
       collectionName,
       vector: queryEmbedding,
       limit: options.limit ?? 10,
@@ -159,7 +167,7 @@ export class RagService {
       filter,
     });
 
-    return results.map((r) => ({
+    const results = rawResults.map((r) => ({
       chunkId: r.id,
       score: r.score,
       content: (r.payload.content as string) ?? '',
@@ -168,6 +176,18 @@ export class RagService {
       knowledgeBaseId: (r.payload.knowledgeBaseId as string) ?? '',
       chunkIndex: (r.payload.chunkIndex as number) ?? 0,
     }));
+
+    if (options.evidenceContext && results.length > 0) {
+      this.eventEmitter?.emit(EvidenceEventName.RAG_RETRIEVED, {
+        tenantId,
+        executionId: options.evidenceContext.executionId,
+        stepId: options.evidenceContext.stepId,
+        parentEvidenceId: options.evidenceContext.parentEvidenceId,
+        results,
+      });
+    }
+
+    return results;
   }
 
   async deleteByDocument(documentId: string, tenantId: string): Promise<void> {

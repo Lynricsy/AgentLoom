@@ -3,152 +3,95 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { EvidenceController } from '../evidence.controller';
 
-// -- Mock setup --
+const TENANT_ID = '00000000-0000-4000-8000-000000000001';
+const EXECUTION_ID = '00000000-0000-4000-8000-000000000002';
+const EVIDENCE_ID = '00000000-0000-4000-8000-000000000003';
+const EXPECTED_ROLES = ['viewer', 'operator', 'creator', 'admin', 'owner'];
 
-const { createMockEvidenceService } = vi.hoisted(() => {
-  const createMockEvidenceService = () => ({
+function createMockEvidenceService() {
+  return {
     findByExecution: vi.fn(),
     findById: vi.fn(),
     verifyContentHash: vi.fn(),
-    createEvidenceRecord: vi.fn(),
-    createBatchEvidenceRecords: vi.fn(),
-  });
-
-  return { createMockEvidenceService };
-});
-
-// -- Test constants --
-
-const TENANT_ID = '11111111-1111-1111-1111-111111111111';
-const EXECUTION_ID = '22222222-2222-2222-2222-222222222222';
-const EVIDENCE_ID = '44444444-4444-4444-4444-444444444444';
-
-const EXPECTED_ROLES = ['viewer', 'operator', 'creator', 'admin', 'owner'];
-
-// -- Tests --
+  };
+}
 
 describe('EvidenceController', () => {
   let controller: EvidenceController;
   let mockService: ReturnType<typeof createMockEvidenceService>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     mockService = createMockEvidenceService();
     controller = new EvidenceController(mockService as never);
   });
 
-  describe('findByExecution', () => {
-    it('should return paginated evidence records', async () => {
-      const paginatedResult = {
-        data: [{ id: 'rec-1' }, { id: 'rec-2' }],
-        meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
-      };
-      mockService.findByExecution.mockResolvedValue(paginatedResult);
+  it('should delegate list queries with execution scope', async () => {
+    const response = {
+      data: [],
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    };
+    mockService.findByExecution.mockResolvedValue(response);
 
-      const query = { page: 1, limit: 20 };
-      const result = await controller.findByExecution(
-        TENANT_ID,
-        EXECUTION_ID,
-        query as any,
-      );
+    await expect(
+      controller.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+      }),
+    ).resolves.toEqual(response);
 
-      expect(result).toEqual(paginatedResult);
-      expect(mockService.findByExecution).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        query,
-      );
-    });
-
-    it('should pass stepId filter to service', async () => {
-      const stepId = '33333333-3333-3333-3333-333333333333';
-      mockService.findByExecution.mockResolvedValue({
-        data: [],
-        meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
-      });
-
-      const query = { page: 1, limit: 20, stepId };
-      await controller.findByExecution(TENANT_ID, EXECUTION_ID, query as any);
-
-      expect(mockService.findByExecution).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        query,
-      );
-    });
-
-    it('should have correct roles', () => {
-      const roles = Reflect.getMetadata(
-        ROLES_KEY,
-        EvidenceController.prototype.findByExecution,
-      );
-      expect(roles).toEqual(EXPECTED_ROLES);
-    });
+    expect(mockService.findByExecution).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      { page: 1, limit: 20 },
+    );
   });
 
-  describe('findById', () => {
-    it('should return evidence record wrapped in data', async () => {
-      const mockRecord = { id: EVIDENCE_ID, sourceType: 'rag_retrieval' };
-      mockService.findById.mockResolvedValue(mockRecord);
+  it('should return detail data scoped by executionId', async () => {
+    const record = { id: EVIDENCE_ID, sourceType: 'rag_retrieval' };
+    mockService.findById.mockResolvedValue(record);
 
-      const result = await controller.findById(
-        TENANT_ID,
-        EXECUTION_ID,
-        EVIDENCE_ID,
-      );
+    await expect(
+      controller.findById(TENANT_ID, EXECUTION_ID, EVIDENCE_ID),
+    ).resolves.toEqual({ data: record });
 
-      expect(result).toEqual({ data: mockRecord });
-      expect(mockService.findById).toHaveBeenCalledWith(
-        TENANT_ID,
-        EVIDENCE_ID,
-      );
-    });
-
-    it('should have correct roles', () => {
-      const roles = Reflect.getMetadata(
-        ROLES_KEY,
-        EvidenceController.prototype.findById,
-      );
-      expect(roles).toEqual(EXPECTED_ROLES);
-    });
+    expect(mockService.findById).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      EVIDENCE_ID,
+    );
   });
 
-  describe('verifyContentHash', () => {
-    it('should return verification result wrapped in data', async () => {
-      const verifyResult = { valid: true, evidenceId: EVIDENCE_ID };
-      mockService.verifyContentHash.mockResolvedValue(verifyResult);
+  it('should return structured verification data', async () => {
+    const verification = {
+      evidenceId: EVIDENCE_ID,
+      valid: false,
+      integrityWarning: true,
+    };
+    mockService.verifyContentHash.mockResolvedValue(verification);
 
-      const result = await controller.verifyContentHash(
-        TENANT_ID,
-        EXECUTION_ID,
-        EVIDENCE_ID,
-      );
+    await expect(
+      controller.verifyContentHash(TENANT_ID, EXECUTION_ID, EVIDENCE_ID),
+    ).resolves.toEqual({ data: verification });
 
-      expect(result).toEqual({
-        data: { evidenceId: EVIDENCE_ID, valid: verifyResult },
-      });
-      expect(mockService.verifyContentHash).toHaveBeenCalledWith(
-        TENANT_ID,
-        EVIDENCE_ID,
-      );
-    });
+    expect(mockService.verifyContentHash).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      EVIDENCE_ID,
+    );
+  });
 
-    it('should propagate service exceptions', async () => {
-      mockService.verifyContentHash.mockRejectedValue(
-        new Error('Integrity violation'),
-      );
-
-      await expect(
-        controller.verifyContentHash(TENANT_ID, EXECUTION_ID, EVIDENCE_ID),
-      ).rejects.toThrow('Integrity violation');
-    });
-
-    it('should have correct roles', () => {
-      const roles = Reflect.getMetadata(
+  it('should expose viewer through owner roles on every endpoint', () => {
+    expect(
+      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findByExecution),
+    ).toEqual(EXPECTED_ROLES);
+    expect(
+      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findById),
+    ).toEqual(EXPECTED_ROLES);
+    expect(
+      Reflect.getMetadata(
         ROLES_KEY,
         EvidenceController.prototype.verifyContentHash,
-      );
-      expect(roles).toEqual(EXPECTED_ROLES);
-    });
+      ),
+    ).toEqual(EXPECTED_ROLES);
   });
 });

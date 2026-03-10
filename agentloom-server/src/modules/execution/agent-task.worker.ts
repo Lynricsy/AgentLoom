@@ -682,6 +682,12 @@ export class AgentTaskWorker extends WorkerHost {
       args: toolCall.args,
       result: toolCall.result,
       error: toolCall.error,
+      transitions: toolCall.transitions?.map((transition) => ({
+        ...(transition.from ? { from: transition.from } : {}),
+        to: transition.to,
+        source: transition.source,
+        timestamp: transition.timestamp,
+      })),
     });
   }
 
@@ -991,6 +997,15 @@ export class AgentTaskWorker extends WorkerHost {
           if (event.type === 'decision') {
             decision = {
               suggestedContent: event.suggestedContent,
+              ...(event.autonomyMode
+                ? { autonomyMode: event.autonomyMode }
+                : {}),
+              ...(event.selectedAction
+                ? { selectedAction: event.selectedAction }
+                : {}),
+              ...(event.alternatives
+                ? { alternatives: [...event.alternatives] }
+                : {}),
               confidence: event.confidence,
               ...(event.rationale ? { rationale: event.rationale } : {}),
             };

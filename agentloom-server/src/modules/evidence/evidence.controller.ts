@@ -36,11 +36,15 @@ export class EvidenceController {
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   async findById(
     @CurrentTenant() tenantId: string,
-    @Param('executionId', ParseUUIDPipe) _executionId: string,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
   ) {
     return {
-      data: await this.evidenceService.findById(tenantId, evidenceId),
+      data: await this.evidenceService.findById(
+        tenantId,
+        executionId,
+        evidenceId,
+      ),
     };
   }
 
@@ -48,13 +52,14 @@ export class EvidenceController {
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   async verifyContentHash(
     @CurrentTenant() tenantId: string,
-    @Param('executionId', ParseUUIDPipe) _executionId: string,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
   ) {
-    const valid = await this.evidenceService.verifyContentHash(
+    const verification = await this.evidenceService.verifyContentHash(
       tenantId,
+      executionId,
       evidenceId,
     );
-    return { data: { evidenceId, valid } };
+    return { data: verification };
   }
 }

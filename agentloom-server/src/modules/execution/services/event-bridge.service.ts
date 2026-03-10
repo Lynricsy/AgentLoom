@@ -120,6 +120,11 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
+    this.eventEmitter?.emit(ExecutionEventName.STEP_AGENT_EVENT, {
+      tenantId,
+      executionId,
+      ...payload,
+    });
     return envelope;
   }
 
@@ -185,6 +190,11 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
+    this.eventEmitter?.emit(ExecutionEventName.NODE_INTERVENTION_RESOLVED, {
+      tenantId,
+      executionId,
+      ...payload,
+    });
     return envelope;
   }
 
@@ -200,6 +210,11 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
+    this.eventEmitter?.emit(ExecutionEventName.NODE_TOOL_CALL_STATUS, {
+      tenantId,
+      executionId,
+      ...payload,
+    });
     return envelope;
   }
 

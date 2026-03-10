@@ -26,6 +26,9 @@ export interface ToolCallAgentEvent {
 export interface DecisionEvent {
   readonly type: 'decision';
   readonly suggestedContent: string;
+  readonly autonomyMode?: string;
+  readonly selectedAction?: string;
+  readonly alternatives?: readonly string[];
   readonly confidence?: number;
   readonly rationale?: string;
 }

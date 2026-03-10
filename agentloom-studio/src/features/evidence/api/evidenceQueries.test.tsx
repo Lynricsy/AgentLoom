@@ -1,9 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useEvidenceDetail, useEvidenceList } from './evidenceQueries';
+import {
+  fetchEvidenceByExecution,
+  fetchEvidenceById,
+  verifyEvidenceHash,
+} from './evidenceApi';
+import {
+  useEvidenceDetail,
+  useEvidenceList,
+  useEvidenceVerify,
+} from './evidenceQueries';
 
 vi.mock('./evidenceApi', () => ({
   fetchEvidenceByExecution: vi.fn(),
@@ -11,15 +20,14 @@ vi.mock('./evidenceApi', () => ({
   verifyEvidenceHash: vi.fn(),
 }));
 
-import {
-  fetchEvidenceById,
-  fetchEvidenceByExecution,
-} from './evidenceApi';
+const EXECUTION_ID = 'exec-001';
+const EVIDENCE_ID = 'ev-001';
 
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+
   return function Wrapper({ children }: PropsWithChildren) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -28,9 +36,6 @@ function createWrapper() {
     );
   };
 }
-
-const EXECUTION_ID = 'exec-001';
-const EVIDENCE_ID = 'ev-001';
 
 describe('evidence queries', () => {
   beforeEach(() => {
@@ -94,6 +99,43 @@ describe('evidence queries', () => {
 
       expect(result.current.fetchStatus).toBe('idle');
       expect(fetchEvidenceById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('useEvidenceVerify', () => {
+    it('should stay idle until refetch is called', () => {
+      const { result } = renderHook(
+        () => useEvidenceVerify(EXECUTION_ID, EVIDENCE_ID),
+        { wrapper: createWrapper() },
+      );
+
+      expect(result.current.fetchStatus).toBe('idle');
+      expect(verifyEvidenceHash).not.toHaveBeenCalled();
+    });
+
+    it('should verify evidence hash on refetch', async () => {
+      const response = {
+        data: {
+          evidenceId: EVIDENCE_ID,
+          valid: false,
+          integrityWarning: true,
+        },
+      };
+      vi.mocked(verifyEvidenceHash).mockResolvedValue(response as never);
+
+      const { result } = renderHook(
+        () => useEvidenceVerify(EXECUTION_ID, EVIDENCE_ID),
+        { wrapper: createWrapper() },
+      );
+
+      const queryResult = await result.current.refetch();
+
+      expect(verifyEvidenceHash).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        EVIDENCE_ID,
+      );
+      expect(queryResult.isSuccess).toBe(true);
+      expect(queryResult.data).toEqual(response);
     });
   });
 });

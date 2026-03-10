@@ -257,6 +257,9 @@ describe('InProcessAgentAdapter', () => {
         {
           type: 'decision',
           suggestedContent: '建议稿',
+          autonomyMode: 'LLM_SUGGEST',
+          selectedAction: 'request_intervention',
+          alternatives: ['approve', 'modify', 'reject'],
           confidence: 0.5,
         },
         { type: 'done', stopReason: 'intervention_required' },

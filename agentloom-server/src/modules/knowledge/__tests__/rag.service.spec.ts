@@ -1,6 +1,8 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
+import { EvidenceEventName } from '../../evidence/evidence.events';
 import { RagService } from '../services/rag.service';
 import { EmbeddingService } from '../services/embedding.service';
 import { DocumentChunkService } from '../document-chunk.service';
@@ -42,11 +44,13 @@ describe('RagService', () => {
   let embeddingService: { generateEmbeddings: Mock };
   let documentChunkService: { findByDocumentId: Mock };
   let mockDb: { select: Mock; from: Mock; where: Mock; limit: Mock };
+  let eventEmitter: { emit: Mock };
 
   beforeEach(async () => {
     vectorStore = createMockVectorStore();
     embeddingService = { generateEmbeddings: vi.fn() };
     documentChunkService = { findByDocumentId: vi.fn() };
+    eventEmitter = { emit: vi.fn() };
 
     mockDb = {
       select: vi.fn(),
@@ -66,6 +70,7 @@ describe('RagService', () => {
         { provide: VECTOR_STORE, useValue: vectorStore },
         { provide: EmbeddingService, useValue: embeddingService },
         { provide: DocumentChunkService, useValue: documentChunkService },
+        { provide: EventEmitter2, useValue: eventEmitter },
       ],
     }).compile();
 
@@ -249,6 +254,54 @@ describe('RagService', () => {
           must: [{ key: 'knowledgeBaseId', match: { value: KB_ID } }],
         },
       });
+    });
+
+    it('should emit RAG evidence event when evidenceContext is provided', async () => {
+      vectorStore.collectionExists.mockResolvedValue(true);
+      embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
+      vectorStore.search.mockResolvedValue([
+        {
+          id: 'chunk-0',
+          score: 0.95,
+          payload: {
+            content: 'Chunk content 0',
+            location: { page: 0 },
+            documentId: DOC_ID,
+            knowledgeBaseId: KB_ID,
+            chunkIndex: 0,
+          },
+        },
+      ]);
+
+      const results = await service.search('query text', TENANT_ID, {
+        evidenceContext: {
+          executionId: 'exec-1',
+          stepId: 'step-1',
+          parentEvidenceId: 'parent-evidence-1',
+        },
+      });
+
+      expect(results).toEqual([
+        {
+          chunkId: 'chunk-0',
+          score: 0.95,
+          content: 'Chunk content 0',
+          location: { page: 0 },
+          documentId: DOC_ID,
+          knowledgeBaseId: KB_ID,
+          chunkIndex: 0,
+        },
+      ]);
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        EvidenceEventName.RAG_RETRIEVED,
+        {
+          tenantId: TENANT_ID,
+          executionId: 'exec-1',
+          stepId: 'step-1',
+          parentEvidenceId: 'parent-evidence-1',
+          results,
+        },
+      );
     });
   });
 

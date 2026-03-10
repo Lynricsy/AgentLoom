@@ -868,6 +868,7 @@ describe('NodeSchedulerService', () => {
           nodeId: step.nodeId,
           action: 'modify',
           feedback: '请按这个版本提交',
+          modifiedContent: '人工修订后的内容',
           resolvedBy: USER_ID,
           resolvedAt: NOW.toISOString(),
         },

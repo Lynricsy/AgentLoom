@@ -25,29 +25,95 @@ export interface AgentDecision {
   nodeId: string;
   agentName: string;
   autonomyMode: string;
+  suggestedContent?: unknown;
   reasoning: string;
   selectedAction: string;
   alternatives?: string[];
   confidence?: number;
 }
 
+export interface ToolOutputTransition {
+  from?:
+    | 'pending'
+    | 'awaiting_permission'
+    | 'denied'
+    | 'in_progress'
+    | 'completed'
+    | 'failed';
+  to:
+    | 'pending'
+    | 'awaiting_permission'
+    | 'denied'
+    | 'in_progress'
+    | 'completed'
+    | 'failed';
+  source: 'runtime' | 'worker' | 'user';
+  timestamp: string;
+}
+
 export interface ToolOutput {
+  toolCallId?: string;
   toolName: string;
   toolInput: unknown;
   toolOutput: unknown;
+  transitions?: ToolOutputTransition[];
 }
 
-export interface EvidencePacket {
+export interface UserInput {
+  content: unknown;
+}
+
+export interface InterventionPayload {
+  action: 'approve' | 'modify' | 'reject';
+  feedback?: string;
+  modifiedContent?: unknown;
+  requestedAt?: string;
+  resolvedAt: string;
+  resolvedBy: string;
+  timeout?: boolean;
+}
+
+interface BaseEvidencePacket {
   evidenceId: string;
   sourceType: EvidenceSourceType;
-  physicalLocation?: PhysicalLocation;
-  semanticLocation?: SemanticLocation;
-  agentDecision?: AgentDecision;
-  toolOutput?: ToolOutput;
   contentHash: string;
   timestamp: string;
   parentEvidenceId?: string;
 }
+
+export interface RagRetrievalEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'rag_retrieval';
+  physicalLocation: PhysicalLocation;
+  semanticLocation: SemanticLocation;
+  retrievedContent: string;
+}
+
+export interface AgentDecisionEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'agent_decision';
+  agentDecision: AgentDecision;
+}
+
+export interface ToolOutputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'tool_output';
+  toolOutput: ToolOutput;
+}
+
+export interface UserInputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'user_input';
+  userInput: UserInput;
+}
+
+export interface InterventionEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'intervention';
+  intervention: InterventionPayload;
+}
+
+export type EvidencePacket =
+  | RagRetrievalEvidencePacket
+  | AgentDecisionEvidencePacket
+  | ToolOutputEvidencePacket
+  | UserInputEvidencePacket
+  | InterventionEvidencePacket;
 
 export interface EvidenceRecord {
   id: string;
@@ -64,6 +130,7 @@ export interface EvidenceRecord {
 export interface EvidenceVerifyResult {
   evidenceId: string;
   valid: boolean;
+  integrityWarning: boolean;
 }
 
 export interface EvidenceQueryParams {

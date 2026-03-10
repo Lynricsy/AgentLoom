@@ -242,6 +242,9 @@ export class InProcessAgentAdapter implements IAgentRuntime {
             yield {
               type: 'decision',
               suggestedContent: accumulatedText,
+              autonomyMode: session.autonomyMode,
+              selectedAction: 'request_intervention',
+              alternatives: ['approve', 'modify', 'reject'],
               confidence: 0.5,
             } as const;
             yield {

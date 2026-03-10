@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   fetchEvidenceById,
@@ -78,7 +78,13 @@ describe('evidenceApi', () => {
 
   describe('verifyEvidenceHash', () => {
     it('should verify evidence hash integrity', async () => {
-      const response = { data: { evidenceId: EVIDENCE_ID, valid: true } };
+      const response = {
+        data: {
+          evidenceId: EVIDENCE_ID,
+          valid: true,
+          integrityWarning: false,
+        },
+      };
       getMock.mockReturnValue({
         json: vi.fn().mockResolvedValue(response),
       });

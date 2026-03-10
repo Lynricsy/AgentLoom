@@ -14,6 +14,7 @@ import type {
   OutputChunkPayload,
   InterventionRequiredPayload,
   InterventionResolvedPayload,
+  ToolCallStatusPayload,
 } from '../types/execution-event.types';
 
 const TENANT = 'tenant-1';
@@ -192,6 +193,14 @@ describe('EventBridgeService', () => {
 
       expect(result.event).toBe(ExecutionEventName.STEP_AGENT_EVENT);
       expect(result.data.event).toEqual({ type: 'done' });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionEventName.STEP_AGENT_EVENT,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          stepId: payload.stepId,
+        }),
+      );
     });
   });
 
@@ -231,12 +240,14 @@ describe('EventBridgeService', () => {
       const payload: InterventionRequiredPayload = {
         stepId: 's1',
         nodeId: 'n1',
+        nodeName: 'Node 1',
         decision: {
           suggestedContent: '建议内容',
           confidence: 0.85,
           rationale: '基于上下文分析',
         },
         partialContent: '部分输出内容',
+        requestedAt: '2026-03-10T10:00:00.000Z',
       };
 
       const result = service.emitInterventionRequired(TENANT, EXEC, payload);
@@ -274,6 +285,8 @@ describe('EventBridgeService', () => {
         nodeId: 'n1',
         action: 'approve',
         feedback: '批准发布',
+        resolvedBy: 'user-1',
+        resolvedAt: '2026-03-10T10:05:00.000Z',
       };
 
       const result = service.emitInterventionResolved(TENANT, EXEC, payload);
@@ -291,6 +304,60 @@ describe('EventBridgeService', () => {
         EXEC,
         ExecutionEventName.NODE_INTERVENTION_RESOLVED,
         expect.objectContaining({ eventId: 1 }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          stepId: payload.stepId,
+          nodeId: payload.nodeId,
+        }),
+      );
+    });
+  });
+
+  describe('emitToolCallStatus', () => {
+    it('应创建标准信封、广播并同步内部事件', () => {
+      const payload: ToolCallStatusPayload = {
+        stepId: 's1',
+        nodeId: 'n1',
+        toolCallId: 'tool-call-1',
+        tool: 'bash',
+        status: 'completed',
+        args: { command: 'ls' },
+        result: { stdout: 'file.txt' },
+        transitions: [
+          {
+            to: 'completed',
+            source: 'runtime',
+            timestamp: '2026-03-10T10:05:00.000Z',
+          },
+        ],
+      };
+
+      const result = service.emitToolCallStatus(TENANT, EXEC, payload);
+
+      expect(result).toMatchObject({
+        eventId: 1,
+        event: ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        executionId: EXEC,
+        tenantId: TENANT,
+        data: payload,
+      });
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
+        TENANT,
+        EXEC,
+        ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        expect.objectContaining({ eventId: 1 }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          toolCallId: payload.toolCallId,
+        }),
       );
     });
   });
