@@ -110,6 +110,17 @@ export {
   type NewNotificationPreference,
 } from './notifications.schema';
 export {
+  evidenceSourceTypeEnum,
+  evidenceRecords,
+  type EvidenceRecord,
+  type NewEvidenceRecord,
+  type EvidencePacket,
+  type PhysicalLocation,
+  type SemanticLocation,
+  type AgentDecision,
+  type ToolOutput,
+} from './evidence.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
