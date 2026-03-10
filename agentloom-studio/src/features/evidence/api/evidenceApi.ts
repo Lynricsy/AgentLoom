@@ -2,6 +2,7 @@ import { apiClient } from '@/shared/api/client';
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 
 import type {
+  EvidenceChainResponse,
   EvidenceQueryParams,
   EvidenceRecord,
   EvidenceVerifyResult,
@@ -38,4 +39,16 @@ export function verifyEvidenceHash(
   return apiClient
     .get(`executions/${executionId}/evidence/${evidenceId}/verify`)
     .json<ApiResponse<EvidenceVerifyResult>>();
+}
+
+export function fetchEvidenceChain(
+  executionId: string,
+  nodeId?: string,
+): Promise<ApiResponse<EvidenceChainResponse>> {
+  const searchParams: Record<string, string> = {};
+  if (nodeId) searchParams.nodeId = nodeId;
+
+  return apiClient
+    .get(`executions/${executionId}/evidence/chain`, { searchParams })
+    .json<ApiResponse<EvidenceChainResponse>>();
 }

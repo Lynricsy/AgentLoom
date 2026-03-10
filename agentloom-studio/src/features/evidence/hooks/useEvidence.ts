@@ -1,4 +1,5 @@
 export {
+  useEvidenceChain,
   useEvidenceDetail,
   useEvidenceList,
   useEvidenceVerify,

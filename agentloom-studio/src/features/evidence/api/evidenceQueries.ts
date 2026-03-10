@@ -4,6 +4,7 @@ import type { EvidenceQueryParams } from '../types';
 import {
   fetchEvidenceById,
   fetchEvidenceByExecution,
+  fetchEvidenceChain,
   verifyEvidenceHash,
 } from './evidenceApi';
 import { evidenceKeys } from './evidenceKeys';
@@ -38,5 +39,17 @@ export function useEvidenceVerify(
     queryKey: [...evidenceKeys.detail(executionId, evidenceId!), 'verify'],
     queryFn: () => verifyEvidenceHash(executionId, evidenceId!),
     enabled: false,
+  });
+}
+
+export function useEvidenceChain(
+  executionId: string,
+  nodeId?: string,
+) {
+  return useQuery({
+    queryKey: evidenceKeys.chain(executionId, nodeId),
+    queryFn: () => fetchEvidenceChain(executionId, nodeId),
+    enabled: !!executionId,
+    staleTime: 5 * 60 * 1000,
   });
 }

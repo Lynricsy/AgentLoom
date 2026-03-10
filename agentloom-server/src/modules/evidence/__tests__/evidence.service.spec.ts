@@ -5,6 +5,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import { QueryEvidenceSchema } from '../dto/evidence.dto';
 import {
@@ -17,10 +18,17 @@ const mocks = vi.hoisted(() => ({
   tenantDb: {
     insert: vi.fn(),
     select: vi.fn(),
+    execute: vi.fn(),
   },
   getTenantDb: vi.fn(),
   runInTenantTransaction: vi.fn(),
   uuidv7: vi.fn(),
+  cacheService: {
+    get: vi.fn(),
+    set: vi.fn(),
+    del: vi.fn(),
+    delByPattern: vi.fn(),
+  },
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -213,9 +221,14 @@ describe('EvidenceService', () => {
     vi.setSystemTime(new Date(NOW));
     mocks.tenantDb.insert.mockReset();
     mocks.tenantDb.select.mockReset();
+    mocks.tenantDb.execute.mockReset();
     mocks.getTenantDb.mockReset();
     mocks.runInTenantTransaction.mockReset();
     mocks.uuidv7.mockReset();
+    mocks.cacheService.get.mockReset();
+    mocks.cacheService.set.mockReset();
+    mocks.cacheService.del.mockReset();
+    mocks.cacheService.delByPattern.mockReset();
 
     mocks.getTenantDb.mockReturnValue(mocks.tenantDb);
     mocks.runInTenantTransaction.mockImplementation(
@@ -224,7 +237,11 @@ describe('EvidenceService', () => {
     );
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [EvidenceService, { provide: DRIZZLE, useValue: {} }],
+      providers: [
+        EvidenceService,
+        { provide: DRIZZLE, useValue: {} },
+        { provide: RedisCacheService, useValue: mocks.cacheService },
+      ],
     }).compile();
 
     service = module.get(EvidenceService);
@@ -635,6 +652,409 @@ describe('EvidenceService', () => {
       expect(QueryEvidenceSchema.parse({})).toEqual({
         page: 1,
         limit: 20,
+      });
+    });
+  });
+
+  // ─── Chain helpers ───────────────────────────────────────
+
+  const EVIDENCE_ID_A = '00000000-0000-7000-8000-aaaaaaaaaaaa';
+  const EVIDENCE_ID_B = '00000000-0000-7000-8000-bbbbbbbbbbbb';
+  const EVIDENCE_ID_C = '00000000-0000-7000-8000-cccccccccccc';
+  const CHUNK_ID_1 = 'chunk-001';
+  const CHUNK_ID_2 = 'chunk-002';
+
+  function buildValidRagPacket(
+    evidenceId: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const base = createRagPacketInput({
+      physicalLocation: {
+        documentId: 'doc-1',
+        fileName: 'knowledge.md',
+        page: 1,
+        offset: 12,
+        length: 42,
+        chunkId: overrides.chunkId ?? CHUNK_ID_1,
+      },
+      ...overrides,
+    });
+    const packet: Record<string, unknown> = {
+      ...base,
+      evidenceId,
+      timestamp: NOW,
+      contentHash: '',
+      parentEvidenceId: (overrides.parentEvidenceId as string) || undefined,
+    };
+    packet.contentHash = computeExpectedHash(packet);
+    return packet;
+  }
+
+  function makeCteRow(
+    evidenceId: string,
+    depth: number,
+    parentEvidenceId: string | null = null,
+    extraPacketOverrides: Record<string, unknown> = {},
+    extraRowOverrides: Record<string, unknown> = {},
+  ) {
+    const packet = buildValidRagPacket(evidenceId, {
+      parentEvidenceId,
+      ...extraPacketOverrides,
+    });
+    return {
+      id: evidenceId,
+      execution_id: EXECUTION_ID,
+      step_id: STEP_ID,
+      tenant_id: TENANT_ID,
+      source_type: 'rag_retrieval',
+      packet,
+      content_hash: packet.contentHash,
+      parent_evidence_id: parentEvidenceId,
+      created_at: new Date(NOW),
+      depth,
+      ...extraRowOverrides,
+    };
+  }
+
+  function mockCacheAndCte(
+    rows: Record<string, unknown>[],
+    chunks: Array<{ id: string; content: string }> = [],
+  ) {
+    mocks.cacheService.get.mockResolvedValue(null);
+    mocks.cacheService.set.mockResolvedValue(undefined);
+    mocks.tenantDb.execute.mockResolvedValue({ rows });
+
+    const selectChain = createSelectChain('where', chunks);
+    mocks.tenantDb.select.mockReturnValueOnce(selectChain);
+  }
+
+  // ─── T1: buildChain ─────────────────────────────────────
+
+  describe('buildChain', () => {
+    it('should return empty chain when no evidence records exist', async () => {
+      mockCacheAndCte([]);
+
+      const { response, cached } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(cached).toBe(false);
+      expect(response.roots).toEqual([]);
+      expect(response.totalNodes).toBe(0);
+      expect(response.chainCompleteness).toBe(1);
+      expect(response.integrityIssues).toEqual([]);
+    });
+
+    it('should build a single-root chain from one record', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'Retrieved chunk content' }]);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots).toHaveLength(1);
+      expect(response.roots[0].evidenceId).toBe(EVIDENCE_ID_A);
+      expect(response.roots[0].depth).toBe(0);
+      expect(response.roots[0].children).toEqual([]);
+      expect(response.totalNodes).toBe(1);
+      expect(response.chainCompleteness).toBe(1);
+    });
+
+    it('should build parent-child tree from flat records', async () => {
+      const parent = makeCteRow(EVIDENCE_ID_A, 0);
+      const child = makeCteRow(EVIDENCE_ID_B, 1, EVIDENCE_ID_A, { chunkId: CHUNK_ID_2 });
+      mockCacheAndCte(
+        [parent, child],
+        [
+          { id: CHUNK_ID_1, content: 'Retrieved chunk content' },
+          { id: CHUNK_ID_2, content: 'Retrieved chunk content' },
+        ],
+      );
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots).toHaveLength(1);
+      expect(response.roots[0].evidenceId).toBe(EVIDENCE_ID_A);
+      expect(response.roots[0].children).toHaveLength(1);
+      expect(response.roots[0].children[0].evidenceId).toBe(EVIDENCE_ID_B);
+      expect(response.totalNodes).toBe(2);
+    });
+
+    it('should handle multi-level chains (grandchild)', async () => {
+      const root = makeCteRow(EVIDENCE_ID_A, 0);
+      const child = makeCteRow(EVIDENCE_ID_B, 1, EVIDENCE_ID_A, { chunkId: CHUNK_ID_2 });
+      const grandchild = makeCteRow(EVIDENCE_ID_C, 2, EVIDENCE_ID_B, { chunkId: CHUNK_ID_1 });
+      mockCacheAndCte(
+        [root, child, grandchild],
+        [
+          { id: CHUNK_ID_1, content: 'Retrieved chunk content' },
+          { id: CHUNK_ID_2, content: 'Retrieved chunk content' },
+        ],
+      );
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots).toHaveLength(1);
+      expect(response.roots[0].children[0].children[0].evidenceId).toBe(EVIDENCE_ID_C);
+      expect(response.totalNodes).toBe(3);
+    });
+
+    it('should pass nodeId to fetchChainRecords when provided', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'Retrieved chunk content' }]);
+
+      await service.buildChain(TENANT_ID, EXECUTION_ID, EVIDENCE_ID_A);
+
+      expect(mocks.cacheService.get).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:${EVIDENCE_ID_A}`,
+      );
+    });
+
+    it('should use "all" suffix in cache key when nodeId is omitted', async () => {
+      mockCacheAndCte([]);
+
+      await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(mocks.cacheService.get).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:all`,
+      );
+    });
+
+    it('should calculate chainCompleteness correctly with integrity issues', async () => {
+      const validRow = makeCteRow(EVIDENCE_ID_A, 0);
+      const tamperedRow = makeCteRow(EVIDENCE_ID_B, 1, EVIDENCE_ID_A, { chunkId: CHUNK_ID_2 });
+      (tamperedRow as Record<string, unknown>).content_hash = 'invalid_hash';
+
+      mockCacheAndCte(
+        [validRow, tamperedRow],
+        [
+          { id: CHUNK_ID_1, content: 'Retrieved chunk content' },
+          { id: CHUNK_ID_2, content: 'Retrieved chunk content' },
+        ],
+      );
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.chainCompleteness).toBe(0.5);
+      expect(response.integrityIssues).toHaveLength(1);
+      expect(response.integrityIssues[0].severity).toBe('error');
+    });
+
+    it('should detect content hash verification failure as error-level issue', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      (row as Record<string, unknown>).content_hash = 'tampered_hash_value';
+
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'Retrieved chunk content' }]);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.integrityIssues).toContainEqual(
+        expect.objectContaining({
+          evidenceId: EVIDENCE_ID_A,
+          issue: expect.stringContaining('hash'),
+          severity: 'error',
+        }),
+      );
+      expect(response.roots[0].hashValid).toBe(false);
+    });
+  });
+
+  // ─── T2: source availability detection ──────────────────
+
+  describe('source availability detection', () => {
+    it('should mark sourceUnavailable when chunk has been deleted', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], []);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots[0].sourceAvailable).toBe(false);
+      expect(response.integrityIssues).toContainEqual(
+        expect.objectContaining({
+          evidenceId: EVIDENCE_ID_A,
+          severity: 'warning',
+          issue: expect.stringContaining('deleted'),
+        }),
+      );
+    });
+
+    it('should mark sourceModified when chunk content has changed', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'MODIFIED content that differs' }]);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots[0].sourceModified).toBe(true);
+      expect(response.integrityIssues).toContainEqual(
+        expect.objectContaining({
+          evidenceId: EVIDENCE_ID_A,
+          severity: 'warning',
+          issue: expect.stringContaining('modified'),
+        }),
+      );
+    });
+
+    it('should mark sourceAvailable when chunk content matches', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'Retrieved chunk content' }]);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots[0].sourceAvailable).toBe(true);
+      expect(response.roots[0].sourceModified).toBe(false);
+    });
+
+    it('should skip chunk check for non-RAG sources', async () => {
+      const agentPacket: Record<string, unknown> = {
+        sourceType: 'agent_decision',
+        agentDecision: {
+          nodeId: NODE_ID,
+          agentName: 'WriterAgent',
+          autonomyMode: 'llm_suggest',
+          selectedAction: 'approve',
+          alternatives: [],
+          confidence: 0.95,
+          reasoning: 'Auto-approved',
+        },
+        evidenceId: EVIDENCE_ID_A,
+        timestamp: NOW,
+        contentHash: '',
+        parentEvidenceId: null,
+      };
+      agentPacket.contentHash = computeExpectedHash(agentPacket);
+
+      const row = {
+        id: EVIDENCE_ID_A,
+        execution_id: EXECUTION_ID,
+        step_id: STEP_ID,
+        tenant_id: TENANT_ID,
+        source_type: 'agent_decision',
+        packet: agentPacket,
+        content_hash: agentPacket.contentHash,
+        parent_evidence_id: null,
+        created_at: new Date(NOW),
+        depth: 0,
+      };
+
+      mocks.cacheService.get.mockResolvedValue(null);
+      mocks.cacheService.set.mockResolvedValue(undefined);
+      mocks.tenantDb.execute.mockResolvedValue({ rows: [row] });
+
+      const selectChain = createSelectChain('where', []);
+      mocks.tenantDb.select.mockReturnValueOnce(selectChain);
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots[0].sourceAvailable).toBe(true);
+      expect(response.roots[0].sourceModified).toBe(false);
+    });
+
+    it('should batch process multiple chunk lookups', async () => {
+      const rowA = makeCteRow(EVIDENCE_ID_A, 0, null, { chunkId: CHUNK_ID_1 });
+      const rowB = makeCteRow(EVIDENCE_ID_B, 1, EVIDENCE_ID_A, { chunkId: CHUNK_ID_2 });
+
+      mockCacheAndCte(
+        [rowA, rowB],
+        [
+          { id: CHUNK_ID_1, content: 'Retrieved chunk content' },
+          { id: CHUNK_ID_2, content: 'Retrieved chunk content' },
+        ],
+      );
+
+      const { response } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(response.roots[0].sourceAvailable).toBe(true);
+      expect(response.roots[0].children[0].sourceAvailable).toBe(true);
+      expect(mocks.tenantDb.select).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ─── T3: chain Redis cache ──────────────────────────────
+
+  describe('chain Redis cache', () => {
+    it('should return cached response on cache hit', async () => {
+      const cachedResponse = {
+        roots: [],
+        chainCompleteness: 1,
+        totalNodes: 0,
+        integrityIssues: [],
+      };
+      mocks.cacheService.get.mockResolvedValue(JSON.stringify(cachedResponse));
+
+      const { response, cached } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(cached).toBe(true);
+      expect(response).toEqual(cachedResponse);
+      expect(mocks.tenantDb.execute).not.toHaveBeenCalled();
+    });
+
+    it('should compute and cache on cache miss', async () => {
+      mockCacheAndCte([]);
+
+      await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(mocks.cacheService.set).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:all`,
+        expect.any(String),
+        300,
+      );
+    });
+
+    it('should invalidate cache when evidence is inserted', async () => {
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      setupInsertReturning();
+
+      await service.createEvidenceRecord(TENANT_ID, EXECUTION_ID, {
+        stepId: STEP_ID,
+        sourceType: 'rag_retrieval',
+        packet: createRagPacketInput(),
+      });
+
+      expect(mocks.cacheService.delByPattern).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:*`,
+      );
+    });
+
+    it('should use nodeId in cache key when provided', async () => {
+      const row = makeCteRow(EVIDENCE_ID_A, 0);
+      mockCacheAndCte([row], [{ id: CHUNK_ID_1, content: 'Retrieved chunk content' }]);
+
+      await service.buildChain(TENANT_ID, EXECUTION_ID, EVIDENCE_ID_A);
+
+      expect(mocks.cacheService.get).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:${EVIDENCE_ID_A}`,
+      );
+      expect(mocks.cacheService.set).toHaveBeenCalledWith(
+        `evidence:chain:${EXECUTION_ID}:${EVIDENCE_ID_A}`,
+        expect.any(String),
+        300,
+      );
+    });
+
+    it('should degrade gracefully when cache read fails', async () => {
+      mocks.cacheService.get.mockRejectedValue(new Error('Redis down'));
+      mocks.cacheService.set.mockResolvedValue(undefined);
+      mocks.tenantDb.execute.mockResolvedValue({ rows: [] });
+      const selectChain = createSelectChain('where', []);
+      mocks.tenantDb.select.mockReturnValueOnce(selectChain);
+
+      const { response, cached } = await service.buildChain(TENANT_ID, EXECUTION_ID);
+
+      expect(cached).toBe(false);
+      expect(response.roots).toEqual([]);
+    });
+  });
+
+  // ─── verifyChainIntegrity ────────────────────────────────
+
+  describe('verifyChainIntegrity', () => {
+    it('should delegate to buildChain and return response only', async () => {
+      mockCacheAndCte([]);
+
+      const result = await service.verifyChainIntegrity(TENANT_ID, EXECUTION_ID);
+
+      expect(result).toEqual({
+        roots: [],
+        chainCompleteness: 1,
+        totalNodes: 0,
+        integrityIssues: [],
       });
     });
   });

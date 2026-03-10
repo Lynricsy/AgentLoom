@@ -29,7 +29,7 @@ src/
 │   ├── workflow/     # 工作流列表/管理
 │   ├── knowledge/    # 知识库管理
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
-│   ├── evidence/    # 证据记录查询/展示 (types/api/hooks)
+│   ├── evidence/    # 证据记录查询/展示 + 溯源链 (types/api/hooks)
 │   └── llm/          # LLM 模型配置
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory

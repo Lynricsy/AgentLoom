@@ -4,13 +4,15 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { FastifyReply } from 'fastify';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
-import { QueryEvidenceDto } from './dto/evidence.dto';
+import { QueryEvidenceChainDto, QueryEvidenceDto } from './dto/evidence.dto';
 import { EvidenceService } from './evidence.service';
 
 @ApiTags('Evidence')
@@ -30,6 +32,23 @@ export class EvidenceController {
       executionId,
       query,
     );
+  }
+
+  @Get('chain')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  async getEvidenceChain(
+    @CurrentTenant() tenantId: string,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Query() query: QueryEvidenceChainDto,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
+    const { response, cached } = await this.evidenceService.buildChain(
+      tenantId,
+      executionId,
+      query.nodeId,
+    );
+    res.header('X-Cache-Hit', cached ? 'true' : 'false');
+    return { data: response };
   }
 
   @Get(':evidenceId')

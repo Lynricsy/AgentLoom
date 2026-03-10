@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchEvidenceByExecution,
   fetchEvidenceById,
+  fetchEvidenceChain,
   verifyEvidenceHash,
 } from './evidenceApi';
 import {
+  useEvidenceChain,
   useEvidenceDetail,
   useEvidenceList,
   useEvidenceVerify,
@@ -17,6 +19,7 @@ import {
 vi.mock('./evidenceApi', () => ({
   fetchEvidenceByExecution: vi.fn(),
   fetchEvidenceById: vi.fn(),
+  fetchEvidenceChain: vi.fn(),
   verifyEvidenceHash: vi.fn(),
 }));
 
@@ -136,6 +139,55 @@ describe('evidence queries', () => {
       );
       expect(queryResult.isSuccess).toBe(true);
       expect(queryResult.data).toEqual(response);
+    });
+  });
+
+  describe('useEvidenceChain', () => {
+    const chainResponse = {
+      data: {
+        roots: [{ evidenceId: 'ev-1', children: [] }],
+        chainCompleteness: 1.0,
+        totalNodes: 1,
+        integrityIssues: [],
+      },
+    };
+
+    it('should fetch evidence chain when executionId is provided', async () => {
+      vi.mocked(fetchEvidenceChain).mockResolvedValue(chainResponse as never);
+
+      const { result } = renderHook(
+        () => useEvidenceChain(EXECUTION_ID),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(fetchEvidenceChain).toHaveBeenCalledWith(EXECUTION_ID, undefined);
+      expect(result.current.data).toEqual(chainResponse);
+    });
+
+    it('should not fetch when executionId is empty', () => {
+      const { result } = renderHook(
+        () => useEvidenceChain(''),
+        { wrapper: createWrapper() },
+      );
+
+      expect(result.current.fetchStatus).toBe('idle');
+      expect(fetchEvidenceChain).not.toHaveBeenCalled();
+    });
+
+    it('should pass nodeId to API function', async () => {
+      vi.mocked(fetchEvidenceChain).mockResolvedValue(chainResponse as never);
+
+      const nodeId = 'node-abc';
+      const { result } = renderHook(
+        () => useEvidenceChain(EXECUTION_ID, nodeId),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(fetchEvidenceChain).toHaveBeenCalledWith(EXECUTION_ID, nodeId);
     });
   });
 });

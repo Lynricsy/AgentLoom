@@ -138,3 +138,33 @@ export interface EvidenceQueryParams {
   limit?: number;
   stepId?: string;
 }
+
+export interface IntegrityIssue {
+  evidenceId: string;
+  issue: string;
+  severity: 'warning' | 'error';
+}
+
+export interface EvidenceChainNode {
+  evidenceId: string;
+  executionId: string;
+  stepId: string;
+  sourceType: EvidenceSourceType;
+  packet: EvidencePacket;
+  contentHash: string;
+  parentEvidenceId?: string;
+  createdAt: string;
+  depth: number;
+  hashValid: boolean;
+  sourceUnavailable: boolean;
+  sourceModified: boolean;
+  unavailableReason?: string;
+  children: EvidenceChainNode[];
+}
+
+export interface EvidenceChainResponse {
+  roots: EvidenceChainNode[];
+  chainCompleteness: number;
+  totalNodes: number;
+  integrityIssues: IntegrityIssue[];
+}

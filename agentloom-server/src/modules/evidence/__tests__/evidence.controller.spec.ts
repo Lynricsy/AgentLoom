@@ -13,6 +13,7 @@ function createMockEvidenceService() {
     findByExecution: vi.fn(),
     findById: vi.fn(),
     verifyContentHash: vi.fn(),
+    buildChain: vi.fn(),
   };
 }
 
@@ -80,9 +81,86 @@ describe('EvidenceController', () => {
     );
   });
 
+  it('should delegate chain query to service.buildChain', async () => {
+    const chainResponse = {
+      roots: [],
+      chainCompleteness: 1,
+      totalNodes: 0,
+      integrityIssues: [],
+    };
+    mockService.buildChain.mockResolvedValue({
+      response: chainResponse,
+      cached: false,
+    });
+    const mockRes = { header: vi.fn() };
+
+    const result = await controller.getEvidenceChain(
+      TENANT_ID,
+      EXECUTION_ID,
+      { nodeId: undefined },
+      mockRes as never,
+    );
+
+    expect(mockService.buildChain).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      undefined,
+    );
+    expect(result).toEqual({ data: chainResponse });
+  });
+
+  it('should set X-Cache-Hit: true header on cache hit', async () => {
+    mockService.buildChain.mockResolvedValue({
+      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      cached: true,
+    });
+    const mockRes = { header: vi.fn() };
+
+    await controller.getEvidenceChain(TENANT_ID, EXECUTION_ID, {}, mockRes as never);
+
+    expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'true');
+  });
+
+  it('should set X-Cache-Hit: false header on cache miss', async () => {
+    mockService.buildChain.mockResolvedValue({
+      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      cached: false,
+    });
+    const mockRes = { header: vi.fn() };
+
+    await controller.getEvidenceChain(TENANT_ID, EXECUTION_ID, {}, mockRes as never);
+
+    expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'false');
+  });
+
+  it('should pass nodeId from query to service', async () => {
+    const nodeId = '00000000-0000-4000-8000-000000000099';
+    mockService.buildChain.mockResolvedValue({
+      response: { roots: [], chainCompleteness: 1, totalNodes: 0, integrityIssues: [] },
+      cached: false,
+    });
+    const mockRes = { header: vi.fn() };
+
+    await controller.getEvidenceChain(
+      TENANT_ID,
+      EXECUTION_ID,
+      { nodeId },
+      mockRes as never,
+    );
+
+    expect(mockService.buildChain).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      nodeId,
+    );
+  });
+
   it('should expose viewer through owner roles on every endpoint', () => {
     expect(
       Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findByExecution),
+    ).toEqual(EXPECTED_ROLES);
+    expect(
+      Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.getEvidenceChain),
     ).toEqual(EXPECTED_ROLES);
     expect(
       Reflect.getMetadata(ROLES_KEY, EvidenceController.prototype.findById),

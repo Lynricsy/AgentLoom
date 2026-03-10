@@ -216,3 +216,65 @@ export class EvidenceRecordResponseDto extends createZodDto(
 export class VerifyEvidenceResponseDto extends createZodDto(
   VerifyEvidenceResponseSchema,
 ) {}
+
+// -- Chain schemas (Story 6-2) --
+
+export const IntegrityIssueSchema = z.object({
+  evidenceId: z.string().uuid(),
+  issue: z.string(),
+  severity: z.enum(['warning', 'error']),
+});
+
+export type IntegrityIssue = z.infer<typeof IntegrityIssueSchema>;
+
+export interface EvidenceChainNode {
+  evidenceId: string;
+  executionId: string;
+  stepId: string;
+  sourceType: EvidenceSourceType;
+  contentHash: string;
+  parentEvidenceId: string | null;
+  createdAt: string;
+  depth: number;
+  sourceAvailable: boolean;
+  sourceModified: boolean;
+  unavailableReason?: string;
+  hashValid: boolean;
+  children: EvidenceChainNode[];
+}
+
+const BaseChainNodeSchema = z.object({
+  evidenceId: z.string().uuid(),
+  executionId: z.string().uuid(),
+  stepId: z.string().uuid(),
+  sourceType: EvidenceSourceType,
+  contentHash: z.string().length(64),
+  parentEvidenceId: z.string().uuid().nullable(),
+  createdAt: z.string().datetime(),
+  depth: z.number().int().min(0),
+  sourceAvailable: z.boolean(),
+  sourceModified: z.boolean(),
+  unavailableReason: z.string().optional(),
+  hashValid: z.boolean(),
+});
+
+export const EvidenceChainNodeSchema: z.ZodType<EvidenceChainNode> = BaseChainNodeSchema.extend({
+  children: z.lazy(() => z.array(EvidenceChainNodeSchema)),
+});
+
+export const EvidenceChainResponseSchema = z.object({
+  roots: z.array(EvidenceChainNodeSchema),
+  chainCompleteness: z.number().min(0).max(1),
+  totalNodes: z.number().int().min(0),
+  integrityIssues: z.array(IntegrityIssueSchema),
+});
+
+export type EvidenceChainResponse = z.infer<typeof EvidenceChainResponseSchema>;
+
+export const QueryEvidenceChainSchema = z.object({
+  nodeId: z.string().uuid().optional(),
+});
+
+export class QueryEvidenceChainDto extends createZodDto(
+  QueryEvidenceChainSchema,
+) {}

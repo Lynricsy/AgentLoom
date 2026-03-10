@@ -6,4 +6,7 @@ export const evidenceKeys = {
   details: () => [...evidenceKeys.all, 'detail'] as const,
   detail: (executionId: string, evidenceId: string) =>
     [...evidenceKeys.details(), executionId, evidenceId] as const,
+  chains: () => [...evidenceKeys.all, 'chain'] as const,
+  chain: (executionId: string, nodeId?: string) =>
+    [...evidenceKeys.chains(), executionId, nodeId] as const,
 };

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchEvidenceById,
   fetchEvidenceByExecution,
+  fetchEvidenceChain,
   verifyEvidenceHash,
 } from './evidenceApi';
 
@@ -95,6 +96,66 @@ describe('evidenceApi', () => {
         `executions/${EXECUTION_ID}/evidence/${EVIDENCE_ID}/verify`,
       );
       expect(result).toEqual(response);
+    });
+  });
+
+  describe('fetchEvidenceChain', () => {
+    const chainResponse = {
+      data: {
+        roots: [],
+        chainCompleteness: 1.0,
+        totalNodes: 0,
+        integrityIssues: [],
+      },
+    };
+
+    it('should fetch evidence chain without nodeId', async () => {
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(chainResponse),
+      });
+
+      const result = await fetchEvidenceChain(EXECUTION_ID);
+
+      expect(getMock).toHaveBeenCalledWith(
+        `executions/${EXECUTION_ID}/evidence/chain`,
+        { searchParams: {} },
+      );
+      expect(result).toEqual(chainResponse);
+    });
+
+    it('should fetch evidence chain with nodeId', async () => {
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(chainResponse),
+      });
+
+      const nodeId = 'node-abc';
+      const result = await fetchEvidenceChain(EXECUTION_ID, nodeId);
+
+      expect(getMock).toHaveBeenCalledWith(
+        `executions/${EXECUTION_ID}/evidence/chain`,
+        { searchParams: { nodeId } },
+      );
+      expect(result).toEqual(chainResponse);
+    });
+
+    it('should return chain response with integrity issues', async () => {
+      const responseWithIssues = {
+        data: {
+          roots: [{ evidenceId: 'ev-1', children: [] }],
+          chainCompleteness: 0.8,
+          totalNodes: 5,
+          integrityIssues: [
+            { evidenceId: 'ev-2', issue: 'Hash mismatch', severity: 'error' },
+          ],
+        },
+      };
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(responseWithIssues),
+      });
+
+      const result = await fetchEvidenceChain(EXECUTION_ID);
+
+      expect(result).toEqual(responseWithIssues);
     });
   });
 });

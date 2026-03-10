@@ -31,7 +31,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
-| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 | EventEmitter |
+| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + Redis 缓存 | EventEmitter, RedisCacheService |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -90,6 +90,7 @@ HTTP POST /executions
 - **结构化内容**: `decision.suggestedContent`、`modifiedContent` 和审计 `instruction` 均允许 `unknown`，worker 会保留结构化内容并在 snapshot/output 恢复时继续透传
 - **快照恢复**: `StateReplayService.getExecutionSnapshot()` 现包含 `step.checkpointData`，所以订阅 ACK / 重连快照即可恢复 `waiting_intervention` 面板，无需只依赖 event replay
 - **Story 6-1 / Evidence**: `EventBridgeService.emitStepAgentEvent()`、`emitToolCallStatus()`、`emitInterventionResolved()` 现都会同步转发到 `EventEmitter2`，`EvidenceService` 监听这些内部事件以及 `knowledge.rag.retrieved` 自动创建 evidence records。`RagService.search()` 支持可选 `evidenceContext { executionId, stepId, parentEvidenceId? }`，当提供时会 emit `knowledge.rag.retrieved`。`EvidenceService.verifyContentHash()` 基于 source payload 重算 SHA-256 并返回 `{ evidenceId, valid, integrityWarning }`。
+- **Story 6-2 / Provenance Chain**: `EvidenceService.buildChain(tenantId, executionId, nodeId?)` 使用递归 CTE 查询 `evidence_records.parent_evidence_id` 链（maxDepth=50），flat→tree 转换，LEFT JOIN `document_chunks` 检测来源可用性（deleted→sourceUnavailable, content mismatch→sourceModified），每节点 SHA-256 哈希校验。返回 `{roots, chainCompleteness, totalNodes, integrityIssues[]}`。`verifyChainIntegrity()` 复用 `buildChain` 缓存（AC6: validate not rebuild）。Redis 缓存 key `evidence:chain:{executionId}:{nodeId||'all'}`，TTL 300s，evidence 写入时自动失效。REST 端点 `GET /executions/:id/evidence/chain?nodeId=xxx`，响应含 `X-Cache-Hit` header。
 
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 

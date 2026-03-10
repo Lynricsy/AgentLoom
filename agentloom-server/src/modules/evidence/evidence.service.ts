@@ -2,13 +2,15 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
+  documentChunks,
   evidenceRecords,
   executionSteps,
   type NewEvidenceRecord,
@@ -22,8 +24,11 @@ import {
 
 import type {
   CreateEvidenceRecordDto,
+  EvidenceChainNode,
+  EvidenceChainResponse,
   EvidencePacketDto,
   EvidencePacketInputDto,
+  IntegrityIssue,
 } from './dto/evidence.dto';
 import {
   EvidencePacketInputSchema,
@@ -78,6 +83,25 @@ interface PreparedEvidenceInsert {
   packet: EvidencePacketDto;
 }
 
+interface FlatChainRecord {
+  id: string;
+  executionId: string;
+  stepId: string;
+  tenantId: string;
+  sourceType: string;
+  packet: unknown;
+  contentHash: string;
+  parentEvidenceId: string | null;
+  createdAt: Date;
+  depth: number;
+}
+
+interface SourceStatus {
+  sourceAvailable: boolean;
+  sourceModified: boolean;
+  unavailableReason?: string;
+}
+
 @Injectable()
 export class EvidenceService {
   private readonly logger = new Logger(EvidenceService.name);
@@ -91,7 +115,10 @@ export class EvidenceService {
     'denied',
   ] as const);
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly cacheService: RedisCacheService,
+  ) {}
 
   async createEvidenceRecord(
     tenantId: string,
@@ -574,10 +601,17 @@ export class EvidenceService {
       return [];
     }
 
-    return tenantDb
+    const records = await tenantDb
       .insert(evidenceRecords)
       .values(prepared.map((entry) => entry.insertValue))
       .returning();
+
+    const executionId = prepared[0]?.insertValue.executionId;
+    if (executionId) {
+      void this.invalidateChainCache(executionId);
+    }
+
+    return records;
   }
 
   private async findExecutionStep(
@@ -833,5 +867,299 @@ export class EvidenceService {
     return (
       status === 'completed' || status === 'failed' || status === 'denied'
     );
+  }
+
+  // -- Chain methods (Story 6-2) --
+
+  private static readonly CHAIN_CACHE_TTL = 300;
+  private static readonly CHAIN_MAX_DEPTH = 50;
+
+  async buildChain(
+    tenantId: string,
+    executionId: string,
+    nodeId?: string,
+  ): Promise<{ response: EvidenceChainResponse; cached: boolean }> {
+    const cacheKey = `evidence:chain:${executionId}:${nodeId ?? 'all'}`;
+
+    try {
+      const cached = await this.cacheService.get(cacheKey);
+      if (cached) {
+        return { response: JSON.parse(cached), cached: true };
+      }
+    } catch {
+      this.logger.warn('Redis cache read failed for chain, proceeding without cache');
+    }
+
+    const flatRecords = await this.fetchChainRecords(
+      tenantId,
+      executionId,
+      nodeId,
+    );
+    const sourceStatusMap = await this.checkSourceAvailability(flatRecords);
+
+    const hashResults = new Map<string, boolean>();
+    for (const record of flatRecords) {
+      try {
+        const packet = this.validateStoredPacket(record.packet);
+        const computedHash = this.computeContentHash(packet);
+        hashResults.set(
+          record.id,
+          this.compareHashes(record.contentHash, computedHash),
+        );
+      } catch {
+        hashResults.set(record.id, false);
+      }
+    }
+
+    const integrityIssues: IntegrityIssue[] = [];
+    const roots = this.flatToTree(
+      flatRecords,
+      sourceStatusMap,
+      hashResults,
+      integrityIssues,
+    );
+
+    const totalNodes = flatRecords.length;
+    const issueNodeIds = new Set(integrityIssues.map((i) => i.evidenceId));
+    const chainCompleteness =
+      totalNodes === 0 ? 1 : (totalNodes - issueNodeIds.size) / totalNodes;
+
+    const response: EvidenceChainResponse = {
+      roots,
+      chainCompleteness,
+      totalNodes,
+      integrityIssues,
+    };
+
+    try {
+      await this.cacheService.set(
+        cacheKey,
+        JSON.stringify(response),
+        EvidenceService.CHAIN_CACHE_TTL,
+      );
+    } catch {
+      this.logger.warn('Redis cache write failed for chain');
+    }
+
+    return { response, cached: false };
+  }
+
+  async verifyChainIntegrity(
+    tenantId: string,
+    executionId: string,
+    nodeId?: string,
+  ): Promise<EvidenceChainResponse> {
+    const { response } = await this.buildChain(tenantId, executionId, nodeId);
+    return response;
+  }
+
+  private async fetchChainRecords(
+    tenantId: string,
+    executionId: string,
+    nodeId?: string,
+  ): Promise<FlatChainRecord[]> {
+    const tenantDb = getTenantDb(this.db);
+    const baseCondition = nodeId
+      ? sql`er.id = ${nodeId}`
+      : sql`er.parent_evidence_id IS NULL`;
+
+    const result = await tenantDb.execute(sql`
+      WITH RECURSIVE chain AS (
+        SELECT er.id, er.execution_id, er.step_id, er.tenant_id,
+               er.source_type, er.packet, er.content_hash,
+               er.parent_evidence_id, er.created_at, 0 AS depth
+        FROM evidence_records er
+        WHERE er.execution_id = ${executionId}
+          AND er.tenant_id = ${tenantId}
+          AND ${baseCondition}
+
+        UNION ALL
+
+        SELECT er.id, er.execution_id, er.step_id, er.tenant_id,
+               er.source_type, er.packet, er.content_hash,
+               er.parent_evidence_id, er.created_at, c.depth + 1
+        FROM evidence_records er
+        INNER JOIN chain c ON er.parent_evidence_id = c.id
+        WHERE c.depth < ${EvidenceService.CHAIN_MAX_DEPTH}
+      )
+      SELECT * FROM chain
+      ORDER BY depth ASC, created_at ASC
+    `);
+
+    const rows = (result as { rows?: unknown[] }).rows ?? result;
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id),
+      executionId: String(row.execution_id),
+      stepId: String(row.step_id),
+      tenantId: String(row.tenant_id),
+      sourceType: String(row.source_type),
+      packet: row.packet,
+      contentHash: String(row.content_hash),
+      parentEvidenceId: row.parent_evidence_id
+        ? String(row.parent_evidence_id)
+        : null,
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at
+          : new Date(String(row.created_at)),
+      depth: Number(row.depth),
+    }));
+  }
+
+  private async checkSourceAvailability(
+    records: FlatChainRecord[],
+  ): Promise<Map<string, SourceStatus>> {
+    const statusMap = new Map<string, SourceStatus>();
+    const chunkLookups = new Map<
+      string,
+      { evidenceId: string; retrievedContent: string }
+    >();
+
+    for (const record of records) {
+      if (record.sourceType === 'rag_retrieval') {
+        const packet = record.packet as Record<string, unknown>;
+        const physLoc = packet.physicalLocation as
+          | Record<string, unknown>
+          | undefined;
+        const chunkId = physLoc?.chunkId as string | undefined;
+        if (chunkId) {
+          chunkLookups.set(chunkId, {
+            evidenceId: record.id,
+            retrievedContent: (packet.retrievedContent as string) ?? '',
+          });
+        } else {
+          statusMap.set(record.id, {
+            sourceAvailable: true,
+            sourceModified: false,
+          });
+        }
+      } else {
+        statusMap.set(record.id, {
+          sourceAvailable: true,
+          sourceModified: false,
+        });
+      }
+    }
+
+    if (chunkLookups.size === 0) {
+      return statusMap;
+    }
+
+    const tenantDb = getTenantDb(this.db);
+    const chunkIds = Array.from(chunkLookups.keys());
+    const chunks = await tenantDb
+      .select({ id: documentChunks.id, content: documentChunks.content })
+      .from(documentChunks)
+      .where(inArray(documentChunks.id, chunkIds));
+
+    const chunkContentMap = new Map<string, string>();
+    for (const chunk of chunks) {
+      chunkContentMap.set(chunk.id, chunk.content);
+    }
+
+    for (const [chunkId, info] of chunkLookups) {
+      const chunkContent = chunkContentMap.get(chunkId);
+      if (chunkContent === undefined) {
+        statusMap.set(info.evidenceId, {
+          sourceAvailable: false,
+          sourceModified: false,
+          unavailableReason: 'Source document chunk has been deleted',
+        });
+      } else {
+        const modified = chunkContent !== info.retrievedContent;
+        statusMap.set(info.evidenceId, {
+          sourceAvailable: true,
+          sourceModified: modified,
+          ...(modified
+            ? {
+                unavailableReason:
+                  'Source document chunk content has been modified',
+              }
+            : {}),
+        });
+      }
+    }
+
+    return statusMap;
+  }
+
+  private flatToTree(
+    records: FlatChainRecord[],
+    sourceStatus: Map<string, SourceStatus>,
+    hashResults: Map<string, boolean>,
+    integrityIssues: IntegrityIssue[],
+  ): EvidenceChainNode[] {
+    const nodeMap = new Map<string, EvidenceChainNode>();
+
+    for (const record of records) {
+      const status = sourceStatus.get(record.id) ?? {
+        sourceAvailable: true,
+        sourceModified: false,
+      };
+      const hashValid = hashResults.get(record.id) ?? false;
+
+      const node: EvidenceChainNode = {
+        evidenceId: record.id,
+        executionId: record.executionId,
+        stepId: record.stepId,
+        sourceType: record.sourceType as EvidenceChainNode['sourceType'],
+        contentHash: record.contentHash,
+        parentEvidenceId: record.parentEvidenceId,
+        createdAt: record.createdAt.toISOString(),
+        depth: record.depth,
+        sourceAvailable: status.sourceAvailable,
+        sourceModified: status.sourceModified,
+        ...(status.unavailableReason
+          ? { unavailableReason: status.unavailableReason }
+          : {}),
+        hashValid,
+        children: [],
+      };
+
+      if (!hashValid) {
+        integrityIssues.push({
+          evidenceId: record.id,
+          issue: 'Content hash verification failed',
+          severity: 'error',
+        });
+      }
+      if (!status.sourceAvailable) {
+        integrityIssues.push({
+          evidenceId: record.id,
+          issue: status.unavailableReason ?? 'Source unavailable',
+          severity: 'warning',
+        });
+      }
+      if (status.sourceModified) {
+        integrityIssues.push({
+          evidenceId: record.id,
+          issue: status.unavailableReason ?? 'Source modified',
+          severity: 'warning',
+        });
+      }
+
+      nodeMap.set(record.id, node);
+    }
+
+    const roots: EvidenceChainNode[] = [];
+    for (const [, node] of nodeMap) {
+      if (node.parentEvidenceId && nodeMap.has(node.parentEvidenceId)) {
+        nodeMap.get(node.parentEvidenceId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }
+
+  private async invalidateChainCache(executionId: string): Promise<void> {
+    try {
+      await this.cacheService.delByPattern(
+        `evidence:chain:${executionId}:*`,
+      );
+    } catch {
+      this.logger.warn('Failed to invalidate chain cache');
+    }
   }
 }
