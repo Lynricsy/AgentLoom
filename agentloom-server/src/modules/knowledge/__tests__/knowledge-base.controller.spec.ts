@@ -22,6 +22,7 @@ describe('KnowledgeBaseController', () => {
     findByKnowledgeBase: ReturnType<typeof vi.fn>;
     deleteByKnowledgeBase: ReturnType<typeof vi.fn>;
     deleteDocument: ReturnType<typeof vi.fn>;
+    getDocumentContentUrl: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -40,6 +41,7 @@ describe('KnowledgeBaseController', () => {
       findByKnowledgeBase: vi.fn(),
       deleteByKnowledgeBase: vi.fn(),
       deleteDocument: vi.fn(),
+      getDocumentContentUrl: vi.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -242,6 +244,36 @@ describe('KnowledgeBaseController', () => {
         KB_ID,
         documentId,
         TENANT_ID,
+      );
+    });
+  });
+
+  describe('getDocumentContent', () => {
+    it('应验证知识库存在后返回预签名 URL', async () => {
+      const documentId = '00000000-0000-0000-0000-000000000020';
+      const contentResult = {
+        url: 'https://minio.local/bucket/file.pdf?token=abc',
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        expiresIn: 3600,
+      };
+      knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
+      documentService.getDocumentContentUrl.mockResolvedValue(contentResult);
+
+      const result = await controller.getDocumentContent(
+        KB_ID,
+        documentId,
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({ data: contentResult });
+      expect(knowledgeBaseService.findByIdOrThrow).toHaveBeenCalledWith(
+        KB_ID,
+        TENANT_ID,
+      );
+      expect(documentService.getDocumentContentUrl).toHaveBeenCalledWith(
+        KB_ID,
+        documentId,
       );
     });
   });

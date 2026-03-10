@@ -96,6 +96,19 @@ export class StorageService implements OnModuleInit {
     }
   }
 
+  /**
+   * 生成对象的预签名下载 URL
+   * @param key 对象存储路径
+   * @param expirySeconds URL 有效期（秒），默认 3600（1小时）
+   */
+  async getPresignedUrl(key: string, expirySeconds = 3600): Promise<string> {
+    return this.minioClient.presignedGetObject(
+      this.bucket,
+      key,
+      expirySeconds,
+    );
+  }
+
   buildStorageKey(
     tenantId: string,
     knowledgeBaseId: string,

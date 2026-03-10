@@ -15,6 +15,7 @@ const mockMinioClient = {
   removeObject: vi.fn(),
   removeIncompleteUpload: vi.fn(),
   statObject: vi.fn(),
+  presignedGetObject: vi.fn(),
 };
 
 const mockConfigService = {
@@ -192,6 +193,48 @@ describe('StorageService', () => {
       );
 
       expect(result).toBe('tenants/tenant-123/kb/kb-456/doc-789/report.pdf');
+    });
+  });
+
+  describe('getPresignedUrl', () => {
+    it('应使用默认过期时间生成预签名 URL', async () => {
+      const key = 'tenants/t1/kb/kb1/doc1/file.pdf';
+      const expectedUrl = 'https://minio.local/test-bucket/file.pdf?token=abc';
+      mockMinioClient.presignedGetObject.mockResolvedValue(expectedUrl);
+
+      const result = await service.getPresignedUrl(key);
+
+      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
+        BUCKET_NAME,
+        key,
+        3600,
+      );
+      expect(result).toBe(expectedUrl);
+    });
+
+    it('应支持自定义过期时间', async () => {
+      const key = 'tenants/t1/kb/kb1/doc1/report.md';
+      const expirySeconds = 600;
+      const expectedUrl = 'https://minio.local/test-bucket/report.md?token=xyz';
+      mockMinioClient.presignedGetObject.mockResolvedValue(expectedUrl);
+
+      const result = await service.getPresignedUrl(key, expirySeconds);
+
+      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
+        BUCKET_NAME,
+        key,
+        expirySeconds,
+      );
+      expect(result).toBe(expectedUrl);
+    });
+
+    it('MinIO 异常时应正确传播错误', async () => {
+      const key = 'tenants/t1/kb/kb1/doc1/file.pdf';
+      mockMinioClient.presignedGetObject.mockRejectedValue(
+        new Error('NoSuchKey'),
+      );
+
+      await expect(service.getPresignedUrl(key)).rejects.toThrow('NoSuchKey');
     });
   });
 });

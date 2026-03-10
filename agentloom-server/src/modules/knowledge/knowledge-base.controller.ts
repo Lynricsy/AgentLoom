@@ -174,4 +174,19 @@ export class KnowledgeBaseController {
       tenantId,
     );
   }
+
+  @Get(':id/documents/:documentId/content')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  async getDocumentContent(
+    @Param('id') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
+    const content = await this.documentService.getDocumentContentUrl(
+      knowledgeBaseId,
+      documentId,
+    );
+    return { data: content };
+  }
 }

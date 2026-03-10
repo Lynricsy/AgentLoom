@@ -291,6 +291,35 @@ export class DocumentService {
     return document;
   }
 
+  async getDocumentContentUrl(
+    knowledgeBaseId: string,
+    documentId: string,
+    expirySeconds = 3600,
+  ): Promise<{
+    url: string;
+    fileName: string;
+    mimeType: string;
+    expiresIn: number;
+  }> {
+    const document = await this.findById(documentId);
+
+    if (document.knowledgeBaseId !== knowledgeBaseId) {
+      throw new DocumentNotFoundException(documentId);
+    }
+
+    const url = await this.storageService.getPresignedUrl(
+      document.storageKey,
+      expirySeconds,
+    );
+
+    return {
+      url,
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+      expiresIn: expirySeconds,
+    };
+  }
+
   async updateStatus(
     documentId: string,
     status: DocumentStatus,
