@@ -231,10 +231,10 @@ describe('NotificationGateway', () => {
     expect(server.to).toHaveBeenNthCalledWith(2, 'tenant:tenant-1:user:user-1');
     expect(emit).toHaveBeenNthCalledWith(
       1,
-      'notification:new',
+      'notification.new',
       expect.objectContaining({ id: 'notification-1' }),
     );
-    expect(emit).toHaveBeenNthCalledWith(2, 'notification:unread-count', {
+    expect(emit).toHaveBeenNthCalledWith(2, 'notification.unread-count', {
       count: 5,
     });
   });

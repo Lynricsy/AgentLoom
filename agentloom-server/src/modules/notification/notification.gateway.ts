@@ -135,12 +135,12 @@ export class NotificationGateway
 
   sendToUser(tenantId: string, userId: string, notification: Notification): void {
     const room = this.buildRoom(tenantId, userId);
-    this.server.to(room).emit('notification:new', notification);
+    this.server.to(room).emit('notification.new', notification);
   }
 
   sendUnreadCount(tenantId: string, userId: string, count: number): void {
     const room = this.buildRoom(tenantId, userId);
-    this.server.to(room).emit('notification:unread-count', { count });
+    this.server.to(room).emit('notification.unread-count', { count });
   }
 
   private buildRoom(tenantId: string, userId: string): string {

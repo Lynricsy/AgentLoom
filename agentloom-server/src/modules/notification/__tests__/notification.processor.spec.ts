@@ -77,14 +77,14 @@ describe('NotificationProcessor', () => {
     expect(transactionMocks.runInTenantTransaction).not.toHaveBeenCalled();
   });
 
-  it('push 渠道被禁用时应跳过推送', async () => {
+  it('in_app 渠道被禁用时应跳过推送', async () => {
     notificationService.getPreferences.mockResolvedValue([
       {
         id: 'pref-1',
         tenantId: 'tenant-1',
         userId: 'user-1',
         type: 'execution_completed',
-        channel: 'push',
+        channel: 'in_app',
         enabled: false,
       },
     ]);

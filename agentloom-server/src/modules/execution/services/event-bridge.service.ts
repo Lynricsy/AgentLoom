@@ -162,6 +162,11 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
+    this.eventEmitter?.emit(ExecutionEventName.NODE_INTERVENTION_REQUIRED, {
+      tenantId,
+      executionId,
+      ...payload,
+    });
     return envelope;
   }
 

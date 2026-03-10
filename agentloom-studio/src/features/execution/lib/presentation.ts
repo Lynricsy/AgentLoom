@@ -172,7 +172,9 @@ export function formatTriggerSource(
   }
 }
 
-export function getExecutionStartedAt(execution: ExecutionResponse): string {
+export function getExecutionStartedAt(
+  execution: Pick<ExecutionResponse, 'startedAt' | 'createdAt'>,
+): string {
   return execution.startedAt ?? execution.createdAt
 }
 

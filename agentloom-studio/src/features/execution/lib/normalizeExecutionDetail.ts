@@ -5,6 +5,7 @@ interface RawExecutionStep {
   id: string
   executionId: string
   nodeId: string
+  input?: Record<string, unknown> | null
   nodeType?: string | null
   nodeData?: Record<string, unknown> | null
   result?: Record<string, unknown> | null
@@ -131,7 +132,7 @@ function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): Exec
     nodeName,
     nodeType,
     status: toStepStatus(rawStep.status),
-    input: toRecordOrNull(rawStep.nodeData),
+    input: toRecordOrNull(rawStep.input),
     output: toRecordOrNull(rawStep.result),
     errorMessage: toErrorMessage(rawStep.errorMessage),
     startedAt: rawStep.startedAt ?? null,

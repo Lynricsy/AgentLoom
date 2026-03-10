@@ -16,10 +16,6 @@ vi.mock('../hooks/useExecutionList', () => ({
   useExecution: (...args: unknown[]) => mocks.useExecutionMock(...args),
 }))
 
-vi.mock('./CelebrationEffect', () => ({
-  CelebrationEffect: () => null,
-}))
-
 vi.mock('./ReadonlyCanvas', () => ({
   ReadonlyCanvas: ({ selectedNodeId, onSelectNode }: { selectedNodeId: string | null; onSelectNode: (nodeId: string) => void }) => (
     <div data-testid="mock-readonly-canvas">

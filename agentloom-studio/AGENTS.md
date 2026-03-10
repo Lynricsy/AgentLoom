@@ -75,9 +75,9 @@ src/
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
-- **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`
-- **执行调试视图** (`features/execution/components/ExecutionDebugView.tsx`): Desktop 三栏（ReadonlyCanvas + ExecutionTimeline + ExecutionNodeDetail）/ Mobile 纵向堆叠，支持节点联动选择
-- **庆祝效果** (`features/execution/components/CelebrationEffect.tsx`): 基于 `canvas-confetti`，使用 localStorage key `agentloom:first-success-celebrated` 仅首次成功触发
+- **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`，空态文案为“还没有执行记录”
+- **执行调试视图** (`features/execution/components/ExecutionDebugView.tsx`): Desktop 三栏（ReadonlyCanvas + ExecutionTimeline + ExecutionNodeDetail）/ Mobile 纵向堆叠，支持节点联动选择；`ExecutionTimeline` 现按“每个 execution step 一行 + duration bar”呈现，`ExecutionNodeDetail` 读取 server DTO 暴露的真实 `steps[].input`
+- **庆祝效果** (`features/execution/components/CelebrationEffect.tsx`): 基于 `canvas-confetti`，使用 workflow-scoped localStorage key `agentloom:workflow:{workflowId}:first-success-celebrated`，挂载在 `WorkflowCanvasPage`，只在当前会话内同一 execution 从非 `completed` 过渡到 `completed` 时触发
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流

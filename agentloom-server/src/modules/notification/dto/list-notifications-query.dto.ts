@@ -28,6 +28,7 @@ function normalizeBooleanQuery(value: unknown): unknown {
 export const listNotificationsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
+    limit: PageSizeSchema,
     pageSize: PageSizeSchema,
     page_size: PageSizeSchema,
     isRead: z.preprocess(normalizeBooleanQuery, z.boolean().optional()),
@@ -35,7 +36,7 @@ export const listNotificationsQuerySchema = z
   })
   .transform((value) => ({
     page: value.page,
-    pageSize: value.pageSize ?? value.page_size ?? 20,
+    pageSize: value.limit ?? value.pageSize ?? value.page_size ?? 20,
     isRead: value.isRead ?? value.is_read,
   }));
 

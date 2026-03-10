@@ -45,7 +45,14 @@ describe('NotificationController', () => {
         pageSize: 20,
         isRead: false,
       }),
-    ).resolves.toEqual(paginated);
+    ).resolves.toEqual({
+      data: [{ id: 'notification-1' }],
+      page: 1,
+      limit: 20,
+      total: 1,
+      totalPages: 1,
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
     expect(notificationService.findAll).toHaveBeenCalledWith(
       'tenant-1',
       'user-1',
@@ -93,7 +100,7 @@ describe('NotificationController', () => {
   it('应更新通知偏好', async () => {
     const dto = {
       type: 'execution_failed' as const,
-      channel: 'push',
+      channel: 'in_app' as const,
       enabled: false,
     };
     notificationService.upsertPreference.mockResolvedValue({ id: 'pref-1', ...dto });
@@ -125,7 +132,7 @@ describe('NotificationController', () => {
     expect(
       listNotificationsQuerySchema.parse({
         page: '2',
-        page_size: '10',
+        limit: '10',
         is_read: 'true',
       }),
     ).toEqual({
@@ -139,18 +146,26 @@ describe('NotificationController', () => {
     expect(
       upsertPreferenceSchema.parse({
         type: 'execution_completed',
-        channel: 'push',
+        channel: 'in_app',
         enabled: true,
       }),
     ).toEqual({
       type: 'execution_completed',
-      channel: 'push',
+      channel: 'in_app',
       enabled: true,
     });
 
     expect(() =>
       upsertPreferenceSchema.parse({
         type: 'invalid',
+        channel: 'in_app',
+        enabled: true,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      upsertPreferenceSchema.parse({
+        type: 'execution_completed',
         channel: 'push',
         enabled: true,
       }),

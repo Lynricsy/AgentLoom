@@ -31,12 +31,12 @@ export class NotificationProcessor extends WorkerHost {
         job.data.tenantId,
         job.data.userId,
       );
-      const pushPreference = preferences.find(
+      const inAppPreference = preferences.find(
         (preference) =>
-          preference.type === job.data.type && preference.channel === 'push',
+          preference.type === job.data.type && preference.channel === 'in_app',
       );
 
-      if (pushPreference?.enabled === false) {
+      if (inAppPreference?.enabled === false) {
         return { pushed: false };
       }
 

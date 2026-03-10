@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
+import { CelebrationEffect } from '@/features/execution/components/CelebrationEffect'
 import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
 import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
 import { ExecutionHistoryPanel } from '@/features/execution/components/ExecutionHistoryPanel'
 import {
   useExecutionId,
   useIsExecutionActive,
+  useExecutionStatus,
 } from '@/features/execution/stores/executionStore'
 import { useWorkflow } from '@/features/workflow'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
@@ -37,6 +39,7 @@ export function WorkflowCanvasPage() {
 
   const activeExecutionId = useExecutionId() ?? undefined
   const isExecutionActive = useIsExecutionActive()
+  const executionStatus = useExecutionStatus()
   const authToken = useAuthToken()
   const { startExecution, isStarting } = useStartExecution()
   useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId, authToken })
@@ -139,6 +142,14 @@ export function WorkflowCanvasPage() {
       {!isWorkflowArchived && <NodePalette />}
 
       <div className="relative flex-1">
+        {workflow ? (
+          <CelebrationEffect
+            workflowId={workflow.id}
+            executionId={activeExecutionId}
+            executionStatus={executionStatus}
+          />
+        ) : null}
+
         {workflow && (
           <WorkflowCanvas
             className="h-full w-full"

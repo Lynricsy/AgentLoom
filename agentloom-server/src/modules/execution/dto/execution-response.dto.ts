@@ -33,6 +33,7 @@ export const executionStepSchema = z.object({
     'skipped',
     'cancelled',
   ]),
+  input: z.record(z.string(), z.unknown()).nullable(),
   nodeType: z.string().nullable(),
   nodeData: z.record(z.string(), z.unknown()).nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),

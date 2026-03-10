@@ -20,7 +20,7 @@ export interface NotificationPreference {
   userId: string
   tenantId: string
   type: NotificationTypeEnum
-  channel: string
+  channel: 'in_app' | 'email'
   enabled: boolean
 }
 

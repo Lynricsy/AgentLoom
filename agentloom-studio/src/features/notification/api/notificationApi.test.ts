@@ -139,7 +139,7 @@ describe('notificationApi', () => {
       json: vi.fn().mockResolvedValue(response),
     })
 
-    const input = {
+    const input: Parameters<typeof upsertPreference>[0] = {
       type: 'system' as const,
       channel: 'in_app',
       enabled: false,

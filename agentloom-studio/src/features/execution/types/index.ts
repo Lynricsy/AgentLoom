@@ -61,7 +61,8 @@ export interface ExecutionWorkflowGraph {
   edges: unknown[]
 }
 
-export interface ExecutionDetail extends ExecutionResponse {
+export interface ExecutionDetail
+  extends Omit<ExecutionResponse, 'steps' | 'workflowVersion'> {
   steps: ExecutionStep[]
   workflowVersion: {
     id: string

@@ -5,7 +5,6 @@ import { useExecution } from '../hooks/useExecutionList'
 import { ReadonlyCanvas } from './ReadonlyCanvas'
 import { ExecutionTimeline } from './ExecutionTimeline'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
-import { CelebrationEffect } from './CelebrationEffect'
 import {
   executionStatusMeta,
   formatExecutionDateTime,
@@ -121,8 +120,6 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
 
   return (
     <div className="flex h-full w-full flex-col bg-background" data-testid="execution-debug-view">
-      <CelebrationEffect executionStatus={execution.status} />
-
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <Button

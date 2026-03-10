@@ -210,7 +210,7 @@ describe('NotificationService', () => {
           tenantId: TENANT_ID,
           userId: USER_ID,
           type: 'execution_completed' as const,
-          channel: 'push',
+          channel: 'in_app',
           enabled: true,
         },
       ];
@@ -229,7 +229,7 @@ describe('NotificationService', () => {
         tenantId: TENANT_ID,
         userId: USER_ID,
         type: 'execution_failed' as const,
-        channel: 'push',
+        channel: 'in_app',
         enabled: false,
       };
       db.insert.mockReturnValue({
@@ -243,7 +243,7 @@ describe('NotificationService', () => {
       await expect(
         service.upsertPreference(TENANT_ID, USER_ID, {
           type: 'execution_failed',
-          channel: 'push',
+          channel: 'in_app',
           enabled: false,
         }),
       ).resolves.toEqual(preference);

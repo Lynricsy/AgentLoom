@@ -88,6 +88,6 @@ describe('ExecutionHistoryPanel', () => {
 
     render(<ExecutionHistoryPanel workflowDefinitionId="wf-empty" />)
 
-    expect(screen.getByText('No executions yet')).toBeInTheDocument()
+    expect(screen.getByText('还没有执行记录')).toBeInTheDocument()
   })
 })

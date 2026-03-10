@@ -3,6 +3,33 @@ import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ExecutionStatus } from '../types'
 
 /** 服务端执行记录响应（经 snake→camel 自动转换后） */
+export interface ExecutionStepResponse {
+  id: string
+  executionId: string
+  nodeId: string
+  stepOrder: number
+  status:
+    | 'pending'
+    | 'queued'
+    | 'running'
+    | 'waiting_intervention'
+    | 'waiting_for_intervention'
+    | 'completed'
+    | 'failed'
+    | 'skipped'
+    | 'cancelled'
+  input?: Record<string, unknown> | null
+  nodeType?: string | null
+  nodeData?: Record<string, unknown> | null
+  result?: Record<string, unknown> | null
+  checkpointData?: Record<string, unknown> | null
+  errorMessage?: string | { message?: string | null } | null
+  startedAt?: string | null
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ExecutionResponse {
   id: string
   tenantId: string
@@ -19,6 +46,13 @@ export interface ExecutionResponse {
     viewport?: unknown | null
     metadata?: Record<string, unknown>
   } | null
+  workflowVersion?: {
+    id?: string
+    graph?: {
+      nodes?: unknown[]
+      edges?: unknown[]
+    }
+  } | null
   startedAt: string | null
   completedAt: string | null
   failedAt?: string | null
@@ -29,6 +63,7 @@ export interface ExecutionResponse {
   createdBy?: string
   createdAt: string
   updatedAt: string
+  steps?: ExecutionStepResponse[]
 }
 
 export interface ListExecutionsParams {

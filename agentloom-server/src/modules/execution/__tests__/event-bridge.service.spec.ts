@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventBridgeService } from '../services/event-bridge.service';
 import { ExecutionGateway } from '../execution.gateway';
 import { ThrottleService } from '../services/throttle.service';
@@ -30,6 +31,7 @@ describe('EventBridgeService', () => {
     forceFlush: ReturnType<typeof vi.fn>;
     clearExecution: ReturnType<typeof vi.fn>;
   };
+  let eventEmitter: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -46,12 +48,16 @@ describe('EventBridgeService', () => {
       forceFlush: vi.fn().mockReturnValue([]),
       clearExecution: vi.fn(),
     };
+    eventEmitter = {
+      emit: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
         EventBridgeService,
         { provide: ExecutionGateway, useValue: gateway },
         { provide: ThrottleService, useValue: throttle },
+        { provide: EventEmitter2, useValue: eventEmitter },
       ],
     }).compile();
 
@@ -248,6 +254,15 @@ describe('EventBridgeService', () => {
         EXEC,
         ExecutionEventName.NODE_INTERVENTION_REQUIRED,
         expect.objectContaining({ eventId: 1 }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          stepId: payload.stepId,
+          nodeId: payload.nodeId,
+        }),
       );
     });
   });

@@ -13,7 +13,7 @@ export { ExecutionNodeDetail } from './components/ExecutionNodeDetail'
 export { ExecutionDebugView } from './components/ExecutionDebugView'
 export {
   CelebrationEffect,
-  FIRST_SUCCESS_CELEBRATION_KEY,
+  getCelebrationStorageKey,
   useCelebrationEffect,
 } from './components/CelebrationEffect'
 

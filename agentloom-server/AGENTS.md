@@ -121,9 +121,11 @@ Schema 在 `src/database/schema/`。20 张表，启用 RLS (`rls-policies.ts`)�
   - AC-2 订阅拒绝: 返回 `{status:'error', error:'FORBIDDEN', currentState:null}` (非抛异常)
   - AC-6 背压: Gateway 内置队列 (`eventQueue` Map)，速率限制时排队而非丢弃，500 事件上限/执行，100ms drain 间隔
 - `/notification` namespace: 连接握手复用 JWT blacklist + MFA 校验，连接即加入 `tenant:{tenantId}:user:{userId}` 房间
-  - 事件: `notification:new`（完整通知记录）、`notification:unread-count`（`{ count }`）
+  - 事件: `notification.new`（完整通知记录）、`notification.unread-count`（`{ count }`）
   - 订阅事件: `notification:subscribe` / `notification:unsubscribe`
-  - 处理链路: `EventBridgeService.emitExecutionStatusChanged()` → `EventEmitter2('execution.status.changed')` → `NotificationListener` → `NotificationService.create()` → `NotificationProcessor`
+  - 处理链路: `EventBridgeService.emitExecutionStatusChanged()` → `EventEmitter2('execution.status.changed')`，以及 `emitInterventionRequired()` → `EventEmitter2('execution.node.intervention-required')` → `NotificationListener` → `NotificationService.create()` → `NotificationProcessor`
+  - 接收人策略: `NotificationListener` 基于 execution + workflow + organization members 联表，向租户内 `owner/admin/creator`（Editor+）批量创建通知，不再只通知执行创建者
+  - 载荷约定: `completed` / `failed` / `intervention_required` 通知 body 均包含 `workflowId`、`workflowName`、`executionId`、`timelineUrl`；失败额外含 `errorReason` / `suggestion`，人工介入额外含 `nodeId` / `nodeName` / `interventionReason` / `requestedAt`
 - `/knowledge` namespace: document status/kb updates (隐式契约)
 - 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 

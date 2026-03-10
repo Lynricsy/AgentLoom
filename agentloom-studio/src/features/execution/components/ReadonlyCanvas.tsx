@@ -162,6 +162,7 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         nodesConnectable={false}
         elementsSelectable={false}
         connectOnClick={false}
+        edgesReconnectable={false}
         zoomOnDoubleClick={false}
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}

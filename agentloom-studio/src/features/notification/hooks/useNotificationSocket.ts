@@ -56,8 +56,8 @@ interface NotificationClientToServerEvents {
 }
 
 interface NotificationServerToClientEvents {
-  'notification:new': (notification: NotificationType) => void
-  'notification:unread-count': (
+  'notification.new': (notification: NotificationType) => void
+  'notification.unread-count': (
     payload: NotificationUnreadCountEvent,
   ) => void
 }
@@ -167,8 +167,8 @@ export function useNotificationSocket(
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
     socket.on('connect_error', handleConnectError)
-    socket.on('notification:new', handleNotification)
-    socket.on('notification:unread-count', handleUnreadCount)
+    socket.on('notification.new', handleNotification)
+    socket.on('notification.unread-count', handleUnreadCount)
 
     return () => {
       socket.emit('notification:unsubscribe')

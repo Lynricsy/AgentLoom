@@ -68,7 +68,7 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
         ) : executions.length === 0 ? (
           <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 text-center text-muted-foreground" data-testid="execution-history-empty">
             <History className="h-8 w-8 opacity-50" />
-            <p className="text-sm font-medium text-foreground">No executions yet</p>
+            <p className="text-sm font-medium text-foreground">还没有执行记录</p>
             <p className="max-w-xs text-xs">点击 Run 按钮后，这里会出现完整的执行历史与调试入口。</p>
           </div>
         ) : (

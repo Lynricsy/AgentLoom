@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
+import type { ExecutionStatus } from '@/features/execution/types'
 import { useCanvasStore } from '../stores/canvasStore'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { WorkflowCanvasPage } from './WorkflowCanvasPage'
@@ -34,11 +35,13 @@ const versionHistoryPanelMock = vi.fn()
 const useExecutionMonitorMock = vi.fn()
 const startExecutionMock = vi.fn()
 const submitInterventionMock = vi.fn()
+const celebrationEffectMock = vi.fn()
 
 let mockAuthToken: string | undefined
 let mockExecutionId: string | null = null
 let mockIsExecutionActive = false
 let mockIsStarting = false
+let mockExecutionStatus: ExecutionStatus | null = null
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ workflowId: routeWorkflowId }),
@@ -72,11 +75,23 @@ vi.mock('@/features/execution/hooks/useStartExecution', () => ({
 vi.mock('@/features/execution/stores/executionStore', () => ({
   useExecutionId: () => mockExecutionId,
   useIsExecutionActive: () => mockIsExecutionActive,
+  useExecutionStatus: () => mockExecutionStatus,
   useNodeExecutionState: () => null,
   useNodeIntervention: () => null,
   useExecutionActions: () => ({
     submitIntervention: submitInterventionMock,
   }),
+}))
+
+vi.mock('@/features/execution/components/CelebrationEffect', () => ({
+  CelebrationEffect: (props: {
+    workflowId: string
+    executionId: string | null | undefined
+    executionStatus: ExecutionStatus | null
+  }) => {
+    celebrationEffectMock(props)
+    return <div data-testid="celebration-effect" />
+  },
 }))
 
 vi.mock('./NodePalette', () => ({
@@ -212,6 +227,7 @@ describe('WorkflowCanvasPage', () => {
     mockExecutionId = null
     mockIsExecutionActive = false
     mockIsStarting = false
+    mockExecutionStatus = null
     vi.clearAllMocks()
     useCanvasStore.getState().actions.reset()
   })
@@ -365,6 +381,7 @@ describe('WorkflowCanvasPage', () => {
   it('将 authToken 和 executionId 传给 useExecutionMonitor', () => {
     mockAuthToken = 'jwt-test-token'
     mockExecutionId = 'exec-active'
+    mockExecutionStatus = 'running'
 
     render(<WorkflowCanvasPage />)
 
@@ -373,6 +390,22 @@ describe('WorkflowCanvasPage', () => {
       tenantId: 'tenant-1',
       authToken: 'jwt-test-token',
     })
+  })
+
+  it('向庆祝效果传递当前 workflow 与执行状态', () => {
+    mockExecutionId = 'exec-active'
+    mockExecutionStatus = 'running'
+
+    render(<WorkflowCanvasPage />)
+
+    expect(screen.getByTestId('celebration-effect')).toBeInTheDocument()
+    expect(celebrationEffectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: 'wf-001',
+        executionId: 'exec-active',
+        executionStatus: 'running',
+      }),
+    )
   })
 
   it('无 authToken 时仍调用 useExecutionMonitor', () => {

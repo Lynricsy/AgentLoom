@@ -32,6 +32,10 @@ export class NotificationController {
 
     return {
       data: result.data,
+      page: result.meta.page,
+      limit: result.meta.pageSize,
+      total: result.meta.total,
+      totalPages: result.meta.totalPages,
       meta: result.meta,
     };
   }
