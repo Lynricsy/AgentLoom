@@ -99,6 +99,7 @@ wasm-pack build --target bundler --release  # 构建 WASM
 
 ## 注意事项
 
+- **Story 5.8 已完成**: workflow session 现持久化到 `execution_steps.checkpointData.session`；工具权限端点为 `/executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve`；`awaiting_permission` 是 tool-level 状态且 step 保持 `running`；`ToolCallEvent` 现包含 `transitions[{ from?, to, source, timestamp }]`
 - **Studio 执行历史/调试视图已接通**: `WorkflowCanvasPage` 可按需展开 `ExecutionHistoryPanel` 浏览 `/workflow-definitions/:id/executions`，点击 `RunCard` 跳转 `/executions/$executionId`；调试页为只读 React Flow + 时间线 + 节点详情三栏布局（移动端纵向堆叠），时间线现为“每个 execution step 一行 + duration bar”，节点详情读取真实 `execution_steps.input` JSONB
 - **WASM 集成尚未完成**: `agentloom-studio/src/features/canvas/lib/connectionCompatibility.ts` 是 JS fallback，待 Story-2.4a 替换为 WASM
 - **PortDataType 漂移**: Rust(8值) vs Studio TS(8值) vs Server Zod(6值，缺少 model/tool/sandbox/knowledge)

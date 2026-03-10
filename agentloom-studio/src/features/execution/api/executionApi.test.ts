@@ -3,6 +3,7 @@ import {
   cancelExecution,
   getExecution,
   resolveIntervention,
+  resolveToolPermission,
   runWorkflow,
 } from './executionApi'
 
@@ -124,6 +125,23 @@ describe('executionApi', () => {
         action: 'approve',
       })
       expect(result).toEqual(mockResponse)
+    })
+  })
+
+  describe('resolveToolPermission', () => {
+    it('发送 POST 请求到正确路径并转换请求体为 snake_case', async () => {
+      await resolveToolPermission('exec-001', 'step-001', 'tool-001', {
+        action: 'approve',
+      })
+
+      expect(mocks.postMock).toHaveBeenCalledWith(
+        'executions/exec-001/steps/step-001/tool-calls/tool-001/resolve',
+        {
+          json: {
+            action: 'approve',
+          },
+        },
+      )
     })
   })
 })

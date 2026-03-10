@@ -1008,7 +1008,7 @@ describe('NodeSchedulerService', () => {
       };
       const step = makeStep({
         id: STEP_ID,
-        status: 'waiting_intervention',
+        status: 'running',
         input: { upstream: { draft: 'hello' } },
         nodeData: { agentId: 'agent-001' },
         checkpointData: checkpoint,
@@ -1028,26 +1028,9 @@ describe('NodeSchedulerService', () => {
         resolution,
       );
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        STEP_ID,
-        'running',
-        { checkpointData: checkpoint },
-      );
-      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        TENANT_ID,
-      );
-      expect(mockEventBridge.emitToolPermissionResolved).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        {
-          stepId: STEP_ID,
-          nodeId: step.nodeId,
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        },
-      );
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
@@ -1059,7 +1042,7 @@ describe('NodeSchedulerService', () => {
       });
     });
 
-    it('deny：会校验 waiting_intervention，并把 toolPermission 入队', async () => {
+    it('deny：会校验 running，并把 toolPermission 入队', async () => {
       const checkpoint = {
         sessionId: SESSION_ID,
         toolCalls: [
@@ -1071,7 +1054,7 @@ describe('NodeSchedulerService', () => {
       };
       const step = makeStep({
         id: STEP_ID,
-        status: 'waiting_intervention',
+        status: 'running',
         checkpointData: checkpoint,
       });
       const resolution: ToolPermissionResolution = {
@@ -1089,16 +1072,9 @@ describe('NodeSchedulerService', () => {
         resolution,
       );
 
-      expect(mockEventBridge.emitToolPermissionResolved).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        {
-          stepId: STEP_ID,
-          nodeId: step.nodeId,
-          toolCallId: TOOL_CALL_ID,
-          action: 'deny',
-        },
-      );
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
@@ -1127,7 +1103,7 @@ describe('NodeSchedulerService', () => {
           makeStep({
             id: STEP_ID,
             executionId: '0195a1c0-0000-7000-8000-000000009999',
-            status: 'waiting_intervention',
+            status: 'running',
             checkpointData: { sessionId: SESSION_ID },
           }),
         ]),
@@ -1144,9 +1120,11 @@ describe('NodeSchedulerService', () => {
       expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
     });
 
-    it('步骤不在 waiting_intervention 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
+    it('步骤不在 running 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
       db.select.mockReturnValueOnce(
-        createSelectChain([makeStep({ id: STEP_ID, status: 'running' })]),
+        createSelectChain([
+          makeStep({ id: STEP_ID, status: 'waiting_intervention' }),
+        ]),
       );
 
       await expect(
@@ -1160,7 +1138,7 @@ describe('NodeSchedulerService', () => {
     it('检查点找不到 tool call 时抛出 ToolCallNotFoundException', async () => {
       const step = makeStep({
         id: STEP_ID,
-        status: 'waiting_intervention',
+        status: 'running',
         checkpointData: {
           sessionId: SESSION_ID,
           toolCalls: [],
@@ -1179,7 +1157,7 @@ describe('NodeSchedulerService', () => {
     it('tool call 不在 awaiting_permission 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
       const step = makeStep({
         id: STEP_ID,
-        status: 'waiting_intervention',
+        status: 'running',
         checkpointData: {
           sessionId: SESSION_ID,
           toolCalls: [
@@ -1203,7 +1181,7 @@ describe('NodeSchedulerService', () => {
     it('检查点缺少 sessionId 时抛出 AgentExecutionException', async () => {
       const step = makeStep({
         id: STEP_ID,
-        status: 'waiting_intervention',
+        status: 'running',
         checkpointData: {
           toolCalls: [
             {

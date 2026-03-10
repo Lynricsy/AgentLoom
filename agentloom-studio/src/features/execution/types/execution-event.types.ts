@@ -1,6 +1,7 @@
 // 客户端执行事件类型 — 与服务端 execution-event.types.ts 保持对齐
 
 import type {
+  AgentEvent,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
@@ -57,7 +58,7 @@ export interface StepStatusChangedPayload {
 
 export interface StepAgentEventPayload {
   stepId: string
-  event: unknown // AgentEvent — 前端不需要完整类型
+  event: AgentEvent
 }
 
 export interface StepRetryingPayload {

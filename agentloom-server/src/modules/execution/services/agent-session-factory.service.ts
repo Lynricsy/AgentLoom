@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type {
   AgentSession,
+  McpServerConfig,
   SessionContext,
 } from '../../agent/types/agent-session.types';
 
@@ -14,6 +15,7 @@ interface CreateWorkflowSessionParams {
   llmModelConfigId?: string;
   systemPrompt?: string;
   autonomyMode?: string;
+  mcpServers?: Readonly<Record<string, McpServerConfig>>;
 }
 
 @Injectable()
@@ -26,6 +28,7 @@ export class AgentSessionFactory {
 
     const context: SessionContext = {
       history: [],
+      mcpServers: params.mcpServers,
       workflowState: {
         executionId: params.executionId,
         stepId: params.stepId,

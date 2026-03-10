@@ -136,6 +136,13 @@ function createSelectChain(result: unknown) {
   };
 }
 
+function createUpdateChain() {
+  const where = vi.fn().mockResolvedValue(undefined);
+  return {
+    set: vi.fn().mockReturnValue({ where }),
+  };
+}
+
 describe('AgentTaskWorker', () => {
   let worker: AgentTaskWorker;
 
@@ -184,6 +191,7 @@ describe('AgentTaskWorker', () => {
     loadSession: vi.fn(),
     prompt: vi.fn(),
     cancel: vi.fn(),
+    registerSessionMetadata: vi.fn(),
   };
 
   const mockSandboxRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
@@ -191,6 +199,7 @@ describe('AgentTaskWorker', () => {
     loadSession: vi.fn(),
     prompt: vi.fn(),
     cancel: vi.fn(),
+    registerSessionMetadata: vi.fn(),
   };
 
   const selectAdapterSpy = vi.fn((hasSandbox: boolean) =>
@@ -417,15 +426,16 @@ describe('AgentTaskWorker', () => {
         mockDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setArg).toEqual({ attemptCount: 1 });
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
         TENANT_ID,
         STEP_ID,
         'pending',
         {
           errorMessage: expect.objectContaining({ message: 'LLM 调用失败' }),
-          checkpointData: {
+          checkpointData: expect.objectContaining({
             partialContent: '部分结果',
             sessionId: SESSION_ID,
+            session: {},
             attempts: [
               {
                 attempt: 1,
@@ -433,7 +443,7 @@ describe('AgentTaskWorker', () => {
                 timestamp: expect.any(String),
               },
             ],
-          },
+          }),
         },
       );
       expect(mockStateMachine.broadcastStepRetry).toHaveBeenCalledWith(
@@ -477,7 +487,7 @@ describe('AgentTaskWorker', () => {
         mockDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setArg).toEqual({ attemptCount: 4 });
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
         TENANT_ID,
         STEP_ID,
         'failed',
@@ -492,9 +502,10 @@ describe('AgentTaskWorker', () => {
               },
             ],
           }),
-          checkpointData: {
+          checkpointData: expect.objectContaining({
             partialContent: '最后一次尝试',
             sessionId: SESSION_ID,
+            session: {},
             attempts: [
               {
                 attempt: 4,
@@ -502,7 +513,7 @@ describe('AgentTaskWorker', () => {
                 timestamp: expect.any(String),
               },
             ],
-          },
+          }),
         },
       );
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
@@ -956,7 +967,7 @@ describe('AgentTaskWorker', () => {
     describe('resolveToolPermissionAndBuildBlocks（通过 process + toolPermission）', () => {
       it('approve: 找到 tool call，转为 in_progress，发 resolved 事件并继续执行', async () => {
         const step = makeStep({
-          status: 'waiting_intervention',
+          status: 'running',
           checkpointData: {
             toolCalls: [
               {
@@ -969,7 +980,9 @@ describe('AgentTaskWorker', () => {
             sessionId: SESSION_ID,
           },
         });
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(step));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.prompt.mockReturnValue(
           createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
         );
@@ -1000,18 +1013,41 @@ describe('AgentTaskWorker', () => {
             action: 'approve',
           },
         );
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
-          STEP_ID,
-          'running',
+          EXECUTION_ID,
           {
-            checkpointData: expect.objectContaining({
-              toolCalls: [
-                expect.objectContaining({ id: 'tc-1', status: 'in_progress' }),
-              ],
-            }),
+            stepId: STEP_ID,
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'in_progress',
+            args: { q: 'test' },
+            result: undefined,
+            error: undefined,
           },
         );
+        expect(updateChain.set).toHaveBeenCalledWith({
+          checkpointData: {
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-1',
+                tool: 'search',
+                args: { q: 'test' },
+                status: 'in_progress',
+                transitions: [
+                  expect.objectContaining({
+                    from: 'awaiting_permission',
+                    to: 'in_progress',
+                    source: 'user',
+                    timestamp: expect.any(String),
+                  }),
+                ],
+              }),
+            ],
+            sessionId: SESSION_ID,
+          },
+        });
         expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, []);
         expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
           EXECUTION_ID,
@@ -1022,7 +1058,7 @@ describe('AgentTaskWorker', () => {
 
       it('deny: 转为 denied，发 resolved 事件，注入拒绝文本块并继续执行', async () => {
         const step = makeStep({
-          status: 'waiting_intervention',
+          status: 'running',
           checkpointData: {
             toolCalls: [
               {
@@ -1035,7 +1071,9 @@ describe('AgentTaskWorker', () => {
             sessionId: SESSION_ID,
           },
         });
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(step));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.prompt.mockReturnValue(
           createEventStream([
             { type: 'message_chunk', content: '继续执行' },
@@ -1069,18 +1107,41 @@ describe('AgentTaskWorker', () => {
             action: 'deny',
           },
         );
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
-          STEP_ID,
-          'running',
+          EXECUTION_ID,
           {
-            checkpointData: expect.objectContaining({
-              toolCalls: [
-                expect.objectContaining({ id: 'tc-1', status: 'denied' }),
-              ],
-            }),
+            stepId: STEP_ID,
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'denied',
+            args: { q: 'test' },
+            result: undefined,
+            error: undefined,
           },
         );
+        expect(updateChain.set).toHaveBeenCalledWith({
+          checkpointData: {
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-1',
+                tool: 'search',
+                args: { q: 'test' },
+                status: 'denied',
+                transitions: [
+                  expect.objectContaining({
+                    from: 'awaiting_permission',
+                    to: 'denied',
+                    source: 'user',
+                    timestamp: expect.any(String),
+                  }),
+                ],
+              }),
+            ],
+            sessionId: SESSION_ID,
+          },
+        });
         expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
           {
             type: 'text',
@@ -1096,7 +1157,7 @@ describe('AgentTaskWorker', () => {
 
       it('未知 toolCallId 时抛出 ToolCallNotFoundException', async () => {
         const step = makeStep({
-          status: 'waiting_intervention',
+          status: 'running',
           checkpointData: {
             toolCalls: [
               {
@@ -1135,7 +1196,7 @@ describe('AgentTaskWorker', () => {
 
       it('tool call 非 awaiting_permission 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
         const step = makeStep({
-          status: 'waiting_intervention',
+          status: 'running',
           checkpointData: {
             toolCalls: [
               {
@@ -1175,7 +1236,9 @@ describe('AgentTaskWorker', () => {
 
     describe('executeMultiTurnLoop（通过 process + tool_use 事件）', () => {
       it('FULL_AUTO: tool_call → in_progress → 下一轮继续直到完成', async () => {
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
         mockAgentRuntime.prompt
           .mockReturnValueOnce(
@@ -1206,6 +1269,18 @@ describe('AgentTaskWorker', () => {
           'pending',
           'in_progress',
         );
+        expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          STEP_ID,
+          expect.objectContaining({ type: 'tool_call' }),
+        );
+        expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          STEP_ID,
+          { type: 'done', stopReason: 'tool_use' },
+        );
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
@@ -1230,6 +1305,18 @@ describe('AgentTaskWorker', () => {
             args: { q: 'test' },
           },
         );
+        expect(updateChain.set).toHaveBeenLastCalledWith({
+          checkpointData: expect.objectContaining({
+            session: {},
+            sessionId: SESSION_ID,
+            partialContent: '',
+            round: 1,
+            chunkIndex: 0,
+            toolCalls: [
+              expect.objectContaining({ id: 'tc-1', status: 'in_progress' }),
+            ],
+          }),
+        });
         expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
           TENANT_ID,
           STEP_ID,
@@ -1238,7 +1325,7 @@ describe('AgentTaskWorker', () => {
         );
       });
 
-      it('MANUAL_CONFIRM: tool_call → awaiting_permission → waiting_intervention 并提前结束', async () => {
+      it('MANUAL_CONFIRM: tool_call → awaiting_permission，checkpoint 直写并提前结束', async () => {
         const step = makeStep({
           nodeData: {
             agentId: AGENT_ID,
@@ -1246,7 +1333,9 @@ describe('AgentTaskWorker', () => {
             autonomyMode: 'MANUAL_CONFIRM',
           },
         });
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(step));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
         mockAgentRuntime.prompt.mockReturnValue(
           createEventStream([
@@ -1264,7 +1353,12 @@ describe('AgentTaskWorker', () => {
           ]),
         );
 
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(REQUESTED_AT));
+
         await worker.process(createMockJob());
+
+        vi.useRealTimers();
 
         expect(mockToolCallStateMachine.transition).toHaveBeenCalledWith(
           'pending',
@@ -1279,39 +1373,47 @@ describe('AgentTaskWorker', () => {
             toolCallId: 'tc-1',
             tool: 'search',
             args: { q: 'test' },
+            requestedAt: REQUESTED_AT,
           },
         );
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
-          STEP_ID,
-          'waiting_intervention',
-          {
-            checkpointData: expect.objectContaining({
-              sessionId: SESSION_ID,
-              partialContent: '部分输出',
-              round: 0,
-              chunkIndex: 1,
-              toolCalls: [
-                expect.objectContaining({
-                  id: 'tc-1',
-                  tool: 'search',
-                  status: 'awaiting_permission',
-                }),
-              ],
-            }),
-          },
+          EXECUTION_ID,
+          expect.objectContaining({
+            toolCallId: 'tc-1',
+            status: 'awaiting_permission',
+          }),
         );
+        expect(updateChain.set).toHaveBeenLastCalledWith({
+          checkpointData: expect.objectContaining({
+            session: {},
+            sessionId: SESSION_ID,
+            partialContent: '部分输出',
+            round: 1,
+            chunkIndex: 1,
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-1',
+                tool: 'search',
+                status: 'awaiting_permission',
+              }),
+            ],
+          }),
+        });
         expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledTimes(1);
         expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
           TENANT_ID,
           STEP_ID,
-          'completed',
+          'waiting_intervention',
           expect.anything(),
         );
       });
 
       it('单轮多个 tool_call: 会逐个 transition 并广播状态', async () => {
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
         mockAgentRuntime.prompt
           .mockReturnValueOnce(
@@ -1369,7 +1471,9 @@ describe('AgentTaskWorker', () => {
       });
 
       it('超过最大轮数（10 轮）仍返回 tool_use 时会退出并以 stopReason=tool_use 完成', async () => {
+        const updateChain = createUpdateChain();
         mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+        mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
 
         for (let round = 0; round < 10; round++) {
@@ -1404,6 +1508,143 @@ describe('AgentTaskWorker', () => {
           STEP_ID,
           TENANT_ID,
         );
+      });
+
+      it('FULL_AUTO: tool-result / tool-error 会补齐 in_progress 并持久化 completed / failed', async () => {
+        const updateChain = createUpdateChain();
+        mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+        mockDb.update.mockReturnValue(updateChain);
+        mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+        mockAgentRuntime.prompt
+          .mockReturnValueOnce(
+            createEventStream([
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-1',
+                  tool: 'search',
+                  args: { q: 'test' },
+                  status: 'pending',
+                },
+              },
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-1',
+                  tool: 'search',
+                  args: { q: 'test' },
+                  status: 'completed',
+                  result: { items: ['ok'] },
+                },
+              },
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-2',
+                  tool: 'lookup',
+                  args: { id: '42' },
+                  status: 'pending',
+                },
+              },
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-2',
+                  tool: 'lookup',
+                  args: { id: '42' },
+                  status: 'failed',
+                  error: 'boom',
+                },
+              },
+              { type: 'done', stopReason: 'tool_use' },
+            ]),
+          )
+          .mockReturnValueOnce(
+            createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+          );
+
+        await worker.process(createMockJob());
+
+        expect(mockToolCallStateMachine.transition.mock.calls).toEqual([
+          ['pending', 'in_progress'],
+          ['in_progress', 'completed'],
+          ['pending', 'in_progress'],
+          ['in_progress', 'failed'],
+        ]);
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          expect.objectContaining({
+            toolCallId: 'tc-1',
+            status: 'completed',
+            result: { items: ['ok'] },
+          }),
+        );
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          expect.objectContaining({
+            toolCallId: 'tc-2',
+            status: 'failed',
+            error: 'boom',
+          }),
+        );
+        expect(updateChain.set).toHaveBeenLastCalledWith({
+          checkpointData: expect.objectContaining({
+            session: {},
+            sessionId: SESSION_ID,
+            round: 1,
+            chunkIndex: 0,
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-1',
+                status: 'completed',
+                transitions: [
+                  expect.objectContaining({
+                    to: 'pending',
+                    source: 'runtime',
+                    timestamp: expect.any(String),
+                  }),
+                  expect.objectContaining({
+                    from: 'pending',
+                    to: 'in_progress',
+                    source: 'worker',
+                    timestamp: expect.any(String),
+                  }),
+                  expect.objectContaining({
+                    from: 'in_progress',
+                    to: 'completed',
+                    source: 'runtime',
+                    timestamp: expect.any(String),
+                  }),
+                ],
+              }),
+              expect.objectContaining({
+                id: 'tc-2',
+                status: 'failed',
+                transitions: [
+                  expect.objectContaining({
+                    to: 'pending',
+                    source: 'runtime',
+                    timestamp: expect.any(String),
+                  }),
+                  expect.objectContaining({
+                    from: 'pending',
+                    to: 'in_progress',
+                    source: 'worker',
+                    timestamp: expect.any(String),
+                  }),
+                  expect.objectContaining({
+                    from: 'in_progress',
+                    to: 'failed',
+                    source: 'runtime',
+                    timestamp: expect.any(String),
+                  }),
+                ],
+              }),
+            ],
+          }),
+        });
       });
 
       it('循环中抛错会保留已累计内容到 error.partialContent 与 checkpointData.partialContent', async () => {

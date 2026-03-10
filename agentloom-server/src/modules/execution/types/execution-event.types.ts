@@ -101,6 +101,7 @@ export interface ToolPermissionRequiredPayload {
   readonly toolCallId: string;
   readonly tool: string;
   readonly args: Record<string, unknown>;
+  readonly requestedAt: string;
   readonly permissionRequest?: {
     readonly description?: string;
     readonly resourcePaths?: readonly string[];

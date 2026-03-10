@@ -346,7 +346,10 @@ describe('useExecutionSocket', () => {
       timestamp: '2025-01-01T00:00:00Z',
       executionId: 'exec-1',
       tenantId: 'tenant-1',
-      data: { stepId: 'step-1', event: { type: 'plan', content: 'test' } },
+      data: {
+        stepId: 'step-1',
+        event: { type: 'plan', title: 'test-plan', content: 'test' },
+      },
     }
 
     act(() => {

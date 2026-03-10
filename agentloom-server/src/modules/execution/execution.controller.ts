@@ -165,7 +165,7 @@ export class ExecutionController {
   }
 
   @Post(
-    'executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve-permission',
+    'executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve',
   )
   @HttpCode(HttpStatus.ACCEPTED)
   @Roles('owner', 'admin', 'creator', 'operator')
@@ -175,7 +175,7 @@ export class ExecutionController {
   async resolveToolPermission(
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Param('stepId', ParseUUIDPipe) stepId: string,
-    @Param('toolCallId', ParseUUIDPipe) toolCallId: string,
+    @Param('toolCallId') toolCallId: string,
     @Body() dto: ResolveToolPermissionDto,
     @CurrentTenant() tenantId: string,
   ) {

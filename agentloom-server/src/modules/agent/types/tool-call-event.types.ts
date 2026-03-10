@@ -18,6 +18,15 @@ export type ToolCallStatus =
   | 'completed'
   | 'failed';
 
+export type ToolCallTransitionSource = 'runtime' | 'worker' | 'user';
+
+export interface ToolCallTransitionRecord {
+  readonly from?: ToolCallStatus;
+  readonly to: ToolCallStatus;
+  readonly timestamp: string;
+  readonly source: ToolCallTransitionSource;
+}
+
 export interface ToolPermissionRequest {
   readonly description: string;
   readonly resourcePaths?: readonly string[];
@@ -28,6 +37,7 @@ export interface ToolCallEvent {
   readonly tool: string;
   readonly args: Record<string, unknown>;
   readonly status: ToolCallStatus;
+  readonly transitions?: readonly ToolCallTransitionRecord[];
   readonly result?: unknown;
   readonly error?: string;
   readonly permissionRequest?: ToolPermissionRequest;

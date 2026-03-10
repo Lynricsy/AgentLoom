@@ -521,7 +521,7 @@ export class NodeSchedulerService {
       );
     }
 
-    if (step.status !== 'waiting_intervention') {
+    if (step.status !== 'running') {
       throw new ToolPermissionResolutionNotAllowedException(
         toolCallId,
         step.status,
@@ -554,35 +554,6 @@ export class NodeSchedulerService {
         toolCall.status,
       );
     }
-
-    try {
-      await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running', {
-        checkpointData: checkpoint,
-      });
-    } catch (error) {
-      if (error instanceof InvalidStepTransitionException) {
-        const [latestStep] = await tenantDb
-          .select({ status: schema.executionSteps.status })
-          .from(schema.executionSteps)
-          .where(eq(schema.executionSteps.id, stepId))
-          .limit(1);
-
-        throw new ToolPermissionResolutionNotAllowedException(
-          toolCallId,
-          latestStep?.status ?? step.status,
-        );
-      }
-      throw error;
-    }
-
-    await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
-
-    this.eventBridge.emitToolPermissionResolved(tenantId, executionId, {
-      stepId,
-      nodeId: step.nodeId,
-      toolCallId,
-      action: resolution.action,
-    });
 
     await this.agentTaskQueue.add('agent-task', {
       executionId,

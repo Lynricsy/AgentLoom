@@ -138,10 +138,18 @@ describe('InProcessAgentAdapter', () => {
 
   describe('createSession', () => {
     it('会保留 workflow 上下文和 runtime 元信息', async () => {
+      const mcpServers = {
+        filesystem: {
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+        },
+      } as NonNullable<CreateSessionParams['mcpServers']>;
       const params = workflowCreateParams({
         llmModelConfigId: 'model-config-001',
         systemPrompt: '你是一个专业翻译',
         autonomyMode: 'LLM_SUGGEST',
+        mcpServers,
       });
 
       const session = await adapter.createSession(params);
@@ -155,6 +163,7 @@ describe('InProcessAgentAdapter', () => {
         llmModelConfigId: 'model-config-001',
         systemPrompt: '你是一个专业翻译',
         autonomyMode: 'LLM_SUGGEST',
+        mcpServers,
       });
       expect(session).toMatchObject({
         agentId: 'agent-001',
@@ -267,6 +276,93 @@ describe('InProcessAgentAdapter', () => {
       }
 
       expect(events).toEqual([{ type: 'done', stopReason: 'max_tokens' }]);
+    });
+
+    it('会把 tool-call 与 finish-step(tool-calls) 映射为 tool_use', async () => {
+      await createAndSetupSession();
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([
+          {
+            type: 'tool-call',
+            toolCallId: 'tc-1',
+            toolName: 'search',
+            input: { q: 'test' },
+          },
+          { type: 'finish-step', finishReason: 'tool-calls' },
+        ]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const events: AgentEvent[] = [];
+      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tc-1',
+            tool: 'search',
+            args: { q: 'test' },
+            status: 'pending',
+          },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ]);
+    });
+
+    it('会把 tool-result 与 tool-error 映射为 completed/failed', async () => {
+      await createAndSetupSession();
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([
+          {
+            type: 'tool-result',
+            toolCallId: 'tc-1',
+            toolName: 'search',
+            input: { q: 'test' },
+            output: { items: ['result'] },
+          },
+          {
+            type: 'tool-error',
+            toolCallId: 'tc-2',
+            toolName: 'lookup',
+            input: { id: 'doc-1' },
+            error: new Error('工具失败'),
+          },
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const events: AgentEvent[] = [];
+      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tc-1',
+            tool: 'search',
+            args: { q: 'test' },
+            status: 'completed',
+            result: { items: ['result'] },
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tc-2',
+            tool: 'lookup',
+            args: { id: 'doc-1' },
+            status: 'failed',
+            error: '工具失败',
+          },
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
     });
 
     it('缺少 tenantId 时会抛错并将 session 标记为 error', async () => {

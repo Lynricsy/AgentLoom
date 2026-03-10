@@ -17,6 +17,7 @@ import type {
 } from './types/agent-session.types';
 import type { AgentEvent, StopReason } from './types/agent-event.types';
 import type { ContentBlock } from './types/content-block.types';
+import type { ToolCallEvent } from './types/tool-call-event.types';
 
 /** 轻量级 session 索引，仅保存用于从检查点加载 session 所需的元数据 */
 interface SessionMetadata {
@@ -67,6 +68,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         llmModelConfigId: params.llmModelConfigId,
         systemPrompt: params.systemPrompt,
         autonomyMode: params.autonomyMode,
+        mcpServers: params.mcpServers,
       });
     } else {
       const sessionId = randomUUID();
@@ -172,6 +174,53 @@ export class InProcessAgentAdapter implements IAgentRuntime {
             accumulatedText += part.text;
             yield { type: 'message_chunk', content: part.text } as const;
           }
+          continue;
+        }
+
+        if (part.type === 'tool-call') {
+          yield {
+            type: 'tool_call',
+            call: {
+              id: part.toolCallId,
+              tool: part.toolName,
+              args: this.normalizeToolArgs(part.input),
+              status: 'pending',
+            },
+          } as const;
+          continue;
+        }
+
+        if (part.type === 'tool-result') {
+          yield {
+            type: 'tool_call',
+            call: {
+              id: part.toolCallId,
+              tool: part.toolName,
+              args: this.normalizeToolArgs(part.input),
+              status: 'completed',
+              result: part.output,
+            },
+          } as const;
+          continue;
+        }
+
+        if (part.type === 'tool-error') {
+          yield {
+            type: 'tool_call',
+            call: {
+              id: part.toolCallId,
+              tool: part.toolName,
+              args: this.normalizeToolArgs(part.input),
+              status: 'failed',
+              error: this.stringifyToolError(part.error),
+            },
+          } as const;
+          continue;
+        }
+
+        if (part.type === 'finish-step' && part.finishReason === 'tool-calls') {
+          emittedDone = true;
+          yield { type: 'done', stopReason: 'tool_use' } as const;
           continue;
         }
 
@@ -332,6 +381,20 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         }
       })
       .join('\n\n');
+  }
+
+  private normalizeToolArgs(input: unknown): ToolCallEvent['args'] {
+    return typeof input === 'object' && input !== null && !Array.isArray(input)
+      ? (input as ToolCallEvent['args'])
+      : {};
+  }
+
+  private stringifyToolError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return typeof error === 'string' ? error : '工具执行失败';
   }
 
   private mapFinishReason(finishReason: string | undefined): StopReason {

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useExecutionActions } from '../stores/executionStore'
+import { useExecutionActions, useExecutionStore } from '../stores/executionStore'
 import {
   useExecutionSocket,
   type ConnectionStatus,
@@ -32,6 +32,7 @@ export function useExecutionMonitor(
     updateToolCall,
     setToolPermissionRequired,
     resolveToolPermissionEvent,
+    addAgentEvent,
   } = useExecutionActions()
 
   const onError = useCallback(
@@ -55,6 +56,16 @@ export function useExecutionMonitor(
     onToolCallStatusChanged: updateToolCall,
     onToolPermissionRequired: setToolPermissionRequired,
     onToolPermissionResolved: resolveToolPermissionEvent,
+    onStepAgentEvent: (event) => {
+      const node = Object.values(useExecutionStore.getState().nodes).find(
+        (currentNode) => currentNode.stepId === event.data.stepId,
+      )
+      if (!node) {
+        return
+      }
+
+      addAgentEvent(node.nodeId, event.data.event)
+    },
     onError,
   })
 }

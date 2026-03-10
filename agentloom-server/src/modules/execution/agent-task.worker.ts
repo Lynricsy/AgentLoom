@@ -15,6 +15,7 @@ import {
   type IAgentAdapterFactory,
 } from '../agent/agent-adapter.factory';
 import type { ContentBlock } from '../agent/types/content-block.types';
+import type { CreateSessionParams } from '../agent/types/agent-session.types';
 import { StepStateMachineService } from './step-state-machine.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { ThrottleService } from './services/throttle.service';
@@ -32,7 +33,11 @@ import type {
   InterventionDecision,
   InterventionRequiredPayload,
 } from './types/execution-event.types';
-import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
+import type {
+  ToolCallEvent,
+  ToolCallStatus,
+  ToolCallTransitionSource,
+} from '../agent/types/tool-call-event.types';
 import {
   AGENT_TASK_QUEUE,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
@@ -121,6 +126,13 @@ export class AgentTaskWorker extends WorkerHost {
       unknown
     >;
     const input = (job.data.input ?? step.input ?? {}) as Record<string, unknown>;
+    const workflowContextExtras = (job.data.workflowContext ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const mcpServers = this.resolveSessionMcpServers(
+      workflowContextExtras.mcpServers,
+    );
     const workflowContext = {
       executionId,
       hasSandbox: Boolean(hasSandbox),
@@ -128,7 +140,7 @@ export class AgentTaskWorker extends WorkerHost {
       nodeId: step.nodeId,
       stepId,
       tenantId,
-      ...(job.data.workflowContext ?? {}),
+      ...workflowContextExtras,
     };
     let sessionId = resumeSessionId;
     let accumulatedContent = '';
@@ -152,17 +164,22 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (toolPermission) {
         runtime.registerSessionMetadata?.(sessionId!, tenantId, stepId);
-        accumulatedContent = this.loadPartialContentFromCheckpoint(step);
+        const toolLoopState = this.loadToolLoopStateFromCheckpoint(step);
+        accumulatedContent = toolLoopState.partialContent;
+        decision = toolLoopState.decision;
+        chunkIndex = toolLoopState.chunkIndex;
         const contentBlocks = await this.resolveToolPermissionAndBuildBlocks({
-            executionId,
-            stepId,
-            tenantId,
-            step,
-            toolPermission,
-            nodeId: step.nodeId,
-          });
+          executionId,
+          stepId,
+          tenantId,
+          step,
+          toolPermission,
+          nodeId: step.nodeId,
+        });
+        const resumedToolLoopState = this.loadToolLoopStateFromCheckpoint(step);
         const loopResult = await this.executeMultiTurnLoop({
           runtime,
+          step,
           sessionId: sessionId!,
           initialContentBlocks: contentBlocks,
           executionId,
@@ -173,6 +190,8 @@ export class AgentTaskWorker extends WorkerHost {
           accumulatedContent,
           decision,
           chunkIndex,
+          startRound: resumedToolLoopState.round,
+          existingToolCalls: resumedToolLoopState.toolCalls,
         });
 
         if (loopResult.waitingPermission) {
@@ -207,14 +226,20 @@ export class AgentTaskWorker extends WorkerHost {
               typeof nodeData.autonomyMode === 'string'
                 ? nodeData.autonomyMode
                 : undefined,
+            mcpServers,
             context: workflowContext,
           });
           sessionId = session.id;
+          step.checkpointData = {
+            ...this.getCheckpointData(step),
+            session: this.sessionPersistence.serializeSession(session),
+          };
         }
 
         const initialContentBlocks = this.buildContentBlocks(input);
         const loopResult = await this.executeMultiTurnLoop({
           runtime,
+          step,
           sessionId: sessionId!,
           initialContentBlocks,
           executionId,
@@ -225,6 +250,8 @@ export class AgentTaskWorker extends WorkerHost {
           accumulatedContent,
           decision,
           chunkIndex,
+          startRound: 0,
+          existingToolCalls: this.loadToolLoopStateFromCheckpoint(step).toolCalls,
         });
 
         if (loopResult.waitingPermission) {
@@ -513,17 +540,292 @@ export class AgentTaskWorker extends WorkerHost {
     return [{ type: 'text', text: JSON.stringify(input) }];
   }
 
-  private loadPartialContentFromCheckpoint(
+  private resolveSessionMcpServers(
+    value: unknown,
+  ): CreateSessionParams['mcpServers'] {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as CreateSessionParams['mcpServers'])
+      : undefined;
+  }
+
+  private getCheckpointData(
     step: typeof schema.executionSteps.$inferSelect,
-  ): string {
-    const checkpointData = (step.checkpointData ?? {}) as Record<
-      string,
-      unknown
-    >;
-    if (typeof checkpointData.partialContent === 'string') {
-      return checkpointData.partialContent;
+  ): Record<string, unknown> {
+    return (step.checkpointData ?? {}) as Record<string, unknown>;
+  }
+
+  private loadToolLoopStateFromCheckpoint(
+    step: typeof schema.executionSteps.$inferSelect,
+  ): {
+    partialContent: string;
+    chunkIndex: number;
+    round: number;
+    decision?: Record<string, unknown>;
+    toolCalls: ToolCallEvent[];
+  } {
+    const checkpointData = this.getCheckpointData(step);
+
+    return {
+      partialContent:
+        typeof checkpointData.partialContent === 'string'
+          ? checkpointData.partialContent
+          : '',
+      chunkIndex:
+        typeof checkpointData.chunkIndex === 'number'
+          ? checkpointData.chunkIndex
+          : 0,
+      round:
+        typeof checkpointData.round === 'number' ? checkpointData.round : 0,
+      decision:
+        typeof checkpointData.decision === 'object' &&
+        checkpointData.decision !== null &&
+        !Array.isArray(checkpointData.decision)
+          ? (checkpointData.decision as Record<string, unknown>)
+          : undefined,
+      toolCalls: Array.isArray(checkpointData.toolCalls)
+        ? (checkpointData.toolCalls as ToolCallEvent[])
+        : [],
+    };
+  }
+
+  private async mergeCheckpointData(
+    tenantId: string,
+    step: typeof schema.executionSteps.$inferSelect,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const checkpointData = {
+      ...this.getCheckpointData(step),
+      ...patch,
+    };
+
+    await this.withTenantContext(tenantId, async () => {
+      await this.tenantDb
+        .update(schema.executionSteps)
+        .set({ checkpointData })
+        .where(eq(schema.executionSteps.id, step.id));
+    });
+
+    step.checkpointData = checkpointData;
+    return checkpointData;
+  }
+
+  private async saveToolLoopCheckpoint(params: {
+    tenantId: string;
+    step: typeof schema.executionSteps.$inferSelect;
+    sessionId: string;
+    partialContent: string;
+    toolCalls: ToolCallEvent[];
+    round: number;
+    chunkIndex: number;
+    decision?: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    const {
+      tenantId,
+      step,
+      sessionId,
+      partialContent,
+      toolCalls,
+      round,
+      chunkIndex,
+      decision,
+    } = params;
+
+    return this.mergeCheckpointData(tenantId, step, {
+      sessionId,
+      partialContent,
+      toolCalls,
+      round,
+      chunkIndex,
+      ...(decision ? { decision } : {}),
+    });
+  }
+
+  private mergeToolCall(
+    toolCalls: ToolCallEvent[],
+    toolCall: ToolCallEvent,
+  ): ToolCallEvent[] {
+    const index = toolCalls.findIndex((current) => current.id === toolCall.id);
+    if (index === -1) {
+      return [...toolCalls, toolCall];
     }
-    return '';
+
+    const current = toolCalls[index];
+    const merged: ToolCallEvent = {
+      ...current,
+      ...toolCall,
+      transitions: toolCall.transitions ?? current.transitions,
+      args: toolCall.args ?? current.args,
+      result: toolCall.result ?? current.result,
+      error: toolCall.error ?? current.error,
+      permissionRequest: toolCall.permissionRequest ?? current.permissionRequest,
+    };
+
+    return toolCalls.map((item, itemIndex) =>
+      itemIndex === index ? merged : item,
+    );
+  }
+
+  private emitToolCallStatus(params: {
+    tenantId: string;
+    executionId: string;
+    stepId: string;
+    nodeId: string;
+    toolCall: ToolCallEvent;
+  }): void {
+    const { tenantId, executionId, stepId, nodeId, toolCall } = params;
+    this.eventBridge.emitToolCallStatus(tenantId, executionId, {
+      stepId,
+      nodeId,
+      toolCallId: toolCall.id,
+      tool: toolCall.tool,
+      status: toolCall.status,
+      args: toolCall.args,
+      result: toolCall.result,
+      error: toolCall.error,
+    });
+  }
+
+  private appendToolCallTransition(
+    toolCall: ToolCallEvent,
+    source: ToolCallTransitionSource,
+    to: ToolCallStatus,
+    from?: ToolCallStatus,
+  ): ToolCallEvent {
+    return {
+      ...toolCall,
+      status: to,
+      transitions: [
+        ...(toolCall.transitions ?? []),
+        {
+          ...(from ? { from } : {}),
+          to,
+          source,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+  }
+
+  private async applyToolCallUpdate(params: {
+    tenantId: string;
+    executionId: string;
+    stepId: string;
+    nodeId: string;
+    step: typeof schema.executionSteps.$inferSelect;
+    sessionId: string;
+    partialContent: string;
+    toolCalls: ToolCallEvent[];
+    toolCall: ToolCallEvent;
+    source: ToolCallTransitionSource;
+    round: number;
+    chunkIndex: number;
+    decision?: Record<string, unknown>;
+  }): Promise<ToolCallEvent[]> {
+    const {
+      tenantId,
+      executionId,
+      stepId,
+      nodeId,
+      step,
+      sessionId,
+      partialContent,
+      source,
+      round,
+      chunkIndex,
+      decision,
+    } = params;
+    let toolCalls = [...params.toolCalls];
+    let current = toolCalls.find((item) => item.id === params.toolCall.id);
+
+    if (!current) {
+      current = this.appendToolCallTransition(
+        {
+          ...params.toolCall,
+          status: 'pending',
+        },
+        source,
+        'pending',
+      );
+      toolCalls = this.mergeToolCall(toolCalls, current);
+      this.emitToolCallStatus({
+        tenantId,
+        executionId,
+        stepId,
+        nodeId,
+        toolCall: current,
+      });
+    }
+
+    let updatedToolCall: ToolCallEvent = {
+      ...current,
+      ...params.toolCall,
+      status: current.status,
+      transitions: params.toolCall.transitions ?? current.transitions,
+    };
+    toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
+
+    const nextTransitions = this.resolveToolCallTransitions(
+      current.status,
+      params.toolCall.status,
+      source,
+    );
+
+    for (const nextTransition of nextTransitions) {
+      const fromStatus = updatedToolCall.status;
+      updatedToolCall = this.appendToolCallTransition(
+        {
+          ...updatedToolCall,
+          ...params.toolCall,
+          status: fromStatus,
+        },
+        nextTransition.source,
+        this.toolCallStateMachine.transition(fromStatus, nextTransition.to),
+        fromStatus,
+      );
+      toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
+      this.emitToolCallStatus({
+        tenantId,
+        executionId,
+        stepId,
+        nodeId,
+        toolCall: updatedToolCall,
+      });
+    }
+
+    await this.saveToolLoopCheckpoint({
+      tenantId,
+      step,
+      sessionId,
+      partialContent,
+      toolCalls,
+      round,
+      chunkIndex,
+      decision,
+    });
+
+    return toolCalls;
+  }
+
+  private resolveToolCallTransitions(
+    currentStatus: ToolCallStatus,
+    targetStatus: ToolCallStatus,
+    source: ToolCallTransitionSource,
+  ): Array<{ to: ToolCallStatus; source: ToolCallTransitionSource }> {
+    if (currentStatus === targetStatus) {
+      return [];
+    }
+
+    if (
+      currentStatus === 'pending' &&
+      (targetStatus === 'completed' || targetStatus === 'failed')
+    ) {
+      return [
+        { to: 'in_progress', source: 'worker' },
+        { to: targetStatus, source },
+      ];
+    }
+
+    return [{ to: targetStatus, source }];
   }
 
   private async resolveToolPermissionAndBuildBlocks(params: {
@@ -536,10 +838,7 @@ export class AgentTaskWorker extends WorkerHost {
   }): Promise<ContentBlock[]> {
     const { executionId, stepId, tenantId, step, toolPermission, nodeId } =
       params;
-    const checkpointData = (step.checkpointData ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const checkpointData = this.getCheckpointData(step);
     const toolCalls = Array.isArray(checkpointData.toolCalls)
       ? (checkpointData.toolCalls as ToolCallEvent[])
       : [];
@@ -564,25 +863,33 @@ export class AgentTaskWorker extends WorkerHost {
       toolCall.status,
       newStatus,
     );
-    const updatedToolCall = { ...toolCall, status: resolvedStatus };
+    const updatedToolCall = this.appendToolCallTransition(
+      { ...toolCall },
+      'user',
+      resolvedStatus,
+      toolCall.status,
+    );
+    const updatedToolCalls = toolCalls.map((tc) =>
+      tc.id === toolPermission.toolCallId ? updatedToolCall : tc,
+    );
+
+    await this.mergeCheckpointData(tenantId, step, {
+      toolCalls: updatedToolCalls,
+    });
+
+    this.emitToolCallStatus({
+      tenantId,
+      executionId,
+      stepId,
+      nodeId,
+      toolCall: updatedToolCall,
+    });
 
     this.eventBridge.emitToolPermissionResolved(tenantId, executionId, {
       stepId,
       nodeId,
       toolCallId: toolPermission.toolCallId,
       action: toolPermission.action,
-    });
-
-    const updatedToolCalls = toolCalls.map((tc) =>
-      tc.id === toolPermission.toolCallId ? updatedToolCall : tc,
-    );
-    await this.withTenantContext(tenantId, async () => {
-      await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running', {
-        checkpointData: {
-          ...checkpointData,
-          toolCalls: updatedToolCalls,
-        },
-      });
     });
 
     if (toolPermission.action === 'deny') {
@@ -600,6 +907,7 @@ export class AgentTaskWorker extends WorkerHost {
 
   private async executeMultiTurnLoop(params: {
     runtime: IAgentRuntime;
+    step: typeof schema.executionSteps.$inferSelect;
     sessionId: string;
     initialContentBlocks: ContentBlock[];
     executionId: string;
@@ -610,6 +918,8 @@ export class AgentTaskWorker extends WorkerHost {
     accumulatedContent: string;
     decision?: Record<string, unknown>;
     chunkIndex: number;
+    startRound: number;
+    existingToolCalls: ToolCallEvent[];
   }): Promise<{
     waitingPermission: boolean;
     accumulatedContent: string;
@@ -619,13 +929,14 @@ export class AgentTaskWorker extends WorkerHost {
     let { accumulatedContent, decision, chunkIndex } = params;
     let contentBlocks = params.initialContentBlocks;
     let lastStopReason: string | undefined;
+    let toolCalls = [...params.existingToolCalls];
     const autonomyMode =
       typeof params.nodeData.autonomyMode === 'string'
         ? params.nodeData.autonomyMode
         : 'FULL_AUTO';
 
-    for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
-      const toolCalls: Array<{ -readonly [K in keyof ToolCallEvent]: ToolCallEvent[K] }> = [];
+    for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
+      const roundToolCallIds = new Set<string>();
       lastStopReason = undefined;
 
       try {
@@ -633,44 +944,62 @@ export class AgentTaskWorker extends WorkerHost {
           params.sessionId,
           contentBlocks,
         )) {
-        if (event.type === 'message_chunk') {
-          accumulatedContent += event.content;
-          chunkIndex++;
-          this.eventBridge.emitOutputChunk(
-            params.tenantId,
-            params.executionId,
-            {
-              stepId: params.stepId,
-              chunk: event.content,
-              index: chunkIndex,
-            },
-          );
-        } else if (event.type === 'tool_call') {
-          const toolCallEvent: ToolCallEvent = {
-            ...event.call,
-            status: 'pending',
-          };
-          toolCalls.push(toolCallEvent);
-          this.eventBridge.emitToolCallStatus(
-            params.tenantId,
-            params.executionId,
-            {
+          if (event.type !== 'message_chunk') {
+            this.stepStateMachine.broadcastAgentEvent(
+              params.tenantId,
+              params.executionId,
+              params.stepId,
+              event,
+            );
+          }
+
+          if (event.type === 'message_chunk') {
+            accumulatedContent += event.content;
+            chunkIndex++;
+            this.eventBridge.emitOutputChunk(
+              params.tenantId,
+              params.executionId,
+              {
+                stepId: params.stepId,
+                chunk: event.content,
+                index: chunkIndex,
+              },
+            );
+            continue;
+          }
+
+          if (event.type === 'tool_call') {
+            toolCalls = await this.applyToolCallUpdate({
+              tenantId: params.tenantId,
+              executionId: params.executionId,
               stepId: params.stepId,
               nodeId: params.nodeId,
-              toolCallId: toolCallEvent.id,
-              tool: toolCallEvent.tool,
-              status: toolCallEvent.status,
-              args: toolCallEvent.args,
-            },
-          );
-        } else if (event.type === 'decision') {
-          decision = {
-            suggestedContent: (event as { suggestedContent: string }).suggestedContent,
-            confidence: (event as { confidence?: number }).confidence,
-          };
-        } else if (event.type === 'done') {
-          lastStopReason = event.stopReason;
-        }
+              step: params.step,
+              sessionId: params.sessionId,
+              partialContent: accumulatedContent,
+              toolCalls,
+              toolCall: event.call,
+              source: 'runtime',
+              round,
+              chunkIndex,
+              decision,
+            });
+            roundToolCallIds.add(event.call.id);
+            continue;
+          }
+
+          if (event.type === 'decision') {
+            decision = {
+              suggestedContent: event.suggestedContent,
+              confidence: event.confidence,
+              ...(event.rationale ? { rationale: event.rationale } : {}),
+            };
+            continue;
+          }
+
+          if (event.type === 'done') {
+            lastStopReason = event.stopReason;
+          }
         }
       } catch (loopError) {
         const err =
@@ -682,68 +1011,104 @@ export class AgentTaskWorker extends WorkerHost {
         throw err;
       }
 
-      if (lastStopReason !== 'tool_use' || toolCalls.length === 0) {
+      if (lastStopReason !== 'tool_use' || roundToolCallIds.size === 0) {
         break;
       }
 
       if (autonomyMode === 'FULL_AUTO') {
-        for (const tc of toolCalls) {
-          tc.status = this.toolCallStateMachine.transition(
-            tc.status,
+        for (const toolCallId of roundToolCallIds) {
+          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
+          if (!currentToolCall || currentToolCall.status !== 'pending') {
+            continue;
+          }
+
+          const updatedToolCall: ToolCallEvent = {
+            ...currentToolCall,
+          };
+          const inProgressStatus = this.toolCallStateMachine.transition(
+            currentToolCall.status,
             'in_progress',
           );
-          this.eventBridge.emitToolCallStatus(
-            params.tenantId,
-            params.executionId,
-            {
-              stepId: params.stepId,
-              nodeId: params.nodeId,
-              toolCallId: tc.id,
-              tool: tc.tool,
-              status: tc.status,
-              args: tc.args,
-            },
+          const transitionedToolCall = this.appendToolCallTransition(
+            updatedToolCall,
+            'worker',
+            inProgressStatus,
+            currentToolCall.status,
           );
+          toolCalls = this.mergeToolCall(toolCalls, transitionedToolCall);
+          this.emitToolCallStatus({
+            tenantId: params.tenantId,
+            executionId: params.executionId,
+            stepId: params.stepId,
+            nodeId: params.nodeId,
+            toolCall: transitionedToolCall,
+          });
         }
+
+        await this.saveToolLoopCheckpoint({
+          tenantId: params.tenantId,
+          step: params.step,
+          sessionId: params.sessionId,
+          partialContent: accumulatedContent,
+          toolCalls,
+          round: round + 1,
+          chunkIndex,
+          decision,
+        });
         contentBlocks = [];
       } else {
-        for (const tc of toolCalls) {
-          tc.status = this.toolCallStateMachine.transition(
-            tc.status,
-            'awaiting_permission',
+        const requestedAt = new Date().toISOString();
+
+        for (const toolCallId of roundToolCallIds) {
+          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
+          if (!currentToolCall || currentToolCall.status !== 'pending') {
+            continue;
+          }
+
+          const awaitingPermissionStatus = this.toolCallStateMachine.transition(
+              currentToolCall.status,
+              'awaiting_permission',
           );
+          const updatedToolCall = this.appendToolCallTransition(
+            { ...currentToolCall },
+            'worker',
+            awaitingPermissionStatus,
+            currentToolCall.status,
+          );
+          toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
+          this.emitToolCallStatus({
+            tenantId: params.tenantId,
+            executionId: params.executionId,
+            stepId: params.stepId,
+            nodeId: params.nodeId,
+            toolCall: updatedToolCall,
+          });
           this.eventBridge.emitToolPermissionRequired(
             params.tenantId,
             params.executionId,
             {
               stepId: params.stepId,
               nodeId: params.nodeId,
-              toolCallId: tc.id,
-              tool: tc.tool,
-              args: tc.args,
-              ...(tc.permissionRequest
-                ? { permissionRequest: tc.permissionRequest }
+              toolCallId: updatedToolCall.id,
+              tool: updatedToolCall.tool,
+              args: updatedToolCall.args,
+              requestedAt,
+              ...(updatedToolCall.permissionRequest
+                ? { permissionRequest: updatedToolCall.permissionRequest }
                 : {}),
             },
           );
         }
 
-        await this.withTenantContext(params.tenantId, async () => {
-          await this.stepStateMachine.updateStepStatus(
-            params.tenantId,
-            params.stepId,
-            'waiting_intervention',
-            {
-              checkpointData: {
-                sessionId: params.sessionId,
-                partialContent: accumulatedContent,
-                toolCalls,
-                round,
-                chunkIndex,
-                ...(decision ? { decision } : {}),
-              },
-            },
-          );
+        await this.saveToolLoopCheckpoint({
+          tenantId: params.tenantId,
+          step: params.step,
+          sessionId: params.sessionId,
+          partialContent: accumulatedContent,
+          toolCalls,
+          round: round + 1,
+          chunkIndex,
+          decision,
         });
 
         return {

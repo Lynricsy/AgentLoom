@@ -971,7 +971,8 @@ describe('executionStore', () => {
 
       const agentEvent: AgentEvent = {
         type: 'plan',
-        plan: '执行搜索任务',
+        title: '执行搜索任务',
+        content: '执行搜索任务',
       }
       actions.addAgentEvent('node-1', agentEvent)
 
@@ -984,7 +985,8 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       const agentEvent: AgentEvent = {
         type: 'plan',
-        plan: '执行搜索任务',
+        title: '执行搜索任务',
+        content: '执行搜索任务',
       }
       actions.addAgentEvent('non-existent', agentEvent)
 

@@ -10,10 +10,20 @@ export type ToolCallStatus =
   | 'completed'
   | 'failed'
 
+export type ToolCallTransitionSource = 'runtime' | 'worker' | 'user'
+
+export interface ToolCallTransitionRecord {
+  from?: ToolCallStatus
+  to: ToolCallStatus
+  timestamp: string
+  source: ToolCallTransitionSource
+}
+
 export interface ToolCallEventData {
   id: string
   tool: string
   status: ToolCallStatus
+  transitions?: ToolCallTransitionRecord[]
   args?: Record<string, unknown>
   result?: unknown
   error?: string
@@ -41,7 +51,8 @@ export type StopReason =
 
 export interface PlanEvent {
   type: 'plan'
-  plan: string
+  title: string
+  content: string
 }
 
 export interface MessageChunkEvent {
@@ -51,12 +62,12 @@ export interface MessageChunkEvent {
 
 export interface ToolCallAgentEvent {
   type: 'tool_call'
-  toolCall: ToolCallEventData
+  call: ToolCallEventData
 }
 
 export interface DecisionEvent {
   type: 'decision'
-  suggestedContent?: unknown
+  suggestedContent: string
   confidence?: number
   rationale?: string
 }
@@ -91,7 +102,7 @@ export interface ToolPermissionRequiredPayload {
   nodeId: string
   toolCallId: string
   tool: string
-  args?: Record<string, unknown>
+  args: Record<string, unknown>
   permissionRequest?: {
     description: string
     resourcePaths?: string[]
