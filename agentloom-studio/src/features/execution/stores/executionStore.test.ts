@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useExecutionStore, type NodeExecutionState } from './executionStore'
-import { resolveIntervention } from '../api/executionApi'
+import { resolveIntervention, resolveToolPermission } from '../api/executionApi'
 import type {
+  AgentEvent,
   ExecutionEvent,
   ExecutionStateSnapshot,
   ExecutionStatusChangedPayload,
@@ -10,10 +11,14 @@ import type {
   OutputChunkPayload,
   StepRetryingPayload,
   StepStatusChangedPayload,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
 } from '../types'
 
 vi.mock('../api/executionApi', () => ({
   resolveIntervention: vi.fn(),
+  resolveToolPermission: vi.fn(),
 }))
 
 /** 从 store 获取节点状态，不存在则抛出（仅测试用） */
@@ -700,6 +705,458 @@ describe('executionStore', () => {
       expect(state.status).toBeNull()
       expect(state.nodes).toEqual({})
       expect(state.recentEvents).toEqual([])
+    })
+  })
+
+  describe('updateToolCall', () => {
+    it('creates new tool call entry from ToolCallStatusPayload', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'pending',
+            args: { q: 'test' },
+          },
+        }),
+      )
+
+      const node = getNode('node-1')
+      expect(node.toolCalls['tc-1']).toEqual({
+        id: 'tc-1',
+        tool: 'search',
+        status: 'pending',
+        args: { q: 'test' },
+        result: undefined,
+        error: undefined,
+        permissionRequest: undefined,
+      })
+    })
+
+    it('updates existing tool call status preserving args/result/error', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'pending',
+            args: { q: 'test' },
+          },
+        }),
+      )
+
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'in_progress',
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc?.status).toBe('in_progress')
+      expect(tc?.args).toEqual({ q: 'test' })
+    })
+
+    it('updates tool call with result on completed', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'pending',
+            args: { q: 'test' },
+          },
+        }),
+      )
+
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'completed',
+            result: { items: [1, 2, 3] },
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc?.status).toBe('completed')
+      expect(tc?.result).toEqual({ items: [1, 2, 3] })
+      expect(tc?.args).toEqual({ q: 'test' })
+    })
+
+    it('updates tool call with error on failed', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'pending',
+            args: { q: 'test' },
+          },
+        }),
+      )
+
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'failed',
+            error: 'API timeout',
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc?.status).toBe('failed')
+      expect(tc?.error).toBe('API timeout')
+      expect(tc?.args).toEqual({ q: 'test' })
+    })
+  })
+
+  describe('setToolPermissionRequired', () => {
+    it('creates tool call with awaiting_permission status from ToolPermissionRequiredPayload', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.setToolPermissionRequired(
+        makeEvent<ToolPermissionRequiredPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            args: { q: 'test' },
+            requestedAt: '2025-01-01T00:00:00Z',
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc).toBeDefined()
+      expect(tc?.status).toBe('awaiting_permission')
+      expect(tc?.tool).toBe('search')
+      expect(tc?.args).toEqual({ q: 'test' })
+    })
+
+    it('sets permissionRequest on tool call', () => {
+      const { actions } = useExecutionStore.getState()
+      const permissionRequest = {
+        description: '需要访问文件系统',
+        resourcePaths: ['/data/files'],
+      }
+      actions.setToolPermissionRequired(
+        makeEvent<ToolPermissionRequiredPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'file-read',
+            args: { path: '/data/files' },
+            permissionRequest,
+            requestedAt: '2025-01-01T00:00:00Z',
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc?.permissionRequest).toEqual(permissionRequest)
+    })
+  })
+
+  describe('resolveToolPermissionEvent', () => {
+    function setupAwaitingPermission() {
+      const { actions } = useExecutionStore.getState()
+      actions.setToolPermissionRequired(
+        makeEvent<ToolPermissionRequiredPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            args: { q: 'test' },
+            requestedAt: '2025-01-01T00:00:00Z',
+          },
+        }),
+      )
+      return actions
+    }
+
+    it('approve: changes status from awaiting_permission to in_progress', () => {
+      const actions = setupAwaitingPermission()
+      expect(getNode('node-1').toolCalls['tc-1']?.status).toBe('awaiting_permission')
+
+      actions.resolveToolPermissionEvent(
+        makeEvent<ToolPermissionResolvedPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            action: 'approve',
+          },
+        }),
+      )
+
+      expect(getNode('node-1').toolCalls['tc-1']?.status).toBe('in_progress')
+    })
+
+    it('deny: changes status from awaiting_permission to denied', () => {
+      const actions = setupAwaitingPermission()
+      expect(getNode('node-1').toolCalls['tc-1']?.status).toBe('awaiting_permission')
+
+      actions.resolveToolPermissionEvent(
+        makeEvent<ToolPermissionResolvedPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            action: 'deny',
+          },
+        }),
+      )
+
+      expect(getNode('node-1').toolCalls['tc-1']?.status).toBe('denied')
+    })
+  })
+
+  describe('addAgentEvent', () => {
+    it('adds agent event to node agentEvents array', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(makeStepStatusEvent())
+
+      const agentEvent: AgentEvent = {
+        type: 'plan',
+        plan: '执行搜索任务',
+      }
+      actions.addAgentEvent('node-1', agentEvent)
+
+      const node = getNode('node-1')
+      expect(node.agentEvents).toHaveLength(1)
+      expect(node.agentEvents[0]).toEqual(agentEvent)
+    })
+
+    it('does not add event if node does not exist', () => {
+      const { actions } = useExecutionStore.getState()
+      const agentEvent: AgentEvent = {
+        type: 'plan',
+        plan: '执行搜索任务',
+      }
+      actions.addAgentEvent('non-existent', agentEvent)
+
+      expect(useExecutionStore.getState().nodes['non-existent']).toBeUndefined()
+    })
+  })
+
+  describe('clearToolCalls', () => {
+    it('clears all tool calls for a node', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'completed',
+            args: { q: 'test' },
+          },
+        }),
+      )
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 2,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-2',
+            tool: 'fetch',
+            status: 'pending',
+          },
+        }),
+      )
+
+      expect(Object.keys(getNode('node-1').toolCalls)).toHaveLength(2)
+
+      actions.clearToolCalls('node-1')
+
+      expect(getNode('node-1').toolCalls).toEqual({})
+    })
+
+    it('does not affect other node data', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(makeStepStatusEvent())
+      actions.appendNodeOutput(
+        makeEvent({
+          event: 'execution.node.output-chunk',
+          eventId: 2,
+          data: { stepId: 'step-1', chunk: 'output text', index: 0 },
+        }),
+      )
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 3,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'search',
+            status: 'completed',
+          },
+        }),
+      )
+
+      actions.clearToolCalls('node-1')
+
+      const node = getNode('node-1')
+      expect(node.toolCalls).toEqual({})
+      expect(node.output).toBe('output text')
+      expect(node.status).toBe('running')
+    })
+  })
+
+  describe('submitToolPermission', () => {
+    it('calls resolveToolPermission API', async () => {
+      vi.mocked(resolveToolPermission).mockResolvedValueOnce(undefined)
+
+      const { actions } = useExecutionStore.getState()
+      await actions.submitToolPermission('exec-1', 'step-1', 'tc-1', 'approve')
+
+      expect(resolveToolPermission).toHaveBeenCalledWith(
+        'exec-1',
+        'step-1',
+        'tc-1',
+        { action: 'approve' },
+      )
+    })
+
+    it('calls resolveToolPermission API with deny action', async () => {
+      vi.mocked(resolveToolPermission).mockResolvedValueOnce(undefined)
+
+      const { actions } = useExecutionStore.getState()
+      await actions.submitToolPermission('exec-1', 'step-1', 'tc-1', 'deny')
+
+      expect(resolveToolPermission).toHaveBeenCalledWith(
+        'exec-1',
+        'step-1',
+        'tc-1',
+        { action: 'deny' },
+      )
+    })
+  })
+
+  describe('applySnapshot with toolCalls', () => {
+    it('restores toolCalls from checkpoint data containing toolCalls array', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-tc',
+        status: 'paused',
+        completedSteps: 0,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-tc1',
+            nodeId: 'node-tc1',
+            status: 'running',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: null,
+            checkpointData: {
+              toolCalls: [
+                {
+                  id: 'tc-snap-1',
+                  tool: 'search',
+                  status: 'completed',
+                  args: { q: 'snapshot test' },
+                  result: { items: [1] },
+                },
+                {
+                  id: 'tc-snap-2',
+                  tool: 'fetch',
+                  status: 'awaiting_permission',
+                  args: { url: 'https://example.com' },
+                  permissionRequest: {
+                    description: '需要网络访问权限',
+                    resourcePaths: ['https://example.com'],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      const node = getNode('node-tc1')
+      expect(Object.keys(node.toolCalls)).toHaveLength(2)
+
+      expect(node.toolCalls['tc-snap-1']).toEqual({
+        id: 'tc-snap-1',
+        tool: 'search',
+        status: 'completed',
+        args: { q: 'snapshot test' },
+        result: { items: [1] },
+      })
+
+      expect(node.toolCalls['tc-snap-2']).toEqual({
+        id: 'tc-snap-2',
+        tool: 'fetch',
+        status: 'awaiting_permission',
+        args: { url: 'https://example.com' },
+        permissionRequest: {
+          description: '需要网络访问权限',
+          resourcePaths: ['https://example.com'],
+        },
+      })
     })
   })
 })
