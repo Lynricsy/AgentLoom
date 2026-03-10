@@ -109,3 +109,4 @@ wasm-pack build --target bundler --release  # 构建 WASM
 - **执行触发已接通**: VersionToolbar Run 按钮 → `useStartExecution` → POST /workflow-definitions/:id/run → executionStore.initExecution(id)。WorkflowStatusBar 显示 ExecutionStatusIndicator (6 状态 + 进度)
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 .wasm 文件
+- **Story 6-1 已完成**: EvidenceModule 已实现（Server: schema + DTO + service + controller + module + exceptions；Studio: types + api + hooks + barrel）。证据记录支持 5 种 source type (`rag_retrieval`/`agent_decision`/`tool_output`/`user_input`/`intervention`)，EvidencePacket JSONB 含 physicalLocation/semanticLocation/agentDecision/toolOutput 字段，SHA-256 内容哈希完整性校验。批量写入支持 50ms buffer flush。REST 端点: GET `/executions/:id/evidence` (分页) + GET `/:evidenceId` + GET `/:evidenceId/verify`

@@ -31,6 +31,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
+| evidence | `modules/evidence/` | 证据记录 CRUD + 批量缓冲 + SHA-256 完整性校验 | EventEmitter |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
