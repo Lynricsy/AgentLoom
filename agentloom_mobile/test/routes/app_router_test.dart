@@ -7,17 +7,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Widget createTestApp() {
+  const testEnvConfig = EnvConfig(
+    apiBaseUrl: 'http://localhost:3000/api/v1',
+    appName: 'AgentLoom Test',
+    environment: AppEnvironment.dev,
+  );
+
+  ProviderContainer createTestContainer() {
+    return ProviderContainer(
+      overrides: [envProvider.overrideWithValue(testEnvConfig)],
+    );
+  }
+
+  Widget createTestApp({ProviderContainer? container}) {
+    if (container != null) {
+      return UncontrolledProviderScope(
+        container: container,
+        child: const AgentLoomApp(),
+      );
+    }
+
     return ProviderScope(
-      overrides: [
-        envProvider.overrideWithValue(
-          const EnvConfig(
-            apiBaseUrl: 'http://localhost:3000/api/v1',
-            appName: 'AgentLoom Test',
-            environment: AppEnvironment.dev,
-          ),
-        ),
-      ],
+      overrides: [envProvider.overrideWithValue(testEnvConfig)],
       child: const AgentLoomApp(),
     );
   }
@@ -31,17 +42,7 @@ void main() {
     });
 
     testWidgets('goRouterProvider returns GoRouter instance', (tester) async {
-      final container = ProviderContainer(
-        overrides: [
-          envProvider.overrideWithValue(
-            const EnvConfig(
-              apiBaseUrl: 'http://localhost:3000/api/v1',
-              appName: 'AgentLoom Test',
-              environment: AppEnvironment.dev,
-            ),
-          ),
-        ],
-      );
+      final container = createTestContainer();
       addTearDown(container.dispose);
 
       final router = container.read(goRouterProvider);
@@ -111,16 +112,41 @@ void main() {
       expect(navBar.selectedIndex, 2);
     });
 
+    testWidgets('bottom nav highlight syncs after programmatic navigation', (
+      tester,
+    ) async {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(createTestApp(container: container));
+      await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
+      router.go('/workflows');
+      await tester.pumpAndSettle();
+
+      final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, 1);
+      expect(find.text('Workflows (Coming Soon)'), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/workflows');
+    });
+
     testWidgets('repeated tap on same tab stays on current screen', (
       tester,
     ) async {
-      await tester.pumpWidget(createTestApp());
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(createTestApp(container: container));
       await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
 
       // 先导航到 Workflows
       await tester.tap(find.text('Workflows'));
       await tester.pumpAndSettle();
       expect(find.text('Workflows (Coming Soon)'), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/workflows');
 
       // 再次点击 Workflows（重复点击）
       await tester.tap(find.text('Workflows'));
@@ -128,6 +154,7 @@ void main() {
 
       // 应仍停留在 Workflows 页面
       expect(find.text('Workflows (Coming Soon)'), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/workflows');
     });
   });
 }
