@@ -140,7 +140,7 @@ describe('PublishSheet', () => {
     });
   });
 
-  it('发布返回 warnings 时追加 warning toast', async () => {
+  it('发布返回 warnings 时显示内联警告列表', async () => {
     mutateAsyncMock.mockResolvedValueOnce({
       warnings: [
         {
@@ -165,13 +165,10 @@ describe('PublishSheet', () => {
           variant: 'success',
         }),
       );
-      expect(notifyMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: '发布兼容性警告',
-          variant: 'warning',
-        }),
-      );
     });
+
+    expect(screen.getByTestId('publish-warnings-list')).toBeInTheDocument();
+    expect(screen.getByText('检测到潜在类型不兼容')).toBeInTheDocument();
   });
 
   it('选择已有版本提交发布', async () => {
