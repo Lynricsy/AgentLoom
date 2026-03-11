@@ -18,6 +18,16 @@ export interface WorkflowDefinitionResponseDto {
 }
 
 /**
+ * 工作流定义详情响应 DTO（包含 nodes/edges/viewport）
+ */
+export interface WorkflowDefinitionDetailResponseDto
+  extends WorkflowDefinitionResponseDto {
+  nodes: Record<string, unknown>[];
+  edges: Record<string, unknown>[];
+  viewport: { x: number; y: number; zoom: number } | null;
+}
+
+/**
  * 分页列表响应
  */
 export interface WorkflowDefinitionListResponseDto {
@@ -64,5 +74,19 @@ export function serializeWorkflowDefinition(
     updatedBy: row.updatedBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * 将 Drizzle 行序列化为详情响应 DTO（包含 nodes/edges/viewport）
+ */
+export function serializeWorkflowDefinitionDetail(
+  row: WorkflowDefinition,
+): WorkflowDefinitionDetailResponseDto {
+  return {
+    ...serializeWorkflowDefinition(row),
+    nodes: (row.nodes ?? []) as Record<string, unknown>[],
+    edges: (row.edges ?? []) as Record<string, unknown>[],
+    viewport: row.viewport ?? null,
   };
 }

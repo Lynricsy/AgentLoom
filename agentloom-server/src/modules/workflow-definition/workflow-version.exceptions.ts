@@ -61,3 +61,20 @@ export class WorkflowVersionNotFoundException extends DomainException {
     });
   }
 }
+
+export class WorkflowVersionConflictException extends DomainException {
+  constructor(workflowId: string, currentVersion: number) {
+    super({
+      type: 'https://agentloom.dev/errors/version-conflict',
+      title: '版本冲突',
+      status: HttpStatus.CONFLICT,
+      detail: `工作流 ${workflowId} 已被其他用户修改，请刷新后重试`,
+      errors: [
+        {
+          field: 'version',
+          message: `当前版本为 ${currentVersion}`,
+        },
+      ],
+    });
+  }
+}

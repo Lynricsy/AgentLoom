@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
@@ -21,6 +21,7 @@ import type { CreateVersionDto } from './dto/create-version.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
+import type { UpdateWorkflowDefinitionDto } from './dto/update-workflow-definition.dto';
 import type {
   VersionResponseDto,
   PublishWarning,
@@ -28,7 +29,9 @@ import type {
 } from './dto/version-response.dto';
 import {
   serializeWorkflowDefinition,
+  serializeWorkflowDefinitionDetail,
   type WorkflowDefinitionResponseDto,
+  type WorkflowDefinitionDetailResponseDto,
   type WorkflowDefinitionListResponseDto,
 } from './dto/workflow-definition-response.dto';
 import {
@@ -36,6 +39,7 @@ import {
   WorkflowArchivedException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
+  WorkflowVersionConflictException,
   WorkflowVersionNotFoundException,
 } from './workflow-version.exceptions';
 
@@ -124,12 +128,20 @@ export class WorkflowVersionService {
     const whereClause =
       conditions.length > 0 ? and(...conditions) : undefined;
 
+    const sortColumnMap = {
+      updatedAt: schema.workflowDefinitions.updatedAt,
+      createdAt: schema.workflowDefinitions.createdAt,
+      name: schema.workflowDefinitions.name,
+    } as const;
+    const sortColumn = sortColumnMap[query.sort ?? 'updatedAt'];
+    const orderFn = query.order === 'asc' ? asc : desc;
+
     const [data, countResult] = await Promise.all([
       this.tenantDb
         .select(this.definitionListColumns)
         .from(schema.workflowDefinitions)
         .where(whereClause)
-        .orderBy(desc(schema.workflowDefinitions.updatedAt))
+        .orderBy(orderFn(sortColumn))
         .limit(pageSize)
         .offset(offset),
       this.tenantDb
@@ -164,6 +176,13 @@ export class WorkflowVersionService {
     }
 
     return serializeWorkflowDefinition(workflow);
+  }
+
+  async findDefinitionDetailById(
+    workflowId: string,
+  ): Promise<WorkflowDefinitionDetailResponseDto> {
+    const workflow = await this.findWorkflowOrThrow(this.tenantDb, workflowId);
+    return serializeWorkflowDefinitionDetail(workflow);
   }
 
   // ─── 创建工作流定义 ─────────────────────────────────────────────
@@ -256,6 +275,69 @@ export class WorkflowVersionService {
     }
 
     throw new Error('Unreachable: slug retry loop exhausted');
+  }
+
+  // ─── 更新工作流定义（乐观并发控制） ─────────────────────────────
+
+  async updateDefinition(
+    workflowId: string,
+    userId: string,
+    dto: UpdateWorkflowDefinitionDto,
+  ): Promise<WorkflowDefinitionDetailResponseDto> {
+    const updated = await this.withWorkflowWriteLock(
+      workflowId,
+      async (dbClient) => {
+        const workflow = await this.findWorkflowOrThrow(dbClient, workflowId);
+
+        if (workflow.status === 'archived') {
+          throw new WorkflowArchivedException(workflowId);
+        }
+
+        const setClause: Record<string, unknown> = {
+          version: sql`${schema.workflowDefinitions.version} + 1`,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        };
+
+        if (dto.name !== undefined) setClause.name = dto.name;
+        if (dto.description !== undefined)
+          setClause.description = dto.description;
+        if (dto.nodes !== undefined) setClause.nodes = dto.nodes;
+        if (dto.edges !== undefined) setClause.edges = dto.edges;
+        if (dto.viewport !== undefined) setClause.viewport = dto.viewport;
+
+        const updateResult = await dbClient
+          .update(schema.workflowDefinitions)
+          .set(setClause)
+          .where(
+            and(
+              eq(schema.workflowDefinitions.id, workflowId),
+              eq(schema.workflowDefinitions.version, dto.version),
+            ),
+          )
+          .returning();
+
+        if (updateResult.length === 0) {
+          throw new WorkflowVersionConflictException(
+            workflowId,
+            workflow.version,
+          );
+        }
+
+        return updateResult[0];
+      },
+    );
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'workflow_updated',
+        workflowId,
+        version: updated.version,
+        userId,
+      }),
+    );
+
+    return serializeWorkflowDefinitionDetail(updated);
   }
 
   // ─── 创建版本快照 ─────────────────────────────────────────────

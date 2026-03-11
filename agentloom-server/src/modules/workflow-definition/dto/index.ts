@@ -9,6 +9,10 @@ export {
   ListWorkflowDefinitionsQuerySchema,
 } from './list-workflow-definitions-query.dto';
 export { PublishWorkflowDto } from './publish-workflow.dto';
+export {
+  UpdateWorkflowDefinitionDto,
+  UpdateWorkflowDefinitionSchema,
+} from './update-workflow-definition.dto';
 export type {
   PublishResult,
   PublishWarning,
@@ -17,6 +21,10 @@ export type {
 export { versionResponseSchema } from './version-response.dto';
 export type {
   WorkflowDefinitionResponseDto,
+  WorkflowDefinitionDetailResponseDto,
   WorkflowDefinitionListResponseDto,
 } from './workflow-definition-response.dto';
-export { serializeWorkflowDefinition } from './workflow-definition-response.dto';
+export {
+  serializeWorkflowDefinition,
+  serializeWorkflowDefinitionDetail,
+} from './workflow-definition-response.dto';
