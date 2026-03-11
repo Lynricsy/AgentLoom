@@ -17,7 +17,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import { PublishWorkflowDto } from './dto/publish-workflow.dto';
-import type { VersionResponseDto } from './dto/version-response.dto';
+import type { VersionResponseDto, PublishResult } from './dto/version-response.dto';
 import { WorkflowVersionService } from './workflow-version.service';
 
 @ApiTags('Workflow Versions')
@@ -100,13 +100,12 @@ export class WorkflowVersionController {
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Body() dto: PublishWorkflowDto,
     @CurrentUser('sub') userId: string,
-  ): Promise<{ data: VersionResponseDto }> {
-    const data = await this.workflowVersionService.publish(
+  ): Promise<PublishResult> {
+    return this.workflowVersionService.publish(
       workflowId,
       dto,
       userId,
     );
-    return { data };
   }
 
   @Post('archive')

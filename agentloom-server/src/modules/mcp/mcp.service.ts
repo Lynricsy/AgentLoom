@@ -380,7 +380,7 @@ export class McpService {
     const inputs: PortMapping[] = Object.entries(properties).map(
       ([name, prop]) => ({
         name,
-        dataType: this.mapJsonSchemaToPortDataType(prop),
+        dataType: this.mapJsonSchemaToPortDataType(name, prop),
         description: prop.description as string | undefined,
         required: requiredFields.has(name),
       }),
@@ -399,14 +399,30 @@ export class McpService {
   }
 
   private mapJsonSchemaToPortDataType(
+    propertyName: string,
     prop: Record<string, unknown>,
   ): PortMapping['dataType'] {
     const type = prop.type as string | undefined;
     const contentMediaType = prop.contentMediaType as string | undefined;
+    const description = ((prop.description as string) ?? '').toLowerCase();
+    const nameLower = propertyName.toLowerCase();
 
     if (contentMediaType) {
       if (contentMediaType.startsWith('image/')) return 'image';
       if (contentMediaType.startsWith('audio/')) return 'audio';
+    }
+
+    if (this.matchesHeuristic(nameLower, description, ['model', 'llm']) && type === 'string') {
+      return 'model';
+    }
+    if (this.matchesHeuristic(nameLower, description, ['tool', 'function_call'])) {
+      return 'tool';
+    }
+    if (this.matchesHeuristic(nameLower, description, ['sandbox', 'runtime', 'execution_env'])) {
+      return 'sandbox';
+    }
+    if (this.matchesHeuristic(nameLower, description, ['knowledge', 'knowledge_base', 'rag', 'retrieval'])) {
+      return 'knowledge';
     }
 
     switch (type) {
@@ -421,6 +437,14 @@ export class McpService {
       default:
         return 'text';
     }
+  }
+
+  private matchesHeuristic(
+    name: string,
+    description: string,
+    keywords: string[],
+  ): boolean {
+    return keywords.some((kw) => name.includes(kw) || description.includes(kw));
   }
 
   private async safeCloseClient(

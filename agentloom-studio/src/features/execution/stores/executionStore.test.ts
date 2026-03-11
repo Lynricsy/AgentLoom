@@ -149,6 +149,44 @@ describe('executionStore', () => {
       actions.updateNodeStatus(makeStepStatusEvent({ to: 'queued' }))
       expect(getNode('node-1').isStreaming).toBe(false)
     })
+
+    it('stores structured errorDetail from status change event', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(
+        makeStepStatusEvent({
+          from: 'running',
+          to: 'failed',
+          errorDetail: {
+            message: '端口类型不兼容',
+            detail: 'source.text 无法连接到 target.json',
+            type: 'https://agentloom.dev/errors/node-type-mismatch',
+            nodeId: 'node-1',
+            errors: [{ field: 'targetPortId', message: '目标端口需要 json' }],
+            typeMismatch: {
+              sourceNodeId: 'node-source',
+              sourcePortId: 'output',
+              sourceType: 'text',
+              targetNodeId: 'node-target',
+              targetPortId: 'input',
+              targetType: 'json',
+              edgeId: 'edge-1',
+            },
+          },
+        }),
+      )
+
+      const node = getNode('node-1')
+      expect(node.errorMessage).toBe('source.text 无法连接到 target.json')
+      expect(node.errorDetail).toMatchObject({
+        type: 'https://agentloom.dev/errors/node-type-mismatch',
+        nodeId: 'node-1',
+        typeMismatch: {
+          sourceType: 'text',
+          targetType: 'json',
+          edgeId: 'edge-1',
+        },
+      })
+    })
   })
 
   describe('appendNodeOutput', () => {
@@ -267,6 +305,10 @@ describe('executionStore', () => {
             startedAt: '2025-01-01T00:01:00Z',
             completedAt: null,
             errorMessage: 'partial error',
+            errorDetail: {
+              message: 'partial error',
+              type: 'https://agentloom.dev/errors/agent-execution',
+            },
           },
         ],
       }
@@ -282,6 +324,9 @@ describe('executionStore', () => {
       expect(getNode('node-a').status).toBe('completed')
       expect(getNode('node-a').isStreaming).toBe(false)
       expect(getNode('node-b').errorMessage).toBe('partial error')
+      expect(getNode('node-b').errorDetail).toMatchObject({
+        type: 'https://agentloom.dev/errors/agent-execution',
+      })
     })
 
     it('restores output from step.result.output string', () => {

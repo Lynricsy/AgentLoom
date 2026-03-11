@@ -35,6 +35,7 @@ export interface ExecutionStepErrorMessage {
   detail?: string;
   nodeId?: string;
   stack?: string;
+  errors?: Array<{ field: string; message: string }>;
   attempts?: ExecutionStepAttemptError[];
   typeMismatch?: TypeMismatchInfo;
 }

@@ -168,8 +168,21 @@ describe('versionMutations', () => {
 
   it('publish 会提交 releaseNotes 并等待所有失效完成', async () => {
     const version = makeVersion({ id: 'ver-003', versionNumber: 3, label: '发布版' })
+    const publishResponse = {
+      data: version,
+      warnings: [
+        {
+          code: 'TYPE_MISMATCH_WARNING',
+          sourceNodeId: 'node-a',
+          targetNodeId: 'node-b',
+          sourcePort: { name: 'output', dataType: 'text' },
+          targetPort: { name: 'input', dataType: 'json' },
+          message: '潜在类型不兼容',
+        },
+      ],
+    }
     postMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue({ data: version }),
+      json: vi.fn().mockResolvedValue(publishResponse),
     })
 
     const { queryClient, wrapper } = createWrapper()
@@ -183,7 +196,7 @@ describe('versionMutations', () => {
     const { result } = renderHook(() => usePublishWorkflow('wf-001'), { wrapper })
 
     let settled = false
-    let mutationPromise!: Promise<WorkflowVersion>
+    let mutationPromise!: Promise<unknown>
 
     await act(async () => {
       mutationPromise = result.current
@@ -217,7 +230,7 @@ describe('versionMutations', () => {
     secondInvalidate.resolve()
 
     await act(async () => {
-      await mutationPromise
+      await expect(mutationPromise).resolves.toEqual(publishResponse)
     })
   })
 

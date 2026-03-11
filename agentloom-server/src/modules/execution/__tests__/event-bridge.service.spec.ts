@@ -97,6 +97,88 @@ describe('EventBridgeService', () => {
         expect.objectContaining({ eventId: 1 }),
       );
     });
+
+    describe('EventEmitter 集成', () => {
+      it('当步骤转为 failed 时应向 EventEmitter 发出内部事件', () => {
+        const payload: StepStatusChangedPayload = {
+          stepId: 's1',
+          nodeId: 'n1',
+          from: 'running',
+          to: 'failed',
+          errorDetail: {
+            message: '端口类型不兼容',
+            type: 'https://agentloom.dev/errors/node-type-mismatch',
+          },
+        };
+
+        service.emitStepStatusChanged(TENANT, EXEC, payload);
+
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          ExecutionEventName.STEP_STATUS_CHANGED,
+          {
+            tenantId: TENANT,
+            executionId: EXEC,
+            ...payload,
+          },
+        );
+      });
+
+      it('当步骤状态不是 failed 时不应向 EventEmitter 发出内部事件', () => {
+        const payload: StepStatusChangedPayload = {
+          stepId: 's1',
+          nodeId: 'n1',
+          from: 'running',
+          to: 'completed',
+        };
+
+        service.emitStepStatusChanged(TENANT, EXEC, payload);
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('未注入可选 EventEmitter 时也不应抛错', async () => {
+        const gatewayWithoutEmitter = {
+          broadcastTypedEvent: vi.fn(),
+          broadcastTypedEventImmediately: vi.fn(),
+          flushExecutionQueue: vi.fn(),
+          clearExecutionQueue: vi.fn(),
+        };
+        const throttleWithoutEmitter = {
+          forceFlush: vi.fn().mockReturnValue([]),
+          clearExecution: vi.fn(),
+        };
+        const module = await Test.createTestingModule({
+          providers: [
+            EventBridgeService,
+            { provide: ExecutionGateway, useValue: gatewayWithoutEmitter },
+            { provide: ThrottleService, useValue: throttleWithoutEmitter },
+          ],
+        }).compile();
+        const serviceWithoutEmitter = module.get(EventBridgeService);
+
+        expect(() =>
+          serviceWithoutEmitter.emitStepStatusChanged(TENANT, EXEC, {
+            stepId: 's1',
+            nodeId: 'n1',
+            from: 'running',
+            to: 'failed',
+            errorDetail: {
+              message: 'boom',
+            },
+          }),
+        ).not.toThrow();
+        expect(gatewayWithoutEmitter.broadcastTypedEvent).toHaveBeenCalledWith(
+          TENANT,
+          EXEC,
+          ExecutionEventName.STEP_STATUS_CHANGED,
+          expect.objectContaining({
+            data: expect.objectContaining({ to: 'failed' }),
+          }),
+        );
+
+        serviceWithoutEmitter.onModuleDestroy();
+      });
+    });
   });
 
   describe('emitExecutionStatusChanged', () => {

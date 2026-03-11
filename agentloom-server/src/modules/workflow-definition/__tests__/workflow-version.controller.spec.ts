@@ -49,7 +49,9 @@ describe('WorkflowVersionController', () => {
         },
       }),
       rollback: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
-      publish: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
+      publish: vi
+        .fn()
+        .mockResolvedValue({ data: MOCK_VERSION_DTO, warnings: [] }),
       archive: vi.fn().mockResolvedValue(undefined),
       getPublishedVersion: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
     };
@@ -152,7 +154,7 @@ describe('WorkflowVersionController', () => {
       const result = await controller.publish(WORKFLOW_ID, dto, USER_ID);
 
       expect(service.publish).toHaveBeenCalledWith(WORKFLOW_ID, dto, USER_ID);
-      expect(result).toEqual({ data: MOCK_VERSION_DTO });
+      expect(result).toEqual({ data: MOCK_VERSION_DTO, warnings: [] });
     });
   });
 

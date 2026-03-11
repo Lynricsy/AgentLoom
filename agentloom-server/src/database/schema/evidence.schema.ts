@@ -21,12 +21,14 @@ import { workflowExecutions } from './workflow-executions.schema';
 
 export interface PhysicalLocation {
   documentId: string;
+  knowledgeBaseId?: string;
   fileName: string;
   page?: number;
   paragraph?: number;
   offset: number;
   length: number;
   chunkId: string;
+  chunkContent?: string;
 }
 
 export interface SemanticLocation {

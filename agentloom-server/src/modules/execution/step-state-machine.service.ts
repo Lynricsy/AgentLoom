@@ -6,6 +6,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { InvalidStepTransitionException } from './execution.exceptions';
 import { EventBridgeService } from './services/event-bridge.service';
 import type { AgentEvent } from '../agent/types/agent-event.types';
+import type { StepStatusChangedPayload } from './types/execution-event.types';
 
 export type StepStatus = schema.ExecutionStep['status'];
 
@@ -111,6 +112,12 @@ export class StepStateMachineService {
         nodeId: step.nodeId,
         from: step.status,
         to: newStatus,
+        ...(newStatus === 'failed' && extra?.errorMessage
+          ? {
+              errorDetail:
+                extra.errorMessage as unknown as StepStatusChangedPayload['errorDetail'],
+            }
+          : {}),
       },
     );
 

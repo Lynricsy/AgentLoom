@@ -2,6 +2,7 @@ import { Inject, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import * as schema from '../../database/schema';
+import type { TypeMismatchInfo } from '../../database/schema/execution-steps.schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -371,7 +372,7 @@ export class AgentTaskWorker extends WorkerHost {
                 message: err.message,
                 stack: err.stack,
                 ...(err instanceof DomainException
-                  ? { type: err.type, title: err.message, detail: err.detail }
+                  ? { type: err.type, title: err.message, detail: err.detail, errors: err.errors }
                   : {}),
                 nodeId: step.nodeId,
               },
@@ -399,11 +400,11 @@ export class AgentTaskWorker extends WorkerHost {
             stack: err.stack,
             attempts: allAttempts,
             ...(err instanceof DomainException
-              ? { type: err.type, title: err.message, detail: err.detail }
+              ? { type: err.type, title: err.message, detail: err.detail, errors: err.errors }
               : {}),
             nodeId: step.nodeId,
             ...('typeMismatch' in err
-              ? { typeMismatch: (err as { typeMismatch: schema.TypeMismatchInfo }).typeMismatch }
+              ? { typeMismatch: (err as { typeMismatch: TypeMismatchInfo }).typeMismatch }
               : {}),
           },
           checkpointData,

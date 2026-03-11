@@ -41,6 +41,7 @@ export interface TimelineData {
   step: ExecutionStep
   agentDecisionEvidence?: EvidenceRecord
   interventionEvidence?: EvidenceRecord
+  nodeErrorEvidenceRecords?: EvidenceRecord[]
   outputFormatLevel?: number
   autonomyMode?: string
   evidenceCount: number
@@ -87,6 +88,9 @@ export function useTimelineData(
       const interventionEvidence = stepEvidence.find(
         (e: EvidenceRecord) => e.sourceType === 'intervention',
       )
+      const nodeErrorEvidenceRecords = stepEvidence.filter(
+        (e: EvidenceRecord) => e.sourceType === 'node_error',
+      )
 
       const checkpointAutonomy = (
         step.checkpointData as Record<string, unknown> | null | undefined
@@ -119,6 +123,7 @@ export function useTimelineData(
         step,
         agentDecisionEvidence,
         interventionEvidence,
+        nodeErrorEvidenceRecords,
         outputFormatLevel,
         autonomyMode,
         evidenceCount: stepEvidence.length,

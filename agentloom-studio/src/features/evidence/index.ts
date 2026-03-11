@@ -10,6 +10,8 @@ export type {
   EvidenceSourceType,
   EvidenceVerifyResult,
   IntegrityIssue,
+  NodeErrorEvidencePacket,
+  NodeErrorInfo,
   PhysicalLocation,
   SemanticLocation,
   ToolOutput,

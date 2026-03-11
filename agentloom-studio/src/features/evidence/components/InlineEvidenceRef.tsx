@@ -23,6 +23,7 @@ const sourceTypeLabels: Record<EvidenceSourceType, string> = {
   tool_output: '工具输出',
   user_input: '用户输入',
   intervention: '人工干预',
+  node_error: '节点错误',
 }
 
 export const InlineEvidenceRef = memo(function InlineEvidenceRef({

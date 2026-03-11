@@ -154,3 +154,40 @@ export class ToolPermissionResolutionNotAllowedException extends DomainException
     });
   }
 }
+
+export interface TypeMismatchDetail {
+  readonly sourcePortId: string;
+  readonly targetPortId: string;
+  readonly sourceType: string;
+  readonly targetType: string;
+  readonly sourceNodeId: string;
+  readonly targetNodeId: string;
+  readonly edgeId?: string;
+}
+
+export class NodeTypeMismatchException extends DomainException {
+  readonly typeMismatch: TypeMismatchDetail;
+
+  constructor(detail: TypeMismatchDetail) {
+    super({
+      type: 'https://agentloom.dev/errors/node-type-mismatch',
+      title: '端口类型不匹配',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `节点 ${detail.sourceNodeId} 的输出端口 "${detail.sourcePortId}" (${detail.sourceType}) 与节点 ${detail.targetNodeId} 的输入端口 "${detail.targetPortId}" (${detail.targetType}) 类型不兼容`,
+    });
+    this.typeMismatch = detail;
+  }
+}
+
+/**
+ * 端口类型兼容性检查
+ * 规则：同类型兼容，json 接受任何类型，其余不兼容
+ */
+export function isPortTypeCompatible(
+  sourceType: string,
+  targetType: string,
+): boolean {
+  if (sourceType === targetType) return true;
+  if (targetType === 'json') return true;
+  return false;
+}

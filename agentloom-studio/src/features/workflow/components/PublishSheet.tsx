@@ -2,9 +2,13 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { AlertCircle, Loader2, Upload, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
-import { usePublishWorkflow } from '../api/versionMutations'
+import {
+  usePublishWorkflow,
+  type PublishWorkflowResponse,
+} from '../api/versionMutations'
 import { useWorkflowVersions } from '../api/versionQueries'
 import { useToast } from '@/shared/ui/toast'
+import type { PublishWarning } from '../types'
 
 interface PublishSheetProps {
   open: boolean
@@ -47,6 +51,27 @@ async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
   }
 
   return ['发布失败，请稍后重试']
+}
+
+function formatPublishWarningDescription(warning: PublishWarning): string {
+  return [
+    warning.message,
+    `${warning.sourceNodeId}.${warning.sourcePort.name} (${warning.sourcePort.dataType}) → ${warning.targetNodeId}.${warning.targetPort.name} (${warning.targetPort.dataType})`,
+  ].join(' · ')
+}
+
+function notifyPublishWarnings(
+  notify: ReturnType<typeof useToast>['notify'],
+  response: PublishWorkflowResponse,
+) {
+  for (const warning of response.warnings ?? []) {
+    notify({
+      title: '发布兼容性警告',
+      description: formatPublishWarningDescription(warning),
+      variant: 'warning',
+      duration: 7000,
+    })
+  }
 }
 
 export const PublishSheet = memo(function PublishSheet({
@@ -94,16 +119,20 @@ export const PublishSheet = memo(function PublishSheet({
       }
 
       try {
-        await publishMutation.mutateAsync({
+        const response = await publishMutation.mutateAsync({
           label: label.trim() || undefined,
           releaseNotes: releaseNotes.trim() || undefined,
           versionId: versionSource === 'existing' ? selectedVersionId : undefined,
         })
         notify({
           title: '发布成功',
-          description: '工作流已发布',
+          description:
+            response.warnings && response.warnings.length > 0
+              ? `工作流已发布，并返回 ${response.warnings.length} 条兼容性警告`
+              : '工作流已发布',
           variant: 'success',
         })
+        notifyPublishWarnings(notify, response)
         resetForm()
         onOpenChange(false)
       } catch (err) {

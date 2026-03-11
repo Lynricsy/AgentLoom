@@ -1,10 +1,11 @@
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
-import type { ExecutionStatus } from '../types'
+import type { ExecutionStatus, TypeMismatchInfo } from '../types'
 
 export interface ExecutionStepAttemptResponse {
   attempt: number
-  error: string
+  error?: string
+  message?: string
   timestamp: string
 }
 
@@ -15,6 +16,8 @@ export interface ExecutionStepErrorResponse {
   type?: string | null
   nodeId?: string | null
   stack?: string
+  errors?: Array<{ field: string; message: string }>
+  typeMismatch?: TypeMismatchInfo
   attempts?: ExecutionStepAttemptResponse[]
 }
 

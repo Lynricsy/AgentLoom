@@ -25,11 +25,36 @@ export interface ExecutionStatusChangedPayload {
   readonly errorMessage?: string;
 }
 
+export interface StructuredErrorDetail {
+  readonly message: string;
+  readonly type?: string;
+  readonly title?: string;
+  readonly detail?: string;
+  readonly nodeId?: string;
+  readonly stack?: string;
+  readonly errors?: ReadonlyArray<{ readonly field: string; readonly message: string }>;
+  readonly typeMismatch?: {
+    readonly sourcePortId?: string;
+    readonly targetPortId?: string;
+    readonly sourceType: string;
+    readonly targetType: string;
+    readonly sourceNodeId: string;
+    readonly targetNodeId: string;
+    readonly edgeId?: string;
+  };
+  readonly attempts?: ReadonlyArray<{
+    readonly attempt: number;
+    readonly message: string;
+    readonly timestamp: string;
+  }>;
+}
+
 export interface StepStatusChangedPayload {
   readonly stepId: string;
   readonly nodeId: string;
   readonly from: string;
   readonly to: string;
+  readonly errorDetail?: StructuredErrorDetail;
 }
 
 export interface StepAgentEventPayload {
@@ -157,6 +182,7 @@ export interface StepSnapshot {
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly errorMessage?: string;
+  readonly errorDetail?: StructuredErrorDetail;
   readonly result?: Record<string, unknown> | null;
   readonly checkpointData?: Record<string, unknown> | null;
 }

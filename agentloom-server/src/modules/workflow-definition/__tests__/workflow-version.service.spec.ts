@@ -70,6 +70,42 @@ function createMockVersion(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createPortMappedWorkflow(sourceType: string, targetType: string) {
+  return createDraftWorkflow({
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'test',
+        position: { x: 0, y: 0 },
+        data: {
+          portMappingMetadata: {
+            outputs: [{ name: 'output-text', dataType: sourceType }],
+          },
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'test',
+        position: { x: 200, y: 0 },
+        data: {
+          portMappingMetadata: {
+            inputs: [{ name: 'input-data', dataType: targetType }],
+          },
+        },
+      },
+    ],
+    edges: [
+      {
+        id: 'edge-typed-1',
+        source: 'node-1',
+        target: 'node-2',
+        sourceHandle: 'output-text',
+        targetHandle: 'input-data',
+      },
+    ],
+  });
+}
+
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
@@ -340,8 +376,9 @@ describe('WorkflowVersionService', () => {
         USER_ID,
       );
 
-      expect(result.versionNumber).toBe(2);
-      expect(result.publishedAt).toBe(NOW.toISOString());
+      expect(result.data.versionNumber).toBe(2);
+      expect(result.data.publishedAt).toBe(NOW.toISOString());
+      expect(result.warnings).toEqual([]);
       expect(db.insert).toHaveBeenCalledOnce();
       expect(db.update).toHaveBeenCalledTimes(2);
       expect(redis.del).toHaveBeenCalledOnce();
@@ -369,8 +406,9 @@ describe('WorkflowVersionService', () => {
         USER_ID,
       );
 
-      expect(result.id).toBe(VERSION_ID);
-      expect(result.publishedAt).toBe(NOW.toISOString());
+      expect(result.data.id).toBe(VERSION_ID);
+      expect(result.data.publishedAt).toBe(NOW.toISOString());
+      expect(result.warnings).toEqual([]);
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledTimes(3);
     });
@@ -415,6 +453,85 @@ describe('WorkflowVersionService', () => {
       await expect(
         service.publish(WORKFLOW_ID, {}, USER_ID),
       ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
+    });
+
+    it('端口类型不兼容时应当返回发布 warnings', async () => {
+      const workflow = createPortMappedWorkflow('string', 'image');
+      const selectWf = createSelectChain([workflow]);
+      const selectMax = createSelectChain([{ maxVersion: 1 }]);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+
+      const publishedVersion = createMockVersion({
+        versionNumber: 2,
+        publishedAt: NOW,
+      });
+      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      expect(result.warnings).toEqual([
+        {
+          code: 'PORT_TYPE_INCOMPATIBLE',
+          sourceNodeId: 'node-1',
+          targetNodeId: 'node-2',
+          sourcePort: {
+            name: 'output-text',
+            dataType: 'string',
+          },
+          targetPort: {
+            name: 'input-data',
+            dataType: 'image',
+          },
+          message:
+            '输出端口 "output-text" (string) 与输入端口 "input-data" (image) 类型不兼容',
+        },
+      ]);
+    });
+
+    it('端口类型一致时不应返回发布 warnings', async () => {
+      const workflow = createPortMappedWorkflow('string', 'string');
+      const selectWf = createSelectChain([workflow]);
+      const selectMax = createSelectChain([{ maxVersion: 1 }]);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+
+      const publishedVersion = createMockVersion({
+        versionNumber: 2,
+        publishedAt: NOW,
+      });
+      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('目标端口为 json 时不应返回发布 warnings', async () => {
+      const workflow = createPortMappedWorkflow('model', 'json');
+      const selectWf = createSelectChain([workflow]);
+      const selectMax = createSelectChain([{ maxVersion: 1 }]);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+
+      const publishedVersion = createMockVersion({
+        versionNumber: 2,
+        publishedAt: NOW,
+      });
+      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      expect(result.warnings).toEqual([]);
     });
   });
 

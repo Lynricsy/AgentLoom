@@ -3,11 +3,17 @@ import { apiClient, toSnakeBody } from '../../../shared/api/client'
 import type { ApiResponse } from '../../../shared/types/api'
 import type {
   CreateVersionPayload,
+  PublishWarning,
   PublishWorkflowPayload,
   WorkflowVersion,
 } from '../types'
 import { versionKeys } from './versionKeys'
 import { workflowKeys } from './workflowKeys'
+
+export interface PublishWorkflowResponse
+  extends ApiResponse<WorkflowVersion> {
+  warnings?: PublishWarning[]
+}
 
 export function useCreateVersion(workflowId: string) {
   const queryClient = useQueryClient()
@@ -66,8 +72,8 @@ export function usePublishWorkflow(workflowId: string) {
         .post(`workflow-definitions/${workflowId}/publish`, {
           json: toSnakeBody(payload),
         })
-        .json<ApiResponse<WorkflowVersion>>()
-      return response.data
+        .json<PublishWorkflowResponse>()
+      return response
     },
     onSuccess: async () => {
       await Promise.all([

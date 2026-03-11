@@ -46,3 +46,24 @@ export interface InterventionEvidencePayload {
   parentEvidenceId?: string;
   packet: EvidenceInterventionPacketInputDto;
 }
+
+export interface NodeErrorEvidencePayload {
+  tenantId: string;
+  executionId: string;
+  stepId: string;
+  nodeId: string;
+  errorMessage: string;
+  errorType?: string;
+  errorTitle?: string;
+  errorDetail?: string;
+  stack?: string;
+  typeMismatch?: {
+    sourcePortId?: string;
+    targetPortId?: string;
+    sourceType: string;
+    targetType: string;
+    sourceNodeId: string;
+    targetNodeId: string;
+    edgeId?: string;
+  };
+}

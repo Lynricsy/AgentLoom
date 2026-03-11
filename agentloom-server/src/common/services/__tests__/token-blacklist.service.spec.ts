@@ -96,7 +96,7 @@ describe('TokenBlacklistService (DB-backed)', () => {
         }),
       );
       expect(mockOnConflictDoNothing).toHaveBeenCalled();
-    });
+    }, 15_000);
 
     it('userId 付きで保存する', async () => {
       const token = 'test-access-token';

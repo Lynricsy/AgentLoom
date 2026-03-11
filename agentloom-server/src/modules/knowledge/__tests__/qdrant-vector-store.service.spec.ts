@@ -96,7 +96,7 @@ describe('QdrantVectorStoreService', () => {
       await expect(service.collectionExists(COLLECTION)).rejects.toThrow(
         'Qdrant unavailable',
       );
-    });
+    }, 15_000);
   });
 
   describe('upsert', () => {

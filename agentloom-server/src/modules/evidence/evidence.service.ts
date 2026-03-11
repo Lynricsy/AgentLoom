@@ -19,6 +19,7 @@ import {
   ExecutionEventName,
   type InterventionResolvedPayload,
   type StepAgentEventPayload,
+  type StepStatusChangedPayload,
   type ToolCallStatusPayload,
 } from '../execution/types/execution-event.types';
 
@@ -49,6 +50,9 @@ import {
 } from './evidence.exceptions';
 
 type EvidenceRecord = typeof evidenceRecords.$inferSelect;
+type RagEvidenceRecord = EvidenceRecord & {
+  packet: Extract<EvidenceRecord['packet'], { sourceType: 'rag_retrieval' }>;
+};
 type ExecutionStepRecord = typeof executionSteps.$inferSelect;
 
 export interface PaginatedEvidenceResult {
@@ -77,6 +81,8 @@ interface AutomaticEventContext {
 type StepAgentEvidencePayload = StepAgentEventPayload & AutomaticEventContext;
 type ToolCallEvidencePayload = ToolCallStatusPayload & AutomaticEventContext;
 type InterventionEvidencePayload = InterventionResolvedPayload &
+  AutomaticEventContext;
+type StepFailedEvidencePayload = StepStatusChangedPayload &
   AutomaticEventContext;
 
 interface PreparedEvidenceInsert {
@@ -247,14 +253,14 @@ export class EvidenceService {
     records: EvidenceRecord[],
   ): Promise<EvidenceRecord[]> {
     const ragRecords = records.filter(
-      (r) => r.sourceType === 'rag_retrieval',
+      (record): record is RagEvidenceRecord =>
+        record.packet.sourceType === 'rag_retrieval',
     );
     if (ragRecords.length === 0) return records;
 
     const chunkIds = ragRecords
       .map((r) => {
-        const packet = r.packet as { physicalLocation?: { chunkId?: string } };
-        return packet.physicalLocation?.chunkId;
+        return r.packet.physicalLocation?.chunkId;
       })
       .filter((id): id is string => !!id);
 
@@ -269,21 +275,20 @@ export class EvidenceService {
     const chunkMap = new Map(chunks.map((c) => [c.id, c.content]));
 
     return records.map((record) => {
-      if (record.sourceType !== 'rag_retrieval') return record;
+      if (record.packet.sourceType !== 'rag_retrieval') return record;
 
-      const packet = record.packet as {
-        physicalLocation?: { chunkId?: string };
-      };
-      const chunkId = packet.physicalLocation?.chunkId;
-      if (!chunkId || !chunkMap.has(chunkId)) return record;
+      const physicalLocation = record.packet.physicalLocation;
+      const chunkId = physicalLocation?.chunkId;
+      const chunkContent = chunkId ? chunkMap.get(chunkId) : undefined;
+      if (!chunkId || chunkContent === undefined) return record;
 
       return {
         ...record,
         packet: {
-          ...(record.packet as Record<string, unknown>),
+          ...record.packet,
           physicalLocation: {
-            ...packet.physicalLocation,
-            chunkContent: chunkMap.get(chunkId),
+            ...physicalLocation,
+            chunkContent,
           },
         },
       };
@@ -579,6 +584,80 @@ export class EvidenceService {
               resolvedAt: payload.resolvedAt,
               resolvedBy: payload.resolvedBy,
               ...(payload.timeout ? { timeout: true } : {}),
+            },
+          },
+        };
+
+        const prepared = this.prepareEvidenceInsert(
+          payload.tenantId,
+          payload.executionId,
+          dto,
+          parentEvidenceId,
+        );
+        await this.insertEvidenceRecords(tenantDb, [prepared]);
+      },
+    );
+  }
+
+  @OnEvent(ExecutionEventName.STEP_STATUS_CHANGED)
+  async handleStepFailed(payload: StepFailedEvidencePayload): Promise<void> {
+    if (payload.to !== 'failed' || !payload.errorDetail) {
+      return;
+    }
+
+    await runInTenantTransaction(
+      this.db,
+      payload.tenantId,
+      async (tenantDb) => {
+        const step = await this.findExecutionStep(tenantDb, payload.stepId);
+        if (!step || step.executionId !== payload.executionId) {
+          this.logger.warn(
+            `Skip node error evidence creation because step ${payload.stepId} is unavailable for execution ${payload.executionId}`,
+          );
+          return;
+        }
+
+        const parentEvidenceId = await this.findLatestEvidenceIdForStep(
+          tenantDb,
+          payload.executionId,
+          payload.stepId,
+        );
+
+        const errorDetail = payload.errorDetail!;
+        const completeTypeMismatch =
+          errorDetail.typeMismatch?.sourcePortId &&
+          errorDetail.typeMismatch.targetPortId
+            ? {
+                sourcePortId: errorDetail.typeMismatch.sourcePortId,
+                targetPortId: errorDetail.typeMismatch.targetPortId,
+                sourceType: errorDetail.typeMismatch.sourceType,
+                targetType: errorDetail.typeMismatch.targetType,
+                sourceNodeId: errorDetail.typeMismatch.sourceNodeId,
+                targetNodeId: errorDetail.typeMismatch.targetNodeId,
+                ...(errorDetail.typeMismatch.edgeId
+                  ? { edgeId: errorDetail.typeMismatch.edgeId }
+                  : {}),
+              }
+            : undefined;
+        const dto: CreateEvidenceRecordDto = {
+          stepId: payload.stepId,
+          sourceType: 'node_error',
+          ...(parentEvidenceId ? { parentEvidenceId } : {}),
+          packet: {
+            sourceType: 'node_error',
+            ...(parentEvidenceId ? { parentEvidenceId } : {}),
+            nodeError: {
+              nodeId: payload.nodeId,
+              errorMessage: errorDetail.message,
+              ...(errorDetail.type ? { errorType: errorDetail.type } : {}),
+              ...(errorDetail.title ? { errorTitle: errorDetail.title } : {}),
+              ...(errorDetail.detail
+                ? { errorDetail: errorDetail.detail }
+                : {}),
+              ...(errorDetail.stack ? { stack: errorDetail.stack } : {}),
+              ...(completeTypeMismatch
+                ? { typeMismatch: completeTypeMismatch }
+                : {}),
             },
           },
         };
@@ -1459,6 +1538,25 @@ export class EvidenceService {
           metadata: {
             resolvedBy: packet.intervention.resolvedBy,
             resolvedAt: packet.intervention.resolvedAt,
+          },
+        };
+      case 'node_error':
+        return {
+          title: `节点错误${packet.nodeError.errorType ? ` · ${packet.nodeError.errorType}` : ''}`,
+          excerpt: this.truncatePreview(
+            packet.nodeError.errorTitle ?? packet.nodeError.errorMessage,
+          ),
+          metadata: {
+            nodeId: packet.nodeError.nodeId,
+            ...(packet.nodeError.errorType
+              ? { errorType: packet.nodeError.errorType }
+              : {}),
+            ...(packet.nodeError.typeMismatch
+              ? {
+                  sourceType: packet.nodeError.typeMismatch.sourceType,
+                  targetType: packet.nodeError.typeMismatch.targetType,
+                }
+              : {}),
           },
         };
     }

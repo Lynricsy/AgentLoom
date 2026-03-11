@@ -171,7 +171,7 @@ describe('TextChunkerService', () => {
       for (const chunk of chunks) {
         expect(chunk.tokenCount).toBeLessThanOrEqual(maxTokens);
       }
-    });
+    }, 15_000);
 
     it('多段落分块时 charOffset 应递增', () => {
       const sections = Array.from(

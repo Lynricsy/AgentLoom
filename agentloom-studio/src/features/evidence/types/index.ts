@@ -3,7 +3,8 @@ export type EvidenceSourceType =
   | 'agent_decision'
   | 'tool_output'
   | 'user_input'
-  | 'intervention';
+  | 'intervention'
+  | 'node_error';
 
 export interface PhysicalLocation {
   documentId: string;
@@ -75,6 +76,24 @@ export interface InterventionPayload {
   timeout?: boolean;
 }
 
+export interface NodeErrorInfo {
+  errorType?: string;
+  errorTitle?: string;
+  errorMessage: string;
+  errorDetail?: string;
+  nodeId: string;
+  stack?: string;
+  typeMismatch?: {
+    sourcePortId?: string;
+    targetPortId?: string;
+    sourceType: string;
+    targetType: string;
+    sourceNodeId: string;
+    targetNodeId: string;
+    edgeId?: string;
+  };
+}
+
 interface BaseEvidencePacket {
   evidenceId: string;
   sourceType: EvidenceSourceType;
@@ -110,12 +129,18 @@ export interface InterventionEvidencePacket extends BaseEvidencePacket {
   intervention: InterventionPayload;
 }
 
+export interface NodeErrorEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'node_error';
+  nodeError: NodeErrorInfo;
+}
+
 export type EvidencePacket =
   | RagRetrievalEvidencePacket
   | AgentDecisionEvidencePacket
   | ToolOutputEvidencePacket
   | UserInputEvidencePacket
-  | InterventionEvidencePacket;
+  | InterventionEvidencePacket
+  | NodeErrorEvidencePacket;
 
 export interface EvidenceRecord {
   id: string;

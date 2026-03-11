@@ -3,6 +3,16 @@ import type {
   ExecutionStepErrorResponse,
 } from '../api/executionApi'
 
+export interface TypeMismatchInfo {
+  sourcePortId?: string
+  targetPortId?: string
+  sourceType: string
+  targetType: string
+  sourceNodeId: string
+  targetNodeId: string
+  edgeId?: string
+}
+
 export type {
   ClientToServerEvents,
   ExecutionEvent,
@@ -13,6 +23,7 @@ export type {
   InterventionResolvedPayload,
   OutputChunkPayload,
   ServerToClientEvents,
+  StructuredErrorDetail,
   StepAgentEventPayload,
   StepRetryingPayload,
   StepSnapshot,

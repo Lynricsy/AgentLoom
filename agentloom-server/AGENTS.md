@@ -31,7 +31,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
-| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 | EventEmitter, RedisCacheService |
+| evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -164,7 +164,7 @@ Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)�
 ## 复杂度热点
 
 - `node-scheduler.service.ts` (940L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理
-- `workflow-version.service.ts` (555L) — 版本管理逻辑
+- `workflow-version.service.ts` (621L) — 版本管理逻辑 + 发布时端口类型兼容性警告
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
-- `evidence.service.ts` (1438L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入
+- `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建
 - `auth.service.ts` (508L) — 认证全流程

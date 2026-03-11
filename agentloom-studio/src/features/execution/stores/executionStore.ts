@@ -1,3 +1,4 @@
+import { castDraft } from 'immer'
 import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -20,6 +21,7 @@ import type {
   StepRetryingPayload,
   StepStatus,
   StepStatusChangedPayload,
+  StructuredErrorDetail,
   ToolCallEventData,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
@@ -44,6 +46,7 @@ export interface NodeExecutionState {
   status: StepStatus
   output: string
   errorMessage?: string
+  errorDetail?: StructuredErrorDetail | null
   isStreaming: boolean
   retryAttempt?: number
   retryMaxAttempts?: number
@@ -140,6 +143,7 @@ function ensureNode(
       nodeId,
       status: 'pending',
       output: '',
+      errorDetail: null,
       isStreaming: false,
       toolCalls: {},
       agentEvents: [],
@@ -178,6 +182,21 @@ function restoreOutput(result: Record<string, unknown> | null | undefined): stri
   }
 
   return JSON.stringify(result)
+}
+
+function cloneStructuredErrorDetail(
+  detail: StructuredErrorDetail | null | undefined,
+) {
+  if (!detail) {
+    return null
+  }
+
+  return {
+    ...detail,
+    errors: detail.errors?.map((error) => ({ ...error })),
+    typeMismatch: detail.typeMismatch ? { ...detail.typeMismatch } : undefined,
+    attempts: detail.attempts?.map((attempt) => ({ ...attempt })),
+  }
 }
 
 function restoreIntervention(
@@ -268,6 +287,17 @@ export const useExecutionStore = create<
                 event.data.stepId,
               )
               node.status = event.data.to
+              node.errorDetail = castDraft(
+                cloneStructuredErrorDetail(event.data.errorDetail),
+              )
+
+              if (event.data.errorDetail) {
+                node.errorMessage =
+                  event.data.errorDetail.detail ??
+                  event.data.errorDetail.message ??
+                  event.data.errorDetail.title ??
+                  node.errorMessage
+              }
 
               // 流式状态：running 时开启，终态时关闭
               if (event.data.to === 'running') {
@@ -498,7 +528,14 @@ export const useExecutionStore = create<
                   status: step.status,
                   output: restoreOutput(step.result),
                   isStreaming: false,
-                  errorMessage: step.errorMessage,
+                  errorMessage:
+                    step.errorMessage ??
+                    step.errorDetail?.detail ??
+                    step.errorDetail?.message ??
+                    step.errorDetail?.title,
+                  errorDetail: castDraft(
+                    cloneStructuredErrorDetail(step.errorDetail),
+                  ),
                   startedAt: step.startedAt,
                   completedAt: step.completedAt,
                   intervention:

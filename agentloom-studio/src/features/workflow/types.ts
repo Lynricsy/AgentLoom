@@ -63,4 +63,18 @@ export interface PublishWorkflowPayload {
   versionId?: string
 }
 
+export interface PublishWarningPort {
+  name: string
+  dataType: string
+}
+
+export interface PublishWarning {
+  code: string
+  sourceNodeId: string
+  targetNodeId: string
+  sourcePort: PublishWarningPort
+  targetPort: PublishWarningPort
+  message: string
+}
+
 export type VersionListResponse = PaginatedResponse<WorkflowVersion>

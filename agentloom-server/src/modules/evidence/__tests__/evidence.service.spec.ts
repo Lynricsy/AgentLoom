@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,8 +9,11 @@ import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider'
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import {
+  EvidencePacketSchema,
   QueryEvidenceChainSchema,
   QueryEvidenceSchema,
+  type EvidencePacketDto,
+  type EvidencePacketSummary,
 } from '../dto/evidence.dto';
 import {
   EvidenceNotFoundException,
@@ -151,6 +155,44 @@ function createStepRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createNodeErrorPacket(
+  overrides: {
+    errorType?: string;
+    errorTitle?: string;
+    errorMessage?: string;
+    errorDetail?: string;
+    nodeId?: string;
+    stack?: string;
+    typeMismatch?: {
+      sourcePortId: string;
+      targetPortId: string;
+      sourceType: string;
+      targetType: string;
+      sourceNodeId: string;
+      targetNodeId: string;
+      edgeId?: string;
+    };
+  } = {},
+): EvidencePacketDto {
+  return EvidencePacketSchema.parse({
+    sourceType: 'node_error',
+    nodeError: {
+      nodeId: overrides.nodeId ?? NODE_ID,
+      errorMessage: overrides.errorMessage ?? '节点执行失败',
+      ...(overrides.errorType ? { errorType: overrides.errorType } : {}),
+      ...(overrides.errorTitle ? { errorTitle: overrides.errorTitle } : {}),
+      ...(overrides.errorDetail ? { errorDetail: overrides.errorDetail } : {}),
+      ...(overrides.stack ? { stack: overrides.stack } : {}),
+      ...(overrides.typeMismatch
+        ? { typeMismatch: overrides.typeMismatch }
+        : {}),
+    },
+    evidenceId: GENERATED_ID_1,
+    contentHash: 'd'.repeat(64),
+    timestamp: NOW,
+  });
+}
+
 function createSelectChain<T>(
   terminal: 'where' | 'limit' | 'offset',
   result: T,
@@ -261,6 +303,7 @@ describe('EvidenceService', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   describe('createEvidenceRecord', () => {
@@ -444,8 +487,15 @@ describe('EvidenceService', () => {
         includeChunkContent: true,
       });
 
+      const firstRecord = result.data[0];
+
       expect(mocks.tenantDb.select).toHaveBeenCalledTimes(3);
-      expect(result.data[0]?.packet.physicalLocation).toMatchObject({
+      expect(firstRecord).toBeDefined();
+      expect(firstRecord?.packet.sourceType).toBe('rag_retrieval');
+      if (!firstRecord || firstRecord.packet.sourceType !== 'rag_retrieval') {
+        throw new Error('Expected rag evidence record');
+      }
+      expect(firstRecord.packet.physicalLocation).toMatchObject({
         chunkId: 'chunk-1',
         chunkContent: 'Chunk content from DB',
       });
@@ -791,6 +841,146 @@ describe('EvidenceService', () => {
           resolvedBy: 'user-1',
         }),
       );
+    });
+
+    it('should create node_error evidence from failed step events and chain parentEvidenceId', async () => {
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      const insertMock = setupInsertReturning();
+      queueSelectResult('limit', [createStepRecord()]);
+      queueSelectResult('limit', [{ id: EXISTING_PARENT_ID }]);
+
+      await service.handleStepFailed({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        from: 'running',
+        to: 'failed',
+        errorDetail: {
+          message: '端口类型不兼容',
+          type: 'https://agentloom.dev/errors/node-type-mismatch',
+          title: '端口类型不匹配',
+          detail: '上游输出与下游输入的数据类型不兼容',
+          nodeId: NODE_ID,
+          stack: 'Error: boom\n    at worker.ts:1:1',
+          typeMismatch: {
+            sourcePortId: 'output-text',
+            targetPortId: 'input-image',
+            sourceType: 'string',
+            targetType: 'image',
+            sourceNodeId: 'node-source',
+            targetNodeId: 'node-target',
+            edgeId: 'edge-1',
+          },
+        },
+      });
+
+      const [inserted] = insertMock.getCapturedValues();
+      expect(inserted.sourceType).toBe('node_error');
+      expect(inserted.parentEvidenceId).toBe(EXISTING_PARENT_ID);
+      expect((inserted.packet as Record<string, unknown>).parentEvidenceId).toBe(
+        EXISTING_PARENT_ID,
+      );
+      expect((inserted.packet as Record<string, unknown>).nodeError).toEqual({
+        nodeId: NODE_ID,
+        errorMessage: '端口类型不兼容',
+        errorType: 'https://agentloom.dev/errors/node-type-mismatch',
+        errorTitle: '端口类型不匹配',
+        errorDetail: '上游输出与下游输入的数据类型不兼容',
+        stack: 'Error: boom\n    at worker.ts:1:1',
+        typeMismatch: {
+          sourcePortId: 'output-text',
+          targetPortId: 'input-image',
+          sourceType: 'string',
+          targetType: 'image',
+          sourceNodeId: 'node-source',
+          targetNodeId: 'node-target',
+          edgeId: 'edge-1',
+        },
+      });
+    });
+
+    it('should warn and skip node_error evidence creation when step is missing', async () => {
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      queueSelectResult('limit', []);
+
+      await service.handleStepFailed({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        from: 'running',
+        to: 'failed',
+        errorDetail: {
+          message: '节点失败',
+        },
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        `Skip node error evidence creation because step ${STEP_ID} is unavailable for execution ${EXECUTION_ID}`,
+      );
+      expect(mocks.tenantDb.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('buildPacketSummary', () => {
+    it('should build default node_error summary when errorType is absent', () => {
+      const buildPacketSummary = (
+        Reflect.get(service, 'buildPacketSummary') as (
+          packet: EvidencePacketDto,
+        ) => EvidencePacketSummary
+      ).bind(service);
+
+      const summary = buildPacketSummary(
+        createNodeErrorPacket({
+          errorMessage: '执行失败',
+          errorTitle: '节点处理失败',
+        }),
+      );
+
+      expect(summary).toEqual({
+        title: '节点错误',
+        excerpt: '节点处理失败',
+        metadata: {
+          nodeId: NODE_ID,
+        },
+      });
+    });
+
+    it('should include errorType and typeMismatch metadata for node_error summary', () => {
+      const buildPacketSummary = (
+        Reflect.get(service, 'buildPacketSummary') as (
+          packet: EvidencePacketDto,
+        ) => EvidencePacketSummary
+      ).bind(service);
+
+      const summary = buildPacketSummary(
+        createNodeErrorPacket({
+          errorType: 'TypeMismatch',
+          errorMessage: '源输出与目标输入不兼容',
+          typeMismatch: {
+            sourcePortId: 'output-text',
+            targetPortId: 'input-image',
+            sourceType: 'string',
+            targetType: 'image',
+            sourceNodeId: 'node-source',
+            targetNodeId: 'node-target',
+          },
+        }),
+      );
+
+      expect(summary).toEqual({
+        title: '节点错误 · TypeMismatch',
+        excerpt: '源输出与目标输入不兼容',
+        metadata: {
+          nodeId: NODE_ID,
+          errorType: 'TypeMismatch',
+          sourceType: 'string',
+          targetType: 'image',
+        },
+      });
     });
   });
 

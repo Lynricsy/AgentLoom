@@ -1,6 +1,7 @@
 import { memo, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { cva } from 'class-variance-authority'
 import {
+  AlertTriangle,
   Bot,
   FileSearch2,
   MessageSquare,
@@ -38,6 +39,7 @@ const sourceTypeConfig: Record<
   tool_output: { icon: Wrench, label: '工具输出', color: 'text-orange-500' },
   user_input: { icon: MessageSquare, label: '用户输入', color: 'text-emerald-500' },
   intervention: { icon: ShieldCheck, label: '人工介入', color: 'text-rose-500' },
+  node_error: { icon: AlertTriangle, label: '节点错误', color: 'text-rose-500' },
 }
 
 const cardVariants = cva('rounded-xl border p-3 transition-colors', {
@@ -87,6 +89,48 @@ function formatInterventionAction(action: string): string {
     default:
       return action
   }
+}
+
+function formatErrorTypeLabel(type?: string): string {
+  if (!type) {
+    return '节点错误'
+  }
+
+  const segment = type.split('/').filter(Boolean).at(-1) ?? type
+  return segment
+}
+
+function renderTypeMismatchPreview(
+  typeMismatch:
+    | {
+        sourcePortId?: string
+        targetPortId?: string
+        sourceType: string
+        targetType: string
+        sourceNodeId: string
+        targetNodeId: string
+      }
+    | undefined,
+): ReactNode {
+  if (!typeMismatch) {
+    return null
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[11px] text-amber-700">
+      <p className="font-medium uppercase tracking-wide">类型不匹配</p>
+      <p className="mt-1">
+        {typeMismatch.sourceType} → {typeMismatch.targetType}
+      </p>
+      <p className="mt-1 text-amber-700/80">
+        {typeMismatch.sourceNodeId}
+        {typeMismatch.sourcePortId ? ` · ${typeMismatch.sourcePortId}` : ''}
+        {' → '}
+        {typeMismatch.targetNodeId}
+        {typeMismatch.targetPortId ? ` · ${typeMismatch.targetPortId}` : ''}
+      </p>
+    </div>
+  )
 }
 
 function renderJsonPreview(value: unknown): ReactNode {
@@ -245,6 +289,28 @@ function renderStructuredDetails(
           )}
           {intervention.modifiedContent != null && renderJsonPreview(intervention.modifiedContent)}
           <p>处理时间：{formatTimestamp(intervention.resolvedAt)}</p>
+        </div>
+      )
+    }
+
+    case 'node_error': {
+      const { nodeError } = record.packet
+
+      return (
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-rose-500/10 px-2 py-0.5 font-medium text-rose-600">
+              {formatErrorTypeLabel(nodeError.errorType ?? nodeError.errorTitle)}
+            </span>
+            <span>节点：{nodeError.nodeId}</span>
+          </div>
+          <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">
+            {nodeError.errorMessage}
+          </p>
+          {nodeError.errorDetail && (
+            <p className="whitespace-pre-wrap leading-relaxed">{nodeError.errorDetail}</p>
+          )}
+          {renderTypeMismatchPreview(nodeError.typeMismatch)}
         </div>
       )
     }

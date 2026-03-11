@@ -611,13 +611,13 @@ describe('McpService', () => {
               },
               {
                 name: 'limit',
-                dataType: 'number',
+                dataType: 'json',
                 description: '返回数量',
                 required: false,
               },
               {
                 name: 'enabled',
-                dataType: 'boolean',
+                dataType: 'json',
                 description: '是否启用扩展搜索',
                 required: true,
               },
@@ -674,13 +674,13 @@ describe('McpService', () => {
                 },
                 {
                   name: 'limit',
-                  dataType: 'number',
+                  dataType: 'json',
                   description: '返回数量',
                   required: false,
                 },
                 {
                   name: 'enabled',
-                  dataType: 'boolean',
+                  dataType: 'json',
                   description: '是否启用扩展搜索',
                   required: true,
                 },

@@ -12,7 +12,11 @@ import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-ver
 import type { CreateVersionDto } from './dto/create-version.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
-import type { VersionResponseDto } from './dto/version-response.dto';
+import type {
+  VersionResponseDto,
+  PublishWarning,
+  PublishResult,
+} from './dto/version-response.dto';
 import {
   InvalidStatusTransitionException,
   WorkflowArchivedException,
@@ -201,7 +205,7 @@ export class WorkflowVersionService {
     workflowId: string,
     dto: PublishWorkflowDto,
     userId: string,
-  ): Promise<VersionResponseDto> {
+  ): Promise<PublishResult> {
     const publishResult = await this.withWorkflowWriteLock(
       workflowId,
       async (dbClient) => {
@@ -224,6 +228,14 @@ export class WorkflowVersionService {
             '工作流必须包含至少一个节点才能发布',
           ]);
         }
+
+        const edges = Array.isArray(workflow.edges)
+          ? (workflow.edges as schema.ReactFlowEdge[])
+          : [];
+        const warnings = this.validateEdgeTypeCompatibility(
+          nodes as schema.ReactFlowNode[],
+          edges,
+        );
 
         const publishedAt = new Date();
         const normalizedReleaseNotes = this.normalizeOptionalText(
@@ -302,6 +314,7 @@ export class WorkflowVersionService {
         return {
           tenantId: workflow.tenantId,
           version: publishedVersion,
+          warnings,
         };
       },
     );
@@ -318,7 +331,10 @@ export class WorkflowVersionService {
       }),
     );
 
-    return this.toResponseDto(publishResult.version);
+    return {
+      data: this.toResponseDto(publishResult.version),
+      warnings: publishResult.warnings,
+    };
   }
 
   // ─── 归档工作流 ───────────────────────────────────────────────
@@ -518,6 +534,56 @@ export class WorkflowVersionService {
         releaseNotes,
       },
     };
+  }
+
+  private validateEdgeTypeCompatibility(
+    nodes: schema.ReactFlowNode[],
+    edges: schema.ReactFlowEdge[],
+  ): PublishWarning[] {
+    const warnings: PublishWarning[] = [];
+
+    for (const edge of edges) {
+      if (!edge.sourceHandle || !edge.targetHandle) continue;
+
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
+      if (!sourceNode || !targetNode) continue;
+
+      const sourcePortMeta = sourceNode.data?.portMappingMetadata as
+        | { outputs?: Array<{ name: string; dataType: string }> }
+        | undefined;
+      const targetPortMeta = targetNode.data?.portMappingMetadata as
+        | { inputs?: Array<{ name: string; dataType: string }> }
+        | undefined;
+
+      const sourcePort = sourcePortMeta?.outputs?.find(
+        (p) => p.name === edge.sourceHandle,
+      );
+      const targetPort = targetPortMeta?.inputs?.find(
+        (p) => p.name === edge.targetHandle,
+      );
+      if (!sourcePort?.dataType || !targetPort?.dataType) continue;
+
+      if (sourcePort.dataType === targetPort.dataType) continue;
+      if (targetPort.dataType === 'json') continue;
+
+      warnings.push({
+        code: 'PORT_TYPE_INCOMPATIBLE',
+        sourceNodeId: edge.source,
+        targetNodeId: edge.target,
+        sourcePort: {
+          name: sourcePort.name,
+          dataType: sourcePort.dataType,
+        },
+        targetPort: {
+          name: targetPort.name,
+          dataType: targetPort.dataType,
+        },
+        message: `输出端口 "${sourcePort.name}" (${sourcePort.dataType}) 与输入端口 "${targetPort.name}" (${targetPort.dataType}) 类型不兼容`,
+      });
+    }
+
+    return warnings;
   }
 
   private normalizeOptionalText(value?: string): string | null {

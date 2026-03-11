@@ -84,6 +84,8 @@ export class StateReplayService {
                 errorMessage: (
                   step.errorMessage as { message: string }
                 ).message,
+                errorDetail:
+                  step.errorMessage as unknown as StepSnapshot['errorDetail'],
               }
             : {}),
           result: step.result ?? null,

@@ -405,4 +405,55 @@ describe('EvidenceCard', () => {
     expect(screen.getByText('请补充原始快照')).toBeInTheDocument()
     expect(screen.getByText(/"reason": "补足上下文"/)).toBeInTheDocument()
   })
+
+  it('渲染 node_error 的错误摘要与类型不匹配对比', () => {
+    vi.mocked(useEvidenceDetail).mockReturnValue({
+      data: {
+        data: createRecord({
+          sourceType: 'node_error',
+          packet: {
+            evidenceId: 'ev-001',
+            sourceType: 'node_error',
+            contentHash: 'f'.repeat(64),
+            timestamp: '2026-03-10T10:00:00.000Z',
+            nodeError: {
+              errorType: 'https://agentloom.dev/errors/node-type-mismatch',
+              errorTitle: '类型不匹配',
+              errorMessage: 'text 无法输入到 json',
+              errorDetail: '请调整连线或增加转换节点',
+              nodeId: 'node-target',
+              typeMismatch: {
+                sourceNodeId: 'node-source',
+                sourcePortId: 'output',
+                sourceType: 'text',
+                targetNodeId: 'node-target',
+                targetPortId: 'input',
+                targetType: 'json',
+              },
+            },
+          },
+        }),
+      },
+      isLoading: false,
+      error: null,
+    } as never)
+
+    render(
+      <EvidenceCard
+        node={createNode({
+          sourceType: 'node_error',
+          packetSummary: {
+            title: '节点错误',
+            excerpt: '检测到类型不匹配',
+          },
+        })}
+      />,
+    )
+
+    expect(screen.getByText('node-type-mismatch')).toBeInTheDocument()
+    expect(screen.getByText('节点：node-target')).toBeInTheDocument()
+    expect(screen.getByText('text 无法输入到 json')).toBeInTheDocument()
+    expect(screen.getByText('text → json')).toBeInTheDocument()
+    expect(screen.getByText(/node-source · output/)).toBeInTheDocument()
+  })
 })

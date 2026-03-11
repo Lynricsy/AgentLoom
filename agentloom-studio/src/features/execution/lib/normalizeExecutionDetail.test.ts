@@ -84,10 +84,27 @@ describe('normalizeExecutionDetail', () => {
           result: null,
           checkpointData: null,
           errorMessage: {
+            message: '请求超限',
             title: 'Rate Limit',
             detail: 'Too many requests',
             type: 'https://example.com/errors/rate-limit',
             nodeId: 'node-1',
+            errors: [{ field: 'provider', message: '超过速率限制' }],
+            typeMismatch: {
+              sourceNodeId: 'node-source',
+              sourcePortId: 'answer',
+              sourceType: 'text',
+              targetNodeId: 'node-1',
+              targetPortId: 'input',
+              targetType: 'json',
+            },
+            attempts: [
+              {
+                attempt: 1,
+                message: '第一次失败',
+                timestamp: '2026-03-10T10:00:02.000Z',
+              },
+            ],
           },
           startedAt: '2026-03-10T10:00:00.000Z',
           completedAt: '2026-03-10T10:00:05.000Z',
@@ -103,6 +120,18 @@ describe('normalizeExecutionDetail', () => {
       title: 'Rate Limit',
       detail: 'Too many requests',
       nodeId: 'node-1',
+      errors: [{ field: 'provider', message: '超过速率限制' }],
+      typeMismatch: {
+        sourceType: 'text',
+        targetType: 'json',
+      },
     })
+    expect(normalized.steps[0]?.retryHistory).toEqual([
+      {
+        attempt: 1,
+        error: '第一次失败',
+        timestamp: '2026-03-10T10:00:02.000Z',
+      },
+    ])
   })
 })

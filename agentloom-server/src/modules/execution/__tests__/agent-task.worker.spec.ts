@@ -760,7 +760,12 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         'failed',
         {
-          errorMessage: { message: '内容不符合要求' },
+          errorMessage: {
+            message: '内容不符合要求',
+            type: 'urn:agentloom:execution:intervention-rejected',
+            title: '人工干预拒绝',
+            nodeId: 'node-1',
+          },
           checkpointData: {
             sessionId: SESSION_ID,
             partialContent: '草稿',

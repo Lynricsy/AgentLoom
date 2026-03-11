@@ -25,6 +25,7 @@ export const PhysicalLocationSchema = z.object({
   offset: z.number().int(),
   length: z.number().int(),
   chunkId: z.string(),
+  chunkContent: z.string().optional(),
 });
 
 export const SemanticLocationSchema = z.object({

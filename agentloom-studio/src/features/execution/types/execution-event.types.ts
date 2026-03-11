@@ -6,6 +6,7 @@ import type {
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
 } from './agentEvent.types'
+import type { TypeMismatchInfo } from './index'
 
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
@@ -49,11 +50,31 @@ export interface ExecutionStatusChangedPayload {
   errorMessage?: string
 }
 
+export interface StructuredErrorDetail {
+  message: string
+  type?: string
+  title?: string
+  detail?: string
+  nodeId?: string
+  stack?: string
+  errors?: ReadonlyArray<{
+    field: string
+    message: string
+  }>
+  typeMismatch?: TypeMismatchInfo
+  attempts?: ReadonlyArray<{
+    attempt: number
+    message: string
+    timestamp: string
+  }>
+}
+
 export interface StepStatusChangedPayload {
   stepId: string
   nodeId: string
   from: StepStatus
   to: StepStatus
+  errorDetail?: StructuredErrorDetail
 }
 
 export interface StepAgentEventPayload {
@@ -124,6 +145,7 @@ export interface StepSnapshot {
   startedAt: string | null
   completedAt: string | null
   errorMessage?: string
+  errorDetail?: StructuredErrorDetail
   result?: Record<string, unknown> | null
   checkpointData?: Record<string, unknown> | null
 }

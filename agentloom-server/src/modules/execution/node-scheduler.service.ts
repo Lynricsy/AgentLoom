@@ -33,6 +33,8 @@ import {
   InvalidStepTransitionException,
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,
+  NodeTypeMismatchException,
+  isPortTypeCompatible,
 } from './execution.exceptions';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -179,7 +181,7 @@ export class NodeSchedulerService {
     if (!step) return;
 
     // 解析上游输入
-    const input = this.resolveNodeInput(nodeId, snapshot.edges, steps);
+    const input = this.resolveNodeInput(nodeId, snapshot.edges, steps, snapshot.nodes);
 
     // 保存 input 并转为 queued
     await this.tenantDb
@@ -241,6 +243,7 @@ export class NodeSchedulerService {
     nodeId: string,
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
+    nodes: schema.ReactFlowNode[] = [],
   ): Record<string, unknown> {
     const incomingEdges = edges.filter((e) => e.target === nodeId);
     if (incomingEdges.length === 0) return {};
@@ -259,6 +262,8 @@ export class NodeSchedulerService {
       if (sourceStep.result === null || sourceStep.result === undefined) {
         throw new NodeInputResolutionException(nodeId);
       }
+
+      this.checkEdgePortTypeCompatibility(edge, nodes);
 
       const sourceHandle = edge.sourceHandle ?? undefined;
       const targetHandle = edge.targetHandle ?? undefined;
@@ -293,6 +298,44 @@ export class NodeSchedulerService {
     }
 
     return input;
+  }
+
+  private checkEdgePortTypeCompatibility(
+    edge: ReactFlowEdge,
+    nodes: schema.ReactFlowNode[],
+  ): void {
+    if (!edge.sourceHandle || !edge.targetHandle) return;
+
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    const targetNode = nodes.find((n) => n.id === edge.target);
+    if (!sourceNode || !targetNode) return;
+
+    const sourcePortMeta = sourceNode.data?.portMappingMetadata as
+      | { outputs?: Array<{ name: string; dataType: string }> }
+      | undefined;
+    const targetPortMeta = targetNode.data?.portMappingMetadata as
+      | { inputs?: Array<{ name: string; dataType: string }> }
+      | undefined;
+
+    const sourcePort = sourcePortMeta?.outputs?.find(
+      (p) => p.name === edge.sourceHandle,
+    );
+    const targetPort = targetPortMeta?.inputs?.find(
+      (p) => p.name === edge.targetHandle,
+    );
+    if (!sourcePort?.dataType || !targetPort?.dataType) return;
+
+    if (!isPortTypeCompatible(sourcePort.dataType, targetPort.dataType)) {
+      throw new NodeTypeMismatchException({
+        sourceNodeId: edge.source,
+        targetNodeId: edge.target,
+        sourcePortId: edge.sourceHandle,
+        targetPortId: edge.targetHandle,
+        sourceType: sourcePort.dataType,
+        targetType: targetPort.dataType,
+        edgeId: edge.id,
+      });
+    }
   }
 
   /**

@@ -140,6 +140,40 @@ describe('PublishSheet', () => {
     });
   });
 
+  it('发布返回 warnings 时追加 warning toast', async () => {
+    mutateAsyncMock.mockResolvedValueOnce({
+      warnings: [
+        {
+          code: 'TYPE_MISMATCH_WARNING',
+          sourceNodeId: 'node-source',
+          targetNodeId: 'node-target',
+          sourcePort: { name: 'output', dataType: 'text' },
+          targetPort: { name: 'input', dataType: 'json' },
+          message: '检测到潜在类型不兼容',
+        },
+      ],
+    });
+
+    render(<PublishSheet {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('confirm-publish'));
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '发布成功',
+          description: '工作流已发布，并返回 1 条兼容性警告',
+          variant: 'success',
+        }),
+      );
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '发布兼容性警告',
+          variant: 'warning',
+        }),
+      );
+    });
+  });
+
   it('选择已有版本提交发布', async () => {
     mutateAsyncMock.mockResolvedValueOnce({});
 

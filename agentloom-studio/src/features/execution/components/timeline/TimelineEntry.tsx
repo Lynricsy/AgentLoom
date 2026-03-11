@@ -33,6 +33,7 @@ export const TimelineEntry = memo(function TimelineEntry({
     autonomyMode,
     agentDecisionEvidence,
     interventionEvidence,
+    nodeErrorEvidenceRecords,
     outputFormatLevel,
     evidenceCount,
   } = data
@@ -120,6 +121,7 @@ export const TimelineEntry = memo(function TimelineEntry({
             <FailedNodeError
               errorMessage={step.errorMessage}
               errorDetail={step.errorDetail}
+              evidenceRecords={nodeErrorEvidenceRecords}
             />
           )}
         </div>

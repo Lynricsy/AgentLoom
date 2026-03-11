@@ -96,6 +96,51 @@ function toErrorDetail(
     type: typeof value.type === 'string' ? value.type : null,
     nodeId: typeof value.nodeId === 'string' ? value.nodeId : null,
     stack: typeof value.stack === 'string' ? value.stack : undefined,
+    errors: Array.isArray(value.errors)
+      ? value.errors.flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return []
+          }
+
+          const field = typeof entry.field === 'string' ? entry.field : null
+          const message = typeof entry.message === 'string' ? entry.message : null
+
+          if (!field || !message) {
+            return []
+          }
+
+          return [{ field, message }]
+        })
+      : undefined,
+    typeMismatch: isRecord(value.typeMismatch)
+      ? {
+          ...(typeof value.typeMismatch.sourcePortId === 'string'
+            ? { sourcePortId: value.typeMismatch.sourcePortId }
+            : {}),
+          ...(typeof value.typeMismatch.targetPortId === 'string'
+            ? { targetPortId: value.typeMismatch.targetPortId }
+            : {}),
+          ...(typeof value.typeMismatch.edgeId === 'string'
+            ? { edgeId: value.typeMismatch.edgeId }
+            : {}),
+          sourceType:
+            typeof value.typeMismatch.sourceType === 'string'
+              ? value.typeMismatch.sourceType
+              : 'unknown',
+          targetType:
+            typeof value.typeMismatch.targetType === 'string'
+              ? value.typeMismatch.targetType
+              : 'unknown',
+          sourceNodeId:
+            typeof value.typeMismatch.sourceNodeId === 'string'
+              ? value.typeMismatch.sourceNodeId
+              : 'unknown',
+          targetNodeId:
+            typeof value.typeMismatch.targetNodeId === 'string'
+              ? value.typeMismatch.targetNodeId
+              : 'unknown',
+        }
+      : undefined,
     attempts: attempts.length > 0 ? attempts : undefined,
   }
 }
@@ -115,7 +160,12 @@ function toRetryHistory(value: unknown): ExecutionStepAttempt[] {
     }
 
     const attempt = typeof entry.attempt === 'number' ? entry.attempt : null
-    const error = typeof entry.error === 'string' ? entry.error : null
+    const error =
+      typeof entry.error === 'string'
+        ? entry.error
+        : typeof entry.message === 'string'
+          ? entry.message
+          : null
     const timestamp = typeof entry.timestamp === 'string' ? entry.timestamp : null
 
     if (attempt == null || error == null || timestamp == null) {
@@ -151,8 +201,10 @@ function readNodeMeta(rawStep: RawExecutionStep, graphNodes: GraphNode[]): {
 
 function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): ExecutionStep {
   const { nodeName, nodeType } = readNodeMeta(rawStep, graphNodes)
-  const retryHistory = toRetryHistory(rawStep.checkpointData?.attempts)
   const errorDetail = toErrorDetail(rawStep.errorMessage)
+  const checkpointRetries = toRetryHistory(rawStep.checkpointData?.attempts)
+  const retryHistory =
+    checkpointRetries.length > 0 ? checkpointRetries : (errorDetail?.attempts ?? [])
 
   return {
     id: rawStep.id,
