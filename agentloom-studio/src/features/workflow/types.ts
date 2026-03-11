@@ -77,4 +77,10 @@ export interface PublishWarning {
   message: string
 }
 
+export interface CreateWorkflowPayload {
+  name: string
+  description?: string
+  templateSlug?: string
+}
+
 export type VersionListResponse = PaginatedResponse<WorkflowVersion>

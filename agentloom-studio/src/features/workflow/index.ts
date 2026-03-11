@@ -1,6 +1,7 @@
 export type {
   WorkflowDefinition,
   UpdateWorkflowPayload,
+  CreateWorkflowPayload,
   WorkflowStatus,
   WorkflowVersion,
   WorkflowVersionSnapshot,
@@ -10,7 +11,7 @@ export type {
 } from './types'
 export { workflowKeys } from './api/workflowKeys'
 export { useWorkflow } from './api/workflowQueries'
-export { useUpdateWorkflow } from './api/workflowMutations'
+export { useUpdateWorkflow, useCreateWorkflow } from './api/workflowMutations'
 export { versionKeys } from './api/versionKeys'
 export { useWorkflowVersions, usePublishedVersion } from './api/versionQueries'
 export {

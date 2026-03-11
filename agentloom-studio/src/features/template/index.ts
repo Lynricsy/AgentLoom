@@ -16,3 +16,7 @@ export {
   useTemplateDetail,
   useTemplates,
 } from './api/templateQueries';
+
+export { TemplateBrowsePage } from './components/TemplateBrowsePage';
+export { TemplateCard } from './components/TemplateCard';
+export { TemplateWizardDialog } from './components/TemplateWizardDialog';
