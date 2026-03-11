@@ -17,6 +17,7 @@ import {
   InvalidStepTransitionException,
   InterventionNotAllowedException,
   NodeInputResolutionException,
+  NodeTypeMismatchException,
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,
 } from '../execution.exceptions';
@@ -581,6 +582,62 @@ describe('NodeSchedulerService', () => {
         nodeData: { agentId: 'agent-b' },
         hasSandbox: false,
       });
+    });
+
+    it('should mark step as failed with typeMismatch when port types are incompatible', async () => {
+      const nodeA = makeNode('A', 'agent', {
+        portMappingMetadata: {
+          outputs: [{ name: 'out-1', dataType: 'image' }],
+        },
+      });
+      const nodeB = makeNode('B', 'agent', {
+        portMappingMetadata: {
+          inputs: [{ name: 'in-1', dataType: 'number' }],
+        },
+      });
+      const snapshot = makeSnapshot(
+        [nodeA, nodeB],
+        [makeEdge('A', 'B', 'out-1', 'in-1')],
+      );
+      const stepA = makeStep({
+        id: 'step-a',
+        nodeId: 'A',
+        status: 'completed',
+        result: { answer: 42 },
+      });
+      const stepB = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'agent',
+      });
+
+      vi.spyOn(service as any, 'onNodeFailed').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [stepA, stepB]);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-b',
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            type: 'https://agentloom.dev/errors/node-type-mismatch',
+            typeMismatch: expect.objectContaining({
+              sourceType: 'image',
+              targetType: 'number',
+              sourceNodeId: 'A',
+              targetNodeId: 'B',
+            }),
+            nodeId: 'B',
+          }),
+        }),
+      );
+      expect(service['onNodeFailed']).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-b',
+        TENANT_ID,
+      );
     });
   });
 
