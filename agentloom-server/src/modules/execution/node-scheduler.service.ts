@@ -180,8 +180,24 @@ export class NodeSchedulerService {
     const step = steps.find((s) => s.nodeId === nodeId);
     if (!step) return;
 
-    // 解析上游输入
-    const input = this.resolveNodeInput(nodeId, snapshot.edges, steps, snapshot.nodes);
+    let input: Record<string, unknown>;
+    try {
+      input = this.resolveNodeInput(nodeId, snapshot.edges, steps, snapshot.nodes);
+    } catch (error) {
+      if (error instanceof Error && error.constructor.name === 'InvalidStepTransitionException') throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'failed', {
+        errorMessage: {
+          message,
+          ...(error instanceof Error ? { stack: error.stack } : {}),
+          ...(error instanceof DomainException ? { type: error.type, title: error.message, detail: error.detail } : {}),
+          ...(error instanceof NodeTypeMismatchException ? { typeMismatch: error.typeMismatch } : {}),
+          nodeId: step.nodeId,
+        },
+      });
+      await this.onNodeFailed(executionId, step.id, tenantId);
+      return;
+    }
 
     // 保存 input 并转为 queued
     await this.tenantDb
