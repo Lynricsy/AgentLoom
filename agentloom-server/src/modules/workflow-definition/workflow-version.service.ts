@@ -9,6 +9,14 @@ import type { DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
+import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
+import { TemplateService } from '../template/template.service';
+import {
+  generateSlug,
+  appendSlugSuffix,
+} from '../organization/slug.utils';
+import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
+import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
@@ -54,10 +62,103 @@ export class WorkflowVersionService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly redisCacheService: RedisCacheService,
+    private readonly templateService: TemplateService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
+  }
+
+  // ─── 创建工作流定义 ─────────────────────────────────────────────
+
+  private static readonly MAX_SLUG_RETRIES = 3;
+
+  async create(
+    tenantId: string,
+    userId: string,
+    dto: CreateWorkflowDefinitionDto,
+  ): Promise<WorkflowDefinition> {
+    let nodes: Record<string, unknown>[] = [];
+    let edges: Record<string, unknown>[] = [];
+    let viewport: { x: number; y: number; zoom: number } = {
+      x: 0,
+      y: 0,
+      zoom: 1,
+    };
+    let metadata: Record<string, unknown> = {};
+
+    if (dto.template_slug) {
+      const template =
+        await this.templateService.findBySlug(dto.template_slug);
+      const cloned = cloneDefinitionWithNewIds({
+        nodes: template.definition.nodes as schema.ReactFlowNode[],
+        edges: template.definition.edges as schema.ReactFlowEdge[],
+        viewport: template.definition.viewport,
+      });
+      nodes = cloned.nodes;
+      edges = cloned.edges;
+      viewport = cloned.viewport;
+      metadata = {
+        cloned_from_template: {
+          templateSlug: dto.template_slug,
+          templateName: template.name,
+          clonedAt: new Date().toISOString(),
+        },
+      };
+    }
+
+    let slug = generateSlug(dto.name);
+
+    for (
+      let attempt = 0;
+      attempt <= WorkflowVersionService.MAX_SLUG_RETRIES;
+      attempt++
+    ) {
+      try {
+        const [created] = await this.tenantDb
+          .insert(schema.workflowDefinitions)
+          .values({
+            tenantId,
+            name: dto.name,
+            slug,
+            description: dto.description ?? null,
+            nodes,
+            edges,
+            viewport,
+            metadata,
+            createdBy: userId,
+            updatedBy: userId,
+          })
+          .returning();
+
+        this.logger.log(
+          JSON.stringify({
+            action: 'workflow_created',
+            workflowId: created.id,
+            slug,
+            fromTemplate: dto.templateSlug ?? null,
+          }),
+        );
+
+        return created;
+      } catch (error: unknown) {
+        const isUniqueViolation =
+          error instanceof Error &&
+          'code' in error &&
+          (error as Record<string, unknown>).code === '23505';
+
+        if (
+          !isUniqueViolation ||
+          attempt === WorkflowVersionService.MAX_SLUG_RETRIES
+        ) {
+          throw error;
+        }
+
+        slug = appendSlugSuffix(slug);
+      }
+    }
+
+    throw new Error('Unreachable: slug retry loop exhausted');
   }
 
   // ─── 创建版本快照 ─────────────────────────────────────────────

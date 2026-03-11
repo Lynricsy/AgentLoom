@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_definitions" ADD COLUMN "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;

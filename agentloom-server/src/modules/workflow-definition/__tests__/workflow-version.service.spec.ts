@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
+import { TemplateService } from '../../template/template.service';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
   InvalidStatusTransitionException,
@@ -145,6 +146,7 @@ describe('WorkflowVersionService', () => {
   let service: WorkflowVersionService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let redis: Record<string, ReturnType<typeof vi.fn>>;
+  let templateService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -169,11 +171,16 @@ describe('WorkflowVersionService', () => {
       delByPattern: vi.fn(),
     };
 
+    templateService = {
+      findBySlug: vi.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkflowVersionService,
         { provide: DRIZZLE, useValue: db },
         { provide: RedisCacheService, useValue: redis },
+        { provide: TemplateService, useValue: templateService },
       ],
     }).compile();
 
@@ -850,6 +857,166 @@ describe('WorkflowVersionService', () => {
 
       expect(db.transaction).toHaveBeenCalledOnce();
       expect(db.execute).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('create', () => {
+    const MOCK_DTO_BLANK = { name: '测试工作流' };
+    const MOCK_DTO_WITH_TEMPLATE = {
+      name: '模板副本',
+      description: '从模板创建',
+      template_slug: 'code-review-assistant',
+    };
+    const MOCK_TEMPLATE = {
+      id: '00000000-0000-0000-0000-000000000099',
+      name: '代码审查助手',
+      slug: 'code-review-assistant',
+      definition: {
+        nodes: [
+          { id: 'tmpl-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+          { id: 'tmpl-node-2', type: 'output', position: { x: 200, y: 0 }, data: {} },
+        ],
+        edges: [
+          {
+            id: 'tmpl-edge-1',
+            source: 'tmpl-node-1',
+            target: 'tmpl-node-2',
+            sourceHandle: 'tmpl-node-1-output',
+            targetHandle: 'tmpl-node-2-input',
+          },
+        ],
+        viewport: { x: 100, y: 100, zoom: 0.8 },
+      },
+    };
+
+    const createInsertReturning = (result: unknown) => ({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([result]),
+      }),
+    });
+
+    it('应创建空白工作流（无模板）', async () => {
+      const mockResult = createDraftWorkflow({
+        name: '测试工作流',
+        slug: 'ce-shi-gong-zuo-liu',
+        nodes: [],
+        edges: [],
+      });
+      db.insert.mockReturnValue(createInsertReturning(mockResult));
+
+      const result = await service.create(TENANT_ID, USER_ID, MOCK_DTO_BLANK);
+
+      expect(result).toEqual(mockResult);
+      expect(templateService.findBySlug).not.toHaveBeenCalled();
+      expect(db.insert).toHaveBeenCalledOnce();
+
+      // 验证插入参数
+      const insertCall = db.insert.mock.results[0].value;
+      const valuesArg = insertCall.values.mock.calls[0][0];
+      expect(valuesArg).toMatchObject({
+        tenantId: TENANT_ID,
+        name: '测试工作流',
+        description: null,
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        metadata: {},
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+      });
+      expect(valuesArg.slug).toBeDefined();
+    });
+
+    it('应从模板克隆定义并设置元数据', async () => {
+      templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
+
+      const mockResult = createDraftWorkflow({
+        name: '模板副本',
+        slug: 'mo-ban-fu-ben',
+        description: '从模板创建',
+      });
+      db.insert.mockReturnValue(createInsertReturning(mockResult));
+
+      const result = await service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_TEMPLATE);
+
+      expect(result).toEqual(mockResult);
+      expect(templateService.findBySlug).toHaveBeenCalledWith('code-review-assistant');
+
+      // 验证克隆后的节点 ID 已替换（不等于原始模板 ID）
+      const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(valuesArg.nodes).toHaveLength(2);
+      expect(valuesArg.nodes[0].id).not.toBe('tmpl-node-1');
+      expect(valuesArg.nodes[1].id).not.toBe('tmpl-node-2');
+      expect(valuesArg.edges).toHaveLength(1);
+      expect(valuesArg.edges[0].source).toBe(valuesArg.nodes[0].id);
+      expect(valuesArg.edges[0].target).toBe(valuesArg.nodes[1].id);
+      expect(valuesArg.viewport).toEqual(MOCK_TEMPLATE.definition.viewport);
+
+      // 验证元数据包含克隆信息
+      expect(valuesArg.metadata).toMatchObject({
+        cloned_from_template: {
+          templateSlug: 'code-review-assistant',
+          templateName: '代码审查助手',
+        },
+      });
+      expect(valuesArg.metadata.cloned_from_template.clonedAt).toBeDefined();
+      expect(valuesArg.description).toBe('从模板创建');
+    });
+
+    it('应在 slug 冲突时自动重试', async () => {
+      const uniqueViolation = new Error('unique_violation');
+      (uniqueViolation as Record<string, unknown>).code = '23505';
+
+      const mockResult = createDraftWorkflow({ name: '测试工作流' });
+
+      // 第一次插入抛唯一约束错误，第二次成功
+      db.insert
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockRejectedValue(uniqueViolation),
+          }),
+        })
+        .mockReturnValueOnce(createInsertReturning(mockResult));
+
+      const result = await service.create(TENANT_ID, USER_ID, MOCK_DTO_BLANK);
+
+      expect(result).toEqual(mockResult);
+      expect(db.insert).toHaveBeenCalledTimes(2);
+    });
+
+    it('应在达到最大重试次数后抛出原始错误', async () => {
+      const uniqueViolation = new Error('unique_violation');
+      (uniqueViolation as Record<string, unknown>).code = '23505';
+
+      // 所有 4 次尝试（0..3）都抛唯一约束错误
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(uniqueViolation),
+        }),
+      });
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_BLANK),
+      ).rejects.toThrow('unique_violation');
+
+      expect(db.insert).toHaveBeenCalledTimes(4); // MAX_SLUG_RETRIES + 1
+    });
+
+    it('应在非唯一约束错误时直接抛出', async () => {
+      const otherError = new Error('connection_refused');
+
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(otherError),
+        }),
+      });
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_BLANK),
+      ).rejects.toThrow('connection_refused');
+
+      // 不应重试
+      expect(db.insert).toHaveBeenCalledOnce();
     });
   });
 });

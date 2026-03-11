@@ -92,6 +92,11 @@ export const workflowDefinitions = pgTable(
     edges: jsonb('edges').$type<ReactFlowEdge[]>().notNull().default([]),
     viewport: jsonb('viewport').$type<ReactFlowViewport>(),
 
+    metadata: jsonb('metadata')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+
     version: integer('version').notNull().default(1),
     status: workflowStatusEnum('status').notNull().default('draft'),
 

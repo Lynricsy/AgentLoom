@@ -502,4 +502,110 @@ describe('WorkflowVersion E2E', () => {
       .set(outsider.headers);
     expect(publishedResponse.status).toBe(404);
   });
+
+  describe('POST /api/v1/workflow-definitions', () => {
+    it('应创建空白工作流并返回 201', async () => {
+      const { headers } = await seedTenant('create-blank');
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .set(headers)
+        .send({ name: '新建工作流' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data).toMatchObject({
+        name: '新建工作流',
+        status: 'draft',
+        nodes: [],
+        edges: [],
+      });
+      expect(response.body.data.id).toBeDefined();
+      expect(response.body.data.slug).toBeDefined();
+    });
+
+    it('应从模板克隆工作流', async () => {
+      const { headers } = await seedTenant('create-tmpl');
+
+      const templateNodes = [
+        { id: 'tpl-n1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+        { id: 'tpl-n2', type: 'output', position: { x: 200, y: 0 }, data: {} },
+      ];
+      const templateEdges = [
+        {
+          id: 'tpl-e1',
+          source: 'tpl-n1',
+          target: 'tpl-n2',
+          sourceHandle: 'tpl-n1-out',
+          targetHandle: 'tpl-n2-in',
+        },
+      ];
+
+      await drizzleDb
+        .insert(schema.workflowTemplates)
+        .values({
+          slug: 'e2e-clone-template',
+          name: 'E2E测试模板',
+          description: 'e2e test',
+          category: 'development',
+          definition: {
+            nodes: templateNodes,
+            edges: templateEdges,
+            viewport: { x: 50, y: 50, zoom: 1.2 },
+          },
+          metadata: { complexity: 'beginner', nodeCount: 2, estimatedTime: '5min' },
+        })
+        .returning();
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .set(headers)
+        .send({
+          name: 'E2E测试模板的副本',
+          description: '从模板创建',
+          template_slug: 'e2e-clone-template',
+        });
+
+      expect(response.status).toBe(201);
+      const data = response.body.data;
+      expect(data.name).toBe('E2E测试模板的副本');
+      expect(data.description).toBe('从模板创建');
+      expect(data.nodes).toHaveLength(2);
+      expect(data.edges).toHaveLength(1);
+
+      expect(data.nodes[0].id).not.toBe('tpl-n1');
+      expect(data.nodes[1].id).not.toBe('tpl-n2');
+
+      expect(data.edges[0].source).toBe(data.nodes[0].id);
+      expect(data.edges[0].target).toBe(data.nodes[1].id);
+
+      expect(data.metadata).toMatchObject({
+        cloned_from_template: {
+          templateSlug: 'e2e-clone-template',
+          templateName: 'E2E测试模板',
+        },
+      });
+    });
+
+    it('应拒绝空名称（422）', async () => {
+      const { headers } = await seedTenant('create-invalid');
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .set(headers)
+        .send({ name: '' });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('viewer 角色应被拒绝（403）', async () => {
+      const { headers } = await seedTenant('create-viewer', 'viewer');
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .set(headers)
+        .send({ name: '不应创建' });
+
+      expect(response.status).toBe(403);
+    });
+  });
 });
