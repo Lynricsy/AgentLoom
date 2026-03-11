@@ -4,6 +4,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { TemplateWizardDialog } from './TemplateWizardDialog';
 import type { TemplateDetail } from '../types';
 
+// Mock @xyflow/react (static preview)
+vi.mock('@xyflow/react', () => ({
+  ReactFlow: (props: Record<string, unknown>) => (
+    <div data-testid="reactflow-preview" data-fit-view={props.fitView} data-nodes-draggable={props.nodesDraggable} data-nodes-connectable={props.nodesConnectable} data-elements-selectable={props.elementsSelectable} data-pan-on-drag={props.panOnDrag} data-zoom-on-scroll={props.zoomOnScroll}>
+      {(props.children as React.ReactNode) ?? null}
+    </div>
+  ),
+  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Background: () => <div data-testid="reactflow-background" />,
+  BackgroundVariant: { Dots: 'dots' },
+}));
+
 // Radix Dialog mock (same pattern as CreateVersionDialog.test.tsx)
 vi.mock('@radix-ui/react-dialog', async () => {
   const React = await import('react');
@@ -128,8 +140,15 @@ function makeTemplateDetail(
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     definition: {
-      nodes: [{ id: 'n1' }, { id: 'n2' }, { id: 'n3' }],
-      edges: [{ id: 'e1' }, { id: 'e2' }],
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+        { id: 'n2', position: { x: 200, y: 0 }, data: { label: 'Process' } },
+        { id: 'n3', position: { x: 400, y: 0 }, data: { label: 'End' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n2', target: 'n3' },
+      ],
       viewport: { x: 0, y: 0, zoom: 1 },
     },
     ...overrides,
@@ -192,6 +211,25 @@ describe('TemplateWizardDialog', () => {
     expect(screen.getByText('3 个节点')).toBeInTheDocument();
     expect(screen.getByText('2 条连线')).toBeInTheDocument();
     expect(screen.getByText('中级')).toBeInTheDocument();
+  });
+
+  it('渲染只读 ReactFlow 预览', () => {
+    render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail()}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const preview = screen.getByTestId('reactflow-preview');
+    expect(preview).toBeInTheDocument();
+    expect(preview).toHaveAttribute('data-fit-view', 'true');
+    expect(preview).toHaveAttribute('data-nodes-draggable', 'false');
+    expect(preview).toHaveAttribute('data-nodes-connectable', 'false');
+    expect(preview).toHaveAttribute('data-elements-selectable', 'false');
+    expect(preview).toHaveAttribute('data-pan-on-drag', 'false');
+    expect(preview).toHaveAttribute('data-zoom-on-scroll', 'false');
   });
 
   it('提交表单创建工作流并导航', async () => {

@@ -1,9 +1,17 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from '@tanstack/react-router'
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  BackgroundVariant,
+  type Node,
+  type Edge,
+} from '@xyflow/react'
 import { Loader2, X } from 'lucide-react'
 import { useToast } from '@/shared/ui/toast'
 import { useCreateWorkflow } from '@/features/workflow'
@@ -76,11 +84,55 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
   const nodeCount = template?.metadata?.nodeCount ?? 0
   const edgeCount = template?.definition?.edges?.length ?? 0
 
+  const previewNodes = useMemo<Node[]>(() => {
+    if (!template?.definition?.nodes) return []
+    return template.definition.nodes
+      .filter(
+        (n: Record<string, unknown>) =>
+          n &&
+          typeof n === 'object' &&
+          typeof n.id === 'string' &&
+          n.position &&
+          typeof n.position === 'object',
+      )
+      .map((n: Record<string, unknown>) => ({
+        id: n.id as string,
+        type: 'default',
+        position: n.position as { x: number; y: number },
+        data: {
+          label:
+            (n.data as Record<string, unknown> | undefined)?.label ??
+            (n.data as Record<string, unknown> | undefined)?.nodeType ??
+            'Node',
+        },
+      }))
+  }, [template?.definition?.nodes])
+
+  const previewEdges = useMemo<Edge[]>(() => {
+    if (!template?.definition?.edges) return []
+    return template.definition.edges
+      .filter(
+        (e: Record<string, unknown>) =>
+          e &&
+          typeof e === 'object' &&
+          typeof e.id === 'string' &&
+          typeof e.source === 'string' &&
+          typeof e.target === 'string',
+      )
+      .map((e: Record<string, unknown>) => ({
+        id: e.id as string,
+        source: e.source as string,
+        target: e.target as string,
+        sourceHandle: (e.sourceHandle as string) ?? undefined,
+        targetHandle: (e.targetHandle as string) ?? undefined,
+      }))
+  }, [template?.definition?.edges])
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-6 shadow-xl data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=closed]:fade-out-0">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-6 shadow-xl data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=closed]:fade-out-0">
           <Dialog.Close className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="h-4 w-4" />
           </Dialog.Close>
@@ -93,7 +145,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
           </Dialog.Description>
 
           {template && (
-            <div className="mt-4 rounded-md border border-border bg-muted/30 p-3">
+            <div className="mt-4 space-y-3">
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span>{nodeCount} 个节点</span>
                 <span>·</span>
@@ -111,6 +163,37 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                   </>
                 )}
               </div>
+              {previewNodes.length > 0 && (
+                <div
+                  className="h-[200px] overflow-hidden rounded-md border border-border"
+                  data-testid="template-preview"
+                >
+                  <ReactFlowProvider>
+                    <ReactFlow
+                      nodes={previewNodes}
+                      edges={previewEdges}
+                      fitView
+                      nodesDraggable={false}
+                      nodesConnectable={false}
+                      elementsSelectable={false}
+                      connectOnClick={false}
+                      edgesReconnectable={false}
+                      panOnDrag={false}
+                      zoomOnScroll={false}
+                      zoomOnDoubleClick={false}
+                      deleteKeyCode={null}
+                      proOptions={{ hideAttribution: true }}
+                      colorMode="dark"
+                    >
+                      <Background
+                        variant={BackgroundVariant.Dots}
+                        gap={16}
+                        size={1}
+                      />
+                    </ReactFlow>
+                  </ReactFlowProvider>
+                </div>
+              )}
             </div>
           )}
 
