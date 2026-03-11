@@ -11,7 +11,10 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { createDirectTenantPolicies } from './rls-policies';
-import { executionSteps } from './execution-steps.schema';
+import {
+  executionSteps,
+  TypeMismatchInfo,
+} from './execution-steps.schema';
 import { workflowExecutions } from './workflow-executions.schema';
 
 // -- Evidence packet TypeScript interface for JSONB column --
@@ -70,12 +73,23 @@ export interface InterventionPayload {
   timeout?: boolean;
 }
 
+export interface NodeErrorInfo {
+  errorType?: string;
+  errorTitle?: string;
+  errorMessage: string;
+  errorDetail?: string;
+  nodeId: string;
+  stack?: string;
+  typeMismatch?: TypeMismatchInfo;
+}
+
 export const evidenceSourceTypes = [
   'rag_retrieval',
   'agent_decision',
   'tool_output',
   'user_input',
   'intervention',
+  'node_error',
 ] as const;
 
 export type EvidenceSourceType = (typeof evidenceSourceTypes)[number];
@@ -115,12 +129,18 @@ export interface InterventionEvidencePacket extends BaseEvidencePacket {
   intervention: InterventionPayload;
 }
 
+export interface NodeErrorEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'node_error';
+  nodeError: NodeErrorInfo;
+}
+
 export type EvidencePacket =
   | RagRetrievalEvidencePacket
   | AgentDecisionEvidencePacket
   | ToolOutputEvidencePacket
   | UserInputEvidencePacket
-  | InterventionEvidencePacket;
+  | InterventionEvidencePacket
+  | NodeErrorEvidencePacket;
 
 export const evidenceSourceTypeEnum = pgEnum(
   'evidence_source_type',

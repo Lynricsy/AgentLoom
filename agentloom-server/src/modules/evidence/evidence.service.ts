@@ -898,6 +898,11 @@ export class EvidenceService {
           sourceType: packet.sourceType,
           intervention: packet.intervention,
         };
+      case 'node_error':
+        return {
+          sourceType: packet.sourceType,
+          nodeError: packet.nodeError,
+        };
     }
   }
 

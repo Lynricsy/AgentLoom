@@ -9,6 +9,7 @@ export const EvidenceSourceType = z.enum([
   'tool_output',
   'user_input',
   'intervention',
+  'node_error',
 ]);
 
 export type EvidenceSourceType = z.infer<typeof EvidenceSourceType>;
@@ -90,6 +91,26 @@ export const InterventionSchema = z.object({
   timeout: z.boolean().optional(),
 });
 
+export const TypeMismatchInfoSchema = z.object({
+  sourcePortId: z.string(),
+  targetPortId: z.string(),
+  sourceType: z.string(),
+  targetType: z.string(),
+  sourceNodeId: z.string(),
+  targetNodeId: z.string(),
+  edgeId: z.string().optional(),
+});
+
+export const NodeErrorInfoSchema = z.object({
+  errorType: z.string().optional(),
+  errorTitle: z.string().optional(),
+  errorMessage: z.string(),
+  errorDetail: z.string().optional(),
+  nodeId: z.string(),
+  stack: z.string().optional(),
+  typeMismatch: TypeMismatchInfoSchema.optional(),
+});
+
 const StoredPacketMetadataSchema = z.object({
   evidenceId: z.string().uuid(),
   contentHash: z.string().length(64),
@@ -125,6 +146,11 @@ export const EvidencePacketInputSchema = z.discriminatedUnion('sourceType', [
     intervention: InterventionSchema,
     parentEvidenceId: z.string().uuid().optional(),
   }),
+  z.object({
+    sourceType: z.literal('node_error'),
+    nodeError: NodeErrorInfoSchema,
+    parentEvidenceId: z.string().uuid().optional(),
+  }),
 ]);
 
 export const EvidencePacketSchema = z
@@ -150,6 +176,10 @@ export const EvidencePacketSchema = z
     z.object({
       sourceType: z.literal('intervention'),
       intervention: InterventionSchema,
+    }),
+    z.object({
+      sourceType: z.literal('node_error'),
+      nodeError: NodeErrorInfoSchema,
     }),
   ])
   .and(StoredPacketMetadataSchema);
