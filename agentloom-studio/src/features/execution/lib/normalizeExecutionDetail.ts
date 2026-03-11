@@ -204,7 +204,7 @@ function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): Exec
   const errorDetail = toErrorDetail(rawStep.errorMessage)
   const checkpointRetries = toRetryHistory(rawStep.checkpointData?.attempts)
   const retryHistory =
-    checkpointRetries.length > 0 ? checkpointRetries : (errorDetail?.attempts ?? [])
+    checkpointRetries.length > 0 ? checkpointRetries : toRetryHistory(errorDetail?.attempts)
 
   return {
     id: rawStep.id,

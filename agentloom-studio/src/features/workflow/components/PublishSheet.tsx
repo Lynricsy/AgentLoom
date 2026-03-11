@@ -1,10 +1,9 @@
 import { memo, useCallback, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { AlertCircle, Loader2, Upload, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Upload, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import {
   usePublishWorkflow,
-  type PublishWorkflowResponse,
 } from '../api/versionMutations'
 import { useWorkflowVersions } from '../api/versionQueries'
 import { useToast } from '@/shared/ui/toast'
@@ -53,27 +52,6 @@ async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
   return ['发布失败，请稍后重试']
 }
 
-function formatPublishWarningDescription(warning: PublishWarning): string {
-  return [
-    warning.message,
-    `${warning.sourceNodeId}.${warning.sourcePort.name} (${warning.sourcePort.dataType}) → ${warning.targetNodeId}.${warning.targetPort.name} (${warning.targetPort.dataType})`,
-  ].join(' · ')
-}
-
-function notifyPublishWarnings(
-  notify: ReturnType<typeof useToast>['notify'],
-  response: PublishWorkflowResponse,
-) {
-  for (const warning of response.warnings ?? []) {
-    notify({
-      title: '发布兼容性警告',
-      description: formatPublishWarningDescription(warning),
-      variant: 'warning',
-      duration: 7000,
-    })
-  }
-}
-
 export const PublishSheet = memo(function PublishSheet({
   open,
   workflowId,
@@ -85,6 +63,8 @@ export const PublishSheet = memo(function PublishSheet({
   const [versionSource, setVersionSource] = useState<'current' | 'existing'>('current')
   const [selectedVersionId, setSelectedVersionId] = useState<string>('')
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [publishWarnings, setPublishWarnings] = useState<PublishWarning[] | null>(null)
+  const [expandedWarnings, setExpandedWarnings] = useState<Set<number>>(new Set())
 
   const publishMutation = usePublishWorkflow(workflowId)
   const { data: versionsData } = useWorkflowVersions(workflowId, { page: 1, pageSize: 50 })
@@ -100,6 +80,8 @@ export const PublishSheet = memo(function PublishSheet({
     setVersionSource(nextVersionId ? 'existing' : 'current')
     setSelectedVersionId(nextVersionId ?? '')
     setValidationErrors([])
+    setPublishWarnings(null)
+    setExpandedWarnings(new Set())
   }, [initialVersionId])
 
   useEffect(() => {
@@ -124,17 +106,23 @@ export const PublishSheet = memo(function PublishSheet({
           releaseNotes: releaseNotes.trim() || undefined,
           versionId: versionSource === 'existing' ? selectedVersionId : undefined,
         })
-        notify({
-          title: '发布成功',
-          description:
-            response.warnings && response.warnings.length > 0
-              ? `工作流已发布，并返回 ${response.warnings.length} 条兼容性警告`
-              : '工作流已发布',
-          variant: 'success',
-        })
-        notifyPublishWarnings(notify, response)
-        resetForm()
-        onOpenChange(false)
+        const warnings = response.warnings ?? []
+        if (warnings.length > 0) {
+          notify({
+            title: '发布成功',
+            description: `工作流已发布，并返回 ${warnings.length} 条兼容性警告`,
+            variant: 'success',
+          })
+          setPublishWarnings(warnings)
+        } else {
+          notify({
+            title: '发布成功',
+            description: '工作流已发布',
+            variant: 'success',
+          })
+          resetForm()
+          onOpenChange(false)
+        }
       } catch (err) {
         setValidationErrors(await extractPublishErrorMessages(err))
       }
@@ -160,6 +148,18 @@ export const PublishSheet = memo(function PublishSheet({
     },
     [onOpenChange, resetForm],
   )
+
+  const toggleWarning = useCallback((index: number) => {
+    setExpandedWarnings((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }, [])
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
@@ -195,6 +195,64 @@ export const PublishSheet = memo(function PublishSheet({
           </div>
 
           {/* 内容 */}
+          {publishWarnings ? (
+            <div className="flex flex-1 flex-col overflow-y-auto">
+              <div className="flex-1 space-y-4 px-6 py-4">
+                <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>工作流已成功发布</span>
+                </div>
+                <div className="space-y-2" data-testid="publish-warnings-list">
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>{publishWarnings.length} 条兼容性警告</span>
+                  </div>
+                  {publishWarnings.map((warning, index) => (
+                    <div
+                      key={`${warning.sourceNodeId}-${warning.targetNodeId}-${index}`}
+                      className="rounded-md border border-amber-200 bg-amber-50/50"
+                      data-testid="publish-warning-item"
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-start gap-2 p-3 text-left text-sm text-amber-800 hover:bg-amber-50"
+                        onClick={() => toggleWarning(index)}
+                        data-testid="publish-warning-toggle"
+                      >
+                        {expandedWarnings.has(index) ? (
+                          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>{warning.message}</span>
+                      </button>
+                      {expandedWarnings.has(index) && (
+                        <div className="border-t border-amber-200 px-3 py-2 text-xs text-amber-700" data-testid="publish-warning-detail">
+                          <div className="flex items-center gap-1 font-mono">
+                            <span>{warning.sourceNodeId}.{warning.sourcePort.name}</span>
+                            <span className="rounded bg-amber-200 px-1">{warning.sourcePort.dataType}</span>
+                            <span>→</span>
+                            <span>{warning.targetNodeId}.{warning.targetPort.name}</span>
+                            <span className="rounded bg-amber-200 px-1">{warning.targetPort.dataType}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end border-t border-border px-6 py-4">
+                <button
+                  type="button"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  onClick={() => { resetForm(); onOpenChange(false) }}
+                  data-testid="publish-warnings-done"
+                >
+                  完成
+                </button>
+              </div>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto">
             <div className="flex-1 space-y-6 px-6 py-4">
               {/* 验证错误 */}
@@ -362,6 +420,7 @@ export const PublishSheet = memo(function PublishSheet({
               </button>
             </div>
           </form>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
