@@ -22,13 +22,14 @@ AgentLoomAUTO/
 ├── agentloom-server/         # NestJS v11 + Fastify v5 后端 (见子 AGENTS.md)
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
+├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
 ├── _bmad/                    # BMAD agent 系统配置 (勿修改)
 ├── _bmad-output/             # BMAD 生成的文档
 └── package.json              # 根 package (仅 @modelcontextprotocol/sdk)
 ```
 
-**非标准 monorepo**: 无 pnpm-workspace.yaml，三个包各自独立管理 node_modules 和 lockfile。
+**非标准 monorepo**: 无 pnpm-workspace.yaml，四个包各自独立管理依赖和 lockfile。
 
 ## 在哪找什么
 
@@ -42,7 +43,10 @@ AgentLoomAUTO/
 | 添加画布节点类型 | `agentloom-studio/src/features/canvas/` | 见 canvas 子 AGENTS.md |
 | 修改端口类型兼容性 | `agentloom-type-engine/src/checker/` | Rust，需 `wasm-pack build` |
 | 共享 UI 组件 | `agentloom-studio/src/shared/ui/` | CVA + Radix + Tailwind |
-| 环境变量 | `agentloom-server/.env.example` / `agentloom-studio/.env.example` | |
+| 添加移动端 feature | `agentloom_mobile/lib/features/` | Feature 目录，每 feature 含 screens/ |
+| 修改移动端路由 | `agentloom_mobile/lib/routes/` | GoRouter + StatefulShellRoute |
+| 移动端共享组件 | `agentloom_mobile/lib/shared/` | providers/models/widgets |
+| 环境变量 | `agentloom-server/.env.example` / `agentloom-studio/.env.example` / `agentloom_mobile/.env.*` | |
 
 ## 跨包架构
 
@@ -52,6 +56,8 @@ type-engine (Rust/WASM)
 
 studio (React) ──HTTP REST──→ server (/api/v1)
               ──Socket.IO──→ server (/execution, /knowledge, /notification)
+
+mobile (Flutter) ──HTTP REST──→ server (/api/v1) [计划中]
 
 server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + MinIO
 ```
@@ -96,6 +102,14 @@ cd agentloom-type-engine
 cargo test                         # 测试
 cargo bench                       # 基准测试
 wasm-pack build --target bundler --release  # 构建 WASM
+
+# Mobile (需 Flutter 3.41.2 via FVM)
+cd agentloom_mobile
+flutter pub get                    # 安装依赖
+flutter analyze                    # 静态分析
+flutter test                       # 单元测试
+flutter test --coverage            # 覆盖率
+dart run build_runner build        # 代码生成 (freezed/json_serializable)
 ```
 
 ## 注意事项
@@ -117,3 +131,4 @@ wasm-pack build --target bundler --release  # 构建 WASM
 - **Story 7-1 已完成**: TemplateModule (无认证公共 API)。Server: `workflow_templates` 表（无 RLS、无 tenant_id，系统级公共资源），partial index on category (is_published=true)、GIN index on tags、unique on slug；template `definition` 与 `workflowDefinitions.definition` 同构，`nodes/edges/viewport` 均为必填。`TemplateService.findAll(category?, page, pageSize)` 排除 definition 字段，按 displayOrder+createdAt 排序；`findBySlug(slug)` 返回含 definition 完整详情。DTO category 使用 `z.enum(['analysis','content','development','automation','reporting'])`。`AppModule.configure()` 已通过 `TenantMiddleware.exclude({ path: 'templates', method: RequestMethod.ALL }, { path: 'templates/{*splat}', method: RequestMethod.ALL })` 显式放行模板公共路由。5 个预置种子模板（upsert on slug）：daily-competitor-analysis、customer-feedback-classifier、tech-blog-writer、code-review-assistant、auto-data-report。CLI 种子脚本 `pnpm db:seed`。Studio: `features/template/` 提供 `TemplateCategory`、`TemplateDefinition/TemplateMetadata/TemplateListItem/TemplateDetail`、API client (fetchTemplates/fetchTemplateBySlug)、query hooks (`useTemplates` / `useTemplateBySlug`，`useTemplateDetail` 为兼容别名)，并显式设置 `staleTime=10min`、`gcTime=10min`
 - **Story 7-2 已完成**: 模板浏览 UI 与三步快速创建流程。Server: `POST /api/v1/workflow-definitions` 端点（`WorkflowDefinitionCreateController`，独立于已有的 `:workflowId` 控制器）接受 `CreateWorkflowDefinitionDto {name, description?, template_slug?}`，`WorkflowVersionService.create()` 生成 slug、若有 template_slug 则调用 `TemplateService.findBySlug()` → `cloneDefinitionWithNewIds()` 重映射全部节点 UUID + 更新边引用 + 设置 `metadata.cloned_from_template {templateSlug, templateName, clonedAt}`；slug 冲突最多重试 3 次（`appendSlugSuffix`）。`workflowDefinitions` 新增 `metadata` jsonb 列（migration `0025`）。Studio: `TemplateBrowsePage`（`/templates` 路由）含 Tabs (全部 + 5 分类) + 搜索 + 网格 + 空态 + 加载态；`TemplateCard` 展示名称/分类/描述/复杂度/节点数；`TemplateWizardDialog` 含 ReactFlow 只读静态预览 (fitView + 全部交互禁用) + react-hook-form 表单 (名称预填"的副本" + 描述预填) → `useCreateWorkflow()` → 跳转画布。Header 导航新增"模板"入口
 - **Story 6-5 已完成**: 节点级错误诊断与类型不匹配报告。Server: `isPortTypeCompatible(source, target)` 端口类型兼容判断（同类型或目标为 json 即兼容）；`NodeTypeMismatchException` 结构化异常包含 `TypeMismatchDetail {sourcePortId, targetPortId, sourceType, targetType, sourceNodeId, targetNodeId, edgeId?}`；`NodeSchedulerService.checkEdgePortTypeCompatibility()` 运行时类型校验抛出 `NodeTypeMismatchException`；`WorkflowVersionService.publish()` 返回 `PublishResult {data, warnings}`，`validateEdgeTypeCompatibility()` 检测不兼容边生成 `PublishWarning[]`；`EventBridgeService.emitStepStatusChanged()` 当 `payload.to==='failed'` 时额外通过 NestJS EventEmitter 发射事件供 evidence 监听；`EvidenceService.handleStepFailed()` 监听步骤失败自动创建 `node_error` 类型证据（含 errorMessage/errorType/errorTitle/typeMismatch/stack）；`buildPacketSummary` 支持 `node_error` 摘要生成；`execution-response.dto.ts`、`state-replay.service.spec.ts` 与 `workflow-version.e2e-spec.ts` 现分别补齐结构化错误契约、`errorDetail` 快照透传与发布 warnings E2E 覆盖。Studio: `EvidenceSourceType` 新增 `node_error`；`EvidenceCard` 渲染 `node_error` 错误摘要与类型不匹配对比视图；`FailedNodeError` 结构化展示 RFC7807 + typeMismatch + retryHistory + validationErrors；`normalizeExecutionDetail` retryHistory 支持从 errorMessage.attempts 回退；`PublishSheet` 展示发布类型不匹配警告；`executionStore` 对齐 `StructuredErrorDetail` 类型；`versionMutations` 对齐 `PublishResult` 返回格式；`mcpToolMapping` 已对齐 canonical 8-value backend 端口类型并保留 legacy fallback
+- **Story 7-3 已完成**: Flutter 移动端应用骨架与导航壳。`agentloom_mobile/` 使用 Flutter 3.41.2 (Dart 3.11.0)，依赖 flutter_riverpod ^3.2.1、go_router ^17.1.0、dio ^5.9.2、flutter_dotenv、freezed。目录结构: `lib/{app,config,routes,shared,features}/`。`ShellScaffold` 使用 Material 3 NavigationBar (Dashboard/Workflows/Settings 三 tab)，路由为 `StatefulShellRoute.indexedStack` 保持 tab 状态。`EnvConfig` 支持 dev/staging/prod 三环境 `.env.*`。`apiClientProvider` (Dio) 配置 baseUrl + 10s connect/30s receive timeout。35 个测试全部通过，覆盖率 95.3%
