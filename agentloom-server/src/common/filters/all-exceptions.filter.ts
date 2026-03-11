@@ -41,17 +41,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     instance: string,
   ): ProblemDetails {
     if (exception instanceof ZodValidationException) {
-      const zodError = exception.getZodError() as z.ZodError;
+      const zodError = exception.getZodError() as z.ZodError | undefined;
       return {
         type: 'https://agentloom.dev/errors/validation-error',
         title: 'Validation Error',
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         detail: 'Request validation failed',
         instance,
-        errors: zodError.issues.map((issue: z.ZodIssue) => ({
+        errors: zodError?.issues?.map((issue: z.ZodIssue) => ({
           field: issue.path.join('.'),
           message: issue.message,
-        })),
+        })) ?? [{ field: 'unknown', message: exception.message }],
       };
     }
 

@@ -17,6 +17,7 @@ import {
   WorkflowArchivedException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
+  WorkflowVersionConflictException,
   WorkflowVersionNotFoundException,
 } from '../workflow-version.exceptions';
 
@@ -453,6 +454,194 @@ describe('WorkflowVersionService', () => {
       await expect(service.findDefinitionById(WORKFLOW_ID)).rejects.toBeInstanceOf(
         WorkflowNotFoundException,
       );
+    });
+  });
+
+  describe('findDefinitionDetailById', () => {
+    it('应当返回包含画布大字段的完整工作流定义', async () => {
+      const workflow = createDraftWorkflow({
+        description: '详情描述',
+        metadata: { category: 'analysis' },
+        updatedBy: USER_ID,
+        createdAt: new Date('2025-02-01T08:00:00Z'),
+        updatedAt: new Date('2025-02-02T09:30:00Z'),
+      });
+      const selectWorkflow = createSelectChain([workflow]);
+      db.select.mockReturnValueOnce(selectWorkflow);
+
+      const result = await service.findDefinitionDetailById(WORKFLOW_ID);
+
+      expect(result).toEqual({
+        id: WORKFLOW_ID,
+        name: '测试工作流',
+        slug: 'test-workflow',
+        description: '详情描述',
+        status: 'draft',
+        version: 1,
+        nodes: MOCK_NODES,
+        edges: MOCK_EDGES,
+        viewport: MOCK_VIEWPORT,
+        metadata: { category: 'analysis' },
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: '2025-02-01T08:00:00.000Z',
+        updatedAt: '2025-02-02T09:30:00.000Z',
+      });
+      expect(result).toHaveProperty('nodes');
+      expect(result).toHaveProperty('edges');
+      expect(result).toHaveProperty('viewport');
+    });
+
+    it('工作流不存在时应当抛出 WorkflowNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.findDefinitionDetailById(WORKFLOW_ID),
+      ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+    });
+  });
+
+  describe('updateDefinition', () => {
+    it('应当更新工作流并返回含递增 version 的完整记录', async () => {
+      const workflow = createDraftWorkflow({ version: 3 });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 4,
+        name: '更新后的名称',
+        updatedBy: USER_ID,
+        updatedAt: NOW,
+      });
+
+      const selectWf = createSelectChain([workflow]);
+      db.select.mockReturnValueOnce(selectWf);
+
+      const updateChain = createUpdateChain([updatedWorkflow]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 3,
+        name: '更新后的名称',
+      });
+
+      expect(result).toEqual({
+        id: WORKFLOW_ID,
+        name: '更新后的名称',
+        slug: 'test-workflow',
+        description: null,
+        status: 'draft',
+        version: 4,
+        nodes: MOCK_NODES,
+        edges: MOCK_EDGES,
+        viewport: MOCK_VIEWPORT,
+        metadata: null,
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: NOW.toISOString(),
+        updatedAt: NOW.toISOString(),
+      });
+      expect(result).toHaveProperty('nodes');
+      expect(result).toHaveProperty('edges');
+      expect(result).toHaveProperty('viewport');
+      expect(db.transaction).toHaveBeenCalledOnce();
+      expect(db.execute).toHaveBeenCalledOnce();
+    });
+
+    it('应当仅更新提供的字段（部分更新）', async () => {
+      const workflow = createDraftWorkflow({ version: 2 });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 3,
+        description: '新描述',
+        updatedBy: USER_ID,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 2,
+        description: '新描述',
+      });
+
+      expect(result.description).toBe('新描述');
+      expect(result.version).toBe(3);
+    });
+
+    it('应当支持画布数据更新（nodes/edges/viewport）', async () => {
+      const newNodes = [{ id: 'new-node', type: 'agent', position: { x: 100, y: 100 }, data: {} }];
+      const newEdges = [{ id: 'new-edge', source: 'new-node', target: 'n2' }];
+      const newViewport = { x: 50, y: 50, zoom: 1.5 };
+
+      const workflow = createDraftWorkflow({ version: 1 });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 2,
+        nodes: newNodes,
+        edges: newEdges,
+        viewport: newViewport,
+        updatedBy: USER_ID,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 1,
+        nodes: newNodes,
+        edges: newEdges,
+        viewport: newViewport,
+      });
+
+      expect(result.nodes).toEqual(newNodes);
+      expect(result.edges).toEqual(newEdges);
+      expect(result.viewport).toEqual(newViewport);
+      expect(result.version).toBe(2);
+    });
+
+    it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createDraftWorkflow({ status: 'archived' })]),
+      );
+
+      await expect(
+        service.updateDefinition(WORKFLOW_ID, USER_ID, { version: 1 }),
+      ).rejects.toBeInstanceOf(WorkflowArchivedException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('工作流不存在时应当抛出 WorkflowNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.updateDefinition(WORKFLOW_ID, USER_ID, { version: 1 }),
+      ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('版本冲突时应当抛出 WorkflowVersionConflictException', async () => {
+      const workflow = createDraftWorkflow({ version: 5 });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([]));
+
+      await expect(
+        service.updateDefinition(WORKFLOW_ID, USER_ID, { version: 3 }),
+      ).rejects.toBeInstanceOf(WorkflowVersionConflictException);
+    });
+
+    it('应当在事务内获取工作流级写锁', async () => {
+      const workflow = createDraftWorkflow({ version: 1 });
+      const updatedWorkflow = createDraftWorkflow({ version: 2, updatedBy: USER_ID });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 1,
+        name: '锁测试',
+      });
+
+      expect(db.transaction).toHaveBeenCalledOnce();
+      expect(db.execute).toHaveBeenCalledOnce();
     });
   });
 

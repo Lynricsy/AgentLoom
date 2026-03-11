@@ -689,7 +689,7 @@ describe('WorkflowVersion E2E', () => {
   });
 
   describe('GET /api/v1/workflow-definitions/:id', () => {
-    it('应返回工作流定义详情并排除画布大字段', async () => {
+    it('应返回工作流定义详情（含画布大字段）', async () => {
       const owner = await seedTenant('definitions-detail');
       const workflow = await seedDraftWorkflow({
         tenantId: owner.tenantId,
@@ -716,9 +716,11 @@ describe('WorkflowVersion E2E', () => {
       });
       expect(response.body.data.createdAt).toEqual(expect.any(String));
       expect(response.body.data.updatedAt).toEqual(expect.any(String));
-      expect(response.body.data).not.toHaveProperty('nodes');
-      expect(response.body.data).not.toHaveProperty('edges');
-      expect(response.body.data).not.toHaveProperty('viewport');
+      expect(response.body.data).toHaveProperty('nodes');
+      expect(response.body.data).toHaveProperty('edges');
+      expect(response.body.data).toHaveProperty('viewport');
+      expect(response.body.data.nodes).toEqual(expect.any(Array));
+      expect(response.body.data.edges).toEqual(expect.any(Array));
     });
 
     it('不存在的工作流应返回 RFC7807 404', async () => {
@@ -890,6 +892,247 @@ describe('WorkflowVersion E2E', () => {
         .send({ name: '不应创建' });
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /api/v1/workflow-definitions/:id', () => {
+    it('应更新工作流定义并返回递增后的 version', async () => {
+      const owner = await seedTenant('patch-success');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: '待更新工作流',
+        slug: 'patch-wf',
+      });
+
+      const newNodes = [
+        { id: 'n-new', type: 'agent', position: { x: 100, y: 200 }, data: { label: 'New' } },
+      ];
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({
+          version: workflow.version,
+          name: '已更新工作流',
+          nodes: newNodes,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
+        id: workflow.id,
+        name: '已更新工作流',
+        slug: 'patch-wf',
+        status: 'draft',
+        version: workflow.version + 1,
+      });
+      expect(response.body.data.nodes).toEqual(newNodes);
+      expect(response.body.data).toHaveProperty('edges');
+      expect(response.body.data).toHaveProperty('viewport');
+      expect(response.body.data.updatedBy).toBe(owner.user.id);
+    });
+
+    it('版本冲突应返回 409 并携带当前版本号', async () => {
+      const owner = await seedTenant('patch-conflict');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'conflict-wf',
+      });
+
+      const staleVersion = workflow.version + 999;
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({
+          version: staleVersion,
+          name: '不应更新',
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/version-conflict',
+        title: '版本冲突',
+        status: 409,
+      });
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'version',
+            message: expect.stringContaining('当前版本为'),
+          }),
+        ]),
+      );
+    });
+
+    it('已归档工作流应返回 409', async () => {
+      const owner = await seedTenant('patch-archived');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'archived-patch-wf',
+        status: 'archived',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({ version: workflow.version, name: '不应更新' });
+
+      expect(response.status).toBe(409);
+    });
+
+    it('不存在的工作流应返回 404', async () => {
+      const owner = await seedTenant('patch-notfound');
+      const missingId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${missingId}`)
+        .set(owner.headers)
+        .send({ version: 1 });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('缺少 version 字段应返回 422', async () => {
+      const owner = await seedTenant('patch-no-version');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'no-version-wf',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({ name: '无版本号' });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('strict 模式应拒绝未知字段（422）', async () => {
+      const owner = await seedTenant('patch-strict');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'strict-wf',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({ version: workflow.version, unknownField: true });
+
+      expect(response.status).toBe(422);
+    });
+
+    it('viewer 角色应被拒绝（403）', async () => {
+      const viewer = await seedTenant('patch-viewer', 'viewer');
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflowId}`)
+        .set(viewer.headers)
+        .send({ version: 1 });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('未认证请求应返回 401', async () => {
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflowId}`)
+        .send({ version: 1 });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('连续 PATCH 应正确递增 version', async () => {
+      const owner = await seedTenant('patch-sequential');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'sequential-wf',
+      });
+
+      const first = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({ version: workflow.version, name: '第一次更新' });
+
+      expect(first.status).toBe(200);
+      const v2 = first.body.data.version;
+
+      const second = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({ version: v2, description: '第二次更新' });
+
+      expect(second.status).toBe(200);
+      expect(second.body.data.version).toBe(v2 + 1);
+      expect(second.body.data.name).toBe('第一次更新');
+      expect(second.body.data.description).toBe('第二次更新');
+    });
+  });
+
+  describe('DELETE /api/v1/workflow-definitions/:id', () => {
+    it('应归档工作流并返回 204', async () => {
+      const owner = await seedTenant('delete-success');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'delete-wf',
+      });
+
+      const response = await request(app.getHttpServer())
+        .delete(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers);
+
+      expect(response.status).toBe(204);
+
+      const verify = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers);
+
+      expect(verify.status).toBe(200);
+      expect(verify.body.data.status).toBe('archived');
+    });
+
+    it('已归档工作流再次删除应返回 409', async () => {
+      const owner = await seedTenant('delete-archived');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'delete-archived-wf',
+        status: 'archived',
+      });
+
+      const response = await request(app.getHttpServer())
+        .delete(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers);
+
+      expect(response.status).toBe(409);
+    });
+
+    it('operator 角色应被拒绝（403）', async () => {
+      const operator = await seedTenant('delete-operator', 'operator');
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer())
+        .delete(`/api/v1/workflow-definitions/${workflowId}`)
+        .set(operator.headers);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('未认证请求应返回 401', async () => {
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer()).delete(
+        `/api/v1/workflow-definitions/${workflowId}`,
+      );
+
+      expect(response.status).toBe(401);
     });
   });
 });

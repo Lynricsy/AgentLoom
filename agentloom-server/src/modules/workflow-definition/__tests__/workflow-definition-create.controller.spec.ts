@@ -26,6 +26,9 @@ function setup() {
     create: vi.fn(),
     findAllDefinitions: vi.fn(),
     findDefinitionById: vi.fn(),
+    findDefinitionDetailById: vi.fn(),
+    updateDefinition: vi.fn(),
+    archive: vi.fn(),
   };
   const controller = new WorkflowDefinitionCreateController(
     service as unknown as WorkflowVersionService,
@@ -63,6 +66,24 @@ describe('WorkflowDefinitionCreateController', () => {
         'owner',
         'admin',
         'creator',
+      ]);
+    });
+
+    it('update 应要求 owner/admin/creator/operator 角色', () => {
+      const { controller } = setup();
+      expect(getRoles(controller, 'update')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+        'operator',
+      ]);
+    });
+
+    it('remove 应要求 owner/admin 角色', () => {
+      const { controller } = setup();
+      expect(getRoles(controller, 'remove')).toEqual([
+        'owner',
+        'admin',
       ]);
     });
   });
@@ -109,7 +130,7 @@ describe('WorkflowDefinitionCreateController', () => {
   });
 
   describe('findById', () => {
-    it('应调用 service.findDefinitionById 并返回 {data}', async () => {
+    it('应调用 service.findDefinitionDetailById 并返回 {data}（含画布大字段）', async () => {
       const { service, controller } = setup();
       const mockResult = {
         id: WORKFLOW_ID,
@@ -118,18 +139,24 @@ describe('WorkflowDefinitionCreateController', () => {
         description: '详情描述',
         status: 'published',
         version: 5,
+        nodes: [{ id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} }],
+        edges: [{ id: 'e1', source: 'n1', target: 'n2' }],
+        viewport: { x: 0, y: 0, zoom: 1 },
         metadata: { source: 'template' },
         createdBy: USER_ID,
         updatedBy: USER_ID,
         createdAt: '2025-01-01T00:00:00.000Z',
         updatedAt: '2025-01-03T00:00:00.000Z',
       };
-      service.findDefinitionById.mockResolvedValue(mockResult);
+      service.findDefinitionDetailById.mockResolvedValue(mockResult);
 
       const result = await controller.findById(WORKFLOW_ID, TENANT_ID);
 
-      expect(service.findDefinitionById).toHaveBeenCalledWith(WORKFLOW_ID);
+      expect(service.findDefinitionDetailById).toHaveBeenCalledWith(WORKFLOW_ID);
       expect(result).toEqual({ data: mockResult });
+      expect(result.data).toHaveProperty('nodes');
+      expect(result.data).toHaveProperty('edges');
+      expect(result.data).toHaveProperty('viewport');
     });
   });
 
@@ -168,6 +195,58 @@ describe('WorkflowDefinitionCreateController', () => {
 
       expect(service.create).toHaveBeenCalledWith(TENANT_ID, USER_ID, dto);
       expect(result).toEqual({ data: mockResult });
+    });
+  });
+
+  describe('update', () => {
+    it('应调用 service.updateDefinition 并返回 {data}（含画布大字段）', async () => {
+      const { service, controller } = setup();
+      const dto = {
+        version: 3,
+        name: '更新后的名称',
+        nodes: [{ id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} }],
+      };
+      const mockResult = {
+        id: WORKFLOW_ID,
+        name: '更新后的名称',
+        slug: 'test-workflow',
+        description: null,
+        status: 'draft',
+        version: 4,
+        nodes: dto.nodes,
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        metadata: null,
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-02T00:00:00.000Z',
+      };
+      service.updateDefinition.mockResolvedValue(mockResult);
+
+      const result = await controller.update(
+        WORKFLOW_ID,
+        dto as Parameters<typeof controller.update>[1],
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(service.updateDefinition).toHaveBeenCalledWith(WORKFLOW_ID, USER_ID, dto);
+      expect(result).toEqual({ data: mockResult });
+      expect(result.data).toHaveProperty('nodes');
+      expect(result.data).toHaveProperty('edges');
+      expect(result.data).toHaveProperty('viewport');
+    });
+  });
+
+  describe('remove', () => {
+    it('应调用 service.archive 且无返回值', async () => {
+      const { service, controller } = setup();
+      service.archive.mockResolvedValue(undefined);
+
+      await controller.remove(WORKFLOW_ID, TENANT_ID, USER_ID);
+
+      expect(service.archive).toHaveBeenCalledWith(WORKFLOW_ID, USER_ID);
     });
   });
 });
