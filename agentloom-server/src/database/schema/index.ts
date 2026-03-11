@@ -121,6 +121,13 @@ export {
   type ToolOutput,
 } from './evidence.schema';
 export {
+  workflowTemplates,
+  type WorkflowTemplate,
+  type NewWorkflowTemplate,
+  type TemplateDefinition,
+  type TemplateMetadata,
+} from './workflow-templates.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

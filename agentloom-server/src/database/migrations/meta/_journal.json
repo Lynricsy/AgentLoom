@@ -169,6 +169,13 @@
       "when": 1773125239981,
       "tag": "0023_bored_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1773208956820,
+      "tag": "0024_loving_charles_xavier",
+      "breakpoints": true
     }
   ]
 }
