@@ -3,6 +3,102 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CreateVersionDialog } from './CreateVersionDialog';
 
+vi.mock('@radix-ui/react-dialog', async () => {
+  const React = await import('react');
+  const {
+    Fragment,
+    createContext,
+    useContext,
+    cloneElement,
+    isValidElement,
+  } = React;
+
+  const DialogContext = createContext<{
+    onOpenChange?: (open: boolean) => void;
+  } | null>(null);
+
+  function Root({
+    open,
+    onOpenChange,
+    children,
+  }: {
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    children?: React.ReactNode;
+  }) {
+    if (!open) return null;
+    return React.createElement(
+      DialogContext.Provider,
+      { value: { onOpenChange } },
+      children,
+    );
+  }
+
+  function Portal({ children }: { children?: React.ReactNode }) {
+    return React.createElement(Fragment, null, children);
+  }
+
+  function Overlay(props: Record<string, unknown>) {
+    return React.createElement('div', props);
+  }
+
+  function Content(props: Record<string, unknown>) {
+    return React.createElement('div', { role: 'dialog', ...props });
+  }
+
+  function Title(props: Record<string, unknown>) {
+    return React.createElement('h2', props);
+  }
+
+  function Description(props: Record<string, unknown>) {
+    return React.createElement('p', props);
+  }
+
+  function Close({
+    asChild,
+    children,
+  }: {
+    asChild?: boolean;
+    children?: React.ReactNode;
+  }) {
+    const ctx = useContext(DialogContext);
+    const onOpenChange = ctx?.onOpenChange;
+
+    type CloseChildProps = {
+      onClick?: React.MouseEventHandler;
+    };
+
+    if (asChild && isValidElement<CloseChildProps>(children)) {
+      const child = children;
+      return cloneElement(child, {
+        onClick: (event: React.MouseEvent) => {
+          child.props.onClick?.(event);
+          onOpenChange?.(false);
+        },
+      });
+    }
+
+    return React.createElement(
+      'button',
+      {
+        type: 'button',
+        onClick: () => onOpenChange?.(false),
+      },
+      children,
+    );
+  }
+
+  return {
+    Root,
+    Portal,
+    Overlay,
+    Content,
+    Title,
+    Description,
+    Close,
+  };
+});
+
 const mutateAsyncMock = vi.fn();
 const notifyMock = vi.fn();
 

@@ -8,12 +8,16 @@ import { useEvidenceUiActions } from '@/features/evidence'
 interface EvidenceChipsProps {
   count: number
   executionId?: string
+  nodeId?: string
+  nodeName?: string
   className?: string
 }
 
 export const EvidenceChips = memo(function EvidenceChips({
   count,
   executionId,
+  nodeId,
+  nodeName,
   className,
 }: EvidenceChipsProps) {
   const { openPanel } = useEvidenceUiActions()
@@ -33,7 +37,7 @@ export const EvidenceChips = memo(function EvidenceChips({
       onClick={(e) => {
         if (!executionId) return
         e.stopPropagation()
-        openPanel(executionId)
+        openPanel(executionId, nodeId, nodeName)
       }}
       data-testid="evidence-chips"
     >

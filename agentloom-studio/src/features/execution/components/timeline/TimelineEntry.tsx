@@ -80,7 +80,12 @@ export const TimelineEntry = memo(function TimelineEntry({
 
         <div className="flex flex-wrap items-center gap-2">
           <OutputLevelBadge level={outputFormatLevel} />
-          <EvidenceChips count={evidenceCount} executionId={executionId} />
+          <EvidenceChips
+            count={evidenceCount}
+            executionId={executionId}
+            nodeId={step.nodeId}
+            nodeName={step.nodeName}
+          />
         </div>
       </button>
 
@@ -91,6 +96,9 @@ export const TimelineEntry = memo(function TimelineEntry({
             agentDecisionEvidence={agentDecisionEvidence}
             interventionEvidence={interventionEvidence}
             showDetails={expanded}
+            executionId={executionId}
+            nodeId={step.nodeId}
+            nodeName={step.nodeName}
           />
         </div>
       )}
@@ -104,6 +112,8 @@ export const TimelineEntry = memo(function TimelineEntry({
             completedAt={step.completedAt}
             retryCount={step.retryCount}
             executionId={executionId}
+            nodeId={step.nodeId}
+            nodeName={step.nodeName}
           />
 
           {isFailed && (

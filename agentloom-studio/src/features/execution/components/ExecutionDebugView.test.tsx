@@ -44,6 +44,12 @@ vi.mock('./ExecutionNodeDetail', () => ({
   ),
 }))
 
+vi.mock('@/features/evidence/components/EvidenceReferencePanel', () => ({
+  EvidenceReferencePanel: () => (
+    <div data-testid="mock-evidence-reference-panel" />
+  ),
+}))
+
 function createExecutionDetail(): ExecutionDetail {
   return {
     id: 'exec-001',

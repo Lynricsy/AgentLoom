@@ -10,7 +10,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { StorageService } from '../../infrastructure/storage';
+import {
+  StorageKeyInvalidException,
+  StorageObjectNotFoundException,
+  StorageService,
+  StorageUnavailableException,
+} from '../../infrastructure/storage';
 import { documents } from '../../database/schema/knowledge-bases.schema';
 import {
   type SupportedMimeType,
@@ -26,6 +31,8 @@ import {
   FileTooLargeException,
   DocumentNotFoundException,
   EmptyFileException,
+  DocumentContentNotFoundException,
+  DocumentContentUnavailableException,
 } from './knowledge.exceptions';
 import type { DocumentProcessingJobData } from './document-processing.worker';
 import { KnowledgeGateway } from './knowledge.gateway';
@@ -307,10 +314,34 @@ export class DocumentService {
       throw new DocumentNotFoundException(documentId);
     }
 
-    const url = await this.storageService.getPresignedUrl(
-      document.storageKey,
-      expirySeconds,
-    );
+    if (!document.storageKey) {
+      throw new DocumentContentNotFoundException(documentId);
+    }
+
+    let url: string;
+    try {
+      url = await this.storageService.getPresignedUrl(
+        document.storageKey,
+        expirySeconds,
+      );
+    } catch (error) {
+      if (
+        error instanceof StorageObjectNotFoundException ||
+        error instanceof StorageKeyInvalidException
+      ) {
+        throw new DocumentContentNotFoundException(documentId);
+      }
+
+      if (error instanceof StorageUnavailableException) {
+        const reason =
+          typeof error.detail === 'string'
+            ? error.detail
+            : '对象存储暂不可用';
+        throw new DocumentContentUnavailableException(documentId, reason);
+      }
+
+      throw error;
+    }
 
     return {
       url,

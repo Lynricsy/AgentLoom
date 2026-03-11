@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { ExternalLink, FileText } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
@@ -8,7 +8,7 @@ import { useEvidenceUiActions } from '../stores/evidenceUiStore'
 
 interface LocationLinkProps {
   evidenceId: string
-  location: Pick<PhysicalLocation, 'documentId' | 'fileName' | 'page' | 'paragraph' | 'offset' | 'length' | 'chunkId'>
+  location: PhysicalLocation
   disabled?: boolean
   className?: string
 }
@@ -21,36 +21,50 @@ export const LocationLink = memo(function LocationLink({
 }: LocationLinkProps) {
   const { openFromPhysicalLocation } = useEvidenceUiActions()
 
-  const locationParts = [
-    location.page != null && `第 ${location.page} 页`,
-    location.paragraph != null && `第 ${location.paragraph} 段`,
-  ].filter(Boolean)
+  const locationLabel = useMemo(() => {
+    const parts: string[] = []
 
-  const locationLabel = locationParts.join(' · ')
+    if (location.page != null) {
+      parts.push(`第 ${location.page} 页`)
+    }
+
+    if (location.paragraph != null) {
+      parts.push(`第 ${location.paragraph} 段`)
+    }
+
+    return parts.join(' · ')
+  }, [location.page, location.paragraph])
 
   return (
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1.5 text-xs text-blue-500 transition',
+        'inline-flex min-w-0 items-center gap-1.5 text-xs transition',
         disabled
-          ? 'cursor-not-allowed opacity-50'
-          : 'cursor-pointer hover:text-blue-700 hover:underline',
+          ? 'cursor-not-allowed text-muted-foreground/60'
+          : 'cursor-pointer text-blue-500 hover:text-blue-700 hover:underline',
         className,
       )}
       disabled={disabled}
-      onClick={() => {
-        if (disabled) return
-        openFromPhysicalLocation(evidenceId, location as PhysicalLocation)
+      onClick={(event) => {
+        event.stopPropagation()
+        if (disabled) {
+          return
+        }
+
+        openFromPhysicalLocation(evidenceId, location)
       }}
+      title={disabled ? '源文档不可用' : location.fileName}
       data-testid="location-link"
     >
-      <FileText className="h-3 w-3" />
-      <span className="max-w-[180px] truncate">{location.fileName}</span>
+      <FileText className="h-3 w-3 shrink-0" />
+      <span className="truncate">{location.fileName}</span>
       {locationLabel && (
-        <span className="text-muted-foreground">({locationLabel})</span>
+        <span className="truncate text-[10px] text-muted-foreground">
+          {locationLabel}
+        </span>
       )}
-      {!disabled && <ExternalLink className="h-2.5 w-2.5 opacity-60" />}
+      {!disabled && <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-60" />}
     </button>
   )
 })

@@ -10,7 +10,10 @@ import {
   useEvidenceUiActions,
   useEvidenceUiDocumentViewer,
   useEvidenceUiExecutionId,
+  useEvidenceUiHighlightState,
   useEvidenceUiIsOpen,
+  useEvidenceUiNodeId,
+  useEvidenceUiNodeName,
   useEvidenceUiSelectedId,
 } from '../stores/evidenceUiStore'
 import { DocumentViewer } from './DocumentViewer'
@@ -38,15 +41,22 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
 }: EvidenceReferencePanelProps) {
   const isOpen = useEvidenceUiIsOpen()
   const executionId = useEvidenceUiExecutionId()
+  const nodeId = useEvidenceUiNodeId()
+  const nodeName = useEvidenceUiNodeName()
   const selectedId = useEvidenceUiSelectedId()
+  const { highlightedEvidenceId, highlightUntil } = useEvidenceUiHighlightState()
   const docViewer = useEvidenceUiDocumentViewer()
-  const { closePanel, selectEvidence } = useEvidenceUiActions()
+  const { closePanel, selectEvidence, clearHighlight } = useEvidenceUiActions()
   const selectedRef = useRef<HTMLDivElement | null>(null)
 
   const { data: chainResponse, isLoading, error } = useEvidenceChain(
     executionId ?? '',
-    undefined,
+    nodeId ?? undefined,
   )
+  const chain = chainResponse?.data
+  const allNodes = chain?.roots ? flattenNodes(chain.roots) : []
+  const integrityIssues = chain?.integrityStatus?.integrityIssues ?? []
+  const hasSelectedNode = !!selectedId && allNodes.some((node) => node.evidenceId === selectedId)
 
   useEffect(() => {
     if (!isOpen) return
@@ -58,14 +68,30 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
   }, [isOpen, closePanel])
 
   useEffect(() => {
-    if (selectedId && selectedRef.current) {
-      selectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
-  }, [selectedId])
+    if (!selectedId || !hasSelectedNode || docViewer) return
 
-  const chain = chainResponse?.data
-  const allNodes = chain?.roots ? flattenNodes(chain.roots) : []
-  const integrityIssues = chain?.integrityStatus?.integrityIssues ?? []
+    const frame = window.requestAnimationFrame(() => {
+      selectedRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [docViewer, hasSelectedNode, selectedId])
+
+  useEffect(() => {
+    if (!highlightUntil) return
+
+    const remainingMs = highlightUntil - Date.now()
+    if (remainingMs <= 0) {
+      clearHighlight()
+      return
+    }
+
+    const timer = window.setTimeout(() => clearHighlight(), remainingMs)
+    return () => window.clearTimeout(timer)
+  }, [highlightUntil, clearHighlight])
 
   return (
     <aside
@@ -80,7 +106,9 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">证据引用</span>
+          <span className="text-sm font-semibold text-foreground">
+            {nodeName ? `${nodeName} · 证据引用` : '证据引用'}
+          </span>
           {chain && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
               {chain.totalNodes} 条
@@ -132,23 +160,32 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
 
             {allNodes.length > 0 && (
               <div className="space-y-2">
-                {allNodes.map((node) => (
-                  <div
-                    key={node.evidenceId}
-                    ref={node.evidenceId === selectedId ? selectedRef : undefined}
-                    style={{ paddingLeft: `${Math.min(node.depth * 12, 48)}px` }}
-                    className={cn(
-                      'transition-colors duration-500',
-                      node.evidenceId === selectedId && 'rounded-xl bg-primary/5',
-                    )}
-                  >
-                    <EvidenceCard
-                      node={node}
-                      isSelected={node.evidenceId === selectedId}
-                      onSelect={selectEvidence}
-                    />
-                  </div>
-                ))}
+                {allNodes.map((node) => {
+                  const isHighlighted =
+                    node.evidenceId === highlightedEvidenceId &&
+                    !!highlightUntil &&
+                    highlightUntil > Date.now()
+
+                  return (
+                    <div
+                      key={node.evidenceId}
+                      ref={node.evidenceId === selectedId ? selectedRef : undefined}
+                      style={{ paddingLeft: `${Math.min(node.depth * 12, 48)}px` }}
+                      className={cn(
+                        'transition-colors duration-500',
+                        node.evidenceId === selectedId && 'rounded-xl bg-primary/5',
+                        isHighlighted && 'rounded-xl ring-2 ring-primary/60',
+                      )}
+                    >
+                      <EvidenceCard
+                        node={node}
+                        isSelected={node.evidenceId === selectedId}
+                        isHighlighted={isHighlighted}
+                        onSelect={selectEvidence}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

@@ -4,12 +4,7 @@ import { immer } from 'zustand/middleware/immer';
 
 import type { PhysicalLocation } from '../types';
 
-export interface DocumentViewerState {
-  evidenceId: string;
-  documentId: string;
-  knowledgeBaseId?: string;
-  fileName: string;
-  mimeType?: string;
+export interface DocumentViewerPhysicalLocation {
   page?: number;
   paragraph?: number;
   offset?: number;
@@ -17,24 +12,43 @@ export interface DocumentViewerState {
   chunkId?: string;
 }
 
+export interface DocumentViewerState {
+  evidenceId: string;
+  documentId: string;
+  knowledgeBaseId?: string;
+  fileName?: string;
+  mimeType?: string;
+  physicalLocation?: DocumentViewerPhysicalLocation;
+}
+
 export interface EvidenceUiState {
   isOpen: boolean;
+  panelExecutionId: string | null;
+  panelNodeId: string | null;
+  panelNodeName: string | null;
   selectedEvidenceId: string | null;
-  executionId: string | null;
+  highlightedEvidenceId: string | null;
+  highlightUntil: number | null;
   documentViewer: DocumentViewerState | null;
 }
 
 export interface EvidenceUiActions {
   actions: {
-    openPanel: (executionId: string, evidenceId?: string) => void;
+    openPanel: (
+      executionId: string,
+      nodeId?: string,
+      nodeName?: string,
+      evidenceId?: string,
+    ) => void;
     closePanel: () => void;
-    selectEvidence: (evidenceId: string) => void;
+    selectEvidence: (evidenceId: string, opts?: { highlight?: boolean }) => void;
     openDocumentViewer: (state: DocumentViewerState) => void;
     closeDocumentViewer: () => void;
     openFromPhysicalLocation: (
       evidenceId: string,
       location: PhysicalLocation,
     ) => void;
+    clearHighlight: () => void;
     reset: () => void;
   };
 }
@@ -42,8 +56,12 @@ export interface EvidenceUiActions {
 function createInitialState(): EvidenceUiState {
   return {
     isOpen: false,
+    panelExecutionId: null,
+    panelNodeId: null,
+    panelNodeName: null,
     selectedEvidenceId: null,
-    executionId: null,
+    highlightedEvidenceId: null,
+    highlightUntil: null,
     documentViewer: null,
   };
 }
@@ -56,12 +74,29 @@ export const useEvidenceUiStore = create<
       immer((set) => ({
         ...createInitialState(),
         actions: {
-          openPanel: (executionId: string, evidenceId?: string) =>
+          openPanel: (
+            executionId: string,
+            nodeId?: string,
+            nodeName?: string,
+            evidenceId?: string,
+          ) =>
             set(
               (state) => {
                 state.isOpen = true;
-                state.executionId = executionId;
-                if (evidenceId) state.selectedEvidenceId = evidenceId;
+                state.panelExecutionId = executionId;
+                state.panelNodeId = nodeId ?? null;
+                state.panelNodeName = nodeName ?? null;
+                state.documentViewer = null;
+
+                if (evidenceId) {
+                  state.selectedEvidenceId = evidenceId;
+                  state.highlightedEvidenceId = evidenceId;
+                  state.highlightUntil = Date.now() + 2000;
+                } else {
+                  state.selectedEvidenceId = null;
+                  state.highlightedEvidenceId = null;
+                  state.highlightUntil = null;
+                }
               },
               false,
               'evidence-ui/openPanel',
@@ -71,18 +106,34 @@ export const useEvidenceUiStore = create<
             set(
               (state) => {
                 state.isOpen = false;
+                state.panelExecutionId = null;
+                state.panelNodeId = null;
+                state.panelNodeName = null;
                 state.selectedEvidenceId = null;
+                state.highlightedEvidenceId = null;
+                state.highlightUntil = null;
                 state.documentViewer = null;
               },
               false,
               'evidence-ui/closePanel',
             ),
 
-          selectEvidence: (evidenceId: string) =>
+          selectEvidence: (
+            evidenceId: string,
+            opts?: { highlight?: boolean },
+          ) =>
             set(
               (state) => {
                 state.selectedEvidenceId = evidenceId;
                 state.documentViewer = null;
+
+                if (opts?.highlight) {
+                  state.highlightedEvidenceId = evidenceId;
+                  state.highlightUntil = Date.now() + 2000;
+                } else {
+                  state.highlightedEvidenceId = null;
+                  state.highlightUntil = null;
+                }
               },
               false,
               'evidence-ui/selectEvidence',
@@ -116,16 +167,29 @@ export const useEvidenceUiStore = create<
                 state.documentViewer = {
                   evidenceId,
                   documentId: location.documentId,
+                  knowledgeBaseId: location.knowledgeBaseId,
                   fileName: location.fileName,
-                  page: location.page,
-                  paragraph: location.paragraph,
-                  offset: location.offset,
-                  length: location.length,
-                  chunkId: location.chunkId,
+                  physicalLocation: {
+                    page: location.page,
+                    paragraph: location.paragraph,
+                    offset: location.offset,
+                    length: location.length,
+                    chunkId: location.chunkId,
+                  },
                 };
               },
               false,
               'evidence-ui/openFromPhysicalLocation',
+            ),
+
+          clearHighlight: () =>
+            set(
+              (state) => {
+                state.highlightedEvidenceId = null;
+                state.highlightUntil = null;
+              },
+              false,
+              'evidence-ui/clearHighlight',
             ),
 
           reset: () => set(createInitialState(), false, 'evidence-ui/reset'),
@@ -141,7 +205,15 @@ export const useEvidenceUiIsOpen = () =>
 export const useEvidenceUiSelectedId = () =>
   useEvidenceUiStore((s) => s.selectedEvidenceId);
 export const useEvidenceUiExecutionId = () =>
-  useEvidenceUiStore((s) => s.executionId);
+  useEvidenceUiStore((s) => s.panelExecutionId);
+export const useEvidenceUiNodeId = () => useEvidenceUiStore((s) => s.panelNodeId);
+export const useEvidenceUiNodeName = () =>
+  useEvidenceUiStore((s) => s.panelNodeName);
+export const useEvidenceUiHighlightState = () =>
+  useEvidenceUiStore((s) => ({
+    highlightedEvidenceId: s.highlightedEvidenceId,
+    highlightUntil: s.highlightUntil,
+  }));
 export const useEvidenceUiDocumentViewer = () =>
   useEvidenceUiStore((s) => s.documentViewer);
 export const useEvidenceUiActions = () =>

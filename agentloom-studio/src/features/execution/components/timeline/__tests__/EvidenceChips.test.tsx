@@ -21,12 +21,20 @@ describe('EvidenceChips', () => {
       openDocumentViewer: vi.fn(),
       closeDocumentViewer: vi.fn(),
       openFromPhysicalLocation: vi.fn(),
+      clearHighlight: vi.fn(),
       reset: vi.fn(),
     })
   })
 
   it('渲染证据来源标签', () => {
-    render(<EvidenceChips count={3} executionId="exec-001" />)
+    render(
+      <EvidenceChips
+        count={3}
+        executionId="exec-001"
+        nodeId="node-001"
+        nodeName="节点A"
+      />,
+    )
 
     expect(screen.getByTestId('evidence-chips')).toHaveTextContent('3 条证据')
   })
@@ -38,11 +46,18 @@ describe('EvidenceChips', () => {
   })
 
   it('点击标签打开证据面板', () => {
-    render(<EvidenceChips count={2} executionId="exec-001" />)
+    render(
+      <EvidenceChips
+        count={2}
+        executionId="exec-001"
+        nodeId="node-001"
+        nodeName="节点A"
+      />,
+    )
 
     fireEvent.click(screen.getByTestId('evidence-chips'))
 
-    expect(openPanel).toHaveBeenCalledWith('exec-001')
+    expect(openPanel).toHaveBeenCalledWith('exec-001', 'node-001', '节点A')
   })
 
   it('无executionId时点击无效', () => {

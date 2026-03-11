@@ -8,6 +8,11 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { MINIO_CLIENT } from './storage.constants';
+import {
+  StorageKeyInvalidException,
+  StorageObjectNotFoundException,
+  StorageUnavailableException,
+} from './storage.exceptions';
 
 type ResolvedUploadSource = {
   data: Buffer | Readable;
@@ -102,11 +107,67 @@ export class StorageService implements OnModuleInit {
    * @param expirySeconds URL 有效期（秒），默认 3600（1小时）
    */
   async getPresignedUrl(key: string, expirySeconds = 3600): Promise<string> {
-    return this.minioClient.presignedGetObject(
-      this.bucket,
-      key,
-      expirySeconds,
-    );
+    const normalizedKey = this.normalizeKey(key);
+    if (!normalizedKey) {
+      throw new StorageKeyInvalidException();
+    }
+
+    await this.assertObjectExists(normalizedKey);
+
+    try {
+      return await this.minioClient.presignedGetObject(
+        this.bucket,
+        normalizedKey,
+        expirySeconds,
+      );
+    } catch (error) {
+      if (this.isNotFoundError(error)) {
+        throw new StorageObjectNotFoundException(normalizedKey);
+      }
+
+      throw new StorageUnavailableException(
+        'presignedGetObject',
+        normalizedKey,
+        error,
+      );
+    }
+  }
+
+  private normalizeKey(key: string): string {
+    return key.trim();
+  }
+
+  private async assertObjectExists(key: string): Promise<void> {
+    try {
+      await this.minioClient.statObject(this.bucket, key);
+    } catch (error) {
+      if (this.isNotFoundError(error)) {
+        throw new StorageObjectNotFoundException(key);
+      }
+
+      throw new StorageUnavailableException('statObject', key, error);
+    }
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    const code = this.getStringField(error, 'code');
+    const name = this.getStringField(error, 'name');
+    const message = this.getStringField(error, 'message');
+
+    const haystack = [code, name, message].filter(Boolean).join(' ');
+    return /NoSuchKey|NoSuchObject|NotFound|NoSuchBucket/i.test(haystack);
+  }
+
+  private getStringField(
+    error: unknown,
+    field: string,
+  ): string | undefined {
+    if (!error || typeof error !== 'object') {
+      return undefined;
+    }
+
+    const value = (error as Record<string, unknown>)[field];
+    return typeof value === 'string' ? value : undefined;
   }
 
   buildStorageKey(

@@ -41,7 +41,10 @@ export {
   useEvidenceUiActions,
   useEvidenceUiDocumentViewer,
   useEvidenceUiExecutionId,
+  useEvidenceUiHighlightState,
   useEvidenceUiIsOpen,
+  useEvidenceUiNodeId,
+  useEvidenceUiNodeName,
   useEvidenceUiSelectedId,
   useEvidenceUiStore,
 } from './stores/evidenceUiStore';

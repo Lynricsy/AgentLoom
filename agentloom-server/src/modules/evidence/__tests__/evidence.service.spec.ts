@@ -411,6 +411,46 @@ describe('EvidenceService', () => {
       });
     });
 
+    it('should enrich rag physicalLocation with chunkContent when includeChunkContent is true', async () => {
+      const record = {
+        id: GENERATED_ID_1,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        sourceType: 'rag_retrieval',
+        packet: {
+          ...createRagPacketInput(),
+          evidenceId: GENERATED_ID_1,
+          contentHash: 'a'.repeat(64),
+          timestamp: NOW,
+        },
+        contentHash: 'a'.repeat(64),
+        parentEvidenceId: null,
+        createdAt: NOW,
+      };
+
+      queueSelectResult('offset', [record]);
+      queueSelectResult('where', [{ total: 1 }]);
+      queueSelectResult('where', [
+        {
+          id: 'chunk-1',
+          content: 'Chunk content from DB',
+        },
+      ]);
+
+      const result = await service.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+        includeChunkContent: true,
+      });
+
+      expect(mocks.tenantDb.select).toHaveBeenCalledTimes(3);
+      expect(result.data[0]?.packet.physicalLocation).toMatchObject({
+        chunkId: 'chunk-1',
+        chunkContent: 'Chunk content from DB',
+      });
+    });
+
     it('should filter evidence by sourceType', async () => {
       const record = {
         id: GENERATED_ID_1,
@@ -555,6 +595,7 @@ describe('EvidenceService', () => {
         evidenceId: GENERATED_ID_1,
         valid: false,
         integrityWarning: true,
+        currentHash: computeExpectedHash(packet),
       });
     });
 
@@ -588,6 +629,7 @@ describe('EvidenceService', () => {
         evidenceId: GENERATED_ID_1,
         valid: true,
         integrityWarning: false,
+        currentHash: contentHash,
       });
     });
   });

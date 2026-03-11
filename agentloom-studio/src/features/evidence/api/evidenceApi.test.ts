@@ -161,6 +161,7 @@ describe('evidenceApi', () => {
           evidenceId: EVIDENCE_ID,
           valid: true,
           integrityWarning: false,
+          currentHash: 'a'.repeat(64),
         },
       };
       getMock.mockReturnValue({

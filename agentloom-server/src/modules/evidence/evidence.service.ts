@@ -323,6 +323,7 @@ export class EvidenceService {
     evidenceId: string;
     valid: boolean;
     integrityWarning: boolean;
+    currentHash: string;
   }> {
     const record = await this.findById(tenantId, executionId, evidenceId);
     const packet = this.validateStoredPacket(record.packet);
@@ -333,6 +334,7 @@ export class EvidenceService {
       evidenceId,
       valid,
       integrityWarning: !valid,
+      currentHash: computedHash,
     };
   }
 
@@ -781,6 +783,7 @@ export class EvidenceService {
 
     return {
       documentId: result.documentId,
+      knowledgeBaseId: result.knowledgeBaseId,
       fileName:
         this.readString(location, [
           'fileName',
@@ -1399,6 +1402,9 @@ export class EvidenceService {
           excerpt: this.truncatePreview(packet.retrievedContent),
           metadata: {
             documentId: packet.physicalLocation.documentId,
+            ...(packet.physicalLocation.knowledgeBaseId
+              ? { knowledgeBaseId: packet.physicalLocation.knowledgeBaseId }
+              : {}),
             chunkId: packet.physicalLocation.chunkId,
             relevanceScore: packet.semanticLocation.relevanceScore.toFixed(2),
             ...(packet.semanticLocation.sectionTitle

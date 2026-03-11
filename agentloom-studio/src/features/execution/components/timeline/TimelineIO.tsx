@@ -21,6 +21,8 @@ interface TimelineIOProps {
   completedAt: string | null
   retryCount: number
   executionId?: string
+  nodeId?: string
+  nodeName?: string
   className?: string
 }
 
@@ -29,9 +31,21 @@ interface JsonValueTreeProps {
   name?: string
   depth?: number
   executionId?: string
+  nodeId?: string
+  nodeName?: string
 }
 
-function TextWithRefs({ text, executionId }: { text: string; executionId?: string }) {
+function TextWithRefs({
+  text,
+  executionId,
+  nodeId,
+  nodeName,
+}: {
+  text: string
+  executionId?: string
+  nodeId?: string
+  nodeName?: string
+}) {
   if (!executionId || !hasEvidenceRefs(text)) {
     return <>{text}</>
   }
@@ -44,16 +58,18 @@ function TextWithRefs({ text, executionId }: { text: string; executionId?: strin
         seg.type === 'text' ? (
           <span key={`text-${seg.content.slice(0, 20)}`}>{seg.content}</span>
         ) : (
-          <InlineEvidenceRef
-            key={seg.evidenceId}
-            evidenceId={seg.evidenceId}
-            index={seg.index}
-            executionId={executionId}
-          />
-        ),
-      )}
-    </>
-  )
+           <InlineEvidenceRef
+             key={seg.evidenceId}
+             evidenceId={seg.evidenceId}
+             index={seg.index}
+             executionId={executionId}
+             nodeId={nodeId}
+             nodeName={nodeName}
+           />
+         ),
+       )}
+     </>
+   )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,7 +94,14 @@ function buildPreview(data: Record<string, unknown> | null) {
     : singleLine
 }
 
-function JsonValueTree({ value, name, depth = 0, executionId }: JsonValueTreeProps) {
+function JsonValueTree({
+  value,
+  name,
+  depth = 0,
+  executionId,
+  nodeId,
+  nodeName,
+}: JsonValueTreeProps) {
   if (
     value == null ||
     typeof value === 'string' ||
@@ -86,7 +109,14 @@ function JsonValueTree({ value, name, depth = 0, executionId }: JsonValueTreePro
     typeof value === 'boolean'
   ) {
     const displayValue = typeof value === 'string'
-      ? <TextWithRefs text={value} executionId={executionId} />
+      ? (
+          <TextWithRefs
+            text={value}
+            executionId={executionId}
+            nodeId={nodeId}
+            nodeName={nodeName}
+          />
+        )
       : String(value)
 
     return (
@@ -110,17 +140,19 @@ function JsonValueTree({ value, name, depth = 0, executionId }: JsonValueTreePro
         </summary>
         <div className="mt-2 space-y-2 pl-3">
           {value.map((item, index) => (
-            <JsonValueTree
-              key={`${name ?? 'array'}-${index}`}
-              name={`${index}`}
-              value={item}
-              depth={depth + 1}
-              executionId={executionId}
-            />
-          ))}
-        </div>
-      </details>
-    )
+              <JsonValueTree
+                key={`${name ?? 'array'}-${index}`}
+                name={`${index}`}
+                value={item}
+                depth={depth + 1}
+                executionId={executionId}
+                nodeId={nodeId}
+                nodeName={nodeName}
+              />
+            ))}
+          </div>
+        </details>
+      )
   }
 
   if (isRecord(value)) {
@@ -142,6 +174,8 @@ function JsonValueTree({ value, name, depth = 0, executionId }: JsonValueTreePro
               value={entryValue}
               depth={depth + 1}
               executionId={executionId}
+              nodeId={nodeId}
+              nodeName={nodeName}
             />
           ))}
         </div>
@@ -164,6 +198,8 @@ export const TimelineIO = memo(function TimelineIO({
   completedAt,
   retryCount,
   executionId,
+  nodeId,
+  nodeName,
   className,
 }: TimelineIOProps) {
   const [expanded, setExpanded] = useState(false)
@@ -211,7 +247,12 @@ export const TimelineIO = memo(function TimelineIO({
               输入
             </p>
             <div className="max-h-[300px] overflow-auto">
-              <JsonValueTree value={input} executionId={executionId} />
+              <JsonValueTree
+                value={input}
+                executionId={executionId}
+                nodeId={nodeId}
+                nodeName={nodeName}
+              />
             </div>
           </div>
           <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
@@ -219,7 +260,12 @@ export const TimelineIO = memo(function TimelineIO({
               输出
             </p>
             <div className="max-h-[300px] overflow-auto">
-              <JsonValueTree value={output} executionId={executionId} />
+              <JsonValueTree
+                value={output}
+                executionId={executionId}
+                nodeId={nodeId}
+                nodeName={nodeName}
+              />
             </div>
           </div>
           <div

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import parse from 'html-react-parser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useDocumentContent } from '../../api/evidenceQueries'
@@ -8,6 +9,61 @@ import {
 } from '../../stores/evidenceUiStore'
 import type { DocumentViewerState } from '../../stores/evidenceUiStore'
 import { DocumentViewer } from '../DocumentViewer'
+
+vi.mock('react-pdf', async () => {
+  const React = await import('react')
+
+  const textItems = [
+    { str: 'Hello ', hasEOL: false },
+    { str: 'world', hasEOL: false },
+  ]
+
+  return {
+    pdfjs: {
+      GlobalWorkerOptions: {
+        workerSrc: '',
+      },
+    },
+    Document: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="react-pdf-document">{children}</div>
+    ),
+    Page: ({
+      pageNumber,
+      customTextRenderer,
+      onGetTextSuccess,
+      onRenderTextLayerSuccess,
+    }: {
+      pageNumber: number
+      customTextRenderer?: (args: { str: string; itemIndex: number }) => string
+      onGetTextSuccess?: (textContent: { items: typeof textItems }) => void
+      onRenderTextLayerSuccess?: () => void
+    }) => {
+      React.useEffect(() => {
+        onGetTextSuccess?.({ items: textItems })
+      }, [onGetTextSuccess])
+
+      React.useEffect(() => {
+        onRenderTextLayerSuccess?.()
+      }, [customTextRenderer, onRenderTextLayerSuccess])
+
+      return (
+        <div data-testid="react-pdf-page">
+          <div>{`PDF Page ${pageNumber}`}</div>
+          <div className="react-pdf__Page__textContent">
+            {textItems.map((item, itemIndex) => {
+              const rendered =
+                customTextRenderer?.({ str: item.str, itemIndex }) ?? item.str
+
+              return (
+                <span key={`${item.str}-${itemIndex}`}>{parse(rendered)}</span>
+              )
+            })}
+          </div>
+        </div>
+      )
+    },
+  }
+})
 
 vi.mock('../../stores/evidenceUiStore', () => ({
   useEvidenceUiActions: vi.fn(),
@@ -27,8 +83,12 @@ function createViewerState(
     knowledgeBaseId: 'kb-001',
     fileName: 'report.pdf',
     mimeType: 'application/pdf',
-    page: 3,
-    chunkId: 'chunk-001',
+    physicalLocation: {
+      page: 3,
+      offset: 6,
+      length: 5,
+      chunkId: 'chunk-001',
+    },
     ...overrides,
   }
 }
@@ -36,10 +96,21 @@ function createViewerState(
 describe('DocumentViewer', () => {
   const closeDocumentViewer = vi.fn()
   const fetchMock = vi.fn()
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
 
     vi.mocked(useEvidenceUiDocumentViewer).mockReturnValue(createViewerState())
     vi.mocked(useEvidenceUiActions).mockReturnValue({
@@ -49,6 +120,7 @@ describe('DocumentViewer', () => {
       selectEvidence: vi.fn(),
       openDocumentViewer: vi.fn(),
       openFromPhysicalLocation: vi.fn(),
+      clearHighlight: vi.fn(),
       reset: vi.fn(),
     })
     vi.mocked(useDocumentContent).mockReturnValue({
@@ -64,6 +136,11 @@ describe('DocumentViewer', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: originalScrollIntoView,
+    })
   })
 
   it('无文档查看器状态时不渲染', () => {
@@ -74,7 +151,7 @@ describe('DocumentViewer', () => {
     expect(screen.queryByTestId('document-viewer')).not.toBeInTheDocument()
   })
 
-  it('PDF文件显示iframe', () => {
+  it('PDF文件渲染 react-pdf Page 并高亮精确文本范围', async () => {
     vi.mocked(useDocumentContent).mockReturnValue({
       data: {
         data: {
@@ -90,11 +167,16 @@ describe('DocumentViewer', () => {
 
     render(<DocumentViewer />)
 
-    const iframe = screen.getByTestId('document-viewer-pdf')
-    expect(iframe).toHaveAttribute(
-      'src',
-      expect.stringContaining('https://example.com/report.pdf#page=3'),
-    )
+    expect(screen.getByTestId('document-viewer-pdf')).toBeInTheDocument()
+    expect(screen.getByTestId('react-pdf-document')).toBeInTheDocument()
+    expect(screen.getByText('PDF Page 3')).toBeInTheDocument()
+
+    await waitFor(() => {
+      const highlight = document.querySelector('mark[data-evidence-highlight="true"]')
+      expect(highlight).toHaveTextContent('world')
+    })
+
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -103,7 +185,7 @@ describe('DocumentViewer', () => {
       createViewerState({
         fileName: 'guide.md',
         mimeType: 'text/markdown',
-        page: undefined,
+        physicalLocation: undefined,
       }),
     )
     vi.mocked(useDocumentContent).mockReturnValue({
@@ -138,7 +220,7 @@ describe('DocumentViewer', () => {
       createViewerState({
         fileName: 'notes.txt',
         mimeType: 'text/plain',
-        page: undefined,
+        physicalLocation: undefined,
       }),
     )
     vi.mocked(useDocumentContent).mockReturnValue({

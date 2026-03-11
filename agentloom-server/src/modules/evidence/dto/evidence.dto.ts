@@ -17,6 +17,7 @@ export type EvidenceSourceType = z.infer<typeof EvidenceSourceType>;
 
 export const PhysicalLocationSchema = z.object({
   documentId: z.string(),
+  knowledgeBaseId: z.string().optional(),
   fileName: z.string(),
   page: z.number().int().optional(),
   paragraph: z.number().int().optional(),
@@ -217,6 +218,7 @@ export const VerifyEvidenceResponseSchema = z.object({
   evidenceId: z.string().uuid(),
   valid: z.boolean(),
   integrityWarning: z.boolean(),
+  currentHash: z.string().length(64),
 });
 
 export class EvidenceRecordResponseDto extends createZodDto(

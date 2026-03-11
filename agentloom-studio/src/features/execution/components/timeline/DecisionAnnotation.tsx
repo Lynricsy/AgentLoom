@@ -1,4 +1,11 @@
-import { memo } from 'react'
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  memo,
+  type PropsWithChildren,
+  type ReactNode,
+} from 'react'
 import Markdown from 'react-markdown'
 import { cva } from 'class-variance-authority'
 import {
@@ -11,6 +18,11 @@ import {
 } from 'lucide-react'
 
 import type { EvidenceRecord } from '@/features/evidence'
+import {
+  hasEvidenceRefs,
+  parseEvidenceRefs,
+} from '@/features/evidence/lib/parseEvidenceRefs'
+import { InlineEvidenceRef } from '@/features/evidence/components/InlineEvidenceRef'
 import { cn } from '@/shared/lib/utils'
 
 const autonomyVariants = cva(
@@ -68,16 +80,85 @@ export const AutonomyBadge = memo(function AutonomyBadge({
 
 interface ReasoningBlockProps {
   reasoning: string | undefined
+  executionId?: string
+  nodeId?: string
+  nodeName?: string
   className?: string
+}
+
+interface EvidenceRefContext {
+  executionId: string
+  nodeId?: string
+  nodeName?: string
+}
+
+function renderTextWithEvidenceRefs(text: string, ctx: EvidenceRefContext) {
+  if (!hasEvidenceRefs(text)) {
+    return text
+  }
+
+  return parseEvidenceRefs(text).map((seg) =>
+    seg.type === 'text' ? (
+      seg.content
+    ) : (
+      <InlineEvidenceRef
+        key={`ref-${seg.evidenceId}-${seg.index}`}
+        evidenceId={seg.evidenceId}
+        index={seg.index}
+        executionId={ctx.executionId}
+        nodeId={ctx.nodeId}
+        nodeName={ctx.nodeName}
+      />
+    ),
+  )
+}
+
+function replaceEvidenceRefsInNode(node: ReactNode, ctx: EvidenceRefContext): ReactNode {
+  if (typeof node === 'string') {
+    return <>{renderTextWithEvidenceRefs(node, ctx)}</>
+  }
+
+  if (Array.isArray(node)) {
+    return Children.map(node, (child) => replaceEvidenceRefsInNode(child, ctx))
+  }
+
+  if (!isValidElement<PropsWithChildren<unknown>>(node)) {
+    return node
+  }
+
+  if (typeof node.type === 'string' && (node.type === 'code' || node.type === 'pre')) {
+    return node
+  }
+
+  if (node.props.children == null) {
+    return node
+  }
+
+  const nextChildren = Children.map(node.props.children, (child) =>
+    replaceEvidenceRefsInNode(child, ctx),
+  )
+
+  return cloneElement(node, undefined, nextChildren)
 }
 
 export const ReasoningBlock = memo(function ReasoningBlock({
   reasoning,
+  executionId,
+  nodeId,
+  nodeName,
   className,
 }: ReasoningBlockProps) {
   if (!reasoning) {
     return null
   }
+
+  const ctx: EvidenceRefContext | null = executionId
+    ? {
+        executionId,
+        nodeId,
+        nodeName,
+      }
+    : null
 
   return (
     <section
@@ -92,7 +173,28 @@ export const ReasoningBlock = memo(function ReasoningBlock({
         推理过程
       </p>
       <div className="space-y-2 text-xs text-foreground/90 [&_code]:rounded-md [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-background/60 [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
-        <Markdown skipHtml>{reasoning}</Markdown>
+        <Markdown
+          skipHtml
+          components={{
+            p: ({ children, ...props }) => (
+              <p {...props}>
+                {ctx ? replaceEvidenceRefsInNode(children, ctx) : children}
+              </p>
+            ),
+            li: ({ children, ...props }) => (
+              <li {...props}>
+                {ctx ? replaceEvidenceRefsInNode(children, ctx) : children}
+              </li>
+            ),
+            blockquote: ({ children, ...props }) => (
+              <blockquote {...props}>
+                {ctx ? replaceEvidenceRefsInNode(children, ctx) : children}
+              </blockquote>
+            ),
+          }}
+        >
+          {reasoning}
+        </Markdown>
       </div>
     </section>
   )
@@ -256,6 +358,9 @@ interface DecisionAnnotationProps {
   agentDecisionEvidence: EvidenceRecord | undefined
   interventionEvidence: EvidenceRecord | undefined
   showDetails?: boolean
+  executionId?: string
+  nodeId?: string
+  nodeName?: string
   className?: string
 }
 
@@ -264,6 +369,9 @@ export const DecisionAnnotation = memo(function DecisionAnnotation({
   agentDecisionEvidence,
   interventionEvidence,
   showDetails = true,
+  executionId,
+  nodeId,
+  nodeName,
   className,
 }: DecisionAnnotationProps) {
   if (!autonomyMode && !interventionEvidence) {
@@ -295,7 +403,12 @@ export const DecisionAnnotation = memo(function DecisionAnnotation({
 
       {showDetails && canShowDecisionDetails && decision && (
         <>
-          <ReasoningBlock reasoning={decision.reasoning} />
+          <ReasoningBlock
+            reasoning={decision.reasoning}
+            executionId={executionId}
+            nodeId={nodeId}
+            nodeName={nodeName}
+          />
           <AlternativesList
             alternatives={decision.alternatives}
             confidence={decision.confidence}

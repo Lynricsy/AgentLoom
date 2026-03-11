@@ -7,12 +7,14 @@ export type EvidenceSourceType =
 
 export interface PhysicalLocation {
   documentId: string;
+  knowledgeBaseId?: string;
   fileName: string;
   page?: number;
   paragraph?: number;
   offset: number;
   length: number;
   chunkId: string;
+  chunkContent?: string;
 }
 
 export interface SemanticLocation {
@@ -131,6 +133,7 @@ export interface EvidenceVerifyResult {
   evidenceId: string;
   valid: boolean;
   integrityWarning: boolean;
+  currentHash: string;
 }
 
 export interface EvidenceQueryParams {

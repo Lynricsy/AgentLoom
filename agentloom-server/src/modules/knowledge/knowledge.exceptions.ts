@@ -23,6 +23,28 @@ export class DocumentNotFoundException extends DomainException {
   }
 }
 
+export class DocumentContentNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'document/content-not-found',
+      title: '文档内容不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `未找到 ID 为 ${id} 的文档内容（可能已被删除或尚未完成上传）`,
+    });
+  }
+}
+
+export class DocumentContentUnavailableException extends DomainException {
+  constructor(id: string, reason: string) {
+    super({
+      type: 'document/content-unavailable',
+      title: '文档内容暂不可用',
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      detail: `获取文档 ${id} 的内容失败: ${reason}`,
+    });
+  }
+}
+
 export class UnsupportedFileTypeException extends DomainException {
   constructor(fileName: string) {
     super({

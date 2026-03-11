@@ -4,6 +4,10 @@ import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from '../storage.service';
 import { MINIO_CLIENT } from '../storage.constants';
+import {
+  StorageObjectNotFoundException,
+  StorageUnavailableException,
+} from '../storage.exceptions';
 
 const BUCKET_NAME = 'test-bucket';
 
@@ -200,10 +204,12 @@ describe('StorageService', () => {
     it('应使用默认过期时间生成预签名 URL', async () => {
       const key = 'tenants/t1/kb/kb1/doc1/file.pdf';
       const expectedUrl = 'https://minio.local/test-bucket/file.pdf?token=abc';
+      mockMinioClient.statObject.mockResolvedValue({ size: 100 });
       mockMinioClient.presignedGetObject.mockResolvedValue(expectedUrl);
 
       const result = await service.getPresignedUrl(key);
 
+      expect(mockMinioClient.statObject).toHaveBeenCalledWith(BUCKET_NAME, key);
       expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
         BUCKET_NAME,
         key,
@@ -216,10 +222,12 @@ describe('StorageService', () => {
       const key = 'tenants/t1/kb/kb1/doc1/report.md';
       const expirySeconds = 600;
       const expectedUrl = 'https://minio.local/test-bucket/report.md?token=xyz';
+      mockMinioClient.statObject.mockResolvedValue({ size: 100 });
       mockMinioClient.presignedGetObject.mockResolvedValue(expectedUrl);
 
       const result = await service.getPresignedUrl(key, expirySeconds);
 
+      expect(mockMinioClient.statObject).toHaveBeenCalledWith(BUCKET_NAME, key);
       expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
         BUCKET_NAME,
         key,
@@ -228,13 +236,24 @@ describe('StorageService', () => {
       expect(result).toBe(expectedUrl);
     });
 
-    it('MinIO 异常时应正确传播错误', async () => {
+    it('对象不存在时应抛出 StorageObjectNotFoundException', async () => {
       const key = 'tenants/t1/kb/kb1/doc1/file.pdf';
-      mockMinioClient.presignedGetObject.mockRejectedValue(
-        new Error('NoSuchKey'),
-      );
+      mockMinioClient.statObject.mockRejectedValue({ code: 'NoSuchKey' });
 
-      await expect(service.getPresignedUrl(key)).rejects.toThrow('NoSuchKey');
+      await expect(service.getPresignedUrl(key)).rejects.toThrow(
+        StorageObjectNotFoundException,
+      );
+      expect(mockMinioClient.presignedGetObject).not.toHaveBeenCalled();
+    });
+
+    it('MinIO 不可用时应抛出 StorageUnavailableException', async () => {
+      const key = 'tenants/t1/kb/kb1/doc1/file.pdf';
+      mockMinioClient.statObject.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(service.getPresignedUrl(key)).rejects.toThrow(
+        StorageUnavailableException,
+      );
+      expect(mockMinioClient.presignedGetObject).not.toHaveBeenCalled();
     });
   });
 });

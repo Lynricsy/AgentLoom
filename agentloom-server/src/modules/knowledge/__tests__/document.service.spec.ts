@@ -4,12 +4,19 @@ import type { MultipartFile } from '@fastify/multipart';
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentService } from '../document.service';
-import { StorageService } from '../../../infrastructure/storage';
+import {
+  StorageKeyInvalidException,
+  StorageObjectNotFoundException,
+  StorageService,
+  StorageUnavailableException,
+} from '../../../infrastructure/storage';
 import {
   EmptyFileException,
   UnsupportedFileTypeException,
   FileTooLargeException,
   DocumentNotFoundException,
+  DocumentContentNotFoundException,
+  DocumentContentUnavailableException,
 } from '../knowledge.exceptions';
 import { DRIZZLE } from '../../../database/database.module';
 import { DOCUMENT_PROCESSING_QUEUE } from '../knowledge.constants';
@@ -68,6 +75,7 @@ describe('DocumentService', () => {
     exists: ReturnType<typeof vi.fn>;
     removeIncompleteUpload: ReturnType<typeof vi.fn>;
     buildStorageKey: ReturnType<typeof vi.fn>;
+    getPresignedUrl: ReturnType<typeof vi.fn>;
   };
   let processingQueue: { add: ReturnType<typeof vi.fn> };
   let knowledgeGateway: {
@@ -95,6 +103,9 @@ describe('DocumentService', () => {
       delete: vi.fn().mockResolvedValue(undefined),
       exists: vi.fn().mockResolvedValue(true),
       removeIncompleteUpload: vi.fn().mockResolvedValue(undefined),
+      getPresignedUrl: vi
+        .fn()
+        .mockResolvedValue('https://minio.local/presigned-url?token=abc'),
       buildStorageKey: vi
         .fn()
         .mockImplementation(
@@ -805,6 +816,208 @@ describe('DocumentService', () => {
         expect.objectContaining({ jobId: `process-${DOC_ID}` }),
       );
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDocumentContentUrl', () => {
+    it('应返回预签名 URL 与文档元数据', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+      const expectedUrl = 'https://minio.local/presigned-report.pdf?token=xyz';
+      storageService.getPresignedUrl.mockResolvedValueOnce(expectedUrl);
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID, 600),
+      ).resolves.toEqual({
+        url: expectedUrl,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        expiresIn: 600,
+      });
+
+      expect(storageService.getPresignedUrl).toHaveBeenCalledWith(
+        STORAGE_KEY,
+        600,
+      );
+    });
+
+    it('知识库不匹配时应抛出 DocumentNotFoundException', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: 'other-kb',
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID),
+      ).rejects.toThrow(DocumentNotFoundException);
+    });
+
+    it('storageKey 缺失时应抛出 DocumentContentNotFoundException', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: '',
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID),
+      ).rejects.toThrow(DocumentContentNotFoundException);
+      expect(storageService.getPresignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('对象存储对象已删除时应抛出 DocumentContentNotFoundException', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+      storageService.getPresignedUrl.mockRejectedValueOnce(
+        new StorageObjectNotFoundException(STORAGE_KEY),
+      );
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID),
+      ).rejects.toThrow(DocumentContentNotFoundException);
+    });
+
+    it('对象存储不可用时应抛出 DocumentContentUnavailableException', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+      storageService.getPresignedUrl.mockRejectedValueOnce(
+        new StorageUnavailableException(
+          'presignedGetObject',
+          STORAGE_KEY,
+          new Error('ECONNREFUSED'),
+        ),
+      );
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID),
+      ).rejects.toThrow(DocumentContentUnavailableException);
+    });
+
+    it('存储键无效时应抛出 DocumentContentNotFoundException', async () => {
+      const fullDoc = {
+        id: DOC_ID,
+        knowledgeBaseId: KB_ID,
+        tenantId: TENANT_ID,
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: STORAGE_KEY,
+        status: 'uploaded',
+        errorMessage: null,
+        uploadedBy: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([fullDoc]),
+          }),
+        }),
+      });
+      storageService.getPresignedUrl.mockRejectedValueOnce(
+        new StorageKeyInvalidException(),
+      );
+
+      await expect(
+        service.getDocumentContentUrl(KB_ID, DOC_ID),
+      ).rejects.toThrow(DocumentContentNotFoundException);
     });
   });
 });

@@ -109,6 +109,7 @@ describe('EvidenceController', () => {
       evidenceId: EVIDENCE_ID,
       valid: false,
       integrityWarning: true,
+      currentHash: 'a'.repeat(64),
     };
     mockService.verifyContentHash.mockResolvedValue(verification);
 
