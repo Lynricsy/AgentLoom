@@ -15,6 +15,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图，三栏布局 |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
 | `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 |
+| `/templates` | TemplateBrowsePage | Tabs + 搜索 + 网格 + TemplateWizardDialog |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。
 
@@ -30,7 +31,7 @@ src/
 │   ├── knowledge/    # 知识库管理
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   ├── evidence/    # 证据记录查询/展示 + 溯源链 + 引用面板 + 文档查看器 (types/api/hooks/stores/components/lib)
-│   ├── template/    # 工作流模板浏览 (`TemplateCategory` + types/api/queries，`useTemplateBySlug` 主详情 hook，`useTemplateDetail` 兼容别名，`staleTime=gcTime=10min`，public API)
+│   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   └── llm/          # LLM 模型配置
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory

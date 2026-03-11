@@ -23,7 +23,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
-| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 | — |
+| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
 | mcp | `modules/mcp/` | MCP 服务器 测试/发现/导入 | ApiKeyModule |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
@@ -115,7 +115,7 @@ HTTP POST /executions
 ## 数据库 (Drizzle + PostgreSQL)
 
 Schema 在 `src/database/schema/`。22 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。
-关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，`documentChunks` 含 vector 列。
+关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
 模板 `definition` 现与 `workflowDefinitions.definition` 保持同构，`nodes/edges/viewport` 均为必填；公共模板路由在 `AppModule.configure()` 里通过 `TenantMiddleware.exclude({ path: 'templates', method: RequestMethod.ALL }, { path: 'templates/{*splat}', method: RequestMethod.ALL })` 绕过租户中间件。
