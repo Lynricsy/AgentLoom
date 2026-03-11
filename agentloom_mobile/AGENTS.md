@@ -2,46 +2,72 @@
 
 ## 概览
 
-AgentLoom Flutter 移动端骨架工程，当前实现 Story 7.3：
+AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.4：
 
 - Riverpod ProviderScope 启动入口
-- GoRouter + `StatefulShellRoute.indexedStack` 三标签导航
+- GoRouter + `StatefulShellRoute.indexedStack` 三标签导航 (Dashboard / Workflows / Settings)
 - Dio API Client Provider
 - dotenv 环境切换（dev / staging / prod）
-- Dashboard / Workflows / Settings 占位页面
+- 工作流列表页（搜索、状态筛选、下拉刷新、无限滚动）
+- 工作流详情页（元数据卡片、执行历史、FAB 运行按钮）
+- Dashboard 页（快速访问工作流、最近执行）
 
 ## 目录约定
 
 ```text
 lib/
-├── app/                 # 应用壳与根 Widget
+├── app/                 # 应用壳与根 Widget (AppWidget, ShellScaffold)
 ├── config/              # 环境、主题、常量
-├── features/            # 按功能拆分的页面/状态
-├── routes/              # go_router 配置与路由名
+├── features/
+│   ├── dashboard/
+│   │   ├── providers/   # recentWorkflowsProvider
+│   │   ├── screens/     # DashboardScreen
+│   │   └── widgets/     # RecentExecutionsSection, QuickAccessSection, RecentExecutionCard
+│   ├── settings/
+│   │   └── screens/     # SettingsScreen (占位)
+│   └── workflows/
+│       ├── api/         # WorkflowApi (Dio wrapper) + workflowApiProvider
+│       ├── models/      # Freezed: WorkflowDefinitionDto, ExecutionSummaryDto
+│       ├── providers/   # WorkflowListNotifier, workflowDetailProvider, workflowExecutionsProvider
+│       ├── screens/     # WorkflowsScreen (列表), WorkflowDetailScreen (详情)
+│       └── widgets/     # WorkflowCard, WorkflowStatusChip, ExecutionSummaryTile
+├── routes/              # go_router 配置与路由名 (含 workflowDetail 子路由)
 └── shared/
-    ├── models/          # 共享模型（预留）
-    ├── providers/       # 全局 Provider
+    ├── models/          # PaginatedResponse<T> + PaginationMeta
+    ├── providers/       # apiClientProvider (Dio), envProvider
     └── widgets/         # 共享组件（预留）
 ```
 
 ## 命令
 
-执行前先注入 Flutter：
+使用 FVM 执行（项目固定 Flutter 3.41.2）：
 
 ```bash
-export PATH="/root/fvm/default/bin:$PATH"
+fvm flutter pub get
+fvm flutter analyze
+fvm dart run build_runner build --delete-conflicting-outputs
+fvm flutter test
+fvm flutter test --coverage
 ```
 
-```bash
-flutter pub get
-flutter analyze
-dart run build_runner build --delete-conflicting-outputs
-flutter test
-flutter test --coverage
-```
+## 数据层模式
+
+- **Freezed 3.x**: 模型使用 `abstract class` + `@freezed` + `@JsonKey(name: 'snake_case')` 进行 JSON 序列化
+- **PaginatedResponse\<T\>**: 泛型分页封装，`@JsonSerializable(genericArgumentFactories: true)`
+- **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应
+- **Riverpod 3.x**: 手写 Provider（无 riverpod_generator），AsyncNotifier 用于列表状态管理，FutureProvider.family 用于详情获取
+- **搜索防抖**: WorkflowListNotifier 内置 300ms debounce（Timer），支持 setSearchQuery / setStatusFilter / loadMore / refresh
+
+## 测试模式
+
+- **94 个测试** 覆盖 models/api/providers/widgets/screens/routes
+- Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose StateError
+- Widget/Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
+- Mock: `mocktail` 库，测试工厂函数集中在 `test/helpers/test_helpers.dart`
 
 ## 当前注意事项
 
 - `envProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入真实环境
-- 认证、FCM、深色主题与业务页面均为后续 Story 的 TODO 占位
+- 认证、FCM、深色主题均为后续 Story 的 TODO 占位
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载
+- WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态

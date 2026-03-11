@@ -23,7 +23,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
-| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) | TemplateModule |
+| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
 | mcp | `modules/mcp/` | MCP 服务器 测试/发现/导入 | ApiKeyModule |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
