@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 环境配置文件（公开信息，需要版本控制；覆盖根 .gitignore 规则）
+!.env.dev
+!.env.staging
+!.env.prod

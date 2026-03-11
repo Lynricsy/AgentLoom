@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Dashboard 占位屏幕
 ///
-// TODO: Story 7.4 替换为实际实现
+// TODO: 替换为仪表盘实际实现（执行统计与最近工作流概览）
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 

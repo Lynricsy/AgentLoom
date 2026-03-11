@@ -85,5 +85,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Dashboard (Coming Soon)'), findsOneWidget);
     });
+
+    testWidgets('bottom nav highlight syncs after navigation', (tester) async {
+      await tester.pumpWidget(createTestApp());
+      await tester.pumpAndSettle();
+
+      // 初始状态: Dashboard (index 0) 被选中
+      var navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, 0);
+
+      // 点击 Workflows tab
+      await tester.tap(find.text('Workflows'));
+      await tester.pumpAndSettle();
+
+      // 验证选中索引同步为 1
+      navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, 1);
+
+      // 点击 Settings tab
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      // 验证选中索引同步为 2
+      navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, 2);
+    });
+
+    testWidgets('repeated tap on same tab stays on current screen', (
+      tester,
+    ) async {
+      await tester.pumpWidget(createTestApp());
+      await tester.pumpAndSettle();
+
+      // 先导航到 Workflows
+      await tester.tap(find.text('Workflows'));
+      await tester.pumpAndSettle();
+      expect(find.text('Workflows (Coming Soon)'), findsOneWidget);
+
+      // 再次点击 Workflows（重复点击）
+      await tester.tap(find.text('Workflows'));
+      await tester.pumpAndSettle();
+
+      // 应仍停留在 Workflows 页面
+      expect(find.text('Workflows (Coming Soon)'), findsOneWidget);
+    });
   });
 }
