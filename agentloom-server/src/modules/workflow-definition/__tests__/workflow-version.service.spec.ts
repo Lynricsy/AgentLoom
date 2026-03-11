@@ -2,9 +2,15 @@ import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@anatine/zod-nestjs', async () => {
+  const { createZodDto } = await import('nestjs-zod');
+  return { createZodDto };
+});
+
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import { TemplateService } from '../../template/template.service';
+import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
   InvalidStatusTransitionException,
@@ -142,6 +148,17 @@ function createUpdateChainVoid() {
   return { set, where };
 }
 
+function createListDefinitionsQuery(
+  overrides: Partial<{
+    page: number;
+    pageSize: number;
+    status: 'draft' | 'published' | 'archived';
+    search: string;
+  }> = {},
+): ListWorkflowDefinitionsQueryDto {
+  return Object.assign(new ListWorkflowDefinitionsQueryDto(), overrides);
+}
+
 describe('WorkflowVersionService', () => {
   let service: WorkflowVersionService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
@@ -190,6 +207,253 @@ describe('WorkflowVersionService', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  describe('findAllDefinitions', () => {
+    it('应当使用默认分页返回工作流定义列表', async () => {
+      const workflows = [
+        createDraftWorkflow({
+          name: '工作流 A',
+          slug: 'workflow-a',
+          description: '描述 A',
+          metadata: { complexity: 'beginner' },
+          updatedBy: USER_ID,
+        }),
+        createDraftWorkflow({
+          id: '00000000-0000-0000-0000-000000000006',
+          name: '工作流 B',
+          slug: 'workflow-b',
+          description: null,
+          metadata: {},
+          updatedBy: USER_ID,
+          createdAt: new Date('2025-01-01T01:00:00Z'),
+          updatedAt: new Date('2025-01-01T01:00:00Z'),
+        }),
+      ];
+      const selectDefinitions = createSelectChainWithPagination(workflows);
+      const selectCount = createSelectChain([{ count: 2 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(createListDefinitionsQuery());
+
+      expect(selectDefinitions.where).toHaveBeenCalledWith(undefined);
+      expect(selectDefinitions.limit).toHaveBeenCalledWith(20);
+      expect(selectDefinitions.offset).toHaveBeenCalledWith(0);
+      expect(result).toEqual({
+        data: [
+          {
+            id: workflows[0].id,
+            name: '工作流 A',
+            slug: 'workflow-a',
+            description: '描述 A',
+            status: 'draft',
+            version: 1,
+            metadata: { complexity: 'beginner' },
+            createdBy: USER_ID,
+            updatedBy: USER_ID,
+            createdAt: NOW.toISOString(),
+            updatedAt: NOW.toISOString(),
+          },
+          {
+            id: workflows[1].id,
+            name: '工作流 B',
+            slug: 'workflow-b',
+            description: null,
+            status: 'draft',
+            version: 1,
+            metadata: null,
+            createdBy: USER_ID,
+            updatedBy: USER_ID,
+            createdAt: '2025-01-01T01:00:00.000Z',
+            updatedAt: '2025-01-01T01:00:00.000Z',
+          },
+        ],
+        meta: {
+          total: 2,
+          page: 1,
+          pageSize: 20,
+          totalPages: 1,
+        },
+      });
+      expect(result.data[0]).not.toHaveProperty('nodes');
+      expect(result.data[0]).not.toHaveProperty('edges');
+      expect(result.data[0]).not.toHaveProperty('viewport');
+    });
+
+    it('应当支持自定义分页参数', async () => {
+      const selectDefinitions = createSelectChainWithPagination([
+        createDraftWorkflow({
+          name: '第二页工作流',
+          slug: 'workflow-page-2',
+          updatedBy: USER_ID,
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 11 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({ page: 2, pageSize: 5 }),
+      );
+
+      expect(selectDefinitions.limit).toHaveBeenCalledWith(5);
+      expect(selectDefinitions.offset).toHaveBeenCalledWith(5);
+      expect(result.meta).toEqual({
+        total: 11,
+        page: 2,
+        pageSize: 5,
+        totalPages: 3,
+      });
+    });
+
+    it('应当支持按状态筛选', async () => {
+      const selectDefinitions = createSelectChainWithPagination([
+        createDraftWorkflow({
+          status: 'published',
+          name: '已发布工作流',
+          slug: 'published-workflow',
+          updatedBy: USER_ID,
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({ status: 'published' }),
+      );
+
+      const whereClause = selectDefinitions.where.mock.calls[0]?.[0];
+      expect(whereClause).toBeDefined();
+      expect(selectCount.where).toHaveBeenCalledWith(whereClause);
+      expect(result.data[0]?.status).toBe('published');
+    });
+
+    it('应当支持按搜索词筛选', async () => {
+      const selectDefinitions = createSelectChainWithPagination([
+        createDraftWorkflow({
+          name: '审批工作流',
+          slug: 'approval-workflow',
+          description: '审批节点流程',
+          updatedBy: USER_ID,
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({ search: '审批' }),
+      );
+
+      const whereClause = selectDefinitions.where.mock.calls[0]?.[0];
+      expect(whereClause).toBeDefined();
+      expect(selectCount.where).toHaveBeenCalledWith(whereClause);
+      expect(result.data[0]?.name).toBe('审批工作流');
+    });
+
+    it('应当支持组合筛选条件', async () => {
+      const selectDefinitions = createSelectChainWithPagination([
+        createDraftWorkflow({
+          status: 'archived',
+          name: '归档审批流',
+          slug: 'archived-approval-workflow',
+          description: '已归档的审批工作流',
+          updatedBy: USER_ID,
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({
+          status: 'archived',
+          search: '审批',
+        }),
+      );
+
+      const whereClause = selectDefinitions.where.mock.calls[0]?.[0];
+      expect(whereClause).toBeDefined();
+      expect(selectCount.where).toHaveBeenCalledWith(whereClause);
+      expect(result.meta.total).toBe(1);
+      expect(result.data[0]?.status).toBe('archived');
+    });
+
+    it('应当在无结果时返回空列表', async () => {
+      const selectDefinitions = createSelectChainWithPagination([]);
+      const selectCount = createSelectChain([{ count: 0 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({ search: '不存在' }),
+      );
+
+      expect(result).toEqual({
+        data: [],
+        meta: {
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          totalPages: 0,
+        },
+      });
+    });
+  });
+
+  describe('findDefinitionById', () => {
+    it('应当返回序列化后的工作流定义详情', async () => {
+      const workflow = createDraftWorkflow({
+        description: '详情描述',
+        metadata: { category: 'analysis' },
+        updatedBy: USER_ID,
+        createdAt: new Date('2025-02-01T08:00:00Z'),
+        updatedAt: new Date('2025-02-02T09:30:00Z'),
+      });
+      const selectWorkflow = createSelectChain([workflow]);
+      db.select.mockReturnValueOnce(selectWorkflow);
+
+      const result = await service.findDefinitionById(WORKFLOW_ID);
+
+      expect(result).toEqual({
+        id: WORKFLOW_ID,
+        name: '测试工作流',
+        slug: 'test-workflow',
+        description: '详情描述',
+        status: 'draft',
+        version: 1,
+        metadata: { category: 'analysis' },
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: '2025-02-01T08:00:00.000Z',
+        updatedAt: '2025-02-02T09:30:00.000Z',
+      });
+      expect(result).not.toHaveProperty('nodes');
+      expect(result).not.toHaveProperty('edges');
+      expect(result).not.toHaveProperty('viewport');
+    });
+
+    it('工作流不存在时应当抛出 WorkflowNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(service.findDefinitionById(WORKFLOW_ID)).rejects.toBeInstanceOf(
+        WorkflowNotFoundException,
+      );
+    });
   });
 
   describe('createVersion', () => {
@@ -964,8 +1228,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('应在 slug 冲突时自动重试', async () => {
-      const uniqueViolation = new Error('unique_violation');
-      (uniqueViolation as Record<string, unknown>).code = '23505';
+      const uniqueViolation = Object.assign(new Error('unique_violation'), {
+        code: '23505',
+      });
 
       const mockResult = createDraftWorkflow({ name: '测试工作流' });
 
@@ -985,8 +1250,9 @@ describe('WorkflowVersionService', () => {
     });
 
     it('应在达到最大重试次数后抛出原始错误', async () => {
-      const uniqueViolation = new Error('unique_violation');
-      (uniqueViolation as Record<string, unknown>).code = '23505';
+      const uniqueViolation = Object.assign(new Error('unique_violation'), {
+        code: '23505',
+      });
 
       // 所有 4 次尝试（0..3）都抛唯一约束错误
       db.insert.mockReturnValue({

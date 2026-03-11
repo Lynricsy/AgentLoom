@@ -1,3 +1,10 @@
+import { vi } from 'vitest';
+
+vi.mock('@anatine/zod-nestjs', async () => {
+  const { createZodDto } = await import('nestjs-zod');
+  return { createZodDto };
+});
+
 process.env.APP_PORT = '3099';
 process.env.APP_NODE_ENV = 'test';
 process.env.APP_DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
