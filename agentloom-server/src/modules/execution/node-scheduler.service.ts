@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { Script } from 'node:vm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { DomainException } from '../../common/exceptions/domain.exception';
 import * as schema from '../../database/schema';
 import type { ReactFlowEdge } from '../../database/schema';
 import type { ExecutionStep } from '../../database/schema';
@@ -367,13 +368,15 @@ export class NodeSchedulerService {
       }
     }
 
-    const failureMessage =
-      this.extractErrorMessage(failedStep.errorMessage) ?? '节点执行失败';
+    const errorMessage =
+      (failedStep.errorMessage as schema.ExecutionStepErrorMessage | null) ?? {
+        message: '节点执行失败',
+      };
 
     await this.stepStateMachine.markExecutionFailed(
       executionId,
       tenantId,
-      { message: failureMessage },
+      errorMessage,
     );
     await this.cleanupSandboxIfTerminal(executionId, tenantId);
   }
@@ -684,7 +687,20 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'failed',
-        { errorMessage: { message } },
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
@@ -755,7 +771,20 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'failed',
-        { errorMessage: { message } },
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
@@ -834,7 +863,20 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'failed',
-        { errorMessage: { message } },
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }

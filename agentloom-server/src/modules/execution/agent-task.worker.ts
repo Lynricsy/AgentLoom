@@ -6,6 +6,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { eq } from 'drizzle-orm';
+import { DomainException } from '../../common/exceptions/domain.exception';
 import {
   AGENT_RUNTIME,
   type IAgentRuntime,
@@ -366,7 +367,14 @@ export class AgentTaskWorker extends WorkerHost {
             stepId,
             'pending',
             {
-              errorMessage: { message: err.message, stack: err.stack },
+              errorMessage: {
+                message: err.message,
+                stack: err.stack,
+                ...(err instanceof DomainException
+                  ? { type: err.type, title: err.message, detail: err.detail }
+                  : {}),
+                nodeId: step.nodeId,
+              },
               checkpointData,
             },
           );
@@ -386,7 +394,18 @@ export class AgentTaskWorker extends WorkerHost {
           .where(eq(schema.executionSteps.id, stepId));
 
         await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', {
-          errorMessage: { message: err.message, stack: err.stack, attempts: allAttempts },
+          errorMessage: {
+            message: err.message,
+            stack: err.stack,
+            attempts: allAttempts,
+            ...(err instanceof DomainException
+              ? { type: err.type, title: err.message, detail: err.detail }
+              : {}),
+            nodeId: step.nodeId,
+            ...('typeMismatch' in err
+              ? { typeMismatch: (err as { typeMismatch: schema.TypeMismatchInfo }).typeMismatch }
+              : {}),
+          },
           checkpointData,
         });
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
@@ -430,6 +449,9 @@ export class AgentTaskWorker extends WorkerHost {
       await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', {
         errorMessage: {
           message: intervention.feedback?.trim() || '人工干预拒绝了该步骤输出',
+          type: 'urn:agentloom:execution:intervention-rejected',
+          title: '人工干预拒绝',
+          nodeId: step.nodeId,
         },
         checkpointData: {
           ...checkpointData,

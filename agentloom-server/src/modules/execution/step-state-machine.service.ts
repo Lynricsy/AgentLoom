@@ -251,7 +251,7 @@ export class StepStateMachineService {
   async markExecutionFailed(
     executionId: string,
     tenantId: string,
-    errorMessage?: { message: string; stack?: string },
+    errorMessage?: schema.ExecutionStepErrorMessage,
   ): Promise<void> {
     const steps = await this.tenantDb
       .select()

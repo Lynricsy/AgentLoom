@@ -18,10 +18,25 @@ export interface ExecutionStepAttemptError {
   timestamp: string;
 }
 
+export interface TypeMismatchInfo {
+  sourcePortId: string;
+  targetPortId: string;
+  sourceType: string;
+  targetType: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeId?: string;
+}
+
 export interface ExecutionStepErrorMessage {
   message: string;
+  type?: string;
+  title?: string;
+  detail?: string;
+  nodeId?: string;
   stack?: string;
   attempts?: ExecutionStepAttemptError[];
+  typeMismatch?: TypeMismatchInfo;
 }
 
 export const stepStatusEnum = pgEnum('step_status_enum', [
