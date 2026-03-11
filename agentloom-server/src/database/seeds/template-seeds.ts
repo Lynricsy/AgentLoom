@@ -19,6 +19,12 @@ export const TEMPLATE_CATEGORIES = [
 ] as const;
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 
+const DEFAULT_TEMPLATE_VIEWPORT: TemplateDefinition['viewport'] = {
+  x: 0,
+  y: 0,
+  zoom: 1,
+};
+
 const dailyCompetitorAnalysis: NewWorkflowTemplate = {
   slug: 'daily-competitor-analysis',
   name: '每日竞品分析',
@@ -62,6 +68,7 @@ const dailyCompetitorAnalysis: NewWorkflowTemplate = {
       { id: 'e1', source: 'agent-1', target: 'llm-1' },
       { id: 'e2', source: 'llm-1', target: 'output-1' },
     ],
+    viewport: DEFAULT_TEMPLATE_VIEWPORT,
   } satisfies TemplateDefinition,
   metadata: {
     author: 'AgentLoom',
@@ -104,6 +111,7 @@ const customerFeedbackClassifier: NewWorkflowTemplate = {
       },
     ],
     edges: [{ id: 'e1', source: 'agent-1', target: 'output-1' }],
+    viewport: DEFAULT_TEMPLATE_VIEWPORT,
   } satisfies TemplateDefinition,
   metadata: {
     author: 'AgentLoom',
@@ -177,6 +185,7 @@ const techBlogWriter: NewWorkflowTemplate = {
       { id: 'e2', source: 'agent-2', target: 'agent-3' },
       { id: 'e3', source: 'agent-3', target: 'agent-4' },
     ],
+    viewport: DEFAULT_TEMPLATE_VIEWPORT,
   } satisfies TemplateDefinition,
   metadata: {
     author: 'AgentLoom',
@@ -264,6 +273,7 @@ const codeReviewAssistant: NewWorkflowTemplate = {
       { id: 'e5', source: 'agent-3', target: 'agent-5' },
       { id: 'e6', source: 'agent-4', target: 'agent-5' },
     ],
+    viewport: DEFAULT_TEMPLATE_VIEWPORT,
   } satisfies TemplateDefinition,
   metadata: {
     author: 'AgentLoom',
@@ -332,6 +342,7 @@ const autoDataReport: NewWorkflowTemplate = {
       { id: 'e2', source: 'agent-2', target: 'agent-3' },
       { id: 'e3', source: 'agent-3', target: 'output-1' },
     ],
+    viewport: DEFAULT_TEMPLATE_VIEWPORT,
   } satisfies TemplateDefinition,
   metadata: {
     author: 'AgentLoom',

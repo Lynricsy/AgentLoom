@@ -1,9 +1,13 @@
 import { apiClient } from '@/shared/api/client';
 import type { PaginatedResponse } from '@/shared/types/api';
-import type { TemplateDetail, TemplateListItem } from '../types';
+import type {
+  TemplateCategory,
+  TemplateDetail,
+  TemplateListItem,
+} from '../types';
 
 export interface ListTemplatesParams {
-  category?: string;
+  category?: TemplateCategory;
   page?: number;
   pageSize?: number;
 }

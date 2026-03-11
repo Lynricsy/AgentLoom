@@ -20,7 +20,7 @@ import type {
 export interface TemplateDefinition {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
-  viewport?: ReactFlowViewport;
+  viewport: ReactFlowViewport;
 }
 
 export interface TemplateMetadata {

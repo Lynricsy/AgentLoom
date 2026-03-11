@@ -20,6 +20,8 @@ import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 
+const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+
 describe('Template E2E', () => {
   let container: StartedPostgreSqlContainer;
   let sql: ReturnType<typeof postgres>;
@@ -69,8 +71,26 @@ describe('Template E2E', () => {
         description: 'Test chatbot template',
         category: 'analysis',
         tags: ['test', 'chatbot'],
-        definition: { nodes: [{ id: 'n1', type: 'llm-agent', position: { x: 0, y: 0 }, data: {} }], edges: [] },
-        metadata: { author: 'AgentLoom', version: '1.0.0', estimated_runtime_seconds: 30, complexity: 'beginner', node_count: 1, required_capabilities: ['llm'] },
+        definition: {
+          nodes: [
+            {
+              id: 'n1',
+              type: 'llm-agent',
+              position: { x: 0, y: 0 },
+              data: {},
+            },
+          ],
+          edges: [],
+          viewport: DEFAULT_VIEWPORT,
+        },
+        metadata: {
+          author: 'AgentLoom',
+          version: '1.0.0',
+          estimated_runtime_seconds: 30,
+          complexity: 'beginner',
+          node_count: 1,
+          required_capabilities: ['llm'],
+        },
         isPublished: true,
         displayOrder: 0,
       },
@@ -80,8 +100,15 @@ describe('Template E2E', () => {
         description: 'Test research template',
         category: 'content',
         tags: ['test', 'research'],
-        definition: { nodes: [], edges: [] },
-        metadata: { author: 'AgentLoom', version: '1.0.0', estimated_runtime_seconds: 60, complexity: 'intermediate', node_count: 0, required_capabilities: [] },
+        definition: { nodes: [], edges: [], viewport: DEFAULT_VIEWPORT },
+        metadata: {
+          author: 'AgentLoom',
+          version: '1.0.0',
+          estimated_runtime_seconds: 60,
+          complexity: 'intermediate',
+          node_count: 0,
+          required_capabilities: [],
+        },
         isPublished: true,
         displayOrder: 1,
       },
@@ -91,7 +118,7 @@ describe('Template E2E', () => {
         description: 'Should not appear in results',
         category: 'analysis',
         tags: ['test'],
-        definition: { nodes: [], edges: [] },
+        definition: { nodes: [], edges: [], viewport: DEFAULT_VIEWPORT },
         metadata: {},
         isPublished: false,
         displayOrder: 99,
@@ -160,6 +187,14 @@ describe('Template E2E', () => {
 
       const slugs = body.data.map((t: { slug: string }) => t.slug);
       expect(slugs).not.toContain('e2e-unpublished');
+      expect(body.data[0]).not.toHaveProperty('definition');
+      expect(body.data[0]).toEqual(
+        expect.objectContaining({
+          slug: 'e2e-chatbot',
+          category: 'analysis',
+          displayOrder: 0,
+        }),
+      );
     });
 
     it('should filter by category', async () => {
@@ -193,6 +228,8 @@ describe('Template E2E', () => {
       });
 
       expect(res.statusCode).toBe(200);
+      expect(res.statusCode).not.toBe(401);
+      expect(res.statusCode).not.toBe(403);
     });
   });
 
@@ -208,6 +245,14 @@ describe('Template E2E', () => {
       expect(body.slug).toBe('e2e-chatbot');
       expect(body.definition).toBeDefined();
       expect(body.definition.nodes).toHaveLength(1);
+      expect(body.definition.viewport).toEqual(DEFAULT_VIEWPORT);
+      expect(body.metadata).toEqual(
+        expect.objectContaining({
+          node_count: 1,
+          complexity: 'beginner',
+          estimated_runtime_seconds: 30,
+        }),
+      );
     });
 
     it('should return 404 for unknown slug', async () => {
@@ -217,6 +262,15 @@ describe('Template E2E', () => {
       });
 
       expect(res.statusCode).toBe(404);
+      const body = JSON.parse(res.body);
+      expect(body).toEqual(
+        expect.objectContaining({
+          status: 404,
+          title: 'Template Not Found',
+          type: 'https://agentloom.dev/errors/template-not-found',
+          detail: "Template with slug 'nonexistent' was not found.",
+        }),
+      );
     });
 
     it('should return 404 for unpublished template', async () => {
@@ -226,6 +280,17 @@ describe('Template E2E', () => {
       });
 
       expect(res.statusCode).toBe(404);
+    });
+
+    it('should not require authentication for template detail', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/templates/e2e-chatbot',
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.statusCode).not.toBe(401);
+      expect(res.statusCode).not.toBe(403);
     });
   });
 });

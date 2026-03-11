@@ -1,7 +1,17 @@
+export const TEMPLATE_CATEGORIES = [
+  'analysis',
+  'content',
+  'development',
+  'automation',
+  'reporting',
+] as const;
+
+export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
+
 export interface TemplateDefinition {
   nodes: Record<string, unknown>[];
   edges: Record<string, unknown>[];
-  viewport?: {
+  viewport: {
     x: number;
     y: number;
     zoom: number;
@@ -23,7 +33,7 @@ export interface TemplateListItem {
   slug: string;
   name: string;
   description: string | null;
-  category: string;
+  category: TemplateCategory;
   tags: string[];
   thumbnailUrl: string | null;
   metadata: TemplateMetadata;

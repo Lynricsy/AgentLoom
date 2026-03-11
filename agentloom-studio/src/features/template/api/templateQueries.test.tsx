@@ -4,7 +4,12 @@ import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchTemplates, fetchTemplateBySlug } from './templateApi';
-import { useTemplates, useTemplateDetail } from './templateQueries';
+import { templateKeys } from './templateKeys';
+import {
+  useTemplateBySlug,
+  useTemplateDetail,
+  useTemplates,
+} from './templateQueries';
 
 vi.mock('./templateApi', () => ({
   fetchTemplates: vi.fn(),
@@ -16,12 +21,15 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
 
-  return function Wrapper({ children }: PropsWithChildren) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+  return {
+    queryClient,
+    Wrapper({ children }: PropsWithChildren) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    },
   };
 }
 
@@ -38,14 +46,23 @@ describe('template queries', () => {
       };
       vi.mocked(fetchTemplates).mockResolvedValue(response as never);
 
+      const { Wrapper, queryClient } = createWrapper();
       const { result } = renderHook(() => useTemplates(), {
-        wrapper: createWrapper(),
+        wrapper: Wrapper,
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       expect(fetchTemplates).toHaveBeenCalledWith({});
       expect(result.current.data).toEqual(response);
+
+      const query = queryClient.getQueryCache().find({
+        queryKey: templateKeys.list({}),
+      });
+      expect(query?.options).toMatchObject({
+        staleTime: 10 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+      });
     });
 
     it('should pass category filter to API', async () => {
@@ -55,9 +72,10 @@ describe('template queries', () => {
       };
       vi.mocked(fetchTemplates).mockResolvedValue(response as never);
 
+      const { Wrapper } = createWrapper();
       const { result } = renderHook(
         () => useTemplates({ category: 'analysis' }),
-        { wrapper: createWrapper() },
+        { wrapper: Wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -72,9 +90,10 @@ describe('template queries', () => {
       };
       vi.mocked(fetchTemplates).mockResolvedValue(response as never);
 
+      const { Wrapper } = createWrapper();
       const { result } = renderHook(
         () => useTemplates({ page: 2, pageSize: 5 }),
-        { wrapper: createWrapper() },
+        { wrapper: Wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -83,19 +102,20 @@ describe('template queries', () => {
     });
   });
 
-  describe('useTemplateDetail', () => {
+  describe('useTemplateBySlug', () => {
     it('should fetch template detail when slug is provided', async () => {
       const response = {
         id: 't-1',
         slug: 'daily-competitor-analysis',
         name: '每日竞品分析',
-        definition: { nodes: [], edges: [] },
+        definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
       };
       vi.mocked(fetchTemplateBySlug).mockResolvedValue(response as never);
 
+      const { Wrapper, queryClient } = createWrapper();
       const { result } = renderHook(
-        () => useTemplateDetail('daily-competitor-analysis'),
-        { wrapper: createWrapper() },
+        () => useTemplateBySlug('daily-competitor-analysis'),
+        { wrapper: Wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -104,15 +124,44 @@ describe('template queries', () => {
         'daily-competitor-analysis',
       );
       expect(result.current.data).toEqual(response);
+
+      const query = queryClient.getQueryCache().find({
+        queryKey: templateKeys.detail('daily-competitor-analysis'),
+      });
+      expect(query?.options).toMatchObject({
+        staleTime: 10 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+      });
     });
 
     it('should not fetch when slug is undefined', () => {
-      const { result } = renderHook(() => useTemplateDetail(undefined), {
-        wrapper: createWrapper(),
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useTemplateBySlug(undefined), {
+        wrapper: Wrapper,
       });
 
       expect(result.current.fetchStatus).toBe('idle');
       expect(fetchTemplateBySlug).not.toHaveBeenCalled();
+    });
+
+    it('should keep useTemplateDetail as a compatibility alias', async () => {
+      const response = {
+        id: 't-2',
+        slug: 'tech-blog-writer',
+        name: '技术博客创作工作流',
+        definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      };
+      vi.mocked(fetchTemplateBySlug).mockResolvedValue(response as never);
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useTemplateDetail('tech-blog-writer'), {
+        wrapper: Wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(fetchTemplateBySlug).toHaveBeenCalledWith('tech-blog-writer');
+      expect(result.current.data).toEqual(response);
     });
   });
 });

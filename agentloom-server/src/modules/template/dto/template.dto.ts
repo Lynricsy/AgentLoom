@@ -13,6 +13,14 @@ const ListTemplatesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+const TemplateCategorySchema = z.enum([
+  'analysis',
+  'content',
+  'development',
+  'automation',
+  'reporting',
+]);
+
 export class ListTemplatesQueryDto extends createZodDto(
   ListTemplatesQuerySchema,
 ) {}
@@ -23,14 +31,14 @@ export class ListTemplatesQueryDto extends createZodDto(
 
 /** 列表项（不含 definition） */
 export const TemplateListItemSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   slug: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  category: z.string(),
+  category: TemplateCategorySchema,
   tags: z.array(z.string()),
   thumbnailUrl: z.string().nullable(),
-  metadata: z.record(z.unknown()),
+  metadata: z.record(z.string(), z.unknown()),
   displayOrder: z.number().int(),
   createdAt: z.string().or(z.date()),
   updatedAt: z.string().or(z.date()),
@@ -41,11 +49,9 @@ export type TemplateListItem = z.infer<typeof TemplateListItemSchema>;
 /** 详情（含 definition） */
 export const TemplateDetailSchema = TemplateListItemSchema.extend({
   definition: z.object({
-    nodes: z.array(z.record(z.unknown())),
-    edges: z.array(z.record(z.unknown())),
-    viewport: z
-      .object({ x: z.number(), y: z.number(), zoom: z.number() })
-      .optional(),
+    nodes: z.array(z.record(z.string(), z.unknown())),
+    edges: z.array(z.record(z.string(), z.unknown())),
+    viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number() }),
   }),
 });
 

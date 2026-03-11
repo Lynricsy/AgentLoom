@@ -177,11 +177,11 @@ describe('WorkflowVersion E2E', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-  });
+  }, 30_000);
 
   afterAll(async () => {
-    await app.close();
-    await ctx.close();
+    await app?.close();
+    await ctx?.close();
   });
 
   beforeEach(async () => {

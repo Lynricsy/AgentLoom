@@ -2,6 +2,7 @@ import {
   type MiddlewareConsumer,
   Module,
   type NestModule,
+  RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -91,6 +92,12 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantMiddleware)
+      .exclude(
+        { path: 'templates', method: RequestMethod.ALL },
+        { path: 'templates/{*splat}', method: RequestMethod.ALL },
+      )
+      .forRoutes('*');
   }
 }
