@@ -23,7 +23,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
-| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) | TemplateModule |
+| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) + 自动保存/更新 (`PATCH /workflow-definitions/:id`，OCC version 乐观并发) + 软删除 (`DELETE /workflow-definitions/:id` → archive) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
 | mcp | `modules/mcp/` | MCP 服务器 测试/发现/导入 | ApiKeyModule |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
@@ -170,7 +170,7 @@ Schema 在 `src/database/schema/`。22 张表，启用 RLS (`rls-policies.ts`)�
 ## 复杂度热点
 
 - `node-scheduler.service.ts` (1215L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
-- `workflow-version.service.ts` (621L) — 版本管理逻辑 + 发布时端口类型兼容性警告
+- `workflow-version.service.ts` (819L) — 版本管理逻辑 + PATCH 更新/OCC 并发控制 + 发布时端口类型兼容性警告 + 列表排序
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建
 - `execution-response.dto.ts` / `workflow-version.e2e-spec.ts` — Story 6.5 收口补充：执行详情 DTO 已对齐 `errors/typeMismatch` 契约，工作流发布 E2E 已覆盖 `warnings[]` HTTP 路径
