@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, max, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
@@ -19,12 +19,18 @@ import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
+import type { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
 import type {
   VersionResponseDto,
   PublishWarning,
   PublishResult,
 } from './dto/version-response.dto';
+import {
+  serializeWorkflowDefinition,
+  type WorkflowDefinitionResponseDto,
+  type WorkflowDefinitionListResponseDto,
+} from './dto/workflow-definition-response.dto';
 import {
   InvalidStatusTransitionException,
   WorkflowArchivedException,
@@ -67,6 +73,97 @@ export class WorkflowVersionService {
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
+  }
+
+  // ─── 查询工作流定义（列表 / 详情） ───────────────────────────────
+
+  /**
+   * 列表页/详情页专用列选择（排除 nodes/edges/viewport 大字段）
+   */
+  private get definitionListColumns() {
+    return {
+      id: schema.workflowDefinitions.id,
+      name: schema.workflowDefinitions.name,
+      slug: schema.workflowDefinitions.slug,
+      description: schema.workflowDefinitions.description,
+      status: schema.workflowDefinitions.status,
+      version: schema.workflowDefinitions.version,
+      metadata: schema.workflowDefinitions.metadata,
+      createdBy: schema.workflowDefinitions.createdBy,
+      updatedBy: schema.workflowDefinitions.updatedBy,
+      createdAt: schema.workflowDefinitions.createdAt,
+      updatedAt: schema.workflowDefinitions.updatedAt,
+    };
+  }
+
+  async findAllDefinitions(
+    query: ListWorkflowDefinitionsQueryDto,
+  ): Promise<WorkflowDefinitionListResponseDto> {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [];
+
+    if (query.status) {
+      conditions.push(
+        eq(schema.workflowDefinitions.status, query.status),
+      );
+    }
+
+    if (query.search) {
+      const searchTerm = `%${query.search}%`;
+      conditions.push(
+        or(
+          ilike(schema.workflowDefinitions.name, searchTerm),
+          ilike(schema.workflowDefinitions.description, searchTerm),
+        ),
+      );
+    }
+
+    const whereClause =
+      conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [data, countResult] = await Promise.all([
+      this.tenantDb
+        .select(this.definitionListColumns)
+        .from(schema.workflowDefinitions)
+        .where(whereClause)
+        .orderBy(desc(schema.workflowDefinitions.updatedAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.workflowDefinitions)
+        .where(whereClause),
+    ]);
+
+    const total = countResult[0]?.count ?? 0;
+
+    return {
+      data: data.map(serializeWorkflowDefinition),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async findDefinitionById(
+    workflowId: string,
+  ): Promise<WorkflowDefinitionResponseDto> {
+    const [workflow] = await this.tenantDb
+      .select(this.definitionListColumns)
+      .from(schema.workflowDefinitions)
+      .where(eq(schema.workflowDefinitions.id, workflowId));
+
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
+    return serializeWorkflowDefinition(workflow);
   }
 
   // ─── 创建工作流定义 ─────────────────────────────────────────────
