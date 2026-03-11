@@ -96,6 +96,8 @@ HTTP POST /executions
 
 - **Story 6-4 / Evidence UI Infrastructure**: `StorageService.getPresignedUrl(key, expirySeconds=3600)` 现会先 `statObject()` 校验对象是否存在，并将空 key / 缺失对象 / MinIO 不可用分别映射为 `StorageKeyInvalidException` / `StorageObjectNotFoundException` / `StorageUnavailableException`。`DocumentService.getDocumentContentUrl(kbId, docId, expirySeconds?)` 返回 `{url, fileName, mimeType, expiresIn}`，并把空 `storageKey` / 删除对象 / 存储不可用映射为 `DocumentContentNotFoundException` / `DocumentContentUnavailableException`。`KnowledgeBaseController GET :id/documents/:documentId/content`（VIEWER+）返回预签名 URL。`QueryEvidenceSchema.includeChunkContent` 布尔参数继续驱动 `EvidenceService.enrichWithChunkContent()` 批量查询 `documentChunks.content` 并注入到 `rag_retrieval` 记录的 `packet.physicalLocation.chunkContent`。同时 `PhysicalLocationSchema` 与 RAG packet summary metadata 现已包含 `knowledgeBaseId`，供 Studio 直接打开文档内容端点。
 
+- **Story 6-5 / Node Error Diagnosis**: `isPortTypeCompatible(source, target)` 判断端口类型兼容性（同类型或目标为 `json` 即兼容）。`NodeTypeMismatchException` 含 `TypeMismatchDetail { sourcePortId, targetPortId, sourceType, targetType, sourceNodeId, targetNodeId, edgeId? }`。`NodeSchedulerService.checkEdgePortTypeCompatibility()` 在运行时校验边的端口类型。`scheduleNode()` 通过 try-catch 捕获 `resolveNodeInput()` 抛出的 `NodeTypeMismatchException`，写入结构化 `errorMessage`（含 `type/title/detail/typeMismatch/nodeId`）后调用 `onNodeFailed()`。`WorkflowVersionService.publish()` 返回 `PublishResult { data, warnings }`，其中 `validateEdgeTypeCompatibility()` 生成不兼容边的 `PublishWarning[]`。`EventBridgeService.emitStepStatusChanged()` 当步骤失败时额外通过 NestJS EventEmitter 发射事件，`EvidenceService.handleStepFailed()` 监听该事件创建 `node_error` 类型证据（含 errorMessage/errorType/errorTitle/typeMismatch/stack）。
+
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
 ## BullMQ 队列
@@ -163,7 +165,7 @@ Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)�
 
 ## 复杂度热点
 
-- `node-scheduler.service.ts` (940L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理
+- `node-scheduler.service.ts` (1215L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
 - `workflow-version.service.ts` (621L) — 版本管理逻辑 + 发布时端口类型兼容性警告
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建

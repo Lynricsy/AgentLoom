@@ -94,7 +94,7 @@ src/
 - **庆祝效果** (`features/execution/components/CelebrationEffect.tsx`): 基于 `canvas-confetti`，使用 workflow-scoped localStorage key `agentloom:workflow:{workflowId}:first-success-celebrated`，挂载在 `WorkflowCanvasPage`，只在当前会话内同一 execution 从非 `completed` 过渡到 `completed` 时触发
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
-- **发布警告 Toast**: `PublishSheet` / `usePublishWorkflow` 现保留发布响应 `warnings[]`，发布成功后会额外用 `warning` variant Toast 展示每条类型兼容性警告（源/目标节点与端口类型）
+- **发布警告展示**: `PublishSheet` 发布成功且返回 `warnings[]` 时，显示成功 toast 并在 Sheet 内渲染内联展开式警告列表（每条警告可点击展开查看源/目标端口类型详情），用户点击"完成"按钮关闭。不再使用 toast-per-warning 模式
 - **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流
 - **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。组件通过 `useExecutionActions().submitIntervention()` 提交动作，展示 AI 决策建议(confidence/rationale)、部分内容预览以及请求时间上下文，并会把结构化建议内容格式化为可读文本
 
