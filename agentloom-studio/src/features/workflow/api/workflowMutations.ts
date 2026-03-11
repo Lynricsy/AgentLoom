@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiClient, toSnakeBody } from '../../../shared/api/client'
-import type { ApiResponse } from '../../../shared/types/api'
 import type {
-  WorkflowDefinition,
   UpdateWorkflowPayload,
-  CreateWorkflowPayload,
 } from '../types'
 import { workflowKeys } from './workflowKeys'
+import { createWorkflow } from './workflowApi'
+import { apiClient, toSnakeBody } from '../../../shared/api/client'
+import type { ApiResponse } from '../../../shared/types/api'
+import type { WorkflowDefinition } from '../types'
 
 export function useUpdateWorkflow(id: string) {
   const queryClient = useQueryClient()
@@ -33,14 +33,7 @@ export function useCreateWorkflow() {
 
   return useMutation({
     mutationKey: ['workflow', 'create'],
-    mutationFn: async (payload: CreateWorkflowPayload) => {
-      const response = await apiClient
-        .post('workflow-definitions', {
-          json: toSnakeBody(payload),
-        })
-        .json<ApiResponse<WorkflowDefinition>>()
-      return response.data
-    },
+    mutationFn: createWorkflow,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() })
     },

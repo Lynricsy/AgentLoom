@@ -36,7 +36,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
   onOpenChange,
 }: TemplateWizardDialogProps) {
   const navigate = useNavigate()
-  const { toast } = useToast()
+  const { notify } = useToast()
   const createWorkflow = useCreateWorkflow()
 
   const {
@@ -62,7 +62,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
         })
         onOpenChange(false)
         reset()
-        toast({
+        notify({
           title: '工作流已创建',
           description: `"${result.name}" 创建成功`,
         })
@@ -71,14 +71,14 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
           params: { workflowId: result.id },
         })
       } catch {
-        toast({
+        notify({
           title: '创建失败',
           description: '无法创建工作流，请稍后重试',
-          variant: 'destructive',
+          variant: 'error',
         })
       }
     },
-    [createWorkflow, template?.slug, onOpenChange, reset, toast, navigate],
+    [createWorkflow, template?.slug, onOpenChange, reset, notify, navigate],
   )
 
   const nodeCount = template?.metadata?.nodeCount ?? 0

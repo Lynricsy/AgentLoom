@@ -64,11 +64,15 @@ describe('TemplateBrowsePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseTemplateBySlug.mockReturnValue({ data: null });
+    mockUseTemplates.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
   });
 
   it('渲染页面标题和搜索框', () => {
-    mockUseTemplates.mockReturnValue({ data: null, isLoading: false });
-
     render(<TemplateBrowsePage />);
 
     expect(screen.getByText('模板')).toBeInTheDocument();
@@ -76,8 +80,6 @@ describe('TemplateBrowsePage', () => {
   });
 
   it('渲染所有分类标签', () => {
-    mockUseTemplates.mockReturnValue({ data: null, isLoading: false });
-
     render(<TemplateBrowsePage />);
 
     expect(screen.getByText('全部')).toBeInTheDocument();
@@ -89,7 +91,12 @@ describe('TemplateBrowsePage', () => {
   });
 
   it('加载中显示 spinner', () => {
-    mockUseTemplates.mockReturnValue({ data: null, isLoading: true });
+    mockUseTemplates.mockReturnValue({
+      data: null,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
 
     const { container } = render(<TemplateBrowsePage />);
 
@@ -100,6 +107,8 @@ describe('TemplateBrowsePage', () => {
     mockUseTemplates.mockReturnValue({
       data: { data: [] },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
 
     render(<TemplateBrowsePage />);
@@ -115,6 +124,8 @@ describe('TemplateBrowsePage', () => {
     mockUseTemplates.mockReturnValue({
       data: { data: templates },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
 
     render(<TemplateBrowsePage />);
@@ -131,6 +142,8 @@ describe('TemplateBrowsePage', () => {
     mockUseTemplates.mockReturnValue({
       data: { data: templates },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
 
     render(<TemplateBrowsePage />);
@@ -147,6 +160,8 @@ describe('TemplateBrowsePage', () => {
     mockUseTemplates.mockReturnValue({
       data: { data: [makeTemplate()] },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
 
     render(<TemplateBrowsePage />);
@@ -156,6 +171,10 @@ describe('TemplateBrowsePage', () => {
     });
 
     expect(screen.getByText('没有匹配的模板')).toBeInTheDocument();
+    expect(
+      screen.getByText('尝试其他搜索词或清除筛选条件。'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '清除筛选' })).toBeInTheDocument();
   });
 
   it('点击模板卡片打开向导对话框', () => {
@@ -163,6 +182,8 @@ describe('TemplateBrowsePage', () => {
     mockUseTemplates.mockReturnValue({
       data: { data: [template] },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
     mockUseTemplateBySlug.mockReturnValue({
       data: { ...template, definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } } },
@@ -173,5 +194,21 @@ describe('TemplateBrowsePage', () => {
     fireEvent.click(screen.getByTestId('card-clicked-tpl'));
 
     expect(screen.getByTestId('wizard-dialog')).toBeInTheDocument();
+  });
+
+  it('请求失败时显示错误状态并支持重试', () => {
+    const refetch = vi.fn();
+    mockUseTemplates.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<TemplateBrowsePage />);
+
+    expect(screen.getByText('模板加载失败')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

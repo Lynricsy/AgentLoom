@@ -9,6 +9,7 @@ export type {
   PublishWorkflowPayload,
   VersionListResponse,
 } from './types'
+export { createWorkflow } from './api/workflowApi'
 export { workflowKeys } from './api/workflowKeys'
 export { useWorkflow } from './api/workflowQueries'
 export { useUpdateWorkflow, useCreateWorkflow } from './api/workflowMutations'

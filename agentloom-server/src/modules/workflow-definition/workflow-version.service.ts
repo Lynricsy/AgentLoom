@@ -136,7 +136,7 @@ export class WorkflowVersionService {
             action: 'workflow_created',
             workflowId: created.id,
             slug,
-            fromTemplate: dto.templateSlug ?? null,
+            fromTemplate: dto.template_slug ?? null,
           }),
         );
 

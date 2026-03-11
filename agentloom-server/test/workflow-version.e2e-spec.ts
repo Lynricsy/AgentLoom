@@ -597,6 +597,34 @@ describe('WorkflowVersion E2E', () => {
       expect(response.status).toBe(422);
     });
 
+    it('模板不存在时应返回 RFC7807 格式的 404', async () => {
+      const { headers } = await seedTenant('create-missing-template');
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .set(headers)
+        .send({
+          name: '缺失模板副本',
+          template_slug: 'nonexistent-template',
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/template-not-found',
+        title: 'Template Not Found',
+        status: 404,
+      });
+      expect(response.body.detail).toContain('nonexistent-template');
+    });
+
+    it('未认证请求应返回 401', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/workflow-definitions')
+        .send({ name: '未认证工作流' });
+
+      expect(response.status).toBe(401);
+    });
+
     it('viewer 角色应被拒绝（403）', async () => {
       const { headers } = await seedTenant('create-viewer', 'viewer');
 

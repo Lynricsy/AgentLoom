@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { Search, LayoutTemplate } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
+import { Button } from '@/shared/ui/button'
 import { useTemplates, useTemplateBySlug } from '../api/templateQueries'
 import { TemplateCard } from './TemplateCard'
 import { TemplateWizardDialog } from './TemplateWizardDialog'
@@ -23,10 +24,13 @@ export function TemplateBrowsePage() {
 
   const categoryParam =
     category === 'all' ? undefined : (category as TemplateCategory)
-  const { data, isLoading } = useTemplates({ category: categoryParam })
+  const { data, isLoading, isError, refetch } = useTemplates({
+    category: categoryParam,
+  })
   const { data: selectedTemplate } = useTemplateBySlug(selectedSlug ?? '')
 
   const templates = data?.data ?? []
+  const hasActiveFilters = category !== 'all' || search.trim().length > 0
   const filtered = search
     ? templates.filter(
         (t) =>
@@ -43,6 +47,11 @@ export function TemplateBrowsePage() {
   const handleWizardOpenChange = useCallback((open: boolean) => {
     setWizardOpen(open)
     if (!open) setSelectedSlug(null)
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setCategory('all')
+    setSearch('')
   }, [])
 
   return (
@@ -62,7 +71,7 @@ export function TemplateBrowsePage() {
         />
       </div>
 
-      <Tabs value={category} onValueChange={setCategory}>
+      <Tabs defaultValue="all" value={category} onValueChange={setCategory}>
         <TabsList>
           {CATEGORY_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
@@ -77,12 +86,35 @@ export function TemplateBrowsePage() {
               <div className="flex flex-1 items-center justify-center py-20">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               </div>
+            ) : isError ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center">
+                <LayoutTemplate className="h-12 w-12 text-muted-foreground" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">模板加载失败</p>
+                  <p className="text-sm text-muted-foreground">
+                    请稍后重试，或刷新页面后再查看模板画廊。
+                  </p>
+                </div>
+                <Button variant="outline" onClick={() => void refetch()}>
+                  重新加载
+                </Button>
+              </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 py-20">
                 <LayoutTemplate className="h-12 w-12 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  {search ? '没有匹配的模板' : '暂无模板'}
+                  {hasActiveFilters ? '没有匹配的模板' : '暂无模板'}
                 </p>
+                {hasActiveFilters ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      尝试其他搜索词或清除筛选条件。
+                    </p>
+                    <Button variant="outline" onClick={clearFilters}>
+                      清除筛选
+                    </Button>
+                  </>
+                ) : null}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

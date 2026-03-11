@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-const createWorkflowDefinitionSchema = z.object({
+export const CreateWorkflowDefinitionSchema = z.object({
   name: z
     .string()
     .min(1, { message: '工作流名称不能为空' })
@@ -17,5 +17,5 @@ const createWorkflowDefinitionSchema = z.object({
 });
 
 export class CreateWorkflowDefinitionDto extends createZodDto(
-  createWorkflowDefinitionSchema,
+  CreateWorkflowDefinitionSchema,
 ) {}

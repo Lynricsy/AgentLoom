@@ -5,16 +5,12 @@ import type { ReactNode } from 'react';
 
 import { useCreateWorkflow } from './workflowMutations';
 
-const { postMock, toSnakeBodyMock } = vi.hoisted(() => ({
-  postMock: vi.fn(),
-  toSnakeBodyMock: vi.fn((body: unknown) => body),
+const { createWorkflowMock } = vi.hoisted(() => ({
+  createWorkflowMock: vi.fn(),
 }));
 
-vi.mock('../../../shared/api/client', () => ({
-  apiClient: {
-    post: postMock,
-  },
-  toSnakeBody: toSnakeBodyMock,
+vi.mock('./workflowApi', () => ({
+  createWorkflow: createWorkflowMock,
 }));
 
 function createWrapper() {
@@ -36,11 +32,9 @@ describe('useCreateWorkflow', () => {
     vi.clearAllMocks();
   });
 
-  it('向 workflow-definitions 发送 POST 请求并使用 toSnakeBody', async () => {
+  it('调用 createWorkflow 并在成功后刷新工作流列表', async () => {
     const mockResult = { id: 'wf-1', name: '测试工作流', status: 'draft' };
-    postMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue({ data: mockResult }),
-    });
+    createWorkflowMock.mockResolvedValue(mockResult);
 
     const { Wrapper, queryClient } = createWrapper();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
@@ -58,15 +52,16 @@ describe('useCreateWorkflow', () => {
       expect(data).toEqual(mockResult);
     });
 
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({
-      name: '测试工作流',
-      description: '描述',
-      templateSlug: 'my-template',
-    });
-
-    expect(postMock).toHaveBeenCalledWith('workflow-definitions', {
-      json: expect.objectContaining({ name: '测试工作流' }),
-    });
+    expect(createWorkflowMock).toHaveBeenCalledWith(
+      {
+        name: '测试工作流',
+        description: '描述',
+        templateSlug: 'my-template',
+      },
+      expect.objectContaining({
+        mutationKey: ['workflow', 'create'],
+      }),
+    );
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
@@ -76,9 +71,7 @@ describe('useCreateWorkflow', () => {
   });
 
   it('不含模板时只发送 name', async () => {
-    postMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue({ data: { id: 'wf-2', name: '空白' } }),
-    });
+    createWorkflowMock.mockResolvedValue({ id: 'wf-2', name: '空白' });
 
     const { Wrapper } = createWrapper();
 
@@ -90,13 +83,16 @@ describe('useCreateWorkflow', () => {
       await result.current.mutateAsync({ name: '空白' });
     });
 
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({ name: '空白' });
+    expect(createWorkflowMock).toHaveBeenCalledWith(
+      { name: '空白' },
+      expect.objectContaining({
+        mutationKey: ['workflow', 'create'],
+      }),
+    );
   });
 
   it('请求失败时抛出错误', async () => {
-    postMock.mockReturnValue({
-      json: vi.fn().mockRejectedValue(new Error('Network error')),
-    });
+    createWorkflowMock.mockRejectedValue(new Error('Network error'));
 
     const { Wrapper } = createWrapper();
 

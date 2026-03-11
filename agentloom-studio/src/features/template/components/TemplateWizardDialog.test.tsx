@@ -118,7 +118,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 vi.mock('@/shared/ui/toast', () => ({
-  useToast: () => ({ toast: toastMock }),
+  useToast: () => ({ notify: toastMock }),
 }));
 
 function makeTemplateDetail(
@@ -284,7 +284,7 @@ describe('TemplateWizardDialog', () => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
           title: '创建失败',
-          variant: 'destructive',
+          variant: 'error',
         }),
       );
     });
