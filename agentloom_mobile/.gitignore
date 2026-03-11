@@ -48,3 +48,6 @@ app.*.map.json
 !.env.dev
 !.env.staging
 !.env.prod
+
+# FVM Version Cache
+.fvm/

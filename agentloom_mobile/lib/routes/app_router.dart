@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../app/shell_scaffold.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
+import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/workflows_screen.dart';
 import 'route_names.dart';
 
@@ -33,6 +34,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 path: '/workflows',
                 name: RouteNames.workflows,
                 builder: (context, state) => const WorkflowsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':workflowId',
+                    name: RouteNames.workflowDetail,
+                    builder: (context, state) {
+                      final workflowId = state.pathParameters['workflowId']!;
+                      return WorkflowDetailScreen(workflowId: workflowId);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

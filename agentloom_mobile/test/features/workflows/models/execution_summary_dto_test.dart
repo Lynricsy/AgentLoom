@@ -1,0 +1,102 @@
+import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('ExecutionSummaryDto', () {
+    final sampleJson = {
+      'id': 'exec-001',
+      'workflow_id': 'wf-001',
+      'status': 'completed',
+      'trigger_type': 'manual',
+      'total_steps': 5,
+      'completed_steps': 5,
+      'started_at': '2026-01-01T10:00:00.000Z',
+      'completed_at': '2026-01-01T10:05:00.000Z',
+      'failed_at': null,
+      'created_at': '2026-01-01T10:00:00.000Z',
+      'updated_at': '2026-01-01T10:05:00.000Z',
+    };
+
+    test('fromJson 正确解析完整 JSON', () {
+      final dto = ExecutionSummaryDto.fromJson(sampleJson);
+
+      expect(dto.id, 'exec-001');
+      expect(dto.workflowId, 'wf-001');
+      expect(dto.status, 'completed');
+      expect(dto.triggerType, 'manual');
+      expect(dto.totalSteps, 5);
+      expect(dto.completedSteps, 5);
+      expect(dto.startedAt, '2026-01-01T10:00:00.000Z');
+      expect(dto.completedAt, '2026-01-01T10:05:00.000Z');
+      expect(dto.failedAt, isNull);
+    });
+
+    test('fromJson 正确处理可选字段缺失', () {
+      final minimalJson = {
+        'id': 'exec-002',
+        'workflow_id': 'wf-002',
+        'status': 'pending',
+        'created_at': '2026-01-01T00:00:00.000Z',
+        'updated_at': '2026-01-01T00:00:00.000Z',
+      };
+
+      final dto = ExecutionSummaryDto.fromJson(minimalJson);
+
+      expect(dto.triggerType, isNull);
+      expect(dto.totalSteps, isNull);
+      expect(dto.completedSteps, isNull);
+      expect(dto.startedAt, isNull);
+      expect(dto.completedAt, isNull);
+      expect(dto.failedAt, isNull);
+    });
+
+    test('toJson 输出 snake_case 键', () {
+      final dto = ExecutionSummaryDto.fromJson(sampleJson);
+      final json = dto.toJson();
+
+      expect(json.containsKey('workflow_id'), isTrue);
+      expect(json.containsKey('trigger_type'), isTrue);
+      expect(json.containsKey('total_steps'), isTrue);
+      expect(json.containsKey('completed_steps'), isTrue);
+      expect(json.containsKey('started_at'), isTrue);
+      expect(json.containsKey('completed_at'), isTrue);
+      expect(json.containsKey('failed_at'), isTrue);
+      expect(json.containsKey('workflowId'), isFalse);
+    });
+
+    test('toJson → fromJson 往返一致', () {
+      final original = ExecutionSummaryDto.fromJson(sampleJson);
+      final roundTripped = ExecutionSummaryDto.fromJson(original.toJson());
+
+      expect(roundTripped.id, original.id);
+      expect(roundTripped.status, original.status);
+      expect(roundTripped.totalSteps, original.totalSteps);
+    });
+
+    test('failed 状态正确序列化', () {
+      final failedJson = {
+        ...sampleJson,
+        'status': 'failed',
+        'completed_at': null,
+        'failed_at': '2026-01-01T10:03:00.000Z',
+        'completed_steps': 3,
+      };
+
+      final dto = ExecutionSummaryDto.fromJson(failedJson);
+
+      expect(dto.status, 'failed');
+      expect(dto.completedAt, isNull);
+      expect(dto.failedAt, '2026-01-01T10:03:00.000Z');
+      expect(dto.completedSteps, 3);
+    });
+
+    test('copyWith 正确创建副本', () {
+      final dto = ExecutionSummaryDto.fromJson(sampleJson);
+      final copy = dto.copyWith(status: 'failed', completedSteps: 3);
+
+      expect(copy.status, 'failed');
+      expect(copy.completedSteps, 3);
+      expect(copy.id, dto.id);
+    });
+  });
+}

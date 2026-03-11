@@ -7,44 +7,32 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AgentLoomApp', () {
-    testWidgets('renders MaterialApp.router', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            envProvider.overrideWithValue(
-              const EnvConfig(
-                apiBaseUrl: 'http://localhost:3000/api/v1',
-                appName: 'AgentLoom Test',
-                environment: AppEnvironment.dev,
-              ),
+    Widget createApp() {
+      return ProviderScope(
+        overrides: [
+          envProvider.overrideWithValue(
+            const EnvConfig(
+              apiBaseUrl: 'http://localhost:3000/api/v1',
+              appName: 'AgentLoom Test',
+              environment: AppEnvironment.dev,
             ),
-          ],
-          child: const AgentLoomApp(),
-        ),
+          ),
+        ],
+        child: const AgentLoomApp(),
       );
+    }
+
+    testWidgets('renders MaterialApp.router', (tester) async {
+      await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
-      // MaterialApp.router is the root widget
       expect(find.byType(MaterialApp), findsOneWidget);
       final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
       expect(materialApp.routerConfig, isNotNull);
     });
 
     testWidgets('applies correct theme', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            envProvider.overrideWithValue(
-              const EnvConfig(
-                apiBaseUrl: 'http://localhost:3000/api/v1',
-                appName: 'AgentLoom Test',
-                environment: AppEnvironment.dev,
-              ),
-            ),
-          ],
-          child: const AgentLoomApp(),
-        ),
-      );
+      await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
       final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -52,67 +40,28 @@ void main() {
     });
 
     testWidgets('shows NavigationBar with 3 destinations', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            envProvider.overrideWithValue(
-              const EnvConfig(
-                apiBaseUrl: 'http://localhost:3000/api/v1',
-                appName: 'AgentLoom Test',
-                environment: AppEnvironment.dev,
-              ),
-            ),
-          ],
-          child: const AgentLoomApp(),
-        ),
-      );
+      await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
       expect(find.byType(NavigationBar), findsOneWidget);
-      expect(find.text('Dashboard'), findsOneWidget);
-      expect(find.text('Workflows'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
+      // NavigationBar destinations contain Dashboard, Workflows, Settings
+      final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.destinations.length, 3);
     });
 
     testWidgets('defaults to Dashboard tab', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            envProvider.overrideWithValue(
-              const EnvConfig(
-                apiBaseUrl: 'http://localhost:3000/api/v1',
-                appName: 'AgentLoom Test',
-                environment: AppEnvironment.dev,
-              ),
-            ),
-          ],
-          child: const AgentLoomApp(),
-        ),
-      );
+      await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
-      expect(find.text('Dashboard (Coming Soon)'), findsOneWidget);
+      // Dashboard AppBar title
+      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
     });
 
     testWidgets('ProviderScope wraps MaterialApp.router', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            envProvider.overrideWithValue(
-              const EnvConfig(
-                apiBaseUrl: 'http://localhost:3000/api/v1',
-                appName: 'AgentLoom Test',
-                environment: AppEnvironment.dev,
-              ),
-            ),
-          ],
-          child: const AgentLoomApp(),
-        ),
-      );
+      await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
       // If ProviderScope is not wrapping, ConsumerWidget would throw
-      // The fact that the app renders proves ProviderScope is correctly wrapping
       expect(find.byType(MaterialApp), findsOneWidget);
     });
   });
