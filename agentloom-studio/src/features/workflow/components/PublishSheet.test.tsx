@@ -169,6 +169,15 @@ describe('PublishSheet', () => {
 
     expect(screen.getByTestId('publish-warnings-list')).toBeInTheDocument();
     expect(screen.getByText('检测到潜在类型不兼容')).toBeInTheDocument();
+
+    expect(screen.queryByTestId('publish-warning-detail')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('publish-warning-toggle'));
+
+    expect(screen.getByTestId('publish-warning-detail')).toBeInTheDocument();
+    expect(screen.getByText('node-source.output')).toBeInTheDocument();
+    expect(screen.getByText('node-target.input')).toBeInTheDocument();
+    expect(screen.getAllByText(/text|json/)).not.toHaveLength(0);
   });
 
   it('选择已有版本提交发布', async () => {

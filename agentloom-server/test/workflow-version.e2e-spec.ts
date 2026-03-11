@@ -233,6 +233,7 @@ describe('WorkflowVersion E2E', () => {
     slug?: string;
     name?: string;
     nodes?: readonly JSONValue[];
+    edges?: readonly JSONValue[];
     status?: 'draft' | 'published' | 'archived';
   }) {
     const workflowId = crypto.randomUUID();
@@ -251,7 +252,7 @@ describe('WorkflowVersion E2E', () => {
           data: { label: 'Start' },
         },
       ],
-      edges: [],
+      edges: options.edges ?? [],
       viewport: { x: 0, y: 0, zoom: 1 },
       status: options.status,
     });
@@ -361,6 +362,73 @@ describe('WorkflowVersion E2E', () => {
           key === cacheKey && typeof value === 'string' && ttl === 300,
       ),
     ).toBe(true);
+  });
+
+  it('应当在发布存在不兼容端口边的工作流时返回 warnings', async () => {
+    const owner = await seedTenant('owner-publish-warning');
+    const workflow = await seedDraftWorkflow({
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+      nodes: [
+        {
+          id: 'node-source',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Source',
+            portMappingMetadata: {
+              outputs: [{ name: 'output-text', dataType: 'text' }],
+            },
+          },
+        },
+        {
+          id: 'node-target',
+          type: 'agent',
+          position: { x: 240, y: 0 },
+          data: {
+            label: 'Target',
+            portMappingMetadata: {
+              inputs: [{ name: 'input-image', dataType: 'image' }],
+            },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-typed-1',
+          source: 'node-source',
+          target: 'node-target',
+          sourceHandle: 'output-text',
+          targetHandle: 'input-image',
+        },
+      ],
+    });
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+      .set(owner.headers)
+      .send({
+        label: 'release-with-warning',
+      });
+
+    expect(publishResponse.status).toBe(200);
+    expect(publishResponse.body.warnings).toEqual([
+      {
+        code: 'PORT_TYPE_INCOMPATIBLE',
+        sourceNodeId: 'node-source',
+        targetNodeId: 'node-target',
+        sourcePort: {
+          name: 'output-text',
+          dataType: 'text',
+        },
+        targetPort: {
+          name: 'input-image',
+          dataType: 'image',
+        },
+        message:
+          '输出端口 "output-text" (text) 与输入端口 "input-image" (image) 类型不兼容',
+      },
+    ]);
   });
 
   it('应当在归档后拒绝新的写操作并同步归档历史版本', async () => {

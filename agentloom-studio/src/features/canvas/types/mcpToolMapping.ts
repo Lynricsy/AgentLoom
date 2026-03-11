@@ -2,9 +2,11 @@ import type { PortDataType, TypeSchema } from './typeSchema'
 import type { PortDefinition } from './nodeTypeRegistry'
 import { createPort } from './nodeTypeRegistry'
 
+export type BackendPortDataType = PortDataType | 'number' | 'boolean'
+
 export interface BackendPortMapping {
   name: string
-  dataType: 'text' | 'number' | 'boolean' | 'json' | 'image' | 'audio'
+  dataType: BackendPortDataType
   description?: string
   required?: boolean
 }
@@ -28,16 +30,20 @@ export interface McpToolDefinition {
   annotations: Record<string, unknown> | null
 }
 
-const BACKEND_TO_FRONTEND_DATA_TYPE: Record<BackendPortMapping['dataType'], PortDataType> = {
+const BACKEND_TO_FRONTEND_DATA_TYPE: Record<BackendPortDataType, PortDataType> = {
+  model: 'model',
   text: 'text',
   number: 'json',
   boolean: 'json',
   json: 'json',
   image: 'image',
   audio: 'audio',
+  tool: 'tool',
+  sandbox: 'sandbox',
+  knowledge: 'knowledge',
 }
 
-export function mapBackendDataType(backendType: BackendPortMapping['dataType']): PortDataType {
+export function mapBackendDataType(backendType: BackendPortDataType): PortDataType {
   return BACKEND_TO_FRONTEND_DATA_TYPE[backendType]
 }
 

@@ -866,7 +866,7 @@ describe('EvidenceService', () => {
           typeMismatch: {
             sourcePortId: 'output-text',
             targetPortId: 'input-image',
-            sourceType: 'string',
+            sourceType: 'text',
             targetType: 'image',
             sourceNodeId: 'node-source',
             targetNodeId: 'node-target',
@@ -891,7 +891,7 @@ describe('EvidenceService', () => {
         typeMismatch: {
           sourcePortId: 'output-text',
           targetPortId: 'input-image',
-          sourceType: 'string',
+          sourceType: 'text',
           targetType: 'image',
           sourceNodeId: 'node-source',
           targetNodeId: 'node-target',

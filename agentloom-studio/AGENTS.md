@@ -72,6 +72,7 @@ src/
   - `executionMutations`: `useRunWorkflow`, `useCancelExecution` (TanStack mutations + cache)
 - **executionStore** (`features/execution/stores/executionStore.ts`): 维护 `executionId/status/nodes/recentEvents`，并在 `waiting_intervention` 时缓存 `nodeName/requestedAt/decision(partial/structured suggestedContent)/partialContent/submitting`
 - **Story 6.5 诊断增强**: execution 事件/快照与执行详情现对齐 `StructuredErrorDetail` / `TypeMismatchInfo`，`executionStore` 会缓存 `errorDetail`；`FailedNodeError` 除 RFC7807 title/detail 外，还会渲染错误分类 badge、字段级错误、类型不匹配对比与重试记录；时间线失败卡片可跳转关联 `node_error` 证据
+- **Story 6.5 映射收口**: `features/canvas/types/mcpToolMapping.ts` 现直接消费 canonical 8-value backend `PortDataType`（`model|text|json|image|audio|tool|sandbox|knowledge`），并保留 legacy `number`/`boolean -> json` 回退；`mcpToolMapping.test.ts` 覆盖 `model/tool/sandbox/knowledge` 与兼容分支
 - **notificationStore** (`features/notification/stores/notificationStore.ts`): 维护 `notifications/unreadCount/isDropdownOpen`，支持 socket 增量插入、服务端列表同步与已读状态本地乐观更新
 - **提交动作**: `submitIntervention(executionId, stepId, payload)` 由 store 统一调用执行 API，并负责切换 `intervention.submitting`，让组件层只处理视图与错误呈现
 - **快照恢复**: `applySnapshot()` 会优先读取 `step.result.content` 恢复输出，并从 `step.checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` 恢复人工介入面板状态

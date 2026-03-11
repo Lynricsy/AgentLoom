@@ -119,4 +119,87 @@ describe('execution dto schemas', () => {
 
     expect(executionStepSchema.parse(step)).toEqual(step);
   });
+
+  it('应允许结构化错误携带 field errors 与 typeMismatch', () => {
+    const structuredError = {
+      message: '端口类型不匹配',
+      title: '端口类型不匹配',
+      detail: '上游输出与下游输入的数据类型不兼容',
+      type: 'https://agentloom.dev/errors/node-type-mismatch',
+      nodeId: 'node-target',
+      stack: 'Error: boom',
+      attempts: [
+        {
+          attempt: 1,
+          error: '第一次失败',
+          timestamp,
+        },
+      ],
+      errors: [
+        {
+          field: 'input.image',
+          message: '图片输入无效',
+        },
+      ],
+      typeMismatch: {
+        sourcePortId: 'output-text',
+        targetPortId: 'input-image',
+        sourceType: 'text',
+        targetType: 'image',
+        sourceNodeId: 'node-source',
+        targetNodeId: 'node-target',
+        edgeId: 'edge-1',
+      },
+    };
+
+    const step = {
+      id: stepId,
+      executionId,
+      nodeId: 'node-target',
+      stepOrder: 1,
+      status: 'failed' as const,
+      input: { prompt: '总结一下' },
+      nodeType: 'agent',
+      nodeData: { label: 'LLM' },
+      result: null,
+      checkpointData: null,
+      errorMessage: structuredError,
+      startedAt: timestamp,
+      completedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    expect(executionStepSchema.parse(step)).toEqual(step);
+
+    const payload = {
+      id: executionId,
+      workflowId,
+      workflowDefinitionId: workflowId,
+      workflowVersionId,
+      tenantId,
+      status: 'failed' as const,
+      triggerType: 'manual' as const,
+      inputParams: { source: 'csv' },
+      definitionSnapshot: {
+        nodes: [{ id: 'node-source', type: 'agent', data: { label: '上游节点' } }],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        metadata: { nodeCount: 1 },
+      },
+      startedAt: timestamp,
+      completedAt: timestamp,
+      failedAt: timestamp,
+      cancelledAt: null,
+      errorMessage: structuredError,
+      totalSteps: 1,
+      completedSteps: 0,
+      createdBy: userId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      steps: [step],
+    };
+
+    expect(executionResponseSchema.parse(payload)).toEqual(payload);
+  });
 });

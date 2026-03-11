@@ -6,7 +6,22 @@ const executionStepAttemptErrorSchema = z.object({
   timestamp: z.string(),
 });
 
-const executionStepErrorMessageSchema = z
+const executionFieldErrorSchema = z.object({
+  field: z.string(),
+  message: z.string(),
+});
+
+const executionTypeMismatchSchema = z.object({
+  sourcePortId: z.string().optional(),
+  targetPortId: z.string().optional(),
+  sourceType: z.string(),
+  targetType: z.string(),
+  sourceNodeId: z.string(),
+  targetNodeId: z.string(),
+  edgeId: z.string().optional(),
+});
+
+const executionStructuredErrorSchema = z
   .object({
     message: z.string().optional(),
     title: z.string().optional(),
@@ -15,12 +30,14 @@ const executionStepErrorMessageSchema = z
     nodeId: z.string().optional(),
     stack: z.string().optional(),
     attempts: z.array(executionStepAttemptErrorSchema).optional(),
+    errors: z.array(executionFieldErrorSchema).optional(),
+    typeMismatch: executionTypeMismatchSchema.optional(),
   })
   .nullable();
 
-const executionErrorMessageSchema = z
-  .object({ message: z.string(), stack: z.string().optional() })
-  .nullable();
+const executionStepErrorMessageSchema = executionStructuredErrorSchema;
+
+const executionErrorMessageSchema = executionStructuredErrorSchema;
 
 export const executionStepSchema = z.object({
   id: z.string().uuid(),

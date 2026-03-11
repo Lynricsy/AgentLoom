@@ -456,7 +456,7 @@ describe('WorkflowVersionService', () => {
     });
 
     it('端口类型不兼容时应当返回发布 warnings', async () => {
-      const workflow = createPortMappedWorkflow('string', 'image');
+      const workflow = createPortMappedWorkflow('text', 'image');
       const selectWf = createSelectChain([workflow]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
       db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
@@ -480,20 +480,20 @@ describe('WorkflowVersionService', () => {
           targetNodeId: 'node-2',
           sourcePort: {
             name: 'output-text',
-            dataType: 'string',
+            dataType: 'text',
           },
           targetPort: {
             name: 'input-data',
             dataType: 'image',
           },
           message:
-            '输出端口 "output-text" (string) 与输入端口 "input-data" (image) 类型不兼容',
+            '输出端口 "output-text" (text) 与输入端口 "input-data" (image) 类型不兼容',
         },
       ]);
     });
 
     it('端口类型一致时不应返回发布 warnings', async () => {
-      const workflow = createPortMappedWorkflow('string', 'string');
+      const workflow = createPortMappedWorkflow('text', 'text');
       const selectWf = createSelectChain([workflow]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
       db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);

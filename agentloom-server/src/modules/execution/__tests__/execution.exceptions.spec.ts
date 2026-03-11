@@ -8,14 +8,14 @@ import {
 } from '../execution.exceptions';
 
 const PORT_TYPES = [
-  'string',
-  'number',
-  'boolean',
+  'model',
+  'text',
   'json',
   'image',
   'audio',
-  'file',
-  'model',
+  'tool',
+  'sandbox',
+  'knowledge',
 ] as const;
 
 describe('execution.exceptions', () => {
@@ -32,14 +32,14 @@ describe('execution.exceptions', () => {
     );
 
     it.each([
-      ['string', 'number'],
-      ['number', 'boolean'],
-      ['boolean', 'image'],
+      ['model', 'text'],
+      ['text', 'image'],
       ['json', 'audio'],
-      ['image', 'file'],
-      ['audio', 'model'],
-      ['file', 'string'],
-      ['model', 'boolean'],
+      ['image', 'tool'],
+      ['audio', 'knowledge'],
+      ['tool', 'sandbox'],
+      ['sandbox', 'model'],
+      ['knowledge', 'text'],
     ])(
       '当源类型 %s 与目标类型 %s 不同且目标不是 json 时返回 false',
       (sourceType, targetType) => {
@@ -53,7 +53,7 @@ describe('execution.exceptions', () => {
       const typeMismatch: TypeMismatchDetail = {
         sourcePortId: 'output-text',
         targetPortId: 'input-image',
-        sourceType: 'string',
+        sourceType: 'text',
         targetType: 'image',
         sourceNodeId: 'node-source',
         targetNodeId: 'node-target',
@@ -69,7 +69,7 @@ describe('execution.exceptions', () => {
       expect(exception.getResponse()).toBe('端口类型不匹配');
       expect(exception.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
       expect(exception.detail).toBe(
-        '节点 node-source 的输出端口 "output-text" (string) 与节点 node-target 的输入端口 "input-image" (image) 类型不兼容',
+        '节点 node-source 的输出端口 "output-text" (text) 与节点 node-target 的输入端口 "input-image" (image) 类型不兼容',
       );
       expect(exception.typeMismatch).toEqual(typeMismatch);
     });

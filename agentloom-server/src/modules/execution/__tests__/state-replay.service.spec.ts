@@ -124,20 +124,45 @@ describe('StateReplayService', () => {
     expect(step.completedAt).toBeNull();
   });
 
-  it('should extract error message from jsonb errorMessage', async () => {
+  it('should extract error message from jsonb errorMessage and preserve errorDetail', async () => {
+    const errorDetail = {
+      message: 'Something broke',
+      title: '端口类型不匹配',
+      detail: '上游输出与下游输入的数据类型不兼容',
+      type: 'https://agentloom.dev/errors/node-type-mismatch',
+      nodeId: 'node-a',
+      stack: '...',
+      errors: [
+        {
+          field: 'input.image',
+          message: '图片输入无效',
+        },
+      ],
+      typeMismatch: {
+        sourcePortId: 'output-text',
+        targetPortId: 'input-image',
+        sourceType: 'text',
+        targetType: 'image',
+        sourceNodeId: 'node-source',
+        targetNodeId: 'node-target',
+        edgeId: 'edge-1',
+      },
+    };
+
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
       .mockReturnValueOnce(
         createSelectChain([
           makeStep('step-1', 'node-a', {
             status: 'failed',
-            errorMessage: { message: 'Something broke', stack: '...' },
+            errorMessage: errorDetail,
           }),
         ]),
       );
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0].errorMessage).toBe('Something broke');
+    expect(snapshot!.steps[0].errorDetail).toEqual(errorDetail);
   });
 
   it('should omit errorMessage when null', async () => {

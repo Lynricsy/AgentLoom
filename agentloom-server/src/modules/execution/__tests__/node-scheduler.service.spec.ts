@@ -587,12 +587,12 @@ describe('NodeSchedulerService', () => {
     it('should mark step as failed with typeMismatch when port types are incompatible', async () => {
       const nodeA = makeNode('A', 'agent', {
         portMappingMetadata: {
-          outputs: [{ name: 'out-1', dataType: 'image' }],
+          outputs: [{ name: 'out-1', dataType: 'text' }],
         },
       });
       const nodeB = makeNode('B', 'agent', {
         portMappingMetadata: {
-          inputs: [{ name: 'in-1', dataType: 'number' }],
+          inputs: [{ name: 'in-1', dataType: 'image' }],
         },
       });
       const snapshot = makeSnapshot(
@@ -624,8 +624,8 @@ describe('NodeSchedulerService', () => {
           errorMessage: expect.objectContaining({
             type: 'https://agentloom.dev/errors/node-type-mismatch',
             typeMismatch: expect.objectContaining({
-              sourceType: 'image',
-              targetType: 'number',
+              sourceType: 'text',
+              targetType: 'image',
               sourceNodeId: 'A',
               targetNodeId: 'B',
             }),

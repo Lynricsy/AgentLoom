@@ -218,6 +218,22 @@ function createDiscoveredTool(overrides: Record<string, unknown> = {}) {
           type: 'array',
           description: '标签列表',
         },
+        modelConfig: {
+          type: 'string',
+          description: '模型标识',
+        },
+        selectedTool: {
+          type: 'string',
+          description: '待调用工具',
+        },
+        sandboxSession: {
+          type: 'string',
+          description: '沙箱 runtime 会话',
+        },
+        knowledgeBaseId: {
+          type: 'string',
+          description: '知识库标识',
+        },
       },
       required: ['query', 'enabled'],
     },
@@ -586,6 +602,85 @@ describe('McpService', () => {
           lastTestedAt: expect.any(Date),
         }),
       );
+
+      const expectedPortMappingMetadata = {
+        inputs: [
+          {
+            name: 'query',
+            dataType: 'text',
+            description: '查询关键词',
+            required: true,
+          },
+          {
+            name: 'limit',
+            dataType: 'json',
+            description: '返回数量',
+            required: false,
+          },
+          {
+            name: 'enabled',
+            dataType: 'json',
+            description: '是否启用扩展搜索',
+            required: true,
+          },
+          {
+            name: 'payload',
+            dataType: 'json',
+            description: '结构化负载',
+            required: false,
+          },
+          {
+            name: 'thumbnail',
+            dataType: 'image',
+            description: '缩略图',
+            required: false,
+          },
+          {
+            name: 'clip',
+            dataType: 'audio',
+            description: '音频片段',
+            required: false,
+          },
+          {
+            name: 'tags',
+            dataType: 'json',
+            description: '标签列表',
+            required: false,
+          },
+          {
+            name: 'modelConfig',
+            dataType: 'model',
+            description: '模型标识',
+            required: false,
+          },
+          {
+            name: 'selectedTool',
+            dataType: 'tool',
+            description: '待调用工具',
+            required: false,
+          },
+          {
+            name: 'sandboxSession',
+            dataType: 'sandbox',
+            description: '沙箱 runtime 会话',
+            required: false,
+          },
+          {
+            name: 'knowledgeBaseId',
+            dataType: 'knowledge',
+            description: '知识库标识',
+            required: false,
+          },
+        ],
+        outputs: [
+          {
+            name: 'result',
+            dataType: 'text',
+            description: '工具执行结果',
+          },
+        ],
+      };
+
       expect(toolInsertChain.values).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
@@ -601,59 +696,7 @@ describe('McpService', () => {
           },
           isActive: true,
           importedAt: expect.any(Date),
-          portMappingMetadata: {
-            inputs: [
-              {
-                name: 'query',
-                dataType: 'text',
-                description: '查询关键词',
-                required: true,
-              },
-              {
-                name: 'limit',
-                dataType: 'json',
-                description: '返回数量',
-                required: false,
-              },
-              {
-                name: 'enabled',
-                dataType: 'json',
-                description: '是否启用扩展搜索',
-                required: true,
-              },
-              {
-                name: 'payload',
-                dataType: 'json',
-                description: '结构化负载',
-                required: false,
-              },
-              {
-                name: 'thumbnail',
-                dataType: 'image',
-                description: '缩略图',
-                required: false,
-              },
-              {
-                name: 'clip',
-                dataType: 'audio',
-                description: '音频片段',
-                required: false,
-              },
-              {
-                name: 'tags',
-                dataType: 'json',
-                description: '标签列表',
-                required: false,
-              },
-            ],
-            outputs: [
-              {
-                name: 'result',
-                dataType: 'text',
-                description: '工具执行结果',
-              },
-            ],
-          },
+          portMappingMetadata: expectedPortMappingMetadata,
         }),
       );
       expect(result).toEqual({
@@ -664,59 +707,7 @@ describe('McpService', () => {
             name: 'search-docs',
             title: '搜索文档',
             description: '搜索知识库文档',
-            portMappingMetadata: {
-              inputs: [
-                {
-                  name: 'query',
-                  dataType: 'text',
-                  description: '查询关键词',
-                  required: true,
-                },
-                {
-                  name: 'limit',
-                  dataType: 'json',
-                  description: '返回数量',
-                  required: false,
-                },
-                {
-                  name: 'enabled',
-                  dataType: 'json',
-                  description: '是否启用扩展搜索',
-                  required: true,
-                },
-                {
-                  name: 'payload',
-                  dataType: 'json',
-                  description: '结构化负载',
-                  required: false,
-                },
-                {
-                  name: 'thumbnail',
-                  dataType: 'image',
-                  description: '缩略图',
-                  required: false,
-                },
-                {
-                  name: 'clip',
-                  dataType: 'audio',
-                  description: '音频片段',
-                  required: false,
-                },
-                {
-                  name: 'tags',
-                  dataType: 'json',
-                  description: '标签列表',
-                  required: false,
-                },
-              ],
-              outputs: [
-                {
-                  name: 'result',
-                  dataType: 'text',
-                  description: '工具执行结果',
-                },
-              ],
-            },
+            portMappingMetadata: expectedPortMappingMetadata,
           },
         ],
       });

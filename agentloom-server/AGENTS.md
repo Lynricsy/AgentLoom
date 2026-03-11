@@ -169,4 +169,5 @@ Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)�
 - `workflow-version.service.ts` (621L) — 版本管理逻辑 + 发布时端口类型兼容性警告
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建
+- `execution-response.dto.ts` / `workflow-version.e2e-spec.ts` — Story 6.5 收口补充：执行详情 DTO 已对齐 `errors/typeMismatch` 契约，工作流发布 E2E 已覆盖 `warnings[]` HTTP 路径
 - `auth.service.ts` (508L) — 认证全流程
