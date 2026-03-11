@@ -32,6 +32,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket | BullMQ, EventEmitter |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
+| template | `modules/template/` | 工作流模板浏览 (public, 无认证) | — |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -113,9 +114,10 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。21 张表，启用 RLS (`rls-policies.ts`)。
+Schema 在 `src/database/schema/`。22 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，`documentChunks` 含 vector 列。
-迁移命令: `pnpm db:generate` → `pnpm db:migrate`。
+迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
+种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
 
 ## WebSocket
 

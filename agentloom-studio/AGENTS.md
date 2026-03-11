@@ -30,6 +30,7 @@ src/
 │   ├── knowledge/    # 知识库管理
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   ├── evidence/    # 证据记录查询/展示 + 溯源链 + 引用面板 + 文档查看器 (types/api/hooks/stores/components/lib)
+│   ├── template/    # 工作流模板浏览 (types/api/queries, 10min staleTime, public API)
 │   └── llm/          # LLM 模型配置
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
