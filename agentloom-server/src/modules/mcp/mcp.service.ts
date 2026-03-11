@@ -414,9 +414,7 @@ export class McpService {
         return 'text';
       case 'number':
       case 'integer':
-        return 'number';
       case 'boolean':
-        return 'boolean';
       case 'object':
       case 'array':
         return 'json';

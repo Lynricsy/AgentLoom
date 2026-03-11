@@ -13,7 +13,16 @@ export class ImportMcpToolsDto extends createZodDto(
 
 export const portMappingSchema = z.object({
   name: z.string(),
-  dataType: z.enum(['text', 'number', 'boolean', 'json', 'image', 'audio']),
+  dataType: z.enum([
+    'model',
+    'text',
+    'json',
+    'image',
+    'audio',
+    'tool',
+    'sandbox',
+    'knowledge',
+  ]),
   description: z.string().optional(),
   required: z.boolean().optional(),
 });
