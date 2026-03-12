@@ -69,13 +69,12 @@ describe('WorkflowDefinitionCreateController', () => {
       ]);
     });
 
-    it('update 应要求 owner/admin/creator/operator 角色', () => {
+    it('update 应要求 owner/admin/creator 角色', () => {
       const { controller } = setup();
       expect(getRoles(controller, 'update')).toEqual([
         'owner',
         'admin',
         'creator',
-        'operator',
       ]);
     });
 

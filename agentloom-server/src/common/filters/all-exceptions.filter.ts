@@ -56,14 +56,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof DomainException) {
-      return {
+      return this.withExtensions({
         type: exception.type,
         title: exception.message,
         status: exception.getStatus(),
         detail: exception.detail,
         instance,
         ...(exception.errors && { errors: exception.errors }),
-      };
+      }, exception.extensions);
     }
 
     if (exception instanceof HttpException) {
@@ -93,5 +93,28 @@ export class AllExceptionsFilter implements ExceptionFilter {
       detail: 'An unexpected error occurred',
       instance,
     };
+  }
+
+  private withExtensions(
+    problem: ProblemDetails,
+    extensions?: Record<string, unknown>,
+  ): ProblemDetails {
+    if (!extensions) {
+      return problem;
+    }
+
+    const enrichedProblem: ProblemDetails = {
+      ...problem,
+    };
+
+    for (const [key, value] of Object.entries(extensions)) {
+      if (key in enrichedProblem) {
+        continue;
+      }
+
+      enrichedProblem[key] = value;
+    }
+
+    return enrichedProblem;
   }
 }

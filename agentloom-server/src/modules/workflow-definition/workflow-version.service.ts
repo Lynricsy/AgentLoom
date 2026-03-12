@@ -194,9 +194,9 @@ export class WorkflowVersionService {
     userId: string,
     dto: CreateWorkflowDefinitionDto,
   ): Promise<WorkflowDefinition> {
-    let nodes: Record<string, unknown>[] = [];
-    let edges: Record<string, unknown>[] = [];
-    let viewport: { x: number; y: number; zoom: number } = {
+    let nodes: schema.ReactFlowNode[] = [];
+    let edges: schema.ReactFlowEdge[] = [];
+    let viewport: schema.ReactFlowViewport = {
       x: 0,
       y: 0,
       zoom: 1,
@@ -207,8 +207,8 @@ export class WorkflowVersionService {
       const template =
         await this.templateService.findBySlug(dto.template_slug);
       const cloned = cloneDefinitionWithNewIds({
-        nodes: template.definition.nodes as schema.ReactFlowNode[],
-        edges: template.definition.edges as schema.ReactFlowEdge[],
+        nodes: template.definition.nodes,
+        edges: template.definition.edges,
         viewport: template.definition.viewport,
       });
       nodes = cloned.nodes;
@@ -502,18 +502,20 @@ export class WorkflowVersionService {
           );
         }
 
-        const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
+        const nodes: schema.ReactFlowNode[] = Array.isArray(workflow.nodes)
+          ? workflow.nodes
+          : [];
         if (nodes.length === 0) {
           throw new WorkflowPublishValidationException([
             '工作流必须包含至少一个节点才能发布',
           ]);
         }
 
-        const edges = Array.isArray(workflow.edges)
-          ? (workflow.edges as schema.ReactFlowEdge[])
+        const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)
+          ? workflow.edges
           : [];
         const warnings = this.validateEdgeTypeCompatibility(
-          nodes as schema.ReactFlowNode[],
+          nodes,
           edges,
         );
 

@@ -77,7 +77,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Patch(':id')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @Roles('owner', 'admin', 'creator')
   @ApiOperation({ summary: '更新工作流定义' })
   @ApiResponse({ status: 200, description: '工作流定义更新成功' })
   @ApiResponse({ status: 404, description: '工作流定义不存在' })

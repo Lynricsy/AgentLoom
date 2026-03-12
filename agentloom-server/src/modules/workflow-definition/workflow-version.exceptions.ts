@@ -69,6 +69,9 @@ export class WorkflowVersionConflictException extends DomainException {
       title: '版本冲突',
       status: HttpStatus.CONFLICT,
       detail: `工作流 ${workflowId} 已被其他用户修改，请刷新后重试`,
+      extensions: {
+        currentVersion,
+      },
       errors: [
         {
           field: 'version',

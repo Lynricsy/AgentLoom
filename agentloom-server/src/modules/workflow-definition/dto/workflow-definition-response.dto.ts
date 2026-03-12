@@ -1,4 +1,9 @@
-import type { WorkflowDefinition } from '../../../database/schema/workflow-definitions.schema';
+import type {
+  ReactFlowEdge,
+  ReactFlowNode,
+  ReactFlowViewport,
+  WorkflowDefinition,
+} from '../../../database/schema/workflow-definitions.schema';
 
 /**
  * 工作流定义响应 DTO（排除 nodes/edges/viewport 大字段）
@@ -22,9 +27,9 @@ export interface WorkflowDefinitionResponseDto {
  */
 export interface WorkflowDefinitionDetailResponseDto
   extends WorkflowDefinitionResponseDto {
-  nodes: Record<string, unknown>[];
-  edges: Record<string, unknown>[];
-  viewport: { x: number; y: number; zoom: number } | null;
+  nodes: ReactFlowNode[];
+  edges: ReactFlowEdge[];
+  viewport: ReactFlowViewport | null;
 }
 
 /**
@@ -85,8 +90,8 @@ export function serializeWorkflowDefinitionDetail(
 ): WorkflowDefinitionDetailResponseDto {
   return {
     ...serializeWorkflowDefinition(row),
-    nodes: (row.nodes ?? []) as Record<string, unknown>[],
-    edges: (row.edges ?? []) as Record<string, unknown>[],
+    nodes: row.nodes ?? [],
+    edges: row.edges ?? [],
     viewport: row.viewport ?? null,
   };
 }

@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import type { TemplateDefinition } from '../../../database/schema/workflow-templates.schema';
+
 // ──────────────────────────────────────────────
 // Query DTO
 // ──────────────────────────────────────────────
@@ -55,7 +57,11 @@ export const TemplateDetailSchema = TemplateListItemSchema.extend({
   }),
 });
 
-export type TemplateDetail = z.infer<typeof TemplateDetailSchema>;
+type TemplateDetailShape = z.infer<typeof TemplateDetailSchema>;
+
+export type TemplateDetail = Omit<TemplateDetailShape, 'definition'> & {
+  definition: TemplateDefinition;
+};
 
 /** 分页元信息 */
 export const PaginationMetaSchema = z.object({

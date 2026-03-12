@@ -634,6 +634,72 @@ describe('WorkflowVersion E2E', () => {
       });
     });
 
+    it('应支持按名称升序排序', async () => {
+      const owner = await seedTenant('definitions-sort-name');
+
+      await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: 'Charlie 工作流',
+        slug: 'charlie-workflow',
+      });
+      await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: 'Alpha 工作流',
+        slug: 'alpha-workflow',
+      });
+      await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: 'Bravo 工作流',
+        slug: 'bravo-workflow',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/workflow-definitions?sort=name&order=asc')
+        .set(owner.headers);
+
+      expect(response.status).toBe(200);
+      expect(
+        response.body.data.map((item: { name: string }) => item.name),
+      ).toEqual(['Alpha 工作流', 'Bravo 工作流', 'Charlie 工作流']);
+    });
+
+    it('应兼容 snake_case 排序字段', async () => {
+      const owner = await seedTenant('definitions-sort-snake');
+
+      const newestWorkflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: '最新工作流',
+        slug: 'snake-newest-workflow',
+      });
+      const oldestWorkflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: '最早工作流',
+        slug: 'snake-oldest-workflow',
+      });
+
+      await setWorkflowUpdatedAt(newestWorkflow.id, new Date('2025-01-03T00:00:00Z'));
+      await setWorkflowUpdatedAt(oldestWorkflow.id, new Date('2025-01-01T00:00:00Z'));
+
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/workflow-definitions?sort=updated_at&order=asc')
+        .set(owner.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data[0]).toMatchObject({
+        id: oldestWorkflow.id,
+        name: '最早工作流',
+      });
+      expect(response.body.data[1]).toMatchObject({
+        id: newestWorkflow.id,
+        name: '最新工作流',
+      });
+    });
+
     it('应支持分页参数', async () => {
       const owner = await seedTenant('definitions-pagination');
 
@@ -676,6 +742,68 @@ describe('WorkflowVersion E2E', () => {
         id: middleWorkflow.id,
         name: '中间工作流',
         slug: 'middle-workflow',
+      });
+    });
+
+    it('应只返回当前租户的工作流定义', async () => {
+      const owner = await seedTenant('definitions-list-tenant-a');
+      const outsider = await seedTenant('definitions-list-tenant-b');
+
+      const ownerWorkflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: '租户 A 工作流',
+        slug: 'tenant-a-workflow',
+      });
+      const outsiderWorkflow = await seedDraftWorkflow({
+        tenantId: outsider.tenantId,
+        createdBy: outsider.user.id,
+        name: '租户 B 工作流',
+        slug: 'tenant-b-workflow',
+      });
+
+      const ownerResponse = await request(app.getHttpServer())
+        .get('/api/v1/workflow-definitions')
+        .set(owner.headers);
+      const outsiderResponse = await request(app.getHttpServer())
+        .get('/api/v1/workflow-definitions')
+        .set(outsider.headers);
+
+      expect(ownerResponse.status).toBe(200);
+      expect(ownerResponse.body.meta.total).toBe(1);
+      expect(ownerResponse.body.data).toHaveLength(1);
+      expect(ownerResponse.body.data[0]).toMatchObject({
+        id: ownerWorkflow.id,
+        name: '租户 A 工作流',
+      });
+
+      expect(outsiderResponse.status).toBe(200);
+      expect(outsiderResponse.body.meta.total).toBe(1);
+      expect(outsiderResponse.body.data).toHaveLength(1);
+      expect(outsiderResponse.body.data[0]).toMatchObject({
+        id: outsiderWorkflow.id,
+        name: '租户 B 工作流',
+      });
+    });
+
+    it('viewer 角色应允许查询列表', async () => {
+      const viewer = await seedTenant('definitions-list-viewer', 'viewer');
+
+      await seedDraftWorkflow({
+        tenantId: viewer.tenantId,
+        createdBy: viewer.user.id,
+        name: 'viewer 可见工作流',
+        slug: 'viewer-visible-workflow',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/workflow-definitions')
+        .set(viewer.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.body.meta.total).toBe(1);
+      expect(response.body.data[0]).toMatchObject({
+        name: 'viewer 可见工作流',
       });
     });
 
@@ -738,6 +866,26 @@ describe('WorkflowVersion E2E', () => {
         status: 404,
       });
       expect(response.body.detail).toContain(missingId);
+    });
+
+    it('跨租户访问详情应返回 404', async () => {
+      const owner = await seedTenant('definitions-detail-tenant-a');
+      const outsider = await seedTenant('definitions-detail-tenant-b');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: '租户隔离详情工作流',
+        slug: 'tenant-isolated-detail-workflow',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(outsider.headers);
+
+      expect(response.status).toBe(404);
+      expect(response.body.type).toBe(
+        'https://agentloom.dev/errors/workflow-not-found',
+      );
     });
 
     it('非法 UUID 应返回 400', async () => {
@@ -953,7 +1101,10 @@ describe('WorkflowVersion E2E', () => {
         type: 'https://agentloom.dev/errors/version-conflict',
         title: '版本冲突',
         status: 409,
+        currentVersion: workflow.version,
+        instance: `/api/v1/workflow-definitions/${workflow.id}`,
       });
+      expect(response.headers['content-type']).toContain('application/problem+json');
       expect(response.body.errors).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -1037,6 +1188,41 @@ describe('WorkflowVersion E2E', () => {
       expect(response.status).toBe(403);
     });
 
+    it('operator 角色应被拒绝（403）', async () => {
+      const operator = await seedTenant('patch-operator', 'operator');
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflowId}`)
+        .set(operator.headers)
+        .send({ version: 1 });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('跨租户更新应返回 404', async () => {
+      const owner = await seedTenant('patch-tenant-a');
+      const outsider = await seedTenant('patch-tenant-b');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'patch-tenant-isolated-workflow',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(outsider.headers)
+        .send({
+          version: workflow.version,
+          name: '不应跨租户更新',
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.type).toBe(
+        'https://agentloom.dev/errors/workflow-not-found',
+      );
+    });
+
     it('未认证请求应返回 401', async () => {
       const workflowId = crypto.randomUUID();
 
@@ -1114,15 +1300,34 @@ describe('WorkflowVersion E2E', () => {
       expect(response.status).toBe(409);
     });
 
-    it('operator 角色应被拒绝（403）', async () => {
-      const operator = await seedTenant('delete-operator', 'operator');
+    it('creator 角色应被拒绝（403）', async () => {
+      const creator = await seedTenant('delete-creator', 'creator');
       const workflowId = crypto.randomUUID();
 
       const response = await request(app.getHttpServer())
         .delete(`/api/v1/workflow-definitions/${workflowId}`)
-        .set(operator.headers);
+        .set(creator.headers);
 
       expect(response.status).toBe(403);
+    });
+
+    it('跨租户删除应返回 404', async () => {
+      const owner = await seedTenant('delete-tenant-a');
+      const outsider = await seedTenant('delete-tenant-b');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'delete-tenant-isolated-workflow',
+      });
+
+      const response = await request(app.getHttpServer())
+        .delete(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(outsider.headers);
+
+      expect(response.status).toBe(404);
+      expect(response.body.type).toBe(
+        'https://agentloom.dev/errors/workflow-not-found',
+      );
     });
 
     it('未认证请求应返回 401', async () => {

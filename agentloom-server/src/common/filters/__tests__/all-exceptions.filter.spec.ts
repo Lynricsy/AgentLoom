@@ -211,6 +211,30 @@ describe('AllExceptionsFilter', () => {
     expect(loggerErrorSpy).not.toHaveBeenCalled();
   });
 
+  it('将 DomainException 的顶层扩展字段透传到 problem details', () => {
+    const exception = new DomainException({
+      type: 'https://agentloom.dev/errors/version-conflict',
+      title: '版本冲突',
+      status: HttpStatus.CONFLICT,
+      detail: '工作流已被其他用户修改，请刷新后重试',
+      extensions: {
+        currentVersion: 3,
+      },
+    });
+
+    filter.catch(exception, host);
+
+    expectProblemResponse(reply, {
+      type: 'https://agentloom.dev/errors/version-conflict',
+      title: '版本冲突',
+      status: HttpStatus.CONFLICT,
+      detail: '工作流已被其他用户修改，请刷新后重试',
+      instance: request.url,
+      currentVersion: 3,
+    });
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
   it('将字符串 HttpException 响应映射为 detail', () => {
     const exception = new HttpException('Bad payload', HttpStatus.BAD_REQUEST);
 
