@@ -581,6 +581,48 @@ describe('WorkflowVersion E2E', () => {
       expect(response.body).toEqual({ data: WORKFLOW_INPUT_SCHEMA });
     });
 
+    it('inputSchema 为空时应返回默认空 schema', async () => {
+      const owner = await seedTenant('input-schema-default');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'input-schema-default-workflow',
+        status: 'published',
+        inputSchema: null,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/input-schema`)
+        .set(owner.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        data: {
+          version: 1,
+          collectionMode: 'form',
+          fields: [],
+        },
+      });
+    });
+
+    it('operator 角色应允许访问 input-schema', async () => {
+      const operator = await seedTenant('input-schema-operator', 'operator');
+      const workflow = await seedDraftWorkflow({
+        tenantId: operator.tenantId,
+        createdBy: operator.user.id,
+        slug: 'input-schema-operator-workflow',
+        status: 'published',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/input-schema`)
+        .set(operator.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ data: WORKFLOW_INPUT_SCHEMA });
+    });
+
     it('工作流未发布时应返回 409', async () => {
       const owner = await seedTenant('input-schema-draft');
       const workflow = await seedDraftWorkflow({
@@ -659,6 +701,48 @@ describe('WorkflowVersion E2E', () => {
       expect(storedExecution?.inputParams).toEqual({
         topic: 'AI 趋势',
         depth: '中度',
+        _meta: {
+          launchSource: 'mobile',
+        },
+      });
+    });
+
+    it('应兼容 input_params 和 launch_source 请求体', async () => {
+      const owner = await seedTenant('run-with-snake-case');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'run-with-snake-case-workflow',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const publishResponse = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+        .set(owner.headers)
+        .send({ label: 'v1' });
+
+      expect(publishResponse.status).toBe(200);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({
+          input_params: {
+            topic: '移动端兼容',
+            depth: '浅度',
+          },
+          launch_source: 'mobile',
+        });
+
+      expect(response.status).toBe(202);
+
+      const storedExecution = await drizzleDb.query.workflowExecutions.findFirst({
+        where: eq(schema.workflowExecutions.id, response.body.data.id),
+      });
+
+      expect(storedExecution?.inputParams).toEqual({
+        topic: '移动端兼容',
+        depth: '浅度',
         _meta: {
           launchSource: 'mobile',
         },

@@ -66,7 +66,7 @@ class WorkflowApi {
     );
     final body = response.data as Map<String, dynamic>;
     final data = body['data'] as Map<String, dynamic>;
-    return WorkflowInputSchema.fromJson(data);
+    return WorkflowInputSchema.fromJson(_normalizeInputSchema(data));
   }
 
   /// 触发执行工作流
@@ -76,8 +76,8 @@ class WorkflowApi {
     String? launchSource,
   }) async {
     final body = <String, dynamic>{};
-    if (inputParams != null) body['input_params'] = inputParams;
-    if (launchSource != null) body['launch_source'] = launchSource;
+    if (inputParams != null) body['inputParams'] = inputParams;
+    if (launchSource != null) body['launchSource'] = launchSource;
 
     final response = await _dio.post(
       '/api/v1/workflow-definitions/$workflowId/run',
@@ -91,6 +91,56 @@ class WorkflowApi {
     final response = await _dio.get('/api/v1/executions/$executionId');
     final body = response.data as Map<String, dynamic>;
     return ExecutionSummaryDto.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Map<String, dynamic> _normalizeInputSchema(Map<String, dynamic> payload) {
+    final normalized = Map<String, dynamic>.from(payload);
+
+    final collectionMode =
+        normalized['collection_mode'] ?? normalized['collectionMode'];
+    if (collectionMode != null) {
+      normalized['collection_mode'] = collectionMode;
+    }
+
+    final fields = normalized['fields'];
+    if (fields is List) {
+      normalized['fields'] = fields.map((field) {
+        if (field is! Map) {
+          return field;
+        }
+
+        final normalizedField = Map<String, dynamic>.from(
+          field.cast<String, dynamic>(),
+        );
+        final validation = normalizedField['validation'];
+
+        if (validation is Map) {
+          final normalizedValidation = Map<String, dynamic>.from(
+            validation.cast<String, dynamic>(),
+          );
+
+          final minLength =
+              normalizedValidation['min_length'] ??
+              normalizedValidation['minLength'];
+          final maxLength =
+              normalizedValidation['max_length'] ??
+              normalizedValidation['maxLength'];
+
+          if (minLength != null) {
+            normalizedValidation['min_length'] = minLength;
+          }
+          if (maxLength != null) {
+            normalizedValidation['max_length'] = maxLength;
+          }
+
+          normalizedField['validation'] = normalizedValidation;
+        }
+
+        return normalizedField;
+      }).toList();
+    }
+
+    return normalized;
   }
 }
 

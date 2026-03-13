@@ -61,6 +61,32 @@ void main() {
       expect(schema.fields.first.label, '标题');
     });
 
+    test('兼容 camelCase 响应并归一化 nested validation', () async {
+      when(
+        () => mockDio.get('/api/v1/workflow-definitions/wf-3/input-schema'),
+      ).thenAnswer(
+        (_) async => okResponse({
+          'data': {
+            'version': 1,
+            'collectionMode': 'conversation',
+            'fields': [
+              {
+                'id': 'topic',
+                'type': 'text',
+                'label': '分析主题',
+                'validation': {'minLength': 3, 'maxLength': 200},
+              },
+            ],
+          },
+        }),
+      );
+
+      final schema = await api.getInputSchema('wf-3');
+      expect(schema.collectionMode, 'conversation');
+      expect(schema.fields.first.validation?.minLength, 3);
+      expect(schema.fields.first.validation?.maxLength, 200);
+    });
+
     test('API 错误时抛出 DioException', () async {
       when(
         () => mockDio.get('/api/v1/workflow-definitions/wf-bad/input-schema'),
@@ -80,7 +106,7 @@ void main() {
   });
 
   group('runWorkflow (扩展参数)', () {
-    test('发送 POST 包含 input_params 和 launch_source', () async {
+    test('发送 POST 包含 inputParams 和 launchSource', () async {
       when(
         () => mockDio.post(
           '/api/v1/workflow-definitions/wf-1/run',
@@ -98,7 +124,7 @@ void main() {
         launchSource: 'mobile',
       );
 
-      expect(result['data'], isA<Map>());
+      expect(result['data'], isA<Map<String, dynamic>>());
       final capturedCall = verify(
         () => mockDio.post(
           '/api/v1/workflow-definitions/wf-1/run',
@@ -107,8 +133,8 @@ void main() {
       );
       capturedCall.called(1);
       final sentBody = capturedCall.captured.first as Map<String, dynamic>;
-      expect(sentBody['input_params'], {'title': 'hello'});
-      expect(sentBody['launch_source'], 'mobile');
+      expect(sentBody['inputParams'], {'title': 'hello'});
+      expect(sentBody['launchSource'], 'mobile');
     });
 
     test('发送 POST 不包含可选参数时 body 为 null', () async {

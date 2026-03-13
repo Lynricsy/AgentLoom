@@ -1,9 +1,12 @@
+import type { ArgumentMetadata } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
+import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import {
   executionResponseSchema,
   executionStepSchema,
 } from '../dto/execution-response.dto';
 import { listExecutionsQuerySchema } from '../dto/list-executions-query.dto';
+import { RunWorkflowDto } from '../dto/run-workflow.dto';
 
 const executionId = '019391d4-d000-7000-8000-000000000004';
 const workflowId = '019391d4-c000-7000-8000-000000000003';
@@ -12,6 +15,19 @@ const tenantId = '019391d4-a000-7000-8000-000000000001';
 const userId = '019391d4-b000-7000-8000-000000000002';
 const stepId = '019391d4-f000-7000-8000-000000000006';
 const timestamp = '2025-01-01T00:00:00.000Z';
+const pipe = new ZodValidationPipe();
+
+function transformWithDto<T>(
+  value: unknown,
+  metatype: new (...args: never[]) => T,
+  type: ArgumentMetadata['type'],
+): T {
+  return pipe.transform(value, {
+    type,
+    metatype,
+    data: undefined,
+  }) as T;
+}
 
 describe('execution dto schemas', () => {
   it('应将 pageSize 和 page_size 兼容归一化为 limit', () => {
@@ -25,6 +41,36 @@ describe('execution dto schemas', () => {
       page: 1,
       limit: 15,
       status: undefined,
+    });
+  });
+
+  it('应兼容 run workflow body 的 snake_case 与 camelCase', () => {
+    expect(
+      transformWithDto(
+        {
+          input_params: { topic: 'AI 趋势' },
+          launch_source: 'mobile',
+        },
+        RunWorkflowDto,
+        'body',
+      ),
+    ).toEqual({
+      inputParams: { topic: 'AI 趋势' },
+      launchSource: 'mobile',
+    });
+
+    expect(
+      transformWithDto(
+        {
+          inputParams: { topic: 'AgentLoom' },
+          launchSource: 'api',
+        },
+        RunWorkflowDto,
+        'body',
+      ),
+    ).toEqual({
+      inputParams: { topic: 'AgentLoom' },
+      launchSource: 'api',
     });
   });
 

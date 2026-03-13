@@ -77,13 +77,16 @@ class WorkflowLaunchNotifier extends AsyncNotifier<WorkflowLaunchState> {
         throw StateError('Missing execution id in run response');
       }
 
+      if (!ref.mounted) return executionId;
       state = AsyncValue.data(WorkflowLaunchSuccess(executionId));
       return executionId;
     } on DioException catch (e) {
       final errorMsg = _extractErrorMessage(e);
+      if (!ref.mounted) return null;
       state = AsyncValue.data(WorkflowLaunchError(errorMsg, schema: schema));
       return null;
     } catch (e) {
+      if (!ref.mounted) return null;
       state = AsyncValue.data(WorkflowLaunchError('启动失败: $e', schema: schema));
       return null;
     }

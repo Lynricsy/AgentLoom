@@ -47,7 +47,7 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
     ref.listen(workflowLaunchProvider(widget.workflowId), (prev, next) {
       final value = next.value;
       if (value is WorkflowLaunchSuccess && context.mounted) {
-        context.pushNamed(
+        context.goNamed(
           RouteNames.executionMonitor,
           pathParameters: {'executionId': value.executionId},
         );
@@ -205,8 +205,9 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
     );
   }
 
-  void _handleSubmit() {
-    if (_formKey.currentState?.validate() != true) return;
+  Future<void> _handleSubmit() async {
+    final formState = _formKey.currentState;
+    if (formState != null && !formState.validate()) return;
     setState(() => _isSubmitting = true);
 
     // 构建提交数据
@@ -219,8 +220,12 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
       }
     }
 
-    ref
+    final executionId = await ref
         .read(workflowLaunchProvider(widget.workflowId).notifier)
         .submit(submitValues);
+
+    if (executionId == null && mounted) {
+      setState(() => _isSubmitting = false);
+    }
   }
 }

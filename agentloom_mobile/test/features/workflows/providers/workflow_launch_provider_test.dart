@@ -25,7 +25,7 @@ void main() {
     container.dispose();
   });
 
-  WorkflowInputSchema _schemaWithTextfield() {
+  WorkflowInputSchema schemaWithTextField() {
     return createTestWorkflowInputSchema(
       fields: [
         createTestInputFieldDefinition(
@@ -40,7 +40,7 @@ void main() {
 
   group('build()', () {
     test('加载 schema 并进入 SchemaLoaded 状态', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -71,7 +71,7 @@ void main() {
 
   group('submit()', () {
     test('提交成功后进入 Success 状态，返回 executionId', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -104,7 +104,7 @@ void main() {
     });
 
     test('从顶层 response 提取 executionId (无 data 嵌套)', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -124,7 +124,7 @@ void main() {
     });
 
     test('DioException 409 → 未发布消息', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -156,7 +156,7 @@ void main() {
     });
 
     test('DioException 401 → 认证过期消息', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -187,7 +187,7 @@ void main() {
     });
 
     test('DioException timeout → 超时消息', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -214,7 +214,7 @@ void main() {
     });
 
     test('通用异常 → 启动失败消息', () async {
-      final schema = _schemaWithTextfield();
+      final schema = schemaWithTextField();
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
