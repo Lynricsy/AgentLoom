@@ -17,7 +17,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import { PublishWorkflowDto } from './dto/publish-workflow.dto';
-import type { VersionResponseDto, PublishResult } from './dto/version-response.dto';
+import type {
+  VersionResponseDto,
+  PublishResult,
+} from './dto/version-response.dto';
 import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
 import { WorkflowVersionService } from './workflow-version.service';
 
@@ -102,11 +105,7 @@ export class WorkflowVersionController {
     @Body() dto: PublishWorkflowDto,
     @CurrentUser('sub') userId: string,
   ): Promise<PublishResult> {
-    return this.workflowVersionService.publish(
-      workflowId,
-      dto,
-      userId,
-    );
+    return this.workflowVersionService.publish(workflowId, dto, userId);
   }
 
   @Post('archive')

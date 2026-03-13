@@ -9,7 +9,10 @@ import {
   ExecutionNotFoundException,
   ExecutionNotResumableException,
 } from '../execution.exceptions';
-import type { ExecutionStep, WorkflowExecution } from '../../../database/schema';
+import type {
+  ExecutionStep,
+  WorkflowExecution,
+} from '../../../database/schema';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const EXECUTION_ID = 'exec-0001';
@@ -188,9 +191,7 @@ describe('CheckpointService', () => {
 
     it('当步骤不存在时应提前返回', async () => {
       db.select.mockReturnValue(
-        createSelectChain([
-          makeStep({ id: 'other-id', nodeId: 'node-x' }),
-        ]),
+        createSelectChain([makeStep({ id: 'other-id', nodeId: 'node-x' })]),
       );
 
       await service.saveCheckpoint(TENANT_ID, EXECUTION_ID, 'non-existent');
@@ -302,7 +303,10 @@ describe('CheckpointService', () => {
           status: 'cancelled',
         }),
       ];
-      const updatedExecution = makeExecution({ status: 'running', failedAt: null });
+      const updatedExecution = makeExecution({
+        status: 'running',
+        failedAt: null,
+      });
 
       db.select
         .mockReturnValueOnce(createSelectChain([execution]))
@@ -311,15 +315,13 @@ describe('CheckpointService', () => {
         .mockReturnValueOnce(createUpdateChainVoid())
         .mockReturnValueOnce(createUpdateChainReturning([updatedExecution]));
 
-      const result = await service.resumeExecution(
-        TENANT_ID,
-        EXECUTION_ID,
-      );
+      const result = await service.resumeExecution(TENANT_ID, EXECUTION_ID);
 
       expect(result.status).toBe('running');
       expect(db.update).toHaveBeenCalledTimes(2);
 
-      const stepResetSetArg = db.update.mock.results[0].value.set.mock.calls[0][0];
+      const stepResetSetArg =
+        db.update.mock.results[0].value.set.mock.calls[0][0];
       expect(stepResetSetArg).toMatchObject({
         status: 'pending',
         attemptCount: 0,
@@ -357,7 +359,10 @@ describe('CheckpointService', () => {
           status: 'cancelled',
         }),
       ];
-      const updatedExecution = makeExecution({ status: 'running', failedAt: null });
+      const updatedExecution = makeExecution({
+        status: 'running',
+        failedAt: null,
+      });
 
       // DAG: node-1 → node-2 → node-3
       const adjacencyMap = new Map([
@@ -447,7 +452,8 @@ describe('CheckpointService', () => {
 
       await service.resumeExecution(TENANT_ID, EXECUTION_ID, 'node-2');
 
-      const executionSetArg = db.update.mock.results[2].value.set.mock.calls[0][0];
+      const executionSetArg =
+        db.update.mock.results[2].value.set.mock.calls[0][0];
       expect(executionSetArg).toMatchObject({
         status: 'running',
         completedSteps: 1,
@@ -510,7 +516,10 @@ describe('CheckpointService', () => {
           result: { out: 1 },
         }),
       ];
-      const updatedExecution = makeExecution({ status: 'running', failedAt: null });
+      const updatedExecution = makeExecution({
+        status: 'running',
+        failedAt: null,
+      });
 
       db.select
         .mockReturnValueOnce(createSelectChain([execution]))

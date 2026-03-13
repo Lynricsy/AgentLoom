@@ -199,6 +199,30 @@ export class NotificationService {
       );
   }
 
+  async getPreferenceForChannel(
+    tenantId: string,
+    userId: string,
+    type: string,
+    channel: string,
+  ): Promise<schema.NotificationPreference | null> {
+    const [preference] = await this.tenantDb
+      .select()
+      .from(schema.notificationPreferences)
+      .where(
+        and(
+          eq(schema.notificationPreferences.tenantId, tenantId),
+          eq(schema.notificationPreferences.userId, userId),
+          eq(
+            schema.notificationPreferences.type,
+            type as schema.Notification['type'],
+          ),
+          eq(schema.notificationPreferences.channel, channel),
+        ),
+      );
+
+    return preference ?? null;
+  }
+
   async upsertPreference(
     tenantId: string,
     userId: string,

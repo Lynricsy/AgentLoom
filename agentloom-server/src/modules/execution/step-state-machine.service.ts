@@ -29,7 +29,10 @@ export const STEP_TRANSITIONS: Readonly<Record<string, ReadonlySet<string>>> = {
   cancelled: new Set(['pending']),
 };
 
-export const COMPLETED_STEP_STATUSES = new Set<string>(['completed', 'skipped']);
+export const COMPLETED_STEP_STATUSES = new Set<string>([
+  'completed',
+  'skipped',
+]);
 
 @Injectable()
 export class StepStateMachineService {
@@ -104,22 +107,18 @@ export class StepStateMachineService {
       throw new InvalidStepTransitionException(step.status, newStatus);
     }
 
-    this.eventBridge.emitStepStatusChanged(
-      tenantId,
-      step.executionId,
-      {
-        stepId,
-        nodeId: step.nodeId,
-        from: step.status,
-        to: newStatus,
-        ...(newStatus === 'failed' && extra?.errorMessage
-          ? {
-              errorDetail:
-                extra.errorMessage as unknown as StepStatusChangedPayload['errorDetail'],
-            }
-          : {}),
-      },
-    );
+    this.eventBridge.emitStepStatusChanged(tenantId, step.executionId, {
+      stepId,
+      nodeId: step.nodeId,
+      from: step.status,
+      to: newStatus,
+      ...(newStatus === 'failed' && extra?.errorMessage
+        ? {
+            errorDetail:
+              extra.errorMessage as unknown as StepStatusChangedPayload['errorDetail'],
+          }
+        : {}),
+    });
 
     this.logger.log(
       `Step status updated: ${JSON.stringify({ stepId, from: step.status, to: newStatus })}`,
@@ -174,9 +173,7 @@ export class StepStateMachineService {
     const anyRunning = steps.some(
       (s) => s.status === 'running' || s.status === 'queued',
     );
-    const anyWaiting = steps.some(
-      (s) => s.status === 'waiting_intervention',
-    );
+    const anyWaiting = steps.some((s) => s.status === 'waiting_intervention');
 
     let executionStatus: schema.WorkflowExecution['status'];
 
@@ -203,16 +200,12 @@ export class StepStateMachineService {
       })
       .where(eq(schema.workflowExecutions.id, executionId));
 
-    this.eventBridge.emitExecutionStatusChanged(
-      tenantId,
+    this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
-      {
-        executionId,
-        status: executionStatus,
-        completedSteps: completedCount,
-        totalSteps: steps.length,
-      },
-    );
+      status: executionStatus,
+      completedSteps: completedCount,
+      totalSteps: steps.length,
+    });
 
     this.logger.log(
       `Execution status updated: ${JSON.stringify({ executionId, status: executionStatus, completedSteps: completedCount })}`,
@@ -225,14 +218,10 @@ export class StepStateMachineService {
     stepId: string,
     event: AgentEvent,
   ): void {
-    this.eventBridge.emitStepAgentEvent(
-      tenantId,
-      executionId,
-      {
-        stepId,
-        event,
-      },
-    );
+    this.eventBridge.emitStepAgentEvent(tenantId, executionId, {
+      stepId,
+      event,
+    });
   }
 
   broadcastStepRetry(
@@ -245,14 +234,10 @@ export class StepStateMachineService {
       errorMessage: string;
     },
   ): void {
-    this.eventBridge.emitStepRetrying(
-      tenantId,
-      executionId,
-      {
-        stepId,
-        ...payload,
-      },
-    );
+    this.eventBridge.emitStepRetrying(tenantId, executionId, {
+      stepId,
+      ...payload,
+    });
   }
 
   async markExecutionFailed(
@@ -282,16 +267,12 @@ export class StepStateMachineService {
       })
       .where(eq(schema.workflowExecutions.id, executionId));
 
-    this.eventBridge.emitExecutionStatusChanged(
-      tenantId,
+    this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
-      {
-        executionId,
-        status: 'failed',
-        completedSteps: completedCount,
-        totalSteps: steps.length,
-        ...(errorMessage ? { errorMessage: errorMessage.message } : {}),
-      },
-    );
+      status: 'failed',
+      completedSteps: completedCount,
+      totalSteps: steps.length,
+      ...(errorMessage ? { errorMessage: errorMessage.message } : {}),
+    });
   }
 }

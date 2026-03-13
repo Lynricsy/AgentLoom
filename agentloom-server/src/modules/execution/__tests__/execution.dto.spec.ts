@@ -228,7 +228,9 @@ describe('execution dto schemas', () => {
       triggerType: 'manual' as const,
       inputParams: { source: 'csv' },
       definitionSnapshot: {
-        nodes: [{ id: 'node-source', type: 'agent', data: { label: '上游节点' } }],
+        nodes: [
+          { id: 'node-source', type: 'agent', data: { label: '上游节点' } },
+        ],
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
         metadata: { nodeCount: 1 },

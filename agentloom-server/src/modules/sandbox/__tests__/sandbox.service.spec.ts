@@ -57,9 +57,7 @@ const TEST_CONFIG: SandboxConfig = {
   timeout: 2,
 };
 
-function buildSession(
-  overrides?: Partial<SandboxSession>,
-): SandboxSession {
+function buildSession(overrides?: Partial<SandboxSession>): SandboxSession {
   return {
     id: TEST_SESSION_ID,
     executionId: TEST_EXECUTION_ID,
@@ -122,9 +120,7 @@ describe('SandboxService', () => {
       const newSession = buildSession();
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
-      db.insert.mockReturnValueOnce(
-        createInsertChainReturning([newSession]),
-      );
+      db.insert.mockReturnValueOnce(createInsertChainReturning([newSession]));
 
       const result = await service.createSandboxSession(
         TEST_EXECUTION_ID,
@@ -146,9 +142,7 @@ describe('SandboxService', () => {
     it('アクティブセッション既存の場合、既存セッションを再利用', async () => {
       const existing = buildSession({ status: 'ready' });
 
-      db.select.mockReturnValueOnce(
-        createSelectChainWithLimit([existing]),
-      );
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([existing]));
 
       const result = await service.createSandboxSession(
         TEST_EXECUTION_ID,
@@ -166,9 +160,7 @@ describe('SandboxService', () => {
   describe('getSandboxSession', () => {
     it('アクティブセッション発見時にセッションを返す', async () => {
       const session = buildSession({ status: 'ready' });
-      db.select.mockReturnValueOnce(
-        createSelectChainWithLimit([session]),
-      );
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
 
       const result = await service.getSandboxSession(
         TEST_EXECUTION_ID,
@@ -224,9 +216,7 @@ describe('SandboxService', () => {
         },
       });
 
-      db.select.mockReturnValueOnce(
-        createSelectChainWithLimit([session]),
-      );
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
       db.update.mockReturnValueOnce(
         createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
       );
@@ -257,8 +247,20 @@ describe('SandboxService', () => {
   describe('getSandboxLogs', () => {
     it('セッション ID でログを取得して時系列順で返す', async () => {
       const logs = [
-        { id: 'log-1', sessionId: TEST_SESSION_ID, level: 'system', message: 'Created', createdAt: new Date('2025-01-01T00:00:00Z') },
-        { id: 'log-2', sessionId: TEST_SESSION_ID, level: 'stdout', message: 'Hello', createdAt: new Date('2025-01-01T00:00:01Z') },
+        {
+          id: 'log-1',
+          sessionId: TEST_SESSION_ID,
+          level: 'system',
+          message: 'Created',
+          createdAt: new Date('2025-01-01T00:00:00Z'),
+        },
+        {
+          id: 'log-2',
+          sessionId: TEST_SESSION_ID,
+          level: 'stdout',
+          message: 'Hello',
+          createdAt: new Date('2025-01-01T00:00:01Z'),
+        },
       ];
       db.select.mockReturnValueOnce(createSelectChainWithOrderBy(logs));
 

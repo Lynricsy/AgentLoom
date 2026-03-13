@@ -164,9 +164,7 @@ export class ExecutionController {
     return { data: { executionId, stepId, status: 'intervention_accepted' } };
   }
 
-  @Post(
-    'executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve',
-  )
+  @Post('executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve')
   @HttpCode(HttpStatus.ACCEPTED)
   @Roles('owner', 'admin', 'creator', 'operator')
   @ApiOperation({ summary: '解析工具调用权限（批准/拒绝）' })

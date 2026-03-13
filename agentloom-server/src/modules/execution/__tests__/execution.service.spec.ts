@@ -282,7 +282,8 @@ describe('ExecutionService', () => {
 
       expect(result).toEqual(executionWithLaunchSource);
 
-      const insertValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(insertValues.inputParams).toEqual({
         topic: 'AI 趋势',
         _meta: { launchSource: 'mobile' },
@@ -671,7 +672,11 @@ describe('ExecutionService', () => {
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        { executionId: EXECUTION_ID, status: 'failed', errorMessage: '执行失败' },
+        {
+          executionId: EXECUTION_ID,
+          status: 'failed',
+          errorMessage: '执行失败',
+        },
       );
     });
 
@@ -680,7 +685,9 @@ describe('ExecutionService', () => {
         createSelectChain([{ tenantId: TENANT_ID }]),
       );
       txDb.update.mockReturnValueOnce(createUpdateChainReturning([]));
-      txDb.select.mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
+      txDb.select.mockReturnValueOnce(
+        createSelectChain([{ status: 'cancelled' }]),
+      );
 
       const error = new Error('执行失败');
       await service.markFailed(EXECUTION_ID, error);
@@ -706,7 +713,11 @@ describe('ExecutionService', () => {
       const ownJob = {
         id: 'job-1',
         name: 'agent-task',
-        data: { executionId: EXECUTION_ID, stepId: 'step-1', tenantId: TENANT_ID },
+        data: {
+          executionId: EXECUTION_ID,
+          stepId: 'step-1',
+          tenantId: TENANT_ID,
+        },
         failedReason: 'LLM 调用失败',
         attemptsMade: 4,
         timestamp: 1000,
@@ -716,7 +727,11 @@ describe('ExecutionService', () => {
       const foreignJob = {
         id: 'job-2',
         name: 'agent-task',
-        data: { executionId: 'other-exec', stepId: 'step-9', tenantId: 'other-tenant' },
+        data: {
+          executionId: 'other-exec',
+          stepId: 'step-9',
+          tenantId: 'other-tenant',
+        },
         failedReason: '其他租户失败',
         attemptsMade: 4,
         timestamp: 1100,

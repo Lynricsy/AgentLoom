@@ -2,11 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'app/app.dart';
 import 'config/env.dart';
 import 'features/auth/providers/token_storage_provider.dart';
 import 'shared/providers/env_provider.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Firebase 未配置时直接忽略后台推送初始化。
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +31,12 @@ void main() async {
   await dotenv.load(fileName: '.env.${environment.name}');
   final envConfig = EnvConfig.fromDotEnv(environment: environment);
 
-  // TODO(fcm): Story 7.6 在此处初始化 FCM
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  } catch (_) {
+    // Firebase 未配置时允许应用继续启动，推送功能保持禁用。
+  }
 
   runApp(
     ProviderScope(

@@ -255,7 +255,9 @@ describe('WorkflowVersionService', () => {
         .mockReturnValueOnce(selectDefinitions)
         .mockReturnValueOnce(selectCount);
 
-      const result = await service.findAllDefinitions(createListDefinitionsQuery());
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery(),
+      );
 
       expect(selectDefinitions.where).toHaveBeenCalledWith(undefined);
       expect(selectDefinitions.limit).toHaveBeenCalledWith(20);
@@ -468,9 +470,9 @@ describe('WorkflowVersionService', () => {
     it('工作流不存在时应当抛出 WorkflowNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.findDefinitionById(WORKFLOW_ID)).rejects.toBeInstanceOf(
-        WorkflowNotFoundException,
-      );
+      await expect(
+        service.findDefinitionById(WORKFLOW_ID),
+      ).rejects.toBeInstanceOf(WorkflowNotFoundException);
     });
   });
 
@@ -556,17 +558,17 @@ describe('WorkflowVersionService', () => {
     it('工作流不存在时应抛出 WorkflowNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.getInputSchema(WORKFLOW_ID, TENANT_ID)).rejects.toThrow(
-        WorkflowNotFoundException,
-      );
+      await expect(
+        service.getInputSchema(WORKFLOW_ID, TENANT_ID),
+      ).rejects.toThrow(WorkflowNotFoundException);
     });
 
     it('工作流未发布时应抛出 WorkflowNotPublishedException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([createDraftWorkflow()]));
 
-      await expect(service.getInputSchema(WORKFLOW_ID, TENANT_ID)).rejects.toThrow(
-        WorkflowNotPublishedException,
-      );
+      await expect(
+        service.getInputSchema(WORKFLOW_ID, TENANT_ID),
+      ).rejects.toThrow(WorkflowNotPublishedException);
     });
   });
 
@@ -635,7 +637,14 @@ describe('WorkflowVersionService', () => {
     });
 
     it('应当支持画布数据更新（nodes/edges/viewport）', async () => {
-      const newNodes = [{ id: 'new-node', type: 'agent', position: { x: 100, y: 100 }, data: {} }];
+      const newNodes = [
+        {
+          id: 'new-node',
+          type: 'agent',
+          position: { x: 100, y: 100 },
+          data: {},
+        },
+      ];
       const newEdges = [{ id: 'new-edge', source: 'new-node', target: 'n2' }];
       const newViewport = { x: 50, y: 50, zoom: 1.5 };
 
@@ -699,7 +708,10 @@ describe('WorkflowVersionService', () => {
 
     it('应当在事务内获取工作流级写锁', async () => {
       const workflow = createDraftWorkflow({ version: 1 });
-      const updatedWorkflow = createDraftWorkflow({ version: 2, updatedBy: USER_ID });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 2,
+        updatedBy: USER_ID,
+      });
 
       db.select.mockReturnValueOnce(createSelectChain([workflow]));
       db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
@@ -1396,8 +1408,18 @@ describe('WorkflowVersionService', () => {
       definition: {
         inputSchema: MOCK_INPUT_SCHEMA,
         nodes: [
-          { id: 'tmpl-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
-          { id: 'tmpl-node-2', type: 'output', position: { x: 200, y: 0 }, data: {} },
+          {
+            id: 'tmpl-node-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {},
+          },
+          {
+            id: 'tmpl-node-2',
+            type: 'output',
+            position: { x: 200, y: 0 },
+            data: {},
+          },
         ],
         edges: [
           {
@@ -1461,10 +1483,16 @@ describe('WorkflowVersionService', () => {
       });
       db.insert.mockReturnValue(createInsertReturning(mockResult));
 
-      const result = await service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_TEMPLATE);
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_TEMPLATE,
+      );
 
       expect(result).toEqual(mockResult);
-      expect(templateService.findBySlug).toHaveBeenCalledWith('code-review-assistant');
+      expect(templateService.findBySlug).toHaveBeenCalledWith(
+        'code-review-assistant',
+      );
 
       // 验证克隆后的节点 ID 已替换（不等于原始模板 ID）
       const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];

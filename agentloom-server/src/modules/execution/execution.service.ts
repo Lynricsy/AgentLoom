@@ -29,7 +29,11 @@ export interface ExecutionJobData {
 
 const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'paused']);
 const REMOVABLE_JOB_STATES: JobType[] = ['waiting', 'delayed', 'prioritized'];
-const TERMINAL_EXECUTION_STATUSES = new Set(['cancelled', 'completed', 'failed']);
+const TERMINAL_EXECUTION_STATUSES = new Set([
+  'cancelled',
+  'completed',
+  'failed',
+]);
 
 function isRemovableJobState(state: string): state is JobType {
   return REMOVABLE_JOB_STATES.includes(state as JobType);
@@ -50,7 +54,9 @@ function buildExecutionInputParams(
     return inputParams;
   }
 
-  const existingMeta = isRecord(inputParams._meta) ? { ...inputParams._meta } : {};
+  const existingMeta = isRecord(inputParams._meta)
+    ? { ...inputParams._meta }
+    : {};
 
   return {
     ...inputParams,
@@ -270,14 +276,10 @@ export class ExecutionService {
       }
     }
 
-    this.eventBridge.emitExecutionStatusChanged(
-      tenantId,
+    this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
-      {
-        executionId,
-        status: 'cancelled',
-      },
-    );
+      status: 'cancelled',
+    });
 
     this.logger.log(`Execution cancelled: ${JSON.stringify({ executionId })}`);
 
@@ -519,9 +521,12 @@ export class ExecutionService {
   }
 
   private getDeadLetterJobTenantId(
-    job: {
-      data?: unknown;
-    } | null | undefined,
+    job:
+      | {
+          data?: unknown;
+        }
+      | null
+      | undefined,
   ): string | undefined {
     const data = job?.data;
 

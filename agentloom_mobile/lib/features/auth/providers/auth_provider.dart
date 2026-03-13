@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/auth_api.dart';
 import '../models/auth_state.dart';
 import '../models/login_user.dart';
+import '../../notifications/providers/push_notification_provider.dart';
 import 'token_storage_provider.dart';
 
 /// 认证状态管理 — AsyncNotifier
@@ -46,6 +48,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           state = AsyncValue.data(
             AuthState.authenticated(user: user, tokens: tokens),
           );
+          unawaited(
+            ref.read(pushNotificationProvider.notifier).initializeAfterAuth(),
+          );
 
         case AuthLoginMfaRequired(:final mfaToken, :final factors):
           state = AsyncValue.data(
@@ -62,6 +67,12 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
   /// 登出
   Future<void> logout() async {
+    try {
+      await ref.read(pushNotificationProvider.notifier).cleanupOnLogout();
+    } catch (_) {
+      // 推送清理失败不影响主登出流程。
+    }
+
     // fire-and-forget: 尝试通知服务端，不等待结果
     final tokens = await _tokenStorage.readTokens();
     if (tokens != null) {
@@ -100,6 +111,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
   /// 强制登出（由 AuthInterceptor 调用）
   Future<void> forceLogout({String? message}) async {
+    try {
+      await ref.read(pushNotificationProvider.notifier).cleanupOnLogout();
+    } catch (_) {}
+
     await _tokenStorage.clearTokens();
 
     if (!ref.mounted) {

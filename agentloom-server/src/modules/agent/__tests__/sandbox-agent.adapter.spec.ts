@@ -54,9 +54,9 @@ describe('SandboxAgentAdapter', () => {
     mockDockerService = {
       getPromptUrl: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true),
-      getSessionUrl: vi.fn().mockResolvedValue(
-        'http://127.0.0.1:49123/v1/session',
-      ),
+      getSessionUrl: vi
+        .fn()
+        .mockResolvedValue('http://127.0.0.1:49123/v1/session'),
     };
     // createSession 的容器初始化 POST 默认返回成功
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -133,13 +133,13 @@ describe('SandboxAgentAdapter', () => {
     });
 
     it('容器 session 初始化失败时应设置会话状态为 error 并抛出', async () => {
-      globalThis.fetch = vi.fn().mockRejectedValue(
-        new Error('Container session init failed'),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('Container session init failed'));
 
-      await expect(
-        adapter.createSession(defaultParams),
-      ).rejects.toThrow('Container session init failed');
+      await expect(adapter.createSession(defaultParams)).rejects.toThrow(
+        'Container session init failed',
+      );
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -190,9 +190,7 @@ describe('SandboxAgentAdapter', () => {
     });
 
     it('不存在的会话应抛出 SandboxNotFoundException', async () => {
-      await expect(
-        adapter.loadSession('non-existent-id'),
-      ).rejects.toThrow();
+      await expect(adapter.loadSession('non-existent-id')).rejects.toThrow();
     });
   });
 
@@ -236,9 +234,9 @@ describe('SandboxAgentAdapter', () => {
         },
       } as unknown as Response);
 
-      const events = await collectEvents(adapter.prompt(session.id, [
-        { type: 'text', text: 'hello' },
-      ]));
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
 
       expect(events).toEqual([
         { type: 'message_chunk', content: 'hello' },
@@ -279,7 +277,9 @@ describe('SandboxAgentAdapter', () => {
         collectEvents(
           adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
         ),
-      ).rejects.toThrow('Sandbox workflow context missing executionId or tenantId');
+      ).rejects.toThrow(
+        'Sandbox workflow context missing executionId or tenantId',
+      );
     });
 
     it('fetch 失败时应将错误抛给上层', async () => {
@@ -295,7 +295,9 @@ describe('SandboxAgentAdapter', () => {
       );
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Connection refused'));
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('Connection refused'));
 
       await expect(
         collectEvents(
@@ -324,9 +326,9 @@ describe('SandboxAgentAdapter', () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = vi.fn().mockRejectedValue(abortError);
 
-      const events = await collectEvents(adapter.prompt(session.id, [
-        { type: 'text', text: 'hello' },
-      ]));
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
 
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual({ type: 'done', stopReason: 'cancelled' });
@@ -347,9 +349,11 @@ describe('SandboxAgentAdapter', () => {
       );
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockRejectedValue(Object.assign(new Error('Aborted'), {
-        name: 'AbortError',
-      }));
+      globalThis.fetch = vi.fn().mockRejectedValue(
+        Object.assign(new Error('Aborted'), {
+          name: 'AbortError',
+        }),
+      );
 
       const content = [{ type: 'text' as const, text: 'hello' }];
       await collectEvents(adapter.prompt(session.id, content));

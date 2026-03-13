@@ -68,7 +68,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
     let containerId: string | undefined;
 
     try {
-      const container = await this.dockerService.createContainer(sessionId, config);
+      const container = await this.dockerService.createContainer(
+        sessionId,
+        config,
+      );
       containerId = container.containerId;
 
       await runInTenantTransaction(this.db, tenantId, async () => {
@@ -93,7 +96,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       await this.dockerService.attachLogs(containerId, (level, message) => {
         this.insertLog(sessionId, level, message, tenantId).catch((err) => {
-          this.logger.error(`Failed to insert log for session ${sessionId}`, err);
+          this.logger.error(
+            `Failed to insert log for session ${sessionId}`,
+            err,
+          );
         });
       });
 
@@ -110,11 +116,13 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
     } catch (error) {
       if (containerId) {
-        await this.dockerService.removeContainer(containerId).catch((cleanupError) => {
-          this.logger.warn(
-            `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
-          );
-        });
+        await this.dockerService
+          .removeContainer(containerId)
+          .catch((cleanupError) => {
+            this.logger.warn(
+              `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+            );
+          });
       }
 
       await runInTenantTransaction(this.db, tenantId, async () => {
@@ -140,7 +148,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, executionId, tenantId, persistencePath } = data;
+    const { sessionId, containerId, executionId, tenantId, persistencePath } =
+      data;
 
     if (containerId) {
       if (persistencePath) {
@@ -252,16 +261,17 @@ export class SandboxLifecycleWorker extends WorkerHost {
         .where(
           and(
             eq(schema.workflowExecutions.id, executionId),
-            notInArray(schema.workflowExecutions.status, ['failed', 'completed']),
+            notInArray(schema.workflowExecutions.status, [
+              'failed',
+              'completed',
+            ]),
           ),
         );
     });
 
     await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
 
-    throw new SandboxTimeoutException(
-      session!.config.timeout,
-    );
+    throw new SandboxTimeoutException(session.config.timeout);
   }
 
   private async insertLog(

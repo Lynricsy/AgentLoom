@@ -11,10 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { createDirectTenantPolicies } from './rls-policies';
-import {
-  executionSteps,
-  TypeMismatchInfo,
-} from './execution-steps.schema';
+import { executionSteps, TypeMismatchInfo } from './execution-steps.schema';
 import { workflowExecutions } from './workflow-executions.schema';
 
 // -- Evidence packet TypeScript interface for JSONB column --

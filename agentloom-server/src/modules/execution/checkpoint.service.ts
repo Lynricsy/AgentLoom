@@ -60,10 +60,7 @@ export class CheckpointService {
         .map((s) => s.nodeId),
     };
 
-    const existing = (completedStep.checkpointData ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const existing = completedStep.checkpointData ?? {};
 
     await this.tenantDb
       .update(schema.executionSteps)

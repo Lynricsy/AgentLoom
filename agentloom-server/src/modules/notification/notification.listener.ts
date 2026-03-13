@@ -13,7 +13,8 @@ import {
 
 const EDITOR_ROLES = ['owner', 'admin', 'creator'] as const;
 const DEFAULT_INTERVENTION_REASON = '节点请求人工确认后才能继续执行。';
-const FAILURE_SUGGESTION = '请打开执行详情查看失败节点与时间线，并在修复后重新运行工作流。';
+const FAILURE_SUGGESTION =
+  '请打开执行详情查看失败节点与时间线，并在修复后重新运行工作流。';
 
 interface ExecutionStatusChangedEvent extends ExecutionStatusChangedPayload {
   tenantId: string;
@@ -56,7 +57,10 @@ export class NotificationListener {
         return;
       }
 
-      const notificationInput = this.buildExecutionNotificationInput(event, context);
+      const notificationInput = this.buildExecutionNotificationInput(
+        event,
+        context,
+      );
 
       if (!notificationInput) {
         return;
@@ -74,7 +78,9 @@ export class NotificationListener {
   }
 
   @OnEvent(ExecutionEventName.NODE_INTERVENTION_REQUIRED)
-  async handleInterventionRequired(event: InterventionRequiredEvent): Promise<void> {
+  async handleInterventionRequired(
+    event: InterventionRequiredEvent,
+  ): Promise<void> {
     await runInTenantTransaction(this.db, event.tenantId, async (tenantDb) => {
       const [context, recipients] = await Promise.all([
         this.findExecutionContext(tenantDb, event.tenantId, event.executionId),
@@ -85,7 +91,10 @@ export class NotificationListener {
         return;
       }
 
-      const notificationInput = this.buildInterventionNotificationInput(event, context);
+      const notificationInput = this.buildInterventionNotificationInput(
+        event,
+        context,
+      );
 
       await Promise.all(
         recipients.map(({ userId }) =>
@@ -173,9 +182,11 @@ export class NotificationListener {
             totalSteps: event.totalSteps,
           },
         };
-      case 'failed':
-        {
-          const errorReason = this.resolveErrorReason(event.errorMessage, context.errorMessage);
+      case 'failed': {
+        const errorReason = this.resolveErrorReason(
+          event.errorMessage,
+          context.errorMessage,
+        );
 
         return {
           type: 'execution_failed',
@@ -186,7 +197,7 @@ export class NotificationListener {
             suggestion: FAILURE_SUGGESTION,
           },
         };
-        }
+      }
       default:
         return null;
     }
@@ -214,7 +225,9 @@ export class NotificationListener {
     };
   }
 
-  private buildBaseBody(context: ExecutionNotificationContext): Record<string, unknown> {
+  private buildBaseBody(
+    context: ExecutionNotificationContext,
+  ): Record<string, unknown> {
     return {
       workflowId: context.workflowId,
       workflowName: context.workflowName,
@@ -232,7 +245,10 @@ export class NotificationListener {
     }
 
     const persistedMessage = executionErrorMessage?.message;
-    if (typeof persistedMessage === 'string' && persistedMessage.trim().length > 0) {
+    if (
+      typeof persistedMessage === 'string' &&
+      persistedMessage.trim().length > 0
+    ) {
       return persistedMessage;
     }
 

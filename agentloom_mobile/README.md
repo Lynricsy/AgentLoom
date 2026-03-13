@@ -1,6 +1,6 @@
 # agentloom_mobile
 
-AgentLoom Flutter 移动端应用，当前已覆盖 Story 7.3 / 7.3a / 7.4 / 7.4a / 7.5 的核心能力：认证与会话管理、工作流列表/详情、参数输入启动链路、Dashboard 最近执行聚合，以及基于 Socket.IO 的实时执行监控。
+AgentLoom Flutter 移动端应用，当前已覆盖 Story 7.3 / 7.3a / 7.4 / 7.4a / 7.5 / 7.6 的核心能力：认证与会话管理、工作流列表/详情、参数输入启动链路、Dashboard 最近执行聚合、基于 Socket.IO 的实时执行监控，以及基于 FCM 的移动端推送通知与设备注册。
 
 ## 已实现能力
 
@@ -19,6 +19,11 @@ AgentLoom Flutter 移动端应用，当前已覆盖 Story 7.3 / 7.3a / 7.4 / 7.4
   - failed/cancelled 语义化横幅
   - 步骤时间线、节点名称/类型展示
   - `/executions/:executionId` 深链接 / Shell 外路由
+- 移动端推送通知：
+  - `features/notifications/` 中的 FCM payload 模型、设备注册 API、通知服务与 Riverpod notifier
+  - 登录后自动初始化推送权限与 token 注册，登出/强制登出时清理注册与本地 token
+  - 前台消息转本地通知，点击推送或本地通知后跳转 `/executions/:executionId`
+  - Android/iOS 已补齐 Firebase messaging 所需基础平台配置（不含 `google-services.json` / `GoogleService-Info.plist`）
 - WorkflowDetail FAB 先进入参数页，再由参数提交成功后跳转执行监控页
 
 ## 开发命令
@@ -49,6 +54,7 @@ lib/
 │   ├── auth/            # 登录、token 存储、AuthNotifier、AuthInterceptor
 │   ├── dashboard/       # Quick Access + recentWorkflows/recentExecutions
 │   ├── execution/       # Socket.IO 执行监控、timeline、banner、provider
+│   ├── notifications/   # FCM payload、设备注册 API、通知服务、push provider
 │   ├── settings/        # 占位设置页
 │   └── workflows/       # 工作流列表、详情、parameter launch、runWorkflow、execution/input-schema models
 ├── routes/              # GoRouter、route names、auth redirect
@@ -58,7 +64,7 @@ lib/
 ## 测试与验证
 
 - `fvm flutter analyze`：静态检查
-- `fvm flutter test`：当前全量 **370 passed**
+- `fvm flutter test`：当前全量测试应保持绿色（Story 7.6 落地后会高于原先的 370）
 - `fvm dart run build_runner build --delete-conflicting-outputs`：Freezed/JSON 生成物更新
 
 ## 环境文件

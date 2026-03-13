@@ -67,8 +67,9 @@ export class NotificationGateway
           return next(this.createAuthError('Invalid token claims'));
         }
 
-        const email =
-          (payload as Record<string, unknown>).email as string | undefined;
+        const email = (payload as Record<string, unknown>).email as
+          | string
+          | undefined;
 
         socket.data.user = {
           sub: payload.sub,
@@ -77,11 +78,19 @@ export class NotificationGateway
           exp: payload.exp,
           iat: payload.iat,
           tenantId:
-            ((payload as Record<string, unknown>).tenantId as string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_id as string | undefined),
+            ((payload as Record<string, unknown>).tenantId as
+              | string
+              | undefined) ??
+            ((payload as Record<string, unknown>).tenant_id as
+              | string
+              | undefined),
           tenantRole:
-            ((payload as Record<string, unknown>).tenantRole as string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_role as string | undefined),
+            ((payload as Record<string, unknown>).tenantRole as
+              | string
+              | undefined) ??
+            ((payload as Record<string, unknown>).tenant_role as
+              | string
+              | undefined),
         } satisfies JwtPayload;
 
         next();
@@ -108,7 +117,9 @@ export class NotificationGateway
   }
 
   @SubscribeMessage('notification:subscribe')
-  async handleSubscribe(client: Socket): Promise<{ status: 'subscribed' | 'error' }> {
+  async handleSubscribe(
+    client: Socket,
+  ): Promise<{ status: 'subscribed' | 'error' }> {
     const user = client.data?.user as JwtPayload | undefined;
 
     if (!user?.tenantId || !user.sub) {
@@ -133,7 +144,11 @@ export class NotificationGateway
     return { status: 'unsubscribed' };
   }
 
-  sendToUser(tenantId: string, userId: string, notification: Notification): void {
+  sendToUser(
+    tenantId: string,
+    userId: string,
+    notification: Notification,
+  ): void {
     const room = this.buildRoom(tenantId, userId);
     this.server.to(room).emit('notification.new', notification);
   }

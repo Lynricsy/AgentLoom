@@ -3,7 +3,10 @@ import { Logger } from '@nestjs/common';
 import { streamText } from 'ai';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { InProcessAgentAdapter } from '../in-process-agent.adapter';
-import type { AgentSession, CreateSessionParams } from '../types/agent-session.types';
+import type {
+  AgentSession,
+  CreateSessionParams,
+} from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
 import type { ContentBlock } from '../types/content-block.types';
 
@@ -30,7 +33,9 @@ const mockedStreamText = vi.mocked(streamText);
 function createSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(Array.isArray(result) ? result : [result]),
+      where: vi
+        .fn()
+        .mockResolvedValue(Array.isArray(result) ? result : [result]),
     }),
   };
 }
@@ -47,7 +52,9 @@ describe('InProcessAgentAdapter', () => {
   let adapter: InProcessAgentAdapter;
   let mockDb: { select: ReturnType<typeof vi.fn> };
   let mockPiAiAdapter: { getModel: ReturnType<typeof vi.fn> };
-  let mockAgentSessionFactory: { createWorkflowSession: ReturnType<typeof vi.fn> };
+  let mockAgentSessionFactory: {
+    createWorkflowSession: ReturnType<typeof vi.fn>;
+  };
   let mockSessionPersistence: {
     saveToCheckpoint: ReturnType<typeof vi.fn>;
     loadFromCheckpoint: ReturnType<typeof vi.fn>;
@@ -68,14 +75,20 @@ describe('InProcessAgentAdapter', () => {
   const EXECUTION_ID = 'exec-001';
   const NODE_ID = 'node-001';
 
-  function makeWorkflowSession(overrides: Partial<AgentSession> = {}): AgentSession {
+  function makeWorkflowSession(
+    overrides: Partial<AgentSession> = {},
+  ): AgentSession {
     return {
       id: 'session-uuid',
       agentId: 'agent-001',
       mode: 'workflow',
       context: {
         history: [],
-        workflowState: { executionId: EXECUTION_ID, stepId: STEP_ID, nodeId: NODE_ID },
+        workflowState: {
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          nodeId: NODE_ID,
+        },
       },
       status: 'active',
       tenantId: 'tenant-001',
@@ -88,7 +101,9 @@ describe('InProcessAgentAdapter', () => {
     };
   }
 
-  function workflowCreateParams(overrides: Partial<CreateSessionParams> = {}): CreateSessionParams {
+  function workflowCreateParams(
+    overrides: Partial<CreateSessionParams> = {},
+  ): CreateSessionParams {
     return {
       agentId: 'agent-001',
       mode: 'workflow',
@@ -123,7 +138,9 @@ describe('InProcessAgentAdapter', () => {
     };
     mockedStreamText.mockReset();
 
-    type AdapterConstructorArgs = ConstructorParameters<typeof InProcessAgentAdapter>;
+    type AdapterConstructorArgs = ConstructorParameters<
+      typeof InProcessAgentAdapter
+    >;
     adapter = new InProcessAgentAdapter(
       mockDb as unknown as AdapterConstructorArgs[0],
       mockPiAiAdapter as unknown as AdapterConstructorArgs[1],
@@ -154,7 +171,9 @@ describe('InProcessAgentAdapter', () => {
 
       const session = await adapter.createSession(params);
 
-      expect(mockAgentSessionFactory.createWorkflowSession).toHaveBeenCalledWith({
+      expect(
+        mockAgentSessionFactory.createWorkflowSession,
+      ).toHaveBeenCalledWith({
         agentId: 'agent-001',
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
@@ -183,7 +202,9 @@ describe('InProcessAgentAdapter', () => {
 
   describe('loadSession', () => {
     it('会在会话不存在时抛错', async () => {
-      await expect(adapter.loadSession('missing-session')).rejects.toThrow(/not found/i);
+      await expect(adapter.loadSession('missing-session')).rejects.toThrow(
+        /not found/i,
+      );
     });
   });
 
@@ -191,7 +212,9 @@ describe('InProcessAgentAdapter', () => {
     async function createAndSetupSession(
       overrides: Partial<CreateSessionParams> = {},
     ): Promise<AgentSession> {
-      const session = await adapter.createSession(workflowCreateParams(overrides));
+      const session = await adapter.createSession(
+        workflowCreateParams(overrides),
+      );
       mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
         makeWorkflowSession({
           ...session,
@@ -203,7 +226,9 @@ describe('InProcessAgentAdapter', () => {
 
     it('会解析默认模型配置、流式输出 message_chunk，并在 stop finishReason 时结束', async () => {
       await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
         fullStream: createFullStream([
           { type: 'text-delta', text: 'Hello ' },
@@ -239,7 +264,9 @@ describe('InProcessAgentAdapter', () => {
 
     it('在 LLM_SUGGEST 模式下会产出 decision 与 intervention_required', async () => {
       await createAndSetupSession({ autonomyMode: 'LLM_SUGGEST' });
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
         fullStream: createFullStream([
           { type: 'text-delta', text: '建议稿' },
@@ -268,9 +295,13 @@ describe('InProcessAgentAdapter', () => {
 
     it('会把 length finishReason 映射为 max_tokens', async () => {
       await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([{ type: 'finish', finishReason: 'length' }]),
+        fullStream: createFullStream([
+          { type: 'finish', finishReason: 'length' },
+        ]),
       } as unknown as ReturnType<typeof streamText>);
 
       const events: AgentEvent[] = [];
@@ -283,7 +314,9 @@ describe('InProcessAgentAdapter', () => {
 
     it('会把 tool-call 与 finish-step(tool-calls) 映射为 tool_use', async () => {
       await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
         fullStream: createFullStream([
           {
@@ -317,7 +350,9 @@ describe('InProcessAgentAdapter', () => {
 
     it('会把 tool-result 与 tool-error 映射为 completed/failed', async () => {
       await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
         fullStream: createFullStream([
           {
@@ -380,10 +415,14 @@ describe('InProcessAgentAdapter', () => {
       };
 
       adapter.registerSessionMetadata('conv-session', '', 'step-conv');
-      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(conversationSession);
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        conversationSession,
+      );
 
       const collectEvents = async () => {
-        for await (const _event of adapter.prompt('conv-session', [textBlock])) {
+        for await (const _event of adapter.prompt('conv-session', [
+          textBlock,
+        ])) {
           continue;
         }
       };
@@ -393,7 +432,9 @@ describe('InProcessAgentAdapter', () => {
 
     it('流式 error 事件会抛错', async () => {
       await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockReturnValue({
         fullStream: createFullStream([
           { type: 'error', error: new Error('模型流失败') },
@@ -401,7 +442,9 @@ describe('InProcessAgentAdapter', () => {
       } as unknown as ReturnType<typeof streamText>);
 
       const collectEvents = async () => {
-        for await (const _event of adapter.prompt('session-uuid', [textBlock])) {
+        for await (const _event of adapter.prompt('session-uuid', [
+          textBlock,
+        ])) {
           continue;
         }
       };
@@ -414,9 +457,14 @@ describe('InProcessAgentAdapter', () => {
     it('取消后会产出 cancelled done 事件，并把 session 标记为 completed', async () => {
       const session = await adapter.createSession(workflowCreateParams());
       mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
-        makeWorkflowSession({ ...session, context: { ...session.context, history: [] } }),
+        makeWorkflowSession({
+          ...session,
+          context: { ...session.context, history: [] },
+        }),
       );
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       mockedStreamText.mockImplementation(
         ({ abortSignal }) =>
           ({

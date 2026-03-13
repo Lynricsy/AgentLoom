@@ -99,9 +99,7 @@ describe('RedisIoAdapter', () => {
       await adapter.connectToRedis();
       const result = adapter.createIOServer(3000);
 
-      expect(mockServer.adapter).toHaveBeenCalledWith(
-        'redis-adapter-instance',
-      );
+      expect(mockServer.adapter).toHaveBeenCalledWith('redis-adapter-instance');
       expect(result).toBe(mockServer);
     });
 

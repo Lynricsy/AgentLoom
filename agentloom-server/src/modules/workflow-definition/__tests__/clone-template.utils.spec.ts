@@ -56,10 +56,7 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('应当为所有节点分配新 ID', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [],
       viewport: DEFAULT_VIEWPORT,
     };
@@ -102,10 +99,7 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('应当更新 edge 的 source 和 target 为新节点 ID', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [createEdge({ id: 'edge-1', source: 'node-a', target: 'node-b' })],
       viewport: DEFAULT_VIEWPORT,
     };
@@ -120,10 +114,7 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('应当替换 sourceHandle 和 targetHandle 中的旧 node ID', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [
         createEdge({
           id: 'edge-1',
@@ -144,10 +135,7 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('当 sourceHandle / targetHandle 不包含节点 ID 时应保持不变', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [
         createEdge({
           id: 'edge-1',
@@ -168,10 +156,7 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('当 sourceHandle / targetHandle 为 null 时不做替换', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [
         createEdge({
           id: 'edge-1',
@@ -192,16 +177,12 @@ describe('cloneDefinitionWithNewIds', () => {
 
   it('当 sourceHandle / targetHandle 为 undefined 时不做替换', () => {
     const definition: CloneableDefinition = {
-      nodes: [
-        createNode({ id: 'node-a' }),
-        createNode({ id: 'node-b' }),
-      ],
+      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
       edges: [
         createEdge({
           id: 'edge-1',
           source: 'node-a',
           target: 'node-b',
-          
         }),
       ],
       viewport: DEFAULT_VIEWPORT,

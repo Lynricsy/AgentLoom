@@ -164,7 +164,11 @@ describe('StepStateMachineService', () => {
       const updateChain = createUpdateChainReturning([updatedStep]);
       db.update.mockReturnValueOnce(updateChain);
 
-      const result = await service.updateStepStatus(TENANT_ID, STEP_ID, 'running');
+      const result = await service.updateStepStatus(
+        TENANT_ID,
+        STEP_ID,
+        'running',
+      );
 
       expect(result).toEqual(updatedStep);
       expect(updateChain.set).toHaveBeenCalledWith(
@@ -194,13 +198,19 @@ describe('StepStateMachineService', () => {
       const updateChain = createUpdateChainReturning([updatedStep]);
       db.update.mockReturnValueOnce(updateChain);
 
-      const result = await service.updateStepStatus(TENANT_ID, STEP_ID, 'pending');
+      const result = await service.updateStepStatus(
+        TENANT_ID,
+        STEP_ID,
+        'pending',
+      );
 
       expect(result.status).toBe('pending');
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'pending', updatedAt: NOW }),
       );
-      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty('completedAt');
+      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty(
+        'completedAt',
+      );
     });
 
     it('非法转换仍会抛出 InvalidStepTransitionException', async () => {

@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  TEMPLATE_SEEDS,
-  seedTemplates,
-} from './template-seeds';
+import { TEMPLATE_SEEDS, seedTemplates } from './template-seeds';
 import { workflowTemplates, type NewWorkflowTemplate } from '../schema';
 
 describe('template seeds', () => {

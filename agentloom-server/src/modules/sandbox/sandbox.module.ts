@@ -21,7 +21,12 @@ import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
     }),
   ],
   controllers: [SandboxController],
-  providers: [SandboxService, DockerService, SandboxLifecycleProducer, SandboxLifecycleWorker],
+  providers: [
+    SandboxService,
+    DockerService,
+    SandboxLifecycleProducer,
+    SandboxLifecycleWorker,
+  ],
   exports: [SandboxService, DockerService, SandboxLifecycleProducer],
 })
 export class SandboxModule {}

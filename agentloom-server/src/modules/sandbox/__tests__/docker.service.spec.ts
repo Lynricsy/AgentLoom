@@ -3,7 +3,10 @@ import { Readable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { SandboxCreationException, SandboxDestroyException } from '../sandbox.exceptions';
+import {
+  SandboxCreationException,
+  SandboxDestroyException,
+} from '../sandbox.exceptions';
 
 const mockContainer = {
   id: 'container-abc123',
@@ -134,9 +137,9 @@ describe('DockerService', () => {
         new Error('permission denied'),
       );
 
-      await expect(
-        service.removeContainer('container-abc123'),
-      ).rejects.toThrow(SandboxDestroyException);
+      await expect(service.removeContainer('container-abc123')).rejects.toThrow(
+        SandboxDestroyException,
+      );
     });
   });
 
@@ -242,9 +245,7 @@ describe('DockerService', () => {
       expect(logs).toHaveLength(0); // 不完整的 header，不应触发
 
       emitter.emit('data', chunk2);
-      expect(logs).toEqual([
-        { level: 'stdout', message: 'cross-boundary' },
-      ]);
+      expect(logs).toEqual([{ level: 'stdout', message: 'cross-boundary' }]);
     });
   });
 
@@ -295,10 +296,17 @@ describe('DockerService', () => {
 
   describe('getArchive', () => {
     it('应返回 Readable 流', async () => {
-      const fakeStream = new Readable({ read() { this.push(null); } });
+      const fakeStream = new Readable({
+        read() {
+          this.push(null);
+        },
+      });
       mockContainer.getArchive.mockResolvedValueOnce(fakeStream);
 
-      const result = await service.getArchive('container-abc123', '/workspace/');
+      const result = await service.getArchive(
+        'container-abc123',
+        '/workspace/',
+      );
 
       expect(result).toBeInstanceOf(Readable);
       expect(mockContainer.getArchive).toHaveBeenCalledWith({

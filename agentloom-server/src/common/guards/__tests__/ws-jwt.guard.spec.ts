@@ -13,8 +13,8 @@ const { mockVerify } = vi.hoisted(() => ({
 vi.mock('jsonwebtoken', async (importOriginal) => {
   const mod = await importOriginal<Record<string, unknown>>();
   const actual = (mod.default ?? mod) as Record<string, unknown>;
-  mockVerify.mockImplementation(
-    (...args: unknown[]) => (actual.verify as Function)(...args),
+  mockVerify.mockImplementation((...args: unknown[]) =>
+    (actual.verify as Function)(...args),
   );
   return { ...actual, default: actual, verify: mockVerify };
 });
@@ -85,7 +85,10 @@ describe('WsJwtGuard', () => {
   it('黑名单 token 时应拒绝访问', async () => {
     tokenBlacklist.isBlacklisted.mockResolvedValue(true);
     const client = createClient({
-      handshake: { auth: { token: createToken({ sub: 'user-1', email: 'u@example.com' }) }, headers: {} },
+      handshake: {
+        auth: { token: createToken({ sub: 'user-1', email: 'u@example.com' }) },
+        headers: {},
+      },
     });
 
     await expect(

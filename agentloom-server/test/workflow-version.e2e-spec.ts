@@ -694,9 +694,10 @@ describe('WorkflowVersion E2E', () => {
         },
       );
 
-      const storedExecution = await drizzleDb.query.workflowExecutions.findFirst({
-        where: eq(schema.workflowExecutions.id, response.body.data.id),
-      });
+      const storedExecution =
+        await drizzleDb.query.workflowExecutions.findFirst({
+          where: eq(schema.workflowExecutions.id, response.body.data.id),
+        });
 
       expect(storedExecution?.inputParams).toEqual({
         topic: 'AI 趋势',
@@ -736,9 +737,10 @@ describe('WorkflowVersion E2E', () => {
 
       expect(response.status).toBe(202);
 
-      const storedExecution = await drizzleDb.query.workflowExecutions.findFirst({
-        where: eq(schema.workflowExecutions.id, response.body.data.id),
-      });
+      const storedExecution =
+        await drizzleDb.query.workflowExecutions.findFirst({
+          where: eq(schema.workflowExecutions.id, response.body.data.id),
+        });
 
       expect(storedExecution?.inputParams).toEqual({
         topic: '移动端兼容',
@@ -915,8 +917,14 @@ describe('WorkflowVersion E2E', () => {
         slug: 'snake-oldest-workflow',
       });
 
-      await setWorkflowUpdatedAt(newestWorkflow.id, new Date('2025-01-03T00:00:00Z'));
-      await setWorkflowUpdatedAt(oldestWorkflow.id, new Date('2025-01-01T00:00:00Z'));
+      await setWorkflowUpdatedAt(
+        newestWorkflow.id,
+        new Date('2025-01-03T00:00:00Z'),
+      );
+      await setWorkflowUpdatedAt(
+        oldestWorkflow.id,
+        new Date('2025-01-01T00:00:00Z'),
+      );
 
       const response = await request(app.getHttpServer())
         .get('/api/v1/workflow-definitions?sort=updated_at&order=asc')
@@ -955,9 +963,18 @@ describe('WorkflowVersion E2E', () => {
         slug: 'oldest-workflow',
       });
 
-      await setWorkflowUpdatedAt(newestWorkflow.id, new Date('2025-01-03T00:00:00Z'));
-      await setWorkflowUpdatedAt(middleWorkflow.id, new Date('2025-01-02T00:00:00Z'));
-      await setWorkflowUpdatedAt(oldestWorkflow.id, new Date('2025-01-01T00:00:00Z'));
+      await setWorkflowUpdatedAt(
+        newestWorkflow.id,
+        new Date('2025-01-03T00:00:00Z'),
+      );
+      await setWorkflowUpdatedAt(
+        middleWorkflow.id,
+        new Date('2025-01-02T00:00:00Z'),
+      );
+      await setWorkflowUpdatedAt(
+        oldestWorkflow.id,
+        new Date('2025-01-01T00:00:00Z'),
+      );
 
       const response = await request(app.getHttpServer())
         .get('/api/v1/workflow-definitions?page=2&pageSize=1')
@@ -1191,7 +1208,11 @@ describe('WorkflowVersion E2E', () => {
             edges: templateEdges,
             viewport: { x: 50, y: 50, zoom: 1.2 },
           },
-          metadata: { complexity: 'beginner', nodeCount: 2, estimatedTime: '5min' },
+          metadata: {
+            complexity: 'beginner',
+            nodeCount: 2,
+            estimatedTime: '5min',
+          },
         })
         .returning();
 
@@ -1287,7 +1308,12 @@ describe('WorkflowVersion E2E', () => {
       });
 
       const newNodes = [
-        { id: 'n-new', type: 'agent', position: { x: 100, y: 200 }, data: { label: 'New' } },
+        {
+          id: 'n-new',
+          type: 'agent',
+          position: { x: 100, y: 200 },
+          data: { label: 'New' },
+        },
       ];
       const response = await request(app.getHttpServer())
         .patch(`/api/v1/workflow-definitions/${workflow.id}`)
@@ -1337,7 +1363,9 @@ describe('WorkflowVersion E2E', () => {
         currentVersion: workflow.version,
         instance: `/api/v1/workflow-definitions/${workflow.id}`,
       });
-      expect(response.headers['content-type']).toContain('application/problem+json');
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
       expect(response.body.errors).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

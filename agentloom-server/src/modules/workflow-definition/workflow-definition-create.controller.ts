@@ -53,8 +53,7 @@ export class WorkflowDefinitionCreateController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() _tenantId: string,
   ): Promise<{ data: WorkflowDefinitionDetailResponseDto }> {
-    const data =
-      await this.workflowVersionService.findDefinitionDetailById(id);
+    const data = await this.workflowVersionService.findDefinitionDetailById(id);
     return { data };
   }
 

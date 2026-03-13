@@ -295,10 +295,9 @@ function createMcpServerConfigRecord(overrides: Record<string, unknown> = {}) {
     authTag: MOCK_ENCRYPTED.authTag,
     status: 'active' as const,
     lastTestedAt: NOW,
-    connectionFingerprint:
-      createSha256Fingerprint(
-        'streamable_http|https://mcp.example.com/http|authorization=Bearer http-token&x-workspace=workspace-1',
-      ),
+    connectionFingerprint: createSha256Fingerprint(
+      'streamable_http|https://mcp.example.com/http|authorization=Bearer http-token&x-workspace=workspace-1',
+    ),
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -1220,9 +1219,9 @@ describe('McpService', () => {
         ]),
       );
 
-      await expect(deactivateTool(BUILTIN_TOOL_ID, TENANT_ID)).rejects.toBeInstanceOf(
-        McpToolDeactivationNotAllowedException,
-      );
+      await expect(
+        deactivateTool(BUILTIN_TOOL_ID, TENANT_ID),
+      ).rejects.toBeInstanceOf(McpToolDeactivationNotAllowedException);
       expect(db.update).not.toHaveBeenCalled();
       expect(db.delete).not.toHaveBeenCalled();
     });

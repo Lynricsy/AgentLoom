@@ -25,8 +25,7 @@ export interface WorkflowDefinitionResponseDto {
 /**
  * 工作流定义详情响应 DTO（包含 nodes/edges/viewport）
  */
-export interface WorkflowDefinitionDetailResponseDto
-  extends WorkflowDefinitionResponseDto {
+export interface WorkflowDefinitionDetailResponseDto extends WorkflowDefinitionResponseDto {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
   viewport: ReactFlowViewport | null;

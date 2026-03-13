@@ -26,12 +26,9 @@ describe('ToolCallStateMachineService', () => {
       ['in_progress', 'failed'],
     ];
 
-    it.each(validTransitions)(
-      '应允许 %s → %s 转换',
-      (from, to) => {
-        expect(service.transition(from, to)).toBe(to);
-      },
-    );
+    it.each(validTransitions)('应允许 %s → %s 转换', (from, to) => {
+      expect(service.transition(from, to)).toBe(to);
+    });
 
     const invalidTransitions: [ToolCallStatus, ToolCallStatus][] = [
       ['pending', 'completed'],
@@ -50,14 +47,11 @@ describe('ToolCallStateMachineService', () => {
       ['failed', 'in_progress'],
     ];
 
-    it.each(invalidTransitions)(
-      '应拒绝 %s → %s 非法转换',
-      (from, to) => {
-        expect(() => service.transition(from, to)).toThrow(
-          InvalidToolCallTransitionException,
-        );
-      },
-    );
+    it.each(invalidTransitions)('应拒绝 %s → %s 非法转换', (from, to) => {
+      expect(() => service.transition(from, to)).toThrow(
+        InvalidToolCallTransitionException,
+      );
+    });
   });
 
   describe('isTerminal()', () => {
@@ -78,7 +72,11 @@ describe('ToolCallStateMachineService', () => {
     it('pending → [in_progress, awaiting_permission, failed]', () => {
       const allowed = service.getAllowedTransitions('pending');
       expect(allowed).toEqual(
-        expect.arrayContaining(['in_progress', 'awaiting_permission', 'failed']),
+        expect.arrayContaining([
+          'in_progress',
+          'awaiting_permission',
+          'failed',
+        ]),
       );
       expect(allowed).toHaveLength(3);
     });
@@ -93,9 +91,7 @@ describe('ToolCallStateMachineService', () => {
 
     it('in_progress → [completed, failed]', () => {
       const allowed = service.getAllowedTransitions('in_progress');
-      expect(allowed).toEqual(
-        expect.arrayContaining(['completed', 'failed']),
-      );
+      expect(allowed).toEqual(expect.arrayContaining(['completed', 'failed']));
       expect(allowed).toHaveLength(2);
     });
 

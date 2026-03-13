@@ -45,10 +45,7 @@ describe('StateReplayService', () => {
     mockDb = { select: vi.fn() };
 
     const module = await Test.createTestingModule({
-      providers: [
-        StateReplayService,
-        { provide: DRIZZLE, useValue: mockDb },
-      ],
+      providers: [StateReplayService, { provide: DRIZZLE, useValue: mockDb }],
     }).compile();
 
     service = module.get(StateReplayService);
@@ -94,9 +91,7 @@ describe('StateReplayService', () => {
   it('should map step dates to ISO strings', async () => {
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
-      .mockReturnValueOnce(
-        createSelectChain([makeStep('step-1', 'node-a')]),
-      );
+      .mockReturnValueOnce(createSelectChain([makeStep('step-1', 'node-a')]));
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     const step = snapshot!.steps[0];
@@ -168,9 +163,7 @@ describe('StateReplayService', () => {
   it('should omit errorMessage when null', async () => {
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
-      .mockReturnValueOnce(
-        createSelectChain([makeStep('step-1', 'node-a')]),
-      );
+      .mockReturnValueOnce(createSelectChain([makeStep('step-1', 'node-a')]));
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0]).not.toHaveProperty('errorMessage');
@@ -181,9 +174,7 @@ describe('StateReplayService', () => {
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
       .mockReturnValueOnce(
-        createSelectChain([
-          makeStep('step-1', 'node-a', { result }),
-        ]),
+        createSelectChain([makeStep('step-1', 'node-a', { result })]),
       );
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
@@ -199,9 +190,7 @@ describe('StateReplayService', () => {
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
       .mockReturnValueOnce(
-        createSelectChain([
-          makeStep('step-1', 'node-a', { checkpointData }),
-        ]),
+        createSelectChain([makeStep('step-1', 'node-a', { checkpointData })]),
       );
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
@@ -212,9 +201,7 @@ describe('StateReplayService', () => {
     mockDb.select
       .mockReturnValueOnce(createSelectChain([makeExecution()]))
       .mockReturnValueOnce(
-        createSelectChain([
-          makeStep('step-1', 'node-a', { result: null }),
-        ]),
+        createSelectChain([makeStep('step-1', 'node-a', { result: null })]),
       );
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);

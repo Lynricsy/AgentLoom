@@ -41,7 +41,9 @@ const CONNECT_TIMEOUT_MS = 30_000;
 const LIST_TOOLS_TIMEOUT_MS = 60_000;
 
 type McpConnection = TestMcpConnectionDto['connection'];
-type DiscoveredMcpTool = Awaited<ReturnType<Client['listTools']>>['tools'][number];
+type DiscoveredMcpTool = Awaited<
+  ReturnType<Client['listTools']>
+>['tools'][number];
 type SavedMcpConfig = typeof mcpServerConfigs.$inferSelect;
 
 type ImportSummary = {
@@ -109,7 +111,10 @@ export class McpService {
     mcpServerConfigId: string,
     tenantId: string,
   ): Promise<TestMcpConnectionResponse> {
-    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const config = await this.getSavedConfigOrThrow(
+      mcpServerConfigId,
+      tenantId,
+    );
     const connection = this.buildConnectionFromSavedConfig(config);
 
     return await this.testConnection({ connection });
@@ -135,7 +140,10 @@ export class McpService {
     mcpServerConfigId: string,
     tenantId: string,
   ): Promise<DiscoverMcpToolsResponse> {
-    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const config = await this.getSavedConfigOrThrow(
+      mcpServerConfigId,
+      tenantId,
+    );
     const connection = this.buildConnectionFromSavedConfig(config);
 
     return await this.discoverToolsForConnection(connection, '工具发现');
@@ -146,7 +154,10 @@ export class McpService {
     dto: ReimportMcpToolsDto,
     tenantId: string,
   ): Promise<ImportMcpToolsResponse> {
-    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const config = await this.getSavedConfigOrThrow(
+      mcpServerConfigId,
+      tenantId,
+    );
     const connection = this.buildConnectionFromSavedConfig(config);
 
     return await this.importToolsForConnection({
@@ -230,7 +241,9 @@ export class McpService {
       discoveredTools.map((tool) => [tool.name, tool] as const),
     );
     const organizationId = await this.resolveOrganizationId(input.tenantId);
-    const connectionFingerprint = this.buildConnectionFingerprint(input.connection);
+    const connectionFingerprint = this.buildConnectionFingerprint(
+      input.connection,
+    );
     const savedConfig =
       input.existingConfig ??
       (await this.findSavedConfigByFingerprint(
@@ -245,7 +258,9 @@ export class McpService {
       ? await this.findExistingActiveTools(
           input.tenantId,
           savedConfig.id,
-          requestedToolNames.filter((toolName) => discoveredToolsByName.has(toolName)),
+          requestedToolNames.filter((toolName) =>
+            discoveredToolsByName.has(toolName),
+          ),
         )
       : [];
     const existingToolsByName = new Map(
@@ -257,7 +272,9 @@ export class McpService {
 
       if (!configId) {
         if (!input.userId) {
-          throw new McpImportConflictException('首次导入 MCP 工具需要用户上下文');
+          throw new McpImportConflictException(
+            '首次导入 MCP 工具需要用户上下文',
+          );
         }
 
         const [createdConfig] = await tx
@@ -437,12 +454,14 @@ export class McpService {
       return undefined;
     }
 
-    const [config] = await selectQuery.from(mcpServerConfigs).where(
-      and(
-        eq(mcpServerConfigs.tenantId, tenantId),
-        eq(mcpServerConfigs.connectionFingerprint, connectionFingerprint),
-      ),
-    );
+    const [config] = await selectQuery
+      .from(mcpServerConfigs)
+      .where(
+        and(
+          eq(mcpServerConfigs.tenantId, tenantId),
+          eq(mcpServerConfigs.connectionFingerprint, connectionFingerprint),
+        ),
+      );
 
     if (config) {
       return config;
@@ -477,7 +496,8 @@ export class McpService {
         const legacyConnection = this.buildConnectionFromSavedConfig(config);
 
         return (
-          this.buildConnectionFingerprint(legacyConnection) === connectionFingerprint
+          this.buildConnectionFingerprint(legacyConnection) ===
+          connectionFingerprint
         );
       } catch (error) {
         this.logger.warn(
@@ -638,13 +658,17 @@ export class McpService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  private buildConnectionFromSavedConfig(config: SavedMcpConfig): McpConnection {
+  private buildConnectionFromSavedConfig(
+    config: SavedMcpConfig,
+  ): McpConnection {
     const credentials = this.decryptStoredCredentials(config);
 
     switch (config.transportType) {
       case 'stdio':
         if (!config.command) {
-          throw new McpConnectionFailedException('已保存的 MCP stdio 配置缺少 command');
+          throw new McpConnectionFailedException(
+            '已保存的 MCP stdio 配置缺少 command',
+          );
         }
 
         return {
@@ -656,7 +680,9 @@ export class McpService {
       case 'sse':
       case 'streamable_http':
         if (!config.url) {
-          throw new McpConnectionFailedException('已保存的 MCP HTTP 配置缺少 url');
+          throw new McpConnectionFailedException(
+            '已保存的 MCP HTTP 配置缺少 url',
+          );
         }
 
         return {
@@ -742,13 +768,9 @@ export class McpService {
     );
   }
 
-  private hasFromClause(
-    value: unknown,
-  ): value is {
+  private hasFromClause(value: unknown): value is {
     from: (table: typeof mcpServerConfigs) => {
-      where: (
-        condition: ReturnType<typeof and>,
-      ) => Promise<SavedMcpConfig[]>;
+      where: (condition: ReturnType<typeof and>) => Promise<SavedMcpConfig[]>;
     };
   } {
     return (
@@ -914,7 +936,9 @@ export class McpService {
     ) {
       return 'model';
     }
-    if (this.matchesHeuristic(nameLower, description, ['tool', 'function_call'])) {
+    if (
+      this.matchesHeuristic(nameLower, description, ['tool', 'function_call'])
+    ) {
       return 'tool';
     }
     if (

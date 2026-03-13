@@ -4,6 +4,8 @@ export const NOTIFICATION_QUEUE = 'notification';
 
 export const NOTIFICATION_DISPATCH_JOB = 'dispatch-notification';
 
+export const NOTIFICATION_CHANNEL_PUSH = 'push';
+
 export const NOTIFICATION_QUEUE_DEFAULT_JOB_OPTIONS: JobsOptions = {
   removeOnComplete: 100,
   removeOnFail: 500,

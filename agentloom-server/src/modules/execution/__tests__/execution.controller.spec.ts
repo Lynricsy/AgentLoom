@@ -214,10 +214,10 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         undefined,
       );
-      expect(mockExecutionQueue.add).toHaveBeenCalledWith(
-        'resume-execution',
-        { executionId: EXECUTION_ID, tenantId: TENANT_ID },
-      );
+      expect(mockExecutionQueue.add).toHaveBeenCalledWith('resume-execution', {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+      });
     });
 
     it('应支持 fromNodeId 参数', async () => {
@@ -242,10 +242,10 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         'node-2',
       );
-      expect(mockExecutionQueue.add).toHaveBeenCalledWith(
-        'resume-execution',
-        { executionId: EXECUTION_ID, tenantId: TENANT_ID },
-      );
+      expect(mockExecutionQueue.add).toHaveBeenCalledWith('resume-execution', {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+      });
     });
   });
 

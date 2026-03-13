@@ -108,7 +108,10 @@ export class McpController {
     @Param('toolDefinitionId') toolDefinitionId: string,
     @CurrentTenant() tenantId: string,
   ) {
-    const result = await this.mcpService.deactivateTool(toolDefinitionId, tenantId);
+    const result = await this.mcpService.deactivateTool(
+      toolDefinitionId,
+      tenantId,
+    );
     return { data: result };
   }
 

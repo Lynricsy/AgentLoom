@@ -4,7 +4,7 @@ import { notificationTypeEnum } from '../../../database/schema';
 
 export const upsertPreferenceSchema = z.object({
   type: z.enum(notificationTypeEnum.enumValues),
-  channel: z.enum(['in_app', 'email']),
+  channel: z.enum(['in_app', 'email', 'push']),
   enabled: z.boolean(),
 });
 

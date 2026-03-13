@@ -128,7 +128,9 @@ describe('McpController', () => {
 
     service = {
       testConnection: vi.fn().mockResolvedValue(TEST_CONNECTION_RESULT),
-      testSavedConfigConnection: vi.fn().mockResolvedValue(TEST_CONNECTION_RESULT),
+      testSavedConfigConnection: vi
+        .fn()
+        .mockResolvedValue(TEST_CONNECTION_RESULT),
       discoverTools: vi.fn().mockResolvedValue(DISCOVER_TOOLS_RESULT),
       importTools: vi.fn().mockResolvedValue(IMPORT_TOOLS_RESULT),
       listTools: vi.fn().mockResolvedValue(LIST_TOOLS_RESULT),
@@ -175,10 +177,7 @@ describe('McpController', () => {
     });
 
     it('reimportTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'reimportTools')).toEqual([
-        'owner',
-        'admin',
-      ]);
+      expect(getRoles(controller, 'reimportTools')).toEqual(['owner', 'admin']);
     });
 
     it('deactivateTool 应当需要 owner 和 admin 角色', () => {
@@ -235,7 +234,10 @@ describe('McpController', () => {
         Promise<unknown>
       >(controller, 'testSavedConfigConnection');
 
-      const result = await testSavedConfigConnection(MCP_SERVER_CONFIG_ID, TENANT_ID);
+      const result = await testSavedConfigConnection(
+        MCP_SERVER_CONFIG_ID,
+        TENANT_ID,
+      );
 
       expect(result).toEqual({ data: TEST_CONNECTION_RESULT });
       expect(service.testSavedConfigConnection).toHaveBeenCalledWith(

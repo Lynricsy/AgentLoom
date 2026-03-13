@@ -8,7 +8,9 @@ const mockDockerService = {
   stopContainer: vi.fn().mockResolvedValue(undefined),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   attachLogs: vi.fn().mockResolvedValue(undefined),
-  getArchive: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-archive'))),
+  getArchive: vi
+    .fn()
+    .mockResolvedValue(Readable.from(Buffer.from('fake-archive'))),
 };
 
 const mockSandboxService = {
@@ -38,7 +40,9 @@ mockSet.mockReturnValue({ where: mockWhere });
 mockInsert.mockReturnValue({ values: mockValues });
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
-  runInTenantTransaction: vi.fn((_db: any, _tenantId: string, op: () => Promise<any>) => op()),
+  runInTenantTransaction: vi.fn(
+    (_db: any, _tenantId: string, op: () => Promise<any>) => op(),
+  ),
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -134,7 +138,7 @@ describe('SandboxLifecycleWorker', () => {
         executionId: 'e1',
         tenantId: 't1',
         delayMs: 4 * 60 * 60 * 1000,
-        });
+      });
     });
 
     it('容器创建失败时应回写 session failed 并记录系统日志', async () => {
@@ -317,12 +321,18 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith('e1', 't1');
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
+        'e1',
+        't1',
+      );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(
-        expect.objectContaining({ status: 'failed', stoppedAt: expect.any(Date) }),
+        expect.objectContaining({
+          status: 'failed',
+          stoppedAt: expect.any(Date),
+        }),
       );
       expect(updatePayloads).toContainEqual(
         expect.objectContaining({

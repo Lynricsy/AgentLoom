@@ -110,6 +110,11 @@ export {
   type NewNotificationPreference,
 } from './notifications.schema';
 export {
+  deviceTokens,
+  type DeviceToken,
+  type NewDeviceToken,
+} from './device-tokens.schema';
+export {
   evidenceSourceTypeEnum,
   evidenceRecords,
   type EvidenceRecord,

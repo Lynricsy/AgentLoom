@@ -158,10 +158,7 @@ export class StorageService implements OnModuleInit {
     return /NoSuchKey|NoSuchObject|NotFound|NoSuchBucket/i.test(haystack);
   }
 
-  private getStringField(
-    error: unknown,
-    field: string,
-  ): string | undefined {
+  private getStringField(error: unknown, field: string): string | undefined {
     if (!error || typeof error !== 'object') {
       return undefined;
     }
@@ -216,7 +213,11 @@ export class StorageService implements OnModuleInit {
       Reflect.get(headers, 'content-length') ??
       Reflect.get(headers, 'Content-Length');
 
-    if (typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue >= 0) {
+    if (
+      typeof rawValue === 'number' &&
+      Number.isFinite(rawValue) &&
+      rawValue >= 0
+    ) {
       return rawValue;
     }
 

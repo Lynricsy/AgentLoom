@@ -100,7 +100,9 @@ export class AgentTaskWorker extends WorkerHost {
       toolPermission,
       hasSandbox,
     } = job.data;
-    this.logger.log(`Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`);
+    this.logger.log(
+      `Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`,
+    );
 
     const [step] = await this.withTenantContext(tenantId, () =>
       this.tenantDb
@@ -123,15 +125,9 @@ export class AgentTaskWorker extends WorkerHost {
       ? this.adapterFactory.selectAdapter(true)
       : this.agentRuntime;
 
-    const nodeData = (job.data.nodeData ?? step.nodeData ?? {}) as Record<
-      string,
-      unknown
-    >;
-    const input = (job.data.input ?? step.input ?? {}) as Record<string, unknown>;
-    const workflowContextExtras = (job.data.workflowContext ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const nodeData = job.data.nodeData ?? step.nodeData ?? {};
+    const input = job.data.input ?? step.input ?? {};
+    const workflowContextExtras = job.data.workflowContext ?? {};
     const mcpServers = this.resolveSessionMcpServers(
       workflowContextExtras.mcpServers,
     );
@@ -208,7 +204,11 @@ export class AgentTaskWorker extends WorkerHost {
         decision = loopResult.decision;
       } else {
         await this.withTenantContext(tenantId, async () => {
-          await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'running');
+          await this.stepStateMachine.updateStepStatus(
+            tenantId,
+            stepId,
+            'running',
+          );
         });
 
         if (!sessionId) {
@@ -242,7 +242,7 @@ export class AgentTaskWorker extends WorkerHost {
         const loopResult = await this.executeMultiTurnLoop({
           runtime,
           step,
-          sessionId: sessionId!,
+          sessionId: sessionId,
           initialContentBlocks,
           executionId,
           stepId,
@@ -253,7 +253,8 @@ export class AgentTaskWorker extends WorkerHost {
           decision,
           chunkIndex,
           startRound: 0,
-          existingToolCalls: this.loadToolLoopStateFromCheckpoint(step).toolCalls,
+          existingToolCalls:
+            this.loadToolLoopStateFromCheckpoint(step).toolCalls,
         });
 
         if (loopResult.waitingPermission) {
@@ -292,18 +293,29 @@ export class AgentTaskWorker extends WorkerHost {
               },
             },
           );
-          await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+          await this.stepStateMachine.updateExecutionStatus(
+            executionId,
+            tenantId,
+          );
         });
         this.eventBridge.emitInterventionRequired(tenantId, executionId, {
           stepId,
           nodeId: step.nodeId,
           nodeName,
-          ...(decision ? { decision: decision as InterventionRequiredPayload['decision'] } : {}),
+          ...(decision
+            ? { decision: decision as InterventionRequiredPayload['decision'] }
+            : {}),
           ...(accumulatedContent ? { partialContent: accumulatedContent } : {}),
           requestedAt,
         });
-        await this.nodeScheduler.enqueueInterventionTimeout(executionId, stepId, tenantId);
-        this.logger.log(`Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`);
+        await this.nodeScheduler.enqueueInterventionTimeout(
+          executionId,
+          stepId,
+          tenantId,
+        );
+        this.logger.log(
+          `Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`,
+        );
         return;
       }
 
@@ -316,13 +328,20 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       await this.withTenantContext(tenantId, async () => {
-        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'completed', {
-          result,
-        });
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          stepId,
+          'completed',
+          {
+            result,
+          },
+        );
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
 
-      this.logger.log(`Agent task completed: ${JSON.stringify({ executionId, stepId })}`);
+      this.logger.log(
+        `Agent task completed: ${JSON.stringify({ executionId, stepId })}`,
+      );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
@@ -332,10 +351,7 @@ export class AgentTaskWorker extends WorkerHost {
           : '';
       const finalAccumulatedContent = errorPartial || accumulatedContent;
 
-      const existingCheckpoint = (step.checkpointData ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const existingCheckpoint = step.checkpointData ?? {};
       const existingAttempts = Array.isArray(existingCheckpoint.attempts)
         ? existingCheckpoint.attempts.filter(isExecutionStepAttemptError)
         : [];
@@ -372,7 +388,12 @@ export class AgentTaskWorker extends WorkerHost {
                 message: err.message,
                 stack: err.stack,
                 ...(err instanceof DomainException
-                  ? { type: err.type, title: err.message, detail: err.detail, errors: err.errors }
+                  ? {
+                      type: err.type,
+                      title: err.message,
+                      detail: err.detail,
+                      errors: err.errors,
+                    }
                   : {}),
                 nodeId: step.nodeId,
               },
@@ -380,11 +401,16 @@ export class AgentTaskWorker extends WorkerHost {
             },
           );
         });
-        this.stepStateMachine.broadcastStepRetry(tenantId, executionId, stepId, {
-          attempt: job.attemptsMade + 1,
-          maxAttempts: this.getMaxAttempts(job),
-          errorMessage: err.message,
-        });
+        this.stepStateMachine.broadcastStepRetry(
+          tenantId,
+          executionId,
+          stepId,
+          {
+            attempt: job.attemptsMade + 1,
+            maxAttempts: this.getMaxAttempts(job),
+            errorMessage: err.message,
+          },
+        );
         throw err;
       }
 
@@ -394,21 +420,34 @@ export class AgentTaskWorker extends WorkerHost {
           .set({ attemptCount: job.attemptsMade + 1 })
           .where(eq(schema.executionSteps.id, stepId));
 
-        await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', {
-          errorMessage: {
-            message: err.message,
-            stack: err.stack,
-            attempts: allAttempts,
-            ...(err instanceof DomainException
-              ? { type: err.type, title: err.message, detail: err.detail, errors: err.errors }
-              : {}),
-            nodeId: step.nodeId,
-            ...('typeMismatch' in err
-              ? { typeMismatch: (err as { typeMismatch: TypeMismatchInfo }).typeMismatch }
-              : {}),
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          stepId,
+          'failed',
+          {
+            errorMessage: {
+              message: err.message,
+              stack: err.stack,
+              attempts: allAttempts,
+              ...(err instanceof DomainException
+                ? {
+                    type: err.type,
+                    title: err.message,
+                    detail: err.detail,
+                    errors: err.errors,
+                  }
+                : {}),
+              nodeId: step.nodeId,
+              ...('typeMismatch' in err
+                ? {
+                    typeMismatch: (err as { typeMismatch: TypeMismatchInfo })
+                      .typeMismatch,
+                  }
+                : {}),
+            },
+            checkpointData,
           },
-          checkpointData,
-        });
+        );
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
       throw err;
@@ -416,7 +455,10 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<AgentTaskJobData> | undefined, error: Error): Promise<void> {
+  async onFailed(
+    job: Job<AgentTaskJobData> | undefined,
+    error: Error,
+  ): Promise<void> {
     if (!job?.data) {
       this.logger.error(`Agent task failed without job data: ${error.message}`);
       return;
@@ -436,7 +478,7 @@ export class AgentTaskWorker extends WorkerHost {
     intervention: InterventionResolution;
   }): Promise<void> {
     const { executionId, stepId, tenantId, step, intervention } = params;
-    const checkpointData = (step.checkpointData ?? {}) as Record<string, unknown>;
+    const checkpointData = step.checkpointData ?? {};
     const interventionRecord = this.resolveInterventionRecord(
       checkpointData,
       intervention,
@@ -484,13 +526,18 @@ export class AgentTaskWorker extends WorkerHost {
       result.decision = decision;
     }
 
-    await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'completed', {
-      result,
-      checkpointData: {
-        ...checkpointData,
-        intervention: interventionRecord,
+    await this.stepStateMachine.updateStepStatus(
+      tenantId,
+      stepId,
+      'completed',
+      {
+        result,
+        checkpointData: {
+          ...checkpointData,
+          intervention: interventionRecord,
+        },
       },
-    });
+    );
     await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
   }
 
@@ -502,11 +549,12 @@ export class AgentTaskWorker extends WorkerHost {
     if (
       existing &&
       typeof existing === 'object' &&
-      typeof (existing as { requested_at?: unknown }).requested_at === 'string' &&
+      typeof (existing as { requested_at?: unknown }).requested_at ===
+        'string' &&
       typeof (existing as { resolved_at?: unknown }).resolved_at === 'string' &&
       typeof (existing as { action?: unknown }).action === 'string' &&
-      typeof (existing as { resolved_by_user_id?: unknown }).resolved_by_user_id ===
-        'string'
+      typeof (existing as { resolved_by_user_id?: unknown })
+        .resolved_by_user_id === 'string'
     ) {
       return {
         ...(existing as InterventionCheckpointRecord),
@@ -574,7 +622,7 @@ export class AgentTaskWorker extends WorkerHost {
   private getCheckpointData(
     step: typeof schema.executionSteps.$inferSelect,
   ): Record<string, unknown> {
-    return (step.checkpointData ?? {}) as Record<string, unknown>;
+    return step.checkpointData ?? {};
   }
 
   private loadToolLoopStateFromCheckpoint(
@@ -680,7 +728,8 @@ export class AgentTaskWorker extends WorkerHost {
       args: toolCall.args ?? current.args,
       result: toolCall.result ?? current.result,
       error: toolCall.error ?? current.error,
-      permissionRequest: toolCall.permissionRequest ?? current.permissionRequest,
+      permissionRequest:
+        toolCall.permissionRequest ?? current.permissionRequest,
     };
 
     return toolCalls.map((item, itemIndex) =>
@@ -1041,9 +1090,7 @@ export class AgentTaskWorker extends WorkerHost {
         }
       } catch (loopError) {
         const err =
-          loopError instanceof Error
-            ? loopError
-            : new Error(String(loopError));
+          loopError instanceof Error ? loopError : new Error(String(loopError));
         (err as unknown as Record<string, unknown>).partialContent =
           accumulatedContent;
         throw err;
@@ -1104,8 +1151,8 @@ export class AgentTaskWorker extends WorkerHost {
           }
 
           const awaitingPermissionStatus = this.toolCallStateMachine.transition(
-              currentToolCall.status,
-              'awaiting_permission',
+            currentToolCall.status,
+            'awaiting_permission',
           );
           const updatedToolCall = this.appendToolCallTransition(
             { ...currentToolCall },
@@ -1166,18 +1213,28 @@ export class AgentTaskWorker extends WorkerHost {
     };
   }
 
-  private resolveNodeName(step: typeof schema.executionSteps.$inferSelect): string {
-    const nodeData = step.nodeData as Record<string, unknown> | null;
-    if (nodeData && typeof nodeData.label === 'string' && nodeData.label.trim()) {
+  private resolveNodeName(
+    step: typeof schema.executionSteps.$inferSelect,
+  ): string {
+    const nodeData = step.nodeData;
+    if (
+      nodeData &&
+      typeof nodeData.label === 'string' &&
+      nodeData.label.trim()
+    ) {
       return nodeData.label.trim();
     }
 
     return step.nodeId;
   }
 
-  private async handleInterventionTimeout(job: Job<AgentTaskJobData>): Promise<void> {
+  private async handleInterventionTimeout(
+    job: Job<AgentTaskJobData>,
+  ): Promise<void> {
     const { executionId, stepId, tenantId } = job.data;
-    this.logger.log(`Processing intervention timeout: ${JSON.stringify({ executionId, stepId })}`);
+    this.logger.log(
+      `Processing intervention timeout: ${JSON.stringify({ executionId, stepId })}`,
+    );
 
     const [step] = await this.withTenantContext(tenantId, () =>
       this.tenantDb
@@ -1187,7 +1244,9 @@ export class AgentTaskWorker extends WorkerHost {
     );
 
     if (!step || step.status !== 'waiting_intervention') {
-      this.logger.log(`Intervention timeout skipped (status: ${step?.status ?? 'not-found'}): ${JSON.stringify({ executionId, stepId })}`);
+      this.logger.log(
+        `Intervention timeout skipped (status: ${step?.status ?? 'not-found'}): ${JSON.stringify({ executionId, stepId })}`,
+      );
       return;
     }
 
@@ -1215,7 +1274,9 @@ export class AgentTaskWorker extends WorkerHost {
 
       throw error;
     }
-    this.logger.log(`Intervention timeout auto-rejected: ${JSON.stringify({ executionId, stepId })}`);
+    this.logger.log(
+      `Intervention timeout auto-rejected: ${JSON.stringify({ executionId, stepId })}`,
+    );
   }
 
   private shouldRetry(job: Job<AgentTaskJobData>): boolean {

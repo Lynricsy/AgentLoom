@@ -65,7 +65,10 @@ describe('NotificationListener', () => {
     vi.clearAllMocks();
     db = createMockDb();
     notificationService = createMockNotificationService();
-    listener = new NotificationListener(db as never, notificationService as never);
+    listener = new NotificationListener(
+      db as never,
+      notificationService as never,
+    );
   });
 
   it('执行完成时应为租户内 Editor+ 用户创建完成通知', async () => {
@@ -81,7 +84,10 @@ describe('NotificationListener', () => {
         ]),
       )
       .mockReturnValueOnce(
-        createJoinWhereResolved([{ userId: 'owner-1' }, { userId: 'creator-1' }]),
+        createJoinWhereResolved([
+          { userId: 'owner-1' },
+          { userId: 'creator-1' },
+        ]),
       );
     notificationService.create.mockResolvedValue(undefined);
 
@@ -154,7 +160,8 @@ describe('NotificationListener', () => {
         executionId: 'exec-2',
         timelineUrl: '/executions/exec-2',
         errorReason: 'boom',
-        suggestion: '请打开执行详情查看失败节点与时间线，并在修复后重新运行工作流。',
+        suggestion:
+          '请打开执行详情查看失败节点与时间线，并在修复后重新运行工作流。',
       },
     });
   });

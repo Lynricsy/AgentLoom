@@ -20,9 +20,7 @@ export class SandboxController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取沙箱日志' })
   @ApiResponse({ status: 200, description: '沙箱日志列表' })
-  async getSandboxLogs(
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
-  ) {
+  async getSandboxLogs(@Param('sessionId', ParseUUIDPipe) sessionId: string) {
     const logs = await this.sandboxService.getSandboxLogs(sessionId);
     return { data: logs };
   }

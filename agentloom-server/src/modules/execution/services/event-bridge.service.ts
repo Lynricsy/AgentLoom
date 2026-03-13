@@ -29,7 +29,11 @@ import {
 
 const EVENT_BUFFER_CAPACITY = 500;
 const TERMINAL_EVENT_RETENTION_MS = 30_000;
-const TERMINAL_EXECUTION_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_EXECUTION_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 /**
  * 事件桥接服务。
@@ -322,7 +326,7 @@ export class EventBridgeService implements OnModuleDestroy {
     const buffer = this.eventBuffers.get(executionId);
     if (!buffer || buffer.length === 0) return null;
 
-    const oldestBuffered = buffer[0]!.eventId;
+    const oldestBuffered = buffer[0].eventId;
     if (lastEventId < oldestBuffered - 1) {
       return null;
     }
@@ -381,10 +385,7 @@ export class EventBridgeService implements OnModuleDestroy {
     );
   }
 
-  private bufferEvent(
-    executionId: string,
-    envelope: ExecutionEvent,
-  ): void {
+  private bufferEvent(executionId: string, envelope: ExecutionEvent): void {
     let buffer = this.eventBuffers.get(executionId);
     if (!buffer) {
       buffer = [];
@@ -440,7 +441,10 @@ export class EventBridgeService implements OnModuleDestroy {
     }
   }
 
-  private buildScopedExecutionId(tenantId: string, executionId: string): string {
+  private buildScopedExecutionId(
+    tenantId: string,
+    executionId: string,
+  ): string {
     return `${tenantId}:${executionId}`;
   }
 }

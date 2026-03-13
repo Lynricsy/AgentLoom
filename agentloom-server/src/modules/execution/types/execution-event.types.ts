@@ -32,7 +32,10 @@ export interface StructuredErrorDetail {
   readonly detail?: string;
   readonly nodeId?: string;
   readonly stack?: string;
-  readonly errors?: ReadonlyArray<{ readonly field: string; readonly message: string }>;
+  readonly errors?: ReadonlyArray<{
+    readonly field: string;
+    readonly message: string;
+  }>;
   readonly typeMismatch?: {
     readonly sourcePortId?: string;
     readonly targetPortId?: string;
@@ -276,10 +279,14 @@ export interface ServerToClientEvents {
     event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_CALL_STATUS>,
   ) => void;
   [ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED]: (
-    event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED>,
+    event: ExecutionEvent<
+      typeof ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED
+    >,
   ) => void;
   [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: (
-    event: ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED>,
+    event: ExecutionEvent<
+      typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED
+    >,
   ) => void;
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void;
   error: (error: { message: string; code?: string }) => void;

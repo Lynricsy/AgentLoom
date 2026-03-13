@@ -148,8 +148,9 @@ export class ExecutionGateway
           return next(this.createAuthError('Invalid token claims'));
         }
 
-        const email =
-          (payload as Record<string, unknown>).email as string | undefined;
+        const email = (payload as Record<string, unknown>).email as
+          | string
+          | undefined;
 
         socket.data.user = {
           sub: payload.sub,
@@ -158,19 +159,19 @@ export class ExecutionGateway
           exp: payload.exp,
           iat: payload.iat,
           tenantId:
-            (payload as Record<string, unknown>).tenantId as
+            ((payload as Record<string, unknown>).tenantId as
               | string
-              | undefined ??
-            (payload as Record<string, unknown>).tenant_id as
+              | undefined) ??
+            ((payload as Record<string, unknown>).tenant_id as
               | string
-              | undefined,
+              | undefined),
           tenantRole:
-            (payload as Record<string, unknown>).tenantRole as
+            ((payload as Record<string, unknown>).tenantRole as
               | string
-              | undefined ??
-            (payload as Record<string, unknown>).tenant_role as
+              | undefined) ??
+            ((payload as Record<string, unknown>).tenant_role as
               | string
-              | undefined,
+              | undefined),
         } satisfies JwtPayload;
 
         next();
@@ -449,7 +450,6 @@ export class ExecutionGateway
   }
 
   private scheduleDrain(
-
     tenantId: string,
     executionId: string,
     queueKey: string,
@@ -478,10 +478,7 @@ export class ExecutionGateway
 
     const room = this.buildRoom(tenantId, executionId);
 
-    while (
-      queue.length > 0 &&
-      this.throttleService.tryConsume(executionId)
-    ) {
+    while (queue.length > 0 && this.throttleService.tryConsume(executionId)) {
       const item = queue.shift()!;
       this.server.to(room).emit(item.event, item.data);
     }

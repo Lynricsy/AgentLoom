@@ -56,14 +56,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof DomainException) {
-      return this.withExtensions({
-        type: exception.type,
-        title: exception.message,
-        status: exception.getStatus(),
-        detail: exception.detail,
-        instance,
-        ...(exception.errors && { errors: exception.errors }),
-      }, exception.extensions);
+      return this.withExtensions(
+        {
+          type: exception.type,
+          title: exception.message,
+          status: exception.getStatus(),
+          detail: exception.detail,
+          instance,
+          ...(exception.errors && { errors: exception.errors }),
+        },
+        exception.extensions,
+      );
     }
 
     if (exception instanceof HttpException) {

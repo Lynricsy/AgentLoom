@@ -15,10 +15,7 @@ export interface CloneableDefinition {
 /**
  * 替换 handle 字符串中出现的旧 node ID 为新 ID
  */
-function remapHandle(
-  handle: string,
-  idMap: Map<string, string>,
-): string {
+function remapHandle(handle: string, idMap: Map<string, string>): string {
   let result = handle;
   for (const [oldId, newId] of idMap) {
     result = result.replaceAll(oldId, newId);

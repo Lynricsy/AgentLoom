@@ -2,7 +2,7 @@
 
 ## 概览
 
-AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a + 7.5：
+AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a + 7.5 + 7.6：
 
 - Riverpod ProviderScope 启动入口
 - GoRouter + `StatefulShellRoute.indexedStack` 三标签导航 (Dashboard / Workflows / Settings)
@@ -15,6 +15,7 @@ AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a +
 - 工作流启动页（`ParameterInputScreen`）：动态参数表单、空参数确认、conversation 模式 Web 引导
 - Dashboard 页（快速访问工作流 + recentExecutions 聚合）→ 点击最近执行跳转执行监控
 - 执行监控：Socket.IO 实时状态 + REST execution detail 5s 轮询降级，状态头 + 告警横幅 + 步骤时间线 + disconnected 语义纠正
+- 推送通知：FCM token 生命周期管理、前台本地通知、后台/终止态深链导航到执行详情
 - 工作流启动链路：`WorkflowDetailScreen` FAB → `/workflows/:workflowId/launch` → 参数提交 → `/executions/:executionId`
 
 ## 目录约定
@@ -40,6 +41,11 @@ lib/
 │   │   ├── providers/   # ExecutionMonitorNotifier (AsyncNotifierProvider.autoDispose.family, REST detail → snapshot + WS metadata merge)
 │   │   ├── screens/     # ExecutionMonitorScreen (ConsumerStatefulWidget, watches executionMonitorProvider)
 │   │   └── widgets/     # ExecutionStatusHeader, ExecutionAlertBanner, StepTimeline, StepTimelineItem, ConnectionModeIndicator
+│   ├── notifications/
+│   │   ├── api/         # DeviceApi (register/unregister + deviceApiProvider)
+│   │   ├── models/      # Freezed: PushNotificationPayload (fromFcmData camelCase)
+│   │   ├── services/    # NotificationService (FCM init/permission/token/foreground show/tap stream)
+│   │   └── providers/   # PushNotificationNotifier (initializeAfterAuth/cleanupOnLogout/token dedup)
 │   ├── settings/
 │   │   └── screens/     # SettingsScreen (占位)
 │   └── workflows/
@@ -78,7 +84,7 @@ fvm flutter test --coverage
 
 ## 测试模式
 
-- **370 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth/execution/dashboard/workflow-run/parameter-input
+- **405 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth/execution/dashboard/workflow-run/parameter-input/notifications
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose StateError
 - Widget/Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock: `mocktail` 库，测试工厂函数集中在 `test/helpers/test_helpers.dart`
@@ -96,3 +102,4 @@ fvm flutter test --coverage
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
 - **Story 7-4a 已完成**: 执行监控与实时状态更新。`ExecutionSocketService` 通过 `resolveExecutionSocketUrl()` 去掉 `/api`/`/api/v1` 后连接 `/execution`；`ExecutionMonitorNotifier` 使用 `AsyncNotifierProvider.autoDispose.family`，支持 execution detail `steps[]` → snapshot 映射、graph metadata 提取、ACK/WS snapshot metadata merge（含 reconnect ACK）、5s polling fallback、`lastEventId` 重新订阅与 terminal cleanup；`ConnectionMode` 现支持 `disconnected`，failed banner 显示失败节点名 + 错误摘要，timeline item 显示 `nodeName/nodeType` 并保留 `nodeId`；Dashboard 已新增 `recentExecutionsProvider`，7-4a 收尾时移动端全量测试为 307 passed。
 - **Story 7-5 已完成**: `WorkflowDetailScreen` FAB 现先导航到 `ParameterInputScreen`；`WorkflowLaunchNotifier` 使用 `AsyncNotifierProvider.autoDispose.family` 拉取 schema 并在 submit 成功/失败路径使用 `ref.mounted` 防止 dispose 后写状态；参数页支持 text / number / single_select / multi_select 动态字段、客户端 required/min/max/minLength/maxLength 校验、空参数确认页与 conversation 模式 Web 引导；成功后通过 `context.goNamed(RouteNames.executionMonitor, ...)` 收口到执行监控页，避免回退到已提交表单；`WorkflowApi.getInputSchema()` 已兼容服务端 camelCase 与 legacy snake_case schema，移动端全量测试现为 370 passed。
+- **Story 7-6 已完成**: 推送通知与设备注册。Flutter: `features/notifications/` 新增 `PushNotificationPayload`(Freezed, fromFcmData camelCase)、`DeviceApi`(register/unregister)、`NotificationService`(firebase_messaging 初始化/权限/token 生命周期/前台 flutter_local_notifications 显示/后台+终止态通知点击 StreamController)、`PushNotificationNotifier`(AsyncNotifier, initializeAfterAuth/cleanupOnLogout/token 刷新去重)。`main.dart` 添加 `Firebase.initializeApp()` + `onBackgroundMessage` 顶级函数。`AuthNotifier` login → initializeAfterAuth(), logout/forceLogout → cleanupOnLogout()。`app.dart` 中 `_AgentLoomAppState.initState()` 订阅 `onNotificationTap` 流实现深链 `GoRouter.go('/executions/$executionId')`。Android 配置: google-services 插件 + POST_NOTIFICATIONS 权限 + notification channel。iOS: FirebaseCore/FirebaseMessaging import + registerForRemoteNotifications。依赖: firebase_core ^3.13.0, firebase_messaging ^15.2.5, flutter_local_notifications ^19.2.1。41 个新增测试覆盖 payload/api/service/provider/navigation，全量 405 passed，0 analyze issues。

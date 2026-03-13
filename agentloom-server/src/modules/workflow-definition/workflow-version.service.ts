@@ -16,10 +16,7 @@ import {
 } from '../workflow/dto/workflow-input-schema.dto';
 import { TemplateService } from '../template/template.service';
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
-import {
-  generateSlug,
-  appendSlugSuffix,
-} from '../organization/slug.utils';
+import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
@@ -119,9 +116,7 @@ export class WorkflowVersionService {
     const conditions = [];
 
     if (query.status) {
-      conditions.push(
-        eq(schema.workflowDefinitions.status, query.status),
-      );
+      conditions.push(eq(schema.workflowDefinitions.status, query.status));
     }
 
     if (query.search) {
@@ -134,8 +129,7 @@ export class WorkflowVersionService {
       );
     }
 
-    const whereClause =
-      conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const sortColumnMap = {
       updatedAt: schema.workflowDefinitions.updatedAt,
@@ -233,8 +227,7 @@ export class WorkflowVersionService {
     let metadata: Record<string, unknown> = {};
 
     if (dto.template_slug) {
-      const template =
-        await this.templateService.findBySlug(dto.template_slug);
+      const template = await this.templateService.findBySlug(dto.template_slug);
       const cloned = cloneDefinitionWithNewIds({
         nodes: template.definition.nodes,
         edges: template.definition.edges,
@@ -547,10 +540,7 @@ export class WorkflowVersionService {
         const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)
           ? workflow.edges
           : [];
-        const warnings = this.validateEdgeTypeCompatibility(
-          nodes,
-          edges,
-        );
+        const warnings = this.validateEdgeTypeCompatibility(nodes, edges);
 
         const publishedAt = new Date();
         const normalizedReleaseNotes = this.normalizeOptionalText(

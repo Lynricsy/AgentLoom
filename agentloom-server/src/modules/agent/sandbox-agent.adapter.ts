@@ -19,7 +19,9 @@ const REQUEST_TIMEOUT_MS = 300_000;
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
-const RETRYABLE_SESSION_INIT_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_SESSION_INIT_STATUSES = new Set([
+  404, 408, 425, 429, 500, 502, 503, 504,
+]);
 const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
   'ECONNREFUSED',
   'ECONNRESET',
@@ -127,16 +129,23 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const tenantId =
       typeof workflowState['tenantId'] === 'string'
         ? workflowState['tenantId']
-        : session.tenantId ?? null;
+        : (session.tenantId ?? null);
 
     if (!executionId || !tenantId) {
-      throw new Error('Sandbox workflow context missing executionId or tenantId');
+      throw new Error(
+        'Sandbox workflow context missing executionId or tenantId',
+      );
     }
 
     try {
-      const sandboxSession = await this.waitForSandboxReady(executionId, tenantId);
+      const sandboxSession = await this.waitForSandboxReady(
+        executionId,
+        tenantId,
+      );
       if (!sandboxSession.containerId) {
-        throw new Error(`Sandbox session ${sandboxSession.id} has no containerId`);
+        throw new Error(
+          `Sandbox session ${sandboxSession.id} has no containerId`,
+        );
       }
       const containerUrl = await this.dockerService.getPromptUrl(
         sandboxSession.containerId,
@@ -158,7 +167,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Sandbox agent request failed with status ${response.status}`);
+        throw new Error(
+          `Sandbox agent request failed with status ${response.status}`,
+        );
       }
 
       const reader = response.body.getReader();
@@ -188,10 +199,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         }
       }
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.name === 'AbortError'
-      ) {
+      if (error instanceof Error && error.name === 'AbortError') {
         yield { type: 'done', stopReason: 'cancelled' };
         return;
       }
@@ -232,10 +240,15 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       );
 
       if (!sandboxSession) {
-        throw new Error(`Sandbox session not found for execution ${executionId}`);
+        throw new Error(
+          `Sandbox session not found for execution ${executionId}`,
+        );
       }
 
-      if (sandboxSession.status === 'failed' || sandboxSession.status === 'stopped') {
+      if (
+        sandboxSession.status === 'failed' ||
+        sandboxSession.status === 'stopped'
+      ) {
         throw new Error(
           `Sandbox session ${sandboxSession.id} is ${sandboxSession.status}`,
         );
@@ -255,7 +268,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       await this.delay(SANDBOX_READY_POLL_INTERVAL_MS);
     }
 
-    throw new Error(`Sandbox session is not ready for execution ${executionId}`);
+    throw new Error(
+      `Sandbox session is not ready for execution ${executionId}`,
+    );
   }
 
   private async initializeContainerSession(
@@ -294,8 +309,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           throw error;
         }
 
-        lastError =
-          error instanceof Error ? error : new Error(String(error));
+        lastError = error instanceof Error ? error : new Error(String(error));
       }
 
       this.logger.warn(

@@ -878,9 +878,9 @@ describe('EvidenceService', () => {
       const [inserted] = insertMock.getCapturedValues();
       expect(inserted.sourceType).toBe('node_error');
       expect(inserted.parentEvidenceId).toBe(EXISTING_PARENT_ID);
-      expect((inserted.packet as Record<string, unknown>).parentEvidenceId).toBe(
-        EXISTING_PARENT_ID,
-      );
+      expect(
+        (inserted.packet as Record<string, unknown>).parentEvidenceId,
+      ).toBe(EXISTING_PARENT_ID);
       expect((inserted.packet as Record<string, unknown>).nodeError).toEqual({
         nodeId: NODE_ID,
         errorMessage: '端口类型不兼容',

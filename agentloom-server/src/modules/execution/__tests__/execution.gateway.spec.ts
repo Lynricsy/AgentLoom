@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from 'vitest';
 import { Logger } from '@nestjs/common';
 import { ExecutionGateway } from '../execution.gateway';
 import type { StateReplayService } from '../services/state-replay.service';
@@ -40,7 +48,10 @@ function makeSnapshot(
 describe('ExecutionGateway', () => {
   let gateway: ExecutionGateway;
   let mockConfig: { get: Mock };
-  let mockStateReplay: { getExecutionSnapshot: Mock; checkExecutionExists: Mock };
+  let mockStateReplay: {
+    getExecutionSnapshot: Mock;
+    checkExecutionExists: Mock;
+  };
   let mockThrottle: {
     registerFlushHandler: Mock;
     tryConsume: Mock;
@@ -151,18 +162,14 @@ describe('ExecutionGateway', () => {
       const client = makeSocket();
       await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
 
-      expect(client.join).toHaveBeenCalledWith(
-        'execution:tenant-1:exec-1',
-      );
+      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
 
     it('handleJoin delegates to same subscribe logic', async () => {
       const client = makeSocket();
       await gateway.handleJoin(client as any, { executionId: 'exec-1' });
 
-      expect(client.join).toHaveBeenCalledWith(
-        'execution:tenant-1:exec-1',
-      );
+      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
 
     it('returns FORBIDDEN error when no tenant context', async () => {
@@ -363,18 +370,14 @@ describe('ExecutionGateway', () => {
       const client = makeSocket();
       gateway.handleUnsubscribe(client as any, { executionId: 'exec-1' });
 
-      expect(client.leave).toHaveBeenCalledWith(
-        'execution:tenant-1:exec-1',
-      );
+      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
 
     it('handleLeave delegates to unsubscribe logic', () => {
       const client = makeSocket();
       gateway.handleLeave(client as any, { executionId: 'exec-1' });
 
-      expect(client.leave).toHaveBeenCalledWith(
-        'execution:tenant-1:exec-1',
-      );
+      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
 
     it('uses empty tenantId when no user context', () => {
@@ -384,9 +387,7 @@ describe('ExecutionGateway', () => {
         executionId: 'exec-1',
       });
 
-      expect(client.leave).toHaveBeenCalledWith(
-        'execution::exec-1',
-      );
+      expect(client.leave).toHaveBeenCalledWith('execution::exec-1');
     });
   });
 
@@ -407,12 +408,9 @@ describe('ExecutionGateway', () => {
       const emitFn = vi.fn();
       mockServer.to.mockReturnValue({ emit: emitFn });
 
-      gateway.broadcastTypedEvent(
-        't1',
-        'e1',
-        'execution.node.status-changed',
-        { status: 'running' },
-      );
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'running',
+      });
 
       expect(mockThrottle.tryConsume).toHaveBeenCalledWith('e1');
       expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
@@ -426,12 +424,9 @@ describe('ExecutionGateway', () => {
       const emitFn = vi.fn();
       mockServer.to.mockReturnValue({ emit: emitFn });
 
-      gateway.broadcastTypedEvent(
-        't1',
-        'e1',
-        'execution.node.status-changed',
-        { status: 'running' },
-      );
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'running',
+      });
 
       expect(emitFn).not.toHaveBeenCalled();
 
@@ -509,9 +504,13 @@ describe('ExecutionGateway', () => {
       gateway.flushExecutionQueue('t1', 'e1');
 
       expect(emitFn).toHaveBeenCalledTimes(2);
-      expect(emitFn).toHaveBeenNthCalledWith(1, 'execution.node.status-changed', {
-        status: 'queued',
-      });
+      expect(emitFn).toHaveBeenNthCalledWith(
+        1,
+        'execution.node.status-changed',
+        {
+          status: 'queued',
+        },
+      );
       expect(emitFn).toHaveBeenNthCalledWith(2, 'execution.node.output-chunk', {
         chunk: 'tail',
       });
@@ -561,7 +560,10 @@ describe('ExecutionGateway', () => {
       const err = next.mock.calls[0][0];
       expect(err).toBeInstanceOf(Error);
       expect(err.message).toBe('Authentication required');
-      expect(err.data).toEqual({ code: 4001, reason: 'Authentication required' });
+      expect(err.data).toEqual({
+        code: 4001,
+        reason: 'Authentication required',
+      });
     });
   });
 });

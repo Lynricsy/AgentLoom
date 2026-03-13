@@ -48,6 +48,7 @@
     "drizzle-orm": "^0.45.1",
     "fastify": "^5.8.1",
     "file-type": "^21.3.0",
+    "firebase-admin": "^13.7.0",
     "gpt-tokenizer": "^3.4.0",
     "ioredis": "^5.10.0",
     "jsonrepair": "^3.13.2",

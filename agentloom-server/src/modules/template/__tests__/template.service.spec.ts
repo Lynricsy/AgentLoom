@@ -22,10 +22,7 @@ describe('TemplateService', () => {
     vi.clearAllMocks();
 
     const moduleRef = await Test.createTestingModule({
-      providers: [
-        TemplateService,
-        { provide: DRIZZLE, useValue: mocks.db },
-      ],
+      providers: [TemplateService, { provide: DRIZZLE, useValue: mocks.db }],
     }).compile();
 
     service = moduleRef.get(TemplateService);

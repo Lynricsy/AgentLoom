@@ -252,7 +252,9 @@ describe('EventBridgeService', () => {
       expect(gateway.clearExecutionQueue).toHaveBeenCalledWith(TENANT, EXEC);
 
       expect(service.getLastEventId(EXEC)).toBe(2);
-      expect(service.getEventsSince(EXEC, 0)?.map((event) => event.event)).toEqual([
+      expect(
+        service.getEventsSince(EXEC, 0)?.map((event) => event.event),
+      ).toEqual([
         ExecutionEventName.OUTPUT_CHUNK,
         ExecutionEventName.EXECUTION_STATUS_CHANGED,
       ]);
@@ -482,7 +484,12 @@ describe('EventBridgeService', () => {
 
   describe('bridgeLegacyEvent', () => {
     it('应将 step:status-changed 映射到标准事件', () => {
-      const data = { stepId: 's1', nodeId: 'n1', from: 'pending', to: 'running' };
+      const data = {
+        stepId: 's1',
+        nodeId: 'n1',
+        from: 'pending',
+        to: 'running',
+      };
 
       const result = service.bridgeLegacyEvent(
         TENANT,
@@ -632,8 +639,8 @@ describe('EventBridgeService', () => {
 
       expect(events).not.toBeNull();
       expect(events).toHaveLength(2);
-      expect(events![0]!.eventId).toBe(2);
-      expect(events![1]!.eventId).toBe(3);
+      expect(events![0].eventId).toBe(2);
+      expect(events![1].eventId).toBe(3);
     });
 
     it('lastEventId 等于最新 eventId 时返回空数组', () => {

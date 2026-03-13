@@ -20,7 +20,9 @@ function getHandler(name: 'getDocumentContent'): object {
   );
 
   if (typeof descriptor?.value !== 'function') {
-    throw new Error(`Handler ${name} is not defined on KnowledgeBaseController`);
+    throw new Error(
+      `Handler ${name} is not defined on KnowledgeBaseController`,
+    );
   }
 
   return descriptor.value as object;
@@ -51,7 +53,10 @@ describe('KnowledgeBaseController - getDocumentContent', () => {
       providers: [
         { provide: KnowledgeBaseService, useValue: knowledgeBaseService },
         { provide: DocumentService, useValue: documentService },
-        { provide: KnowledgeGateway, useValue: { emitKnowledgeBaseUpdated: vi.fn() } },
+        {
+          provide: KnowledgeGateway,
+          useValue: { emitKnowledgeBaseUpdated: vi.fn() },
+        },
       ],
     }).compile();
 
@@ -121,8 +126,8 @@ describe('KnowledgeBaseController - getDocumentContent', () => {
   });
 
   it('角色权限检查', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, getHandler('getDocumentContent'))).toEqual(
-      EXPECTED_ROLES,
-    );
+    expect(
+      Reflect.getMetadata(ROLES_KEY, getHandler('getDocumentContent')),
+    ).toEqual(EXPECTED_ROLES);
   });
 });

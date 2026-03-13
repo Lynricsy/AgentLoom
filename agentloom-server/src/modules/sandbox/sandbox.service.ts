@@ -4,7 +4,11 @@ import { and, eq, notInArray, asc } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
-import type { SandboxConfig, SandboxLog, SandboxSession } from '../../database/schema';
+import type {
+  SandboxConfig,
+  SandboxLog,
+  SandboxSession,
+} from '../../database/schema';
 import { SandboxNotFoundException } from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 
@@ -96,7 +100,10 @@ export class SandboxService {
     sessionId: string,
     status: SandboxSession['status'],
     metadata?: Partial<
-      Pick<SandboxSession, 'containerId' | 'workspacePath' | 'startedAt' | 'stoppedAt'>
+      Pick<
+        SandboxSession,
+        'containerId' | 'workspacePath' | 'startedAt' | 'stoppedAt'
+      >
     >,
   ): Promise<void> {
     const result = await this.tenantDb
@@ -109,9 +116,7 @@ export class SandboxService {
       throw new SandboxNotFoundException(sessionId);
     }
 
-    this.logger.log(
-      `Updated sandbox session ${sessionId} status to ${status}`,
-    );
+    this.logger.log(`Updated sandbox session ${sessionId} status to ${status}`);
   }
 
   async destroySandbox(executionId: string, tenantId: string): Promise<void> {
@@ -136,9 +141,7 @@ export class SandboxService {
         : {}),
     });
 
-    this.logger.log(
-      `Enqueued destroy for sandbox session ${session.id}`,
-    );
+    this.logger.log(`Enqueued destroy for sandbox session ${session.id}`);
   }
 
   async getSandboxLogs(sessionId: string): Promise<SandboxLog[]> {

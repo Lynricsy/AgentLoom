@@ -71,7 +71,9 @@ describe('NotificationGateway', () => {
     await middleware(createSocket(), next);
 
     expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { code: 4001, reason: 'Authentication required' } }),
+      expect.objectContaining({
+        data: { code: 4001, reason: 'Authentication required' },
+      }),
     );
   });
 
@@ -85,12 +87,19 @@ describe('NotificationGateway', () => {
     const next = vi.fn();
 
     await middleware(
-      createSocket({ handshake: { auth: { token: createToken({ sub: 'user-1' }) }, headers: {} } }),
+      createSocket({
+        handshake: {
+          auth: { token: createToken({ sub: 'user-1' }) },
+          headers: {},
+        },
+      }),
       next,
     );
 
     expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { code: 4001, reason: 'Token has been revoked' } }),
+      expect.objectContaining({
+        data: { code: 4001, reason: 'Token has been revoked' },
+      }),
     );
   });
 
@@ -115,7 +124,9 @@ describe('NotificationGateway', () => {
     );
 
     expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { code: 4001, reason: 'MFA verification required' } }),
+      expect.objectContaining({
+        data: { code: 4001, reason: 'MFA verification required' },
+      }),
     );
   });
 
@@ -170,13 +181,17 @@ describe('NotificationGateway', () => {
     );
 
     expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { code: 4001, reason: 'Invalid or expired token' } }),
+      expect.objectContaining({
+        data: { code: 4001, reason: 'Invalid or expired token' },
+      }),
     );
   });
 
   it('handleConnection 应自动加入用户房间', () => {
     const socket = createSocket({
-      data: { user: { sub: 'user-1', tenantId: 'tenant-1', email: 'u@example.com' } },
+      data: {
+        user: { sub: 'user-1', tenantId: 'tenant-1', email: 'u@example.com' },
+      },
     });
 
     gateway.handleConnection(socket as never);
@@ -186,7 +201,9 @@ describe('NotificationGateway', () => {
 
   it('订阅和退订应基于当前用户房间操作', async () => {
     const socket = createSocket({
-      data: { user: { sub: 'user-1', tenantId: 'tenant-1', email: 'u@example.com' } },
+      data: {
+        user: { sub: 'user-1', tenantId: 'tenant-1', email: 'u@example.com' },
+      },
     });
 
     await expect(gateway.handleSubscribe(socket as never)).resolves.toEqual({

@@ -79,9 +79,7 @@ export class ThrottleService implements OnModuleDestroy {
 
     const elapsed = now - bucket.lastRefill;
     if (elapsed > 0) {
-      const refill = Math.floor(
-        (elapsed / 1000) * ThrottleService.RATE_LIMIT,
-      );
+      const refill = Math.floor((elapsed / 1000) * ThrottleService.RATE_LIMIT);
       if (refill > 0) {
         bucket.tokens = Math.min(
           ThrottleService.RATE_LIMIT,

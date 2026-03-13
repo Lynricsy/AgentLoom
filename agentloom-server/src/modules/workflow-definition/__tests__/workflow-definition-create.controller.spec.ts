@@ -80,10 +80,7 @@ describe('WorkflowDefinitionCreateController', () => {
 
     it('remove 应要求 owner/admin 角色', () => {
       const { controller } = setup();
-      expect(getRoles(controller, 'remove')).toEqual([
-        'owner',
-        'admin',
-      ]);
+      expect(getRoles(controller, 'remove')).toEqual(['owner', 'admin']);
     });
   });
 
@@ -138,7 +135,9 @@ describe('WorkflowDefinitionCreateController', () => {
         description: '详情描述',
         status: 'published',
         version: 5,
-        nodes: [{ id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} }],
+        nodes: [
+          { id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+        ],
         edges: [{ id: 'e1', source: 'n1', target: 'n2' }],
         viewport: { x: 0, y: 0, zoom: 1 },
         metadata: { source: 'template' },
@@ -151,7 +150,9 @@ describe('WorkflowDefinitionCreateController', () => {
 
       const result = await controller.findById(WORKFLOW_ID, TENANT_ID);
 
-      expect(service.findDefinitionDetailById).toHaveBeenCalledWith(WORKFLOW_ID);
+      expect(service.findDefinitionDetailById).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+      );
       expect(result).toEqual({ data: mockResult });
       expect(result.data).toHaveProperty('nodes');
       expect(result.data).toHaveProperty('edges');
@@ -163,7 +164,11 @@ describe('WorkflowDefinitionCreateController', () => {
     it('应调用 service.create 并返回 {data}', async () => {
       const { service, controller } = setup();
       const dto = { name: '新工作流' };
-      const mockResult = { id: 'wf-1', name: '新工作流', slug: 'xin-gong-zuo-liu' };
+      const mockResult = {
+        id: 'wf-1',
+        name: '新工作流',
+        slug: 'xin-gong-zuo-liu',
+      };
       service.create.mockResolvedValue(mockResult);
 
       const result = await controller.create(
@@ -203,7 +208,9 @@ describe('WorkflowDefinitionCreateController', () => {
       const dto = {
         version: 3,
         name: '更新后的名称',
-        nodes: [{ id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} }],
+        nodes: [
+          { id: 'n1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+        ],
       };
       const mockResult = {
         id: WORKFLOW_ID,
@@ -230,7 +237,11 @@ describe('WorkflowDefinitionCreateController', () => {
         USER_ID,
       );
 
-      expect(service.updateDefinition).toHaveBeenCalledWith(WORKFLOW_ID, USER_ID, dto);
+      expect(service.updateDefinition).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        USER_ID,
+        dto,
+      );
       expect(result).toEqual({ data: mockResult });
       expect(result.data).toHaveProperty('nodes');
       expect(result.data).toHaveProperty('edges');

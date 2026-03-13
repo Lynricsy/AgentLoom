@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -23,7 +31,11 @@ import {
 } from '../execution.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
-import type { ExecutionStep, ReactFlowEdge, ReactFlowNode } from '../../../database/schema';
+import type {
+  ExecutionStep,
+  ReactFlowEdge,
+  ReactFlowNode,
+} from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
 
 const EXECUTION_ID = '019577a0-0000-7000-8000-000000000001';
@@ -79,7 +91,10 @@ function makeSnapshot(nodes: ReactFlowNode[], edges: ReactFlowEdge[]) {
   return { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 }, metadata: {} };
 }
 
-function makeExecution(snapshot: ReturnType<typeof makeSnapshot>, status = 'running') {
+function makeExecution(
+  snapshot: ReturnType<typeof makeSnapshot>,
+  status = 'running',
+) {
   return {
     id: EXECUTION_ID,
     workflowDefinitionId: 'workflow-001',
@@ -135,7 +150,10 @@ describe('NodeSchedulerService', () => {
     broadcastAgentEvent: ReturnType<typeof vi.fn>;
     markExecutionFailed: ReturnType<typeof vi.fn>;
   };
-  let mockQueue: { add: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> };
+  let mockQueue: {
+    add: ReturnType<typeof vi.fn>;
+    getJob: ReturnType<typeof vi.fn>;
+  };
   let mockSandboxService: {
     createSandboxSession: ReturnType<typeof vi.fn>;
     getSandboxSession: ReturnType<typeof vi.fn>;
@@ -178,7 +196,10 @@ describe('NodeSchedulerService', () => {
       broadcastAgentEvent: vi.fn(),
       markExecutionFailed: vi.fn().mockResolvedValue(undefined),
     };
-    mockQueue = { add: vi.fn().mockResolvedValue(undefined), getJob: vi.fn().mockResolvedValue(null) };
+    mockQueue = {
+      add: vi.fn().mockResolvedValue(undefined),
+      getJob: vi.fn().mockResolvedValue(null),
+    };
     mockSandboxService = {
       createSandboxSession: vi.fn().mockResolvedValue({
         id: '019577a0-0000-7000-8000-sandbox00001',
@@ -274,8 +295,16 @@ describe('NodeSchedulerService', () => {
       const edges = [makeEdge('A', 'C'), makeEdge('B', 'C')];
       const snapshot = makeSnapshot(nodes, edges);
       const steps = [
-        makeStep({ id: 'step-a', nodeId: 'A', nodeData: { agentId: 'agent-a' } }),
-        makeStep({ id: 'step-b', nodeId: 'B', nodeData: { agentId: 'agent-b' } }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          nodeData: { agentId: 'agent-a' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          nodeData: { agentId: 'agent-b' },
+        }),
         makeStep({ id: 'step-c', nodeId: 'C' }),
       ];
 
@@ -286,8 +315,16 @@ describe('NodeSchedulerService', () => {
       mockDagResolver.resolveDag.mockReturnValue(
         makePlan(
           [['A', 'B'], ['C']],
-          new Map([['A', ['C']], ['B', ['C']], ['C', []]]),
-          new Map([['A', 0], ['B', 0], ['C', 2]]),
+          new Map([
+            ['A', ['C']],
+            ['B', ['C']],
+            ['C', []],
+          ]),
+          new Map([
+            ['A', 0],
+            ['B', 0],
+            ['C', 2],
+          ]),
         ),
       );
 
@@ -327,7 +364,9 @@ describe('NodeSchedulerService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
         .mockReturnValueOnce(createSelectChain([]));
-      mockDagResolver.resolveDag.mockReturnValue(makePlan([], new Map(), new Map()));
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([], new Map(), new Map()),
+      );
 
       await service.startExecution(EXECUTION_ID, TENANT_ID);
 
@@ -341,7 +380,10 @@ describe('NodeSchedulerService', () => {
 
   describe('scheduleNode', () => {
     it('agent 节点会保存 input 后进入队列，并携带 nodeData', async () => {
-      const snapshot = makeSnapshot([makeNode('A'), makeNode('B')], [makeEdge('A', 'B')]);
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B')],
+        [makeEdge('A', 'B')],
+      );
       const steps = [
         makeStep({
           id: 'step-a',
@@ -378,7 +420,10 @@ describe('NodeSchedulerService', () => {
     });
 
     it('data_transform 节点会直接内联执行，不进入 queued', async () => {
-      const snapshot = makeSnapshot([makeNode('A'), makeNode('B', 'data_transform')], [makeEdge('A', 'B')]);
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B', 'data_transform')],
+        [makeEdge('A', 'B')],
+      );
       const executeDataTransform = vi
         .spyOn(service, 'executeDataTransform')
         .mockResolvedValue(undefined);
@@ -484,7 +529,11 @@ describe('NodeSchedulerService', () => {
           },
         },
       );
-      expect(onNodeCompleted).toHaveBeenCalledWith(EXECUTION_ID, 'step-s', TENANT_ID);
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-s',
+        TENANT_ID,
+      );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
@@ -614,7 +663,10 @@ describe('NodeSchedulerService', () => {
 
       vi.spyOn(service as any, 'onNodeFailed').mockResolvedValue(undefined);
 
-      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [stepA, stepB]);
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+        stepA,
+        stepB,
+      ]);
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
@@ -643,13 +695,26 @@ describe('NodeSchedulerService', () => {
 
   describe('onNodeCompleted', () => {
     it('execution 已失败时直接返回，不再调度后继', async () => {
-      const snapshot = makeSnapshot([makeNode('A'), makeNode('B')], [makeEdge('A', 'B')]);
-      const completedStep = makeStep({ id: 'step-a', nodeId: 'A', status: 'completed', result: { ok: true } });
-      const steps = [completedStep, makeStep({ id: 'step-b', nodeId: 'B', status: 'pending' })];
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B')],
+        [makeEdge('A', 'B')],
+      );
+      const completedStep = makeStep({
+        id: 'step-a',
+        nodeId: 'A',
+        status: 'completed',
+        result: { ok: true },
+      });
+      const steps = [
+        completedStep,
+        makeStep({ id: 'step-b', nodeId: 'B', status: 'pending' }),
+      ];
 
       db.select
         .mockReturnValueOnce(createSelectChain([completedStep]))
-        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot, 'failed')]))
+        .mockReturnValueOnce(
+          createSelectChain([makeExecution(snapshot, 'failed')]),
+        )
         .mockReturnValueOnce(createSelectChain(steps));
 
       await service.onNodeCompleted(EXECUTION_ID, 'step-a', TENANT_ID);
@@ -722,7 +787,9 @@ describe('NodeSchedulerService', () => {
 
   describe('cleanupSandboxIfTerminal', () => {
     it('execution 为 completed 时应触发 destroySandbox', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([{ status: 'completed' }]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ status: 'completed' }]),
+      );
 
       await service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID);
 
@@ -741,7 +808,9 @@ describe('NodeSchedulerService', () => {
     });
 
     it('execution 为 cancelled 时也应触发 destroySandbox', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([{ status: 'cancelled' }]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ status: 'cancelled' }]),
+      );
 
       await service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID);
 
@@ -753,7 +822,9 @@ describe('NodeSchedulerService', () => {
 
     it('destroySandbox 异常时应 warn 而非抛出', async () => {
       db.select.mockReturnValueOnce(createSelectChain([{ status: 'failed' }]));
-      mockSandboxService.destroySandbox.mockRejectedValueOnce(new Error('container not found'));
+      mockSandboxService.destroySandbox.mockRejectedValueOnce(
+        new Error('container not found'),
+      );
 
       await expect(
         service.cleanupSandboxIfTerminal(EXECUTION_ID, TENANT_ID),
@@ -768,7 +839,8 @@ describe('NodeSchedulerService', () => {
         nodeId: 'B',
         nodeType: 'data_transform',
         nodeData: {
-          expression: "({ summary: input.A.answer.toUpperCase(), length: input.A.answer.length })",
+          expression:
+            '({ summary: input.A.answer.toUpperCase(), length: input.A.answer.length })',
         },
       });
       const onNodeCompleted = vi
@@ -930,7 +1002,9 @@ describe('NodeSchedulerService', () => {
           resolvedAt: NOW.toISOString(),
         },
       );
-      expect(mockQueue.getJob).toHaveBeenCalledWith(`intervention-timeout:${STEP_ID}`);
+      expect(mockQueue.getJob).toHaveBeenCalledWith(
+        `intervention-timeout:${STEP_ID}`,
+      );
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
@@ -970,13 +1044,9 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(
-          EXECUTION_ID,
-          STEP_ID,
-          TENANT_ID,
-          USER_ID,
-          { action: 'approve' },
-        ),
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        }),
       ).rejects.toThrow(InterventionNotAllowedException);
 
       expect(mockEventBridge.emitInterventionResolved).not.toHaveBeenCalled();
@@ -989,35 +1059,27 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(
-          EXECUTION_ID,
-          STEP_ID,
-          TENANT_ID,
-          USER_ID,
-          {
-            action: 'approve',
-          },
-        ),
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        }),
       ).rejects.toThrow(InterventionNotAllowedException);
     });
 
     it('检查点缺少 sessionId 时抛出 AgentExecutionException', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
-          makeStep({ id: STEP_ID, status: 'waiting_intervention', checkpointData: {} }),
+          makeStep({
+            id: STEP_ID,
+            status: 'waiting_intervention',
+            checkpointData: {},
+          }),
         ]),
       );
 
       await expect(
-        service.resolveIntervention(
-          EXECUTION_ID,
-          STEP_ID,
-          TENANT_ID,
-          USER_ID,
-          {
-            action: 'approve',
-          },
-        ),
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        }),
       ).rejects.toThrow(AgentExecutionException);
     });
 
@@ -1034,15 +1096,9 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveIntervention(
-          EXECUTION_ID,
-          STEP_ID,
-          TENANT_ID,
-          USER_ID,
-          {
-            action: 'approve',
-          },
-        ),
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        }),
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
@@ -1148,10 +1204,16 @@ describe('NodeSchedulerService', () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(AgentExecutionException);
     });
 
@@ -1168,10 +1230,16 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
@@ -1186,10 +1254,16 @@ describe('NodeSchedulerService', () => {
       );
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
     });
 
@@ -1205,10 +1279,16 @@ describe('NodeSchedulerService', () => {
       db.select.mockReturnValueOnce(createSelectChain([step]));
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(ToolCallNotFoundException);
     });
 
@@ -1229,10 +1309,16 @@ describe('NodeSchedulerService', () => {
       db.select.mockReturnValueOnce(createSelectChain([step]));
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
     });
 
@@ -1252,17 +1338,27 @@ describe('NodeSchedulerService', () => {
       db.select.mockReturnValueOnce(createSelectChain([step]));
 
       await expect(
-        service.resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
-          toolCallId: TOOL_CALL_ID,
-          action: 'approve',
-        }),
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
       ).rejects.toThrow(AgentExecutionException);
     });
   });
 
   describe('enqueueInterventionTimeout', () => {
     it('应以 24 小时延迟将超时任务入队', async () => {
-      await service.enqueueInterventionTimeout(EXECUTION_ID, 'step-x', TENANT_ID);
+      await service.enqueueInterventionTimeout(
+        EXECUTION_ID,
+        'step-x',
+        TENANT_ID,
+      );
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'intervention-timeout',
@@ -1307,7 +1403,9 @@ describe('NodeSchedulerService', () => {
         },
       );
 
-      expect(mockQueue.getJob).toHaveBeenCalledWith('intervention-timeout:019391d4-0000-7000-0000-000000000099');
+      expect(mockQueue.getJob).toHaveBeenCalledWith(
+        'intervention-timeout:019391d4-0000-7000-0000-000000000099',
+      );
       expect(mockJob.remove).toHaveBeenCalled();
     });
   });

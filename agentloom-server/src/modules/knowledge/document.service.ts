@@ -334,9 +334,7 @@ export class DocumentService {
 
       if (error instanceof StorageUnavailableException) {
         const reason =
-          typeof error.detail === 'string'
-            ? error.detail
-            : '对象存储暂不可用';
+          typeof error.detail === 'string' ? error.detail : '对象存储暂不可用';
         throw new DocumentContentUnavailableException(documentId, reason);
       }
 

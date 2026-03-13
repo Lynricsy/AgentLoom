@@ -2,9 +2,7 @@ import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationController } from '../notification.controller';
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
-import {
-  listNotificationsQuerySchema,
-} from '../dto/list-notifications-query.dto';
+import { listNotificationsQuerySchema } from '../dto/list-notifications-query.dto';
 import { upsertPreferenceSchema } from '../dto/upsert-preference.dto';
 
 const { createMockNotificationService } = vi.hoisted(() => ({
@@ -27,9 +25,7 @@ describe('NotificationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     notificationService = createMockNotificationService();
-    controller = new NotificationController(
-      notificationService as never,
-    );
+    controller = new NotificationController(notificationService as never);
   });
 
   it('应返回分页通知列表', async () => {
@@ -63,7 +59,9 @@ describe('NotificationController', () => {
   it('应返回未读数量', async () => {
     notificationService.getUnreadCount.mockResolvedValue({ count: 3 });
 
-    await expect(controller.getUnreadCount('tenant-1', 'user-1')).resolves.toEqual({
+    await expect(
+      controller.getUnreadCount('tenant-1', 'user-1'),
+    ).resolves.toEqual({
       data: { count: 3 },
     });
   });
@@ -84,7 +82,9 @@ describe('NotificationController', () => {
   it('应将全部通知标记为已读', async () => {
     notificationService.markAllAsRead.mockResolvedValue({ updatedCount: 4 });
 
-    await expect(controller.markAllAsRead('tenant-1', 'user-1')).resolves.toEqual({
+    await expect(
+      controller.markAllAsRead('tenant-1', 'user-1'),
+    ).resolves.toEqual({
       data: { updatedCount: 4 },
     });
   });
@@ -92,7 +92,9 @@ describe('NotificationController', () => {
   it('应返回通知偏好', async () => {
     notificationService.getPreferences.mockResolvedValue([{ id: 'pref-1' }]);
 
-    await expect(controller.getPreferences('tenant-1', 'user-1')).resolves.toEqual({
+    await expect(
+      controller.getPreferences('tenant-1', 'user-1'),
+    ).resolves.toEqual({
       data: [{ id: 'pref-1' }],
     });
   });
@@ -103,7 +105,10 @@ describe('NotificationController', () => {
       channel: 'in_app' as const,
       enabled: false,
     };
-    notificationService.upsertPreference.mockResolvedValue({ id: 'pref-1', ...dto });
+    notificationService.upsertPreference.mockResolvedValue({
+      id: 'pref-1',
+      ...dto,
+    });
 
     await expect(
       controller.upsertPreference('tenant-1', 'user-1', dto),
@@ -113,18 +118,33 @@ describe('NotificationController', () => {
   });
 
   it('应为所有接口声明 Viewer+ 角色访问控制', () => {
-    const methods = [
-      controller.findAll,
-      controller.getUnreadCount,
-      controller.markAsRead,
-      controller.markAllAsRead,
-      controller.getPreferences,
-      controller.upsertPreference,
-    ];
+    const methodNames = [
+      'findAll',
+      'getUnreadCount',
+      'markAsRead',
+      'markAllAsRead',
+      'getPreferences',
+      'upsertPreference',
+    ] as const;
 
-    for (const method of methods) {
-      const roles = Reflect.getMetadata(ROLES_KEY, method) as string[];
-      expect(roles).toEqual(['viewer', 'operator', 'creator', 'admin', 'owner']);
+    for (const methodName of methodNames) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        NotificationController.prototype,
+        methodName,
+      );
+      expect(descriptor?.value).toBeDefined();
+
+      const roles = Reflect.getMetadata(
+        ROLES_KEY,
+        descriptor?.value as object,
+      ) as string[];
+      expect(roles).toEqual([
+        'viewer',
+        'operator',
+        'creator',
+        'admin',
+        'owner',
+      ]);
     }
   });
 
@@ -163,12 +183,16 @@ describe('NotificationController', () => {
       }),
     ).toThrow();
 
-    expect(() =>
+    expect(
       upsertPreferenceSchema.parse({
         type: 'execution_completed',
         channel: 'push',
         enabled: true,
       }),
-    ).toThrow();
+    ).toEqual({
+      type: 'execution_completed',
+      channel: 'push',
+      enabled: true,
+    });
   });
 });

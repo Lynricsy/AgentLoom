@@ -55,13 +55,8 @@ export const workflowTemplates = pgTable(
       .default(sql`'{}'::text[]`),
     thumbnailUrl: varchar('thumbnail_url', { length: 512 }),
 
-    definition: jsonb('definition')
-      .$type<TemplateDefinition>()
-      .notNull(),
-    metadata: jsonb('metadata')
-      .$type<TemplateMetadata>()
-      .notNull()
-      .default({}),
+    definition: jsonb('definition').$type<TemplateDefinition>().notNull(),
+    metadata: jsonb('metadata').$type<TemplateMetadata>().notNull().default({}),
 
     isPublished: boolean('is_published').notNull().default(true),
     displayOrder: integer('display_order').notNull().default(0),

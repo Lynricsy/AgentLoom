@@ -58,7 +58,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     let session: AgentSession;
 
     if (params.mode === 'workflow' && params.context) {
-      const ctx = params.context as Record<string, unknown>;
+      const ctx = params.context;
       session = this.agentSessionFactory.createWorkflowSession({
         agentId: params.agentId,
         executionId: ctx.executionId as string,
@@ -78,8 +78,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         history: [],
         cwd: params.cwd,
         mcpServers: params.mcpServers,
-        workflowState:
-          params.mode === 'workflow' ? params.context : undefined,
+        workflowState: params.mode === 'workflow' ? params.context : undefined,
       };
 
       session = {
@@ -98,8 +97,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     }
 
     if (params.mode === 'workflow' && params.tenantId && params.context) {
-      const stepId = (params.context as Record<string, unknown>)
-        .stepId as string;
+      const stepId = params.context.stepId as string;
       this.sessionIndex.set(session.id, {
         tenantId: params.tenantId,
         stepId,

@@ -216,7 +216,10 @@ describe('WorkflowVersionController', () => {
 
       const result = await controller.getInputSchema(WORKFLOW_ID, TENANT_ID);
 
-      expect(service.getInputSchema).toHaveBeenCalledWith(WORKFLOW_ID, TENANT_ID);
+      expect(service.getInputSchema).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        TENANT_ID,
+      );
       expect(result).toEqual({ data: MOCK_INPUT_SCHEMA });
     });
   });

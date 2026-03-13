@@ -28,7 +28,11 @@ export class NotificationController {
     @CurrentUser('sub') userId: string,
     @Query() query: ListNotificationsQueryDto,
   ) {
-    const result = await this.notificationService.findAll(tenantId, userId, query);
+    const result = await this.notificationService.findAll(
+      tenantId,
+      userId,
+      query,
+    );
 
     return {
       data: result.data,
@@ -97,7 +101,11 @@ export class NotificationController {
     @Body() dto: UpsertPreferenceDto,
   ) {
     return {
-      data: await this.notificationService.upsertPreference(tenantId, userId, dto),
+      data: await this.notificationService.upsertPreference(
+        tenantId,
+        userId,
+        dto,
+      ),
     };
   }
 }

@@ -66,10 +66,13 @@ export class SessionPersistenceService {
       agentId: raw.agentId,
       mode: raw.mode as AgentSession['mode'],
       context: {
-        history: (raw.context?.history ?? []) as AgentSession['context']['history'],
+        history: (raw.context?.history ??
+          []) as AgentSession['context']['history'],
         cwd: raw.context?.cwd,
-        mcpServers: raw.context?.mcpServers as AgentSession['context']['mcpServers'],
-        workflowState: raw.context?.workflowState as AgentSession['context']['workflowState'],
+        mcpServers: raw.context
+          ?.mcpServers as AgentSession['context']['mcpServers'],
+        workflowState: raw.context
+          ?.workflowState as AgentSession['context']['workflowState'],
       },
       status: raw.status as AgentSession['status'],
       tenantId: raw.tenantId,
@@ -91,7 +94,7 @@ export class SessionPersistenceService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    const existing = (step?.checkpointData ?? {}) as Record<string, unknown>;
+    const existing = step?.checkpointData ?? {};
 
     await this.tenantDb
       .update(schema.executionSteps)
@@ -103,7 +106,9 @@ export class SessionPersistenceService {
       })
       .where(eq(schema.executionSteps.id, stepId));
 
-    this.logger.debug(`Session ${session.id} saved to checkpoint for step ${stepId}`);
+    this.logger.debug(
+      `Session ${session.id} saved to checkpoint for step ${stepId}`,
+    );
   }
 
   async loadFromCheckpoint(
@@ -115,13 +120,15 @@ export class SessionPersistenceService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    const checkpointData = (step?.checkpointData ?? {}) as Record<string, unknown>;
+    const checkpointData = step?.checkpointData ?? {};
 
     if (!checkpointData.session) {
       return null;
     }
 
     this.logger.debug(`Session loaded from checkpoint for step ${stepId}`);
-    return this.deserializeSession(checkpointData.session as Record<string, unknown>);
+    return this.deserializeSession(
+      checkpointData.session as Record<string, unknown>,
+    );
   }
 }

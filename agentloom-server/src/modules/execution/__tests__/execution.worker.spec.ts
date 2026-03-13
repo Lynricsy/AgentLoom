@@ -87,7 +87,9 @@ describe('ExecutionWorker', () => {
       );
       expect(
         mockExecutionService.initializeSteps.mock.invocationCallOrder[0],
-      ).toBeLessThan(mockNodeScheduler.startExecution.mock.invocationCallOrder[0]);
+      ).toBeLessThan(
+        mockNodeScheduler.startExecution.mock.invocationCallOrder[0],
+      );
     });
 
     it('应在 startExecution 失败时抛出错误', async () => {

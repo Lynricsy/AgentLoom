@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { NotificationService } from '../notification.service';
-import { NOTIFICATION_QUEUE, NOTIFICATION_DISPATCH_JOB } from '../notification.constants';
+import {
+  NOTIFICATION_QUEUE,
+  NOTIFICATION_DISPATCH_JOB,
+} from '../notification.constants';
 import { DRIZZLE } from '../../../database/database.module';
 
 const mocks = vi.hoisted(() => ({
@@ -103,7 +106,10 @@ describe('NotificationService', () => {
       providers: [
         NotificationService,
         { provide: DRIZZLE, useValue: db },
-        { provide: getQueueToken(NOTIFICATION_QUEUE), useValue: notificationQueue },
+        {
+          provide: getQueueToken(NOTIFICATION_QUEUE),
+          useValue: notificationQueue,
+        },
       ],
     }).compile();
 
@@ -166,7 +172,11 @@ describe('NotificationService', () => {
         createUpdateReturning([{ ...mockNotification, isRead: true }]),
       );
 
-      const result = await service.markAsRead(TENANT_ID, USER_ID, NOTIFICATION_ID);
+      const result = await service.markAsRead(
+        TENANT_ID,
+        USER_ID,
+        NOTIFICATION_ID,
+      );
 
       expect(result).toEqual({ ...mockNotification, isRead: true });
     });
@@ -196,9 +206,11 @@ describe('NotificationService', () => {
     it('应返回未读通知数量', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([{ count: 5 }]));
 
-      await expect(service.getUnreadCount(TENANT_ID, USER_ID)).resolves.toEqual({
-        count: 5,
-      });
+      await expect(service.getUnreadCount(TENANT_ID, USER_ID)).resolves.toEqual(
+        {
+          count: 5,
+        },
+      );
     });
   });
 
@@ -219,6 +231,42 @@ describe('NotificationService', () => {
       await expect(service.getPreferences(TENANT_ID, USER_ID)).resolves.toEqual(
         preferences,
       );
+    });
+  });
+
+  describe('getPreferenceForChannel', () => {
+    it('应返回指定渠道的通知偏好', async () => {
+      const preference = {
+        id: 'pref-push-1',
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        type: 'execution_completed' as const,
+        channel: 'push',
+        enabled: true,
+      };
+      db.select.mockReturnValue(createSelectWhereResolved([preference]));
+
+      await expect(
+        service.getPreferenceForChannel(
+          TENANT_ID,
+          USER_ID,
+          'execution_completed',
+          'push',
+        ),
+      ).resolves.toEqual(preference);
+    });
+
+    it('渠道偏好不存在时应返回 null', async () => {
+      db.select.mockReturnValue(createSelectWhereResolved([]));
+
+      await expect(
+        service.getPreferenceForChannel(
+          TENANT_ID,
+          USER_ID,
+          'execution_completed',
+          'push',
+        ),
+      ).resolves.toBeNull();
     });
   });
 

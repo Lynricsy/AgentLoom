@@ -23,9 +23,7 @@ import {
   type InterventionResolution,
   type ToolPermissionResolution,
 } from './execution.constants';
-import type {
-  InterventionCheckpointRecord,
-} from './types/execution-event.types';
+import type { InterventionCheckpointRecord } from './types/execution-event.types';
 import {
   NodeInputResolutionException,
   InterventionNotAllowedException,
@@ -70,19 +68,13 @@ export class NodeSchedulerService {
    *
    * 前置条件：execution 已 running，steps 已创建（status: pending）。
    */
-  async startExecution(
-    executionId: string,
-    tenantId: string,
-  ): Promise<void> {
+  async startExecution(executionId: string, tenantId: string): Promise<void> {
     const { snapshot, steps } = await this.loadExecutionContext(executionId);
     const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
 
     // 空图直接收尾
     if (plan.layers.length === 0) {
-      await this.stepStateMachine.updateExecutionStatus(
-        executionId,
-        tenantId,
-      );
+      await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
       return;
     }
 
@@ -110,9 +102,8 @@ export class NodeSchedulerService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    const { execution, snapshot, steps } = await this.loadExecutionContext(
-      executionId,
-    );
+    const { execution, snapshot, steps } =
+      await this.loadExecutionContext(executionId);
 
     if (execution.status === 'failed' || execution.status === 'cancelled') {
       return;
@@ -120,8 +111,7 @@ export class NodeSchedulerService {
 
     const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
 
-    const successors =
-      plan.adjacencyMap.get(completedStep.nodeId) ?? [];
+    const successors = plan.adjacencyMap.get(completedStep.nodeId) ?? [];
 
     // 条件节点需要分支处理
     if (
@@ -132,7 +122,7 @@ export class NodeSchedulerService {
       await this.handleConditionalBranching(
         executionId,
         completedStep.nodeId,
-        (completedStep.result as Record<string, unknown>).branch as string,
+        completedStep.result.branch as string,
         snapshot,
         steps,
         tenantId,
@@ -155,12 +145,7 @@ export class NodeSchedulerService {
             steps,
           );
         } else if (decision === 'skip') {
-          await this.skipAndCascade(
-            executionId,
-            successorId,
-            steps,
-            tenantId,
-          );
+          await this.skipAndCascade(executionId, successorId, steps, tenantId);
         }
         // 'wait' → 不操作
       }
@@ -182,19 +167,37 @@ export class NodeSchedulerService {
 
     let input: Record<string, unknown>;
     try {
-      input = this.resolveNodeInput(nodeId, snapshot.edges, steps, snapshot.nodes);
+      input = this.resolveNodeInput(
+        nodeId,
+        snapshot.edges,
+        steps,
+        snapshot.nodes,
+      );
     } catch (error) {
-      if (error instanceof Error && error.constructor.name === 'InvalidStepTransitionException') throw error;
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      )
+        throw error;
       const message = error instanceof Error ? error.message : String(error);
-      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'failed', {
-        errorMessage: {
-          message,
-          ...(error instanceof Error ? { stack: error.stack } : {}),
-          ...(error instanceof DomainException ? { type: error.type, title: error.message, detail: error.detail } : {}),
-          ...(error instanceof NodeTypeMismatchException ? { typeMismatch: error.typeMismatch } : {}),
-          nodeId: step.nodeId,
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? { type: error.type, title: error.message, detail: error.detail }
+              : {}),
+            ...(error instanceof NodeTypeMismatchException
+              ? { typeMismatch: error.typeMismatch }
+              : {}),
+            nodeId: step.nodeId,
+          },
         },
-      });
+      );
       await this.onNodeFailed(executionId, step.id, tenantId);
       return;
     }
@@ -217,7 +220,7 @@ export class NodeSchedulerService {
           stepId: step.id,
           tenantId,
           input,
-          nodeData: (step.nodeData ?? {}) as Record<string, unknown>,
+          nodeData: step.nodeData ?? {},
           hasSandbox: this.hasSandboxUpstream(nodeId, snapshot.edges, steps),
         } satisfies AgentTaskJobData);
         break;
@@ -246,7 +249,7 @@ export class NodeSchedulerService {
           stepId: step.id,
           tenantId,
           input,
-          nodeData: (step.nodeData ?? {}) as Record<string, unknown>,
+          nodeData: step.nodeData ?? {},
         } satisfies AgentTaskJobData);
     }
   }
@@ -289,10 +292,7 @@ export class NodeSchedulerService {
           input,
           targetHandle,
           sourceHandle
-            ? this.resolveJsonPath(
-                sourceStep.result as Record<string, unknown>,
-                sourceHandle,
-              )
+            ? this.resolveJsonPath(sourceStep.result, sourceHandle)
             : sourceStep.result,
         );
         continue;
@@ -302,10 +302,7 @@ export class NodeSchedulerService {
         this.setValueAtPath(
           input,
           sourceHandle,
-          this.resolveJsonPath(
-            sourceStep.result as Record<string, unknown>,
-            sourceHandle,
-          ),
+          this.resolveJsonPath(sourceStep.result, sourceHandle),
         );
         continue;
       }
@@ -359,10 +356,7 @@ export class NodeSchedulerService {
    *
    * 在 CheckpointService.resumeExecution 重置步骤后调用。
    */
-  async resumeScheduling(
-    executionId: string,
-    tenantId: string,
-  ): Promise<void> {
+  async resumeScheduling(executionId: string, tenantId: string): Promise<void> {
     const { snapshot, steps } = await this.loadExecutionContext(executionId);
     const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
 
@@ -427,10 +421,9 @@ export class NodeSchedulerService {
       }
     }
 
-    const errorMessage =
-      (failedStep.errorMessage as schema.ExecutionStepErrorMessage | null) ?? {
-        message: '节点执行失败',
-      };
+    const errorMessage = failedStep.errorMessage ?? {
+      message: '节点执行失败',
+    };
 
     await this.stepStateMachine.markExecutionFailed(
       executionId,
@@ -466,10 +459,11 @@ export class NodeSchedulerService {
       throw new InterventionNotAllowedException(stepId, step.status);
     }
 
-    const checkpoint =
-      (step.checkpointData as Record<string, unknown> | null) ?? {};
+    const checkpoint = step.checkpointData ?? {};
     const sessionId =
-      typeof checkpoint.sessionId === 'string' ? checkpoint.sessionId : undefined;
+      typeof checkpoint.sessionId === 'string'
+        ? checkpoint.sessionId
+        : undefined;
 
     if (!sessionId) {
       throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
@@ -546,8 +540,8 @@ export class NodeSchedulerService {
       executionId,
       stepId,
       tenantId,
-      input: ((step.input ?? {}) as Record<string, unknown>) ?? {},
-      nodeData: ((step.nodeData ?? {}) as Record<string, unknown>) ?? {},
+      input: step.input ?? {},
+      nodeData: step.nodeData ?? {},
       resumeSessionId: sessionId,
       intervention: {
         ...resolution,
@@ -559,7 +553,9 @@ export class NodeSchedulerService {
       },
     } satisfies AgentTaskJobData);
 
-    this.logger.log(`干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`);
+    this.logger.log(
+      `干预恢复任务已排队: ${JSON.stringify({ executionId, stepId })}`,
+    );
   }
 
   async resolveToolPermission(
@@ -593,8 +589,7 @@ export class NodeSchedulerService {
       );
     }
 
-    const checkpoint =
-      (step.checkpointData as Record<string, unknown> | null) ?? {};
+    const checkpoint = step.checkpointData ?? {};
     const sessionId =
       typeof checkpoint.sessionId === 'string'
         ? checkpoint.sessionId
@@ -624,8 +619,8 @@ export class NodeSchedulerService {
       executionId,
       stepId,
       tenantId,
-      input: ((step.input ?? {}) as Record<string, unknown>) ?? {},
-      nodeData: ((step.nodeData ?? {}) as Record<string, unknown>) ?? {},
+      input: step.input ?? {},
+      nodeData: step.nodeData ?? {},
       resumeSessionId: sessionId,
       toolPermission: resolution,
     } satisfies AgentTaskJobData);
@@ -646,8 +641,12 @@ export class NodeSchedulerService {
       return checkpoint.interventionNodeName.trim();
     }
 
-    const nodeData = step.nodeData as Record<string, unknown> | null;
-    if (nodeData && typeof nodeData.label === 'string' && nodeData.label.trim()) {
+    const nodeData = step.nodeData;
+    if (
+      nodeData &&
+      typeof nodeData.label === 'string' &&
+      nodeData.label.trim()
+    ) {
       return nodeData.label.trim();
     }
 
@@ -670,7 +669,9 @@ export class NodeSchedulerService {
         removeOnFail: true,
       },
     );
-    this.logger.log(`Intervention timeout enqueued (24h): ${JSON.stringify({ executionId, stepId })}`);
+    this.logger.log(
+      `Intervention timeout enqueued (24h): ${JSON.stringify({ executionId, stepId })}`,
+    );
   }
 
   private async removeInterventionTimeout(stepId: string): Promise<void> {
@@ -691,21 +692,15 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): Promise<void> {
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      step.id,
-      'running',
-    );
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const nodeData = step.nodeData ?? {};
       const expression =
         typeof nodeData.expression === 'string'
           ? nodeData.expression.trim()
           : '';
-      const mapping = nodeData.mapping as
-        | Record<string, string>
-        | undefined;
+      const mapping = nodeData.mapping as Record<string, string> | undefined;
 
       let result: Record<string, unknown>;
 
@@ -740,8 +735,7 @@ export class NodeSchedulerService {
         throw error;
       }
 
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
@@ -774,14 +768,10 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): Promise<void> {
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      step.id,
-      'running',
-    );
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const nodeData = step.nodeData ?? {};
       const expression =
         typeof nodeData.expression === 'string'
           ? nodeData.expression.trim()
@@ -793,7 +783,7 @@ export class NodeSchedulerService {
       const evaluation = expression
         ? this.evaluateExpression(expression, input)
         : flatInput[conditionField] === expectedValue;
-      const branch = Boolean(evaluation) ? 'true' : 'false';
+      const branch = evaluation ? 'true' : 'false';
 
       const result = expression
         ? {
@@ -824,8 +814,7 @@ export class NodeSchedulerService {
         throw error;
       }
 
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
@@ -857,14 +846,10 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): Promise<void> {
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      step.id,
-      'running',
-    );
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = (step.nodeData ?? {}) as Record<string, unknown>;
+      const nodeData = step.nodeData ?? {};
       const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
       const config: SandboxConfig = {
         cpu:
@@ -916,8 +901,7 @@ export class NodeSchedulerService {
         throw error;
       }
 
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
@@ -1033,7 +1017,11 @@ export class NodeSchedulerService {
   }
 
   private normalizeTransformResult(result: unknown): Record<string, unknown> {
-    if (result !== null && typeof result === 'object' && !Array.isArray(result)) {
+    if (
+      result !== null &&
+      typeof result === 'object' &&
+      !Array.isArray(result)
+    ) {
       return result as Record<string, unknown>;
     }
 
@@ -1074,12 +1062,7 @@ export class NodeSchedulerService {
         }
       } else {
         // 不匹配分支：跳过并级联
-        await this.skipAndCascade(
-          executionId,
-          edge.target,
-          steps,
-          tenantId,
-        );
+        await this.skipAndCascade(executionId, edge.target, steps, tenantId);
       }
     }
   }
@@ -1096,11 +1079,7 @@ export class NodeSchedulerService {
     const step = steps.find((s) => s.nodeId === nodeId);
     if (!step || step.status !== 'pending') return;
 
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      step.id,
-      'skipped',
-    );
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'skipped');
     await this.onNodeCompleted(executionId, step.id, tenantId);
   }
 
@@ -1137,10 +1116,7 @@ export class NodeSchedulerService {
   /**
    * 简单 JSON 路径解析（支持 `key.nested.field` 格式）。
    */
-  private resolveJsonPath(
-    obj: Record<string, unknown>,
-    path: string,
-  ): unknown {
+  private resolveJsonPath(obj: Record<string, unknown>, path: string): unknown {
     if (!path) {
       return obj;
     }

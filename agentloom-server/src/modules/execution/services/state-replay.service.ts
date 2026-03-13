@@ -12,9 +12,7 @@ import type { EventBridgeService } from './event-bridge.service';
 export class StateReplayService {
   private readonly logger = new Logger(StateReplayService.name);
 
-  constructor(
-    @Inject(DRIZZLE) private readonly db: DrizzleDB,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   /**
    * 检查执行记录是否存在（不限租户）。
@@ -81,9 +79,8 @@ export class StateReplayService {
           completedAt: step.completedAt?.toISOString() ?? null,
           ...(step.errorMessage
             ? {
-                errorMessage: (
-                  step.errorMessage as { message: string }
-                ).message,
+                errorMessage: (step.errorMessage as { message: string })
+                  .message,
                 errorDetail:
                   step.errorMessage as unknown as StepSnapshot['errorDetail'],
               }

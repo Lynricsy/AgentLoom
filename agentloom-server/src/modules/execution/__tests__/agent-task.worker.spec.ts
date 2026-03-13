@@ -21,7 +21,10 @@ import {
 } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../../agent/ports/agent-runtime.port';
 import {
   AGENT_RUNTIME_FACTORY,
   type IAgentAdapterFactory,
@@ -32,9 +35,10 @@ import type { AgentSession } from '../../agent/types/agent-session.types';
 vi.mock(
   '../../../common/interceptors/tenant-transaction.context',
   async (importOriginal) => {
-    const actual = await importOriginal<
-      typeof import('../../../common/interceptors/tenant-transaction.context')
-    >();
+    const actual =
+      await importOriginal<
+        typeof import('../../../common/interceptors/tenant-transaction.context')
+      >();
 
     return {
       ...actual,
@@ -122,7 +126,9 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
   } as AgentSession;
 }
 
-async function* createEventStream(events: AgentEvent[]): AsyncIterable<AgentEvent> {
+async function* createEventStream(
+  events: AgentEvent[],
+): AsyncIterable<AgentEvent> {
   for (const event of events) {
     yield event;
   }
@@ -131,7 +137,9 @@ async function* createEventStream(events: AgentEvent[]): AsyncIterable<AgentEven
 function createSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(Array.isArray(result) ? result : [result]),
+      where: vi
+        .fn()
+        .mockResolvedValue(Array.isArray(result) ? result : [result]),
     }),
   };
 }
@@ -186,7 +194,10 @@ describe('AgentTaskWorker', () => {
     deserializeSession: vi.fn(),
   };
 
-  const mockAgentRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
+  const mockAgentRuntime: Record<
+    keyof IAgentRuntime,
+    ReturnType<typeof vi.fn>
+  > = {
     createSession: vi.fn(),
     loadSession: vi.fn(),
     prompt: vi.fn(),
@@ -194,7 +205,10 @@ describe('AgentTaskWorker', () => {
     registerSessionMetadata: vi.fn(),
   };
 
-  const mockSandboxRuntime: Record<keyof IAgentRuntime, ReturnType<typeof vi.fn>> = {
+  const mockSandboxRuntime: Record<
+    keyof IAgentRuntime,
+    ReturnType<typeof vi.fn>
+  > = {
     createSession: vi.fn(),
     loadSession: vi.fn(),
     prompt: vi.fn(),
@@ -231,8 +245,14 @@ describe('AgentTaskWorker', () => {
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
         { provide: ThrottleService, useValue: mockThrottle },
         { provide: EventBridgeService, useValue: mockEventBridge },
-        { provide: ToolCallStateMachineService, useValue: mockToolCallStateMachine },
-        { provide: SessionPersistenceService, useValue: mockSessionPersistence },
+        {
+          provide: ToolCallStateMachineService,
+          useValue: mockToolCallStateMachine,
+        },
+        {
+          provide: SessionPersistenceService,
+          useValue: mockSessionPersistence,
+        },
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
@@ -422,8 +442,7 @@ describe('AgentTaskWorker', () => {
       ).rejects.toThrow('LLM 调用失败');
 
       expect(mockDb.update).toHaveBeenCalled();
-      const setArg =
-        mockDb.update.mock.results[0].value.set.mock.calls[0][0];
+      const setArg = mockDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setArg).toEqual({ attemptCount: 1 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
@@ -468,7 +487,10 @@ describe('AgentTaskWorker', () => {
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
-          yield { type: 'message_chunk', content: '最后一次尝试' } as AgentEvent;
+          yield {
+            type: 'message_chunk',
+            content: '最后一次尝试',
+          } as AgentEvent;
           throw new Error('最终失败');
         })(),
       );
@@ -483,8 +505,7 @@ describe('AgentTaskWorker', () => {
       ).rejects.toThrow('最终失败');
 
       expect(mockDb.update).toHaveBeenCalled();
-      const setArg =
-        mockDb.update.mock.results[0].value.set.mock.calls[0][0];
+      const setArg = mockDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setArg).toEqual({ attemptCount: 4 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
@@ -612,7 +633,10 @@ describe('AgentTaskWorker', () => {
     });
 
     it('approve 干预会保留结构化 suggestedContent 作为最终输出', async () => {
-      const structuredSuggestion = { summary: '建议稿', tags: ['safe', 'reviewed'] };
+      const structuredSuggestion = {
+        summary: '建议稿',
+        tags: ['safe', 'reviewed'],
+      };
       const step = makeStep({
         status: 'waiting_intervention',
         checkpointData: {
@@ -1211,7 +1235,9 @@ describe('AgentTaskWorker', () => {
           ),
         ).rejects.toThrow(ToolCallNotFoundException);
 
-        expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
+        expect(
+          mockEventBridge.emitToolPermissionResolved,
+        ).not.toHaveBeenCalled();
         expect(mockAgentRuntime.prompt).not.toHaveBeenCalled();
       });
 
@@ -1250,7 +1276,9 @@ describe('AgentTaskWorker', () => {
           ),
         ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
 
-        expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
+        expect(
+          mockEventBridge.emitToolPermissionResolved,
+        ).not.toHaveBeenCalled();
         expect(mockAgentRuntime.prompt).not.toHaveBeenCalled();
       });
     });
@@ -1497,7 +1525,10 @@ describe('AgentTaskWorker', () => {
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          expect.objectContaining({ toolCallId: 'tc-1', status: 'in_progress' }),
+          expect.objectContaining({
+            toolCallId: 'tc-1',
+            status: 'in_progress',
+          }),
         );
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
@@ -1507,7 +1538,10 @@ describe('AgentTaskWorker', () => {
         expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
           TENANT_ID,
           EXECUTION_ID,
-          expect.objectContaining({ toolCallId: 'tc-2', status: 'in_progress' }),
+          expect.objectContaining({
+            toolCallId: 'tc-2',
+            status: 'in_progress',
+          }),
         );
       });
 
