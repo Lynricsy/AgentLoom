@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/execution_state.dart';
+import '../models/execution_status.dart';
 import '../providers/execution_monitor_provider.dart';
 import '../widgets/execution_alert_banner.dart';
 import '../widgets/execution_status_header.dart';
@@ -97,38 +98,40 @@ class _ExecutionMonitorScreenState
       return _buildErrorView('Execution ended');
     }
 
+    final executionStatus = lastSnapshot.executionStatus;
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 完成横幅
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Execution completed',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          if (executionStatus == ExecutionStatus.completed)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.check_circle,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Text(
+                    'Execution completed',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           ExecutionStatusHeader(
             snapshot: lastSnapshot,
-            connectionMode: ConnectionMode.websocket,
+            connectionMode: ConnectionMode.disconnected,
           ),
           ExecutionAlertBanner(snapshot: lastSnapshot),
           StepTimeline(steps: lastSnapshot.steps),

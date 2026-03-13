@@ -12,8 +12,8 @@ AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a�
 - GoRouter redirect guard：未认证 → /login，已认证 + /login → /dashboard
 - 工作流列表页（搜索、状态筛选、下拉刷新、无限滚动）
 - 工作流详情页（元数据卡片、执行历史、FAB 运行按钮）→ 点击执行记录跳转执行监控
-- Dashboard 页（快速访问工作流、最近执行）→ 点击最近执行跳转执行监控
-- 执行监控：Socket.IO 实时状态 + REST 5s 轮询降级，状态头 + 告警横幅 + 步骤时间线
+- Dashboard 页（快速访问工作流 + recentExecutions 聚合）→ 点击最近执行跳转执行监控
+- 执行监控：Socket.IO 实时状态 + REST execution detail 5s 轮询降级，状态头 + 告警横幅 + 步骤时间线 + disconnected 语义纠正
 
 ## 目录约定
 
@@ -29,22 +29,22 @@ lib/
 │   │   ├── screens/     # LoginScreen (email/password + 验证 + 错误/MFA/加载态)
 │   │   └── widgets/     # AuthTextField (可复用, 密码可见性切换)
 │   ├── dashboard/
-│   │   ├── providers/   # recentWorkflowsProvider
+│   │   ├── providers/   # recentWorkflowsProvider + recentExecutionsProvider
 │   │   ├── screens/     # DashboardScreen
-│   │   └── widgets/     # RecentExecutionsSection (onExecutionTap callback), QuickAccessSection, RecentExecutionCard
+│   │   └── widgets/     # RecentExecutionsSection, QuickAccessSection, RecentExecutionCard
 │   ├── execution/
 │   │   ├── models/      # Freezed: ExecutionEventEnvelope, ExecutionStateSnapshot, StepSnapshot, ExecutionStatus/StepStatus enums, SubscribeAck
-│   │   ├── services/    # ExecutionSocketService (Socket.IO /execution namespace, JWT auth, subscribe/unsubscribe, event streams)
-│   │   ├── providers/   # ExecutionMonitorNotifier (AsyncNotifier.family, sealed state machine, WS→polling fallback)
+│   │   ├── services/    # ExecutionSocketService (resolveExecutionSocketUrl + Socket.IO /execution namespace)
+│   │   ├── providers/   # ExecutionMonitorNotifier (AsyncNotifierProvider.autoDispose.family, REST detail → snapshot + WS metadata merge)
 │   │   ├── screens/     # ExecutionMonitorScreen (ConsumerStatefulWidget, watches executionMonitorProvider)
 │   │   └── widgets/     # ExecutionStatusHeader, ExecutionAlertBanner, StepTimeline, StepTimelineItem, ConnectionModeIndicator
 │   ├── settings/
 │   │   └── screens/     # SettingsScreen (占位)
 │   └── workflows/
 │       ├── api/         # WorkflowApi (Dio wrapper: list/get/executions/run/getExecution) + workflowApiProvider
-│       ├── models/      # Freezed: WorkflowDefinitionDto, ExecutionSummaryDto
+│       ├── models/      # Freezed: WorkflowDefinitionDto, ExecutionSummaryDto, ExecutionStepDto
 │       ├── providers/   # WorkflowListNotifier, workflowDetailProvider, workflowExecutionsProvider
-│       ├── screens/     # WorkflowsScreen (列表), WorkflowDetailScreen (详情)
+│       ├── screens/     # WorkflowsScreen (列表), WorkflowDetailScreen (详情 + runWorkflow 跳转执行监控)
 │       └── widgets/     # WorkflowCard, WorkflowStatusChip, ExecutionSummaryTile
 ├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 顶层路由) 与路由名
 └── shared/
@@ -69,31 +69,27 @@ fvm flutter test --coverage
 ## 数据层模式
 
 - **Freezed 3.x**: 模型使用 `abstract class` + `@freezed` + `@JsonKey(name: 'snake_case')` 进行 JSON 序列化
-- **PaginatedResponse\<T\>**: 泛型分页封装，`@JsonSerializable(genericArgumentFactories: true)`
-- **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应
-- **Riverpod 3.x**: 手写 Provider（无 riverpod_generator），AsyncNotifier 用于列表状态管理，FutureProvider.family 用于详情获取
-- **搜索防抖**: WorkflowListNotifier 内置 300ms debounce（Timer），支持 setSearchQuery / setStatusFilter / loadMore / refresh
+- **PaginatedResponse<T>**: 泛型分页封装，`@JsonSerializable(genericArgumentFactories: true)`
+- **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应；`getExecution()` 现在消费完整 execution detail `steps[]`
+- **Riverpod 3.x**: 手写 Provider（无 riverpod_generator），AsyncNotifier/FutureProvider 用于状态管理
+- **execution monitor**: REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
 
 ## 测试模式
 
-- **298 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth/execution
+- **307 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth/execution/dashboard/workflow-run
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose StateError
 - Widget/Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock: `mocktail` 库，测试工厂函数集中在 `test/helpers/test_helpers.dart`
-- AuthInterceptor 测试使用自定义 capturing handler 断言 `next/resolve/reject`，避免 `runZonedGuarded` 隐藏真实回归
-- AuthProvider 测试需 `registerFallbackValue(testTokens)` for mocktail `any()` matcher
+- Dashboard recent executions 相关测试现在覆盖聚合、排序、区块渲染与 runWorkflow 导航
 
 ## 当前注意事项
 
 - `envProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入真实环境
 - `secureStorageProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入 `FlutterSecureStorage()` 实例
-- AuthApi 使用独立 `authDioProvider` (无 AuthInterceptor) 避免循环依赖
-- AuthInterceptor 处理 4 种 401 type: `token-expired` (刷新重试), `token-revoked`/`token-invalid`/`token-missing` (强制登出)；若检测到其他请求已完成 refresh，会直接复用最新 token 重试，避免重复 refresh
-- GoRouter redirect guard 通过 `AuthRouteNotifier` (ChangeNotifier) 桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由，避免 storage/provider 双源竞态
-- `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 access/refresh/expires_in 三项完整，避免残缺凭证误判为已登录
-- Android `AndroidManifest.xml` 已关闭 `allowBackup`，避免安全存储内容进入系统备份
-- OAuth、MFA UI、注册页面不在 7-3a 范围内，已留 TODO 占位
-- FCM、深色主题均为后续 Story 的 TODO 占位
+- AuthApi 使用独立 `authDioProvider` (无 AuthInterceptor) 避免循环���赖
+- AuthInterceptor 处理 4 种 401 type: `token-expired` (刷新重试), `token-revoked`/`token-invalid`/`token-missing` (强制登出)
+- GoRouter redirect guard 通过 `AuthRouteNotifier` (ChangeNotifier) 桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由
+- `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 access/refresh/expires_in 三项完整
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
-- **Story 7-4a 已完成**: 执行监控与实时状态更新。`features/execution/` 完整实现：`ExecutionStatus`(6值)/`StepStatus`(8值) 枚举含 color/icon/label/isTerminal getters；`ExecutionEventEnvelope`/`ExecutionStateSnapshot`/`StepSnapshot`/`SubscribeAck` Freezed 模型；`ExecutionSocketService` 连接 Socket.IO `/execution` namespace（JWT auth + `['websocket']` transport + `emitWithAckAsync` subscribe + 7 个 StreamController 广播流 + `dispose()` 释放）；`ExecutionMonitorNotifier`（`AsyncNotifier.family` keyed on executionId）实现 sealed 状态机 Loading→Connected→Polling→Error→Disconnected，REST 初始快照 → WS subscribe（ACK 含 currentState）→ 事件处理 → 断连 5s 轮询降级 → 重连 re-subscribe with lastEventId → 终态自动清理；`socketServiceFactoryProvider` 支持测试注入。路由 `/executions/:executionId` 在 Shell 外（无底部导航栏），支持深链接。WorkflowDetailScreen 执行列表 onTap 跳转、DashboardScreen 最近执行 onTap 跳转。126 个新增测试（298 总计）
+- **Story 7-4a 已完成**: 执行监控与实时状态更新。`ExecutionSocketService` 通过 `resolveExecutionSocketUrl()` 去掉 `/api`/`/api/v1` 后连接 `/execution`；`ExecutionMonitorNotifier` 使用 `AsyncNotifierProvider.autoDispose.family`，支持 execution detail `steps[]` → snapshot 映射、graph metadata 提取、ACK/WS snapshot metadata merge（含 reconnect ACK）、5s polling fallback、`lastEventId` 重新订阅与 terminal cleanup；`ConnectionMode` 现支持 `disconnected`，failed banner 显示失败节点名 + 错误摘要，timeline item 显示 `nodeName/nodeType` 并保留 `nodeId`；Dashboard 已新增 `recentExecutionsProvider`，WorkflowDetailScreen FAB 真实调用 `runWorkflow()` ���跳转 `/executions/:executionId`；移动端全量测试为 307 passed。

@@ -57,11 +57,20 @@ class ExecutionAlertBanner extends StatelessWidget {
   /// 从 steps 中提取首个失败步骤的错误信息
   String _failedMessage() {
     final failedStep = snapshot.steps.cast<StepSnapshot?>().firstWhere(
-      (step) =>
-          StepStatus.fromJson(step!.status) == StepStatus.failed &&
-          step.errorMessage != null,
+      (step) => StepStatus.fromJson(step!.status) == StepStatus.failed,
       orElse: () => null,
     );
-    return failedStep?.errorMessage ?? 'Execution failed';
+
+    if (failedStep == null) {
+      return 'Execution failed';
+    }
+
+    final nodeName = failedStep.nodeName ?? failedStep.nodeId;
+    final summary = failedStep.errorMessage;
+    if (summary == null || summary.isEmpty) {
+      return '$nodeName failed';
+    }
+
+    return '$nodeName failed: $summary';
   }
 }

@@ -29,6 +29,13 @@ mixin _$ExecutionSummaryDto {
   String? get completedAt;
   @JsonKey(name: 'failed_at')
   String? get failedAt;
+  @JsonKey(name: 'definition_snapshot')
+  Map<String, dynamic>? get definitionSnapshot;
+  @JsonKey(name: 'error_message')
+  Object? get errorMessage;
+  List<ExecutionStepDto>? get steps;
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? get workflowName;
   @JsonKey(name: 'created_at')
   String get createdAt;
   @JsonKey(name: 'updated_at')
@@ -68,6 +75,17 @@ mixin _$ExecutionSummaryDto {
                 other.completedAt == completedAt) &&
             (identical(other.failedAt, failedAt) ||
                 other.failedAt == failedAt) &&
+            const DeepCollectionEquality().equals(
+              other.definitionSnapshot,
+              definitionSnapshot,
+            ) &&
+            const DeepCollectionEquality().equals(
+              other.errorMessage,
+              errorMessage,
+            ) &&
+            const DeepCollectionEquality().equals(other.steps, steps) &&
+            (identical(other.workflowName, workflowName) ||
+                other.workflowName == workflowName) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
@@ -87,13 +105,17 @@ mixin _$ExecutionSummaryDto {
     startedAt,
     completedAt,
     failedAt,
+    const DeepCollectionEquality().hash(definitionSnapshot),
+    const DeepCollectionEquality().hash(errorMessage),
+    const DeepCollectionEquality().hash(steps),
+    workflowName,
     createdAt,
     updatedAt,
   );
 
   @override
   String toString() {
-    return 'ExecutionSummaryDto(id: $id, workflowId: $workflowId, status: $status, triggerType: $triggerType, totalSteps: $totalSteps, completedSteps: $completedSteps, startedAt: $startedAt, completedAt: $completedAt, failedAt: $failedAt, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'ExecutionSummaryDto(id: $id, workflowId: $workflowId, status: $status, triggerType: $triggerType, totalSteps: $totalSteps, completedSteps: $completedSteps, startedAt: $startedAt, completedAt: $completedAt, failedAt: $failedAt, definitionSnapshot: $definitionSnapshot, errorMessage: $errorMessage, steps: $steps, workflowName: $workflowName, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -114,6 +136,11 @@ abstract mixin class $ExecutionSummaryDtoCopyWith<$Res> {
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'failed_at') String? failedAt,
+    @JsonKey(name: 'definition_snapshot')
+    Map<String, dynamic>? definitionSnapshot,
+    @JsonKey(name: 'error_message') Object? errorMessage,
+    List<ExecutionStepDto>? steps,
+    @JsonKey(includeFromJson: false, includeToJson: false) String? workflowName,
     @JsonKey(name: 'created_at') String createdAt,
     @JsonKey(name: 'updated_at') String updatedAt,
   });
@@ -141,6 +168,10 @@ class _$ExecutionSummaryDtoCopyWithImpl<$Res>
     Object? startedAt = freezed,
     Object? completedAt = freezed,
     Object? failedAt = freezed,
+    Object? definitionSnapshot = freezed,
+    Object? errorMessage = freezed,
+    Object? steps = freezed,
+    Object? workflowName = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -181,6 +212,21 @@ class _$ExecutionSummaryDtoCopyWithImpl<$Res>
         failedAt: freezed == failedAt
             ? _self.failedAt
             : failedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        definitionSnapshot: freezed == definitionSnapshot
+            ? _self.definitionSnapshot
+            : definitionSnapshot // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        errorMessage: freezed == errorMessage
+            ? _self.errorMessage
+            : errorMessage,
+        steps: freezed == steps
+            ? _self.steps
+            : steps // ignore: cast_nullable_to_non_nullable
+                  as List<ExecutionStepDto>?,
+        workflowName: freezed == workflowName
+            ? _self.workflowName
+            : workflowName // ignore: cast_nullable_to_non_nullable
                   as String?,
         createdAt: null == createdAt
             ? _self.createdAt
@@ -298,6 +344,12 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'failed_at') String? failedAt,
+      @JsonKey(name: 'definition_snapshot')
+      Map<String, dynamic>? definitionSnapshot,
+      @JsonKey(name: 'error_message') Object? errorMessage,
+      List<ExecutionStepDto>? steps,
+      @JsonKey(includeFromJson: false, includeToJson: false)
+      String? workflowName,
       @JsonKey(name: 'created_at') String createdAt,
       @JsonKey(name: 'updated_at') String updatedAt,
     )?
@@ -317,6 +369,10 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
           _that.startedAt,
           _that.completedAt,
           _that.failedAt,
+          _that.definitionSnapshot,
+          _that.errorMessage,
+          _that.steps,
+          _that.workflowName,
           _that.createdAt,
           _that.updatedAt,
         );
@@ -350,6 +406,12 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'failed_at') String? failedAt,
+      @JsonKey(name: 'definition_snapshot')
+      Map<String, dynamic>? definitionSnapshot,
+      @JsonKey(name: 'error_message') Object? errorMessage,
+      List<ExecutionStepDto>? steps,
+      @JsonKey(includeFromJson: false, includeToJson: false)
+      String? workflowName,
       @JsonKey(name: 'created_at') String createdAt,
       @JsonKey(name: 'updated_at') String updatedAt,
     )
@@ -368,6 +430,10 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
           _that.startedAt,
           _that.completedAt,
           _that.failedAt,
+          _that.definitionSnapshot,
+          _that.errorMessage,
+          _that.steps,
+          _that.workflowName,
           _that.createdAt,
           _that.updatedAt,
         );
@@ -400,6 +466,12 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'failed_at') String? failedAt,
+      @JsonKey(name: 'definition_snapshot')
+      Map<String, dynamic>? definitionSnapshot,
+      @JsonKey(name: 'error_message') Object? errorMessage,
+      List<ExecutionStepDto>? steps,
+      @JsonKey(includeFromJson: false, includeToJson: false)
+      String? workflowName,
       @JsonKey(name: 'created_at') String createdAt,
       @JsonKey(name: 'updated_at') String updatedAt,
     )?
@@ -418,6 +490,10 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
           _that.startedAt,
           _that.completedAt,
           _that.failedAt,
+          _that.definitionSnapshot,
+          _that.errorMessage,
+          _that.steps,
+          _that.workflowName,
           _that.createdAt,
           _that.updatedAt,
         );
@@ -440,9 +516,15 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
     @JsonKey(name: 'started_at') this.startedAt,
     @JsonKey(name: 'completed_at') this.completedAt,
     @JsonKey(name: 'failed_at') this.failedAt,
+    @JsonKey(name: 'definition_snapshot')
+    final Map<String, dynamic>? definitionSnapshot,
+    @JsonKey(name: 'error_message') this.errorMessage,
+    final List<ExecutionStepDto>? steps,
+    @JsonKey(includeFromJson: false, includeToJson: false) this.workflowName,
     @JsonKey(name: 'created_at') required this.createdAt,
     @JsonKey(name: 'updated_at') required this.updatedAt,
-  });
+  }) : _definitionSnapshot = definitionSnapshot,
+       _steps = steps;
   factory _ExecutionSummaryDto.fromJson(Map<String, dynamic> json) =>
       _$ExecutionSummaryDtoFromJson(json);
 
@@ -471,6 +553,34 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
   @override
   @JsonKey(name: 'failed_at')
   final String? failedAt;
+  final Map<String, dynamic>? _definitionSnapshot;
+  @override
+  @JsonKey(name: 'definition_snapshot')
+  Map<String, dynamic>? get definitionSnapshot {
+    final value = _definitionSnapshot;
+    if (value == null) return null;
+    if (_definitionSnapshot is EqualUnmodifiableMapView)
+      return _definitionSnapshot;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  @override
+  @JsonKey(name: 'error_message')
+  final Object? errorMessage;
+  final List<ExecutionStepDto>? _steps;
+  @override
+  List<ExecutionStepDto>? get steps {
+    final value = _steps;
+    if (value == null) return null;
+    if (_steps is EqualUnmodifiableListView) return _steps;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(value);
+  }
+
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? workflowName;
   @override
   @JsonKey(name: 'created_at')
   final String createdAt;
@@ -515,6 +625,17 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
                 other.completedAt == completedAt) &&
             (identical(other.failedAt, failedAt) ||
                 other.failedAt == failedAt) &&
+            const DeepCollectionEquality().equals(
+              other._definitionSnapshot,
+              _definitionSnapshot,
+            ) &&
+            const DeepCollectionEquality().equals(
+              other.errorMessage,
+              errorMessage,
+            ) &&
+            const DeepCollectionEquality().equals(other._steps, _steps) &&
+            (identical(other.workflowName, workflowName) ||
+                other.workflowName == workflowName) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
@@ -534,13 +655,17 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
     startedAt,
     completedAt,
     failedAt,
+    const DeepCollectionEquality().hash(_definitionSnapshot),
+    const DeepCollectionEquality().hash(errorMessage),
+    const DeepCollectionEquality().hash(_steps),
+    workflowName,
     createdAt,
     updatedAt,
   );
 
   @override
   String toString() {
-    return 'ExecutionSummaryDto(id: $id, workflowId: $workflowId, status: $status, triggerType: $triggerType, totalSteps: $totalSteps, completedSteps: $completedSteps, startedAt: $startedAt, completedAt: $completedAt, failedAt: $failedAt, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'ExecutionSummaryDto(id: $id, workflowId: $workflowId, status: $status, triggerType: $triggerType, totalSteps: $totalSteps, completedSteps: $completedSteps, startedAt: $startedAt, completedAt: $completedAt, failedAt: $failedAt, definitionSnapshot: $definitionSnapshot, errorMessage: $errorMessage, steps: $steps, workflowName: $workflowName, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -563,6 +688,11 @@ abstract mixin class _$ExecutionSummaryDtoCopyWith<$Res>
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'failed_at') String? failedAt,
+    @JsonKey(name: 'definition_snapshot')
+    Map<String, dynamic>? definitionSnapshot,
+    @JsonKey(name: 'error_message') Object? errorMessage,
+    List<ExecutionStepDto>? steps,
+    @JsonKey(includeFromJson: false, includeToJson: false) String? workflowName,
     @JsonKey(name: 'created_at') String createdAt,
     @JsonKey(name: 'updated_at') String updatedAt,
   });
@@ -590,6 +720,10 @@ class __$ExecutionSummaryDtoCopyWithImpl<$Res>
     Object? startedAt = freezed,
     Object? completedAt = freezed,
     Object? failedAt = freezed,
+    Object? definitionSnapshot = freezed,
+    Object? errorMessage = freezed,
+    Object? steps = freezed,
+    Object? workflowName = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -630,6 +764,21 @@ class __$ExecutionSummaryDtoCopyWithImpl<$Res>
         failedAt: freezed == failedAt
             ? _self.failedAt
             : failedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        definitionSnapshot: freezed == definitionSnapshot
+            ? _self._definitionSnapshot
+            : definitionSnapshot // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        errorMessage: freezed == errorMessage
+            ? _self.errorMessage
+            : errorMessage,
+        steps: freezed == steps
+            ? _self._steps
+            : steps // ignore: cast_nullable_to_non_nullable
+                  as List<ExecutionStepDto>?,
+        workflowName: freezed == workflowName
+            ? _self.workflowName
+            : workflowName // ignore: cast_nullable_to_non_nullable
                   as String?,
         createdAt: null == createdAt
             ? _self.createdAt

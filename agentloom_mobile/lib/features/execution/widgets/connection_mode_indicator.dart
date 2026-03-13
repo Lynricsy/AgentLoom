@@ -4,7 +4,7 @@ import '../providers/execution_monitor_provider.dart';
 
 /// 连接模式指示器
 ///
-/// 显示当前执行监控的连接模式（WebSocket / Polling / Reconnecting），
+/// 显示当前执行监控的连接模式（WebSocket / Polling / Reconnecting / Disconnected），
 /// 通过颜色圆点 + 文字标签直观展示。
 class ConnectionModeIndicator extends StatelessWidget {
   const ConnectionModeIndicator({super.key, required this.mode});
@@ -16,6 +16,7 @@ class ConnectionModeIndicator extends StatelessWidget {
       ConnectionMode.websocket => Colors.green,
       ConnectionMode.reconnecting => Colors.amber,
       ConnectionMode.polling => Colors.orange,
+      ConnectionMode.disconnected => Colors.red,
     };
   }
 

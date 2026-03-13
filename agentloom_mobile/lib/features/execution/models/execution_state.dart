@@ -10,11 +10,14 @@ abstract class StepSnapshot with _$StepSnapshot {
   const factory StepSnapshot({
     @JsonKey(name: 'step_id') required String stepId,
     @JsonKey(name: 'node_id') required String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     required String status,
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_message') String? errorMessage,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   }) = _StepSnapshot;
 

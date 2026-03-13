@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
+import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/features/workflows/providers/workflow_detail_provider.dart';
 import 'package:agentloom_mobile/features/workflows/screens/workflow_detail_screen.dart';
@@ -9,6 +10,7 @@ import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/test_helpers.dart';
@@ -169,6 +171,54 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No executions yet'), findsOneWidget);
+    });
+
+    testWidgets('run FAB starts workflow and navigates to monitor', (
+      tester,
+    ) async {
+      when(
+        () => mockApi.getWorkflow(any()),
+      ).thenAnswer((_) async => createTestWorkflow(status: 'published'));
+      when(
+        () => mockApi.listExecutions(
+          any(),
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+        ),
+      ).thenAnswer((_) async => createTestExecutionList());
+      when(() => mockApi.runWorkflow('wf-test-001')).thenAnswer(
+        (_) async => {
+          'data': {'id': 'exec-new-001'},
+        },
+      );
+
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => ProviderScope(
+              overrides: [workflowApiProvider.overrideWithValue(mockApi)],
+              child: const WorkflowDetailScreen(workflowId: 'wf-test-001'),
+            ),
+          ),
+          GoRoute(
+            path: '/executions/:executionId',
+            name: RouteNames.executionMonitor,
+            builder: (context, state) =>
+                Text('Execution ${state.pathParameters['executionId']}'),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+
+      verify(() => mockApi.runWorkflow('wf-test-001')).called(1);
+      expect(find.text('Execution exec-new-001'), findsOneWidget);
     });
   });
 }

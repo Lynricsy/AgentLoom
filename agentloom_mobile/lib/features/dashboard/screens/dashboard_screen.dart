@@ -14,12 +14,14 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final recentWorkflowsAsync = ref.watch(recentWorkflowsProvider);
+    final recentExecutionsAsync = ref.watch(recentExecutionsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(recentWorkflowsProvider);
+          ref.invalidate(recentExecutionsProvider);
         },
         child: ListView(
           children: [
@@ -34,12 +36,16 @@ class DashboardScreen extends ConsumerWidget {
 
             const SizedBox(height: 24),
 
-            // 最近执行区块（暂时使用空列表，后续 story 会添加执行 API）
-            RecentExecutionsSection(
-              executions: const [],
-              onExecutionTap: (execution) => context.pushNamed(
-                RouteNames.executionMonitor,
-                pathParameters: {'executionId': execution.id},
+            recentExecutionsAsync.when(
+              loading: () => const RecentExecutionsSection(isLoading: true),
+              error: (error, _) =>
+                  RecentExecutionsSection(error: error.toString()),
+              data: (executions) => RecentExecutionsSection(
+                executions: executions,
+                onExecutionTap: (execution) => context.pushNamed(
+                  RouteNames.executionMonitor,
+                  pathParameters: {'executionId': execution.id},
+                ),
               ),
             ),
 

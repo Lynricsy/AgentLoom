@@ -18,6 +18,7 @@ class StepTimelineItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final status = _stepStatus;
+    final nodeName = step.nodeName ?? step.nodeId;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,7 +40,7 @@ class StepTimelineItem extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      step.nodeId,
+                      nodeName,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -50,6 +51,24 @@ class StepTimelineItem extends StatelessWidget {
                   _StatusChip(status: status),
                 ],
               ),
+              if (step.nodeType != null || step.nodeName != null) ...[
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    if (step.nodeType != null)
+                      _NodeMetaChip(label: step.nodeType!),
+                    if (step.nodeName != null && step.nodeName != step.nodeId)
+                      Text(
+                        step.nodeId,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               // 时间信息
               if (step.startedAt != null) ...[
                 const SizedBox(height: 4),
@@ -100,6 +119,32 @@ class StepTimelineItem extends StatelessWidget {
     final minute = startedAt.minute.toString().padLeft(2, '0');
     final second = startedAt.second.toString().padLeft(2, '0');
     return 'Started at $hour:$minute:$second';
+  }
+}
+
+class _NodeMetaChip extends StatelessWidget {
+  const _NodeMetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
   }
 }
 

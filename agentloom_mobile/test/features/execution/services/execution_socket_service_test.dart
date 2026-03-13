@@ -217,6 +217,29 @@ void main() {
     });
   });
 
+  group('resolveExecutionSocketUrl', () {
+    test('strips /api/v1 suffix before appending /execution', () {
+      expect(
+        resolveExecutionSocketUrl('http://localhost:3000/api/v1'),
+        'http://localhost:3000/execution',
+      );
+    });
+
+    test('strips /api suffix before appending /execution', () {
+      expect(
+        resolveExecutionSocketUrl('https://example.com/api'),
+        'https://example.com/execution',
+      );
+    });
+
+    test('preserves base host when already root path', () {
+      expect(
+        resolveExecutionSocketUrl('https://example.com'),
+        'https://example.com/execution',
+      );
+    });
+  });
+
   group('executionSocketServiceProvider', () {
     test('provider 创建服务实例', () {
       final container = ProviderContainer();

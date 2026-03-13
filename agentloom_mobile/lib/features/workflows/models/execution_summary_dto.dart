@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'execution_step_dto.dart';
+
 part 'execution_summary_dto.freezed.dart';
 part 'execution_summary_dto.g.dart';
 
@@ -16,6 +18,11 @@ abstract class ExecutionSummaryDto with _$ExecutionSummaryDto {
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'failed_at') String? failedAt,
+    @JsonKey(name: 'definition_snapshot')
+    Map<String, dynamic>? definitionSnapshot,
+    @JsonKey(name: 'error_message') Object? errorMessage,
+    List<ExecutionStepDto>? steps,
+    @JsonKey(includeFromJson: false, includeToJson: false) String? workflowName,
     @JsonKey(name: 'created_at') required String createdAt,
     @JsonKey(name: 'updated_at') required String updatedAt,
   }) = _ExecutionSummaryDto;

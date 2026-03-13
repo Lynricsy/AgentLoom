@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../api/workflow_api.dart';
 import '../providers/workflow_detail_provider.dart';
 import '../widgets/execution_summary_tile.dart';
 import '../widgets/workflow_status_chip.dart';
@@ -196,11 +197,36 @@ class WorkflowDetailScreen extends ConsumerWidget {
       floatingActionButton: workflowAsync.whenOrNull(
         data: (wf) => wf.status == 'published'
             ? FloatingActionButton.extended(
-                onPressed: () {
-                  // TODO: 触发执行
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Workflow execution started')),
-                  );
+                onPressed: () async {
+                  try {
+                    final api = ref.read(workflowApiProvider);
+                    final response = await api.runWorkflow(workflowId);
+                    final executionId = _extractExecutionId(response);
+
+                    if (executionId == null || executionId.isEmpty) {
+                      throw StateError('Missing execution id in run response');
+                    }
+
+                    ref.invalidate(workflowExecutionsProvider(workflowId));
+                    if (!context.mounted) {
+                      return;
+                    }
+
+                    context.pushNamed(
+                      RouteNames.executionMonitor,
+                      pathParameters: {'executionId': executionId},
+                    );
+                  } catch (error) {
+                    if (!context.mounted) {
+                      return;
+                    }
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to start workflow: $error'),
+                      ),
+                    );
+                  }
                 },
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Run'),
@@ -208,6 +234,23 @@ class WorkflowDetailScreen extends ConsumerWidget {
             : null,
       ),
     );
+  }
+
+  String? _extractExecutionId(Map<String, dynamic> response) {
+    final payload = response['data'];
+    if (payload is Map<String, dynamic>) {
+      final id = payload['id'];
+      if (id is String && id.isNotEmpty) {
+        return id;
+      }
+    }
+
+    final id = response['id'];
+    if (id is String && id.isNotEmpty) {
+      return id;
+    }
+
+    return null;
   }
 
   String _formatDate(String isoDate) {

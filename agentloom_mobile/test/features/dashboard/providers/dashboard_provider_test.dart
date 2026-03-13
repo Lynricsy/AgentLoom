@@ -91,4 +91,85 @@ void main() {
       expect(state.error, isA<Exception>());
     });
   });
+
+  group('recentExecutionsProvider', () {
+    test('flattens workflow executions and keeps newest five', () async {
+      when(
+        () => mockApi.listWorkflows(
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+          status: any(named: 'status'),
+          search: any(named: 'search'),
+        ),
+      ).thenAnswer(
+        (_) async => createTestWorkflowList(
+          workflows: [
+            createTestWorkflow(id: 'wf-1', name: 'Workflow 1'),
+            createTestWorkflow(id: 'wf-2', name: 'Workflow 2'),
+          ],
+        ),
+      );
+      when(
+        () => mockApi.listExecutions(
+          'wf-1',
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+        ),
+      ).thenAnswer(
+        (_) async => createTestExecutionList(
+          executions: [
+            createTestExecution(
+              id: 'exec-1',
+              workflowId: 'wf-1',
+              createdAt: '2026-01-03T10:00:00.000Z',
+            ),
+            createTestExecution(
+              id: 'exec-2',
+              workflowId: 'wf-1',
+              createdAt: '2026-01-02T10:00:00.000Z',
+            ),
+            createTestExecution(
+              id: 'exec-3',
+              workflowId: 'wf-1',
+              createdAt: '2026-01-01T10:00:00.000Z',
+            ),
+          ],
+        ),
+      );
+      when(
+        () => mockApi.listExecutions(
+          'wf-2',
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+        ),
+      ).thenAnswer(
+        (_) async => createTestExecutionList(
+          executions: [
+            createTestExecution(
+              id: 'exec-4',
+              workflowId: 'wf-2',
+              createdAt: '2026-01-04T10:00:00.000Z',
+            ),
+            createTestExecution(
+              id: 'exec-5',
+              workflowId: 'wf-2',
+              createdAt: '2026-01-02T12:00:00.000Z',
+            ),
+            createTestExecution(
+              id: 'exec-6',
+              workflowId: 'wf-2',
+              createdAt: '2026-01-01T08:00:00.000Z',
+            ),
+          ],
+        ),
+      );
+
+      final result = await container.read(recentExecutionsProvider.future);
+
+      expect(result, hasLength(5));
+      expect(result.first.id, 'exec-4');
+      expect(result.first.workflowName, 'Workflow 2');
+      expect(result.last.id, 'exec-3');
+    });
+  });
 }

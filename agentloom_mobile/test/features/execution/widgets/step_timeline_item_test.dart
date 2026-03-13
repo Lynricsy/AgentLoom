@@ -9,6 +9,8 @@ void main() {
       const step = StepSnapshot(
         stepId: 's1',
         nodeId: 'my-agent-node',
+        nodeName: 'Email Agent',
+        nodeType: 'agent',
         status: 'running',
         startedAt: '2026-01-01T10:00:00.000Z',
       );
@@ -19,6 +21,8 @@ void main() {
         ),
       );
 
+      expect(find.text('Email Agent'), findsOneWidget);
+      expect(find.text('agent'), findsOneWidget);
       expect(find.text('my-agent-node'), findsOneWidget);
       expect(find.text('Running'), findsOneWidget);
     });

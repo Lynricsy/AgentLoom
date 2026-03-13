@@ -960,8 +960,16 @@ mixin _$NodeStatusChangedData {
   String get stepId;
   @JsonKey(name: 'node_id')
   String get nodeId;
+  @JsonKey(name: 'node_name')
+  String? get nodeName;
+  @JsonKey(name: 'node_type')
+  String? get nodeType;
   String get from;
   String get to;
+  @JsonKey(name: 'started_at')
+  String? get startedAt;
+  @JsonKey(name: 'completed_at')
+  String? get completedAt;
   @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail;
   @JsonKey(name: 'error_message')
@@ -987,8 +995,16 @@ mixin _$NodeStatusChangedData {
             other is NodeStatusChangedData &&
             (identical(other.stepId, stepId) || other.stepId == stepId) &&
             (identical(other.nodeId, nodeId) || other.nodeId == nodeId) &&
+            (identical(other.nodeName, nodeName) ||
+                other.nodeName == nodeName) &&
+            (identical(other.nodeType, nodeType) ||
+                other.nodeType == nodeType) &&
             (identical(other.from, from) || other.from == from) &&
             (identical(other.to, to) || other.to == to) &&
+            (identical(other.startedAt, startedAt) ||
+                other.startedAt == startedAt) &&
+            (identical(other.completedAt, completedAt) ||
+                other.completedAt == completedAt) &&
             const DeepCollectionEquality().equals(
               other.errorDetail,
               errorDetail,
@@ -1003,15 +1019,19 @@ mixin _$NodeStatusChangedData {
     runtimeType,
     stepId,
     nodeId,
+    nodeName,
+    nodeType,
     from,
     to,
+    startedAt,
+    completedAt,
     const DeepCollectionEquality().hash(errorDetail),
     errorMessage,
   );
 
   @override
   String toString() {
-    return 'NodeStatusChangedData(stepId: $stepId, nodeId: $nodeId, from: $from, to: $to, errorDetail: $errorDetail, errorMessage: $errorMessage)';
+    return 'NodeStatusChangedData(stepId: $stepId, nodeId: $nodeId, nodeName: $nodeName, nodeType: $nodeType, from: $from, to: $to, startedAt: $startedAt, completedAt: $completedAt, errorDetail: $errorDetail, errorMessage: $errorMessage)';
   }
 }
 
@@ -1025,8 +1045,12 @@ abstract mixin class $NodeStatusChangedDataCopyWith<$Res> {
   $Res call({
     @JsonKey(name: 'step_id') String stepId,
     @JsonKey(name: 'node_id') String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     String from,
     String to,
+    @JsonKey(name: 'started_at') String? startedAt,
+    @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
     @JsonKey(name: 'error_message') String? errorMessage,
   });
@@ -1047,8 +1071,12 @@ class _$NodeStatusChangedDataCopyWithImpl<$Res>
   $Res call({
     Object? stepId = null,
     Object? nodeId = null,
+    Object? nodeName = freezed,
+    Object? nodeType = freezed,
     Object? from = null,
     Object? to = null,
+    Object? startedAt = freezed,
+    Object? completedAt = freezed,
     Object? errorDetail = freezed,
     Object? errorMessage = freezed,
   }) {
@@ -1062,6 +1090,14 @@ class _$NodeStatusChangedDataCopyWithImpl<$Res>
             ? _self.nodeId
             : nodeId // ignore: cast_nullable_to_non_nullable
                   as String,
+        nodeName: freezed == nodeName
+            ? _self.nodeName
+            : nodeName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodeType: freezed == nodeType
+            ? _self.nodeType
+            : nodeType // ignore: cast_nullable_to_non_nullable
+                  as String?,
         from: null == from
             ? _self.from
             : from // ignore: cast_nullable_to_non_nullable
@@ -1070,6 +1106,14 @@ class _$NodeStatusChangedDataCopyWithImpl<$Res>
             ? _self.to
             : to // ignore: cast_nullable_to_non_nullable
                   as String,
+        startedAt: freezed == startedAt
+            ? _self.startedAt
+            : startedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        completedAt: freezed == completedAt
+            ? _self.completedAt
+            : completedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
         errorDetail: freezed == errorDetail
             ? _self.errorDetail
             : errorDetail // ignore: cast_nullable_to_non_nullable
@@ -1179,8 +1223,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
     TResult Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String from,
       String to,
+      @JsonKey(name: 'started_at') String? startedAt,
+      @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
       @JsonKey(name: 'error_message') String? errorMessage,
     )?
@@ -1193,8 +1241,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.from,
           _that.to,
+          _that.startedAt,
+          _that.completedAt,
           _that.errorDetail,
           _that.errorMessage,
         );
@@ -1221,8 +1273,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
     TResult Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String from,
       String to,
+      @JsonKey(name: 'started_at') String? startedAt,
+      @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
       @JsonKey(name: 'error_message') String? errorMessage,
     )
@@ -1234,8 +1290,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.from,
           _that.to,
+          _that.startedAt,
+          _that.completedAt,
           _that.errorDetail,
           _that.errorMessage,
         );
@@ -1261,8 +1321,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
     TResult? Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String from,
       String to,
+      @JsonKey(name: 'started_at') String? startedAt,
+      @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
       @JsonKey(name: 'error_message') String? errorMessage,
     )?
@@ -1274,8 +1338,12 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.from,
           _that.to,
+          _that.startedAt,
+          _that.completedAt,
           _that.errorDetail,
           _that.errorMessage,
         );
@@ -1291,8 +1359,12 @@ class _NodeStatusChangedData implements NodeStatusChangedData {
   const _NodeStatusChangedData({
     @JsonKey(name: 'step_id') required this.stepId,
     @JsonKey(name: 'node_id') required this.nodeId,
+    @JsonKey(name: 'node_name') this.nodeName,
+    @JsonKey(name: 'node_type') this.nodeType,
     required this.from,
     required this.to,
+    @JsonKey(name: 'started_at') this.startedAt,
+    @JsonKey(name: 'completed_at') this.completedAt,
     @JsonKey(name: 'error_detail') final Map<String, dynamic>? errorDetail,
     @JsonKey(name: 'error_message') this.errorMessage,
   }) : _errorDetail = errorDetail;
@@ -1306,9 +1378,21 @@ class _NodeStatusChangedData implements NodeStatusChangedData {
   @JsonKey(name: 'node_id')
   final String nodeId;
   @override
+  @JsonKey(name: 'node_name')
+  final String? nodeName;
+  @override
+  @JsonKey(name: 'node_type')
+  final String? nodeType;
+  @override
   final String from;
   @override
   final String to;
+  @override
+  @JsonKey(name: 'started_at')
+  final String? startedAt;
+  @override
+  @JsonKey(name: 'completed_at')
+  final String? completedAt;
   final Map<String, dynamic>? _errorDetail;
   @override
   @JsonKey(name: 'error_detail')
@@ -1347,8 +1431,16 @@ class _NodeStatusChangedData implements NodeStatusChangedData {
             other is _NodeStatusChangedData &&
             (identical(other.stepId, stepId) || other.stepId == stepId) &&
             (identical(other.nodeId, nodeId) || other.nodeId == nodeId) &&
+            (identical(other.nodeName, nodeName) ||
+                other.nodeName == nodeName) &&
+            (identical(other.nodeType, nodeType) ||
+                other.nodeType == nodeType) &&
             (identical(other.from, from) || other.from == from) &&
             (identical(other.to, to) || other.to == to) &&
+            (identical(other.startedAt, startedAt) ||
+                other.startedAt == startedAt) &&
+            (identical(other.completedAt, completedAt) ||
+                other.completedAt == completedAt) &&
             const DeepCollectionEquality().equals(
               other._errorDetail,
               _errorDetail,
@@ -1363,15 +1455,19 @@ class _NodeStatusChangedData implements NodeStatusChangedData {
     runtimeType,
     stepId,
     nodeId,
+    nodeName,
+    nodeType,
     from,
     to,
+    startedAt,
+    completedAt,
     const DeepCollectionEquality().hash(_errorDetail),
     errorMessage,
   );
 
   @override
   String toString() {
-    return 'NodeStatusChangedData(stepId: $stepId, nodeId: $nodeId, from: $from, to: $to, errorDetail: $errorDetail, errorMessage: $errorMessage)';
+    return 'NodeStatusChangedData(stepId: $stepId, nodeId: $nodeId, nodeName: $nodeName, nodeType: $nodeType, from: $from, to: $to, startedAt: $startedAt, completedAt: $completedAt, errorDetail: $errorDetail, errorMessage: $errorMessage)';
   }
 }
 
@@ -1387,8 +1483,12 @@ abstract mixin class _$NodeStatusChangedDataCopyWith<$Res>
   $Res call({
     @JsonKey(name: 'step_id') String stepId,
     @JsonKey(name: 'node_id') String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     String from,
     String to,
+    @JsonKey(name: 'started_at') String? startedAt,
+    @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
     @JsonKey(name: 'error_message') String? errorMessage,
   });
@@ -1409,8 +1509,12 @@ class __$NodeStatusChangedDataCopyWithImpl<$Res>
   $Res call({
     Object? stepId = null,
     Object? nodeId = null,
+    Object? nodeName = freezed,
+    Object? nodeType = freezed,
     Object? from = null,
     Object? to = null,
+    Object? startedAt = freezed,
+    Object? completedAt = freezed,
     Object? errorDetail = freezed,
     Object? errorMessage = freezed,
   }) {
@@ -1424,6 +1528,14 @@ class __$NodeStatusChangedDataCopyWithImpl<$Res>
             ? _self.nodeId
             : nodeId // ignore: cast_nullable_to_non_nullable
                   as String,
+        nodeName: freezed == nodeName
+            ? _self.nodeName
+            : nodeName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodeType: freezed == nodeType
+            ? _self.nodeType
+            : nodeType // ignore: cast_nullable_to_non_nullable
+                  as String?,
         from: null == from
             ? _self.from
             : from // ignore: cast_nullable_to_non_nullable
@@ -1432,6 +1544,14 @@ class __$NodeStatusChangedDataCopyWithImpl<$Res>
             ? _self.to
             : to // ignore: cast_nullable_to_non_nullable
                   as String,
+        startedAt: freezed == startedAt
+            ? _self.startedAt
+            : startedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        completedAt: freezed == completedAt
+            ? _self.completedAt
+            : completedAt // ignore: cast_nullable_to_non_nullable
+                  as String?,
         errorDetail: freezed == errorDetail
             ? _self._errorDetail
             : errorDetail // ignore: cast_nullable_to_non_nullable

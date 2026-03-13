@@ -17,6 +17,10 @@ mixin _$StepSnapshot {
   String get stepId;
   @JsonKey(name: 'node_id')
   String get nodeId;
+  @JsonKey(name: 'node_name')
+  String? get nodeName;
+  @JsonKey(name: 'node_type')
+  String? get nodeType;
   String get status;
   @JsonKey(name: 'started_at')
   String? get startedAt;
@@ -26,6 +30,8 @@ mixin _$StepSnapshot {
   String? get errorMessage;
   @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail;
+  @JsonKey(name: 'checkpoint_data')
+  Map<String, dynamic>? get checkpointData;
   Map<String, dynamic>? get result;
 
   /// Create a copy of StepSnapshot
@@ -48,6 +54,10 @@ mixin _$StepSnapshot {
             other is StepSnapshot &&
             (identical(other.stepId, stepId) || other.stepId == stepId) &&
             (identical(other.nodeId, nodeId) || other.nodeId == nodeId) &&
+            (identical(other.nodeName, nodeName) ||
+                other.nodeName == nodeName) &&
+            (identical(other.nodeType, nodeType) ||
+                other.nodeType == nodeType) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.startedAt, startedAt) ||
                 other.startedAt == startedAt) &&
@@ -59,6 +69,10 @@ mixin _$StepSnapshot {
               other.errorDetail,
               errorDetail,
             ) &&
+            const DeepCollectionEquality().equals(
+              other.checkpointData,
+              checkpointData,
+            ) &&
             const DeepCollectionEquality().equals(other.result, result));
   }
 
@@ -68,17 +82,20 @@ mixin _$StepSnapshot {
     runtimeType,
     stepId,
     nodeId,
+    nodeName,
+    nodeType,
     status,
     startedAt,
     completedAt,
     errorMessage,
     const DeepCollectionEquality().hash(errorDetail),
+    const DeepCollectionEquality().hash(checkpointData),
     const DeepCollectionEquality().hash(result),
   );
 
   @override
   String toString() {
-    return 'StepSnapshot(stepId: $stepId, nodeId: $nodeId, status: $status, startedAt: $startedAt, completedAt: $completedAt, errorMessage: $errorMessage, errorDetail: $errorDetail, result: $result)';
+    return 'StepSnapshot(stepId: $stepId, nodeId: $nodeId, nodeName: $nodeName, nodeType: $nodeType, status: $status, startedAt: $startedAt, completedAt: $completedAt, errorMessage: $errorMessage, errorDetail: $errorDetail, checkpointData: $checkpointData, result: $result)';
   }
 }
 
@@ -92,11 +109,14 @@ abstract mixin class $StepSnapshotCopyWith<$Res> {
   $Res call({
     @JsonKey(name: 'step_id') String stepId,
     @JsonKey(name: 'node_id') String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     String status,
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_message') String? errorMessage,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   });
 }
@@ -115,11 +135,14 @@ class _$StepSnapshotCopyWithImpl<$Res> implements $StepSnapshotCopyWith<$Res> {
   $Res call({
     Object? stepId = null,
     Object? nodeId = null,
+    Object? nodeName = freezed,
+    Object? nodeType = freezed,
     Object? status = null,
     Object? startedAt = freezed,
     Object? completedAt = freezed,
     Object? errorMessage = freezed,
     Object? errorDetail = freezed,
+    Object? checkpointData = freezed,
     Object? result = freezed,
   }) {
     return _then(
@@ -132,6 +155,14 @@ class _$StepSnapshotCopyWithImpl<$Res> implements $StepSnapshotCopyWith<$Res> {
             ? _self.nodeId
             : nodeId // ignore: cast_nullable_to_non_nullable
                   as String,
+        nodeName: freezed == nodeName
+            ? _self.nodeName
+            : nodeName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodeType: freezed == nodeType
+            ? _self.nodeType
+            : nodeType // ignore: cast_nullable_to_non_nullable
+                  as String?,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
@@ -151,6 +182,10 @@ class _$StepSnapshotCopyWithImpl<$Res> implements $StepSnapshotCopyWith<$Res> {
         errorDetail: freezed == errorDetail
             ? _self.errorDetail
             : errorDetail // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        checkpointData: freezed == checkpointData
+            ? _self.checkpointData
+            : checkpointData // ignore: cast_nullable_to_non_nullable
                   as Map<String, dynamic>?,
         result: freezed == result
             ? _self.result
@@ -257,11 +292,14 @@ extension StepSnapshotPatterns on StepSnapshot {
     TResult Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String status,
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_message') String? errorMessage,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )?
     $default, {
@@ -273,11 +311,14 @@ extension StepSnapshotPatterns on StepSnapshot {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.status,
           _that.startedAt,
           _that.completedAt,
           _that.errorMessage,
           _that.errorDetail,
+          _that.checkpointData,
           _that.result,
         );
       case _:
@@ -303,11 +344,14 @@ extension StepSnapshotPatterns on StepSnapshot {
     TResult Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String status,
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_message') String? errorMessage,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )
     $default,
@@ -318,11 +362,14 @@ extension StepSnapshotPatterns on StepSnapshot {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.status,
           _that.startedAt,
           _that.completedAt,
           _that.errorMessage,
           _that.errorDetail,
+          _that.checkpointData,
           _that.result,
         );
       case _:
@@ -347,11 +394,14 @@ extension StepSnapshotPatterns on StepSnapshot {
     TResult? Function(
       @JsonKey(name: 'step_id') String stepId,
       @JsonKey(name: 'node_id') String nodeId,
+      @JsonKey(name: 'node_name') String? nodeName,
+      @JsonKey(name: 'node_type') String? nodeType,
       String status,
       @JsonKey(name: 'started_at') String? startedAt,
       @JsonKey(name: 'completed_at') String? completedAt,
       @JsonKey(name: 'error_message') String? errorMessage,
       @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )?
     $default,
@@ -362,11 +412,14 @@ extension StepSnapshotPatterns on StepSnapshot {
         return $default(
           _that.stepId,
           _that.nodeId,
+          _that.nodeName,
+          _that.nodeType,
           _that.status,
           _that.startedAt,
           _that.completedAt,
           _that.errorMessage,
           _that.errorDetail,
+          _that.checkpointData,
           _that.result,
         );
       case _:
@@ -381,13 +434,18 @@ class _StepSnapshot implements StepSnapshot {
   const _StepSnapshot({
     @JsonKey(name: 'step_id') required this.stepId,
     @JsonKey(name: 'node_id') required this.nodeId,
+    @JsonKey(name: 'node_name') this.nodeName,
+    @JsonKey(name: 'node_type') this.nodeType,
     required this.status,
     @JsonKey(name: 'started_at') this.startedAt,
     @JsonKey(name: 'completed_at') this.completedAt,
     @JsonKey(name: 'error_message') this.errorMessage,
     @JsonKey(name: 'error_detail') final Map<String, dynamic>? errorDetail,
+    @JsonKey(name: 'checkpoint_data')
+    final Map<String, dynamic>? checkpointData,
     final Map<String, dynamic>? result,
   }) : _errorDetail = errorDetail,
+       _checkpointData = checkpointData,
        _result = result;
   factory _StepSnapshot.fromJson(Map<String, dynamic> json) =>
       _$StepSnapshotFromJson(json);
@@ -398,6 +456,12 @@ class _StepSnapshot implements StepSnapshot {
   @override
   @JsonKey(name: 'node_id')
   final String nodeId;
+  @override
+  @JsonKey(name: 'node_name')
+  final String? nodeName;
+  @override
+  @JsonKey(name: 'node_type')
+  final String? nodeType;
   @override
   final String status;
   @override
@@ -416,6 +480,17 @@ class _StepSnapshot implements StepSnapshot {
     final value = _errorDetail;
     if (value == null) return null;
     if (_errorDetail is EqualUnmodifiableMapView) return _errorDetail;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  final Map<String, dynamic>? _checkpointData;
+  @override
+  @JsonKey(name: 'checkpoint_data')
+  Map<String, dynamic>? get checkpointData {
+    final value = _checkpointData;
+    if (value == null) return null;
+    if (_checkpointData is EqualUnmodifiableMapView) return _checkpointData;
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableMapView(value);
   }
@@ -450,6 +525,10 @@ class _StepSnapshot implements StepSnapshot {
             other is _StepSnapshot &&
             (identical(other.stepId, stepId) || other.stepId == stepId) &&
             (identical(other.nodeId, nodeId) || other.nodeId == nodeId) &&
+            (identical(other.nodeName, nodeName) ||
+                other.nodeName == nodeName) &&
+            (identical(other.nodeType, nodeType) ||
+                other.nodeType == nodeType) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.startedAt, startedAt) ||
                 other.startedAt == startedAt) &&
@@ -461,6 +540,10 @@ class _StepSnapshot implements StepSnapshot {
               other._errorDetail,
               _errorDetail,
             ) &&
+            const DeepCollectionEquality().equals(
+              other._checkpointData,
+              _checkpointData,
+            ) &&
             const DeepCollectionEquality().equals(other._result, _result));
   }
 
@@ -470,17 +553,20 @@ class _StepSnapshot implements StepSnapshot {
     runtimeType,
     stepId,
     nodeId,
+    nodeName,
+    nodeType,
     status,
     startedAt,
     completedAt,
     errorMessage,
     const DeepCollectionEquality().hash(_errorDetail),
+    const DeepCollectionEquality().hash(_checkpointData),
     const DeepCollectionEquality().hash(_result),
   );
 
   @override
   String toString() {
-    return 'StepSnapshot(stepId: $stepId, nodeId: $nodeId, status: $status, startedAt: $startedAt, completedAt: $completedAt, errorMessage: $errorMessage, errorDetail: $errorDetail, result: $result)';
+    return 'StepSnapshot(stepId: $stepId, nodeId: $nodeId, nodeName: $nodeName, nodeType: $nodeType, status: $status, startedAt: $startedAt, completedAt: $completedAt, errorMessage: $errorMessage, errorDetail: $errorDetail, checkpointData: $checkpointData, result: $result)';
   }
 }
 
@@ -496,11 +582,14 @@ abstract mixin class _$StepSnapshotCopyWith<$Res>
   $Res call({
     @JsonKey(name: 'step_id') String stepId,
     @JsonKey(name: 'node_id') String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     String status,
     @JsonKey(name: 'started_at') String? startedAt,
     @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_message') String? errorMessage,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   });
 }
@@ -520,11 +609,14 @@ class __$StepSnapshotCopyWithImpl<$Res>
   $Res call({
     Object? stepId = null,
     Object? nodeId = null,
+    Object? nodeName = freezed,
+    Object? nodeType = freezed,
     Object? status = null,
     Object? startedAt = freezed,
     Object? completedAt = freezed,
     Object? errorMessage = freezed,
     Object? errorDetail = freezed,
+    Object? checkpointData = freezed,
     Object? result = freezed,
   }) {
     return _then(
@@ -537,6 +629,14 @@ class __$StepSnapshotCopyWithImpl<$Res>
             ? _self.nodeId
             : nodeId // ignore: cast_nullable_to_non_nullable
                   as String,
+        nodeName: freezed == nodeName
+            ? _self.nodeName
+            : nodeName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodeType: freezed == nodeType
+            ? _self.nodeType
+            : nodeType // ignore: cast_nullable_to_non_nullable
+                  as String?,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
@@ -556,6 +656,10 @@ class __$StepSnapshotCopyWithImpl<$Res>
         errorDetail: freezed == errorDetail
             ? _self._errorDetail
             : errorDetail // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        checkpointData: freezed == checkpointData
+            ? _self._checkpointData
+            : checkpointData // ignore: cast_nullable_to_non_nullable
                   as Map<String, dynamic>?,
         result: freezed == result
             ? _self._result

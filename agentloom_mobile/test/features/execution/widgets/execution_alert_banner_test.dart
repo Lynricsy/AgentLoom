@@ -41,6 +41,7 @@ void main() {
           StepSnapshot(
             stepId: 'step-1',
             nodeId: 'node-1',
+            nodeName: 'Email Agent',
             status: 'failed',
             errorMessage: 'Agent timed out',
           ),
@@ -54,7 +55,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.error), findsOneWidget);
-      expect(find.text('Agent timed out'), findsOneWidget);
+      expect(find.text('Email Agent failed: Agent timed out'), findsOneWidget);
     });
 
     testWidgets('renders default failed message when no error step', (

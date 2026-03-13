@@ -51,5 +51,20 @@ void main() {
       final decoration = container.decoration as BoxDecoration;
       expect(decoration.color, Colors.orange);
     });
+
+    testWidgets('renders red dot for Disconnected mode', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ConnectionModeIndicator(mode: ConnectionMode.disconnected),
+          ),
+        ),
+      );
+
+      expect(find.text('Disconnected'), findsOneWidget);
+      final container = tester.widget<Container>(find.byType(Container).first);
+      final decoration = container.decoration as BoxDecoration;
+      expect(decoration.color, Colors.red);
+    });
   });
 }

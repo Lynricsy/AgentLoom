@@ -10,6 +10,34 @@ typedef SocketCallback = void Function();
 typedef SocketErrorCallback = void Function(dynamic error);
 typedef SocketDisconnectCallback = void Function(String reason);
 
+String _stripApiSuffix(String path) {
+  final normalizedPath = path.replaceFirst(RegExp(r'/$'), '');
+
+  if (normalizedPath.isEmpty || normalizedPath == '/') {
+    return '';
+  }
+
+  if (normalizedPath.endsWith('/api/v1')) {
+    return normalizedPath.substring(
+      0,
+      normalizedPath.length - '/api/v1'.length,
+    );
+  }
+
+  if (normalizedPath.endsWith('/api')) {
+    return normalizedPath.substring(0, normalizedPath.length - '/api'.length);
+  }
+
+  return normalizedPath;
+}
+
+String resolveExecutionSocketUrl(String apiBaseUrl) {
+  final resolvedApiUrl = Uri.parse(apiBaseUrl);
+  final basePath = _stripApiSuffix(resolvedApiUrl.path);
+  final namespacePath = '$basePath/execution'.replaceAll(RegExp(r'/+'), '/');
+  return resolvedApiUrl.replace(path: namespacePath).toString();
+}
+
 /// 执行监控 Socket.IO 服务
 ///
 /// 管理与服务端 /execution namespace 的 WebSocket 连接，
@@ -58,7 +86,7 @@ class ExecutionSocketService {
     if (_socket != null) return;
 
     _socket = io.io(
-      '$_baseUrl/execution',
+      resolveExecutionSocketUrl(_baseUrl),
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': _authToken})

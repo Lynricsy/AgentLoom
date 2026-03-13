@@ -237,6 +237,60 @@ void main() {
         sub.close();
       });
 
+      test('REST detail 自带 steps 时，Polling 快照保留步骤元数据', () async {
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'node-1',
+                'type': 'llm-agent',
+                'data': {'label': 'Email Agent', 'nodeType': 'agent'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'node-1',
+              nodeType: 'llm-agent',
+              nodeData: {'label': 'Email Agent'},
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        when(
+          () => mockSocket.onConnected,
+        ).thenAnswer((_) => const Stream.empty());
+
+        container = createContainer();
+        await ensureAuthReady(container);
+
+        final sub = container.listen(
+          executionMonitorProvider('exec-1'),
+          (_, __) {},
+        );
+
+        await container.read(executionMonitorProvider('exec-1').future);
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorPolling>());
+        final polling = state as ExecutionMonitorPolling;
+        expect(polling.snapshot.steps, hasLength(1));
+        expect(polling.snapshot.steps.first.nodeName, 'Email Agent');
+        expect(polling.snapshot.steps.first.nodeType, 'agent');
+
+        sub.close();
+      });
+
       test('未认证 → WS 失败降级到 Polling', () async {
         final execution = createTestExecution(id: 'exec-1', status: 'running');
         when(
@@ -679,6 +733,128 @@ void main() {
         await disconnectController.close();
         await reconnectController.close();
       });
+
+      test('重连 ACK 快照会保留已知节点元数据', () async {
+        final disconnectController = StreamController<String>.broadcast();
+        final reconnectController = StreamController<void>.broadcast();
+        when(
+          () => mockSocket.onDisconnected,
+        ).thenAnswer((_) => disconnectController.stream);
+        when(
+          () => mockSocket.onReconnected,
+        ).thenAnswer((_) => reconnectController.stream);
+
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'node-1',
+                'type': 'llm-agent',
+                'data': {'label': 'Email Agent', 'nodeType': 'agent'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'node-1',
+              nodeType: 'llm-agent',
+              nodeData: {'label': 'Email Agent'},
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        final initialAck = createTestSubscribeAck(
+          currentState: ExecutionStateSnapshot.fromJson({
+            'execution_id': 'exec-1',
+            'status': 'running',
+            'completed_steps': 0,
+            'total_steps': 1,
+            'steps': [
+              {
+                'step_id': 'step-1',
+                'node_id': 'node-1',
+                'status': 'running',
+                'started_at': '2026-01-01T10:00:00.000Z',
+              },
+            ],
+            'snapshot_at': '2026-01-01T10:00:00.000Z',
+            'last_event_id': 10,
+          }),
+        );
+
+        final reconnectAck = createTestSubscribeAck(
+          currentState: ExecutionStateSnapshot.fromJson({
+            'execution_id': 'exec-1',
+            'status': 'running',
+            'completed_steps': 1,
+            'total_steps': 1,
+            'steps': [
+              {
+                'step_id': 'step-1',
+                'node_id': 'node-1',
+                'status': 'completed',
+                'started_at': '2026-01-01T10:00:00.000Z',
+                'completed_at': '2026-01-01T10:01:00.000Z',
+              },
+            ],
+            'snapshot_at': '2026-01-01T10:01:00.000Z',
+            'last_event_id': 15,
+          }),
+        );
+
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer((invocation) async {
+          final lastEventId = invocation.namedArguments[#lastEventId] as int?;
+          if (lastEventId == 10) {
+            return reconnectAck;
+          }
+          return initialAck;
+        });
+
+        container = createContainer();
+        await ensureAuthReady(container);
+
+        final sub = container.listen(
+          executionMonitorProvider('exec-1'),
+          (_, __) {},
+        );
+        await container.read(executionMonitorProvider('exec-1').future);
+
+        disconnectController.add('transport close');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        reconnectController.add(null);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorConnected>());
+        final connected = state as ExecutionMonitorConnected;
+        expect(connected.snapshot.completedSteps, 1);
+        expect(connected.snapshot.steps.first.nodeName, 'Email Agent');
+        expect(connected.snapshot.steps.first.nodeType, 'agent');
+
+        verify(
+          () => mockSocket.subscribe(executionId: 'exec-1', lastEventId: 10),
+        ).called(1);
+
+        sub.close();
+        await disconnectController.close();
+        await reconnectController.close();
+      });
     });
 
     group('subscribe ACK 处理', () {
@@ -720,6 +896,79 @@ void main() {
         // 应该使用 ACK 的快照而非初始 REST 数据
         expect(connected.snapshot.completedSteps, 2);
         expect(connected.snapshot.totalSteps, 5);
+
+        sub.close();
+      });
+
+      test('subscribe ACK 快照会保留 REST detail 的节点元数据', () async {
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'node-1',
+                'type': 'llm-agent',
+                'data': {'label': 'Email Agent', 'nodeType': 'agent'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'node-1',
+              nodeType: 'llm-agent',
+              nodeData: {'label': 'Email Agent'},
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        final ackSnapshot = ExecutionStateSnapshot.fromJson({
+          'execution_id': 'exec-1',
+          'status': 'running',
+          'completed_steps': 0,
+          'total_steps': 1,
+          'steps': [
+            {
+              'step_id': 'step-1',
+              'node_id': 'node-1',
+              'status': 'running',
+              'started_at': '2026-01-01T10:00:00.000Z',
+            },
+          ],
+          'snapshot_at': '2026-01-01T10:00:00.000Z',
+          'last_event_id': 42,
+        });
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer(
+          (_) async => createTestSubscribeAck(currentState: ackSnapshot),
+        );
+
+        container = createContainer();
+        await ensureAuthReady(container);
+
+        final sub = container.listen(
+          executionMonitorProvider('exec-1'),
+          (_, __) {},
+        );
+        await container.read(executionMonitorProvider('exec-1').future);
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorConnected>());
+        final connected = state as ExecutionMonitorConnected;
+        expect(connected.snapshot.steps.first.nodeName, 'Email Agent');
+        expect(connected.snapshot.steps.first.nodeType, 'agent');
 
         sub.close();
       });

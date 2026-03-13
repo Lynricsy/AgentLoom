@@ -41,8 +41,12 @@ abstract class NodeStatusChangedData with _$NodeStatusChangedData {
   const factory NodeStatusChangedData({
     @JsonKey(name: 'step_id') required String stepId,
     @JsonKey(name: 'node_id') required String nodeId,
+    @JsonKey(name: 'node_name') String? nodeName,
+    @JsonKey(name: 'node_type') String? nodeType,
     required String from,
     required String to,
+    @JsonKey(name: 'started_at') String? startedAt,
+    @JsonKey(name: 'completed_at') String? completedAt,
     @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
     @JsonKey(name: 'error_message') String? errorMessage,
   }) = _NodeStatusChangedData;

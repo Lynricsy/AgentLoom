@@ -2,6 +2,7 @@ import 'package:agentloom_mobile/features/execution/models/execution_event.dart'
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
+import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
@@ -40,6 +41,8 @@ ExecutionStateSnapshot createTestStateSnapshot({
           const StepSnapshot(
             stepId: 'step-1',
             nodeId: 'node-1',
+            nodeName: 'Node 1',
+            nodeType: 'agent',
             status: 'completed',
             startedAt: '2026-01-01T10:00:00.000Z',
             completedAt: '2026-01-01T10:01:00.000Z',
@@ -47,12 +50,16 @@ ExecutionStateSnapshot createTestStateSnapshot({
           const StepSnapshot(
             stepId: 'step-2',
             nodeId: 'node-2',
+            nodeName: 'Node 2',
+            nodeType: 'agent',
             status: 'running',
             startedAt: '2026-01-01T10:01:00.000Z',
           ),
           const StepSnapshot(
             stepId: 'step-3',
             nodeId: 'node-3',
+            nodeName: 'Node 3',
+            nodeType: 'agent',
             status: 'pending',
           ),
         ],
@@ -133,6 +140,10 @@ ExecutionSummaryDto createTestExecution({
   String? startedAt = '2026-01-01T10:00:00.000Z',
   String? completedAt = '2026-01-01T10:05:00.000Z',
   String? failedAt,
+  List<ExecutionStepDto>? steps,
+  Map<String, dynamic>? definitionSnapshot,
+  Object? errorMessage,
+  String? workflowName,
   String createdAt = '2026-01-01T10:00:00.000Z',
   String updatedAt = '2026-01-01T10:05:00.000Z',
 }) {
@@ -146,6 +157,43 @@ ExecutionSummaryDto createTestExecution({
     'started_at': startedAt,
     'completed_at': completedAt,
     'failed_at': failedAt,
+    'definition_snapshot': definitionSnapshot,
+    'error_message': errorMessage,
+    'steps': steps?.map((step) => step.toJson()).toList(),
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  }).copyWith(workflowName: workflowName);
+}
+
+ExecutionStepDto createTestExecutionStep({
+  String id = 'step-1',
+  String executionId = 'exec-test-001',
+  String nodeId = 'node-1',
+  int? stepOrder = 1,
+  String status = 'completed',
+  String? nodeType = 'agent',
+  Map<String, dynamic>? nodeData,
+  Map<String, dynamic>? result,
+  Map<String, dynamic>? checkpointData,
+  Object? errorMessage,
+  String? startedAt = '2026-01-01T10:00:00.000Z',
+  String? completedAt = '2026-01-01T10:01:00.000Z',
+  String? createdAt = '2026-01-01T10:00:00.000Z',
+  String? updatedAt = '2026-01-01T10:01:00.000Z',
+}) {
+  return ExecutionStepDto.fromJson({
+    'id': id,
+    'execution_id': executionId,
+    'node_id': nodeId,
+    'step_order': stepOrder,
+    'status': status,
+    'node_type': nodeType,
+    'node_data': nodeData ?? {'label': 'Node ${nodeId.toUpperCase()}'},
+    'result': result,
+    'checkpoint_data': checkpointData,
+    'error_message': errorMessage,
+    'started_at': startedAt,
+    'completed_at': completedAt,
     'created_at': createdAt,
     'updated_at': updatedAt,
   });

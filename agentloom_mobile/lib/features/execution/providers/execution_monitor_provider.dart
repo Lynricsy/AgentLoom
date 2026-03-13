@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/models/auth_state.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../workflows/api/workflow_api.dart';
+import '../../workflows/models/execution_step_dto.dart';
+import '../../workflows/models/execution_summary_dto.dart';
 import '../models/execution_event.dart';
 import '../models/execution_state.dart';
 import '../models/execution_status.dart';
@@ -15,12 +17,14 @@ import '../../../shared/providers/env_provider.dart';
 enum ConnectionMode {
   websocket,
   polling,
-  reconnecting;
+  reconnecting,
+  disconnected;
 
   String get label => switch (this) {
     ConnectionMode.websocket => 'WebSocket',
     ConnectionMode.polling => 'Polling',
     ConnectionMode.reconnecting => 'Reconnecting',
+    ConnectionMode.disconnected => 'Disconnected',
   };
 }
 
@@ -107,7 +111,141 @@ ExecutionStateSnapshot? _extractSnapshot(ExecutionMonitorState? s) {
 ConnectionMode _extractMode(ExecutionMonitorState? s) {
   if (s is ExecutionMonitorConnected) return s.connectionMode;
   if (s is ExecutionMonitorPolling) return s.connectionMode;
+  if (s is ExecutionMonitorDisconnected) return ConnectionMode.disconnected;
   return ConnectionMode.websocket;
+}
+
+typedef _GraphNodeMeta = ({String? nodeName, String? nodeType});
+
+Map<String, _GraphNodeMeta> _extractGraphNodeMeta(
+  Map<String, dynamic>? definitionSnapshot,
+) {
+  final rawNodes = definitionSnapshot?['nodes'];
+  if (rawNodes is! List) {
+    return const {};
+  }
+
+  final graphNodeMeta = <String, _GraphNodeMeta>{};
+  for (final rawNode in rawNodes) {
+    if (rawNode is! Map<String, dynamic>) {
+      continue;
+    }
+
+    final id = rawNode['id'];
+    if (id is! String || id.isEmpty) {
+      continue;
+    }
+
+    final rawData = rawNode['data'];
+    final data = rawData is Map<String, dynamic> ? rawData : null;
+    final nodeName = switch (data?['label']) {
+      final String value when value.isNotEmpty => value,
+      String _ => null,
+      _ => null,
+    };
+    final nodeType = switch (data?['nodeType']) {
+      final String value when value.isNotEmpty => value,
+      String _ => null,
+      _ => switch (rawNode['type']) {
+        final String value when value.isNotEmpty => value,
+        _ => null,
+      },
+    };
+
+    graphNodeMeta[id] = (nodeName: nodeName, nodeType: nodeType);
+  }
+
+  return graphNodeMeta;
+}
+
+StepSnapshot _mapExecutionStep(
+  ExecutionStepDto step, {
+  _GraphNodeMeta? graphNodeMeta,
+  StepSnapshot? previous,
+}) {
+  final nodeName =
+      graphNodeMeta?.nodeName ??
+      step.resolvedNodeLabel ??
+      previous?.nodeName ??
+      step.nodeId;
+  final nodeType =
+      graphNodeMeta?.nodeType ?? step.resolvedNodeType ?? previous?.nodeType;
+
+  return StepSnapshot(
+    stepId: step.id,
+    nodeId: step.nodeId,
+    nodeName: nodeName,
+    nodeType: nodeType,
+    status: step.status,
+    startedAt: step.startedAt ?? previous?.startedAt,
+    completedAt: step.completedAt ?? previous?.completedAt,
+    errorMessage: step.resolvedErrorMessage ?? previous?.errorMessage,
+    errorDetail: step.errorDetailMap ?? previous?.errorDetail,
+    checkpointData: step.checkpointData ?? previous?.checkpointData,
+    result: step.result ?? previous?.result,
+  );
+}
+
+ExecutionStateSnapshot _buildSnapshotFromExecutionDetail(
+  ExecutionSummaryDto execution, {
+  ExecutionStateSnapshot? previous,
+}) {
+  final previousStepsById = {
+    for (final step in previous?.steps ?? const <StepSnapshot>[])
+      step.stepId: step,
+  };
+  final graphNodeMeta = _extractGraphNodeMeta(execution.definitionSnapshot);
+  final mappedSteps = execution.steps
+      ?.map(
+        (step) => _mapExecutionStep(
+          step,
+          graphNodeMeta: graphNodeMeta[step.nodeId],
+          previous: previousStepsById[step.id],
+        ),
+      )
+      .toList();
+
+  return ExecutionStateSnapshot(
+    executionId: execution.id,
+    status: execution.status,
+    completedSteps: execution.completedSteps,
+    totalSteps: execution.totalSteps,
+    steps: mappedSteps ?? previous?.steps ?? const [],
+    snapshotAt: execution.updatedAt,
+    lastEventId: previous?.lastEventId,
+  );
+}
+
+ExecutionStateSnapshot _mergeSnapshotMetadata(
+  ExecutionStateSnapshot incoming, {
+  ExecutionStateSnapshot? previous,
+}) {
+  final previousStepsById = {
+    for (final step in previous?.steps ?? const <StepSnapshot>[])
+      step.stepId: step,
+  };
+
+  if (incoming.steps.isEmpty && previous != null && previous.steps.isNotEmpty) {
+    return incoming.copyWith(steps: previous.steps);
+  }
+
+  final mergedSteps = incoming.steps
+      .map((step) {
+        final previousStep = previousStepsById[step.stepId];
+        return step.copyWith(
+          nodeName: step.nodeName ?? previousStep?.nodeName,
+          nodeType: step.nodeType ?? previousStep?.nodeType,
+          startedAt: step.startedAt ?? previousStep?.startedAt,
+          completedAt: step.completedAt ?? previousStep?.completedAt,
+          errorMessage: step.errorMessage ?? previousStep?.errorMessage,
+          errorDetail: step.errorDetail ?? previousStep?.errorDetail,
+          checkpointData: step.checkpointData ?? previousStep?.checkpointData,
+          result: step.result ?? previousStep?.result,
+        );
+      })
+      .toList(growable: false);
+
+  return incoming.copyWith(steps: mergedSteps);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,15 +287,7 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
     try {
       final api = ref.read(workflowApiProvider);
       final execution = await api.getExecution(executionId);
-
-      initialSnapshot = ExecutionStateSnapshot(
-        executionId: execution.id,
-        status: execution.status,
-        completedSteps: execution.completedSteps,
-        totalSteps: execution.totalSteps,
-        steps: const [],
-        snapshotAt: execution.updatedAt,
-      );
+      initialSnapshot = _buildSnapshotFromExecutionDetail(execution);
     } catch (e) {
       return ExecutionMonitorError(
         message: 'Failed to load execution: $e',
@@ -226,8 +356,12 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
 
     // 如果 ACK 返回了 snapshot，用它作为最新状态
     if (ack.currentState != null) {
-      _lastEventId = ack.currentState!.lastEventId;
-      return ack.currentState!;
+      final mergedSnapshot = _mergeSnapshotMetadata(
+        ack.currentState!,
+        previous: currentSnapshot,
+      );
+      _lastEventId = mergedSnapshot.lastEventId;
+      return mergedSnapshot;
     }
 
     return currentSnapshot;
@@ -292,16 +426,40 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
     final mode = _extractMode(state.value);
 
     // 更新对应 step 的状态
-    final updatedSteps = currentSnapshot.steps.map((step) {
-      if (step.stepId == data.stepId) {
-        return step.copyWith(
+    var hasMatchedStep = false;
+    final updatedSteps = currentSnapshot.steps
+        .map((step) {
+          if (step.stepId == data.stepId) {
+            hasMatchedStep = true;
+            return step.copyWith(
+              nodeName: data.nodeName ?? step.nodeName,
+              nodeType: data.nodeType ?? step.nodeType,
+              status: data.to,
+              startedAt: data.startedAt ?? step.startedAt,
+              completedAt: data.completedAt ?? step.completedAt,
+              errorMessage: data.errorMessage,
+              errorDetail: data.errorDetail,
+            );
+          }
+          return step;
+        })
+        .toList(growable: true);
+
+    if (!hasMatchedStep) {
+      updatedSteps.add(
+        StepSnapshot(
+          stepId: data.stepId,
+          nodeId: data.nodeId,
+          nodeName: data.nodeName ?? data.nodeId,
+          nodeType: data.nodeType,
           status: data.to,
+          startedAt: data.startedAt,
+          completedAt: data.completedAt,
           errorMessage: data.errorMessage,
           errorDetail: data.errorDetail,
-        );
-      }
-      return step;
-    }).toList();
+        ),
+      );
+    }
 
     final updatedSnapshot = currentSnapshot.copyWith(steps: updatedSteps);
 
@@ -324,18 +482,26 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
 
   /// 处理全量快照事件（gap recovery）
   void _handleSnapshot(ExecutionStateSnapshot snapshot) {
-    _lastEventId = snapshot.lastEventId;
+    final mergedSnapshot = _mergeSnapshotMetadata(
+      snapshot,
+      previous: _extractSnapshot(state.value),
+    );
+    _lastEventId = mergedSnapshot.lastEventId;
 
-    final status = ExecutionStatus.fromJson(snapshot.status);
+    final status = ExecutionStatus.fromJson(mergedSnapshot.status);
     if (status.isTerminal) {
-      _onTerminalState(snapshot);
+      _onTerminalState(mergedSnapshot);
       return;
     }
 
     if (state.value is ExecutionMonitorPolling) {
-      state = AsyncValue.data(ExecutionMonitorPolling(snapshot: snapshot));
+      state = AsyncValue.data(
+        ExecutionMonitorPolling(snapshot: mergedSnapshot),
+      );
     } else {
-      state = AsyncValue.data(ExecutionMonitorConnected(snapshot: snapshot));
+      state = AsyncValue.data(
+        ExecutionMonitorConnected(snapshot: mergedSnapshot),
+      );
     }
   }
 
@@ -377,15 +543,20 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
     // re-subscribe with lastEventId
     if (_socketService != null) {
       try {
+        final previousSnapshot = _extractSnapshot(state.value);
         final ack = await _socketService!.subscribe(
           executionId: executionId,
           lastEventId: _lastEventId,
         );
 
         if (ack.status == 'subscribed' && ack.currentState != null) {
-          _lastEventId = ack.currentState!.lastEventId;
+          final mergedSnapshot = _mergeSnapshotMetadata(
+            ack.currentState!,
+            previous: previousSnapshot,
+          );
+          _lastEventId = mergedSnapshot.lastEventId;
           state = AsyncValue.data(
-            ExecutionMonitorConnected(snapshot: ack.currentState!),
+            ExecutionMonitorConnected(snapshot: mergedSnapshot),
           );
           return;
         }
@@ -415,14 +586,9 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
     try {
       final api = ref.read(workflowApiProvider);
       final execution = await api.getExecution(executionId);
-
-      final polledSnapshot = ExecutionStateSnapshot(
-        executionId: execution.id,
-        status: execution.status,
-        completedSteps: execution.completedSteps,
-        totalSteps: execution.totalSteps,
-        steps: const [],
-        snapshotAt: execution.updatedAt,
+      final polledSnapshot = _buildSnapshotFromExecutionDetail(
+        execution,
+        previous: _extractSnapshot(state.value),
       );
 
       final status = ExecutionStatus.fromJson(execution.status);
@@ -475,12 +641,10 @@ class ExecutionMonitorNotifier extends AsyncNotifier<ExecutionMonitorState> {
 /// 执行监控 Provider（AutoDispose + Family）
 ///
 /// Riverpod 3.x 模式：构造函数接收 executionId 参数
-final executionMonitorProvider =
-    AsyncNotifierProvider.family<
-      ExecutionMonitorNotifier,
-      ExecutionMonitorState,
-      String
-    >(ExecutionMonitorNotifier.new);
+final executionMonitorProvider = AsyncNotifierProvider.autoDispose
+    .family<ExecutionMonitorNotifier, ExecutionMonitorState, String>(
+      ExecutionMonitorNotifier.new,
+    );
 
 /// SocketService 工厂 Provider（可在测试中覆盖）
 typedef SocketServiceFactory =

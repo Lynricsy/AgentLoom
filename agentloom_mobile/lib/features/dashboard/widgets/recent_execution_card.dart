@@ -29,7 +29,9 @@ class RecentExecutionCard extends StatelessWidget {
           child: Icon(icon, color: color, size: 20),
         ),
         title: Text(
-          workflowName ?? 'Run #${execution.id.substring(0, 8)}',
+          workflowName ??
+              execution.workflowName ??
+              'Run #${execution.id.substring(0, 8)}',
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w500,
           ),
