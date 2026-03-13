@@ -1,24 +1,15 @@
-/**
- * 本地连线兼容性启发式评估器（Story 2.5 fallback）。
- *
- * TODO(Story-2.4a): 当 Story 2.4a 实现 runtime TypeEngine compatibility provider 后，
- * 此模块中的 evaluateConnection / resolveConnectionPorts 应替换为 2.4a 提供的
- * WASM-backed 兼容性判定。当前本地实现仅基于 dataType + schema 结构比较，
- * 足以驱动 2.5 的全部 UI 渲染，但不具备 TypeEngine 的完整语义推断能力。
- */
 import type { Edge } from '@xyflow/react'
-import { createDefaultEdgeData, type CanvasEdgeData, type CanvasNode } from '../types'
+import {
+  createDefaultEdgeData,
+  type CanvasEdgeData,
+  type CanvasNode,
+  type FieldMapping,
+} from '../types'
 import type { PortDefinition } from '../types/nodeTypeRegistry'
-import type { TypeSchema } from '../types/typeSchema'
-
-interface FlatSchemaField {
-  path: string
-  normalizedPath: string
-  leafKey: string
-  normalizedLeafKey: string
-  schema: TypeSchema
-  required: boolean
-}
+import type { TypeEngineCompatibilityResult } from './typeEngine/contracts'
+import { flattenSchemaFields } from './typeEngine/fallback'
+import { getTypeEngineService } from './typeEngine/service'
+import { cloneTypeSchema, getPortContractSignature } from './typeEngine/serialize'
 
 interface ResolvedPortRef {
   node: CanvasNode
@@ -31,117 +22,164 @@ export interface EvaluatedConnection {
 }
 
 export interface ConnectionLike {
+  id?: string
   source?: string | null
   sourceHandle?: string | null
   target?: string | null
   targetHandle?: string | null
 }
 
-function normalizeKey(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+function buildIncompatibleEdgeData(reasonKey: string): CanvasEdgeData {
+  return {
+    ...createDefaultEdgeData(),
+    rawCompatibilityLevel: 'INCOMPATIBLE',
+    visualLevel: 'error',
+    reasonKey,
+  }
 }
 
-function toComparablePath(path: string): string {
-  const [, ...segments] = path.split('.')
-  return normalizeKey(segments.join('.'))
+function createIncompatibleResult(reasonKey: string): EvaluatedConnection {
+  return {
+    compatible: false,
+    edgeData: buildIncompatibleEdgeData(reasonKey),
+  }
 }
 
-function schemasExactlyMatch(source: TypeSchema, target: TypeSchema): boolean {
-  if (source.kind !== target.kind) {
-    return false
-  }
-
-  if (source.kind !== 'json' || target.kind !== 'json') {
-    return true
-  }
-
-  if (source.shape !== target.shape) {
-    return false
-  }
-
-  if (source.shape === 'array' && target.shape === 'array') {
-    return schemasExactlyMatch(source.items, target.items)
-  }
-
-  if (source.shape === 'object' && target.shape === 'object') {
-    const sourceKeys = Object.keys(source.properties).sort()
-    const targetKeys = Object.keys(target.properties).sort()
-    if (sourceKeys.length !== targetKeys.length) {
-      return false
-    }
-
-    for (const key of sourceKeys) {
-      const sourceProperty = source.properties[key]
-      const targetProperty = target.properties[key]
-      if (!sourceProperty || !targetProperty) {
-        return false
-      }
-      if (!schemasExactlyMatch(sourceProperty, targetProperty)) {
-        return false
-      }
-    }
-
-    const sourceRequired = [...(source.required ?? [])].sort()
-    const targetRequired = [...(target.required ?? [])].sort()
-    return sourceRequired.join('|') === targetRequired.join('|')
-  }
-
-  return false
-}
-
-function flattenSchemaFields(
-  prefix: string,
-  schema: TypeSchema,
-  required = false,
-): FlatSchemaField[] {
-  if (schema.kind === 'json' && schema.shape === 'object') {
-    return Object.entries(schema.properties).flatMap(([key, value]) => {
-      const path = `${prefix}.${key}`
-      const nextRequired = (schema.required ?? []).includes(key)
-      return flattenSchemaFields(path, value, nextRequired)
-    })
-  }
-
-  const leafKey = prefix.split('.').at(-1) ?? prefix
-  return [
-    {
-      path: prefix,
-      normalizedPath: toComparablePath(prefix),
-      leafKey,
-      normalizedLeafKey: normalizeKey(leafKey),
-      schema,
-      required,
-    },
-  ]
-}
-
-function flattenPortFields(port: PortDefinition): FlatSchemaField[] {
-  return flattenSchemaFields(port.id, port.schema, port.required)
-}
-
-function findBestSourceField(
-  targetField: FlatSchemaField,
-  sourceFields: FlatSchemaField[],
-): FlatSchemaField | null {
-  const exactPath = sourceFields.find(
-    (field) =>
-      field.normalizedPath === targetField.normalizedPath &&
-      field.schema.kind === targetField.schema.kind,
+function isSameConnection(edge: Edge, connection: ConnectionLike): boolean {
+  return (
+    edge.id != null
+    && connection.id != null
+    && edge.id === connection.id
   )
-  if (exactPath) {
-    return exactPath
+}
+
+function normalizePath(portId: string, path: string): string {
+  if (!path) {
+    return portId
   }
 
-  const exactLeaf = sourceFields.find(
-    (field) =>
-      field.normalizedLeafKey === targetField.normalizedLeafKey &&
-      field.schema.kind === targetField.schema.kind,
+  if (path.startsWith('[]')) {
+    return `${portId}${path}`
+  }
+
+  if (path.startsWith(`${portId}.`) || path === portId) {
+    return path
+  }
+
+  return `${portId}.${path}`
+}
+
+function mapVisualLevel(level: CanvasEdgeData['rawCompatibilityLevel']): CanvasEdgeData['visualLevel'] {
+  switch (level) {
+    case 'EXACT':
+      return 'L0'
+    case 'TRANSFORM':
+    case 'PARTIAL':
+      return 'L1'
+    case 'INCOMPATIBLE':
+      return 'error'
+  }
+}
+
+function sanitizeMetadata(
+  metadata: TypeEngineCompatibilityResult['metadata'],
+): CanvasEdgeData['metadata'] {
+  return {
+    matchedRatio:
+      typeof metadata.matchedRatio === 'number' ? metadata.matchedRatio : undefined,
+    matchedRequiredCount:
+      typeof metadata.matchedRequiredCount === 'number'
+        ? metadata.matchedRequiredCount
+        : undefined,
+    totalRequiredCount:
+      typeof metadata.totalRequiredCount === 'number'
+        ? metadata.totalRequiredCount
+        : undefined,
+    unmappedRequiredCount:
+      typeof metadata.unmappedRequiredCount === 'number'
+        ? metadata.unmappedRequiredCount
+        : undefined,
+  }
+}
+
+function buildMappingSummary(
+  mappings: FieldMapping[],
+  missingFields: CanvasEdgeData['missingFields'],
+): CanvasEdgeData['mappingSummary'] {
+  return {
+    autoMatchedCount: mappings.filter((mapping) => mapping.autoRecommended).length,
+    manualCount: mappings.filter((mapping) => !mapping.autoRecommended).length,
+    requiredUnmappedCount: missingFields.filter(
+      (field) => field.required && !mappings.some((mapping) => mapping.targetField === field.path),
+    ).length,
+  }
+}
+
+export function adaptCompatibilityToEdgeData(
+  result: TypeEngineCompatibilityResult,
+  sourcePort: PortDefinition,
+  targetPort: PortDefinition,
+): CanvasEdgeData {
+  const missingFields = result.missingFields.map((field) => ({
+    ...field,
+    path: normalizePath(targetPort.id, field.path),
+    expectedType: cloneTypeSchema(field.expectedType),
+  }))
+
+  const candidateMappings = result.candidateMappings.map((mapping) => ({
+    ...mapping,
+    sourcePath: normalizePath(sourcePort.id, mapping.sourcePath),
+    targetPath: normalizePath(targetPort.id, mapping.targetPath),
+  }))
+
+  const fieldMapping: FieldMapping[] = []
+
+  return {
+    ...createDefaultEdgeData(),
+    rawCompatibilityLevel: result.level,
+    visualLevel: mapVisualLevel(result.level),
+    reasonKey: result.reason,
+    transformFn: result.transformFn,
+    missingFields,
+    candidateMappings,
+    fieldMapping,
+    metadata: sanitizeMetadata(result.metadata),
+    mappingSummary: buildMappingSummary(fieldMapping, missingFields),
+  }
+}
+
+function getPortFieldPaths(port: PortDefinition): Set<string> {
+  return new Set(
+    flattenSchemaFields(port.id, port.schema, port.required).map((field) => field.path),
   )
-  if (exactLeaf) {
-    return exactLeaf
+}
+
+export function mergeEdgeDataWithStoredMappings(
+  sourcePort: PortDefinition,
+  targetPort: PortDefinition,
+  nextEdgeData: CanvasEdgeData,
+  previousEdgeData: CanvasEdgeData | null | undefined,
+): CanvasEdgeData {
+  if (nextEdgeData.rawCompatibilityLevel !== 'PARTIAL') {
+    return {
+      ...nextEdgeData,
+      fieldMapping: [],
+      mappingSummary: buildMappingSummary([], nextEdgeData.missingFields),
+    }
   }
 
-  return null
+  const validSourceFields = getPortFieldPaths(sourcePort)
+  const validTargetFields = getPortFieldPaths(targetPort)
+  const fieldMapping = (previousEdgeData?.fieldMapping ?? []).filter(
+    (mapping) =>
+      validSourceFields.has(mapping.sourceField) && validTargetFields.has(mapping.targetField),
+  )
+
+  return {
+    ...nextEdgeData,
+    fieldMapping,
+    mappingSummary: buildMappingSummary(fieldMapping, nextEdgeData.missingFields),
+  }
 }
 
 export function resolveConnectionPorts(
@@ -170,152 +208,87 @@ export function resolveConnectionPorts(
   }
 }
 
-export function evaluateConnection(
+function runSynchronousGuards(
   nodes: CanvasNode[],
-  connection: ConnectionLike | Pick<Edge, 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
-  edges: Edge[] = [],
-): EvaluatedConnection {
+  connection: ConnectionLike,
+  edges: Edge[],
+): { resolved: { source: ResolvedPortRef; target: ResolvedPortRef } } | { rejected: EvaluatedConnection } {
   const resolved = resolveConnectionPorts(nodes, connection)
-  const base = createDefaultEdgeData()
-
   if (!resolved) {
-    return {
-      compatible: false,
-      edgeData: {
-        ...base,
-        rawCompatibilityLevel: 'INCOMPATIBLE',
-        visualLevel: 'error',
-        reasonKey: '连接端口不存在',
-      },
-    }
+    return { rejected: createIncompatibleResult('连接端口不存在') }
   }
 
   const { source, target } = resolved
 
   if (source.node.id === target.node.id) {
-    return {
-      compatible: false,
-      edgeData: {
-        ...base,
-        rawCompatibilityLevel: 'INCOMPATIBLE',
-        visualLevel: 'error',
-        reasonKey: '节点不能连接到自身',
-      },
-    }
+    return { rejected: createIncompatibleResult('节点不能连接到自身') }
   }
 
   if (target.port.maxConnections !== null) {
     const existingCount = edges.filter(
-      (e) => e.target === connection.target && e.targetHandle === connection.targetHandle,
+      (edge) =>
+        edge.target === connection.target
+        && edge.targetHandle === connection.targetHandle
+        && !isSameConnection(edge, connection),
     ).length
+
     if (existingCount >= target.port.maxConnections) {
       return {
-        compatible: false,
-        edgeData: {
-          ...base,
-          rawCompatibilityLevel: 'INCOMPATIBLE',
-          visualLevel: 'error',
-          reasonKey: `端口已达到最大连接数 (${target.port.maxConnections})`,
-        },
+        rejected: createIncompatibleResult(`端口已达到最大连接数 (${target.port.maxConnections})`),
       }
     }
   }
 
-  if (source.port.dataType !== target.port.dataType) {
-    return {
-      compatible: false,
-      edgeData: {
-        ...base,
-        rawCompatibilityLevel: 'INCOMPATIBLE',
-        visualLevel: 'error',
-        reasonKey: `${source.port.dataType} → ${target.port.dataType}`,
-      },
-    }
+  return { resolved }
+}
+
+export function getCachedConnectionEvaluation(
+  nodes: CanvasNode[],
+  connection: ConnectionLike | Pick<Edge, 'id' | 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
+  edges: Edge[] = [],
+): EvaluatedConnection | null {
+  const guarded = runSynchronousGuards(nodes, connection, edges)
+  if ('rejected' in guarded) {
+    return guarded.rejected
   }
 
-  if (schemasExactlyMatch(source.port.schema, target.port.schema)) {
-    return {
-      compatible: true,
-      edgeData: {
-        ...base,
-        metadata: {
-          matchedRequiredCount: 0,
-          totalRequiredCount: 0,
-          unmappedRequiredCount: 0,
-        },
-      },
-    }
+  const { source, target } = guarded.resolved
+  const cachedResult = getTypeEngineService().getCachedCompatibility(source.port, target.port)
+  if (!cachedResult) {
+    return null
   }
 
-  if (source.port.dataType !== 'json' || target.port.dataType !== 'json') {
-    return {
-      compatible: false,
-      edgeData: {
-        ...base,
-        rawCompatibilityLevel: 'INCOMPATIBLE',
-        visualLevel: 'error',
-        reasonKey: `${source.port.dataType} → ${target.port.dataType}`,
-      },
-    }
+  const edgeData = adaptCompatibilityToEdgeData(cachedResult, source.port, target.port)
+  return {
+    compatible: cachedResult.level !== 'INCOMPATIBLE',
+    edgeData,
+  }
+}
+
+export async function evaluateConnection(
+  nodes: CanvasNode[],
+  connection: ConnectionLike | Pick<Edge, 'id' | 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
+  edges: Edge[] = [],
+): Promise<EvaluatedConnection> {
+  const guarded = runSynchronousGuards(nodes, connection, edges)
+  if ('rejected' in guarded) {
+    return guarded.rejected
   }
 
-  const sourceFields = flattenPortFields(source.port)
-  const targetFields = flattenPortFields(target.port)
-  const candidateMappings = targetFields
-    .map((targetField) => {
-      const bestSource = findBestSourceField(targetField, sourceFields)
-      if (!bestSource) {
-        return null
-      }
-
-      const exactLeafMatch = bestSource.normalizedLeafKey === targetField.normalizedLeafKey
-      const exactPathMatch = bestSource.normalizedPath === targetField.normalizedPath
-
-      return {
-        sourcePath: bestSource.path,
-        targetPath: targetField.path,
-        confidence: exactPathMatch ? 0.98 : exactLeafMatch ? 0.92 : 0.6,
-        autoRecommended: exactPathMatch || exactLeafMatch,
-      }
-    })
-    .filter((mapping): mapping is NonNullable<typeof mapping> => mapping !== null)
-
-  const requiredTargets = targetFields.filter((field) => field.required)
-  const autoMatchedRequired = requiredTargets.filter((field) =>
-    candidateMappings.some(
-      (mapping) => mapping.autoRecommended && mapping.targetPath === field.path,
-    ),
-  ).length
-
-  const missingFields = requiredTargets
-    .filter(
-      (field) => !candidateMappings.some((mapping) => mapping.targetPath === field.path),
-    )
-    .map((field) => ({
-      path: field.path,
-      expectedType: field.schema,
-      required: true,
-    }))
+  const { source, target } = guarded.resolved
+  const sourceSignature = getPortContractSignature(source.port)
+  const targetSignature = getPortContractSignature(target.port)
+  const result = await getTypeEngineService().evaluateCompatibility(source.port, target.port, {
+    sourceNodeId: source.node.id,
+    sourcePortId: source.port.id,
+    targetNodeId: target.node.id,
+    targetPortId: target.port.id,
+    sourceSignature,
+    targetSignature,
+  })
 
   return {
-    compatible: true,
-    edgeData: {
-      ...base,
-      rawCompatibilityLevel: 'PARTIAL',
-      visualLevel: 'L1',
-      reasonKey: '需要字段映射',
-      candidateMappings,
-      missingFields,
-      metadata: {
-        matchedRequiredCount: autoMatchedRequired,
-        totalRequiredCount: requiredTargets.length,
-        unmappedRequiredCount: missingFields.length,
-      },
-      mappingSummary: {
-        autoMatchedCount: 0,
-        manualCount: 0,
-        requiredUnmappedCount: missingFields.length,
-      },
-    },
+    compatible: result.level !== 'INCOMPATIBLE',
+    edgeData: adaptCompatibilityToEdgeData(result, source.port, target.port),
   }
 }

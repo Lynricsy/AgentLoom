@@ -13,9 +13,15 @@ export {
 } from './discover-mcp-tools.dto';
 export {
   ImportMcpToolsDto,
+  ReimportMcpToolsDto,
+  mcpImportConflictStrategySchema,
+  mcpImportToolNamesSchema,
   portMappingSchema,
+  importedToolStatusSchema,
   importedToolSchema,
+  importMcpToolsSummarySchema,
   importMcpToolsResponseSchema,
   type ImportMcpToolsResponse,
+  type ImportedToolResult,
   type PortMapping,
 } from './import-mcp-tools.dto';

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
 import type { CanvasNode } from '../../types'
+import { clonePortDefinitions, getNodeTypeConfig, type NodeType } from '../../types/nodeTypeRegistry'
 import { NodeConfigPanel } from './NodeConfigPanel'
 
 const mocks = vi.hoisted(() => ({
@@ -12,15 +13,12 @@ const mocks = vi.hoisted(() => ({
   isExecutionActive: false,
   selectNode: vi.fn(),
   updateNodeData: vi.fn(),
+  setNodeValidationError: vi.fn(),
 }))
 
 vi.mock('@/features/llm', () => ({
-  LlmModelConfigPanel: () => <div>LLM Panel</div>,
+  LlmModelConfigPanel: () => <div>LLM Model Panel</div>,
   parseLlmModelConfig: () => null,
-}))
-
-vi.mock('../../types/nodeTypeRegistry', () => ({
-  getNodeTypeConfig: () => ({ label: '手动触发器' }),
 }))
 
 vi.mock('../../stores/canvasStore', () => ({
@@ -32,6 +30,7 @@ vi.mock('../../stores/canvasStore', () => ({
   useCanvasActions: () => ({
     selectNode: mocks.selectNode,
     updateNodeData: mocks.updateNodeData,
+    setNodeValidationError: mocks.setNodeValidationError,
   }),
 }))
 
@@ -50,7 +49,18 @@ vi.mock('./McpToolConfigPanel', () => ({
 }))
 
 vi.mock('./KnowledgeBaseConfigPanel', () => ({
-  KnowledgeBaseConfigPanel: () => <div>Knowledge Panel</div>,
+  KnowledgeBaseConfigPanel: ({
+    onValidationChange,
+  }: {
+    onValidationChange?: (hasErrors: boolean) => void
+  }) => (
+    <div>
+      <span>Knowledge Panel</span>
+      <button type="button" onClick={() => onValidationChange?.(true)}>
+        触发知识库校验
+      </button>
+    </div>
+  ),
 }))
 
 vi.mock('./SandboxConfigPanel', () => ({
@@ -61,18 +71,60 @@ vi.mock('./InterventionPanel', () => ({
   InterventionPanel: () => <div data-testid="intervention-panel-mock">Intervention Panel</div>,
 }))
 
-function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
+vi.mock('./LlmAgentConfigPanel', () => ({
+  LlmAgentConfigPanel: ({ onValidationChange }: { onValidationChange?: (hasErrors: boolean) => void }) => (
+    <div>
+      <span>LLM Agent Panel</span>
+      <button type="button" onClick={() => onValidationChange?.(true)}>
+        触发 LLM Agent 校验
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('./HttpToolConfigPanel', () => ({
+  HttpToolConfigPanel: ({ onValidationChange }: { onValidationChange?: (hasErrors: boolean) => void }) => (
+    <div>
+      <span>HTTP Tool Panel</span>
+      <button type="button" onClick={() => onValidationChange?.(true)}>
+        触发 HTTP 校验
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('./DynamicConfigForm', () => ({
+  DynamicConfigForm: ({
+    configSchema,
+    onValidationChange,
+  }: {
+    configSchema: { properties: Record<string, unknown> }
+    onValidationChange?: (hasErrors: boolean) => void
+  }) => (
+    <div>
+      <span>Dynamic Form: {Object.keys(configSchema.properties).join(', ')}</span>
+      <button type="button" onClick={() => onValidationChange?.(true)}>
+        触发动态表单校验
+      </button>
+    </div>
+  ),
+}))
+
+function createNode(nodeType: NodeType = 'manual-trigger', overrides: Partial<CanvasNode> = {}): CanvasNode {
+  const config = getNodeTypeConfig(nodeType)
+
   return {
     id: 'node-1',
-    type: 'trigger',
+    type: config.category,
     position: { x: 0, y: 0 },
     data: {
-      label: '手动触发',
-      nodeType: 'manual-trigger',
-      category: 'trigger',
+      label: config.label,
+      nodeType: config.type,
+      category: config.category,
+      description: config.description,
       config: {},
-      inputPorts: [],
-      outputPorts: [],
+      inputPorts: clonePortDefinitions(config.inputPorts),
+      outputPorts: clonePortDefinitions(config.outputPorts),
       ...overrides.data,
     },
     ...overrides,
@@ -87,6 +139,7 @@ describe('NodeConfigPanel', () => {
     mocks.isExecutionActive = false
     mocks.selectNode.mockReset()
     mocks.updateNodeData.mockReset()
+    mocks.setNodeValidationError.mockReset()
   })
 
   it('renders idle execution placeholder when there is no node execution state', () => {
@@ -165,5 +218,67 @@ describe('NodeConfigPanel', () => {
     await user.click(screen.getByRole('button', { name: '关闭配置面板' }))
 
     expect(mocks.selectNode).toHaveBeenCalledWith(null)
+  })
+
+  it.each([
+    ['llm-model', 'LLM Model Panel'],
+    ['mcp-tool', 'MCP Panel'],
+    ['knowledge-base', 'Knowledge Panel'],
+    ['sandbox', 'Sandbox Panel'],
+    ['llm-agent', 'LLM Agent Panel'],
+    ['http-tool', 'HTTP Tool Panel'],
+  ] as const)('prefers the custom panel mapping for %s nodes', (nodeType, panelText) => {
+    mocks.node = createNode(nodeType)
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText(panelText)).toBeInTheDocument()
+    expect(screen.queryByText(/^Dynamic Form:/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {
+    mocks.node = createNode('code-tool')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText('Dynamic Form: language')).toBeInTheDocument()
+  })
+
+  it('shows the empty state when a node has no additional config schema', () => {
+    mocks.node = createNode('manual-trigger')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText('该节点无需额外配置')).toBeInTheDocument()
+  })
+
+  it('forwards validation state changes from custom config panels to the canvas store', async () => {
+    const user = userEvent.setup()
+    mocks.node = createNode('llm-agent')
+
+    render(<NodeConfigPanel />)
+    await user.click(screen.getByRole('button', { name: '触发 LLM Agent 校验' }))
+
+    expect(mocks.setNodeValidationError).toHaveBeenCalledWith('node-1', true)
+  })
+
+  it('forwards validation state changes from knowledge-base panels to the canvas store', async () => {
+    const user = userEvent.setup()
+    mocks.node = createNode('knowledge-base')
+
+    render(<NodeConfigPanel />)
+    await user.click(screen.getByRole('button', { name: '触发知识库校验' }))
+
+    expect(mocks.setNodeValidationError).toHaveBeenCalledWith('node-1', true)
+  })
+
+  it('forwards validation state changes from dynamic config forms to the canvas store', async () => {
+    const user = userEvent.setup()
+    mocks.node = createNode('code-tool')
+
+    render(<NodeConfigPanel />)
+    await user.click(screen.getByRole('button', { name: '触发动态表单校验' }))
+
+    expect(mocks.setNodeValidationError).toHaveBeenCalledWith('node-1', true)
   })
 })

@@ -25,7 +25,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
 | workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) + 自动保存/更新 (`PATCH /workflow-definitions/:id`，Creator/Admin/Owner 可写，OCC version 乐观并发，409 顶层 `currentVersion`) + 软删除 (`DELETE /workflow-definitions/:id` → archive) + 列表排序别名 (`updatedAt/createdAt/name` + `updated_at/created_at`) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
-| mcp | `modules/mcp/` | MCP 服务器 测试/发现/导入 | ApiKeyModule |
+| mcp | `modules/mcp/` | MCP 服务器 测试/已保存配置测试/发现/导入/重导入/停用 | ApiKeyModule |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
 | agent | `modules/agent/` | **六边形架构**: ports/AgentRuntime → InProcess\|Sandbox 适配器 | LlmModule, SandboxModule |
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |

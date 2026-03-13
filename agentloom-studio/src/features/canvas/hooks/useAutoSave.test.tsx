@@ -2,7 +2,8 @@ import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
-import type { CanvasNode } from '../types'
+import { createDefaultEdgeData } from '../types'
+import type { CanvasEdge, CanvasNode } from '../types'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { AUTOSAVE_DEBOUNCE_MS, useAutoSave } from './useAutoSave'
 
@@ -27,6 +28,15 @@ const mockNode: CanvasNode = {
     inputPorts: clonePortDefinitions(llmAgentConfig.inputPorts),
     outputPorts: clonePortDefinitions(llmAgentConfig.outputPorts),
   },
+}
+
+const mockEdge: CanvasEdge = {
+  id: 'edge-1',
+  source: 'node-1',
+  target: 'node-2',
+  sourceHandle: 'final-output',
+  targetHandle: 'content',
+  data: createDefaultEdgeData(),
 }
 
 function AutoSaveHarness({
@@ -193,5 +203,55 @@ describe('useAutoSave', () => {
     })
 
     expect(mutateMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('边兼容性刷新后的 edge.data 会进入自动保存 payload', () => {
+    render(
+      <ToastProvider>
+        <AutoSaveHarness workflowId="wf-001" />
+      </ToastProvider>
+    )
+
+    act(() => {
+      useCanvasStore.setState({
+        nodes: [mockNode],
+        edges: [mockEdge],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        isDirty: false,
+        version: 1,
+      })
+    })
+
+    act(() => {
+      useCanvasStore.getState().actions.refreshEdgeCompatibility([
+        {
+          edgeId: 'edge-1',
+          edgeData: {
+            ...createDefaultEdgeData(),
+            rawCompatibilityLevel: 'INCOMPATIBLE',
+            visualLevel: 'error',
+            reasonKey: 'type_mismatch_no_transform',
+          },
+        },
+      ])
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
+    })
+
+    expect(mutateMock).toHaveBeenCalledTimes(1)
+    expect(mutateMock.mock.calls[0]?.[0]).toMatchObject({
+      edges: [
+        expect.objectContaining({
+          id: 'edge-1',
+          data: expect.objectContaining({
+            rawCompatibilityLevel: 'INCOMPATIBLE',
+            visualLevel: 'error',
+            reasonKey: 'type_mismatch_no_transform',
+          }),
+        }),
+      ],
+    })
   })
 })

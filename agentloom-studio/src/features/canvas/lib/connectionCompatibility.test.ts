@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CanvasNode } from '../types'
-import type { Edge } from '@xyflow/react'
-import { evaluateConnection } from './connectionCompatibility'
+import type { TypeEngineServiceLike } from './typeEngine/contracts'
+import { setTypeEngineServiceForTesting } from './typeEngine/service'
+import {
+  adaptCompatibilityToEdgeData,
+  evaluateConnection,
+  getCachedConnectionEvaluation,
+  mergeEdgeDataWithStoredMappings,
+  resolveConnectionPorts,
+} from './connectionCompatibility'
 
 function createNode(overrides: Partial<CanvasNode>): CanvasNode {
   return {
@@ -20,8 +27,30 @@ function createNode(overrides: Partial<CanvasNode>): CanvasNode {
   }
 }
 
-describe('evaluateConnection', () => {
-  it('returns L0 for exact scalar matches', () => {
+const evaluateCompatibilityMock = vi.fn()
+const getCachedCompatibilityMock = vi.fn()
+
+const mockService: TypeEngineServiceLike = {
+  warmup: vi.fn(async () => undefined),
+  getCachedCompatibility: (sourcePort, targetPort) =>
+    getCachedCompatibilityMock(sourcePort, targetPort),
+  evaluateCompatibility: (sourcePort, targetPort, context) =>
+    evaluateCompatibilityMock(sourcePort, targetPort, context),
+  getRuntimeState: () => ({
+    wasmReady: false,
+    workerBusy: false,
+    lastError: null,
+  }),
+}
+
+describe('connectionCompatibility', () => {
+  beforeEach(() => {
+    evaluateCompatibilityMock.mockReset()
+    getCachedCompatibilityMock.mockReset()
+    setTypeEngineServiceForTesting(mockService)
+  })
+
+  it('resolveConnectionPorts resolves source and target ports', () => {
     const source = createNode({
       id: 'source',
       data: {
@@ -59,291 +88,206 @@ describe('evaluateConnection', () => {
       },
     })
 
-    const result = evaluateConnection([source, target], {
+    const resolved = resolveConnectionPorts([source, target], {
       source: 'source',
       sourceHandle: 'result',
       target: 'target',
       targetHandle: 'input',
     })
 
-    expect(result.compatible).toBe(true)
-    expect(result.edgeData.visualLevel).toBe('L0')
-    expect(result.edgeData.rawCompatibilityLevel).toBe('EXACT')
+    expect(resolved).not.toBeNull()
+    expect(resolved?.source.port.id).toBe('result')
+    expect(resolved?.target.port.id).toBe('input')
   })
 
-  it('returns L1 with candidate mappings and missing required fields for json objects', () => {
-    const source = createNode({
-      id: 'source',
-      data: {
-        ...createNode({}).data,
-        outputPorts: [
+  it('adapts partial TypeEngine results into stable CanvasEdgeData', () => {
+    const edgeData = adaptCompatibilityToEdgeData(
+      {
+        level: 'PARTIAL',
+        reason: 'partial_field_match',
+        transformFn: null,
+        conflictPath: null,
+        missingFields: [
           {
-            id: 'payload',
-            label: 'Payload',
-            direction: 'output',
-            dataType: 'json',
-            required: false,
-            multiple: false,
-            maxConnections: null,
-            schema: {
-              kind: 'json',
-              shape: 'object',
-              properties: {
-                name: { kind: 'text' },
-                age: { kind: 'text' },
-              },
-              required: ['name'],
-            },
-          },
-        ],
-      },
-    })
-    const target = createNode({
-      id: 'target',
-      data: {
-        ...createNode({}).data,
-        inputPorts: [
-          {
-            id: 'payload',
-            label: 'Payload',
-            direction: 'input',
-            dataType: 'json',
+            path: 'email',
+            expectedType: { kind: 'text', title: 'Email' },
             required: true,
-            multiple: false,
-            maxConnections: null,
-            schema: {
-              kind: 'json',
-              shape: 'object',
-              properties: {
-                name: { kind: 'text' },
-                email: { kind: 'text' },
-              },
-              required: ['name', 'email'],
-            },
           },
         ],
+        candidateMappings: [
+          {
+            sourcePath: 'contactEmail',
+            targetPath: 'email',
+            confidence: 0.8,
+            autoRecommended: false,
+          },
+        ],
+        metadata: {
+          matchedRatio: 0.5,
+          matchedRequiredCount: 1,
+          totalRequiredCount: 2,
+          unmappedRequiredCount: 1,
+        },
       },
-    })
-
-    const result = evaluateConnection([source, target], {
-      source: 'source',
-      sourceHandle: 'payload',
-      target: 'target',
-      targetHandle: 'payload',
-    })
-
-    expect(result.compatible).toBe(true)
-    expect(result.edgeData.visualLevel).toBe('L1')
-    expect(result.edgeData.reasonKey).toBe('需要字段映射')
-    expect(result.edgeData.candidateMappings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          sourcePath: 'payload.name',
-          targetPath: 'payload.name',
-          autoRecommended: true,
-        }),
-      ])
+      {
+        id: 'payload-out',
+        label: 'Payload Out',
+        direction: 'output',
+        dataType: 'json',
+        required: false,
+        multiple: false,
+        maxConnections: null,
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          properties: {
+            contactEmail: { kind: 'text' },
+          },
+          required: ['contactEmail'],
+        },
+      },
+      {
+        id: 'payload-in',
+        label: 'Payload In',
+        direction: 'input',
+        dataType: 'json',
+        required: true,
+        multiple: false,
+        maxConnections: null,
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          properties: {
+            email: { kind: 'text' },
+          },
+          required: ['email'],
+        },
+      },
     )
-    expect(result.edgeData.metadata).toMatchObject({
+
+    expect(edgeData.rawCompatibilityLevel).toBe('PARTIAL')
+    expect(edgeData.visualLevel).toBe('L1')
+    expect(edgeData.reasonKey).toBe('partial_field_match')
+    expect(edgeData.candidateMappings).toEqual([
+      {
+        sourcePath: 'payload-out.contactEmail',
+        targetPath: 'payload-in.email',
+        confidence: 0.8,
+        autoRecommended: false,
+      },
+    ])
+    expect(edgeData.missingFields).toEqual([
+      {
+        path: 'payload-in.email',
+        expectedType: { kind: 'text', title: 'Email' },
+        required: true,
+      },
+    ])
+    expect(edgeData.metadata).toEqual({
+      matchedRatio: 0.5,
       matchedRequiredCount: 1,
       totalRequiredCount: 2,
       unmappedRequiredCount: 1,
     })
-    expect(result.edgeData.missingFields).toEqual([
-      expect.objectContaining({ path: 'payload.email', required: true }),
-    ])
+    expect(edgeData.mappingSummary).toEqual({
+      autoMatchedCount: 0,
+      manualCount: 0,
+      requiredUnmappedCount: 1,
+    })
   })
 
-  it('returns error for incompatible data types', () => {
-    const source = createNode({
+  it('maps exact / transform / incompatible levels to visual levels', () => {
+    const sourcePort = {
       id: 'source',
-      data: {
-        ...createNode({}).data,
-        outputPorts: [
-          {
-            id: 'image',
-            label: 'Image',
-            direction: 'output',
-            dataType: 'image',
-            required: false,
-            multiple: false,
-            maxConnections: null,
-            schema: { kind: 'image' },
-          },
-        ],
-      },
-    })
-    const target = createNode({
+      label: 'Source',
+      direction: 'output' as const,
+      dataType: 'text' as const,
+      required: false,
+      multiple: false,
+      maxConnections: null,
+      schema: { kind: 'text' as const },
+    }
+    const targetPort = {
       id: 'target',
+      label: 'Target',
+      direction: 'input' as const,
+      dataType: 'text' as const,
+      required: true,
+      multiple: false,
+      maxConnections: null,
+      schema: { kind: 'text' as const },
+    }
+
+    expect(
+      adaptCompatibilityToEdgeData(
+        {
+          level: 'EXACT',
+          reason: null,
+          transformFn: null,
+          conflictPath: null,
+          missingFields: [],
+          candidateMappings: [],
+          metadata: {},
+        },
+        sourcePort,
+        targetPort,
+      ).visualLevel,
+    ).toBe('L0')
+
+    expect(
+      adaptCompatibilityToEdgeData(
+        {
+          level: 'TRANSFORM',
+          reason: 'text_to_json_parse',
+          transformFn: 'parse_json',
+          conflictPath: null,
+          missingFields: [],
+          candidateMappings: [],
+          metadata: { matchedRatio: 1 },
+        },
+        sourcePort,
+        { ...targetPort, dataType: 'json', schema: { kind: 'json', shape: 'object', properties: {} } },
+      ).visualLevel,
+    ).toBe('L1')
+
+    expect(
+      adaptCompatibilityToEdgeData(
+        {
+          level: 'INCOMPATIBLE',
+          reason: 'type_mismatch_no_transform',
+          transformFn: null,
+          conflictPath: 'root.kind',
+          missingFields: [],
+          candidateMappings: [],
+          metadata: {},
+        },
+        sourcePort,
+        { ...targetPort, dataType: 'image', schema: { kind: 'image' } },
+      ).visualLevel,
+    ).toBe('error')
+  })
+
+  it('returns synchronous guard errors before consulting the service', () => {
+    const node = createNode({
+      id: 'node-1',
       data: {
         ...createNode({}).data,
         inputPorts: [
           {
-            id: 'model',
-            label: 'Model',
+            id: 'input',
+            label: 'Input',
             direction: 'input',
-            dataType: 'model',
+            dataType: 'text',
             required: true,
             multiple: false,
-            maxConnections: null,
-            schema: { kind: 'model' },
+            maxConnections: 1,
+            schema: { kind: 'text' },
           },
         ],
-      },
-    })
-
-    const result = evaluateConnection([source, target], {
-      source: 'source',
-      sourceHandle: 'image',
-      target: 'target',
-      targetHandle: 'model',
-    })
-
-    expect(result.compatible).toBe(false)
-    expect(result.edgeData.visualLevel).toBe('error')
-    expect(result.edgeData.reasonKey).toBe('image → model')
-  })
-
-  it('AC1: tool→tool exact match succeeds for Agent tools port', () => {
-    const toolProvider = createNode({
-      id: 'tool-provider',
-      data: {
-        ...createNode({}).data,
-        nodeType: 'http-tool',
-        category: 'tool',
         outputPorts: [
           {
-            id: 'tool-out',
-            label: 'Tool Output',
-            direction: 'output',
-            dataType: 'tool',
-            required: false,
-            multiple: false,
-            maxConnections: null,
-            schema: { kind: 'tool' },
-          },
-        ],
-      },
-    })
-    const agent = createNode({
-      id: 'agent',
-      data: {
-        ...createNode({}).data,
-        inputPorts: [
-          {
-            id: 'tools',
-            label: 'Tools',
-            direction: 'input',
-            dataType: 'tool',
-            required: false,
-            multiple: true,
-            maxConnections: null,
-            schema: { kind: 'tool' },
-          },
-        ],
-      },
-    })
-
-    const result = evaluateConnection([toolProvider, agent], {
-      source: 'tool-provider',
-      sourceHandle: 'tool-out',
-      target: 'agent',
-      targetHandle: 'tools',
-    })
-
-    expect(result.compatible).toBe(true)
-    expect(result.edgeData.visualLevel).toBe('L0')
-    expect(result.edgeData.rawCompatibilityLevel).toBe('EXACT')
-  })
-
-  it('AC2: multiple knowledge sources bind to Agent knowledge port', () => {
-    const makeKnowledgeNode = (id: string) =>
-      createNode({
-        id,
-        data: {
-          ...createNode({}).data,
-          nodeType: 'knowledge-base',
-          category: 'knowledge',
-          outputPorts: [
-            {
-              id: 'knowledge-out',
-              label: 'Knowledge',
-              direction: 'output',
-              dataType: 'knowledge',
-              required: false,
-              multiple: true,
-              maxConnections: null,
-              schema: { kind: 'knowledge' },
-            },
-          ],
-        },
-      })
-
-    const agent = createNode({
-      id: 'agent',
-      data: {
-        ...createNode({}).data,
-        inputPorts: [
-          {
-            id: 'knowledge',
-            label: 'Knowledge',
-            direction: 'input',
-            dataType: 'knowledge',
-            required: false,
-            multiple: true,
-            maxConnections: null,
-            schema: { kind: 'knowledge' },
-          },
-        ],
-      },
-    })
-
-    const kb1 = makeKnowledgeNode('kb1')
-    const kb2 = makeKnowledgeNode('kb2')
-    const kb3 = makeKnowledgeNode('kb3')
-    const nodes = [kb1, kb2, kb3, agent]
-
-    const existingEdges: Edge[] = [
-      {
-        id: 'e1',
-        source: 'kb1',
-        sourceHandle: 'knowledge-out',
-        target: 'agent',
-        targetHandle: 'knowledge',
-      },
-      {
-        id: 'e2',
-        source: 'kb2',
-        sourceHandle: 'knowledge-out',
-        target: 'agent',
-        targetHandle: 'knowledge',
-      },
-    ]
-
-    const result = evaluateConnection(
-      nodes,
-      {
-        source: 'kb3',
-        sourceHandle: 'knowledge-out',
-        target: 'agent',
-        targetHandle: 'knowledge',
-      },
-      existingEdges,
-    )
-
-    expect(result.compatible).toBe(true)
-    expect(result.edgeData.visualLevel).toBe('L0')
-  })
-
-  it('AC3: rejects incompatible text→tool type mismatch', () => {
-    const textSource = createNode({
-      id: 'text-source',
-      data: {
-        ...createNode({}).data,
-        outputPorts: [
-          {
-            id: 'text-out',
-            label: 'Text Output',
+            id: 'result',
+            label: 'Result',
             direction: 'output',
             dataType: 'text',
             required: false,
@@ -354,172 +298,263 @@ describe('evaluateConnection', () => {
         ],
       },
     })
-    const agent = createNode({
-      id: 'agent',
+
+    const selfResult = getCachedConnectionEvaluation([node], {
+      source: 'node-1',
+      sourceHandle: 'result',
+      target: 'node-1',
+      targetHandle: 'input',
+    })
+
+    expect(selfResult).toMatchObject({
+      compatible: false,
+      edgeData: {
+        visualLevel: 'error',
+        reasonKey: '节点不能连接到自身',
+      },
+    })
+    expect(getCachedCompatibilityMock).not.toHaveBeenCalled()
+  })
+
+  it('returns cached compatibility data synchronously when available', () => {
+    const source = createNode({
+      id: 'source',
       data: {
         ...createNode({}).data,
-        inputPorts: [
+        outputPorts: [
           {
-            id: 'tools',
-            label: 'Tools',
-            direction: 'input',
-            dataType: 'tool',
+            id: 'result',
+            label: 'Result',
+            direction: 'output',
+            dataType: 'text',
             required: false,
-            multiple: true,
+            multiple: false,
             maxConnections: null,
-            schema: { kind: 'tool' },
+            schema: { kind: 'text' },
           },
         ],
       },
     })
-
-    const result = evaluateConnection([textSource, agent], {
-      source: 'text-source',
-      sourceHandle: 'text-out',
-      target: 'agent',
-      targetHandle: 'tools',
-    })
-
-    expect(result.compatible).toBe(false)
-    expect(result.edgeData.visualLevel).toBe('error')
-    expect(result.edgeData.reasonKey).toBe('text → tool')
-  })
-
-  it('AC3: enforces maxConnections and returns error with message', () => {
-    const modelA = createNode({
-      id: 'model-a',
-      data: {
-        ...createNode({}).data,
-        nodeType: 'llm-model',
-        category: 'agent',
-        outputPorts: [
-          {
-            id: 'model-out',
-            label: 'Model',
-            direction: 'output',
-            dataType: 'model',
-            required: false,
-            multiple: true,
-            maxConnections: 5,
-            schema: { kind: 'model' },
-          },
-        ],
-      },
-    })
-    const modelB = createNode({
-      id: 'model-b',
-      data: {
-        ...createNode({}).data,
-        nodeType: 'llm-model',
-        category: 'agent',
-        outputPorts: [
-          {
-            id: 'model-out',
-            label: 'Model',
-            direction: 'output',
-            dataType: 'model',
-            required: false,
-            multiple: true,
-            maxConnections: 5,
-            schema: { kind: 'model' },
-          },
-        ],
-      },
-    })
-    const agent = createNode({
-      id: 'agent',
+    const target = createNode({
+      id: 'target',
       data: {
         ...createNode({}).data,
         inputPorts: [
           {
-            id: 'model',
-            label: 'Model',
+            id: 'input',
+            label: 'Input',
             direction: 'input',
-            dataType: 'model',
+            dataType: 'text',
             required: true,
             multiple: false,
-            maxConnections: 1,
-            schema: { kind: 'model' },
+            maxConnections: null,
+            schema: { kind: 'text' },
           },
         ],
       },
     })
 
-    const existingEdges: Edge[] = [
-      {
-        id: 'e-existing',
-        source: 'model-a',
-        sourceHandle: 'model-out',
-        target: 'agent',
-        targetHandle: 'model',
-      },
-    ]
+    getCachedCompatibilityMock.mockReturnValue({
+      level: 'INCOMPATIBLE',
+      reason: 'type_mismatch_no_transform',
+      transformFn: null,
+      conflictPath: 'root.kind',
+      missingFields: [],
+      candidateMappings: [],
+      metadata: {},
+    })
 
-    const result = evaluateConnection(
-      [modelA, modelB, agent],
-      {
-        source: 'model-b',
-        sourceHandle: 'model-out',
-        target: 'agent',
-        targetHandle: 'model',
-      },
-      existingEdges,
-    )
+    const result = getCachedConnectionEvaluation([source, target], {
+      source: 'source',
+      sourceHandle: 'result',
+      target: 'target',
+      targetHandle: 'input',
+    })
 
-    expect(result.compatible).toBe(false)
-    expect(result.edgeData.visualLevel).toBe('error')
-    expect(result.edgeData.reasonKey).toContain('最大连接数')
+    expect(result).toMatchObject({
+      compatible: false,
+      edgeData: {
+        rawCompatibilityLevel: 'INCOMPATIBLE',
+        visualLevel: 'error',
+        reasonKey: 'type_mismatch_no_transform',
+      },
+    })
   })
 
-  it('AC4: model→model match succeeds for Agent model port', () => {
-    const modelNode = createNode({
-      id: 'model-provider',
+  it('awaits authoritative compatibility data from the service', async () => {
+    const source = createNode({
+      id: 'source',
       data: {
         ...createNode({}).data,
-        nodeType: 'llm-model',
-        category: 'agent',
         outputPorts: [
           {
-            id: 'model-out',
-            label: 'Model',
+            id: 'result',
+            label: 'Result',
             direction: 'output',
-            dataType: 'model',
+            dataType: 'text',
             required: false,
-            multiple: true,
-            maxConnections: 5,
-            schema: { kind: 'model' },
+            multiple: false,
+            maxConnections: null,
+            schema: { kind: 'text' },
           },
         ],
       },
     })
-    const agent = createNode({
-      id: 'agent',
+    const target = createNode({
+      id: 'target',
       data: {
         ...createNode({}).data,
         inputPorts: [
           {
-            id: 'model',
-            label: 'Model',
+            id: 'payload',
+            label: 'Payload',
             direction: 'input',
-            dataType: 'model',
+            dataType: 'json',
             required: true,
             multiple: false,
-            maxConnections: 1,
-            schema: { kind: 'model' },
+            maxConnections: null,
+            schema: { kind: 'json', shape: 'object', properties: {} },
           },
         ],
       },
     })
 
-    const result = evaluateConnection([modelNode, agent], {
-      source: 'model-provider',
-      sourceHandle: 'model-out',
-      target: 'agent',
-      targetHandle: 'model',
+    evaluateCompatibilityMock.mockResolvedValue({
+      level: 'TRANSFORM',
+      reason: 'text_to_json_parse',
+      transformFn: 'parse_json',
+      conflictPath: null,
+      missingFields: [],
+      candidateMappings: [],
+      metadata: { matchedRatio: 1 },
+    })
+
+    const result = await evaluateConnection([source, target], {
+      source: 'source',
+      sourceHandle: 'result',
+      target: 'target',
+      targetHandle: 'payload',
     })
 
     expect(result.compatible).toBe(true)
-    expect(result.edgeData.visualLevel).toBe('L0')
-    expect(result.edgeData.rawCompatibilityLevel).toBe('EXACT')
+    expect(result.edgeData).toMatchObject({
+      rawCompatibilityLevel: 'TRANSFORM',
+      visualLevel: 'L1',
+      reasonKey: 'text_to_json_parse',
+      transformFn: 'parse_json',
+      metadata: { matchedRatio: 1 },
+    })
+    expect(evaluateCompatibilityMock).toHaveBeenCalledOnce()
+  })
+
+  it('preserves still-valid field mappings when edge data is refreshed', () => {
+    const sourcePort = {
+      id: 'payload-out',
+      label: 'Payload Out',
+      direction: 'output' as const,
+      dataType: 'json' as const,
+      required: false,
+      multiple: false,
+      maxConnections: null,
+      schema: {
+        kind: 'json' as const,
+        shape: 'object' as const,
+        properties: {
+          name: { kind: 'text' as const },
+          email: { kind: 'text' as const },
+        },
+        required: ['name'],
+      },
+    }
+    const targetPort = {
+      id: 'payload-in',
+      label: 'Payload In',
+      direction: 'input' as const,
+      dataType: 'json' as const,
+      required: true,
+      multiple: false,
+      maxConnections: null,
+      schema: {
+        kind: 'json' as const,
+        shape: 'object' as const,
+        properties: {
+          name: { kind: 'text' as const },
+          email: { kind: 'text' as const },
+        },
+        required: ['name', 'email'],
+      },
+    }
+
+    const refreshed = mergeEdgeDataWithStoredMappings(
+      sourcePort,
+      targetPort,
+      adaptCompatibilityToEdgeData(
+        {
+          level: 'PARTIAL',
+          reason: 'partial_field_match',
+          transformFn: null,
+          conflictPath: null,
+          missingFields: [
+            {
+              path: 'email',
+              expectedType: { kind: 'text', title: 'Email' },
+              required: true,
+            },
+          ],
+          candidateMappings: [],
+          metadata: {
+            matchedRatio: 0.5,
+            matchedRequiredCount: 1,
+            totalRequiredCount: 2,
+            unmappedRequiredCount: 1,
+          },
+        },
+        sourcePort,
+        targetPort,
+      ),
+      {
+        ...adaptCompatibilityToEdgeData(
+          {
+            level: 'PARTIAL',
+            reason: 'partial_field_match',
+            transformFn: null,
+            conflictPath: null,
+            missingFields: [],
+            candidateMappings: [],
+            metadata: {},
+          },
+          sourcePort,
+          targetPort,
+        ),
+        fieldMapping: [
+          {
+            sourceField: 'payload-out.name',
+            targetField: 'payload-in.name',
+            compatLevel: 'L1',
+            autoRecommended: true,
+          },
+          {
+            sourceField: 'payload-out.legacy',
+            targetField: 'payload-in.email',
+            compatLevel: 'L1',
+            autoRecommended: false,
+          },
+        ],
+      },
+    )
+
+    expect(refreshed.fieldMapping).toEqual([
+      {
+        sourceField: 'payload-out.name',
+        targetField: 'payload-in.name',
+        compatLevel: 'L1',
+        autoRecommended: true,
+      },
+    ])
+    expect(refreshed.mappingSummary).toEqual({
+      autoMatchedCount: 1,
+      manualCount: 0,
+      requiredUnmappedCount: 1,
+    })
   })
 })

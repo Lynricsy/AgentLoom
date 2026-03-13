@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect } from 'react'
 import { X } from 'lucide-react'
 import {
   useExecutionId,
@@ -20,6 +20,9 @@ import { McpToolConfigPanel } from './McpToolConfigPanel'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { SandboxConfigPanel } from './SandboxConfigPanel'
 import { InterventionPanel } from './InterventionPanel'
+import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
+import { HttpToolConfigPanel } from './HttpToolConfigPanel'
+import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -125,7 +128,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
     s.selectedNodeId ? s.nodes.find((n) => n.id === s.selectedNodeId) ?? null : null
   )
 
-  const { selectNode, updateNodeData } = useCanvasActions()
+  const { selectNode, updateNodeData, setNodeValidationError } = useCanvasActions()
 
   const handleClose = useCallback(() => {
     selectNode(null)
@@ -137,6 +140,14 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
       updateNodeData(selectedNodeId, patch)
     },
     [selectedNodeId, updateNodeData],
+  )
+
+  const handleValidationChange = useCallback(
+    (hasErrors: boolean) => {
+      if (!selectedNodeId) return
+      setNodeValidationError(selectedNodeId, hasErrors)
+    },
+    [selectedNodeId, setNodeValidationError],
   )
 
   if (!node) return null
@@ -173,6 +184,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
         <NodeConfigDispatch
           node={node}
           onConfigChange={handleConfigChange}
+          onValidationChange={handleValidationChange}
         />
 
         <NodeExecutionSection nodeId={node.id} />
@@ -184,57 +196,129 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
 interface NodeConfigDispatchProps {
   node: CanvasNode
   onConfigChange: (patch: Record<string, unknown>) => void
+  onValidationChange: (hasErrors: boolean) => void
 }
 
-const NodeConfigDispatch = memo(function NodeConfigDispatch({
-  node,
-  onConfigChange,
-}: NodeConfigDispatchProps) {
-  const nodeType = node.data.nodeType
+interface CustomPanelRendererProps {
+  node: CanvasNode
+  onConfigChange: (patch: Record<string, unknown>) => void
+  onValidationChange: (hasErrors: boolean) => void
+}
 
-  const handleLlmChange = useCallback(
-    (patch: LlmNodeDataPatch) => {
-      onConfigChange({
-        config: patch.config,
-        llmConfigId: patch.llmConfigId,
-        parameters: patch.parameters,
-        label: patch.label,
-      })
-    },
-    [onConfigChange],
-  )
+interface CustomPanelEntry {
+  handlesValidation?: boolean
+  render: (props: CustomPanelRendererProps) => React.ReactNode
+}
 
-  switch (nodeType) {
-    case 'llm-model':
+const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], CustomPanelEntry>> = {
+  'llm-model': {
+    render: ({ node, onConfigChange }) => {
+      const handleLlmChange = (patch: LlmNodeDataPatch) => {
+        onConfigChange({
+          config: patch.config,
+          llmConfigId: patch.llmConfigId,
+          parameters: patch.parameters,
+          label: patch.label,
+        })
+      }
+
       return (
         <LlmModelConfigPanel
           config={parseLlmModelConfig(node.data.config ?? null)}
           onApply={handleLlmChange}
         />
       )
-    case 'mcp-tool':
-      return <McpToolConfigPanel data={node.data} />
-    case 'knowledge-base':
-      return (
-        <KnowledgeBaseConfigPanel
-          config={node.data.config}
-          onApply={onConfigChange}
-        />
-      )
-    case 'sandbox':
-      return (
-        <SandboxConfigPanel
-          config={node.data.config}
-          onApply={onConfigChange}
-        />
-      )
-    default:
-      return (
-        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-          该节点类型暂无配置项
-        </div>
-      )
+    },
+  },
+  'mcp-tool': {
+    render: ({ node }) => <McpToolConfigPanel data={node.data} />,
+  },
+  'knowledge-base': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <KnowledgeBaseConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
+    ),
+  },
+  sandbox: {
+    render: ({ node, onConfigChange }) => (
+      <SandboxConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'llm-agent': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <LlmAgentConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
+    ),
+  },
+  'http-tool': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <HttpToolConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
+    ),
+  },
+}
+
+const NodeConfigDispatch = memo(function NodeConfigDispatch({
+  node,
+  onConfigChange,
+  onValidationChange,
+}: NodeConfigDispatchProps) {
+  const nodeType = node.data.nodeType
+
+  const nodeConfig = getNodeTypeConfig(nodeType)
+  const customPanel = CUSTOM_PANEL_REGISTRY[nodeType]
+  const hasDynamicConfigFields = Object.keys(nodeConfig.configSchema.properties).length > 0
+
+  useEffect(() => {
+    if ((!customPanel || !customPanel.handlesValidation) && !hasDynamicConfigFields) {
+      onValidationChange(false)
+      return
+    }
+
+    if (customPanel && !customPanel.handlesValidation) {
+      onValidationChange(false)
+    }
+  }, [customPanel, hasDynamicConfigFields, onValidationChange])
+
+  if (customPanel) {
+    return customPanel.render({
+      node,
+      onConfigChange,
+      onValidationChange,
+    })
   }
+
+  if (hasDynamicConfigFields) {
+    return (
+      <DynamicConfigForm
+        configSchema={nodeConfig.configSchema}
+        values={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
+    )
+  }
+
+  return (
+    <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+      该节点无需额外配置
+    </div>
+  )
 })
 
 interface NodeExecutionSectionProps {

@@ -28,7 +28,10 @@ import {
 } from './overlays/ConnectionStateOverlay'
 import { CanvasSearch } from './toolbar/CanvasSearch'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
-import { evaluateConnection } from '../lib/connectionCompatibility'
+import {
+  evaluateConnection,
+  getCachedConnectionEvaluation,
+} from '../lib/connectionCompatibility'
 import { validateDag } from '../lib/dagValidator'
 import {
   useCanvasActions,
@@ -36,7 +39,7 @@ import {
   useCanvasNodes,
   useCanvasStore,
 } from '../stores/canvasStore'
-import type { CanvasEdge, CanvasEdgeData, CanvasNode } from '../types'
+import { createDefaultEdgeData, type CanvasEdge, type CanvasEdgeData, type CanvasNode } from '../types'
 
 interface WorkflowCanvasProps {
   className?: string
@@ -87,6 +90,37 @@ const hiddenPreviewState: PreviewState = {
   visualLevel: 'checking',
   reasonKey: null,
   metadata: {},
+}
+
+const checkingPreviewState: PreviewState = {
+  visible: true,
+  visualLevel: 'checking',
+  reasonKey: null,
+  metadata: {},
+}
+
+const COMPATIBILITY_REASON_LABELS: Record<string, string> = {
+  type_mismatch_no_transform: '当前端口类型不兼容，且没有可用转换',
+  shape_mismatch: '数据结构不兼容',
+  array_cardinality_mismatch: '数组长度约束不兼容',
+  scalar_schema_mismatch: '字段类型不兼容',
+}
+
+function toVisiblePreviewState(edgeData: Pick<CanvasEdgeData, 'visualLevel' | 'reasonKey' | 'metadata'>): PreviewState {
+  return {
+    visible: true,
+    visualLevel: edgeData.visualLevel,
+    reasonKey: edgeData.reasonKey,
+    metadata: edgeData.metadata,
+  }
+}
+
+function formatCompatibilityReason(reasonKey: string | null): string {
+  if (!reasonKey) {
+    return '未知原因'
+  }
+
+  return COMPATIBILITY_REASON_LABELS[reasonKey] ?? reasonKey
 }
 
 function buildTentativeEdge(
@@ -277,12 +311,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const frameRef = useRef<number | null>(null)
   const activeConnectionRef = useRef<ActiveConnectionState | null>(null)
   const hoveredTargetKeyRef = useRef<string | null>(null)
+  const dragSessionIdRef = useRef(0)
+  const hoverRequestIdRef = useRef(0)
 
   useEffect(() => {
     activeConnectionRef.current = activeConnection
   }, [activeConnection])
 
   const resetConnectionPreview = useCallback(() => {
+    dragSessionIdRef.current += 1
+    hoverRequestIdRef.current += 1
+
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current)
       frameRef.current = null
@@ -358,24 +397,19 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           return
         }
 
-        const hoveredTarget = document
-          .elementFromPoint(pointerRef.current.x, pointerRef.current.y)
-          ?.closest<HTMLElement>(`${HANDLE_SELECTOR}[data-port-direction="input"]`)
-        if (!hoveredTarget) {
-          hoveredTargetKeyRef.current = null
+          const hoveredTarget = document
+            .elementFromPoint(pointerRef.current.x, pointerRef.current.y)
+            ?.closest<HTMLElement>(`${HANDLE_SELECTOR}[data-port-direction="input"]`)
+          if (!hoveredTarget) {
+            hoveredTargetKeyRef.current = null
           root
             .querySelectorAll<HTMLElement>(
               `.${HOVER_COMPATIBLE_CLASS}, .${HOVER_INCOMPATIBLE_CLASS}`,
             )
-            .forEach((element) => {
-              element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
-            })
-          setPreviewState({
-            visible: true,
-            visualLevel: 'checking',
-            reasonKey: null,
-            metadata: {},
-          })
+              .forEach((element) => {
+                element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
+              })
+          setPreviewState(checkingPreviewState)
           return
         }
 
@@ -396,31 +430,61 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           })
 
         if (!nodeId || !portId) {
-          setPreviewState({
-            visible: true,
-            visualLevel: 'checking',
-            reasonKey: null,
-            metadata: {},
-          })
+          setPreviewState(checkingPreviewState)
           return
         }
 
-        const evaluated = evaluateConnection(nodes, {
+        const connection = {
           source: currentConnection.sourceHandle.nodeId,
           sourceHandle: currentConnection.sourceHandle.portId,
           target: nodeId,
           targetHandle: portId,
-        }, edges)
+        }
 
-        hoveredTarget.classList.add(
-          evaluated.compatible ? HOVER_COMPATIBLE_CLASS : HOVER_INCOMPATIBLE_CLASS,
-        )
+        const cachedEvaluation = getCachedConnectionEvaluation(nodes, connection, edges)
+        if (cachedEvaluation) {
+          hoveredTarget.classList.add(
+            cachedEvaluation.compatible
+              ? HOVER_COMPATIBLE_CLASS
+              : HOVER_INCOMPATIBLE_CLASS,
+          )
+          setPreviewState(toVisiblePreviewState(cachedEvaluation.edgeData))
+          return
+        }
 
-        setPreviewState({
-          visible: true,
-          visualLevel: evaluated.edgeData.visualLevel,
-          reasonKey: evaluated.edgeData.reasonKey,
-          metadata: evaluated.edgeData.metadata,
+        setPreviewState(checkingPreviewState)
+
+        const sessionId = dragSessionIdRef.current
+        const requestId = ++hoverRequestIdRef.current
+
+        void evaluateConnection(nodes, connection, edges).then((evaluated) => {
+          if (
+            dragSessionIdRef.current !== sessionId
+            || hoverRequestIdRef.current !== requestId
+            || hoveredTargetKeyRef.current !== nextKey
+          ) {
+            return
+          }
+
+          const latestRoot = containerRef.current
+          if (!latestRoot) {
+            return
+          }
+
+          latestRoot
+            .querySelectorAll<HTMLElement>(
+              `.${HOVER_COMPATIBLE_CLASS}, .${HOVER_INCOMPATIBLE_CLASS}`,
+            )
+            .forEach((element) => {
+              element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
+            })
+
+          const latestTarget = getHandleElement(latestRoot, nodeId, portId, 'input')
+          latestTarget?.classList.add(
+            evaluated.compatible ? HOVER_COMPATIBLE_CLASS : HOVER_INCOMPATIBLE_CLASS,
+          )
+
+          setPreviewState(toVisiblePreviewState(evaluated.edgeData))
         })
       })
     }
@@ -447,6 +511,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       const sourceNodeId = params.nodeId
       const sourceHandleId = params.handleId
+      const sessionId = dragSessionIdRef.current + 1
+      dragSessionIdRef.current = sessionId
+      hoverRequestIdRef.current += 1
 
       const root = containerRef.current
       if (!root) {
@@ -471,6 +538,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       const compatibleTargets: OverlayHandleSnapshot[] = []
       const incompatibleTargets: OverlayHandleSnapshot[] = []
+      const pendingTargets: Array<{
+        snapshot: OverlayHandleSnapshot
+        targetNodeId: string
+        targetPortId: string
+      }> = []
 
       root
         .querySelectorAll<HTMLElement>(`${HANDLE_SELECTOR}[data-port-direction="input"]`)
@@ -486,19 +558,27 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
             return
           }
 
-          const evaluated = evaluateConnection(nodes, {
+          const cachedEvaluation = getCachedConnectionEvaluation(nodes, {
             source: sourceNodeId,
             sourceHandle: sourceHandleId,
             target: targetNodeId,
             targetHandle: targetPortId,
           }, edges)
 
-          if (evaluated.compatible) {
-            compatibleTargets.push(snapshot)
+          if (!cachedEvaluation) {
+            pendingTargets.push({
+              snapshot,
+              targetNodeId,
+              targetPortId,
+            })
             return
           }
 
-          incompatibleTargets.push(snapshot)
+          if (cachedEvaluation.compatible) {
+            compatibleTargets.push(snapshot)
+          } else {
+            incompatibleTargets.push(snapshot)
+          }
         })
 
       const point = readClientPoint(event)
@@ -514,11 +594,48 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       applyConnectionClasses(root, nextState)
       setActiveConnection(nextState)
-      setPreviewState({
-        visible: true,
-        visualLevel: 'checking',
-        reasonKey: null,
-        metadata: {},
+      setPreviewState(checkingPreviewState)
+
+      if (pendingTargets.length === 0) {
+        return
+      }
+
+      void Promise.all(
+        pendingTargets.map(async (target) => ({
+          snapshot: target.snapshot,
+          evaluated: await evaluateConnection(nodes, {
+            source: sourceNodeId,
+            sourceHandle: sourceHandleId,
+            target: target.targetNodeId,
+            targetHandle: target.targetPortId,
+          }, edges),
+        })),
+      ).then((results) => {
+        if (dragSessionIdRef.current !== sessionId) {
+          return
+        }
+
+        const latestRoot = containerRef.current
+        if (!latestRoot) {
+          return
+        }
+
+        const refreshedState: ActiveConnectionState = {
+          sourceHandle,
+          compatibleTargets: [...compatibleTargets],
+          incompatibleTargets: [...incompatibleTargets],
+        }
+
+        for (const result of results) {
+          if (result.evaluated.compatible) {
+            refreshedState.compatibleTargets.push(result.snapshot)
+          } else {
+            refreshedState.incompatibleTargets.push(result.snapshot)
+          }
+        }
+
+        applyConnectionClasses(latestRoot, refreshedState)
+        setActiveConnection(refreshedState)
       })
     },
     [isReadOnly, edges, nodes],
@@ -529,13 +646,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   }, [resetConnectionPreview])
 
   const onConnect = useCallback(
-    (connection: Connection) => {
+    async (connection: Connection) => {
       if (isReadOnly) {
         return
       }
 
-      const evaluated = evaluateConnection(nodes, connection, edges)
+      const evaluated = await evaluateConnection(nodes, connection, edges)
       if (!evaluated.compatible) {
+        notify({
+          description: `无法创建连接：${formatCompatibilityReason(evaluated.edgeData.reasonKey)}`,
+          variant: 'error',
+        })
         return
       }
 
@@ -578,8 +699,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return false
       }
 
-      const evaluated = evaluateConnection(nodes, connectionOrEdge, edges)
-      if (!evaluated.compatible) {
+      const cachedEvaluation = getCachedConnectionEvaluation(nodes, connectionOrEdge, edges)
+      if (cachedEvaluation && !cachedEvaluation.compatible) {
         return false
       }
 
@@ -587,7 +708,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         nodes,
         edges,
         connectionOrEdge,
-        evaluated.edgeData,
+        cachedEvaluation?.edgeData ?? createDefaultEdgeData(),
       )
 
       return validationPreview.blockingError === null

@@ -1,8 +1,48 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AddNodeInput, CanvasEdge, CanvasNode } from '../types'
 import { createDefaultAgentNodeData, createDefaultEdgeData } from '../types'
 import { clonePortDefinitions } from '../types/nodeTypeRegistry'
+import type {
+  TypeEngineCompatibilityResult,
+  TypeEngineServiceLike,
+} from '../lib/typeEngine/contracts'
+import { setTypeEngineServiceForTesting } from '../lib/typeEngine/service'
 import { useCanvasStore } from './canvasStore'
+
+const evaluateCompatibilityMock = vi.fn()
+const getCachedCompatibilityMock = vi.fn()
+
+const mockTypeEngineService: TypeEngineServiceLike = {
+  warmup: vi.fn(async () => undefined),
+  getCachedCompatibility: (sourcePort, targetPort) =>
+    getCachedCompatibilityMock(sourcePort, targetPort),
+  evaluateCompatibility: (sourcePort, targetPort, context) =>
+    evaluateCompatibilityMock(sourcePort, targetPort, context),
+  getRuntimeState: () => ({
+    wasmReady: true,
+    workerBusy: false,
+    lastError: null,
+  }),
+}
+
+function flushMicrotasks(): Promise<void> {
+  return Promise.resolve().then(() => undefined)
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+
+  return {
+    promise,
+    resolve,
+    reject,
+  }
+}
 
 const mockAddNodeInput: AddNodeInput = {
   id: 'node-1',
@@ -68,6 +108,9 @@ function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
 describe('canvasStore', () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset()
+    evaluateCompatibilityMock.mockReset()
+    getCachedCompatibilityMock.mockReset()
+    setTypeEngineServiceForTesting(mockTypeEngineService)
   })
 
   it('injects registry defaults when adding nodes', () => {
@@ -109,6 +152,46 @@ describe('canvasStore', () => {
     expect(state.edges).toHaveLength(0)
     expect(state.selectedNodeId).toBeNull()
     expect(state.isDirty).toBe(true)
+  })
+
+  it('cleans up validation errors when deleting the selected node', () => {
+    const node = createNode()
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [node],
+      selectedNodeId: 'node-1',
+      nodeValidationErrors: {
+        'node-1': true,
+        'node-2': true,
+      },
+    }))
+
+    useCanvasStore.getState().actions.deleteSelectedNode()
+
+    expect(useCanvasStore.getState().nodeValidationErrors).toEqual({
+      'node-2': true,
+    })
+  })
+
+  it('cleans up validation errors when nodes are removed via onNodesChange', () => {
+    const nodeA = createNode({ id: 'node-1' })
+    const nodeB = createNode({ id: 'node-2' })
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [nodeA, nodeB],
+      nodeValidationErrors: {
+        'node-1': true,
+        'node-2': true,
+      },
+    }))
+
+    useCanvasStore.getState().actions.onNodesChange([{ id: 'node-1', type: 'remove' }])
+
+    expect(useCanvasStore.getState().nodeValidationErrors).toEqual({
+      'node-2': true,
+    })
   })
 
   it('backfills missing ports and config during server snapshot hydration', () => {
@@ -515,6 +598,364 @@ describe('canvasStore', () => {
       data: edgeData,
     })
     expect(state.isDirty).toBe(true)
+  })
+
+  it('does not revalidate connected edges for generic node config edits', async () => {
+    const sourceNode = createNode({
+      id: 'src',
+      data: {
+        ...createNode().data,
+        inputPorts: [],
+        outputPorts: clonePortDefinitions(customOutputPorts),
+      },
+    })
+    const targetNode = createNode({
+      id: 'tgt',
+      data: {
+        ...createNode().data,
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: [],
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [sourceNode, targetNode],
+      edges: [
+        {
+          id: 'edge-1',
+          source: 'src',
+          target: 'tgt',
+          sourceHandle: 'custom-output',
+          targetHandle: 'custom-input',
+          data: createDefaultEdgeData(),
+        },
+      ],
+      viewport: undefined,
+      version: 1,
+    })
+
+    useCanvasStore.getState().actions.updateNodeData('tgt', {
+      config: { retries: 3 },
+    })
+
+    await flushMicrotasks()
+
+    expect(evaluateCompatibilityMock).not.toHaveBeenCalled()
+  })
+
+  it('revalidates connected edges when port contract signatures change', async () => {
+    const sourceNode = createNode({
+      id: 'src',
+      data: {
+        ...createNode().data,
+        inputPorts: [],
+        outputPorts: clonePortDefinitions(customOutputPorts),
+      },
+    })
+    const targetNode = createNode({
+      id: 'tgt',
+      data: {
+        ...createNode().data,
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: [],
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [sourceNode, targetNode],
+      edges: [
+        {
+          id: 'edge-1',
+          source: 'src',
+          target: 'tgt',
+          sourceHandle: 'custom-output',
+          targetHandle: 'custom-input',
+          data: {
+            ...createDefaultEdgeData(),
+            rawCompatibilityLevel: 'EXACT',
+            visualLevel: 'L0',
+          },
+        },
+      ],
+      viewport: undefined,
+      version: 1,
+    })
+
+    evaluateCompatibilityMock.mockResolvedValue({
+      level: 'INCOMPATIBLE',
+      reason: 'type_mismatch_no_transform',
+      missingFields: [],
+      candidateMappings: [],
+      conflictPath: 'root.kind',
+      transformFn: null,
+      metadata: {},
+    })
+
+    useCanvasStore.getState().actions.updateNodeData('tgt', {
+      inputPorts: [
+        {
+          ...customInputPorts[0]!,
+          dataType: 'model',
+          schema: { kind: 'model' },
+        },
+      ],
+    })
+
+    await flushMicrotasks()
+    await flushMicrotasks()
+
+    expect(evaluateCompatibilityMock).toHaveBeenCalledOnce()
+    expect(useCanvasStore.getState().edges[0]?.data).toMatchObject({
+      rawCompatibilityLevel: 'INCOMPATIBLE',
+      visualLevel: 'error',
+      reasonKey: 'type_mismatch_no_transform',
+    })
+    expect(useCanvasStore.getState().isDirty).toBe(true)
+  })
+
+  it('ignores stale revalidation results after applying a new server snapshot', async () => {
+    const sourceNode = createNode({
+      id: 'src',
+      data: {
+        ...createNode().data,
+        inputPorts: [],
+        outputPorts: clonePortDefinitions(customOutputPorts),
+      },
+    })
+    const targetNode = createNode({
+      id: 'tgt',
+      data: {
+        ...createNode().data,
+        inputPorts: clonePortDefinitions(customInputPorts),
+        outputPorts: [],
+      },
+    })
+    const pendingEvaluation = createDeferred<TypeEngineCompatibilityResult>()
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [sourceNode, targetNode],
+      edges: [
+        {
+          id: 'edge-1',
+          source: 'src',
+          target: 'tgt',
+          sourceHandle: 'custom-output',
+          targetHandle: 'custom-input',
+          data: {
+            ...createDefaultEdgeData(),
+            rawCompatibilityLevel: 'EXACT',
+            visualLevel: 'L0',
+          },
+        },
+      ],
+      viewport: undefined,
+      version: 1,
+    })
+
+    evaluateCompatibilityMock.mockImplementation(() => pendingEvaluation.promise)
+
+    useCanvasStore.getState().actions.updateNodeData('tgt', {
+      inputPorts: [
+        {
+          ...customInputPorts[0]!,
+          dataType: 'model',
+          schema: { kind: 'model' },
+        },
+      ],
+    })
+
+    await flushMicrotasks()
+    expect(evaluateCompatibilityMock).toHaveBeenCalledOnce()
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-2',
+      nodes: [sourceNode, targetNode],
+      edges: [
+        {
+          id: 'edge-1',
+          source: 'src',
+          target: 'tgt',
+          sourceHandle: 'custom-output',
+          targetHandle: 'custom-input',
+          data: {
+            ...createDefaultEdgeData(),
+            rawCompatibilityLevel: 'EXACT',
+            visualLevel: 'L0',
+          },
+        },
+      ],
+      viewport: undefined,
+      version: 2,
+    })
+
+    pendingEvaluation.resolve({
+      level: 'INCOMPATIBLE',
+      reason: 'type_mismatch_no_transform',
+      missingFields: [],
+      candidateMappings: [],
+      conflictPath: 'root.kind',
+      transformFn: null,
+      metadata: {},
+    })
+
+    await flushMicrotasks()
+    await flushMicrotasks()
+
+    expect(useCanvasStore.getState()).toMatchObject({
+      workflowId: 'workflow-2',
+      version: 2,
+      isDirty: false,
+    })
+    expect(useCanvasStore.getState().edges[0]?.data).toMatchObject({
+      rawCompatibilityLevel: 'EXACT',
+      visualLevel: 'L0',
+      reasonKey: null,
+    })
+  })
+
+  it('preserves the latest field mapping edits made while revalidation is in flight', async () => {
+    const sourcePort = {
+      ...customOutputPorts[0]!,
+      schema: {
+        kind: 'json' as const,
+        shape: 'object' as const,
+        properties: {
+          profileName: { kind: 'text' as const, title: 'Profile Name' },
+        },
+        required: ['profileName'],
+      },
+    }
+    const targetPort = {
+      ...customInputPorts[0]!,
+      dataType: 'json' as const,
+      schema: {
+        kind: 'json' as const,
+        shape: 'object' as const,
+        properties: {
+          fullName: { kind: 'text' as const, title: 'Full Name' },
+        },
+        required: ['fullName'],
+      },
+    }
+    const sourceNode = createNode({
+      id: 'src',
+      data: {
+        ...createNode().data,
+        inputPorts: [],
+        outputPorts: [sourcePort],
+      },
+    })
+    const targetNode = createNode({
+      id: 'tgt',
+      data: {
+        ...createNode().data,
+        inputPorts: [targetPort],
+        outputPorts: [],
+      },
+    })
+    const pendingEvaluation = createDeferred<TypeEngineCompatibilityResult>()
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [sourceNode, targetNode],
+      edges: [
+        {
+          id: 'edge-1',
+          source: 'src',
+          target: 'tgt',
+          sourceHandle: sourcePort.id,
+          targetHandle: targetPort.id,
+          data: {
+            ...createDefaultEdgeData(),
+            rawCompatibilityLevel: 'PARTIAL',
+            visualLevel: 'L1',
+            missingFields: [
+              {
+                path: `${targetPort.id}.fullName`,
+                expectedType: { kind: 'text' as const },
+                required: true,
+              },
+            ],
+          },
+        },
+      ],
+      viewport: undefined,
+      version: 1,
+    })
+
+    evaluateCompatibilityMock.mockImplementation(() => pendingEvaluation.promise)
+
+    useCanvasStore.getState().actions.updateNodeData('tgt', {
+      inputPorts: [
+        {
+          ...targetPort,
+          description: 'trigger refresh',
+        },
+      ],
+    })
+
+    await flushMicrotasks()
+
+    useCanvasStore.getState().actions.updateFieldMapping('edge-1', [
+      {
+        sourceField: `${sourcePort.id}.profileName`,
+        targetField: `${targetPort.id}.fullName`,
+        compatLevel: 'L1',
+        autoRecommended: false,
+      },
+    ])
+
+    pendingEvaluation.resolve({
+      level: 'PARTIAL',
+      reason: 'partial_field_match',
+      missingFields: [
+        {
+          path: `${targetPort.id}.fullName`,
+          expectedType: { kind: 'text' as const },
+          required: true,
+        },
+      ],
+      candidateMappings: [
+        {
+          sourcePath: `${sourcePort.id}.profileName`,
+          targetPath: `${targetPort.id}.fullName`,
+          confidence: 0.91,
+          autoRecommended: true,
+        },
+      ],
+      conflictPath: null,
+      transformFn: null,
+      metadata: {
+        matchedRatio: 0,
+        matchedRequiredCount: 0,
+        totalRequiredCount: 1,
+        unmappedRequiredCount: 1,
+      },
+    })
+
+    await flushMicrotasks()
+    await flushMicrotasks()
+
+    expect(useCanvasStore.getState().edges[0]?.data).toMatchObject({
+      rawCompatibilityLevel: 'PARTIAL',
+      visualLevel: 'L1',
+      fieldMapping: [
+        {
+          sourceField: `${sourcePort.id}.profileName`,
+          targetField: `${targetPort.id}.fullName`,
+          compatLevel: 'L1',
+          autoRecommended: false,
+        },
+      ],
+      mappingSummary: {
+        autoMatchedCount: 0,
+        manualCount: 1,
+        requiredUnmappedCount: 0,
+      },
+    })
   })
 
   describe('search actions', () => {

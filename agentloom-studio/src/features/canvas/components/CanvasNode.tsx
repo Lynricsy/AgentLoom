@@ -1,5 +1,30 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { AlertTriangle, Brain } from 'lucide-react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
+import {
+  AlertTriangle,
+  Bot,
+  Brain,
+  Braces,
+  Clock,
+  Code,
+  Container,
+  Database,
+  FileText,
+  GitBranch,
+  Globe,
+  MessageSquare,
+  Play,
+  Plug,
+  Repeat,
+  type LucideIcon,
+} from 'lucide-react'
 import { Position, type NodeProps } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import {
@@ -9,16 +34,177 @@ import {
   ProviderIcon,
   useLlmApiKeys,
 } from '@/features/llm'
+import { useNodeExecutionState } from '@/features/execution/stores/executionStore'
+import type { StepStatus } from '@/features/execution/types'
+import {
+  DEFAULT_AUTONOMY_CONFIG,
+  type AutonomyConfig,
+  type AutonomyMode,
+  type FallbackStrategy,
+} from '../autonomy.types'
 import type { CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { useLevelOfDetail } from '../hooks/useLevelOfDetail'
+import {
+  useCanvasActions,
+  useCanvasStore,
+  useNodeHasValidationError,
+} from '../stores/canvasStore'
 import { NODE_CATEGORIES } from './nodeCategories'
-import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
+import { NodeExecutionOverlay } from './NodeExecutionOverlay'
+import { TypedPort } from './TypedPort'
 import { KnowledgeBaseNodeBody } from './nodes/KnowledgeBaseNodeBody'
+import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { McpToolNodeBody } from './nodes/McpToolNodeBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
-import { TypedPort } from './TypedPort'
-import { useCanvasActions, useCanvasStore } from '../stores/canvasStore'
-import { NodeExecutionOverlay } from './NodeExecutionOverlay'
+
+const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
+  Bot,
+  Brain,
+  MessageSquare,
+  Globe,
+  Code,
+  Plug,
+  Container,
+  Play,
+  Clock,
+  Database,
+  FileText,
+  Braces,
+  GitBranch,
+  Repeat,
+}
+
+type NodeShellStatus =
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'waiting_intervention'
+
+const COMPACT_STATUS_META: Record<StepStatus | 'idle', { label: string; className: string }> = {
+  idle: {
+    label: '空闲',
+    className: 'border-border bg-muted/50 text-muted-foreground',
+  },
+  pending: {
+    label: '等待中',
+    className: 'border-border bg-muted/50 text-muted-foreground',
+  },
+  queued: {
+    label: '排队中',
+    className: 'border-slate-400/30 bg-slate-500/10 text-slate-300',
+  },
+  running: {
+    label: '运行中',
+    className: 'border-primary/30 bg-primary/10 text-primary',
+  },
+  completed: {
+    label: '已完成',
+    className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  },
+  failed: {
+    label: '失败',
+    className: 'border-error/30 bg-error/10 text-error',
+  },
+  waiting_intervention: {
+    label: '待干预',
+    className: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  },
+  skipped: {
+    label: '已跳过',
+    className: 'border-border bg-muted/50 text-muted-foreground',
+  },
+  cancelled: {
+    label: '已取消',
+    className: 'border-border bg-muted/50 text-muted-foreground',
+  },
+}
+
+const AUTONOMY_MODE_LABELS: Record<AutonomyMode, string> = {
+  MANUAL_CONFIRM: '手动确认',
+  RULE_BASED: '规则补全',
+  LLM_SUGGEST: 'LLM 建议',
+}
+
+const FALLBACK_STRATEGY_LABELS: Record<FallbackStrategy, string> = {
+  REQUIRE_CONFIRMATION: '需要确认',
+  USE_DEFAULT: '使用默认',
+  SKIP_FIELD: '跳过字段',
+  ABORT_EXECUTION: '失败终止',
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isAutonomyMode(value: unknown): value is AutonomyMode {
+  return value === 'MANUAL_CONFIRM' || value === 'RULE_BASED' || value === 'LLM_SUGGEST'
+}
+
+function isFallbackStrategy(value: unknown): value is FallbackStrategy {
+  return (
+    value === 'REQUIRE_CONFIRMATION' ||
+    value === 'USE_DEFAULT' ||
+    value === 'SKIP_FIELD' ||
+    value === 'ABORT_EXECUTION'
+  )
+}
+
+function parseNodeAutonomyConfig(data: CanvasNode['data']): AutonomyConfig {
+  const rawAutonomyConfig =
+    isRecord(data) && 'autonomyConfig' in data && isRecord(data.autonomyConfig)
+      ? data.autonomyConfig
+      : null
+
+  if (!rawAutonomyConfig) {
+    return { ...DEFAULT_AUTONOMY_CONFIG }
+  }
+
+  return {
+    mode: isAutonomyMode(rawAutonomyConfig.mode)
+      ? rawAutonomyConfig.mode
+      : DEFAULT_AUTONOMY_CONFIG.mode,
+    allowedInferenceFields: Array.isArray(rawAutonomyConfig.allowedInferenceFields)
+      ? rawAutonomyConfig.allowedInferenceFields.filter(
+          (field): field is string => typeof field === 'string' && field.trim().length > 0,
+        )
+      : [...DEFAULT_AUTONOMY_CONFIG.allowedInferenceFields],
+    confirmationThreshold:
+      typeof rawAutonomyConfig.confirmationThreshold === 'number' &&
+      Number.isFinite(rawAutonomyConfig.confirmationThreshold)
+        ? rawAutonomyConfig.confirmationThreshold
+        : DEFAULT_AUTONOMY_CONFIG.confirmationThreshold,
+    fallbackStrategy: isFallbackStrategy(rawAutonomyConfig.fallbackStrategy)
+      ? rawAutonomyConfig.fallbackStrategy
+      : DEFAULT_AUTONOMY_CONFIG.fallbackStrategy,
+  }
+}
+
+function formatThreshold(value: number): string {
+  return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+const LlmAgentNodeBody = memo(function LlmAgentNodeBody({ data }: { data: CanvasNode['data'] }) {
+  const autonomyConfig = parseNodeAutonomyConfig(data)
+  const modeLabel = AUTONOMY_MODE_LABELS[autonomyConfig.mode]
+
+  const detail = autonomyConfig.mode === 'MANUAL_CONFIRM'
+    ? '关键输入需人工确认'
+    : autonomyConfig.mode === 'RULE_BASED'
+      ? autonomyConfig.allowedInferenceFields.length > 0
+        ? `${autonomyConfig.allowedInferenceFields.length} 个字段 · ${FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]}`
+        : FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]
+      : `阈值 ${formatThreshold(autonomyConfig.confirmationThreshold)} · ${FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]}`
+
+  return (
+    <div className="space-y-1" data-testid="canvas-node-llm-agent-summary-body">
+      <p className="font-medium text-foreground">{modeLabel}</p>
+      <p className="text-xs text-muted-foreground">{detail}</p>
+    </div>
+  )
+})
 
 function getNodeColorToken(
   nodeType: CanvasNode['data']['nodeType'],
@@ -42,6 +228,73 @@ function getNodeColorToken(
   }
 }
 
+function getShellStatus(
+  status: StepStatus | undefined,
+  showCompletedAccent: boolean,
+): NodeShellStatus {
+  switch (status) {
+    case 'running':
+      return 'running'
+    case 'queued':
+      return 'queued'
+    case 'failed':
+      return 'failed'
+    case 'waiting_intervention':
+      return 'waiting_intervention'
+    case 'completed':
+      return showCompletedAccent ? 'completed' : 'idle'
+    default:
+      return 'idle'
+  }
+}
+
+function getShellAccentVisual(status: NodeShellStatus): {
+  className: string
+  style?: CSSProperties
+} | null {
+  switch (status) {
+    case 'running':
+      return {
+        className: 'bg-primary animate-pulse',
+      }
+    case 'completed':
+      return {
+        className: '',
+        style: { backgroundColor: 'var(--color-success, #22c55e)' },
+      }
+    case 'failed':
+      return {
+        className: 'bg-error',
+      }
+    case 'waiting_intervention':
+      return {
+        className: 'animate-pulse',
+        style: { backgroundColor: 'var(--color-warning, #f59e0b)' },
+      }
+    case 'queued':
+      return {
+        className: 'bg-slate-400/80',
+      }
+    default:
+      return null
+  }
+}
+
+function getMinimalHandleOffsets(count: number): string[] {
+  if (count <= 0) {
+    return []
+  }
+
+  if (count === 1) {
+    return ['50%']
+  }
+
+  return Array.from(
+    { length: count },
+    (_, index) => `${((index + 1) / (count + 1)) * 100}%`,
+  )
+}
+
 export const CanvasNodeShell = memo(function CanvasNodeShell({
   id,
   data,
@@ -50,7 +303,11 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
 }: NodeProps<CanvasNode>) {
   const config = getNodeTypeConfig(data.nodeType)
   const categoryMeta = NODE_CATEGORIES[data.category]
+  const NodeTypeIcon = NODE_TYPE_ICONS[config.icon] ?? Bot
   const { data: activeApiKeys = [] } = useLlmApiKeys()
+  const nodeExecutionState = useNodeExecutionState(id)
+  const hasValidationError = useNodeHasValidationError(id)
+  const lod = useLevelOfDetail()
   const llmConfig = data.nodeType === 'llm-model' ? parseLlmModelConfig(data.config) : null
   const hasProviderDefaultKey = useMemo(() => {
     if (!llmConfig) {
@@ -79,6 +336,21 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const title = data.nodeType === 'llm-model'
     ? llmConfig?.modelName ?? data.label
     : data.label
+  const compactStatusMeta = COMPACT_STATUS_META[nodeExecutionState?.status ?? 'idle']
+  const [showCompletedAccent, setShowCompletedAccent] = useState(
+    nodeExecutionState?.status === 'completed',
+  )
+  const shellStatus = getShellStatus(nodeExecutionState?.status, showCompletedAccent)
+  const shellAccentVisual = getShellAccentVisual(shellStatus)
+  const isMinimal = lod === 'minimal'
+  const inputHandleOffsets = useMemo(
+    () => getMinimalHandleOffsets(inputPorts.length),
+    [inputPorts.length],
+  )
+  const outputHandleOffsets = useMemo(
+    () => getMinimalHandleOffsets(outputPorts.length),
+    [outputPorts.length],
+  )
 
   const { setHoveredNodeId } = useCanvasActions()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -109,12 +381,33 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     }
   }, [])
 
+  useEffect(() => {
+    if (nodeExecutionState?.status !== 'completed') {
+      setShowCompletedAccent(false)
+      return
+    }
+
+    setShowCompletedAccent(true)
+    const timer = window.setTimeout(() => {
+      setShowCompletedAccent(false)
+    }, 2000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [nodeExecutionState?.status])
+
   return (
     <article
+      data-lod={lod}
+      data-shell-status={shellStatus}
       data-testid={`canvas-node-${id}`}
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'canvas-node-shell relative min-w-[180px] max-w-[260px] rounded-lg border bg-card text-card-foreground shadow-sm',
+        'canvas-node-shell relative rounded-lg border bg-card text-card-foreground shadow-sm transition-[width,box-shadow,border-color] duration-200',
+        lod === 'full' && 'min-w-[180px] max-w-[260px]',
+        lod === 'compact' && 'min-w-[156px] max-w-[180px]',
+        lod === 'minimal' && 'h-[80px] min-w-[80px] max-w-[80px]',
         selected && 'ring-2 ring-primary shadow-md',
         data.nodeType === 'llm-model' && llmState === 'unconfigured' && 'border-border/80 bg-muted/10',
         data.nodeType === 'llm-model' && llmState === 'warning' && 'border-warning/40 bg-warning/5',
@@ -126,77 +419,200 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <NodeExecutionOverlay nodeId={id} />
-      <header data-slot="header" className="border-b border-border/50 px-3 py-2">
-        <div className="mb-2 flex items-center gap-2">
+      {shellAccentVisual ? (
+        <div
+          data-testid={`canvas-node-shell-accent-${id}`}
+          data-shell-status={shellStatus}
+          className={cn(
+            'pointer-events-none absolute inset-y-2 left-0 z-[1] w-1 rounded-full',
+            shellAccentVisual.className,
+          )}
+          style={shellAccentVisual.style}
+        />
+      ) : null}
+
+      {!isMinimal ? <NodeExecutionOverlay nodeId={id} /> : null}
+
+      {hasValidationError && lod !== 'minimal' ? (
+        <div
+          data-testid={`canvas-node-validation-badge-${id}`}
+          className="absolute right-10 top-2 z-10 inline-flex items-center rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-1 text-[11px] font-medium text-amber-300"
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+        </div>
+      ) : null}
+
+      {isMinimal ? (
+        <div
+          data-slot="icon-only"
+          className="flex h-full items-center justify-center px-2 py-2"
+        >
           <span
-            className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colorToken }}
-          />
-          <span
-            className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
-            style={{ borderColor: colorToken }}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-muted/25"
+            style={{ color: colorToken }}
           >
-            {categoryMeta.label}
-          </span>
-          <span className="truncate text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-            {data.nodeType}
+            <NodeTypeIcon
+              className="h-4 w-4"
+              data-testid={`canvas-node-icon-${id}`}
+              aria-hidden="true"
+            />
           </span>
         </div>
-
-        <div className="min-w-0">
+      ) : lod === 'compact' ? (
+        <header data-slot="header" className="border-b border-border/50 px-3 py-2">
           <div className="flex items-center gap-2">
-            {data.nodeType === 'llm-model' ? (
-              llmConfig ? (
-                <ProviderIcon provider={llmConfig.provider} size={15} className="shrink-0 text-foreground" />
-              ) : (
-                <Brain className="h-4 w-4 shrink-0 text-muted-foreground" />
-              )
-            ) : null}
-            <h3 className="truncate text-sm font-medium leading-tight">{title}</h3>
-            {data.nodeType === 'llm-model' && llmState === 'warning' ? (
-              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
-            ) : null}
+            <span
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20"
+              style={{ color: colorToken }}
+            >
+              <NodeTypeIcon
+                className="h-4 w-4"
+                data-testid={`canvas-node-icon-${id}`}
+                aria-hidden="true"
+              />
+            </span>
+            <h3 className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">{title}</h3>
+            <span
+              data-testid={`canvas-node-status-badge-${id}`}
+              className={cn(
+                'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                compactStatusMeta.className,
+              )}
+            >
+              {compactStatusMeta.label}
+            </span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
-        </div>
-      </header>
+        </header>
+      ) : (
+        <header data-slot="header" className="border-b border-border/50 px-3 py-2">
+          <div className="mb-2 flex items-center gap-2">
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: colorToken }}
+            />
+            <span
+              className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+              style={{ borderColor: colorToken }}
+            >
+              {categoryMeta.label}
+            </span>
+            <span className="truncate text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              {data.nodeType}
+            </span>
+          </div>
 
-      {inputPorts.length > 0 && (
-        <section data-slot="inputs" className="py-1">
-          {inputPorts.map((port) => (
-            <div key={port.id} className="port-row relative flex h-6 items-center pl-0 pr-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {data.nodeType === 'llm-model' ? (
+                llmConfig ? (
+                  <ProviderIcon provider={llmConfig.provider} size={15} className="shrink-0 text-foreground" />
+                ) : (
+                  <Brain className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )
+              ) : null}
+              <h3 className="truncate text-sm font-medium leading-tight">{title}</h3>
+              {data.nodeType === 'llm-model' && llmState === 'warning' ? (
+                <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+              ) : null}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+          </div>
+        </header>
+      )}
+
+      {isMinimal && inputPorts.length > 0 ? (
+        <div className="absolute inset-y-2 left-0 z-[2] w-0">
+          {inputPorts.map((port, index) => (
+            <div
+              key={port.id}
+              className="minimal-port-anchor absolute left-0 h-4 w-0"
+              style={{ top: inputHandleOffsets[index], transform: 'translateY(-50%)' }}
+            >
               <TypedPort
                 nodeId={id}
                 port={port}
                 position={Position.Left}
                 isConnectable={isConnectable}
               />
-              <span className="ml-3 truncate text-xs text-muted-foreground">{port.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {!isMinimal && inputPorts.length > 0 ? (
+        <section data-slot="inputs" className="py-1">
+          {inputPorts.map((port) => (
+            <div
+              key={port.id}
+              className={cn(
+                'port-row relative flex items-center pl-0 pr-3',
+                lod === 'full' ? 'h-6' : 'h-4',
+              )}
+            >
+              <TypedPort
+                nodeId={id}
+                port={port}
+                position={Position.Left}
+                isConnectable={isConnectable}
+              />
+              {lod === 'full' ? (
+                <span className="ml-3 truncate text-xs text-muted-foreground">{port.label}</span>
+              ) : null}
             </div>
           ))}
         </section>
-      )}
+      ) : null}
 
-      <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
-        {data.nodeType === 'llm-model' ? (
-          <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
-        ) : data.nodeType === 'mcp-tool' ? (
-          <McpToolNodeBody data={data} />
-        ) : data.nodeType === 'knowledge-base' ? (
-          <KnowledgeBaseNodeBody config={data.config} />
-        ) : data.nodeType === 'sandbox' ? (
-          <SandboxNodeBody data={data} />
-        ) : (
-          config.description
-        )}
-      </div>
+      {lod === 'full' ? (
+        <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
+          {data.nodeType === 'llm-model' ? (
+            <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
+          ) : data.nodeType === 'llm-agent' ? (
+            <LlmAgentNodeBody data={data} />
+          ) : data.nodeType === 'mcp-tool' ? (
+            <McpToolNodeBody data={data} />
+          ) : data.nodeType === 'knowledge-base' ? (
+            <KnowledgeBaseNodeBody config={data.config} />
+          ) : data.nodeType === 'sandbox' ? (
+            <SandboxNodeBody data={data} />
+          ) : (
+            config.description
+          )}
+        </div>
+      ) : null}
 
-      {outputPorts.length > 0 && (
+      {isMinimal && outputPorts.length > 0 ? (
+        <div className="absolute inset-y-2 right-0 z-[2] w-0">
+          {outputPorts.map((port, index) => (
+            <div
+              key={port.id}
+              className="minimal-port-anchor absolute right-0 h-4 w-0"
+              style={{ top: outputHandleOffsets[index], transform: 'translateY(-50%)' }}
+            >
+              <TypedPort
+                nodeId={id}
+                port={port}
+                position={Position.Right}
+                isConnectable={isConnectable}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {!isMinimal && outputPorts.length > 0 ? (
         <section data-slot="outputs" className="py-1">
           {outputPorts.map((port) => (
-            <div key={port.id} className="port-row relative flex h-6 items-center justify-end pl-3 pr-0">
-              <span className="mr-3 truncate text-xs text-muted-foreground">{port.label}</span>
+            <div
+              key={port.id}
+              className={cn(
+                'port-row relative flex items-center justify-end pl-3 pr-0',
+                lod === 'full' ? 'h-6' : 'h-4',
+              )}
+            >
+              {lod === 'full' ? (
+                <span className="mr-3 truncate text-xs text-muted-foreground">{port.label}</span>
+              ) : null}
               <TypedPort
                 nodeId={id}
                 port={port}
@@ -206,7 +622,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             </div>
           ))}
         </section>
-      )}
+      ) : null}
 
       <div data-slot="state" data-state={llmState ?? 'idle'} className="sr-only">
         {llmState ?? 'idle'}

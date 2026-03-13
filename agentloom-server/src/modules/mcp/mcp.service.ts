@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -17,20 +18,39 @@ import {
 import type { TestMcpConnectionResponse } from './dto/test-mcp-connection.dto';
 import type { DiscoverMcpToolsResponse } from './dto/discover-mcp-tools.dto';
 import type {
+  ImportedToolResult,
   ImportMcpToolsResponse,
   PortMapping,
 } from './dto/import-mcp-tools.dto';
 import type { TestMcpConnectionDto } from './dto/test-mcp-connection.dto';
 import type { DiscoverMcpToolsDto } from './dto/discover-mcp-tools.dto';
-import type { ImportMcpToolsDto } from './dto/import-mcp-tools.dto';
+import type {
+  ImportMcpToolsDto,
+  ReimportMcpToolsDto,
+} from './dto/import-mcp-tools.dto';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
   McpImportConflictException,
+  McpServerConfigNotFoundException,
+  McpToolDeactivationNotAllowedException,
+  McpToolNotFoundException,
 } from './mcp.exceptions';
 
 const CONNECT_TIMEOUT_MS = 30_000;
 const LIST_TOOLS_TIMEOUT_MS = 60_000;
+
+type McpConnection = TestMcpConnectionDto['connection'];
+type DiscoveredMcpTool = Awaited<ReturnType<Client['listTools']>>['tools'][number];
+type SavedMcpConfig = typeof mcpServerConfigs.$inferSelect;
+
+type ImportSummary = {
+  total: number;
+  imported: number;
+  overwritten: number;
+  skipped: number;
+  failed: number;
+};
 
 @Injectable()
 export class McpService {
@@ -82,36 +102,17 @@ export class McpService {
   async discoverTools(
     dto: DiscoverMcpToolsDto,
   ): Promise<DiscoverMcpToolsResponse> {
-    const { client, transport } = await this.createAndConnectClient(
-      dto.connection,
-      CONNECT_TIMEOUT_MS,
-      '工具发现',
-    );
+    return await this.discoverToolsForConnection(dto.connection, '工具发现');
+  }
 
-    try {
-      const tools = await this.listAllTools(client, '工具发现');
+  async testSavedConfigConnection(
+    mcpServerConfigId: string,
+    tenantId: string,
+  ): Promise<TestMcpConnectionResponse> {
+    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const connection = this.buildConnectionFromSavedConfig(config);
 
-      const serverVersion = client.getServerVersion();
-
-      return {
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          title: (tool as Record<string, unknown>).title as string | undefined,
-          description: tool.description,
-          inputSchema: tool.inputSchema as Record<string, unknown> | undefined,
-          annotations: (tool as Record<string, unknown>).annotations as
-            | Record<string, unknown>
-            | undefined,
-        })),
-        serverInfo: serverVersion
-          ? { name: serverVersion.name, version: serverVersion.version }
-          : undefined,
-      };
-    } catch (error) {
-      this.handleOperationError(error, dto.connection, '工具发现');
-    } finally {
-      await this.safeCloseClient(client, transport);
-    }
+    return await this.testConnection({ connection });
   }
 
   async importTools(
@@ -119,117 +120,79 @@ export class McpService {
     userId: string,
     tenantId: string,
   ): Promise<ImportMcpToolsResponse> {
-    const { client, transport } = await this.createAndConnectClient(
-      dto.connection,
-      CONNECT_TIMEOUT_MS,
-      '工具导入',
-    );
-
-    let discoveredTools: Awaited<ReturnType<Client['listTools']>>['tools'] = [];
-
-    try {
-      discoveredTools = await this.listAllTools(client, '工具导入');
-    } catch (error) {
-      this.handleOperationError(error, dto.connection, '工具导入');
-    } finally {
-      await this.safeCloseClient(client, transport);
-    }
-
-    const requestedToolNames = new Set(dto.toolNames);
-    const selectedTools = discoveredTools.filter((tool) =>
-      requestedToolNames.has(tool.name),
-    );
-    const selectedToolNames = new Set(selectedTools.map((tool) => tool.name));
-    const missingToolNames = dto.toolNames.filter(
-      (toolName) => !selectedToolNames.has(toolName),
-    );
-
-    if (missingToolNames.length > 0) {
-      throw new McpImportConflictException(
-        `请求导入的工具不存在: ${missingToolNames.join(', ')}`,
-      );
-    }
-
-    discoveredTools = selectedTools;
-
-    const credentials = this.extractCredentials(dto.connection);
-    const encryptedFields = credentials
-      ? this.encryptionService.encrypt(JSON.stringify(credentials))
-      : null;
-
-    const organizationId = await this.resolveOrganizationId(tenantId);
-
-    return await this.tenantDb.transaction(async (tx) => {
-      const [config] = await tx
-        .insert(mcpServerConfigs)
-        .values({
-          tenantId,
-          organizationId,
-          createdBy: userId,
-          name: dto.serverName,
-          description: dto.serverDescription,
-          transportType: dto.connection.transportType,
-          command:
-            dto.connection.transportType === 'stdio'
-              ? dto.connection.command
-              : null,
-          args:
-            dto.connection.transportType === 'stdio'
-              ? (dto.connection.args ?? null)
-              : null,
-          url:
-            dto.connection.transportType !== 'stdio'
-              ? dto.connection.url
-              : null,
-          encryptedData: encryptedFields?.encryptedKey ?? null,
-          encryptedDek: encryptedFields?.encryptedDek ?? null,
-          iv: encryptedFields?.iv ?? null,
-          authTag: encryptedFields?.authTag ?? null,
-          status: 'active',
-          lastTestedAt: new Date(),
-        })
-        .returning();
-
-      const imported = await Promise.all(
-        discoveredTools.map(async (tool) => {
-          const portMappingMetadata = this.generatePortMapping(tool);
-          const [inserted] = await tx
-            .insert(toolDefinitions)
-            .values({
-              tenantId,
-              organizationId,
-              mcpServerConfigId: config.id,
-              source: 'mcp',
-              name: tool.name,
-              title: (tool as Record<string, unknown>).title as
-                | string
-                | undefined,
-              description: tool.description,
-              inputSchema: tool.inputSchema as Record<string, unknown>,
-              annotations: (tool as Record<string, unknown>).annotations as
-                | Record<string, unknown>
-                | undefined,
-              portMappingMetadata,
-              isActive: true,
-              importedAt: new Date(),
-            })
-            .returning();
-
-          return {
-            id: inserted.id,
-            name: inserted.name,
-            title: inserted.title ?? undefined,
-            description: inserted.description ?? undefined,
-            portMappingMetadata: portMappingMetadata ?? undefined,
-          };
-        }),
-      );
-
-      return {
-        mcpServerConfigId: config.id,
-        imported,
-      };
+    return await this.importToolsForConnection({
+      connection: dto.connection,
+      tenantId,
+      userId,
+      serverName: dto.serverName,
+      serverDescription: dto.serverDescription,
+      toolNames: dto.toolNames,
+      conflictStrategy: dto.conflictStrategy,
     });
+  }
+
+  async rediscoverTools(
+    mcpServerConfigId: string,
+    tenantId: string,
+  ): Promise<DiscoverMcpToolsResponse> {
+    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const connection = this.buildConnectionFromSavedConfig(config);
+
+    return await this.discoverToolsForConnection(connection, '工具发现');
+  }
+
+  async reimportTools(
+    mcpServerConfigId: string,
+    dto: ReimportMcpToolsDto,
+    tenantId: string,
+  ): Promise<ImportMcpToolsResponse> {
+    const config = await this.getSavedConfigOrThrow(mcpServerConfigId, tenantId);
+    const connection = this.buildConnectionFromSavedConfig(config);
+
+    return await this.importToolsForConnection({
+      connection,
+      tenantId,
+      existingConfig: config,
+      serverName: config.name,
+      serverDescription: config.description ?? undefined,
+      toolNames: dto.toolNames,
+      conflictStrategy: dto.conflictStrategy,
+    });
+  }
+
+  async deactivateTool(toolDefinitionId: string, tenantId: string) {
+    const [existingTool] = await this.tenantDb
+      .select()
+      .from(toolDefinitions)
+      .where(
+        and(
+          eq(toolDefinitions.id, toolDefinitionId),
+          eq(toolDefinitions.tenantId, tenantId),
+        ),
+      );
+
+    if (!existingTool) {
+      throw new McpToolNotFoundException(
+        `待停用的 MCP 工具不存在: ${toolDefinitionId}`,
+      );
+    }
+
+    if (existingTool.source !== 'mcp' || !existingTool.mcpServerConfigId) {
+      throw new McpToolDeactivationNotAllowedException(
+        '仅支持停用 MCP 导入工具',
+      );
+    }
+
+    const [updatedTool] = await this.tenantDb
+      .update(toolDefinitions)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(toolDefinitions.id, toolDefinitionId))
+      .returning();
+
+    return updatedTool;
   }
 
   async listTools(tenantId: string, source?: string) {
@@ -247,9 +210,190 @@ export class McpService {
       .where(and(...conditions));
   }
 
+  private async importToolsForConnection(input: {
+    connection: McpConnection;
+    tenantId: string;
+    userId?: string;
+    existingConfig?: SavedMcpConfig;
+    serverName: string;
+    serverDescription?: string;
+    toolNames: string[];
+    conflictStrategy: 'skip' | 'overwrite';
+  }): Promise<ImportMcpToolsResponse> {
+    const discoveredTools = await this.listToolsForConnection(
+      input.connection,
+      CONNECT_TIMEOUT_MS,
+      '工具导入',
+    );
+    const requestedToolNames = this.deduplicateToolNames(input.toolNames);
+    const discoveredToolsByName = new Map(
+      discoveredTools.map((tool) => [tool.name, tool] as const),
+    );
+    const organizationId = await this.resolveOrganizationId(input.tenantId);
+    const connectionFingerprint = this.buildConnectionFingerprint(input.connection);
+    const savedConfig =
+      input.existingConfig ??
+      (await this.findSavedConfigByFingerprint(
+        input.tenantId,
+        connectionFingerprint,
+      ));
+    const credentials = this.extractCredentials(input.connection);
+    const encryptedFields = credentials
+      ? this.encryptionService.encrypt(JSON.stringify(credentials))
+      : null;
+    const existingTools = savedConfig
+      ? await this.findExistingActiveTools(
+          input.tenantId,
+          savedConfig.id,
+          requestedToolNames.filter((toolName) => discoveredToolsByName.has(toolName)),
+        )
+      : [];
+    const existingToolsByName = new Map(
+      existingTools.map((tool) => [tool.name, tool] as const),
+    );
+
+    return await this.tenantDb.transaction(async (tx) => {
+      let configId = savedConfig?.id;
+
+      if (!configId) {
+        if (!input.userId) {
+          throw new McpImportConflictException('首次导入 MCP 工具需要用户上下文');
+        }
+
+        const [createdConfig] = await tx
+          .insert(mcpServerConfigs)
+          .values({
+            tenantId: input.tenantId,
+            organizationId,
+            createdBy: input.userId,
+            name: input.serverName,
+            description: input.serverDescription,
+            transportType: input.connection.transportType,
+            command:
+              input.connection.transportType === 'stdio'
+                ? input.connection.command
+                : null,
+            args:
+              input.connection.transportType === 'stdio'
+                ? (input.connection.args ?? null)
+                : null,
+            url:
+              input.connection.transportType !== 'stdio'
+                ? input.connection.url
+                : null,
+            connectionFingerprint,
+            encryptedData: encryptedFields?.encryptedKey ?? null,
+            encryptedDek: encryptedFields?.encryptedDek ?? null,
+            iv: encryptedFields?.iv ?? null,
+            authTag: encryptedFields?.authTag ?? null,
+            status: 'active',
+            lastTestedAt: new Date(),
+          })
+          .returning();
+
+        configId = createdConfig.id;
+      }
+
+      const results: ImportedToolResult[] = [];
+
+      for (const toolName of requestedToolNames) {
+        const discoveredTool = discoveredToolsByName.get(toolName);
+
+        if (!discoveredTool) {
+          results.push({
+            toolName,
+            status: 'failed',
+            reasonCode: 'tool_not_found',
+            reasonMessage: `请求导入的工具不存在: ${toolName}`,
+          });
+          continue;
+        }
+
+        const existingTool = existingToolsByName.get(toolName);
+        const portMappingMetadata = this.generatePortMapping(discoveredTool);
+        const title = this.getToolTitle(discoveredTool);
+        const description = discoveredTool.description ?? undefined;
+        const inputSchema = this.getToolInputSchema(discoveredTool);
+        const annotations = this.getToolAnnotations(discoveredTool);
+
+        if (existingTool && input.conflictStrategy === 'skip') {
+          results.push({
+            toolDefinitionId: existingTool.id,
+            toolName,
+            status: 'skipped',
+            title: existingTool.title ?? undefined,
+            description: existingTool.description ?? undefined,
+            reasonCode: 'duplicate_tool',
+            reasonMessage: `工具 ${toolName} 已存在，已按 skip 策略跳过`,
+          });
+          continue;
+        }
+
+        if (existingTool && input.conflictStrategy === 'overwrite') {
+          const [updatedTool] = await tx
+            .update(toolDefinitions)
+            .set({
+              title,
+              description,
+              inputSchema,
+              annotations,
+              portMappingMetadata,
+              isActive: true,
+              updatedAt: new Date(),
+            })
+            .where(eq(toolDefinitions.id, existingTool.id))
+            .returning();
+
+          results.push({
+            toolDefinitionId: updatedTool.id,
+            toolName: updatedTool.name,
+            status: 'overwritten',
+            title: updatedTool.title ?? undefined,
+            description: updatedTool.description ?? undefined,
+            portMappingMetadata: portMappingMetadata ?? undefined,
+          });
+          continue;
+        }
+
+        const [insertedTool] = await tx
+          .insert(toolDefinitions)
+          .values({
+            tenantId: input.tenantId,
+            organizationId,
+            mcpServerConfigId: configId,
+            source: 'mcp',
+            name: toolName,
+            title,
+            description,
+            inputSchema,
+            annotations,
+            portMappingMetadata,
+            isActive: true,
+            importedAt: new Date(),
+          })
+          .returning();
+
+        results.push({
+          toolDefinitionId: insertedTool.id,
+          toolName: insertedTool.name,
+          status: 'imported',
+          title: insertedTool.title ?? undefined,
+          description: insertedTool.description ?? undefined,
+          portMappingMetadata: portMappingMetadata ?? undefined,
+        });
+      }
+
+      return {
+        mcpServerConfigId: configId,
+        summary: this.buildImportSummary(results),
+        results,
+      };
+    });
+  }
+
   private async resolveOrganizationId(tenantId: string): Promise<string> {
     const [org] = await this.tenantDb
-      .select({ id: organizations.id })
+      .select()
       .from(organizations)
       .where(eq(organizations.tenantId, tenantId));
 
@@ -260,8 +404,363 @@ export class McpService {
     return org.id;
   }
 
+  private async getSavedConfigOrThrow(
+    mcpServerConfigId: string,
+    tenantId: string,
+  ): Promise<SavedMcpConfig> {
+    const [config] = await this.tenantDb
+      .select()
+      .from(mcpServerConfigs)
+      .where(
+        and(
+          eq(mcpServerConfigs.id, mcpServerConfigId),
+          eq(mcpServerConfigs.tenantId, tenantId),
+        ),
+      );
+
+    if (!config) {
+      throw new McpServerConfigNotFoundException(
+        `MCP 服务器配置不存在: ${mcpServerConfigId}`,
+      );
+    }
+
+    return config;
+  }
+
+  private async findSavedConfigByFingerprint(
+    tenantId: string,
+    connectionFingerprint: string,
+  ): Promise<SavedMcpConfig | undefined> {
+    const selectQuery = this.tenantDb.select();
+
+    if (!this.hasFromClause(selectQuery)) {
+      return undefined;
+    }
+
+    const [config] = await selectQuery.from(mcpServerConfigs).where(
+      and(
+        eq(mcpServerConfigs.tenantId, tenantId),
+        eq(mcpServerConfigs.connectionFingerprint, connectionFingerprint),
+      ),
+    );
+
+    if (config) {
+      return config;
+    }
+
+    return await this.findLegacySavedConfigByFingerprint(
+      tenantId,
+      connectionFingerprint,
+    );
+  }
+
+  private async findLegacySavedConfigByFingerprint(
+    tenantId: string,
+    connectionFingerprint: string,
+  ): Promise<SavedMcpConfig | undefined> {
+    const selectQuery = this.tenantDb.select();
+
+    if (!this.hasFromClause(selectQuery)) {
+      return undefined;
+    }
+
+    const legacyConfigs = await selectQuery
+      .from(mcpServerConfigs)
+      .where(eq(mcpServerConfigs.tenantId, tenantId));
+
+    const matchedLegacyConfig = legacyConfigs.find((config) => {
+      if (config.connectionFingerprint) {
+        return false;
+      }
+
+      try {
+        const legacyConnection = this.buildConnectionFromSavedConfig(config);
+
+        return (
+          this.buildConnectionFingerprint(legacyConnection) === connectionFingerprint
+        );
+      } catch (error) {
+        this.logger.warn(
+          `跳过无法回填 fingerprint 的历史 MCP 配置 ${config.id}: ${this.getErrorMessage(error)}`,
+        );
+
+        return false;
+      }
+    });
+
+    if (!matchedLegacyConfig) {
+      return undefined;
+    }
+
+    const updatedAt = new Date();
+    const [updatedConfig] = await this.tenantDb
+      .update(mcpServerConfigs)
+      .set({
+        connectionFingerprint,
+        updatedAt,
+      })
+      .where(eq(mcpServerConfigs.id, matchedLegacyConfig.id))
+      .returning();
+
+    return (
+      updatedConfig ?? {
+        ...matchedLegacyConfig,
+        connectionFingerprint,
+        updatedAt,
+      }
+    );
+  }
+
+  private async findExistingActiveTools(
+    tenantId: string,
+    mcpServerConfigId: string,
+    toolNames: string[],
+  ) {
+    if (toolNames.length === 0) {
+      return [];
+    }
+
+    return await this.tenantDb
+      .select()
+      .from(toolDefinitions)
+      .where(
+        and(
+          eq(toolDefinitions.tenantId, tenantId),
+          eq(toolDefinitions.mcpServerConfigId, mcpServerConfigId),
+          eq(toolDefinitions.source, 'mcp'),
+          eq(toolDefinitions.isActive, true),
+          inArray(toolDefinitions.name, toolNames),
+        ),
+      );
+  }
+
+  private deduplicateToolNames(toolNames: string[]): string[] {
+    return Array.from(new Set(toolNames));
+  }
+
+  private buildImportSummary(results: ImportedToolResult[]): ImportSummary {
+    return results.reduce<ImportSummary>(
+      (summary, result) => {
+        summary.total += 1;
+        summary[result.status] += 1;
+        return summary;
+      },
+      {
+        total: 0,
+        imported: 0,
+        overwritten: 0,
+        skipped: 0,
+        failed: 0,
+      },
+    );
+  }
+
+  private async discoverToolsForConnection(
+    connection: McpConnection,
+    operation: '工具发现' | '工具导入',
+  ): Promise<DiscoverMcpToolsResponse> {
+    const { client, transport } = await this.createAndConnectClient(
+      connection,
+      CONNECT_TIMEOUT_MS,
+      operation,
+    );
+
+    try {
+      const tools = await this.listAllTools(client, operation);
+      const serverVersion = client.getServerVersion();
+
+      return {
+        tools: tools.map((tool) => this.toDiscoveredTool(tool)),
+        serverInfo: serverVersion
+          ? { name: serverVersion.name, version: serverVersion.version }
+          : undefined,
+      };
+    } catch (error) {
+      this.handleOperationError(error, connection, operation);
+    } finally {
+      await this.safeCloseClient(client, transport);
+    }
+  }
+
+  private async listToolsForConnection(
+    connection: McpConnection,
+    timeout: number,
+    operation: '工具发现' | '工具导入',
+  ): Promise<Awaited<ReturnType<Client['listTools']>>['tools']> {
+    const { client, transport } = await this.createAndConnectClient(
+      connection,
+      timeout,
+      operation,
+    );
+
+    try {
+      return await this.listAllTools(client, operation);
+    } catch (error) {
+      this.handleOperationError(error, connection, operation);
+    } finally {
+      await this.safeCloseClient(client, transport);
+    }
+  }
+
+  private toDiscoveredTool(tool: DiscoveredMcpTool) {
+    return {
+      name: tool.name,
+      title: this.getToolTitle(tool),
+      description: tool.description,
+      inputSchema: this.getToolInputSchema(tool),
+      annotations: this.getToolAnnotations(tool),
+    };
+  }
+
+  private getToolTitle(tool: DiscoveredMcpTool): string | undefined {
+    const value = this.getToolMetadataValue(tool, 'title');
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  private getToolInputSchema(
+    tool: DiscoveredMcpTool,
+  ): Record<string, unknown> | undefined {
+    return this.isPlainObject(tool.inputSchema) ? tool.inputSchema : undefined;
+  }
+
+  private getToolAnnotations(
+    tool: DiscoveredMcpTool,
+  ): Record<string, unknown> | undefined {
+    const value = this.getToolMetadataValue(tool, 'annotations');
+    return this.isPlainObject(value) ? value : undefined;
+  }
+
+  private getToolMetadataValue(tool: DiscoveredMcpTool, key: string): unknown {
+    return Reflect.get(tool as object, key);
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private buildConnectionFromSavedConfig(config: SavedMcpConfig): McpConnection {
+    const credentials = this.decryptStoredCredentials(config);
+
+    switch (config.transportType) {
+      case 'stdio':
+        if (!config.command) {
+          throw new McpConnectionFailedException('已保存的 MCP stdio 配置缺少 command');
+        }
+
+        return {
+          transportType: 'stdio',
+          command: config.command,
+          args: config.args ?? undefined,
+          env: credentials ?? undefined,
+        };
+      case 'sse':
+      case 'streamable_http':
+        if (!config.url) {
+          throw new McpConnectionFailedException('已保存的 MCP HTTP 配置缺少 url');
+        }
+
+        return {
+          transportType: config.transportType,
+          url: config.url,
+          headers: credentials ?? undefined,
+        };
+    }
+  }
+
+  private decryptStoredCredentials(
+    config: SavedMcpConfig,
+  ): Record<string, string> | null {
+    if (
+      !config.encryptedData ||
+      !config.encryptedDek ||
+      !config.iv ||
+      !config.authTag
+    ) {
+      return null;
+    }
+
+    const decrypted = this.encryptionService.decrypt({
+      encryptedKey: config.encryptedData,
+      encryptedDek: config.encryptedDek,
+      iv: config.iv,
+      authTag: config.authTag,
+    });
+
+    try {
+      const parsed = JSON.parse(decrypted) as unknown;
+
+      if (!this.isStringRecord(parsed)) {
+        throw new Error('解密后的凭据不是字符串字典');
+      }
+
+      return parsed;
+    } catch (error) {
+      throw new McpConnectionFailedException(
+        `已保存的 MCP 凭据解析失败: ${this.getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  private buildConnectionFingerprint(connection: McpConnection): string {
+    const credentials = this.extractCredentials(connection);
+    const serializedCredentials = this.serializeCredentialPairs(credentials);
+    const fingerprintSource =
+      connection.transportType === 'stdio'
+        ? [
+            connection.transportType,
+            connection.command,
+            (connection.args ?? []).join(','),
+            serializedCredentials,
+          ].join('|')
+        : [
+            connection.transportType,
+            connection.url,
+            serializedCredentials,
+          ].join('|');
+
+    return createHash('sha256').update(fingerprintSource).digest('hex');
+  }
+
+  private serializeCredentialPairs(
+    credentials: Record<string, string> | null,
+  ): string {
+    if (!credentials) {
+      return '';
+    }
+
+    return Object.entries(credentials)
+      .map(([key, value]) => [key.toLowerCase(), value] as const)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+  }
+
+  private isStringRecord(value: unknown): value is Record<string, string> {
+    return (
+      this.isPlainObject(value) &&
+      Object.values(value).every((entry) => typeof entry === 'string')
+    );
+  }
+
+  private hasFromClause(
+    value: unknown,
+  ): value is {
+    from: (table: typeof mcpServerConfigs) => {
+      where: (
+        condition: ReturnType<typeof and>,
+      ) => Promise<SavedMcpConfig[]>;
+    };
+  } {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'from' in value &&
+      typeof value.from === 'function'
+    );
+  }
+
   private async createAndConnectClient(
-    connection: TestMcpConnectionDto['connection'],
+    connection: McpConnection,
     timeout: number,
     operation: '连接测试' | '工具发现' | '工具导入',
   ): Promise<{ client: Client; transport: Transport }> {
@@ -311,9 +810,7 @@ export class McpService {
     }
   }
 
-  private createTransport(
-    connection: TestMcpConnectionDto['connection'],
-  ): Transport {
+  private createTransport(connection: McpConnection): Transport {
     switch (connection.transportType) {
       case 'stdio':
         return new StdioClientTransport({
@@ -347,7 +844,7 @@ export class McpService {
   }
 
   private extractCredentials(
-    connection: TestMcpConnectionDto['connection'],
+    connection: McpConnection,
   ): Record<string, string> | null {
     switch (connection.transportType) {
       case 'stdio':
@@ -386,7 +883,6 @@ export class McpService {
       }),
     );
 
-    // MCP 工具的输出默认为 text（content 数组）
     const outputs: PortMapping[] = [
       {
         name: 'result',
@@ -412,16 +908,32 @@ export class McpService {
       if (contentMediaType.startsWith('audio/')) return 'audio';
     }
 
-    if (this.matchesHeuristic(nameLower, description, ['model', 'llm']) && type === 'string') {
+    if (
+      this.matchesHeuristic(nameLower, description, ['model', 'llm']) &&
+      type === 'string'
+    ) {
       return 'model';
     }
     if (this.matchesHeuristic(nameLower, description, ['tool', 'function_call'])) {
       return 'tool';
     }
-    if (this.matchesHeuristic(nameLower, description, ['sandbox', 'runtime', 'execution_env'])) {
+    if (
+      this.matchesHeuristic(nameLower, description, [
+        'sandbox',
+        'runtime',
+        'execution_env',
+      ])
+    ) {
       return 'sandbox';
     }
-    if (this.matchesHeuristic(nameLower, description, ['knowledge', 'knowledge_base', 'rag', 'retrieval'])) {
+    if (
+      this.matchesHeuristic(nameLower, description, [
+        'knowledge',
+        'knowledge_base',
+        'rag',
+        'retrieval',
+      ])
+    ) {
       return 'knowledge';
     }
 
@@ -485,9 +997,7 @@ export class McpService {
     );
   }
 
-  private getConnectionTarget(
-    connection: TestMcpConnectionDto['connection'],
-  ): string {
+  private getConnectionTarget(connection: McpConnection): string {
     return connection.transportType === 'stdio'
       ? connection.command
       : connection.url;
@@ -499,7 +1009,7 @@ export class McpService {
 
   private handleOperationError(
     error: unknown,
-    connection: TestMcpConnectionDto['connection'],
+    connection: McpConnection,
     operation: '连接测试' | '工具发现' | '工具导入',
   ): never {
     const message = this.getErrorMessage(error);

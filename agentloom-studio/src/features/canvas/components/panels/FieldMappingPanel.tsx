@@ -67,6 +67,41 @@ function flattenPortFields(ports: PortDefinition[]): FlatField[] {
   return fields
 }
 
+function selectBestCandidatesByTarget(
+  candidates: CandidateFieldMapping[],
+): CandidateFieldMapping[] {
+  const bestByTarget = new Map<string, CandidateFieldMapping>()
+
+  for (const candidate of candidates) {
+    const current = bestByTarget.get(candidate.targetPath)
+    if (!current) {
+      bestByTarget.set(candidate.targetPath, candidate)
+      continue
+    }
+
+    const shouldReplace =
+      candidate.autoRecommended !== current.autoRecommended
+        ? candidate.autoRecommended
+        : candidate.confidence > current.confidence
+
+    if (shouldReplace) {
+      bestByTarget.set(candidate.targetPath, candidate)
+    }
+  }
+
+  return [...bestByTarget.values()].sort((left, right) => {
+    if (left.autoRecommended !== right.autoRecommended) {
+      return Number(right.autoRecommended) - Number(left.autoRecommended)
+    }
+
+    if (left.confidence !== right.confidence) {
+      return right.confidence - left.confidence
+    }
+
+    return left.targetPath.localeCompare(right.targetPath)
+  })
+}
+
 export const FieldMappingPanel = memo(function FieldMappingPanel({
   open,
   edgeId,
@@ -108,7 +143,10 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   )
 
   const visibleCandidates = useMemo(
-    () => candidates.filter((candidate) => !mappedTargets.has(candidate.targetPath)),
+    () =>
+      selectBestCandidatesByTarget(candidates).filter(
+        (candidate) => !mappedTargets.has(candidate.targetPath)
+      ),
     [candidates, mappedTargets]
   )
 
@@ -121,8 +159,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   }, [mappings])
 
   const requiredUnmappedCount = useMemo(
-    () => targetFields.filter((f) => f.required && !mappedTargets.has(f.path)).length,
-    [targetFields, mappedTargets]
+    () =>
+      (edgeData?.missingFields ?? []).filter(
+        (field) => field.required && !mappedTargets.has(field.path)
+      ).length,
+    [edgeData?.missingFields, mappedTargets]
   )
 
   const suggestedTargetFields = useMemo(
@@ -236,10 +277,8 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   )
 
   const acceptAllCandidates = useCallback(() => {
-    if (isReadonly || !edgeId || candidates.length === 0) return
-    const manualMappedTargets = new Set(mappings.map((m) => m.targetField))
-    const newMappings = candidates
-      .filter((c) => !manualMappedTargets.has(c.targetPath))
+    if (isReadonly || !edgeId || visibleCandidates.length === 0) return
+    const newMappings = visibleCandidates
       .map(
         (c): FieldMapping => ({
           sourceField: c.sourcePath,
@@ -250,7 +289,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         })
       )
     onChange(edgeId, [...mappings, ...newMappings])
-  }, [isReadonly, edgeId, candidates, mappings, onChange])
+  }, [isReadonly, edgeId, visibleCandidates, mappings, onChange])
 
   return (
     <aside

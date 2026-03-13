@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { organizations } from './organizations.schema';
@@ -57,6 +58,9 @@ export const toolDefinitions = pgTable(
       table.mcpServerConfigId,
     ),
     index('idx_tool_definitions_source').on(table.source),
+    uniqueIndex('uq_tool_definitions_active_mcp_identity')
+      .on(table.tenantId, table.mcpServerConfigId, table.name)
+      .where(sql`${table.source} = 'mcp' AND ${table.isActive} = true`),
     ...createDirectTenantPolicies('tool_definitions'),
   ],
 );

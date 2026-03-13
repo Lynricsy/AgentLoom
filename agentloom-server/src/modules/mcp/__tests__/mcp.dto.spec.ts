@@ -135,6 +135,7 @@ describe('MCP DTO', () => {
           command: 'node',
           args: ['server.js'],
         },
+        conflictStrategy: 'skip',
         toolNames: ['search-files', 'read-file'],
       });
 
@@ -191,6 +192,7 @@ describe('MCP DTO', () => {
           transportType: 'stdio',
           command: 'node',
         },
+        conflictStrategy: 'skip',
       });
 
       expect(result.success).toBe(false);
@@ -201,6 +203,51 @@ describe('MCP DTO', () => {
       expect(
         result.error.issues.some(
           (issue) => issue.path.join('.') === 'toolNames',
+        ),
+      ).toBe(true);
+    });
+
+    it('缺少 conflictStrategy 时应校验失败', () => {
+      const result = ImportMcpToolsDto.schema.safeParse({
+        serverName: 'Filesystem Server',
+        connection: {
+          transportType: 'stdio',
+          command: 'node',
+        },
+        toolNames: ['search-files'],
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        expect.unreachable('预期缺少 conflictStrategy 时校验失败');
+      }
+
+      expect(
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'conflictStrategy',
+        ),
+      ).toBe(true);
+    });
+
+    it('conflictStrategy 非法时应校验失败', () => {
+      const result = ImportMcpToolsDto.schema.safeParse({
+        serverName: 'Filesystem Server',
+        connection: {
+          transportType: 'stdio',
+          command: 'node',
+        },
+        conflictStrategy: 'replace',
+        toolNames: ['search-files'],
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) {
+        expect.unreachable('预期非法 conflictStrategy 校验失败');
+      }
+
+      expect(
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'conflictStrategy',
         ),
       ).toBe(true);
     });

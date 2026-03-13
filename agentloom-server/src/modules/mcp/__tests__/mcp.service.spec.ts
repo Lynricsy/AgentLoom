@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -93,6 +94,8 @@ import type { EncryptedData } from '../../api-key/encryption.service';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
+  McpToolDeactivationNotAllowedException,
+  McpToolNotFoundException,
 } from '../mcp.exceptions';
 import { McpService } from '../mcp.service';
 
@@ -102,6 +105,7 @@ const ORG_ID = '00000000-0000-0000-0000-000000000020';
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 const CONFIG_ID = '00000000-0000-0000-0000-000000000100';
 const TOOL_ID = '00000000-0000-0000-0000-000000000200';
+const NEW_TOOL_ID = '00000000-0000-0000-0000-000000000202';
 const BUILTIN_TOOL_ID = '00000000-0000-0000-0000-000000000201';
 
 const MOCK_ENCRYPTED: EncryptedData = {
@@ -110,6 +114,10 @@ const MOCK_ENCRYPTED: EncryptedData = {
   iv: Buffer.from('iv'),
   authTag: Buffer.from('at'),
 };
+
+function createSha256Fingerprint(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
 
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
@@ -269,11 +277,67 @@ function createToolDefinitionRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createMcpServerConfigRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: CONFIG_ID,
+    tenantId: TENANT_ID,
+    organizationId: ORG_ID,
+    createdBy: USER_ID,
+    name: '知识库服务器',
+    description: '用于导入知识库工具',
+    transportType: 'streamable_http' as const,
+    command: null,
+    args: null,
+    url: 'https://mcp.example.com/http',
+    encryptedData: MOCK_ENCRYPTED.encryptedKey,
+    encryptedDek: MOCK_ENCRYPTED.encryptedDek,
+    iv: MOCK_ENCRYPTED.iv,
+    authTag: MOCK_ENCRYPTED.authTag,
+    status: 'active' as const,
+    lastTestedAt: NOW,
+    connectionFingerprint:
+      createSha256Fingerprint(
+        'streamable_http|https://mcp.example.com/http|authorization=Bearer http-token&x-workspace=workspace-1',
+      ),
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
 type TransactionMock = {
   insert: ReturnType<typeof vi.fn>;
+  select: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
 };
 
 type TransactionCallback = (tx: TransactionMock) => Promise<unknown>;
+
+function createUpdateChain(result: unknown) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ returning });
+  const set = vi.fn().mockReturnValue({ where });
+
+  return {
+    set,
+    where,
+    returning,
+  };
+}
+
+function getCallableMethod<TArgs extends unknown[], TResult>(
+  target: object,
+  methodName: string,
+): (...args: TArgs) => TResult {
+  const method = Reflect.get(target, methodName);
+  expect(typeof method).toBe('function');
+
+  if (typeof method !== 'function') {
+    expect.unreachable(`预期 ${methodName} 已定义为可调用方法`);
+  }
+
+  return method.bind(target) as (...args: TArgs) => TResult;
+}
 
 describe('McpService', () => {
   let service: McpService;
@@ -516,6 +580,53 @@ describe('McpService', () => {
     });
   });
 
+  describe('testSavedConfigConnection', () => {
+    it('应当使用已保存配置测试连接', async () => {
+      const testSavedConfigConnection = getCallableMethod<
+        [mcpServerConfigId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'testSavedConfigConnection');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([createMcpServerConfigRecord()]),
+      );
+      encryptionService.decrypt.mockReturnValue(
+        JSON.stringify({
+          Authorization: 'Bearer http-token',
+          'X-Workspace': 'workspace-1',
+        }),
+      );
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.getServerVersion.mockReturnValue({
+        name: 'Knowledge MCP',
+        version: '2.1.0',
+        protocolVersion: '2025-11-25',
+      });
+
+      const result = await testSavedConfigConnection(CONFIG_ID, TENANT_ID);
+
+      expect(result).toEqual({
+        success: true,
+        serverInfo: {
+          name: 'Knowledge MCP',
+          version: '2.1.0',
+          protocolVersion: '2025-11-25',
+        },
+      });
+      expect(mcpMocks.StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL('https://mcp.example.com/http'),
+        {
+          requestInit: {
+            headers: {
+              Authorization: 'Bearer http-token',
+              'X-Workspace': 'workspace-1',
+            },
+          },
+        },
+      );
+    });
+  });
+
   describe('importTools', () => {
     it('应当在事务中创建配置并导入指定工具', async () => {
       const tool = createDiscoveredTool();
@@ -539,6 +650,8 @@ describe('McpService', () => {
 
       const tx: TransactionMock = {
         insert: vi.fn(),
+        select: vi.fn(),
+        update: vi.fn(),
       };
 
       const configInsertChain = createInsertChain([{ id: CONFIG_ID }]);
@@ -564,6 +677,7 @@ describe('McpService', () => {
           serverName: '知识库服务器',
           serverDescription: '用于导入知识库工具',
           connection: createStreamableHttpConnection(),
+          conflictStrategy: 'skip',
           toolNames: ['search-docs'],
         },
         USER_ID,
@@ -598,6 +712,9 @@ describe('McpService', () => {
           encryptedDek: MOCK_ENCRYPTED.encryptedDek,
           iv: MOCK_ENCRYPTED.iv,
           authTag: MOCK_ENCRYPTED.authTag,
+          connectionFingerprint: createSha256Fingerprint(
+            'streamable_http|https://mcp.example.com/http|authorization=Bearer http-token&x-workspace=workspace-1',
+          ),
           status: 'active',
           lastTestedAt: expect.any(Date),
         }),
@@ -701,16 +818,273 @@ describe('McpService', () => {
       );
       expect(result).toEqual({
         mcpServerConfigId: CONFIG_ID,
-        imported: [
+        summary: {
+          total: 1,
+          imported: 1,
+          overwritten: 0,
+          skipped: 0,
+          failed: 0,
+        },
+        results: [
           {
-            id: TOOL_ID,
-            name: 'search-docs',
+            toolDefinitionId: TOOL_ID,
+            toolName: 'search-docs',
+            status: 'imported',
             title: '搜索文档',
             description: '搜索知识库文档',
             portMappingMetadata: expectedPortMappingMetadata,
           },
         ],
       });
+    });
+
+    it('应当复用已保存配置并返回 imported/skipped/failed 混合回执', async () => {
+      const duplicateTool = createDiscoveredTool();
+      const newTool = createDiscoveredTool({
+        name: 'summarize-docs',
+        title: '总结文档',
+        description: '总结知识库文档',
+      });
+
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({
+        tools: [duplicateTool, newTool],
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChain([createMcpServerConfigRecord()]))
+        .mockReturnValueOnce(createSelectChain([createToolDefinitionRecord()]));
+
+      const tx: TransactionMock = {
+        insert: vi.fn(),
+        select: vi.fn(),
+        update: vi.fn(),
+      };
+      const toolInsertChain = createInsertChain([
+        {
+          id: NEW_TOOL_ID,
+          name: 'summarize-docs',
+          title: '总结文档',
+          description: '总结知识库文档',
+        },
+      ]);
+      tx.insert.mockReturnValueOnce(toolInsertChain);
+
+      db.transaction.mockImplementationOnce(
+        async (callback: TransactionCallback) => callback(tx),
+      );
+
+      const result = await service.importTools(
+        {
+          serverName: '知识库服务器',
+          connection: createStreamableHttpConnection(),
+          conflictStrategy: 'skip',
+          toolNames: ['search-docs', 'summarize-docs', 'missing-tool'],
+        },
+        USER_ID,
+        TENANT_ID,
+      );
+
+      expect(tx.insert).toHaveBeenCalledTimes(1);
+      expect(tx.insert).toHaveBeenCalledWith(toolDefinitions);
+      expect(tx.insert).not.toHaveBeenCalledWith(mcpServerConfigs);
+      expect(result).toMatchObject({
+        mcpServerConfigId: CONFIG_ID,
+        summary: {
+          total: 3,
+          imported: 1,
+          overwritten: 0,
+          skipped: 1,
+          failed: 1,
+        },
+      });
+      expect(result.results).toHaveLength(3);
+      expect(result.results[0]).toMatchObject({
+        toolDefinitionId: TOOL_ID,
+        toolName: 'search-docs',
+        status: 'skipped',
+        reasonCode: 'duplicate_tool',
+      });
+      expect(result.results[1]).toMatchObject({
+        toolDefinitionId: NEW_TOOL_ID,
+        toolName: 'summarize-docs',
+        status: 'imported',
+        title: '总结文档',
+      });
+      expect(result.results[1].portMappingMetadata).toEqual(
+        expect.objectContaining({
+          inputs: expect.any(Array),
+          outputs: expect.any(Array),
+        }),
+      );
+      expect(result.results[2]).toMatchObject({
+        toolName: 'missing-tool',
+        status: 'failed',
+        reasonCode: 'tool_not_found',
+      });
+    });
+
+    it('应当复用历史空 fingerprint 配置并回填哈希', async () => {
+      const tool = createDiscoveredTool();
+      const legacyFingerprint = createSha256Fingerprint(
+        'streamable_http|https://mcp.example.com/http|authorization=Bearer http-token&x-workspace=workspace-1',
+      );
+      const legacyConfig = createMcpServerConfigRecord({
+        connectionFingerprint: null,
+      });
+
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({
+        tools: [tool],
+      });
+      encryptionService.decrypt.mockReturnValue(
+        JSON.stringify({
+          Authorization: 'Bearer http-token',
+          'X-Workspace': 'workspace-1',
+        }),
+      );
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([legacyConfig]))
+        .mockReturnValueOnce(createSelectChain([]));
+
+      const configUpdateChain = createUpdateChain([
+        createMcpServerConfigRecord({
+          id: CONFIG_ID,
+          connectionFingerprint: legacyFingerprint,
+        }),
+      ]);
+      db.update.mockReturnValueOnce(configUpdateChain);
+
+      const tx: TransactionMock = {
+        insert: vi.fn(),
+        select: vi.fn(),
+        update: vi.fn(),
+      };
+      const toolInsertChain = createInsertChain([
+        {
+          id: TOOL_ID,
+          name: 'search-docs',
+          title: '搜索文档',
+          description: '搜索知识库文档',
+        },
+      ]);
+      tx.insert.mockReturnValueOnce(toolInsertChain);
+
+      db.transaction.mockImplementationOnce(
+        async (callback: TransactionCallback) => callback(tx),
+      );
+
+      const result = await service.importTools(
+        {
+          serverName: '知识库服务器',
+          connection: createStreamableHttpConnection(),
+          conflictStrategy: 'skip',
+          toolNames: ['search-docs'],
+        },
+        USER_ID,
+        TENANT_ID,
+      );
+
+      expect(db.update).toHaveBeenCalledWith(mcpServerConfigs);
+      expect(configUpdateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionFingerprint: legacyFingerprint,
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(tx.insert).toHaveBeenCalledTimes(1);
+      expect(tx.insert).toHaveBeenCalledWith(toolDefinitions);
+      expect(tx.insert).not.toHaveBeenCalledWith(mcpServerConfigs);
+      expect(result).toMatchObject({
+        mcpServerConfigId: CONFIG_ID,
+        summary: {
+          total: 1,
+          imported: 1,
+          overwritten: 0,
+          skipped: 0,
+          failed: 0,
+        },
+      });
+    });
+
+    it('应当在 overwrite 策略下原位更新现有工具并保留 toolDefinitionId', async () => {
+      const discoveredTool = createDiscoveredTool({
+        title: '搜索文档（新版）',
+        description: '覆盖后的知识库文档搜索',
+      });
+
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({
+        tools: [discoveredTool],
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChain([createMcpServerConfigRecord()]))
+        .mockReturnValueOnce(createSelectChain([createToolDefinitionRecord()]));
+
+      const tx: TransactionMock = {
+        insert: vi.fn(),
+        select: vi.fn(),
+        update: vi.fn(),
+      };
+      const toolUpdateChain = createUpdateChain([
+        {
+          id: TOOL_ID,
+          name: 'search-docs',
+          title: '搜索文档（新版）',
+          description: '覆盖后的知识库文档搜索',
+        },
+      ]);
+      tx.update.mockReturnValueOnce(toolUpdateChain);
+
+      db.transaction.mockImplementationOnce(
+        async (callback: TransactionCallback) => callback(tx),
+      );
+
+      const result = await service.importTools(
+        {
+          serverName: '知识库服务器',
+          connection: createStreamableHttpConnection(),
+          conflictStrategy: 'overwrite',
+          toolNames: ['search-docs'],
+        },
+        USER_ID,
+        TENANT_ID,
+      );
+
+      expect(tx.insert).not.toHaveBeenCalledWith(toolDefinitions);
+      expect(tx.update).toHaveBeenCalledWith(toolDefinitions);
+      expect(toolUpdateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '搜索文档（新版）',
+          description: '覆盖后的知识库文档搜索',
+          isActive: true,
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(result).toMatchObject({
+        mcpServerConfigId: CONFIG_ID,
+        summary: {
+          total: 1,
+          imported: 0,
+          overwritten: 1,
+          skipped: 0,
+          failed: 0,
+        },
+      });
+      expect(result.results).toEqual([
+        expect.objectContaining({
+          toolDefinitionId: TOOL_ID,
+          toolName: 'search-docs',
+          status: 'overwritten',
+          title: '搜索文档（新版）',
+        }),
+      ]);
     });
 
     it('应当在未找到组织时抛出错误并停止事务写入', async () => {
@@ -726,6 +1100,7 @@ describe('McpService', () => {
         {
           serverName: '知识库服务器',
           connection: createStdioConnection(),
+          conflictStrategy: 'skip',
           toolNames: ['search-docs'],
         },
         USER_ID,
@@ -739,6 +1114,132 @@ describe('McpService', () => {
         );
       });
       expect(db.transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rediscoverTools', () => {
+    it('应当使用已保存配置重新发现工具', async () => {
+      const rediscoverTools = getCallableMethod<
+        [mcpServerConfigId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'rediscoverTools');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([createMcpServerConfigRecord()]),
+      );
+      encryptionService.decrypt.mockReturnValue(
+        JSON.stringify({
+          Authorization: 'Bearer http-token',
+          'X-Workspace': 'workspace-1',
+        }),
+      );
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({
+        tools: [createDiscoveredTool()],
+      });
+      mcpMocks.mockClient.getServerVersion.mockReturnValue({
+        name: 'Knowledge MCP',
+        version: '2.1.0',
+        protocolVersion: '2024-11-05',
+      });
+
+      const result = await rediscoverTools(CONFIG_ID, TENANT_ID);
+
+      expect(encryptionService.decrypt).toHaveBeenCalledWith({
+        encryptedKey: MOCK_ENCRYPTED.encryptedKey,
+        encryptedDek: MOCK_ENCRYPTED.encryptedDek,
+        iv: MOCK_ENCRYPTED.iv,
+        authTag: MOCK_ENCRYPTED.authTag,
+      });
+      expect(result).toEqual({
+        tools: [
+          {
+            name: 'search-docs',
+            title: '搜索文档',
+            description: '搜索知识库文档',
+            inputSchema: createDiscoveredTool().inputSchema,
+            annotations: {
+              category: 'knowledge',
+            },
+          },
+        ],
+        serverInfo: {
+          name: 'Knowledge MCP',
+          version: '2.1.0',
+        },
+      });
+    });
+  });
+
+  describe('deactivateTool', () => {
+    it('应当仅将 MCP 导入工具标记为 inactive 而不是物理删除', async () => {
+      const deactivateTool = getCallableMethod<
+        [toolDefinitionId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'deactivateTool');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([createToolDefinitionRecord()]),
+      );
+      const updateChain = createUpdateChain([
+        createToolDefinitionRecord({
+          isActive: false,
+        }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await deactivateTool(TOOL_ID, TENANT_ID);
+
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalledWith(toolDefinitions);
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isActive: false,
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(result).toMatchObject({
+        id: TOOL_ID,
+        isActive: false,
+      });
+    });
+
+    it('应当拒绝停用非 MCP 来源的工具', async () => {
+      const deactivateTool = getCallableMethod<
+        [toolDefinitionId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'deactivateTool');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createToolDefinitionRecord({
+            id: BUILTIN_TOOL_ID,
+            source: 'builtin',
+            mcpServerConfigId: null,
+          }),
+        ]),
+      );
+
+      await expect(deactivateTool(BUILTIN_TOOL_ID, TENANT_ID)).rejects.toBeInstanceOf(
+        McpToolDeactivationNotAllowedException,
+      );
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
+    });
+
+    it('应当在工具不存在时抛�� McpToolNotFoundException', async () => {
+      const deactivateTool = getCallableMethod<
+        [toolDefinitionId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'deactivateTool');
+
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(deactivateTool(TOOL_ID, TENANT_ID)).rejects.toBeInstanceOf(
+        McpToolNotFoundException,
+      );
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
     });
   });
 

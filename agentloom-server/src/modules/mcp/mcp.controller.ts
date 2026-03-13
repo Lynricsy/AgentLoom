@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import {
   DiscoverMcpToolsDto,
   ImportMcpToolsDto,
+  ReimportMcpToolsDto,
   TestMcpConnectionDto,
 } from './dto';
 import { McpService } from './mcp.service';
@@ -50,6 +52,63 @@ export class McpController {
     @CurrentTenant() tenantId: string,
   ) {
     const result = await this.mcpService.importTools(dto, userId, tenantId);
+    return { data: result };
+  }
+
+  @Post('configs/:mcpServerConfigId/test')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Test a saved MCP server config connection' })
+  async testSavedConfigConnection(
+    @Param('mcpServerConfigId') mcpServerConfigId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const result = await this.mcpService.testSavedConfigConnection(
+      mcpServerConfigId,
+      tenantId,
+    );
+    return { data: result };
+  }
+
+  @Post('configs/:mcpServerConfigId/rediscover')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Rediscover tools from a saved MCP server config' })
+  async rediscoverTools(
+    @Param('mcpServerConfigId') mcpServerConfigId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const result = await this.mcpService.rediscoverTools(
+      mcpServerConfigId,
+      tenantId,
+    );
+    return { data: result };
+  }
+
+  @Post('configs/:mcpServerConfigId/reimport')
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Re-import tools from a saved MCP server config' })
+  async reimportTools(
+    @Param('mcpServerConfigId') mcpServerConfigId: string,
+    @Body() dto: ReimportMcpToolsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const result = await this.mcpService.reimportTools(
+      mcpServerConfigId,
+      dto,
+      tenantId,
+    );
+    return { data: result };
+  }
+
+  @Post('tools/:toolDefinitionId/deactivate')
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: 'Deactivate an imported MCP tool' })
+  async deactivateTool(
+    @Param('toolDefinitionId') toolDefinitionId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const result = await this.mcpService.deactivateTool(toolDefinitionId, tenantId);
     return { data: result };
   }
 

@@ -17,6 +17,12 @@ import {
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
 } from '../types/nodeTypeRegistry'
+import {
+  evaluateConnection,
+  mergeEdgeDataWithStoredMappings,
+  resolveConnectionPorts,
+} from '../lib/connectionCompatibility'
+import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import type { NodeType } from '../types/nodeTypeRegistry'
 
 const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['llm-agent', 'chat-agent'])
@@ -42,6 +48,7 @@ interface CanvasState {
   currentSearchIndex: number
   isMiniMapCollapsed: boolean
   hoveredNodeId: string | null
+  nodeValidationErrors: Record<string, boolean>
 }
 
 interface CanvasActions {
@@ -56,6 +63,9 @@ interface CanvasActions {
     openFieldMapping: (edgeId: string) => void
     closeFieldMapping: () => void
     updateEdgeData: (edgeId: string, patch: Partial<CanvasEdgeData>) => void
+    refreshEdgeCompatibility: (
+      updates: Array<{ edgeId: string; edgeData: CanvasEdgeData }>,
+    ) => void
     updateFieldMapping: (edgeId: string, mappings: FieldMapping[]) => void
     setViewport: (viewport: Viewport) => void
     commitViewport: (viewport: Viewport) => void
@@ -71,6 +81,8 @@ interface CanvasActions {
     toggleMiniMap: () => void
     setHoveredNodeId: (nodeId: string | null) => void
     updateNodeData: (nodeId: string, patch: Partial<CanvasNode['data']>) => void
+    setNodeValidationError: (nodeId: string, hasErrors: boolean) => void
+    clearNodeValidationErrors: (nodeId: string) => void
   }
 }
 
@@ -93,6 +105,7 @@ function createInitialState(): CanvasState {
     currentSearchIndex: -1,
     isMiniMapCollapsed: false,
     hoveredNodeId: null,
+    nodeValidationErrors: {},
   }
 }
 
@@ -120,7 +133,19 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
         actions: {
           onNodesChange: (changes) =>
             set((state) => {
+              const removedNodeIds = changes
+                .filter(
+                  (change): change is NodeChange<CanvasNode> & { type: 'remove' } =>
+                    change.type === 'remove',
+                )
+                .map((change) => change.id)
+
               state.nodes = applyNodeChanges(changes, state.nodes)
+              if (removedNodeIds.length > 0) {
+                for (const nodeId of removedNodeIds) {
+                  delete state.nodeValidationErrors[nodeId]
+                }
+              }
               const isDirtyChange = changes.some(
                 (c) =>
                   c.type === 'remove' ||
@@ -272,6 +297,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               if (state.mappingPanelEdgeId && removedEdgeIds.has(state.mappingPanelEdgeId)) {
                 state.mappingPanelEdgeId = null
               }
+              delete state.nodeValidationErrors[nodeId]
               state.isDirty = true
             }),
 
@@ -307,6 +333,28 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isDirty = true
             }),
 
+          refreshEdgeCompatibility: (updates) =>
+            set((state) => {
+              if (updates.length === 0) {
+                return
+              }
+
+              let touched = false
+              for (const update of updates) {
+                const edge = state.edges.find((candidate) => candidate.id === update.edgeId)
+                if (!edge) {
+                  continue
+                }
+
+                edge.data = update.edgeData
+                touched = true
+              }
+
+              if (touched) {
+                state.isDirty = true
+              }
+            }),
+
           updateFieldMapping: (edgeId, mappings) =>
             set((state) => {
               const edge = state.edges.find((e) => e.id === edgeId)
@@ -335,7 +383,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isDirty = true
             }),
 
-          applyServerSnapshot: ({ nodes, edges, viewport, workflowId, version }) =>
+          applyServerSnapshot: ({ nodes, edges, viewport, workflowId, version }) => {
+            invalidateEdgeCompatibilityRefreshVersion()
+
             set((state) => {
               state.nodes = nodes.map((n) => {
                 const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
@@ -398,7 +448,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.selectedNodeId = null
               state.selectedEdgeId = null
               state.mappingPanelEdgeId = null
-            }),
+              state.nodeValidationErrors = {}
+            })
+          },
 
           markSaved: (version) =>
             set((state) => {
@@ -413,10 +465,13 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isSaving = saving
             }),
 
-          reset: () =>
+          reset: () => {
+            invalidateEdgeCompatibilityRefreshVersion()
+
             set((state) => {
               Object.assign(state, createInitialState())
-            }),
+            })
+          },
 
           toggleSearch: () =>
             set((state) => {
@@ -475,11 +530,53 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             }),
 
           updateNodeData: (nodeId, patch) =>
+            {
+              let shouldRevalidate = false
+              let revalidationVersion = 0
+
+              set((state) => {
+                const node = state.nodes.find((n) => n.id === nodeId)
+                if (!node) return
+
+                const previousSignature = getNodePortContractSignature({
+                  inputPorts: node.data.inputPorts,
+                  outputPorts: node.data.outputPorts,
+                })
+                const nextNodeData = {
+                  ...node.data,
+                  ...patch,
+                }
+                const nextSignature = getNodePortContractSignature({
+                  inputPorts: nextNodeData.inputPorts,
+                  outputPorts: nextNodeData.outputPorts,
+                })
+
+                Object.assign(node.data, patch)
+                state.isDirty = true
+
+                if (previousSignature !== nextSignature) {
+                  shouldRevalidate = true
+                  revalidationVersion = nextEdgeCompatibilityRefreshVersion()
+                }
+              })
+
+              if (shouldRevalidate) {
+                void revalidateConnectedEdges(nodeId, revalidationVersion)
+              }
+            },
+
+          setNodeValidationError: (nodeId, hasErrors) =>
             set((state) => {
-              const node = state.nodes.find((n) => n.id === nodeId)
-              if (!node) return
-              Object.assign(node.data, patch)
-              state.isDirty = true
+              if (hasErrors) {
+                state.nodeValidationErrors[nodeId] = true
+              } else {
+                delete state.nodeValidationErrors[nodeId]
+              }
+            }),
+
+          clearNodeValidationErrors: (nodeId) =>
+            set((state) => {
+              delete state.nodeValidationErrors[nodeId]
             }),
         },
       }))
@@ -493,6 +590,86 @@ export const useCanvasNodes = () => useCanvasStore((s) => s.nodes)
 export const useCanvasEdges = () => useCanvasStore((s) => s.edges)
 
 export const useCanvasActions = () => useCanvasStore((s) => s.actions)
+
+let edgeCompatibilityRefreshVersion = 0
+
+function invalidateEdgeCompatibilityRefreshVersion(): number {
+  edgeCompatibilityRefreshVersion += 1
+  return edgeCompatibilityRefreshVersion
+}
+
+function nextEdgeCompatibilityRefreshVersion(): number {
+  return invalidateEdgeCompatibilityRefreshVersion()
+}
+
+async function revalidateConnectedEdges(nodeId: string, refreshVersion: number) {
+  const snapshot = useCanvasStore.getState()
+  const connectedEdges = snapshot.edges.filter(
+    (edge) => edge.source === nodeId || edge.target === nodeId,
+  )
+
+  if (connectedEdges.length === 0) {
+    return
+  }
+
+  const updates = await Promise.all(
+    connectedEdges.map(async (edge) => {
+      const resolved = resolveConnectionPorts(snapshot.nodes, edge)
+      const evaluated = await evaluateConnection(
+        snapshot.nodes,
+        edge,
+        snapshot.edges.filter((candidate) => candidate.id !== edge.id),
+      )
+
+      const edgeData = resolved
+        ? mergeEdgeDataWithStoredMappings(
+            resolved.source.port,
+            resolved.target.port,
+            evaluated.edgeData,
+            edge.data ?? createDefaultEdgeData(),
+          )
+        : evaluated.edgeData
+
+      return {
+        edgeId: edge.id,
+        edgeData,
+      }
+    }),
+  )
+
+  if (refreshVersion !== edgeCompatibilityRefreshVersion) {
+    return
+  }
+
+  const latestState = useCanvasStore.getState()
+  const latestUpdates = updates.flatMap((update) => {
+    const latestEdge = latestState.edges.find((edge) => edge.id === update.edgeId)
+    if (!latestEdge) {
+      return []
+    }
+
+    const resolved = resolveConnectionPorts(latestState.nodes, latestEdge)
+    const edgeData = resolved
+      ? mergeEdgeDataWithStoredMappings(
+          resolved.source.port,
+          resolved.target.port,
+          update.edgeData,
+          latestEdge.data ?? createDefaultEdgeData(),
+        )
+      : update.edgeData
+
+    return [{
+      edgeId: update.edgeId,
+      edgeData,
+    }]
+  })
+
+  if (latestUpdates.length === 0) {
+    return
+  }
+
+  latestState.actions.refreshEdgeCompatibility(latestUpdates)
+}
 
 export const useCanvasSaveStatus = () =>
   useCanvasStore(
@@ -533,3 +710,6 @@ export const useSelectedNodeData = () =>
     const node = s.nodes.find((n) => n.id === s.selectedNodeId)
     return node?.data ?? null
   })
+
+export const useNodeHasValidationError = (nodeId: string) =>
+  useCanvasStore((s) => !!s.nodeValidationErrors[nodeId])

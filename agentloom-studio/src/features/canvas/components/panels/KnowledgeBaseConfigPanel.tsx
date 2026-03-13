@@ -1,4 +1,7 @@
-import { memo, useCallback, type ChangeEvent } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { BookOpen, Loader2 } from 'lucide-react'
 import {
   buildKnowledgeBaseNodeConfig,
@@ -6,27 +9,69 @@ import {
   isKnowledgeBaseConfigured,
 } from '@/features/knowledge/types'
 import { useAllKnowledgeBases } from '@/features/knowledge/hooks/useKnowledgeBases'
+import { Select } from '@/shared/ui/select'
+
+const knowledgeBaseSchema = z.object({
+  knowledgeBaseId: z.string().min(1, '此字段为必填项'),
+})
+
+type KnowledgeBaseFormValues = z.infer<typeof knowledgeBaseSchema>
 
 interface KnowledgeBaseConfigPanelProps {
   config: Record<string, unknown>
   onApply: (patch: Record<string, unknown>) => void
+  onValidationChange?: (hasErrors: boolean) => void
 }
 
 export const KnowledgeBaseConfigPanel = memo(
   function KnowledgeBaseConfigPanel({
     config,
     onApply,
+    onValidationChange,
   }: KnowledgeBaseConfigPanelProps) {
+    const {
+      control,
+      reset,
+      trigger,
+      formState: { errors },
+    } = useForm<KnowledgeBaseFormValues>({
+      resolver: zodResolver(knowledgeBaseSchema),
+      defaultValues: {
+        knowledgeBaseId: isKnowledgeBaseConfigured(config)
+          ? config.knowledgeBaseId
+          : '',
+      },
+      mode: 'onBlur',
+    })
     const { data, isLoading } = useAllKnowledgeBases()
     const knowledgeBases = data ?? []
 
-    const currentId = isKnowledgeBaseConfigured(config)
-      ? config.knowledgeBaseId
-      : ''
+    const currentId = useWatch({
+      control,
+      name: 'knowledgeBaseId',
+    })
+
+    const didMountRef = useRef(false)
+    useEffect(() => {
+      if (!didMountRef.current) {
+        didMountRef.current = true
+        return
+      }
+
+      reset({
+        knowledgeBaseId: isKnowledgeBaseConfigured(config)
+          ? config.knowledgeBaseId
+          : '',
+      })
+    }, [config, reset])
+
+    const hasErrors = Object.keys(errors).length > 0
+    useEffect(() => {
+      onValidationChange?.(hasErrors)
+    }, [hasErrors, onValidationChange])
 
     const handleSelect = useCallback(
-      (e: ChangeEvent<HTMLSelectElement>) => {
-        const selectedId = e.target.value
+      (selectedId: string) => {
         if (!selectedId) {
           onApply({
             config: {},
@@ -61,31 +106,50 @@ export const KnowledgeBaseConfigPanel = memo(
         </div>
 
         <div>
-          <label
-            htmlFor="kb-select"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            选择知识库
-          </label>
+          <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
+            <label htmlFor="kb-select">选择知识库</label>
+            <span className="text-error">*</span>
+          </span>
           {isLoading ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span>加载中...</span>
             </div>
           ) : (
-            <select
-              id="kb-select"
-              value={currentId}
-              onChange={handleSelect}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">请选择知识库</option>
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name} · {kb.documentCount} 文档
-                </option>
-              ))}
-            </select>
+            <Controller
+              name="knowledgeBaseId"
+              control={control}
+              render={({ field }) => (
+                <>
+                  <Select
+                    aria-label="选择知识库"
+                    id="kb-select"
+                    value={field.value}
+                    onValueChange={(selectedId) => {
+                      field.onChange(selectedId)
+                      handleSelect(selectedId)
+                      void trigger('knowledgeBaseId', { shouldFocus: false })
+                    }}
+                    onBlur={() => {
+                      field.onBlur()
+                      void trigger(undefined, { shouldFocus: false })
+                    }}
+                  >
+                    <option value="">请选择知识库</option>
+                    {knowledgeBases.map((kb) => (
+                      <option key={kb.id} value={kb.id}>
+                        {kb.name} · {kb.documentCount} 文档
+                      </option>
+                    ))}
+                  </Select>
+                  {errors.knowledgeBaseId && (
+                    <p className="mt-1 text-xs text-error">
+                      {errors.knowledgeBaseId.message}
+                    </p>
+                  )}
+                </>
+              )}
+            />
           )}
         </div>
 

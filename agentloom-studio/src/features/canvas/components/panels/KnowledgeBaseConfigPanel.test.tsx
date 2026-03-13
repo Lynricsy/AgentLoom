@@ -102,4 +102,33 @@ describe('KnowledgeBaseConfigPanel', () => {
     expect(screen.getByText('可用')).toBeInTheDocument()
     expect(screen.getByText('ID: kb-120')).toBeInTheDocument()
   })
+
+  it('shows required validation error after blur and clears it once a knowledge base is selected', async () => {
+    const user = userEvent.setup()
+    const onValidationChange = vi.fn()
+    mocks.useAllKnowledgeBases.mockReturnValue({
+      data: [createKnowledgeBase()],
+      isLoading: false,
+    })
+
+    render(
+      <KnowledgeBaseConfigPanel
+        config={{}}
+        onApply={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    const select = screen.getByLabelText('选择知识库')
+    await user.click(select)
+    await user.tab()
+
+    expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+
+    await user.selectOptions(select, 'kb-1')
+
+    expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
+  })
 })

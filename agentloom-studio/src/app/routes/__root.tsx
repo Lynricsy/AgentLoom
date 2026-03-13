@@ -1,18 +1,22 @@
-import { Outlet, createRootRoute, Link } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-import { useAuthToken } from '@/features/execution'
-import { NotificationBell, useNotificationSocket } from '@/features/notification'
-import { indexRoute } from './index'
-import { workflowCanvasRoute } from './workflows/$workflowId'
-import { knowledgeBasesRoute } from './settings/knowledge-bases'
-import { knowledgeBaseDetailRoute } from './settings/knowledge-bases/$knowledgeBaseId'
-import { executionDebugRoute } from './executions/$executionId'
-import { templatesRoute } from './templates'
+import { Outlet, createRootRoute, Link } from "@tanstack/react-router";
+import { TanStackRouterDevtools } from "@tanstack/router-devtools";
+import { useAuthToken } from "@/features/execution";
+import {
+  NotificationBell,
+  useNotificationSocket,
+} from "@/features/notification";
+import { indexRoute } from "./index";
+import { workflowCanvasRoute } from "./workflows/$workflowId";
+import { knowledgeBasesRoute } from "./settings/knowledge-bases";
+import { knowledgeBaseDetailRoute } from "./settings/knowledge-bases/$knowledgeBaseId";
+import { executionDebugRoute } from "./executions/$executionId";
+import { toolLibraryRoute } from "./settings/tool-library";
+import { templatesRoute } from "./templates";
 
 function RootLayout() {
-  const authToken = useAuthToken()
+  const authToken = useAuthToken();
 
-  useNotificationSocket({ authToken })
+  useNotificationSocket({ authToken });
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
@@ -21,7 +25,7 @@ function RootLayout() {
           <nav className="flex items-center gap-1">
             <Link
               to="/workflows/$workflowId"
-              params={{ workflowId: 'draft' }}
+              params={{ workflowId: "draft" }}
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               工作流
@@ -31,6 +35,12 @@ function RootLayout() {
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               模板
+            </Link>
+            <Link
+              to="/settings/tool-library"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              工具库
             </Link>
           </nav>
           <NotificationBell />
@@ -43,12 +53,12 @@ function RootLayout() {
 
       <TanStackRouterDevtools />
     </div>
-  )
+  );
 }
 
 export const rootRoute = createRootRoute({
   component: RootLayout,
-})
+});
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -56,5 +66,6 @@ export const routeTree = rootRoute.addChildren([
   executionDebugRoute,
   knowledgeBasesRoute,
   knowledgeBaseDetailRoute,
+  toolLibraryRoute,
   templatesRoute,
-])
+]);

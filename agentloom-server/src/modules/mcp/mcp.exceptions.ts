@@ -45,6 +45,28 @@ export class McpImportConflictException extends DomainException {
   }
 }
 
+export class McpToolNotFoundException extends DomainException {
+  constructor(detail: string) {
+    super({
+      type: 'https://agentloom.dev/errors/mcp/tool-not-found',
+      title: 'MCP 工具未找到',
+      status: HttpStatus.NOT_FOUND,
+      detail,
+    });
+  }
+}
+
+export class McpToolDeactivationNotAllowedException extends DomainException {
+  constructor(detail: string) {
+    super({
+      type: 'https://agentloom.dev/errors/mcp/tool-deactivation-not-allowed',
+      title: 'MCP 工具停用不被允许',
+      status: HttpStatus.CONFLICT,
+      detail,
+    });
+  }
+}
+
 export class McpServerConfigNotFoundException extends DomainException {
   constructor(detail: string) {
     super({

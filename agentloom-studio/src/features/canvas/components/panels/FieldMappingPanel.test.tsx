@@ -73,6 +73,19 @@ function makeEdge(overrides?: Partial<CanvasEdge['data']>): CanvasEdge {
   }
 }
 
+const requiredMissingFields = [
+  {
+    path: 'in-text',
+    expectedType: { kind: 'text' as const },
+    required: true,
+  },
+  {
+    path: 'in-obj.name',
+    expectedType: { kind: 'text' as const },
+    required: true,
+  },
+]
+
 const sourceNode = makeNode('src', [], [
   makePort('out-text', 'Text Output', 'output', 'text'),
   makePort('out-obj', 'Object Output', 'output', 'json'),
@@ -126,15 +139,29 @@ describe('FieldMappingPanel', () => {
     expect(screen.getByText('完全匹配，无需映射')).toBeInTheDocument()
   })
 
-  it('shows required unmapped count', () => {
-    render(<FieldMappingPanel {...defaultProps} />)
+  it('shows required unmapped count from compatibility metadata', () => {
+    render(
+      <FieldMappingPanel
+        {...defaultProps}
+        edge={makeEdge({ missingFields: requiredMissingFields })}
+      />
+    )
     expect(screen.getByTestId('mapping-required-summary')).toHaveTextContent(
       '2 个必填字段未映射'
     )
   })
 
+  it('does not recompute required unmapped fields from target schema', () => {
+    render(<FieldMappingPanel {...defaultProps} />)
+
+    expect(screen.getByTestId('mapping-required-summary')).toHaveTextContent(
+      '所有必填字段已映射'
+    )
+  })
+
   it('shows all-mapped message when required fields are mapped', () => {
     const edge = makeEdge({
+      missingFields: requiredMissingFields,
       fieldMapping: [
         {
           sourceField: 'out-text',
@@ -373,5 +400,83 @@ describe('FieldMappingPanel', () => {
     )
     const autoLine = container.querySelector('.mapping-line--auto')
     expect(autoLine).toBeInTheDocument()
+  })
+
+  it('accepts only one best candidate per target when applying all recommendations', () => {
+    const onChange = vi.fn()
+
+    render(
+      <FieldMappingPanel
+        {...defaultProps}
+        edge={makeEdge({
+          candidateMappings: [
+            {
+              sourcePath: 'out-text',
+              targetPath: 'in-text',
+              confidence: 0.7,
+              autoRecommended: false,
+            },
+            {
+              sourcePath: 'out-obj.name',
+              targetPath: 'in-text',
+              confidence: 0.92,
+              autoRecommended: true,
+            },
+          ],
+        })}
+        onChange={onChange}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId('accept-all-candidates'))
+
+    expect(onChange).toHaveBeenCalledWith('e-1', [
+      {
+        sourceField: 'out-obj.name',
+        targetField: 'in-text',
+        compatLevel: 'L1',
+        autoRecommended: true,
+        confidence: 0.92,
+      },
+    ])
+  })
+
+  it('prefers auto-recommended candidates even when a manual candidate has higher confidence', () => {
+    const onChange = vi.fn()
+
+    render(
+      <FieldMappingPanel
+        {...defaultProps}
+        edge={makeEdge({
+          candidateMappings: [
+            {
+              sourcePath: 'out-text',
+              targetPath: 'in-text',
+              confidence: 0.98,
+              autoRecommended: false,
+            },
+            {
+              sourcePath: 'out-obj.name',
+              targetPath: 'in-text',
+              confidence: 0.72,
+              autoRecommended: true,
+            },
+          ],
+        })}
+        onChange={onChange}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId('accept-all-candidates'))
+
+    expect(onChange).toHaveBeenCalledWith('e-1', [
+      {
+        sourceField: 'out-obj.name',
+        targetField: 'in-text',
+        compatLevel: 'L1',
+        autoRecommended: true,
+        confidence: 0.72,
+      },
+    ])
   })
 })

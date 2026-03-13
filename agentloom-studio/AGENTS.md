@@ -15,6 +15,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图，三栏布局 |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
 | `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 |
+| `/settings/tool-library` | ToolLibraryPage | MCP imported tools 管理工作台，与 NodePalette 共享查询键 |
 | `/templates` | TemplateBrowsePage | Tabs + 搜索 + 网格 + TemplateWizardDialog |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。
@@ -29,6 +30,7 @@ src/
 │   ├── execution/    # 执行监控 (hooks, stores, types)
 │   ├── workflow/     # 工作流列表/管理
 │   ├── knowledge/    # 知识库管理
+│   ├── mcp/          # MCP imported tools 管理工作台（shared api/keys/queries/mutations/components）
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   ├── evidence/    # 证据记录查询/展示 + 溯源链 + 引用面板 + 文档查看器 (types/api/hooks/stores/components/lib)
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
@@ -36,7 +38,7 @@ src/
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
 │   ├── components/   # Pagination 等通用组件
-│   ├── ui/           # 7 个 CVA 基础组件 (button/input/label/select/slider/tabs/toast)
+│   ├── ui/           # 8 个基础组件 (button/input/label/select/slider/switch/tabs/toast)
 │   ├── lib/          # cn() = clsx + tailwind-merge
 │   ├── types/        # ApiResponse<T>, ApiError, PaginatedResponse<T>
 │   └── utils/        # caseConverter (snake↔camel，全局 ky hook 应用)
@@ -54,6 +56,8 @@ src/
 | evidenceUiStore | `features/evidence/stores/` | isOpen/panelExecutionId/panelNodeId/panelNodeName/selectedEvidenceId/highlightUntil/documentViewer |
 
 **自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
+
+**Story 2-4a / Canvas 类型兼容性运行时**: `features/canvas/lib/typeEngine/` 现提供主线程单例 `TypeEngineService` façade、底层单例 `TypeEngineRuntime` 与 `runtime.worker.ts`；`connectionCompatibility.ts` 负责同步 guard + cache 读取 + 异步权威检查适配；`WorkflowCanvas.tsx` 在 cache miss 且最终判定 `INCOMPATIBLE` 时会补发持久化错误反馈，避免 preview reset 后丢失原因；`canvasStore.updateNodeData()` 仅在 `inputPorts/outputPorts` 契约签名变化时触发相邻边兼容性重算，并在 refresh 落地前重新基于最新 live `edge.data` merge，以保留并发 `fieldMapping` 编辑，再通过 `refreshEdgeCompatibility()` 标脏让 autosave 持久化新的 `edge.data`；`vite.config.ts` 现通过 `server.fs.allow = [path.resolve(__dirname, '..')]` 放行 sibling `agentloom-type-engine/pkg` wasm 资产，保证 Vite dev 浏览器环境也能拉起 worker + wasm
 
 ## API 层
 
@@ -81,6 +85,7 @@ src/
 - **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
+- **MCP feature** (`features/mcp/`): 统一承载 imported tools 的 `mcpKeys` / `mcpApi` / `mcpQueries` / `mcpMutations` / `ToolLibraryPage` / `McpImportDialog`；shared data layer 现已补齐 `POST /mcp/test` 与 `POST /mcp/configs/:id/test` 前端类型，以及 `useTestMcpConnection()` / `useTestSavedMcpConnection()` mutations。`McpImportDialog` 为真正四步流（配置连接 → 测试连接 → 发现/选择工具 → 导入并同页复核回执），import 模式支持 `stdio | sse | streamable_http` 传输选择并跨步骤保留上下文；reimport 模式现先做 saved-config test，再在下一步独立 rediscover。`ToolLibraryPage` 现展示状态 / 来源 / 配置身份 / 导入与更新时间 / 端口摘要等管理元信息，停用确认使用 Radix Dialog 并在关闭后恢复焦点。`features/canvas/api/mcpToolQueries.ts` / `mcpToolKeys.ts` 仍作为兼容适配层复用 shared query key，确保工具库与 NodePalette 的 `Imported Tools` 同步刷新
 - **evidence feature** (`features/evidence/`): `types/index.ts` 使用 discriminated union `EvidencePacket`（`rag_retrieval | agent_decision | tool_output | user_input | intervention`），`EvidenceVerifyResult` 契约为 `{ evidenceId, valid, integrityWarning, currentHash }`；Story 6.2/6.4 额外引入 `EvidencePacketSummary`、`IntegrityIssue`、`ChainIntegrityStatus`、`EvidenceChainNode`、`EvidenceChainResponse`、`PhysicalLocation.knowledgeBaseId` 与 `chunkContent`，用于 provenance chain 与文档查看器。`evidenceApi.ts` 提供 list/detail/verify/chain/documentContent API，并新增 `fetchAllEvidenceByExecution(executionId, params?)`：按页循环调用 `/executions/:executionId/evidence`（每页 100）并返回拼平后的 `EvidenceRecord[]`；`evidenceKeys.ts` 额外提供 `evidenceKeys.allRecords(executionId, filters?)` 和 `evidenceKeys.documentContent(kbId, docId)`；`evidenceQueries.ts` 提供 `useEvidenceList()`、`useAllEvidenceRecords()`、`useEvidenceDetail(executionId, evidenceId, { enabled? })`、`useEvidenceVerify()`、`useEvidenceChain()`、`useDocumentContent()`，其中 verify 采用 lazy query（`enabled: false`，通过 `refetch()` 触发），`useDocumentContent()` 会依据缓存中的 `expiresIn * 0.8` 计算 staleTime，chain query 使用 `staleTime: 5 * 60 * 1000` 与服务端 Redis TTL 对齐。链节点契约包含 `packetSummary`、`sourceUnavailable`、`sourceModified`、`unavailableReason`、`originalSnapshot`，顶层响应包含 `integrityStatus` 与可选 `cachedAt`。`evidenceUiStore`（Zustand）现管理面板与文档查看器状态：`openPanel(executionId, nodeId?, nodeName?, evidenceId?)`/`selectEvidence(id, {highlight?})`/`openDocumentViewer(state)`/`openFromPhysicalLocation(evidenceId, location)`/`clearHighlight()`/`closePanel()`/`closeDocumentViewer()`/`reset()`，并记录 `panelExecutionId/panelNodeId/panelNodeName/highlightUntil/documentViewer.physicalLocation`。组件层：`EvidenceReferencePanel`（400px 右滑，按 `executionId + nodeId` 拉证据链、支持 Escape 关闭与 2 秒高亮）、`EvidenceCard`（基于真实 `EvidenceRecord` + lazy verify 结构化渲染 5 种 sourceType，卡片与交互按钮分离避免嵌套 button）、`SourceStatusBadge`（valid/modified/unavailable 三态、tooltip 中显示 `currentHash/originalHash/unavailableReason` 并可切换原始快照）、`LocationLink`（直接基于 `PhysicalLocation` 打开 viewer）、`DocumentViewer`（`react-pdf` / `markdown-it` / 文本 `<pre>`，按 page/paragraph/offset/length 做 best-effort 定位高亮）、`DocumentViewerToolbar`（返回、位置标签、外链）、`InlineEvidenceRef`（蓝色上标，hover 懒加载 evidence detail tooltip，点击打开面板并高亮）。`lib/parseEvidenceRefs.ts` 解析 `[ref:evidenceId]` 正则为 `EvidenceRefSegment[]`；`TimelineIO.TextWithRefs` 和 `DecisionAnnotation` 都会渲染内联引用。
 - **Story 6.5 证据扩展**: `EvidenceSourceType` 现包含 `node_error`；`EvidenceCard` 支持展示错误类型、节点 ID、错误摘要与类型不匹配对比；`InlineEvidenceRef` 的 source type 标签也已覆盖 `node_error`
 - **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`，空态文案为“还没有执行记录”
@@ -98,7 +103,8 @@ src/
 - **VersionToolbar**: 包含 Run 按钮 (Play/运行 ↔ Loader2/执行中)，通过 `onRun`/`isRunning` props 控制
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **发布警告展示**: `PublishSheet` 发布成功且返回 `warnings[]` 时，显示成功 toast 并在 Sheet 内渲染内联展开式警告列表（每条警告可点击展开查看源/目标端口类型详情），用户点击"完成"按钮关闭。不再使用 toast-per-warning 模式
-- **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流
+- **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流；配置区按“自定义面板优先 → DynamicConfigForm(schema fallback) → 空态文案”分发，并把字段级校验状态同步到 `canvasStore.nodeValidationErrors`
+- **DynamicConfigForm / LlmAgentConfigPanel / HttpToolConfigPanel**: 统一使用 react-hook-form + zodResolver + 300ms debounce `onApply`；`LlmAgentConfigPanel` 使用 lazy Monaco 编辑 `systemPrompt`，并要求在 mount 后仍能响应外部 config 更新
 - **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。组件通过 `useExecutionActions().submitIntervention()` 提交动作，展示 AI 决策建议(confidence/rationale)、部分内容预览以及请求时间上下文，并会把结构化建议内容格式化为可读文本
 
 ## 样式
@@ -113,6 +119,8 @@ src/
 ## 表单
 
 react-hook-form + @hookform/resolvers + Zod v4
+
+- schema 驱动节点表单：`features/canvas/lib/configSchemaToZod.ts` 负责把 `NodeConfigSchema` 转为 Zod；`DynamicConfigForm` 渲染 string/enum/number/boolean 字段，并在任一字段 blur 后触发整表校验，以满足多必填字段同时报错的交互约束
 
 ## 如何扩展
 

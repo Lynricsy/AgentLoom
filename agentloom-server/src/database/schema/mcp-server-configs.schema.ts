@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { bytea } from './api-keys.schema';
@@ -43,6 +44,7 @@ export const mcpServerConfigs = pgTable(
     args: jsonb('args').$type<string[]>(),
     // HTTP 传输字段（SSE / Streamable HTTP）
     url: text('url'),
+    connectionFingerprint: text('connection_fingerprint'),
     // 信封加密字段 — 存储加密的环境变量（stdio）或 HTTP 头部
     encryptedData: bytea('encrypted_data'),
     encryptedDek: bytea('encrypted_dek'),
@@ -61,6 +63,10 @@ export const mcpServerConfigs = pgTable(
     index('idx_mcp_server_configs_tenant_id').on(table.tenantId),
     index('idx_mcp_server_configs_org_id').on(table.organizationId),
     index('idx_mcp_server_configs_created_by').on(table.createdBy),
+    uniqueIndex('uq_mcp_server_configs_tenant_fingerprint').on(
+      table.tenantId,
+      table.connectionFingerprint,
+    ),
     ...createDirectTenantPolicies('mcp_server_configs'),
   ],
 );
