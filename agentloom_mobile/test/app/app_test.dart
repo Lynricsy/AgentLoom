@@ -74,7 +74,7 @@ void main() {
 class _TestTokenStorage extends TokenStorage {
   _TestTokenStorage() : super(const FlutterSecureStorage());
 
-  static final AuthTokens _tokens = AuthTokens(
+  static const AuthTokens _tokens = AuthTokens(
     accessToken: 'access-token',
     refreshToken: 'refresh-token',
     expiresIn: 3600,

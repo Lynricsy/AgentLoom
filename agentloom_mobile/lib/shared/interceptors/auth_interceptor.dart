@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../features/auth/api/auth_api.dart';
 import '../../features/auth/providers/token_storage_provider.dart';
@@ -13,22 +12,35 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     required this.tokenStorage,
     required this.authApi,
     required this.onForceLogout,
+    required this.retryRequest,
   });
 
   final TokenStorage tokenStorage;
   final AuthApi authApi;
-  final VoidCallback onForceLogout;
+  final Future<void> Function() onForceLogout;
+  final Future<Response<dynamic>> Function(RequestOptions options) retryRequest;
 
   @override
   void onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final tokens = await tokenStorage.readTokens();
-    if (tokens != null) {
-      options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+    try {
+      final tokens = await tokenStorage.readTokens();
+      if (tokens != null) {
+        options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+      }
+      handler.next(options);
+    } catch (error, stackTrace) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          error: error,
+          stackTrace: stackTrace,
+          message: '读取认证凭证失败',
+        ),
+      );
     }
-    handler.next(options);
   }
 
   @override
@@ -44,33 +56,53 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
         errorType == 'token-invalid' ||
         errorType == 'token-missing') {
       await tokenStorage.clearTokens();
-      onForceLogout();
+      await onForceLogout();
       return handler.next(err);
     }
 
     // token-expired 或未知 type → 尝试 refresh
     final tokens = await tokenStorage.readTokens();
     if (tokens == null) {
-      onForceLogout();
+      await tokenStorage.clearTokens();
+      await onForceLogout();
       return handler.next(err);
     }
 
     try {
+      final latestAccessToken = tokens.accessToken;
+      final requestAccessToken = _extractAccessToken(err.requestOptions);
+
+      if (requestAccessToken != null &&
+          requestAccessToken != latestAccessToken) {
+        final response = await _retryWithAccessToken(
+          err.requestOptions,
+          latestAccessToken,
+        );
+        return handler.resolve(response);
+      }
+
       final newTokens = await authApi.refresh(tokens.refreshToken);
       await tokenStorage.saveTokens(newTokens);
 
-      // 使用新 token 重试原请求
-      final retryOptions = err.requestOptions;
-      retryOptions.headers['Authorization'] = 'Bearer ${newTokens.accessToken}';
-
-      final response = await Dio().fetch<dynamic>(retryOptions);
+      final response = await _retryWithAccessToken(
+        err.requestOptions,
+        newTokens.accessToken,
+      );
       return handler.resolve(response);
     } catch (_) {
       // refresh 失败 → 强制登出
       await tokenStorage.clearTokens();
-      onForceLogout();
+      await onForceLogout();
       return handler.next(err);
     }
+  }
+
+  Future<Response<dynamic>> _retryWithAccessToken(
+    RequestOptions requestOptions,
+    String accessToken,
+  ) {
+    requestOptions.headers['Authorization'] = 'Bearer $accessToken';
+    return retryRequest(requestOptions);
   }
 
   /// 从 401 响应体中提取错误类型
@@ -79,5 +111,14 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
       return (response!.data as Map<String, dynamic>)['type'] as String?;
     }
     return null;
+  }
+
+  String? _extractAccessToken(RequestOptions requestOptions) {
+    final header = requestOptions.headers['Authorization'];
+    if (header is! String || !header.startsWith('Bearer ')) {
+      return null;
+    }
+
+    return header.substring('Bearer '.length);
   }
 }

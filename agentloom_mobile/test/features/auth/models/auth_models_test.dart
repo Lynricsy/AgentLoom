@@ -89,12 +89,12 @@ void main() {
   });
 
   group('AuthState', () {
-    final user = LoginUser(
+    const user = LoginUser(
       id: 'user-001',
       email: 'fox@example.com',
       displayName: '酒狐',
     );
-    final tokens = AuthTokens(
+    const tokens = AuthTokens(
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
       expiresIn: 3600,
@@ -107,10 +107,10 @@ void main() {
     });
 
     test('支持 authenticated 变体', () {
-      final state = AuthState.authenticated(user: user, tokens: tokens);
+      const state = AuthState.authenticated(user: user, tokens: tokens);
 
       expect(state, isA<AuthStateAuthenticated>());
-      final authenticated = state as AuthStateAuthenticated;
+      const authenticated = state as AuthStateAuthenticated;
       expect(authenticated.user, user);
       expect(authenticated.tokens, tokens);
     });
@@ -119,27 +119,27 @@ void main() {
       const state = AuthState.unauthenticated(message: '登录失败');
 
       expect(state, isA<AuthStateUnauthenticated>());
-      final unauthenticated = state as AuthStateUnauthenticated;
+      const unauthenticated = state as AuthStateUnauthenticated;
       expect(unauthenticated.message, '登录失败');
     });
 
     test('支持 mfaRequired 变体', () {
-      final state = AuthState.mfaRequired(
+      const state = AuthState.mfaRequired(
         mfaToken: 'mfa-token',
-        factors: const [
+        factors: [
           {'id': 'factor-001', 'type': 'totp'},
         ],
       );
 
       expect(state, isA<AuthStateMfaRequired>());
-      final mfaRequired = state as AuthStateMfaRequired;
+      const mfaRequired = state as AuthStateMfaRequired;
       expect(mfaRequired.mfaToken, 'mfa-token');
       expect(mfaRequired.factors, hasLength(1));
     });
 
     test('authenticated 变体支持 copyWith', () {
-      final state = AuthState.authenticated(user: user, tokens: tokens);
-      final authenticated = state as AuthStateAuthenticated;
+      const state = AuthState.authenticated(user: user, tokens: tokens);
+      const authenticated = state as AuthStateAuthenticated;
       final copy = authenticated.copyWith(
         tokens: tokens.copyWith(expiresIn: 7200),
       );
@@ -149,8 +149,8 @@ void main() {
     });
 
     test('同一变体相等性比较正确', () {
-      final a = AuthState.authenticated(user: user, tokens: tokens);
-      final b = AuthState.authenticated(user: user, tokens: tokens);
+      const a = AuthState.authenticated(user: user, tokens: tokens);
+      const b = AuthState.authenticated(user: user, tokens: tokens);
 
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));

@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:agentloom_mobile/features/auth/models/auth_state.dart';
-import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
-import 'package:agentloom_mobile/features/auth/models/login_user.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/auth/screens/login_screen.dart';
@@ -25,7 +23,7 @@ void main() {
     mockAuthApi = MockAuthApi();
   });
 
-  Widget _buildTestWidget() {
+  Widget buildTestWidget() {
     return ProviderScope(
       overrides: [
         tokenStorageProvider.overrideWithValue(mockTokenStorage),
@@ -39,7 +37,7 @@ void main() {
     testWidgets('正确渲染标题、邮箱、密码和登录按钮', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       expect(find.text('AgentLoom'), findsOneWidget);
@@ -52,7 +50,7 @@ void main() {
     testWidgets('登录按钮初始状态为禁用', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
@@ -64,7 +62,7 @@ void main() {
     testWidgets('有效邮箱 + 非空密码 → 按钮可用', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       // 输入有效邮箱
@@ -82,7 +80,7 @@ void main() {
     testWidgets('无效邮箱 → 按钮禁用', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'not-an-email');
@@ -96,7 +94,7 @@ void main() {
     testWidgets('空密码 → 按钮禁用', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField).first, 'fox@test.com');
@@ -111,7 +109,7 @@ void main() {
     testWidgets('点击可切换密码可见性', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
-      await tester.pumpWidget(_buildTestWidget());
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       // 初始状态：密码隐藏
@@ -202,9 +200,9 @@ class _ErrorAuthNotifier extends AuthNotifier {
 class _MfaAuthNotifier extends AuthNotifier {
   @override
   Future<AuthState> build() async {
-    return AuthState.mfaRequired(
+    return const AuthState.mfaRequired(
       mfaToken: 'mfa-tk',
-      factors: const [
+      factors: [
         {'type': 'totp'},
       ],
     );

@@ -61,8 +61,7 @@ class TokenStorage {
 
   /// 检查是否有 stored tokens
   Future<bool> hasTokens() async {
-    final token = await _storage.read(key: TokenStorageKeys.accessToken);
-    return token != null;
+    return (await readTokens()) != null;
   }
 
   /// 清除所有 tokens

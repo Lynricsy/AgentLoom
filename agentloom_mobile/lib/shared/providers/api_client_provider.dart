@@ -31,9 +31,10 @@ final apiClientProvider = Provider<Dio>((ref) {
     AuthInterceptor(
       tokenStorage: tokenStorage,
       authApi: authApi,
-      onForceLogout: () {
-        ref.read(authProvider.notifier).forceLogout();
+      onForceLogout: () async {
+        await ref.read(authProvider.notifier).forceLogout();
       },
+      retryRequest: (options) => dio.fetch<dynamic>(options),
     ),
   );
 

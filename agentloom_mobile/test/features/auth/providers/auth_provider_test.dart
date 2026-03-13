@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:agentloom_mobile/features/auth/api/auth_api.dart';
@@ -20,12 +21,12 @@ void main() {
   late MockAuthApi mockAuthApi;
   late ProviderContainer container;
 
-  final testTokens = AuthTokens(
+  const testTokens = AuthTokens(
     accessToken: 'at',
     refreshToken: 'rt',
     expiresIn: 3600,
   );
-  final testUser = LoginUser(id: 'u1', email: 'fox@test.com');
+  const testUser = LoginUser(id: 'u1', email: 'fox@test.com');
 
   setUpAll(() {
     registerFallbackValue(testTokens);
@@ -34,6 +35,7 @@ void main() {
   setUp(() {
     mockTokenStorage = MockTokenStorage();
     mockAuthApi = MockAuthApi();
+    when(() => mockTokenStorage.clearTokens()).thenAnswer((_) async {});
 
     container = ProviderContainer(
       overrides: [
@@ -49,9 +51,15 @@ void main() {
 
   group('AuthNotifier.build (初始化)', () {
     test('有 stored tokens 时返回 authenticated', () async {
+      final storedTokens = AuthTokens(
+        accessToken: _createJwt(sub: 'user-1', email: 'stored@test.com'),
+        refreshToken: 'rt',
+        expiresIn: 3600,
+      );
+
       when(
         () => mockTokenStorage.readTokens(),
-      ).thenAnswer((_) async => testTokens);
+      ).thenAnswer((_) async => storedTokens);
 
       // 等待初始化完成
       final completer = Completer<void>();
@@ -65,6 +73,9 @@ void main() {
 
       final state = container.read(authProvider).value;
       expect(state, isA<AuthStateAuthenticated>());
+      final authenticated = state as AuthStateAuthenticated;
+      expect(authenticated.user.id, 'user-1');
+      expect(authenticated.user.email, 'stored@test.com');
     });
 
     test('无 stored tokens 时返回 unauthenticated', () async {
@@ -93,7 +104,7 @@ void main() {
     test('登录成功 → 保存 tokens 并返回 authenticated', () async {
       when(() => mockTokenStorage.saveTokens(any())).thenAnswer((_) async {});
       when(() => mockAuthApi.login('fox@test.com', 'pass')).thenAnswer(
-        (_) async => AuthLoginSuccess(user: testUser, tokens: testTokens),
+        (_) async => const AuthLoginSuccess(user: testUser, tokens: testTokens),
       );
 
       // 等待初始化
@@ -113,9 +124,9 @@ void main() {
 
     test('登录返回 MFA → 返回 mfaRequired', () async {
       when(() => mockAuthApi.login('mfa@test.com', 'pass')).thenAnswer(
-        (_) async => AuthLoginMfaRequired(
+        (_) async => const AuthLoginMfaRequired(
           mfaToken: 'mfa-tk',
-          factors: const [
+          factors: [
             {'type': 'totp'},
           ],
         ),
@@ -231,7 +242,7 @@ void main() {
 
   group('AuthNotifier.refreshTokens', () {
     test('刷新成功 → 保存新 tokens + 返回 true', () async {
-      final newTokens = AuthTokens(
+      const newTokens = AuthTokens(
         accessToken: 'new-at',
         refreshToken: 'new-rt',
         expiresIn: 7200,
@@ -273,6 +284,7 @@ void main() {
       expect(result, isFalse);
       final state = container.read(authProvider).value;
       expect(state, isA<AuthStateUnauthenticated>());
+      verify(() => mockTokenStorage.clearTokens()).called(1);
     });
 
     test('refresh API 失败 → 清除 tokens + 返回 false', () async {
@@ -296,19 +308,22 @@ void main() {
   });
 
   group('AuthNotifier.forceLogout', () {
-    test('强制登出 → unauthenticated + 自定义消息', () async {
+    test('强制登出 → 清除 tokens + unauthenticated + 自定义消息', () async {
       when(
         () => mockTokenStorage.readTokens(),
       ).thenAnswer((_) async => testTokens);
 
       await container.read(authProvider.future);
 
-      container.read(authProvider.notifier).forceLogout(message: 'Token 已吊销');
+      await container
+          .read(authProvider.notifier)
+          .forceLogout(message: 'Token 已吊销');
 
       final state = container.read(authProvider).value;
       expect(state, isA<AuthStateUnauthenticated>());
       final unauth = state as AuthStateUnauthenticated;
       expect(unauth.message, 'Token 已吊销');
+      verify(() => mockTokenStorage.clearTokens()).called(1);
     });
 
     test('强制登出 → 默认消息', () async {
@@ -318,7 +333,7 @@ void main() {
 
       await container.read(authProvider.future);
 
-      container.read(authProvider.notifier).forceLogout();
+      await container.read(authProvider.notifier).forceLogout();
 
       final state = container.read(authProvider).value;
       expect(state, isA<AuthStateUnauthenticated>());
@@ -346,4 +361,15 @@ void main() {
       expect(container.read(isAuthenticatedProvider), isFalse);
     });
   });
+}
+
+String _createJwt({required String sub, required String email}) {
+  final header = base64Url
+      .encode(utf8.encode(jsonEncode({'alg': 'none', 'typ': 'JWT'})))
+      .replaceAll('=', '');
+  final payload = base64Url
+      .encode(utf8.encode(jsonEncode({'sub': sub, 'email': email})))
+      .replaceAll('=', '');
+
+  return '$header.$payload.signature';
 }

@@ -1,9 +1,10 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/auth_api.dart';
 import '../models/auth_state.dart';
-import '../models/auth_tokens.dart';
 import '../models/login_user.dart';
 import 'token_storage_provider.dart';
 
@@ -26,12 +27,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       return const AuthState.unauthenticated();
     }
 
+    final user = _restoreUserFromAccessToken(tokens.accessToken);
+
     // 有 stored tokens → 标记为已认证
-    // user 信息暂用占位（后续可从 JWT 解析）
-    return AuthState.authenticated(
-      user: LoginUser(id: '', email: ''),
-      tokens: tokens,
-    );
+    return AuthState.authenticated(user: user, tokens: tokens);
   }
 
   /// 邮箱密码登录
@@ -77,7 +76,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
   Future<bool> refreshTokens() async {
     final tokens = await _tokenStorage.readTokens();
     if (tokens == null) {
-      state = const AsyncValue.data(AuthState.unauthenticated());
+      await forceLogout();
       return false;
     }
 
@@ -94,14 +93,19 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       }
       return true;
     } catch (_) {
-      await _tokenStorage.clearTokens();
-      state = const AsyncValue.data(AuthState.unauthenticated());
+      await forceLogout();
       return false;
     }
   }
 
   /// 强制登出（由 AuthInterceptor 调用）
-  void forceLogout({String? message}) {
+  Future<void> forceLogout({String? message}) async {
+    await _tokenStorage.clearTokens();
+
+    if (!ref.mounted) {
+      return;
+    }
+
     state = AsyncValue.data(
       AuthState.unauthenticated(message: message ?? '登录已过期，请重新登录'),
     );
@@ -120,10 +124,36 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
     final data = e.response?.data;
     if (data is Map<String, dynamic>) {
-      return (data['message'] ?? data['detail'] ?? '登录失败，请重试') as String;
+      final message = data['message'] ?? data['detail'];
+      if (message != null) {
+        return message.toString();
+      }
     }
 
     return '登录失败，请重试';
+  }
+
+  LoginUser _restoreUserFromAccessToken(String accessToken) {
+    try {
+      final parts = accessToken.split('.');
+      if (parts.length < 2) {
+        return const LoginUser(id: '', email: '');
+      }
+
+      final normalizedPayload = base64Url.normalize(parts[1]);
+      final payload = utf8.decode(base64Url.decode(normalizedPayload));
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, dynamic>) {
+        return const LoginUser(id: '', email: '');
+      }
+
+      return LoginUser(
+        id: decoded['sub']?.toString() ?? '',
+        email: decoded['email']?.toString() ?? '',
+      );
+    } catch (_) {
+      return const LoginUser(id: '', email: '');
+    }
   }
 }
 

@@ -26,7 +26,7 @@ void main() {
   });
 
   group('TokenStorage', () {
-    final tokens = AuthTokens(
+    const tokens = AuthTokens(
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
       expiresIn: 3600,
@@ -87,20 +87,32 @@ void main() {
       expect(result, isNull);
     });
 
-    test('hasTokens 在 access_token 存在时返回 true', () async {
+    test('hasTokens 在全部 token 字段完整时返回 true', () async {
       when(
         () => mockStorage.read(key: TokenStorageKeys.accessToken),
       ).thenAnswer((_) async => 'access-token');
+      when(
+        () => mockStorage.read(key: TokenStorageKeys.refreshToken),
+      ).thenAnswer((_) async => 'refresh-token');
+      when(
+        () => mockStorage.read(key: TokenStorageKeys.tokenExpiresIn),
+      ).thenAnswer((_) async => '3600');
 
       final result = await tokenStorage.hasTokens();
 
       expect(result, isTrue);
     });
 
-    test('hasTokens 在 access_token 缺失时返回 false', () async {
+    test('hasTokens 在 token 字段不完整时返回 false', () async {
       when(
         () => mockStorage.read(key: TokenStorageKeys.accessToken),
+      ).thenAnswer((_) async => 'access-token');
+      when(
+        () => mockStorage.read(key: TokenStorageKeys.refreshToken),
       ).thenAnswer((_) async => null);
+      when(
+        () => mockStorage.read(key: TokenStorageKeys.tokenExpiresIn),
+      ).thenAnswer((_) async => '3600');
 
       final result = await tokenStorage.hasTokens();
 

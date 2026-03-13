@@ -69,11 +69,11 @@ fvm flutter test --coverage
 
 ## 测试模式
 
-- **168 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth
+- **172 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose StateError
 - Widget/Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock: `mocktail` 库，测试工厂函数集中在 `test/helpers/test_helpers.dart`
-- AuthInterceptor 测试使用 `runZonedGuarded` 隔离 `ErrorInterceptorHandler.next()` 的 unhandled async error
+- AuthInterceptor 测试使用自定义 capturing handler 断言 `next/resolve/reject`，避免 `runZonedGuarded` 隐藏真实回归
 - AuthProvider 测试需 `registerFallbackValue(testTokens)` for mocktail `any()` matcher
 
 ## 当前注意事项
@@ -81,8 +81,10 @@ fvm flutter test --coverage
 - `envProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入真实环境
 - `secureStorageProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入 `FlutterSecureStorage()` 实例
 - AuthApi 使用独立 `authDioProvider` (无 AuthInterceptor) 避免循环依赖
-- AuthInterceptor 处理 4 种 401 type: `token-expired` (刷新重试), `token-revoked`/`token-invalid`/`token-missing` (强制登出)
-- GoRouter redirect guard 通过 `AuthRouteNotifier` (ChangeNotifier) 桥接 Riverpod authProvider
+- AuthInterceptor 处理 4 种 401 type: `token-expired` (刷新重试), `token-revoked`/`token-invalid`/`token-missing` (强制登出)；若检测到其他请求已完成 refresh，会直接复用最新 token 重试，避免重复 refresh
+- GoRouter redirect guard 通过 `AuthRouteNotifier` (ChangeNotifier) 桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由，避免 storage/provider 双源竞态
+- `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 access/refresh/expires_in 三项完整，避免残缺凭证误判为已登录
+- Android `AndroidManifest.xml` 已关闭 `allowBackup`，避免安全存储内容进入系统备份
 - OAuth、MFA UI、注册页面不在 7-3a 范围内，已留 TODO 占位
 - FCM、深色主题均为后续 Story 的 TODO 占位
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载

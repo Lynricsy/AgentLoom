@@ -1,4 +1,5 @@
 import 'package:agentloom_mobile/config/env.dart';
+import 'package:agentloom_mobile/shared/interceptors/auth_interceptor.dart';
 import 'package:agentloom_mobile/shared/providers/api_client_provider.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:dio/dio.dart';
@@ -50,6 +51,14 @@ void main() {
     test('Content-Type header is application/json', () {
       final dio = container.read(apiClientProvider);
       expect(dio.options.headers['Content-Type'], 'application/json');
+    });
+
+    test('attaches AuthInterceptor', () {
+      final dio = container.read(apiClientProvider);
+      expect(
+        dio.interceptors.any((interceptor) => interceptor is AuthInterceptor),
+        isTrue,
+      );
     });
 
     test('is singleton within same ProviderScope', () {

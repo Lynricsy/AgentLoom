@@ -1,6 +1,5 @@
 import 'package:agentloom_mobile/features/auth/api/auth_api.dart';
 import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
-import 'package:agentloom_mobile/features/auth/models/login_user.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -16,7 +15,7 @@ void main() {
     authApi = AuthApi(mockDio);
   });
 
-  RequestOptions _reqOpts() => RequestOptions();
+  RequestOptions reqOpts() => RequestOptions();
 
   group('AuthApi.login', () {
     test('正常登录返回 AuthLoginSuccess', () async {
@@ -42,7 +41,7 @@ void main() {
             },
           },
           statusCode: 200,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -75,7 +74,7 @@ void main() {
             },
           },
           statusCode: 200,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -104,7 +103,7 @@ void main() {
             },
           },
           statusCode: 200,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -125,7 +124,7 @@ void main() {
       ).thenThrow(
         DioException(
           type: DioExceptionType.connectionTimeout,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -157,7 +156,7 @@ void main() {
             },
           },
           statusCode: 201,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -185,7 +184,7 @@ void main() {
             'data': {'email_confirmation_required': true},
           },
           statusCode: 200,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -213,7 +212,7 @@ void main() {
             },
           },
           statusCode: 201,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -250,7 +249,7 @@ void main() {
             },
           },
           statusCode: 200,
-          requestOptions: _reqOpts(),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -270,8 +269,8 @@ void main() {
       ).thenThrow(
         DioException(
           type: DioExceptionType.badResponse,
-          response: Response(statusCode: 401, requestOptions: _reqOpts()),
-          requestOptions: _reqOpts(),
+          response: Response(statusCode: 401, requestOptions: reqOpts()),
+          requestOptions: reqOpts(),
         ),
       );
 
@@ -285,7 +284,7 @@ void main() {
         () =>
             mockDio.post<void>('/auth/logout', options: any(named: 'options')),
       ).thenAnswer(
-        (_) async => Response(statusCode: 204, requestOptions: _reqOpts()),
+        (_) async => Response(statusCode: 204, requestOptions: reqOpts()),
       );
 
       await authApi.logout('my-access-token');
