@@ -131,4 +131,26 @@ describe('KnowledgeBaseConfigPanel', () => {
     expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
     expect(onValidationChange).toHaveBeenLastCalledWith(false)
   })
+
+  it('shows a warning when the configured knowledge base is no longer available', () => {
+    mocks.useAllKnowledgeBases.mockReturnValue({
+      data: [createKnowledgeBase({ id: 'kb-2', name: '仍然存在的知识库' })],
+      isLoading: false,
+    })
+
+    render(
+      <KnowledgeBaseConfigPanel
+        config={{ knowledgeBaseId: 'kb-missing' }}
+        onApply={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('当前已选择的知识库不可用或已删除，请重新选择。'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('ID: kb-missing')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('knowledge-base-missing-warning'),
+    ).toBeInTheDocument()
+  })
 })

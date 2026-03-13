@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
@@ -8,6 +9,7 @@ import { Pagination } from '@/shared/components'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteDocument,
@@ -22,6 +24,7 @@ import {
 } from '../hooks/useKnowledgeBaseSocket'
 import {
   formatFileSize,
+  type DocumentStatus,
   getDocumentStatusLabel,
   getKnowledgeBaseStatusLabel,
   type KnowledgeBaseDocument,
@@ -30,6 +33,38 @@ import {
 
 const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
 const DOCUMENT_PAGE_SIZE = 20
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+const SUPPORTED_DOCUMENT_EXTENSIONS = ['.pdf', '.txt', '.md', '.docx'] as const
+const FILE_INPUT_ACCEPT = [
+  '.pdf',
+  '.txt',
+  '.md',
+  '.docx',
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+].join(',')
+
+type DocumentStatusFilter =
+  | 'all'
+  | 'uploading'
+  | 'processing'
+  | 'indexing'
+  | 'ready'
+  | 'error'
+
+const DOCUMENT_STATUS_FILTER_OPTIONS: ReadonlyArray<{
+  value: DocumentStatusFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'uploading', label: '上传中' },
+  { value: 'processing', label: '处理中' },
+  { value: 'indexing', label: '索引中' },
+  { value: 'ready', label: '就绪' },
+  { value: 'error', label: '错误' },
+]
 
 const knowledgeBaseSettingsSchema = z.object({
   chunkSize: z
@@ -55,6 +90,51 @@ interface UploadFeedback {
   fileName: string
   status: 'uploading' | 'failed'
   message?: string
+}
+
+function isDocumentStatusFilter(value: string): value is DocumentStatusFilter {
+  return DOCUMENT_STATUS_FILTER_OPTIONS.some((option) => option.value === value)
+}
+
+function mapStatusFilterToDocumentStatus(
+  filter: DocumentStatusFilter,
+): DocumentStatus | undefined {
+  switch (filter) {
+    case 'uploading':
+      return 'uploaded'
+    case 'processing':
+    case 'indexing':
+      return 'processing'
+    case 'ready':
+      return 'ready'
+    case 'error':
+      return 'failed'
+    default:
+      return undefined
+  }
+}
+
+function getFileExtension(fileName: string): string {
+  const lastDotIndex = fileName.lastIndexOf('.')
+  if (lastDotIndex < 0) {
+    return ''
+  }
+
+  return fileName.slice(lastDotIndex).toLowerCase()
+}
+
+function validateUploadFile(file: File): string | null {
+  const extension = getFileExtension(file.name)
+
+  if (!SUPPORTED_DOCUMENT_EXTENSIONS.includes(extension as (typeof SUPPORTED_DOCUMENT_EXTENSIONS)[number])) {
+    return '仅支持 PDF、TXT、Markdown 和 DOCX 文件'
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    return `文件大小不能超过 ${formatFileSize(MAX_UPLOAD_SIZE_BYTES)}`
+  }
+
+  return null
 }
 
 function getStatusBadgeClass(status: string): string {
@@ -123,10 +203,16 @@ export function KnowledgeBaseDetailPage({
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadFeedbackSequenceRef = useRef(0)
+  const deleteRestoreFocusRef = useRef<HTMLElement | null>(null)
   const { notify } = useToast()
   const [isDragOver, setIsDragOver] = useState(false)
   const [documentPage, setDocumentPage] = useState(1)
+  const [statusFilter, setStatusFilter] =
+    useState<DocumentStatusFilter>('all')
+  const [deleteTarget, setDeleteTarget] =
+    useState<KnowledgeBaseDocument | null>(null)
   const [uploadFeedbacks, setUploadFeedbacks] = useState<UploadFeedback[]>([])
+  const documentStatus = mapStatusFilterToDocumentStatus(statusFilter)
 
   const {
     data: knowledgeBase,
@@ -143,6 +229,7 @@ export function KnowledgeBaseDetailPage({
     {
       page: documentPage,
       pageSize: DOCUMENT_PAGE_SIZE,
+      status: documentStatus,
     },
   )
   const uploadMutation = useUploadDocument()
@@ -213,6 +300,21 @@ export function KnowledgeBaseDetailPage({
         const feedbackId = `${file.name}-${file.lastModified}-${file.size}-${uploadFeedbackSequenceRef.current}`
         uploadFeedbackSequenceRef.current += 1
 
+        const validationError = validateUploadFile(file)
+
+        if (validationError) {
+          setUploadFeedbacks((current) => [
+            ...current,
+            {
+              id: feedbackId,
+              fileName: file.name,
+              status: 'failed',
+              message: validationError,
+            },
+          ])
+          return
+        }
+
         setUploadFeedbacks((current) => [
           ...current,
           {
@@ -269,22 +371,37 @@ export function KnowledgeBaseDetailPage({
   }, [])
 
   const handleDeleteDoc = useCallback(
-    (doc: KnowledgeBaseDocument) => {
-      const confirmed = window.confirm(
-        `确认删除文档“${doc.fileName}”吗？相关分块记录会一并清理。`,
-      )
-
-      if (!confirmed) {
-        return
-      }
-
-      deleteMutation.mutate({
-        knowledgeBaseId,
-        documentId: doc.id,
-      })
+    (event: React.MouseEvent<HTMLButtonElement>, doc: KnowledgeBaseDocument) => {
+      deleteRestoreFocusRef.current = event.currentTarget
+      setDeleteTarget(doc)
     },
-    [knowledgeBaseId, deleteMutation],
+    [],
   )
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteTarget) {
+      return
+    }
+
+    deleteMutation.mutate(
+      {
+        knowledgeBaseId,
+        documentId: deleteTarget.id,
+      },
+      {
+        onSettled: () => setDeleteTarget(null),
+      },
+    )
+  }, [deleteMutation, deleteTarget, knowledgeBaseId])
+
+  const handleStatusFilterChange = useCallback((value: string) => {
+    if (!isDocumentStatusFilter(value)) {
+      return
+    }
+
+    setStatusFilter(value)
+    setDocumentPage(1)
+  }, [])
 
   const handleResetSettings = useCallback(() => {
     if (!knowledgeBase) {
@@ -399,6 +516,7 @@ export function KnowledgeBaseDetailPage({
           ref={fileInputRef}
           type="file"
           multiple
+          accept={FILE_INPUT_ACCEPT}
           className="hidden"
           onChange={handleFileInputChange}
           data-testid="file-input"
@@ -573,128 +691,188 @@ export function KnowledgeBaseDetailPage({
         </form>
       </div>
 
-      {docsLoading && (
-        <p className="text-center text-muted-foreground">加载文档中...</p>
-      )}
-
-      {!docsLoading && documents.length === 0 && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2">
-          <FileText className="h-12 w-12 text-muted-foreground" />
-          <p className="text-muted-foreground">还没有文档，上传文件开始使用</p>
-        </div>
-      )}
-
-      {!docsLoading && documents.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
             <h2 className="text-lg font-semibold">文档列表</h2>
             <p className="text-xs text-muted-foreground">
               共 {documentResponse?.meta.total ?? documents.length} 个文档
             </p>
           </div>
+          <Tabs
+            value={statusFilter}
+            defaultValue="all"
+            onValueChange={handleStatusFilterChange}
+            className="w-full md:w-auto"
+          >
+            <TabsList className="grid w-full grid-cols-3 gap-1 md:grid-cols-6 md:w-auto">
+              {DOCUMENT_STATUS_FILTER_OPTIONS.map((option) => (
+                <TabsTrigger
+                  key={option.value}
+                  value={option.value}
+                  className="text-xs"
+                >
+                  {option.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
 
-          <div className="divide-y divide-border rounded-lg border border-border">
-            {documents.map((doc) => {
-              const liveEvent = documentEvents[doc.id]
-              const displayStatus = liveEvent?.status ?? doc.status
-              const displayErrorMessage =
-                liveEvent?.errorMessage ?? doc.errorMessage
-              const displayProgress =
-                displayStatus === 'processing' ? liveEvent?.progress : undefined
+        {docsLoading && (
+          <p className="mt-4 text-center text-muted-foreground">加载文档中...</p>
+        )}
 
-              return (
-                <div key={doc.id} className="flex items-start justify-between p-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{doc.fileName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
-                        {formatFileSize(doc.sizeBytes)} · 上传于{' '}
-                        {formatDateTime(doc.createdAt)}
-                      </p>
-                      {displayStatus === 'failed' && (
-                        <p className="text-xs text-destructive">
-                          {displayErrorMessage ??
-                            '处理失败，请查看服务端日志后重试上传。'}
+        {!docsLoading && documents.length === 0 && (
+          <div className="mt-4 flex flex-col items-center justify-center gap-2 py-8">
+            <FileText className="h-12 w-12 text-muted-foreground" />
+            <p className="text-muted-foreground">
+              {statusFilter === 'all'
+                ? '还没有文档，上传文件开始使用'
+                : '当前筛选条件下暂无文档'}
+            </p>
+          </div>
+        )}
+
+        {!docsLoading && documents.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="divide-y divide-border rounded-lg border border-border">
+              {documents.map((doc) => {
+                const liveEvent = documentEvents[doc.id]
+                const displayStatus = liveEvent?.status ?? doc.status
+                const displayErrorMessage =
+                  liveEvent?.errorMessage ?? doc.errorMessage
+                const displayProgress =
+                  displayStatus === 'processing' ? liveEvent?.progress : undefined
+
+                return (
+                  <div key={doc.id} className="flex items-start justify-between p-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{doc.fileName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
+                          {formatFileSize(doc.sizeBytes)} · 上传于{' '}
+                          {formatDateTime(doc.createdAt)}
                         </p>
-                      )}
-                      {displayProgress && (
-                        <div
-                          className="mt-2 space-y-1"
-                          data-testid={`document-progress-${doc.id}`}
-                        >
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{getProgressStageLabel(displayProgress.stage)}</span>
-                            <span>{displayProgress.percentage}%</span>
-                          </div>
-                          <div
-                            role="progressbar"
-                            aria-label={`${doc.fileName} 处理进度`}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={displayProgress.percentage}
-                            className="h-1.5 overflow-hidden rounded-full bg-muted"
-                          >
-                            <div
-                              className="h-full rounded-full bg-blue-500 transition-[width]"
-                              style={{ width: `${displayProgress.percentage}%` }}
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            第 {displayProgress.currentStep}/{displayProgress.totalSteps}{' '}
-                            步
+                        {displayStatus === 'failed' && (
+                          <p className="text-xs text-destructive">
+                            {displayErrorMessage ??
+                              '处理失败，请查看服务端日志后重试上传。'}
                           </p>
-                        </div>
-                      )}
+                        )}
+                        {displayProgress && (
+                          <div
+                            className="mt-2 space-y-1"
+                            data-testid={`document-progress-${doc.id}`}
+                          >
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{getProgressStageLabel(displayProgress.stage)}</span>
+                              <span>{displayProgress.percentage}%</span>
+                            </div>
+                            <div
+                              role="progressbar"
+                              aria-label={`${doc.fileName} 处理进度`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={displayProgress.percentage}
+                              className="h-1.5 overflow-hidden rounded-full bg-muted"
+                            >
+                              <div
+                                className="h-full rounded-full bg-blue-500 transition-[width]"
+                                style={{ width: `${displayProgress.percentage}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              第 {displayProgress.currentStep}/
+                              {displayProgress.totalSteps} 步
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs',
+                          getStatusBadgeClass(displayStatus),
+                        )}
+                      >
+                        {getDocumentStatusLabel(displayStatus)}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event) => handleDeleteDoc(event, doc)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label={`删除 ${doc.fileName}`}
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-xs',
-                        getStatusBadgeClass(displayStatus),
-                      )}
-                    >
-                      {getDocumentStatusLabel(displayStatus)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteDoc(doc)}
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={`删除 ${doc.fileName}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+
+            {documentResponse && documentResponse.meta.totalPages > 1 && (
+              <Pagination
+                page={documentResponse.meta.page}
+                totalPages={documentResponse.meta.totalPages}
+                onPageChange={setDocumentPage}
+                isLoading={docsLoading}
+              />
+            )}
           </div>
-
-          {documentResponse && (
-            <Pagination
-              page={documentResponse.meta.page}
-              totalPages={documentResponse.meta.totalPages}
-              onPageChange={setDocumentPage}
-              isLoading={docsLoading}
-            />
-          )}
-        </div>
-      )}
-
-      {!docsLoading &&
-        documents.length === 0 &&
-        documentResponse &&
-        documentResponse.meta.totalPages > 1 && (
-          <Pagination
-            page={documentResponse.meta.page}
-            totalPages={documentResponse.meta.totalPages}
-            onPageChange={setDocumentPage}
-            isLoading={docsLoading}
-          />
         )}
+      </div>
+
+      <Dialog.Root
+        open={Boolean(deleteTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setDeleteTarget(null)
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
+            onCloseAutoFocus={(event) => {
+              const element = deleteRestoreFocusRef.current
+              if (element) {
+                event.preventDefault()
+                element.focus()
+              }
+              deleteRestoreFocusRef.current = null
+            }}
+          >
+            <div className="space-y-2">
+              <Dialog.Title className="text-lg font-semibold text-foreground">
+                删除文档
+              </Dialog.Title>
+              <Dialog.Description className="text-sm text-muted-foreground">
+                确认删除文档「{deleteTarget?.fileName}」吗？相关分块记录会一并清理。
+              </Dialog.Description>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Dialog.Close asChild>
+                <Button variant="outline">取消</Button>
+              </Dialog.Close>
+              <Button
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleConfirmDelete}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? '删除中...' : '确认删除'}
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }

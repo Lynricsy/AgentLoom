@@ -46,7 +46,7 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground/60 italic">
         <BookOpen className="h-3.5 w-3.5 shrink-0" />
-        <span>未配置</span>
+        <span>选择知识库</span>
       </div>
     )
   }
@@ -59,7 +59,7 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
   const documentCount = readNumericValue(config.knowledgeBaseDocumentCount)
   const chunkCount = readNumericValue(config.knowledgeBaseChunkCount)
   const status = readKnowledgeBaseStatus(config.knowledgeBaseStatus)
-  const lod = zoom >= 1.15 ? 'high' : zoom >= 0.85 ? 'medium' : 'low'
+  const lod = zoom >= 0.7 ? 'high' : zoom >= 0.4 ? 'medium' : 'low'
 
   if (lod === 'low') {
     return (

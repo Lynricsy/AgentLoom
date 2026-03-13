@@ -95,6 +95,8 @@ export const KnowledgeBaseConfigPanel = memo(
     )
 
     const selectedKnowledgeBase = knowledgeBases.find((kb) => kb.id === currentId)
+    const showMissingKnowledgeBaseWarning =
+      Boolean(currentId) && !selectedKnowledgeBase && !isLoading
 
     return (
       <div className="space-y-4 px-4 py-4">
@@ -166,6 +168,20 @@ export const KnowledgeBaseConfigPanel = memo(
               <span>{getKnowledgeBaseStatusLabel(selectedKnowledgeBase.status)}</span>
             </div>
             <p className="break-all text-muted">ID: {currentId}</p>
+          </div>
+        )}
+
+        {showMissingKnowledgeBaseWarning && (
+          <div
+            className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+            data-testid="knowledge-base-missing-warning"
+          >
+            <p className="font-medium text-amber-700 dark:text-amber-300">
+              当前已选择的知识库不可用或已删除，请重新选择。
+            </p>
+            <p className="break-all text-amber-700/80 dark:text-amber-200/80">
+              ID: {currentId}
+            </p>
           </div>
         )}
       </div>

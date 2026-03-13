@@ -122,6 +122,7 @@ function setupMocks(overrides: {
   })
   mocks.useDeleteDocument.mockReturnValue({
     mutate: deleteFn,
+    isPending: false,
   })
   mocks.useUpdateKnowledgeBaseSettings.mockReturnValue({
     mutateAsync: updateSettingsFn,
@@ -137,7 +138,6 @@ function setupMocks(overrides: {
 describe('KnowledgeBaseDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('显示知识库实时设置', () => {
@@ -270,6 +270,10 @@ describe('KnowledgeBaseDetailPage', () => {
     // 验证 file input 存在且隐藏
     expect(fileInput).toBeInTheDocument()
     expect(fileInput.type).toBe('file')
+    expect(fileInput.accept).toContain('.pdf')
+    expect(fileInput.accept).toContain('.txt')
+    expect(fileInput.accept).toContain('.md')
+    expect(fileInput.accept).toContain('.docx')
   })
 
   it('上传文件时调用 mutation', async () => {
@@ -359,19 +363,106 @@ describe('KnowledgeBaseDetailPage', () => {
     )
   })
 
-  it('删除文档时调用 mutation', async () => {
+  it('前端拦截不支持的文件类型并显示错误反馈', () => {
+    const { uploadFn } = setupMocks()
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
+    const invalidFile = new File(['content'], 'invalid.png', {
+      type: 'image/png',
+    })
+
+    fireEvent.change(fileInput, {
+      target: { files: [invalidFile] },
+    })
+
+    expect(screen.getByText('上传队列')).toBeInTheDocument()
+    expect(screen.getByText('invalid.png')).toBeInTheDocument()
+    expect(
+      screen.getByText('仅支持 PDF、TXT、Markdown 和 DOCX 文件'),
+    ).toBeInTheDocument()
+    expect(uploadFn).not.toHaveBeenCalled()
+  })
+
+  it('前端拦截超大文件并显示错误反馈', () => {
+    const { uploadFn } = setupMocks()
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
+    const largeFile = new File(['content'], 'too-large.pdf', {
+      type: 'application/pdf',
+    })
+    Object.defineProperty(largeFile, 'size', {
+      value: 60 * 1024 * 1024,
+    })
+
+    fireEvent.change(fileInput, {
+      target: { files: [largeFile] },
+    })
+
+    expect(screen.getByText('too-large.pdf')).toBeInTheDocument()
+    expect(screen.getByText('文件大小不能超过 50.0 MB')).toBeInTheDocument()
+    expect(uploadFn).not.toHaveBeenCalled()
+  })
+
+  it('删除文档时通过确认对话框调用 mutation', async () => {
     const doc = createDocument({ id: 'doc-del', fileName: '删除我.pdf' })
     const { deleteFn } = setupMocks({ documents: [doc] })
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
     await userEvent.click(screen.getByLabelText('删除 删除我.pdf'))
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      '确认删除文档“删除我.pdf”吗？相关分块记录会一并清理。',
+    expect(screen.getByText('删除文档')).toBeInTheDocument()
+    expect(
+      screen.getByText('确认删除文档「删除我.pdf」吗？相关分块记录会一并清理。'),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '确认删除' }))
+
+    expect(deleteFn).toHaveBeenCalledWith(
+      {
+        knowledgeBaseId: 'kb-1',
+        documentId: 'doc-del',
+      },
+      expect.objectContaining({
+        onSettled: expect.any(Function),
+      }),
     )
-    expect(deleteFn).toHaveBeenCalledWith({
-      knowledgeBaseId: 'kb-1',
-      documentId: 'doc-del',
+  })
+
+  it('切换状态筛选时将视图标签映射为后端状态参数', async () => {
+    setupMocks({
+      documents: [
+        createDocument({ id: 'doc-filter', fileName: '筛选文档.pdf' }),
+      ],
+    })
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
+      page: 1,
+      pageSize: 20,
+      status: undefined,
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '上传中' }))
+    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
+      page: 1,
+      pageSize: 20,
+      status: 'uploaded',
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '索引中' }))
+    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
+      page: 1,
+      pageSize: 20,
+      status: 'processing',
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '错误' }))
+    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
+      page: 1,
+      pageSize: 20,
+      status: 'failed',
     })
   })
 

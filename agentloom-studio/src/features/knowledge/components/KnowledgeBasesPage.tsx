@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import * as Dialog from '@radix-ui/react-dialog'
 import { Plus, Search, Database, Trash2 } from 'lucide-react'
 import { Pagination } from '@/shared/components'
 import { Button } from '@/shared/ui/button'
@@ -109,6 +108,15 @@ export function KnowledgeBasesPage() {
     }
   }, [page, paginationMeta])
 
+  const restoreDeleteFocus = useCallback(() => {
+    const element = deleteRestoreFocusRef.current
+    deleteRestoreFocusRef.current = null
+
+    if (element?.isConnected) {
+      element.focus()
+    }
+  }, [])
+
   const handleCreate = useCallback(() => {
     if (!newKbName.trim()) return
     createMutation.mutate(
@@ -117,14 +125,18 @@ export function KnowledgeBasesPage() {
         description: newKbDescription.trim() || undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (createdKnowledgeBase) => {
           setShowCreateDialog(false)
           setNewKbName('')
           setNewKbDescription('')
+          void navigate({
+            to: '/settings/knowledge-bases/$knowledgeBaseId',
+            params: { knowledgeBaseId: createdKnowledgeBase.id },
+          })
         },
       },
     )
-  }, [newKbName, newKbDescription, createMutation])
+  }, [createMutation, navigate, newKbDescription, newKbName])
 
   const handleDelete = useCallback(
     (e: React.MouseEvent, kb: KnowledgeBase) => {
@@ -138,9 +150,17 @@ export function KnowledgeBasesPage() {
   const handleConfirmDelete = useCallback(() => {
     if (!deleteTarget) return
     deleteMutation.mutate(deleteTarget.id, {
-      onSettled: () => setDeleteTarget(null),
+      onSettled: () => {
+        setDeleteTarget(null)
+        restoreDeleteFocus()
+      },
     })
-  }, [deleteTarget, deleteMutation])
+  }, [deleteTarget, deleteMutation, restoreDeleteFocus])
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteTarget(null)
+    restoreDeleteFocus()
+  }, [restoreDeleteFocus])
 
   const handleCardClick = useCallback(
     (kb: KnowledgeBase) => {
@@ -260,6 +280,35 @@ export function KnowledgeBasesPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+
+                {deleteTarget?.id === kb.id && (
+                  <div
+                    className="absolute right-3 top-12 z-10 w-72 rounded-xl border border-border bg-surface-elevated p-4 shadow-2xl"
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        删除知识库
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        确认删除知识库「{deleteTarget.name}」吗？该操作会同时删除其下文档与分块记录，且不可恢复。
+                      </p>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={handleCancelDelete}>
+                        取消
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={handleConfirmDelete}
+                        disabled={deleteMutation.isPending}
+                      >
+                        {deleteMutation.isPending ? '删除中...' : '确认删除'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -342,52 +391,6 @@ export function KnowledgeBasesPage() {
         </div>
       )}
 
-      <Dialog.Root
-        open={Boolean(deleteTarget)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setDeleteTarget(null)
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
-          <Dialog.Content
-            aria-describedby="kb-delete-description"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
-            onCloseAutoFocus={(event) => {
-              const el = deleteRestoreFocusRef.current
-              if (el) {
-                event.preventDefault()
-                el.focus()
-              }
-              deleteRestoreFocusRef.current = null
-            }}
-          >
-            <div className="space-y-2">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                删除知识库
-              </Dialog.Title>
-              <Dialog.Description
-                className="text-sm text-muted-foreground"
-                id="kb-delete-description"
-              >
-                确认删除知识库「{deleteTarget?.name}」吗？该操作会同时删除其下文档与分块记录，且不可恢复。
-              </Dialog.Description>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={handleConfirmDelete}
-                disabled={deleteMutation.isPending}
-              >
-                {deleteMutation.isPending ? '删除中...' : '确认删除'}
-              </Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
     </div>
   )
 }

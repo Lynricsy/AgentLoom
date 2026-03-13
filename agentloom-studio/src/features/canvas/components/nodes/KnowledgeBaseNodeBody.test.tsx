@@ -16,11 +16,11 @@ describe('KnowledgeBaseNodeBody', () => {
   it('在未配置时显示占位状态', () => {
     render(<KnowledgeBaseNodeBody config={{}} />)
 
-    expect(screen.getByText('未配置')).toBeInTheDocument()
+    expect(screen.getByText('选择知识库')).toBeInTheDocument()
   })
 
   it('在低缩放级别只显示名称', () => {
-    mockUseViewport.mockReturnValue({ zoom: 0.8 })
+    mockUseViewport.mockReturnValue({ zoom: 0.3 })
 
     render(
       <KnowledgeBaseNodeBody
@@ -38,7 +38,7 @@ describe('KnowledgeBaseNodeBody', () => {
   })
 
   it('在中缩放级别显示名称和文档数', () => {
-    mockUseViewport.mockReturnValue({ zoom: 0.95 })
+    mockUseViewport.mockReturnValue({ zoom: 0.55 })
 
     render(
       <KnowledgeBaseNodeBody
@@ -56,7 +56,7 @@ describe('KnowledgeBaseNodeBody', () => {
   })
 
   it('在高缩放级别显示完整知识库摘要', () => {
-    mockUseViewport.mockReturnValue({ zoom: 1.2 })
+    mockUseViewport.mockReturnValue({ zoom: 0.9 })
 
     render(
       <KnowledgeBaseNodeBody

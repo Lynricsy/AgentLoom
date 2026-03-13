@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { KnowledgeBasesPage } from './KnowledgeBasesPage'
@@ -250,6 +250,25 @@ describe('KnowledgeBasesPage', () => {
       { name: '新知识库', description: '新描述' },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
+
+    const mutateOptions = mutateFn.mock.calls[0]?.[1]
+    expect(mutateOptions).toBeDefined()
+
+    if (!mutateOptions?.onSuccess) {
+      throw new Error('创建知识库 mutation 缺少 onSuccess 回调')
+    }
+
+    const onSuccess = mutateOptions.onSuccess as (
+      knowledgeBase: KnowledgeBase,
+    ) => void
+    act(() => {
+      onSuccess(createKnowledgeBase({ id: 'kb-new' }))
+    })
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/settings/knowledge-bases/$knowledgeBaseId',
+      params: { knowledgeBaseId: 'kb-new' },
+    })
   })
 
   it('创建按钮在名称为空时禁用', async () => {
