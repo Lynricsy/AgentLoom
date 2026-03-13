@@ -2,7 +2,7 @@
 
 ## 概览
 
-AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4：
+AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a：
 
 - Riverpod ProviderScope 启动入口
 - GoRouter + `StatefulShellRoute.indexedStack` 三标签导航 (Dashboard / Workflows / Settings)
@@ -11,8 +11,9 @@ AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4：
 - 完整认证链路：LoginScreen → AuthApi → AuthNotifier → TokenStorage (flutter_secure_storage)
 - GoRouter redirect guard：未认证 → /login，已认证 + /login → /dashboard
 - 工作流列表页（搜索、状态筛选、下拉刷新、无限滚动）
-- 工作流详情页（元数据卡片、执行历史、FAB 运行按钮）
-- Dashboard 页（快速访问工作流、最近执行）
+- 工作流详情页（元数据卡片、执行历史、FAB 运行按钮）→ 点击执行记录跳转执行监控
+- Dashboard 页（快速访问工作流、最近执行）→ 点击最近执行跳转执行监控
+- 执行监控：Socket.IO 实时状态 + REST 5s 轮询降级，状态头 + 告警横幅 + 步骤时间线
 
 ## 目录约定
 
@@ -30,16 +31,22 @@ lib/
 │   ├── dashboard/
 │   │   ├── providers/   # recentWorkflowsProvider
 │   │   ├── screens/     # DashboardScreen
-│   │   └── widgets/     # RecentExecutionsSection, QuickAccessSection, RecentExecutionCard
+│   │   └── widgets/     # RecentExecutionsSection (onExecutionTap callback), QuickAccessSection, RecentExecutionCard
+│   ├── execution/
+│   │   ├── models/      # Freezed: ExecutionEventEnvelope, ExecutionStateSnapshot, StepSnapshot, ExecutionStatus/StepStatus enums, SubscribeAck
+│   │   ├── services/    # ExecutionSocketService (Socket.IO /execution namespace, JWT auth, subscribe/unsubscribe, event streams)
+│   │   ├── providers/   # ExecutionMonitorNotifier (AsyncNotifier.family, sealed state machine, WS→polling fallback)
+│   │   ├── screens/     # ExecutionMonitorScreen (ConsumerStatefulWidget, watches executionMonitorProvider)
+│   │   └── widgets/     # ExecutionStatusHeader, ExecutionAlertBanner, StepTimeline, StepTimelineItem, ConnectionModeIndicator
 │   ├── settings/
 │   │   └── screens/     # SettingsScreen (占位)
 │   └── workflows/
-│       ├── api/         # WorkflowApi (Dio wrapper) + workflowApiProvider
+│       ├── api/         # WorkflowApi (Dio wrapper: list/get/executions/run/getExecution) + workflowApiProvider
 │       ├── models/      # Freezed: WorkflowDefinitionDto, ExecutionSummaryDto
 │       ├── providers/   # WorkflowListNotifier, workflowDetailProvider, workflowExecutionsProvider
 │       ├── screens/     # WorkflowsScreen (列表), WorkflowDetailScreen (详情)
 │       └── widgets/     # WorkflowCard, WorkflowStatusChip, ExecutionSummaryTile
-├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard) 与路由名
+├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 顶层路由) 与路由名
 └── shared/
     ├── interceptors/    # AuthInterceptor (QueuedInterceptorsWrapper, 401 刷新 + 重试)
     ├── models/          # PaginatedResponse<T> + PaginationMeta
@@ -69,7 +76,7 @@ fvm flutter test --coverage
 
 ## 测试模式
 
-- **172 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth
+- **298 个测试** 覆盖 models/api/providers/widgets/screens/routes/auth/execution
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose StateError
 - Widget/Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock: `mocktail` 库，测试工厂函数集中在 `test/helpers/test_helpers.dart`
@@ -89,3 +96,4 @@ fvm flutter test --coverage
 - FCM、深色主题均为后续 Story 的 TODO 占位
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
+- **Story 7-4a 已完成**: 执行监控与实时状态更新。`features/execution/` 完整实现：`ExecutionStatus`(6值)/`StepStatus`(8值) 枚举含 color/icon/label/isTerminal getters；`ExecutionEventEnvelope`/`ExecutionStateSnapshot`/`StepSnapshot`/`SubscribeAck` Freezed 模型；`ExecutionSocketService` 连接 Socket.IO `/execution` namespace（JWT auth + `['websocket']` transport + `emitWithAckAsync` subscribe + 7 个 StreamController 广播流 + `dispose()` 释放）；`ExecutionMonitorNotifier`（`AsyncNotifier.family` keyed on executionId）实现 sealed 状态机 Loading→Connected→Polling→Error→Disconnected，REST 初始快照 → WS subscribe（ACK 含 currentState）→ 事件处理 → 断连 5s 轮询降级 → 重连 re-subscribe with lastEventId → 终态自动清理；`socketServiceFactoryProvider` 支持测试注入。路由 `/executions/:executionId` 在 Shell 外（无底部导航栏），支持深链接。WorkflowDetailScreen 执行列表 onTap 跳转、DashboardScreen 最近执行 onTap 跳转。126 个新增测试（298 总计）
