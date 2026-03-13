@@ -231,6 +231,7 @@ export async function seedWorkflowDefinition(
     nodes?: readonly postgres.JSONValue[];
     edges?: readonly postgres.JSONValue[];
     viewport?: postgres.JSONValue;
+    inputSchema?: postgres.JSONValue;
     version?: number;
     status?: (typeof schema.workflowStatusEnum.enumValues)[number];
   },
@@ -238,7 +239,7 @@ export async function seedWorkflowDefinition(
   const [row] = await sqlClient`
     INSERT INTO workflow_definitions (
       id, tenant_id, name, slug, description,
-      nodes, edges, viewport,
+      nodes, edges, viewport, input_schema,
       version, status, created_by, updated_by
     )
     VALUES (
@@ -250,6 +251,7 @@ export async function seedWorkflowDefinition(
       ${sqlClient.json(options.nodes ?? [])},
       ${sqlClient.json(options.edges ?? [])},
       ${options.viewport ? sqlClient.json(options.viewport) : null},
+      ${options.inputSchema ? sqlClient.json(options.inputSchema) : null},
       ${options.version ?? 1},
       ${options.status ?? 'draft'}::workflow_status_enum,
       ${options.createdBy}::uuid,

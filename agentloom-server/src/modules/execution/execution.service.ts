@@ -35,6 +35,32 @@ function isRemovableJobState(state: string): state is JobType {
   return REMOVABLE_JOB_STATES.includes(state as JobType);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function buildExecutionInputParams(
+  runRequest: RunWorkflowDto | undefined,
+): Record<string, unknown> {
+  const inputParams = runRequest?.inputParams
+    ? { ...runRequest.inputParams }
+    : {};
+
+  if (!runRequest?.launchSource) {
+    return inputParams;
+  }
+
+  const existingMeta = isRecord(inputParams._meta) ? { ...inputParams._meta } : {};
+
+  return {
+    ...inputParams,
+    _meta: {
+      ...existingMeta,
+      launchSource: runRequest.launchSource,
+    },
+  };
+}
+
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
@@ -56,6 +82,8 @@ export class ExecutionService {
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
+    const inputParams = buildExecutionInputParams(runRequest);
+
     const [workflow] = await this.tenantDb
       .select()
       .from(schema.workflowDefinitions)
@@ -86,7 +114,7 @@ export class ExecutionService {
         tenantId,
         status: 'pending',
         triggerType: 'manual',
-        inputParams: runRequest?.inputParams ?? {},
+        inputParams,
         definitionSnapshot: publishedVersion.snapshot,
         createdBy: userId,
       })

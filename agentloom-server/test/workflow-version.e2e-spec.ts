@@ -14,6 +14,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { Test } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -32,6 +33,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import * as schema from '../src/database/schema';
+import { EXECUTION_QUEUE } from '../src/modules/execution/execution.constants';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import {
   createRlsTestContext,
@@ -53,6 +55,27 @@ type TestUser = {
 type AuthenticatedTestUser = TestUser & {
   tenantId?: string;
   tenantRole?: OrganizationRole;
+};
+
+const WORKFLOW_INPUT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'topic',
+      type: 'text',
+      label: '分析主题',
+      required: true,
+      validation: { maxLength: 200 },
+    },
+    {
+      id: 'depth',
+      type: 'single_select',
+      label: '分析深度',
+      required: true,
+      options: ['浅度', '中度', '深度'],
+    },
+  ],
 };
 
 function signToken(payload: Record<string, unknown>) {
@@ -122,6 +145,12 @@ function createMockRedisPubSubService() {
   };
 }
 
+function createMockExecutionQueue() {
+  return {
+    add: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function withTenantContext(
   user: TestUser,
   tenantId: string,
@@ -149,6 +178,7 @@ describe('WorkflowVersion E2E', () => {
   let redisClientMock: ReturnType<typeof createMockRedisClient>;
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
+  let executionQueueMock: ReturnType<typeof createMockExecutionQueue>;
 
   beforeAll(async () => {
     process.env.APP_JWT_SECRET = JWT_SECRET;
@@ -158,6 +188,7 @@ describe('WorkflowVersion E2E', () => {
     redisClientMock = createMockRedisClient();
     redisCacheMock = createMockRedisCacheService();
     redisPubSubMock = createMockRedisPubSubService();
+    executionQueueMock = createMockExecutionQueue();
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -183,6 +214,11 @@ describe('WorkflowVersion E2E', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+
+    const executionQueue = app.get<Record<string, unknown>>(
+      getQueueToken(EXECUTION_QUEUE),
+    );
+    Reflect.set(executionQueue, 'add', executionQueueMock.add);
   }, 60_000);
 
   afterAll(async () => {
@@ -202,6 +238,7 @@ describe('WorkflowVersion E2E', () => {
     redisClientMock.del.mockResolvedValue(0);
     redisClientMock.keys.mockResolvedValue([]);
     redisClientMock.publish.mockResolvedValue(1);
+    executionQueueMock.add.mockResolvedValue(undefined);
   });
 
   async function seedTenant(prefix: string, role: OrganizationRole = 'owner') {
@@ -240,6 +277,7 @@ describe('WorkflowVersion E2E', () => {
     name?: string;
     nodes?: readonly JSONValue[];
     edges?: readonly JSONValue[];
+    inputSchema?: JSONValue;
     status?: 'draft' | 'published' | 'archived';
   }) {
     const workflowId = crypto.randomUUID();
@@ -260,6 +298,7 @@ describe('WorkflowVersion E2E', () => {
       ],
       edges: options.edges ?? [],
       viewport: { x: 0, y: 0, zoom: 1 },
+      inputSchema: options.inputSchema,
       status: options.status,
     });
 
@@ -267,11 +306,17 @@ describe('WorkflowVersion E2E', () => {
   }
 
   async function setWorkflowUpdatedAt(workflowId: string, updatedAt: Date) {
-    await ctx.adminSql`
-      UPDATE "workflow_definitions"
-      SET updated_at = ${updatedAt}
-      WHERE id = ${workflowId}::uuid
-    `;
+    await ctx.adminSql.unsafe('SET session_replication_role = replica');
+
+    try {
+      await ctx.adminSql`
+        UPDATE "workflow_definitions"
+        SET updated_at = ${updatedAt}
+        WHERE id = ${workflowId}::uuid
+      `;
+    } finally {
+      await ctx.adminSql.unsafe('SET session_replication_role = DEFAULT');
+    }
   }
 
   it('应当通过并发请求安全递增版本号并返回 data/meta 列表', async () => {
@@ -515,6 +560,110 @@ describe('WorkflowVersion E2E', () => {
       .get(`/api/v1/workflow-definitions/${workflow.id}/published-version`)
       .set(outsider.headers);
     expect(publishedResponse.status).toBe(404);
+  });
+
+  describe('GET /api/v1/workflow-definitions/:workflowId/input-schema', () => {
+    it('应返回 200 和工作流输入 schema', async () => {
+      const owner = await seedTenant('input-schema-success');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'input-schema-workflow',
+        status: 'published',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/input-schema`)
+        .set(owner.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ data: WORKFLOW_INPUT_SCHEMA });
+    });
+
+    it('工作流未发布时应返回 409', async () => {
+      const owner = await seedTenant('input-schema-draft');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'input-schema-draft-workflow',
+        status: 'draft',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/input-schema`)
+        .set(owner.headers);
+
+      expect(response.status).toBe(409);
+      expect(response.body.type).toBe(
+        'https://agentloom.dev/errors/workflow-not-published',
+      );
+    });
+
+    it('未认证请求应返回 401', async () => {
+      const workflowId = crypto.randomUUID();
+
+      const response = await request(app.getHttpServer()).get(
+        `/api/v1/workflow-definitions/${workflowId}/input-schema`,
+      );
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/v1/workflow-definitions/:workflowId/run', () => {
+    it('应接受 inputParams 和 launchSource', async () => {
+      const owner = await seedTenant('run-with-inputs');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'run-with-inputs-workflow',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const publishResponse = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+        .set(owner.headers)
+        .send({ label: 'v1' });
+
+      expect(publishResponse.status).toBe(200);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({
+          inputParams: {
+            topic: 'AI 趋势',
+            depth: '中度',
+          },
+          launchSource: 'mobile',
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.data.workflowId).toBe(workflow.id);
+      expect(executionQueueMock.add).toHaveBeenCalledWith(
+        'execute',
+        {
+          executionId: response.body.data.id,
+          tenantId: owner.tenantId,
+        },
+        {
+          jobId: response.body.data.id,
+        },
+      );
+
+      const storedExecution = await drizzleDb.query.workflowExecutions.findFirst({
+        where: eq(schema.workflowExecutions.id, response.body.data.id),
+      });
+
+      expect(storedExecution?.inputParams).toEqual({
+        topic: 'AI 趋势',
+        depth: '中度',
+        _meta: {
+          launchSource: 'mobile',
+        },
+      });
+    });
   });
 
   describe('GET /api/v1/workflow-definitions', () => {

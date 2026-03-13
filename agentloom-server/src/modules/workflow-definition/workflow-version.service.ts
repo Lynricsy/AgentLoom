@@ -10,7 +10,12 @@ import * as schema from '../../database/schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
+import {
+  workflowInputSchemaSchema,
+  type WorkflowInputSchema,
+} from '../workflow/dto/workflow-input-schema.dto';
 import { TemplateService } from '../template/template.service';
+import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
 import {
   generateSlug,
   appendSlugSuffix,
@@ -63,6 +68,10 @@ interface VersionListResult {
     total: number;
     totalPages: number;
   };
+}
+
+function createDefaultWorkflowInputSchema(): WorkflowInputSchema {
+  return workflowInputSchemaSchema.parse({});
 }
 
 @Injectable()
@@ -185,6 +194,25 @@ export class WorkflowVersionService {
     return serializeWorkflowDefinitionDetail(workflow);
   }
 
+  async getInputSchema(
+    workflowId: string,
+    tenantId: string,
+  ): Promise<WorkflowInputSchema> {
+    void tenantId;
+
+    const workflow = await this.findWorkflowOrThrow(this.tenantDb, workflowId);
+
+    if (workflow.status !== 'published') {
+      throw new WorkflowNotPublishedException(workflowId);
+    }
+
+    if (workflow.inputSchema == null) {
+      return createDefaultWorkflowInputSchema();
+    }
+
+    return workflowInputSchemaSchema.parse(workflow.inputSchema);
+  }
+
   // ─── 创建工作流定义 ─────────────────────────────────────────────
 
   private static readonly MAX_SLUG_RETRIES = 3;
@@ -201,6 +229,7 @@ export class WorkflowVersionService {
       y: 0,
       zoom: 1,
     };
+    let inputSchema: WorkflowInputSchema | null = null;
     let metadata: Record<string, unknown> = {};
 
     if (dto.template_slug) {
@@ -214,6 +243,9 @@ export class WorkflowVersionService {
       nodes = cloned.nodes;
       edges = cloned.edges;
       viewport = cloned.viewport;
+      inputSchema = template.definition.inputSchema
+        ? workflowInputSchemaSchema.parse(template.definition.inputSchema)
+        : null;
       metadata = {
         cloned_from_template: {
           templateSlug: dto.template_slug,
@@ -241,6 +273,7 @@ export class WorkflowVersionService {
             nodes,
             edges,
             viewport,
+            inputSchema,
             metadata,
             createdBy: userId,
             updatedBy: userId,
@@ -809,6 +842,7 @@ export class WorkflowVersionService {
       nodes: workflow.nodes ?? [],
       edges: workflow.edges ?? [],
       viewport: workflow.viewport ?? null,
+      inputSchema: workflow.inputSchema ?? null,
       metadata: {
         nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
         edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,

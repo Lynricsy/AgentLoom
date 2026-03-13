@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB } from '../database.module';
+import type { WorkflowInputSchema } from '../../modules/workflow/dto/workflow-input-schema.dto';
 import {
   workflowTemplates,
   type TemplateDefinition,
@@ -25,6 +26,178 @@ const DEFAULT_TEMPLATE_VIEWPORT: TemplateDefinition['viewport'] = {
   zoom: 1,
 };
 
+const dailyCompetitorAnalysisInputSchema: WorkflowInputSchema = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'topic',
+      type: 'text',
+      label: '分析主题',
+      required: true,
+      validation: { maxLength: 200 },
+    },
+    {
+      id: 'depth',
+      type: 'single_select',
+      label: '分析深度',
+      required: true,
+      options: ['浅度', '中度', '深度'],
+    },
+    {
+      id: 'output_format',
+      type: 'multi_select',
+      label: '输出格式',
+      required: false,
+      options: ['文本', '表格', '图表'],
+    },
+    {
+      id: 'max_iterations',
+      type: 'number',
+      label: '最大迭代次数',
+      required: false,
+      validation: { min: 1, max: 10 },
+      default: 3,
+    },
+  ],
+};
+
+const customerFeedbackClassifierInputSchema: WorkflowInputSchema = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'feedback_text',
+      type: 'text',
+      label: '客户反馈内容',
+      required: true,
+      validation: { minLength: 5, maxLength: 2000 },
+    },
+    {
+      id: 'channel',
+      type: 'single_select',
+      label: '反馈渠道',
+      required: false,
+      options: ['工单', '邮件', '应用内反馈', '社交媒体'],
+    },
+    {
+      id: 'focus_topics',
+      type: 'multi_select',
+      label: '重点关注主题',
+      required: false,
+      options: ['功能需求', '易用性', '性能', '稳定性', '定价'],
+    },
+  ],
+};
+
+const techBlogWriterInputSchema: WorkflowInputSchema = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'topic',
+      type: 'text',
+      label: '博客主题',
+      required: true,
+      validation: { maxLength: 150 },
+    },
+    {
+      id: 'audience_level',
+      type: 'single_select',
+      label: '目标读者层级',
+      required: true,
+      options: ['入门', '进阶', '专家'],
+    },
+    {
+      id: 'target_length',
+      type: 'number',
+      label: '目标字数',
+      required: false,
+      validation: { min: 800, max: 5000 },
+      default: 1800,
+    },
+    {
+      id: 'sections',
+      type: 'multi_select',
+      label: '需要包含的章节',
+      required: false,
+      options: ['背景介绍', '原理分析', '代码示例', '最佳实践', '常见误区'],
+    },
+  ],
+};
+
+const codeReviewAssistantInputSchema: WorkflowInputSchema = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'code_snippet',
+      type: 'text',
+      label: '待审查代码',
+      required: true,
+      validation: { minLength: 20, maxLength: 8000 },
+    },
+    {
+      id: 'language',
+      type: 'single_select',
+      label: '编程语言',
+      required: true,
+      options: ['TypeScript', 'JavaScript', 'Python', 'Go', 'Java', 'Rust'],
+    },
+    {
+      id: 'review_focus',
+      type: 'multi_select',
+      label: '审查重点',
+      required: false,
+      options: ['安全', '性能', '可维护性', '测试覆盖', '代码规范'],
+    },
+    {
+      id: 'severity_threshold',
+      type: 'number',
+      label: '问题输出阈值',
+      required: false,
+      validation: { min: 1, max: 5 },
+      default: 3,
+    },
+  ],
+};
+
+const autoDataReportInputSchema: WorkflowInputSchema = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'data_source',
+      type: 'text',
+      label: '数据源描述',
+      required: true,
+      validation: { maxLength: 500 },
+    },
+    {
+      id: 'report_period',
+      type: 'single_select',
+      label: '报表周期',
+      required: true,
+      options: ['日报', '周报', '月报', '季度报表'],
+    },
+    {
+      id: 'metrics',
+      type: 'multi_select',
+      label: '关键指标',
+      required: true,
+      options: ['营收', '活跃用户', '转化率', '留存率', '异常波动'],
+    },
+    {
+      id: 'chart_count',
+      type: 'number',
+      label: '图表数量上限',
+      required: false,
+      validation: { min: 1, max: 8 },
+      default: 3,
+    },
+  ],
+};
+
 const dailyCompetitorAnalysis: NewWorkflowTemplate = {
   slug: 'daily-competitor-analysis',
   name: '每日竞品分析',
@@ -34,6 +207,7 @@ const dailyCompetitorAnalysis: NewWorkflowTemplate = {
   tags: ['竞品分析', '市场洞察', 'intermediate'],
   thumbnailUrl: null,
   definition: {
+    inputSchema: dailyCompetitorAnalysisInputSchema,
     nodes: [
       {
         id: 'agent-1',
@@ -91,6 +265,7 @@ const customerFeedbackClassifier: NewWorkflowTemplate = {
   tags: ['客户反馈', '情感分析', 'beginner'],
   thumbnailUrl: null,
   definition: {
+    inputSchema: customerFeedbackClassifierInputSchema,
     nodes: [
       {
         id: 'agent-1',
@@ -134,6 +309,7 @@ const techBlogWriter: NewWorkflowTemplate = {
   tags: ['内容创作', '博客写作', 'intermediate'],
   thumbnailUrl: null,
   definition: {
+    inputSchema: techBlogWriterInputSchema,
     nodes: [
       {
         id: 'agent-1',
@@ -208,6 +384,7 @@ const codeReviewAssistant: NewWorkflowTemplate = {
   tags: ['代码审查', '质量保证', 'advanced'],
   thumbnailUrl: null,
   definition: {
+    inputSchema: codeReviewAssistantInputSchema,
     nodes: [
       {
         id: 'agent-1',
@@ -296,6 +473,7 @@ const autoDataReport: NewWorkflowTemplate = {
   tags: ['数据分析', '报表生成', 'intermediate'],
   thumbnailUrl: null,
   definition: {
+    inputSchema: autoDataReportInputSchema,
     nodes: [
       {
         id: 'agent-1',

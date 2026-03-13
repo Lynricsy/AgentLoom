@@ -5,6 +5,7 @@ import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
 import '../models/execution_summary_dto.dart';
 import '../models/workflow_definition_dto.dart';
+import '../models/workflow_input_schema.dart';
 
 /// 工作流 API 客户端
 class WorkflowApi {
@@ -58,10 +59,29 @@ class WorkflowApi {
     );
   }
 
+  /// 获取工作流输入参数 Schema
+  Future<WorkflowInputSchema> getInputSchema(String workflowId) async {
+    final response = await _dio.get(
+      '/api/v1/workflow-definitions/$workflowId/input-schema',
+    );
+    final body = response.data as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>;
+    return WorkflowInputSchema.fromJson(data);
+  }
+
   /// 触发执行工作流
-  Future<Map<String, dynamic>> runWorkflow(String workflowId) async {
+  Future<Map<String, dynamic>> runWorkflow(
+    String workflowId, {
+    Map<String, dynamic>? inputParams,
+    String? launchSource,
+  }) async {
+    final body = <String, dynamic>{};
+    if (inputParams != null) body['input_params'] = inputParams;
+    if (launchSource != null) body['launch_source'] = launchSource;
+
     final response = await _dio.post(
       '/api/v1/workflow-definitions/$workflowId/run',
+      data: body.isNotEmpty ? body : null,
     );
     return response.data as Map<String, dynamic>;
   }

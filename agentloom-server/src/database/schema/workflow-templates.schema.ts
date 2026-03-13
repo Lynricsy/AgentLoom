@@ -16,11 +16,13 @@ import type {
   ReactFlowEdge,
   ReactFlowViewport,
 } from './workflow-definitions.schema';
+import type { WorkflowInputSchema } from '../../modules/workflow/dto/workflow-input-schema.dto';
 
 export interface TemplateDefinition {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
   viewport: ReactFlowViewport;
+  inputSchema?: WorkflowInputSchema;
 }
 
 export interface TemplateMetadata {

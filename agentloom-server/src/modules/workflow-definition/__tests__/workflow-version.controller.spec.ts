@@ -27,6 +27,12 @@ const MOCK_VERSION_DTO: VersionResponseDto = {
   createdAt: '2025-01-01T00:00:00.000Z',
 };
 
+const MOCK_INPUT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [],
+};
+
 function getRoles(controller: object, method: string): string[] | undefined {
   const handler = (controller as Record<string, unknown>)[method] as Function;
   return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
@@ -54,6 +60,7 @@ describe('WorkflowVersionController', () => {
         .mockResolvedValue({ data: MOCK_VERSION_DTO, warnings: [] }),
       archive: vi.fn().mockResolvedValue(undefined),
       getPublishedVersion: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
+      getInputSchema: vi.fn().mockResolvedValue(MOCK_INPUT_SCHEMA),
     };
 
     controller = new WorkflowVersionController(
@@ -97,6 +104,15 @@ describe('WorkflowVersionController', () => {
         'creator',
         'operator',
         'viewer',
+      ]);
+    });
+
+    it('getInputSchema 应当允许 operator 及以上角色', () => {
+      expect(getRoles(controller, 'getInputSchema')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+        'operator',
       ]);
     });
   });
@@ -191,6 +207,17 @@ describe('WorkflowVersionController', () => {
       );
 
       expect(result).toEqual({ data: null });
+    });
+  });
+
+  describe('getInputSchema', () => {
+    it('应当调用 service 并返回 { data }', async () => {
+      setup();
+
+      const result = await controller.getInputSchema(WORKFLOW_ID, TENANT_ID);
+
+      expect(service.getInputSchema).toHaveBeenCalledWith(WORKFLOW_ID, TENANT_ID);
+      expect(result).toEqual({ data: MOCK_INPUT_SCHEMA });
     });
   });
 });

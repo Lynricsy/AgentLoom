@@ -10,6 +10,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import { TemplateService } from '../../template/template.service';
+import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
@@ -33,11 +34,25 @@ const MOCK_NODES = [
 ];
 const MOCK_EDGES = [{ id: 'edge-1', source: 'node-1', target: 'node-2' }];
 const MOCK_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+const MOCK_INPUT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form' as const,
+  fields: [
+    {
+      id: 'topic',
+      type: 'text' as const,
+      label: '分析主题',
+      required: true,
+      validation: { maxLength: 200 },
+    },
+  ],
+};
 
 const MOCK_SNAPSHOT = {
   nodes: MOCK_NODES,
   edges: MOCK_EDGES,
   viewport: MOCK_VIEWPORT,
+  inputSchema: null,
   metadata: { nodeCount: 1, edgeCount: 1, createdFromVersion: 1 },
 };
 
@@ -51,6 +66,8 @@ function createDraftWorkflow(overrides: Record<string, unknown> = {}) {
     nodes: MOCK_NODES,
     edges: MOCK_EDGES,
     viewport: MOCK_VIEWPORT,
+    metadata: {},
+    inputSchema: null,
     version: 1,
     status: 'draft' as const,
     publishedVersionId: null,
@@ -498,6 +515,58 @@ describe('WorkflowVersionService', () => {
       await expect(
         service.findDefinitionDetailById(WORKFLOW_ID),
       ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+    });
+  });
+
+  describe('getInputSchema', () => {
+    it('应返回工作流的输入 schema', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            status: 'published',
+            inputSchema: MOCK_INPUT_SCHEMA,
+          }),
+        ]),
+      );
+
+      const result = await service.getInputSchema(WORKFLOW_ID, TENANT_ID);
+
+      expect(result).toEqual(MOCK_INPUT_SCHEMA);
+    });
+
+    it('inputSchema 为空时应返回默认 schema', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            status: 'published',
+            inputSchema: null,
+          }),
+        ]),
+      );
+
+      const result = await service.getInputSchema(WORKFLOW_ID, TENANT_ID);
+
+      expect(result).toEqual({
+        version: 1,
+        collectionMode: 'form',
+        fields: [],
+      });
+    });
+
+    it('工作流不存在时应抛出 WorkflowNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(service.getInputSchema(WORKFLOW_ID, TENANT_ID)).rejects.toThrow(
+        WorkflowNotFoundException,
+      );
+    });
+
+    it('工作流未发布时应抛出 WorkflowNotPublishedException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([createDraftWorkflow()]));
+
+      await expect(service.getInputSchema(WORKFLOW_ID, TENANT_ID)).rejects.toThrow(
+        WorkflowNotPublishedException,
+      );
     });
   });
 
@@ -1325,6 +1394,7 @@ describe('WorkflowVersionService', () => {
       name: '代码审查助手',
       slug: 'code-review-assistant',
       definition: {
+        inputSchema: MOCK_INPUT_SCHEMA,
         nodes: [
           { id: 'tmpl-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
           { id: 'tmpl-node-2', type: 'output', position: { x: 200, y: 0 }, data: {} },
@@ -1373,6 +1443,7 @@ describe('WorkflowVersionService', () => {
         nodes: [],
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
+        inputSchema: null,
         metadata: {},
         createdBy: USER_ID,
         updatedBy: USER_ID,
@@ -1404,6 +1475,7 @@ describe('WorkflowVersionService', () => {
       expect(valuesArg.edges[0].source).toBe(valuesArg.nodes[0].id);
       expect(valuesArg.edges[0].target).toBe(valuesArg.nodes[1].id);
       expect(valuesArg.viewport).toEqual(MOCK_TEMPLATE.definition.viewport);
+      expect(valuesArg.inputSchema).toEqual(MOCK_INPUT_SCHEMA);
 
       // 验证元数据包含克隆信息
       expect(valuesArg.metadata).toMatchObject({

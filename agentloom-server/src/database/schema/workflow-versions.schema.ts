@@ -16,12 +16,14 @@ import type {
   ReactFlowEdge,
   ReactFlowViewport,
 } from './workflow-definitions.schema';
+import type { WorkflowInputSchema } from '../../modules/workflow/dto/workflow-input-schema.dto';
 import { createDirectTenantPolicies } from './rls-policies';
 
 export interface WorkflowVersionSnapshot {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
   viewport: ReactFlowViewport | null;
+  inputSchema?: WorkflowInputSchema | null;
   metadata: {
     nodeCount: number;
     edgeCount: number;

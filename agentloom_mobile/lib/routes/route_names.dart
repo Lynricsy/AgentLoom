@@ -7,6 +7,7 @@ class RouteNames {
   static const String settings = 'settings';
   static const String workflowDetail = 'workflowDetail';
   static const String executionMonitor = 'executionMonitor';
+  static const String workflowLaunch = 'workflowLaunch';
 
   static const String login = 'login';
 }

@@ -190,6 +190,13 @@
       "when": 1773349072731,
       "tag": "0026_flat_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1773423047551,
+      "tag": "0027_tidy_marauders",
+      "breakpoints": true
     }
   ]
 }

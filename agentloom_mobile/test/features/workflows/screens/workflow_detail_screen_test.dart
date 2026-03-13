@@ -173,12 +173,11 @@ void main() {
       expect(find.text('No executions yet'), findsOneWidget);
     });
 
-    testWidgets('run FAB starts workflow and navigates to monitor', (
-      tester,
-    ) async {
-      when(
-        () => mockApi.getWorkflow(any()),
-      ).thenAnswer((_) async => createTestWorkflow(status: 'published'));
+    testWidgets('run FAB navigates to launch page', (tester) async {
+      when(() => mockApi.getWorkflow(any())).thenAnswer(
+        (_) async =>
+            createTestWorkflow(name: 'My Workflow', status: 'published'),
+      );
       when(
         () => mockApi.listExecutions(
           any(),
@@ -186,11 +185,6 @@ void main() {
           pageSize: any(named: 'pageSize'),
         ),
       ).thenAnswer((_) async => createTestExecutionList());
-      when(() => mockApi.runWorkflow('wf-test-001')).thenAnswer(
-        (_) async => {
-          'data': {'id': 'exec-new-001'},
-        },
-      );
 
       final router = GoRouter(
         routes: [
@@ -202,10 +196,11 @@ void main() {
             ),
           ),
           GoRoute(
-            path: '/executions/:executionId',
-            name: RouteNames.executionMonitor,
-            builder: (context, state) =>
-                Text('Execution ${state.pathParameters['executionId']}'),
+            path: '/workflows/:workflowId/launch',
+            name: RouteNames.workflowLaunch,
+            builder: (context, state) => Text(
+              'Launch ${state.pathParameters['workflowId']} ${state.uri.queryParameters['name']}',
+            ),
           ),
         ],
       );
@@ -217,8 +212,8 @@ void main() {
       await tester.tap(find.byType(FloatingActionButton));
       await tester.pumpAndSettle();
 
-      verify(() => mockApi.runWorkflow('wf-test-001')).called(1);
-      expect(find.text('Execution exec-new-001'), findsOneWidget);
+      // FAB 应导航到 launch 页面, 传递 workflowId 和 name
+      expect(find.text('Launch wf-test-001 My Workflow'), findsOneWidget);
     });
   });
 }

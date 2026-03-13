@@ -253,6 +253,42 @@ describe('ExecutionService', () => {
       );
     });
 
+    it('应将 launchSource 合并到 inputParams._meta 中', async () => {
+      const executionWithLaunchSource = {
+        ...mockExecution,
+        inputParams: {
+          topic: 'AI 趋势',
+          _meta: { launchSource: 'mobile' },
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([executionWithLaunchSource]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      const result = await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          inputParams: { topic: 'AI 趋势' },
+          launchSource: 'mobile',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result).toEqual(executionWithLaunchSource);
+
+      const insertValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.inputParams).toEqual({
+        topic: 'AI 趋势',
+        _meta: { launchSource: 'mobile' },
+      });
+    });
+
     it('应拒绝草稿工作流 (WorkflowNotPublishedException)', async () => {
       const draftWorkflow = {
         ...mockPublishedWorkflow,

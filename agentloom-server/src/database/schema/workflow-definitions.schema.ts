@@ -11,6 +11,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import type { WorkflowInputSchema } from '../../modules/workflow/dto/workflow-input-schema.dto';
 import { users } from './users.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 
@@ -96,6 +97,10 @@ export const workflowDefinitions = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+
+    inputSchema: jsonb('input_schema')
+      .$type<WorkflowInputSchema | null>()
+      .default(null),
 
     version: integer('version').notNull().default(1),
     status: workflowStatusEnum('status').notNull().default('draft'),

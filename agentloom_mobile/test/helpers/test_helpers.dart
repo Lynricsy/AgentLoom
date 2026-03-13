@@ -3,8 +3,10 @@ import 'package:agentloom_mobile/features/execution/models/execution_state.dart'
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
+import 'package:agentloom_mobile/features/workflows/models/input_field_definition.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
+import 'package:agentloom_mobile/features/workflows/models/workflow_input_schema.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
 import 'package:dio/dio.dart';
@@ -19,6 +21,57 @@ class MockDio extends Mock implements Dio {}
 /// Mock ExecutionSocketService
 class MockExecutionSocketService extends Mock
     implements ExecutionSocketService {}
+
+/// 测试用 InputFieldValidation 工厂
+InputFieldValidation createTestInputFieldValidation({
+  int? minLength,
+  int? maxLength,
+  double? min,
+  double? max,
+}) {
+  return InputFieldValidation.fromJson({
+    'min_length': minLength,
+    'max_length': maxLength,
+    'min': min,
+    'max': max,
+  });
+}
+
+/// 测试用 InputFieldDefinition 工厂
+InputFieldDefinition createTestInputFieldDefinition({
+  String id = 'field-1',
+  String type = 'text',
+  String label = '测试字段',
+  String? description = '这是一个测试字段',
+  bool required = false,
+  InputFieldValidation? validation,
+  List<String>? options,
+  Object? defaultValue,
+}) {
+  return InputFieldDefinition.fromJson({
+    'id': id,
+    'type': type,
+    'label': label,
+    'description': description,
+    'required': required,
+    'validation': validation?.toJson(),
+    'options': options,
+    'default': defaultValue,
+  });
+}
+
+/// 测试用 WorkflowInputSchema 工厂
+WorkflowInputSchema createTestWorkflowInputSchema({
+  int version = 1,
+  String collectionMode = 'form',
+  List<InputFieldDefinition>? fields,
+}) {
+  return WorkflowInputSchema.fromJson({
+    'version': version,
+    'collection_mode': collectionMode,
+    'fields': (fields ?? []).map((field) => field.toJson()).toList(),
+  });
+}
 
 /// 测试用 ExecutionStateSnapshot 工厂
 ExecutionStateSnapshot createTestStateSnapshot({

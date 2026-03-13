@@ -10,6 +10,7 @@ import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
 import '../features/workflows/screens/workflow_detail_screen.dart';
+import '../features/workflows/screens/parameter_input_screen.dart';
 import '../features/workflows/screens/workflows_screen.dart';
 import 'route_names.dart';
 
@@ -90,6 +91,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                       final workflowId = state.pathParameters['workflowId']!;
                       return WorkflowDetailScreen(workflowId: workflowId);
                     },
+                    routes: [
+                      GoRoute(
+                        path: 'launch',
+                        name: RouteNames.workflowLaunch,
+                        builder: (context, state) {
+                          final workflowId =
+                              state.pathParameters['workflowId']!;
+                          final workflowName =
+                              state.uri.queryParameters['name'] ?? 'Workflow';
+                          return ParameterInputScreen(
+                            workflowId: workflowId,
+                            workflowName: workflowName,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),

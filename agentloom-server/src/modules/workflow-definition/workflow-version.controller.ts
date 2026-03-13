@@ -18,6 +18,7 @@ import { CreateVersionDto } from './dto/create-version.dto';
 import { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import { PublishWorkflowDto } from './dto/publish-workflow.dto';
 import type { VersionResponseDto, PublishResult } from './dto/version-response.dto';
+import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
 import { WorkflowVersionService } from './workflow-version.service';
 
 @ApiTags('Workflow Versions')
@@ -136,6 +137,25 @@ export class WorkflowVersionController {
       workflowId,
       tenantId,
     );
+    return { data };
+  }
+
+  @Get('input-schema')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取工作流输入参数 schema' })
+  @ApiResponse({ status: 200, description: '输入参数 schema 获取成功' })
+  @ApiResponse({ status: 404, description: '工作流不存在' })
+  @ApiResponse({ status: 409, description: '工作流未发布' })
+  async getInputSchema(
+    @Param('workflowId', ParseUUIDPipe) workflowId: string,
+    @CurrentTenant() tenantId: string,
+  ): Promise<{ data: WorkflowInputSchema }> {
+    const data = await this.workflowVersionService.getInputSchema(
+      workflowId,
+      tenantId,
+    );
+
     return { data };
   }
 }
