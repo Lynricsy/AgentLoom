@@ -8,12 +8,14 @@ class RecentExecutionsSection extends StatelessWidget {
   final List<ExecutionSummaryDto> executions;
   final bool isLoading;
   final String? error;
+  final void Function(ExecutionSummaryDto execution)? onExecutionTap;
 
   const RecentExecutionsSection({
     super.key,
     this.executions = const [],
     this.isLoading = false,
     this.error,
+    this.onExecutionTap,
   });
 
   @override
@@ -74,7 +76,12 @@ class RecentExecutionsSection extends StatelessWidget {
             ),
           )
         else
-          ...executions.map((e) => RecentExecutionCard(execution: e)),
+          ...executions.map(
+            (e) => RecentExecutionCard(
+              execution: e,
+              onTap: onExecutionTap != null ? () => onExecutionTap!(e) : null,
+            ),
+          ),
       ],
     );
   }

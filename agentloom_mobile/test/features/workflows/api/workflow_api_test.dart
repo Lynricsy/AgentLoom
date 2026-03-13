@@ -1,4 +1,5 @@
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
+import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:dio/dio.dart';
@@ -176,6 +177,63 @@ void main() {
           () => mockDio.post('/api/v1/workflow-definitions/wf-1/run'),
         ).called(1);
         expect(result['executionId'], 'exec-1');
+      });
+    });
+
+    group('getExecution', () {
+      test('sends correct request and parses response', () async {
+        when(() => mockDio.get(any())).thenAnswer(
+          (_) async => okResponse({
+            'data': {
+              'id': 'exec-1',
+              'workflow_id': 'wf-1',
+              'status': 'running',
+              'trigger_type': 'manual',
+              'total_steps': 3,
+              'completed_steps': 1,
+              'started_at': '2026-01-01T10:00:00.000Z',
+              'created_at': '2026-01-01T10:00:00.000Z',
+              'updated_at': '2026-01-01T10:00:00.000Z',
+            },
+          }),
+        );
+
+        final result = await api.getExecution('exec-1');
+
+        verify(() => mockDio.get('/api/v1/executions/exec-1')).called(1);
+        expect(result, isA<ExecutionSummaryDto>());
+        expect(result.id, 'exec-1');
+        expect(result.status, 'running');
+        expect(result.workflowId, 'wf-1');
+      });
+
+      test('throws DioException on network error', () async {
+        when(() => mockDio.get(any())).thenThrow(
+          DioException(
+            type: DioExceptionType.connectionTimeout,
+            requestOptions: RequestOptions(),
+          ),
+        );
+
+        expect(() => api.getExecution('exec-1'), throwsA(isA<DioException>()));
+      });
+
+      test('throws DioException on 404', () async {
+        when(() => mockDio.get(any())).thenThrow(
+          DioException(
+            type: DioExceptionType.badResponse,
+            response: Response(
+              statusCode: 404,
+              requestOptions: RequestOptions(),
+            ),
+            requestOptions: RequestOptions(),
+          ),
+        );
+
+        expect(
+          () => api.getExecution('nonexistent'),
+          throwsA(isA<DioException>()),
+        );
       });
     });
   });

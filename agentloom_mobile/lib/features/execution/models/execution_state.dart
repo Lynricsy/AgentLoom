@@ -1,0 +1,52 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'execution_status.dart';
+
+part 'execution_state.freezed.dart';
+part 'execution_state.g.dart';
+
+/// 步骤快照，与服务端 ExecutionStateSnapshot.steps[] 对齐
+@freezed
+abstract class StepSnapshot with _$StepSnapshot {
+  const factory StepSnapshot({
+    @JsonKey(name: 'step_id') required String stepId,
+    @JsonKey(name: 'node_id') required String nodeId,
+    required String status,
+    @JsonKey(name: 'started_at') String? startedAt,
+    @JsonKey(name: 'completed_at') String? completedAt,
+    @JsonKey(name: 'error_message') String? errorMessage,
+    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
+    Map<String, dynamic>? result,
+  }) = _StepSnapshot;
+
+  factory StepSnapshot.fromJson(Map<String, dynamic> json) =>
+      _$StepSnapshotFromJson(json);
+}
+
+/// 执行状态快照，subscribe ACK 或 state.snapshot 事件返回
+@freezed
+abstract class ExecutionStateSnapshot with _$ExecutionStateSnapshot {
+  const factory ExecutionStateSnapshot({
+    @JsonKey(name: 'execution_id') required String executionId,
+    required String status,
+    @JsonKey(name: 'completed_steps') int? completedSteps,
+    @JsonKey(name: 'total_steps') int? totalSteps,
+    required List<StepSnapshot> steps,
+    @JsonKey(name: 'snapshot_at') String? snapshotAt,
+    @JsonKey(name: 'last_event_id') int? lastEventId,
+  }) = _ExecutionStateSnapshot;
+
+  factory ExecutionStateSnapshot.fromJson(Map<String, dynamic> json) =>
+      _$ExecutionStateSnapshotFromJson(json);
+}
+
+/// ExecutionStateSnapshot 的便捷扩展
+extension ExecutionStateSnapshotX on ExecutionStateSnapshot {
+  ExecutionStatus get executionStatus => ExecutionStatus.fromJson(status);
+
+  /// 获取指定步骤的 StepStatus，不存在时返回 null
+  StepStatus? stepStatusOf(String stepId) {
+    final idx = steps.indexWhere((s) => s.stepId == stepId);
+    if (idx == -1) return null;
+    return StepStatus.fromJson(steps[idx].status);
+  }
+}

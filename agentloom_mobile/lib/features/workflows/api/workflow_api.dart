@@ -65,6 +65,13 @@ class WorkflowApi {
     );
     return response.data as Map<String, dynamic>;
   }
+
+  /// 获取单次执行详情（用于 REST 初始快照 + 轮询降级）
+  Future<ExecutionSummaryDto> getExecution(String executionId) async {
+    final response = await _dio.get('/api/v1/executions/$executionId');
+    final body = response.data as Map<String, dynamic>;
+    return ExecutionSummaryDto.fromJson(body['data'] as Map<String, dynamic>);
+  }
 }
 
 /// 工作流 API Provider

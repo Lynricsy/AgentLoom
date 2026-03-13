@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../routes/route_names.dart';
 import '../providers/workflow_detail_provider.dart';
 import '../widgets/execution_summary_tile.dart';
 import '../widgets/workflow_status_chip.dart';
@@ -176,6 +178,12 @@ class WorkflowDetailScreen extends ConsumerWidget {
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => ExecutionSummaryTile(
                             execution: response.data[index],
+                            onTap: () => context.pushNamed(
+                              RouteNames.executionMonitor,
+                              pathParameters: {
+                                'executionId': response.data[index].id,
+                              },
+                            ),
                           ),
                           childCount: response.data.length,
                         ),

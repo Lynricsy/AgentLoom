@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../routes/route_names.dart';
 import '../providers/dashboard_provider.dart';
 import '../widgets/quick_access_section.dart';
 import '../widgets/recent_executions_section.dart';
@@ -33,7 +35,13 @@ class DashboardScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // 最近执行区块（暂时使用空列表，后续 story 会添加执行 API）
-            const RecentExecutionsSection(executions: []),
+            RecentExecutionsSection(
+              executions: const [],
+              onExecutionTap: (execution) => context.pushNamed(
+                RouteNames.executionMonitor,
+                pathParameters: {'executionId': execution.id},
+              ),
+            ),
 
             const SizedBox(height: 24),
           ],

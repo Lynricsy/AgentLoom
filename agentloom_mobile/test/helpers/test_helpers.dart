@@ -1,3 +1,7 @@
+import 'package:agentloom_mobile/features/execution/models/execution_event.dart';
+import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
+import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
+import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
@@ -10,6 +14,84 @@ class MockWorkflowApi extends Mock implements WorkflowApi {}
 
 /// Mock Dio
 class MockDio extends Mock implements Dio {}
+
+/// Mock ExecutionSocketService
+class MockExecutionSocketService extends Mock
+    implements ExecutionSocketService {}
+
+/// 测试用 ExecutionStateSnapshot 工厂
+ExecutionStateSnapshot createTestStateSnapshot({
+  String executionId = 'exec-test-001',
+  String status = 'running',
+  int completedSteps = 1,
+  int totalSteps = 3,
+  List<StepSnapshot>? steps,
+  String snapshotAt = '2026-01-01T10:00:00.000Z',
+  int? lastEventId = 5,
+}) {
+  return ExecutionStateSnapshot(
+    executionId: executionId,
+    status: status,
+    completedSteps: completedSteps,
+    totalSteps: totalSteps,
+    steps:
+        steps ??
+        [
+          const StepSnapshot(
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            status: 'completed',
+            startedAt: '2026-01-01T10:00:00.000Z',
+            completedAt: '2026-01-01T10:01:00.000Z',
+          ),
+          const StepSnapshot(
+            stepId: 'step-2',
+            nodeId: 'node-2',
+            status: 'running',
+            startedAt: '2026-01-01T10:01:00.000Z',
+          ),
+          const StepSnapshot(
+            stepId: 'step-3',
+            nodeId: 'node-3',
+            status: 'pending',
+          ),
+        ],
+    snapshotAt: snapshotAt,
+    lastEventId: lastEventId,
+  );
+}
+
+/// 测试用 SubscribeAck 工厂
+SubscribeAck createTestSubscribeAck({
+  String status = 'subscribed',
+  ExecutionStateSnapshot? currentState,
+  String? error,
+}) {
+  return SubscribeAck(
+    status: status,
+    currentState: currentState ?? createTestStateSnapshot(),
+    error: error,
+  );
+}
+
+/// 测试用 ExecutionEventEnvelope 工厂
+ExecutionEventEnvelope createTestEventEnvelope({
+  int eventId = 1,
+  String event = 'execution.status.changed',
+  String timestamp = '2026-01-01T10:00:00.000Z',
+  String executionId = 'exec-test-001',
+  String? tenantId = 'tenant-1',
+  Map<String, dynamic>? data,
+}) {
+  return ExecutionEventEnvelope(
+    eventId: eventId,
+    event: event,
+    timestamp: timestamp,
+    executionId: executionId,
+    tenantId: tenantId,
+    data: data ?? {'status': 'running'},
+  );
+}
 
 /// 测试用 WorkflowDefinitionDto 工厂
 WorkflowDefinitionDto createTestWorkflow({
