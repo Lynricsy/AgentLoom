@@ -17,6 +17,7 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { DocumentService } from './document.service';
+import { KnowledgeGateway } from './knowledge.gateway';
 import {
   CreateKnowledgeBaseDto,
   UpdateKnowledgeBaseSettingsDto,
@@ -29,6 +30,7 @@ export class KnowledgeBaseController {
   constructor(
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly documentService: DocumentService,
+    private readonly knowledgeGateway: KnowledgeGateway,
   ) {}
 
   @Post()
@@ -142,6 +144,7 @@ export class KnowledgeBaseController {
     await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
     await this.documentService.deleteByKnowledgeBase(knowledgeBaseId, tenantId);
     await this.knowledgeBaseService.delete(knowledgeBaseId, tenantId);
+    this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
   }
 
   @Patch(':id/settings')

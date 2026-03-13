@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeBaseController } from '../knowledge-base.controller';
 import { KnowledgeBaseService } from '../knowledge-base.service';
 import { DocumentService } from '../document.service';
+import { KnowledgeGateway } from '../knowledge.gateway';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
@@ -24,6 +25,9 @@ describe('KnowledgeBaseController', () => {
     deleteDocument: ReturnType<typeof vi.fn>;
     getDocumentContentUrl: ReturnType<typeof vi.fn>;
   };
+  let knowledgeGateway: {
+    emitKnowledgeBaseUpdated: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -44,11 +48,16 @@ describe('KnowledgeBaseController', () => {
       getDocumentContentUrl: vi.fn(),
     };
 
+    knowledgeGateway = {
+      emitKnowledgeBaseUpdated: vi.fn(),
+    };
+
     const module = await Test.createTestingModule({
       controllers: [KnowledgeBaseController],
       providers: [
         { provide: KnowledgeBaseService, useValue: knowledgeBaseService },
         { provide: DocumentService, useValue: documentService },
+        { provide: KnowledgeGateway, useValue: knowledgeGateway },
       ],
     }).compile();
 
@@ -202,7 +211,7 @@ describe('KnowledgeBaseController', () => {
   });
 
   describe('deleteKnowledgeBase', () => {
-    it('应先校验知识库再级联删除文档与知识库', async () => {
+    it('应先校验知识库再级联删除文档与知识库，并广播 WS 事件', async () => {
       knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
       documentService.deleteByKnowledgeBase.mockResolvedValue(2);
       knowledgeBaseService.delete.mockResolvedValue(undefined);
@@ -223,6 +232,24 @@ describe('KnowledgeBaseController', () => {
         KB_ID,
         TENANT_ID,
       );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
+        TENANT_ID,
+        KB_ID,
+      );
+    });
+
+    it('删除失败时不应广播 WS 事件', async () => {
+      knowledgeBaseService.findByIdOrThrow.mockResolvedValue({ id: KB_ID });
+      documentService.deleteByKnowledgeBase.mockResolvedValue(2);
+      knowledgeBaseService.delete.mockRejectedValue(
+        new Error('db connection lost'),
+      );
+
+      await expect(
+        controller.deleteKnowledgeBase(KB_ID, TENANT_ID),
+      ).rejects.toThrow('db connection lost');
+
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
     });
   });
 

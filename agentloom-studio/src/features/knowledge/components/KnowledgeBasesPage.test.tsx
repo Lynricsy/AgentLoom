@@ -102,7 +102,6 @@ function setupMocks(overrides: {
 describe('KnowledgeBasesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('显示加载状态', () => {
@@ -271,11 +270,16 @@ describe('KnowledgeBasesPage', () => {
     const { deleteFn } = setupMocks({ knowledgeBases: [kb] })
     render(<KnowledgeBasesPage />)
 
+    // 点击删除按钮打开确认对话框
     await userEvent.click(screen.getByLabelText('删除 测试知识库'))
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      '确认删除知识库“测试知识库”吗？该操作会同时删除其下文档与分块记录。',
-    )
-    expect(deleteFn).toHaveBeenCalledWith('kb-del')
+    // Radix Dialog 应该出现
+    expect(screen.getByText('删除知识库')).toBeInTheDocument()
+    expect(screen.getByText(/确认删除知识库「测试知识库」吗/)).toBeInTheDocument()
+
+    // 点击确认删除按钮
+    await userEvent.click(screen.getByText('确认删除'))
+
+    expect(deleteFn).toHaveBeenCalledWith('kb-del', expect.objectContaining({ onSettled: expect.any(Function) }))
   })
 })

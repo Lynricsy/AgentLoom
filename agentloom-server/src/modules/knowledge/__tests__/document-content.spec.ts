@@ -6,6 +6,7 @@ import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { DocumentService } from '../document.service';
 import { KnowledgeBaseController } from '../knowledge-base.controller';
 import { KnowledgeBaseService } from '../knowledge-base.service';
+import { KnowledgeGateway } from '../knowledge.gateway';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const KB_ID = '00000000-0000-0000-0000-000000000010';
@@ -50,6 +51,7 @@ describe('KnowledgeBaseController - getDocumentContent', () => {
       providers: [
         { provide: KnowledgeBaseService, useValue: knowledgeBaseService },
         { provide: DocumentService, useValue: documentService },
+        { provide: KnowledgeGateway, useValue: { emitKnowledgeBaseUpdated: vi.fn() } },
       ],
     }).compile();
 
