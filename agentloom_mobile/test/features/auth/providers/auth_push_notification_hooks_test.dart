@@ -71,25 +71,31 @@ void main() {
     addTearDown(container.dispose);
   });
 
-  test('login 成功后触发 initializeAfterAuth', () async {
-    when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
-    when(() => mockTokenStorage.saveTokens(any())).thenAnswer((_) async {});
-    when(() => mockAuthApi.login('fox@test.com', 'pass')).thenAnswer(
-      (_) async => const AuthLoginSuccess(user: testUser, tokens: testTokens),
-    );
+  test(
+    'login 成功后不直接触发 initializeAfterAuth（由 AgentLoomApp ref.listen 统一触发）',
+    () async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+      when(() => mockTokenStorage.saveTokens(any())).thenAnswer((_) async {});
+      when(() => mockAuthApi.login('fox@test.com', 'pass')).thenAnswer(
+        (_) async => const AuthLoginSuccess(user: testUser, tokens: testTokens),
+      );
 
-    await container.read(authProvider.future);
+      await container.read(authProvider.future);
 
-    await container.read(authProvider.notifier).login('fox@test.com', 'pass');
-    await Future<void>.delayed(Duration.zero);
+      await container.read(authProvider.notifier).login('fox@test.com', 'pass');
+      await Future<void>.delayed(Duration.zero);
 
-    final pushNotifier =
-        container.read(pushNotificationProvider.notifier)
-            as TestPushNotificationNotifier;
+      final pushNotifier =
+          container.read(pushNotificationProvider.notifier)
+              as TestPushNotificationNotifier;
 
-    expect(pushNotifier.initializeCalls, 1);
-    expect(container.read(authProvider).value, isA<AuthStateAuthenticated>());
-  });
+      // Fix #1: login() 不再直接调用 initializeAfterAuth()
+      // 推送初始化统一由 AgentLoomApp.build() 中的 ref.listen(authProvider) 触发
+      // 这里验证 login 本身不会产生额外调用，避免 double-trigger
+      expect(pushNotifier.initializeCalls, 0);
+      expect(container.read(authProvider).value, isA<AuthStateAuthenticated>());
+    },
+  );
 
   test('logout 会触发 cleanupOnLogout', () async {
     when(

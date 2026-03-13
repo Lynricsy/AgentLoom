@@ -48,13 +48,32 @@ final pushNotificationProvider =
 class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
   StreamSubscription<String>? _tokenRefreshSub;
 
+  /// 幂等锁：防止并发调用 initializeAfterAuth() 导致重复注册与多个 listener。
+  Completer<void>? _initCompleter;
+
   @override
   Future<PushNotificationState> build() async {
     ref.onDispose(() => unawaited(_tokenRefreshSub?.cancel()));
     return const PushNotificationState();
   }
 
+  /// 在认证成功后调用。幂等：多次并发调用只会执行一次，后续调用复用同一 Future。
   Future<void> initializeAfterAuth() async {
+    if (_initCompleter != null) {
+      // 已有初始化在进行中或已完成，等待结果即可。
+      return _initCompleter!.future;
+    }
+
+    _initCompleter = Completer<void>();
+    try {
+      await _doInitialize();
+      _initCompleter!.complete();
+    } catch (e) {
+      _initCompleter!.complete(); // 标记完成（非抛异常），避免后续调用者拿到错误
+    }
+  }
+
+  Future<void> _doInitialize() async {
     final service = ref.read(notificationServiceProvider);
     final deviceApi = ref.read(deviceApiProvider);
 
@@ -139,7 +158,16 @@ class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
     await _tokenRefreshSub?.cancel();
     _tokenRefreshSub = null;
 
-    final token = service.lastRegisteredToken;
+    // 优先使用内存缓存的 token；若缓存为空（冷启动恢复场景），回退到 FCM getToken()。
+    var token = service.lastRegisteredToken;
+    if (token == null) {
+      try {
+        token = await service.getToken();
+      } catch (_) {
+        // FCM getToken() 失败时继续走后续清理。
+      }
+    }
+
     if (token != null) {
       try {
         await deviceApi.unregisterDevice(deviceToken: token);
@@ -153,6 +181,9 @@ class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
     } catch (_) {
       // 删除 FCM token 失败时也不阻塞登出。
     }
+
+    // 重置幂等锁，以便重新登录后能再次初始化推送。
+    _initCompleter = null;
 
     if (!ref.mounted) {
       return;

@@ -239,4 +239,145 @@ void main() {
       const PushNotificationState(),
     );
   });
+
+  // ========== Fix #1: 幂等性测试 ==========
+
+  test('initializeAfterAuth: 并发调用只触发一次注册（幂等）', () async {
+    fakeNotificationService.permissionGranted = true;
+    fakeNotificationService.token = 'token-once';
+
+    final notifier = container.read(pushNotificationProvider.notifier);
+
+    // 同时发起两次初始化
+    final future1 = notifier.initializeAfterAuth();
+    final future2 = notifier.initializeAfterAuth();
+
+    await Future.wait([future1, future2]);
+
+    // 只应该注册一次
+    expect(fakeDeviceApi.registerRequests, hasLength(1));
+    expect(fakeDeviceApi.registerRequests.single.deviceToken, 'token-once');
+  });
+
+  test('initializeAfterAuth: 三次并发调用仍只注册一次', () async {
+    fakeNotificationService.permissionGranted = true;
+    fakeNotificationService.token = 'token-triple';
+
+    final notifier = container.read(pushNotificationProvider.notifier);
+
+    await Future.wait([
+      notifier.initializeAfterAuth(),
+      notifier.initializeAfterAuth(),
+      notifier.initializeAfterAuth(),
+    ]);
+
+    expect(fakeDeviceApi.registerRequests, hasLength(1));
+    expect(fakeDeviceApi.registerRequests.single.deviceToken, 'token-triple');
+  });
+
+  test('initializeAfterAuth: cleanupOnLogout 后可重新初始化', () async {
+    fakeNotificationService.permissionGranted = true;
+    fakeNotificationService.token = 'token-first';
+
+    final notifier = container.read(pushNotificationProvider.notifier);
+
+    // 第一次初始化
+    await notifier.initializeAfterAuth();
+    expect(fakeDeviceApi.registerRequests, hasLength(1));
+
+    // 登出重置
+    await notifier.cleanupOnLogout();
+
+    // 第二次初始化（新 token）
+    fakeNotificationService.token = 'token-second';
+    fakeNotificationService.initializeCalled = false;
+    await notifier.initializeAfterAuth();
+
+    expect(fakeDeviceApi.registerRequests, hasLength(2));
+    expect(fakeDeviceApi.registerRequests[1].deviceToken, 'token-second');
+  });
+
+  test('initializeAfterAuth: 初始化失败后 cleanupOnLogout 仍可重置幂等锁', () async {
+    fakeNotificationService.initializeError = Exception('init fail');
+
+    final notifier = container.read(pushNotificationProvider.notifier);
+
+    // 失败的初始化
+    await notifier.initializeAfterAuth();
+    final errorState = container.read(pushNotificationProvider).value;
+    expect(errorState?.status, PushNotificationStatus.error);
+
+    // 登出重置
+    await notifier.cleanupOnLogout();
+
+    // 修复问题后重新初始化
+    fakeNotificationService.initializeError = null;
+    fakeNotificationService.permissionGranted = true;
+    fakeNotificationService.token = 'token-retry';
+    await notifier.initializeAfterAuth();
+
+    expect(fakeDeviceApi.registerRequests, hasLength(1));
+    expect(fakeDeviceApi.registerRequests.single.deviceToken, 'token-retry');
+    final state = container.read(pushNotificationProvider).value;
+    expect(state?.status, PushNotificationStatus.registered);
+  });
+
+  // ========== Fix #2: 冷启动 token 回退测试 ==========
+
+  test('cleanupOnLogout: lastRegisteredToken 为空时回退到 getToken() 注销', () async {
+    // 模拟冷启动场景：内存缓存为空，但 FCM 有 token
+    fakeNotificationService.lastRegisteredToken = null;
+    fakeNotificationService.token = 'token-from-fcm';
+
+    await container.read(pushNotificationProvider.notifier).cleanupOnLogout();
+
+    // 应该使用 getToken() 返回的 token 发起注销
+    expect(fakeDeviceApi.unregisterRequests, ['token-from-fcm']);
+    expect(fakeNotificationService.deleteTokenCalled, isTrue);
+  });
+
+  test('cleanupOnLogout: lastRegisteredToken 和 getToken() 都为空时跳过注销', () async {
+    fakeNotificationService.lastRegisteredToken = null;
+    fakeNotificationService.token = null;
+
+    await container.read(pushNotificationProvider.notifier).cleanupOnLogout();
+
+    // 没有 token 可用，不应调用 unregister
+    expect(fakeDeviceApi.unregisterRequests, isEmpty);
+    // 但 deleteToken 仍应被调用以清理本地
+    expect(fakeNotificationService.deleteTokenCalled, isTrue);
+  });
+
+  test(
+    'cleanupOnLogout: lastRegisteredToken 为空且 getToken() 抛异常时仍完成清理',
+    () async {
+      fakeNotificationService.lastRegisteredToken = null;
+      fakeNotificationService.tokenError = Exception('fcm unavailable');
+
+      await expectLater(
+        container.read(pushNotificationProvider.notifier).cleanupOnLogout(),
+        completes,
+      );
+
+      // getToken() 失败 → 无 token 可用 → 跳过 unregister
+      expect(fakeDeviceApi.unregisterRequests, isEmpty);
+      // deleteToken 仍然调用
+      expect(fakeNotificationService.deleteTokenCalled, isTrue);
+      // 状态已重置
+      expect(
+        container.read(pushNotificationProvider).value,
+        const PushNotificationState(),
+      );
+    },
+  );
+
+  test('cleanupOnLogout: 优先使用 lastRegisteredToken 而非 getToken()', () async {
+    // 两者都有值时，应使用缓存的 lastRegisteredToken
+    fakeNotificationService.lastRegisteredToken = 'cached-token';
+    fakeNotificationService.token = 'fcm-fresh-token';
+
+    await container.read(pushNotificationProvider.notifier).cleanupOnLogout();
+
+    expect(fakeDeviceApi.unregisterRequests, ['cached-token']);
+  });
 }

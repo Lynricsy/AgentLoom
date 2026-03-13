@@ -48,9 +48,8 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           state = AsyncValue.data(
             AuthState.authenticated(user: user, tokens: tokens),
           );
-          unawaited(
-            ref.read(pushNotificationProvider.notifier).initializeAfterAuth(),
-          );
+        // 推送初始化由 AgentLoomApp 的 ref.listen(authProvider) 统一触发，
+        // 不在此处直接调用，避免双重触发竞争。
 
         case AuthLoginMfaRequired(:final mfaToken, :final factors):
           state = AsyncValue.data(
