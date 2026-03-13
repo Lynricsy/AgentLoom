@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:agentloom_mobile/features/notifications/models/push_notification_payload.dart';
 import 'package:agentloom_mobile/features/notifications/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -129,7 +131,34 @@ void main() {
   });
 
   group('handleLocalNotificationTapForTest', () {
-    test('有效 payload 时发出 execution_completed 事件', () async {
+    test('有效 JSON payload 时保留完整 FCM data 语义', () async {
+      final events = <PushNotificationPayload>[];
+      final subscription = service.onNotificationTap.listen(events.add);
+      addTearDown(subscription.cancel);
+
+      final fcmData = {
+        'type': 'execution_failed',
+        'executionId': 'exec-local-1',
+        'workflowId': 'wf-1',
+        'nodeId': 'node-1',
+      };
+      service.handleLocalNotificationTapForTest(
+        NotificationResponse(
+          notificationResponseType:
+              NotificationResponseType.selectedNotification,
+          payload: jsonEncode(fcmData),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(events, hasLength(1));
+      expect(events.single.type, 'execution_failed');
+      expect(events.single.executionId, 'exec-local-1');
+      expect(events.single.workflowId, 'wf-1');
+      expect(events.single.nodeId, 'node-1');
+    });
+
+    test('非 JSON payload 时回退为 unknown type + executionId', () async {
       final events = <PushNotificationPayload>[];
       final subscription = service.onNotificationTap.listen(events.add);
       addTearDown(subscription.cancel);
@@ -138,14 +167,14 @@ void main() {
         const NotificationResponse(
           notificationResponseType:
               NotificationResponseType.selectedNotification,
-          payload: 'exec-local-1',
+          payload: 'exec-legacy-1',
         ),
       );
       await Future<void>.delayed(Duration.zero);
 
       expect(events, hasLength(1));
-      expect(events.single.type, 'execution_completed');
-      expect(events.single.executionId, 'exec-local-1');
+      expect(events.single.type, 'unknown');
+      expect(events.single.executionId, 'exec-legacy-1');
     });
 
     test('空 payload 时不发出事件', () async {
@@ -183,7 +212,7 @@ void main() {
   });
 
   group('handleForegroundMessageForTest', () {
-    test('有 notification 时展示本地通知', () async {
+    test('有 notification 时展示本地通知（payload 为 JSON 序列化 data）', () async {
       when(
         () => mockLocalNotifications.show(
           any(),
@@ -196,7 +225,11 @@ void main() {
 
       service.handleForegroundMessageForTest(
         const RemoteMessage(
-          data: {'executionId': 'exec-foreground-1'},
+          data: {
+            'type': 'execution_completed',
+            'executionId': 'exec-foreground-1',
+            'workflowId': 'wf-fg-1',
+          },
           notification: RemoteNotification(
             title: 'Workflow done',
             body: 'Execution completed',
@@ -205,15 +238,21 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
 
-      verify(
+      final captured = verify(
         () => mockLocalNotifications.show(
           any(),
           'Workflow done',
           'Execution completed',
           any(),
-          payload: 'exec-foreground-1',
+          payload: captureAny(named: 'payload'),
         ),
-      ).called(1);
+      ).captured;
+
+      final payloadJson = captured.single as String;
+      final decoded = jsonDecode(payloadJson) as Map<String, dynamic>;
+      expect(decoded['type'], 'execution_completed');
+      expect(decoded['executionId'], 'exec-foreground-1');
+      expect(decoded['workflowId'], 'wf-fg-1');
     });
 
     test('无 notification 时不展示本地通知', () async {

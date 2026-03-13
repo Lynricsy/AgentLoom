@@ -225,7 +225,10 @@ describe('PushNotificationService', () => {
           success: false,
           error: { code: 'messaging/invalid-registration-token' },
         },
-        { success: false, error: { code: 'messaging/invalid-argument' } },
+        {
+          success: false,
+          error: { code: 'messaging/registration-token-not-registered' },
+        },
       ],
     });
     service.onModuleInit();

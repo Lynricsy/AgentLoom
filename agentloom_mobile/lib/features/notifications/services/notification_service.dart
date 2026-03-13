@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -170,7 +171,7 @@ class NotificationService {
             presentSound: true,
           ),
         ),
-        payload: message.data['executionId']?.toString(),
+        payload: jsonEncode(message.data),
       ),
     );
   }
@@ -189,17 +190,24 @@ class NotificationService {
       return;
     }
 
-    final executionId = response.payload;
-    if (executionId == null || executionId.isEmpty) {
+    final rawPayload = response.payload;
+    if (rawPayload == null || rawPayload.isEmpty) {
       return;
     }
 
-    _notificationTapController.add(
-      PushNotificationPayload(
-        type: 'execution_completed',
-        executionId: executionId,
-      ),
-    );
+    try {
+      final data = jsonDecode(rawPayload);
+      if (data is Map<String, dynamic>) {
+        _notificationTapController.add(
+          PushNotificationPayload.fromFcmData(data),
+        );
+      }
+    } catch (_) {
+      // JSON 解析失败时回退：把 payload 当作纯 executionId 处理（向后兼容）
+      _notificationTapController.add(
+        PushNotificationPayload(type: 'unknown', executionId: rawPayload),
+      );
+    }
   }
 
   void dispose() {

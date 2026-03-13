@@ -7,7 +7,6 @@ const PUSH_CHUNK_SIZE = 150;
 const INVALID_TOKEN_ERROR_CODES = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
 ]);
 
 export interface PushNotificationPayload {
