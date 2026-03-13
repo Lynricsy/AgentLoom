@@ -1,0 +1,86 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../models/auth_tokens.dart';
+
+/// 安全存储 key 常量
+class TokenStorageKeys {
+  TokenStorageKeys._();
+
+  static const accessToken = 'agentloom_access_token';
+  static const refreshToken = 'agentloom_refresh_token';
+  static const tokenExpiresIn = 'agentloom_token_expires_in';
+}
+
+/// Token 安全存储封装
+class TokenStorage {
+  TokenStorage(this._storage);
+
+  final FlutterSecureStorage _storage;
+
+  /// 保存全部 tokens
+  Future<void> saveTokens(AuthTokens tokens) async {
+    await Future.wait([
+      _storage.write(
+        key: TokenStorageKeys.accessToken,
+        value: tokens.accessToken,
+      ),
+      _storage.write(
+        key: TokenStorageKeys.refreshToken,
+        value: tokens.refreshToken,
+      ),
+      _storage.write(
+        key: TokenStorageKeys.tokenExpiresIn,
+        value: tokens.expiresIn.toString(),
+      ),
+    ]);
+  }
+
+  /// 读取 tokens，任一缺失返回 null
+  Future<AuthTokens?> readTokens() async {
+    final results = await Future.wait([
+      _storage.read(key: TokenStorageKeys.accessToken),
+      _storage.read(key: TokenStorageKeys.refreshToken),
+      _storage.read(key: TokenStorageKeys.tokenExpiresIn),
+    ]);
+
+    final accessToken = results[0];
+    final refreshToken = results[1];
+    final expiresInStr = results[2];
+
+    if (accessToken == null || refreshToken == null || expiresInStr == null) {
+      return null;
+    }
+
+    return AuthTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      expiresIn: int.tryParse(expiresInStr) ?? 0,
+    );
+  }
+
+  /// 检查是否有 stored tokens
+  Future<bool> hasTokens() async {
+    final token = await _storage.read(key: TokenStorageKeys.accessToken);
+    return token != null;
+  }
+
+  /// 清除所有 tokens
+  Future<void> clearTokens() async {
+    await Future.wait([
+      _storage.delete(key: TokenStorageKeys.accessToken),
+      _storage.delete(key: TokenStorageKeys.refreshToken),
+      _storage.delete(key: TokenStorageKeys.tokenExpiresIn),
+    ]);
+  }
+}
+
+/// FlutterSecureStorage 实例 Provider（测试中可 override）
+final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
+  return const FlutterSecureStorage();
+});
+
+/// TokenStorage Provider
+final tokenStorageProvider = Provider<TokenStorage>((ref) {
+  return TokenStorage(ref.watch(secureStorageProvider));
+});

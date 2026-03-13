@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'app/app.dart';
 import 'config/env.dart';
+import 'features/auth/providers/token_storage_provider.dart';
 import 'shared/providers/env_provider.dart';
 
 void main() async {
@@ -22,7 +24,11 @@ void main() async {
 
   runApp(
     ProviderScope(
-      overrides: [envProvider.overrideWithValue(envConfig)],
+      overrides: [
+        envProvider.overrideWithValue(envConfig),
+        // 显式提供 FlutterSecureStorage 实例，确保测试中可 mock
+        secureStorageProvider.overrideWithValue(const FlutterSecureStorage()),
+      ],
       child: const AgentLoomApp(),
     ),
   );

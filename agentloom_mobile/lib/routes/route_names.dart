@@ -7,5 +7,5 @@ class RouteNames {
   static const String settings = 'settings';
   static const String workflowDetail = 'workflowDetail';
 
-  // TODO(auth): Story 7.3a 添加 login 路由名
+  static const String login = 'login';
 }

@@ -1,9 +1,12 @@
 import 'package:agentloom_mobile/app/app.dart';
 import 'package:agentloom_mobile/config/env.dart';
+import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
+import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/routes/app_router.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,7 +18,10 @@ void main() {
 
   ProviderContainer createTestContainer() {
     return ProviderContainer(
-      overrides: [envProvider.overrideWithValue(testEnvConfig)],
+      overrides: [
+        envProvider.overrideWithValue(testEnvConfig),
+        tokenStorageProvider.overrideWithValue(_TestTokenStorage()),
+      ],
     );
   }
 
@@ -28,7 +34,10 @@ void main() {
     }
 
     return ProviderScope(
-      overrides: [envProvider.overrideWithValue(testEnvConfig)],
+      overrides: [
+        envProvider.overrideWithValue(testEnvConfig),
+        tokenStorageProvider.overrideWithValue(_TestTokenStorage()),
+      ],
       child: const AgentLoomApp(),
     );
   }
@@ -162,4 +171,26 @@ void main() {
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
     });
   });
+}
+
+class _TestTokenStorage extends TokenStorage {
+  _TestTokenStorage() : super(const FlutterSecureStorage());
+
+  static final AuthTokens _tokens = AuthTokens(
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
+    expiresIn: 3600,
+  );
+
+  @override
+  Future<bool> hasTokens() async => true;
+
+  @override
+  Future<AuthTokens?> readTokens() async => _tokens;
+
+  @override
+  Future<void> saveTokens(AuthTokens tokens) async {}
+
+  @override
+  Future<void> clearTokens() async {}
 }
