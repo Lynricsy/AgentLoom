@@ -141,6 +141,20 @@ export {
   type BlockMetadata,
 } from './reusable-blocks.schema';
 export {
+  triggerTypeEnum,
+  triggerHistoryStatusEnum,
+  workflowTriggers,
+  workflowTriggerHistory,
+  type WorkflowTrigger,
+  type NewWorkflowTrigger,
+  type WorkflowTriggerHistory,
+  type NewWorkflowTriggerHistory,
+  type TriggerConfig,
+  type CronTriggerConfig,
+  type WebhookTriggerConfig,
+  type ApiEventTriggerConfig,
+} from './workflow-triggers.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

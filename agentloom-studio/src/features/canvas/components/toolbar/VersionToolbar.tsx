@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2 } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2, Clock3 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -10,7 +10,9 @@ interface VersionToolbarProps {
   workflowStatus: WorkflowStatus
   onOpenVersionHistory: () => void
   onOpenPublish: (versionId?: string) => void
+  onToggleTriggers?: () => void
   onRun?: () => void
+  isTriggersOpen?: boolean
   isRunning?: boolean
 }
 
@@ -34,7 +36,9 @@ export const VersionToolbar = memo(function VersionToolbar({
   workflowStatus,
   onOpenVersionHistory,
   onOpenPublish,
+  onToggleTriggers,
   onRun,
+  isTriggersOpen = false,
   isRunning = false,
 }: VersionToolbarProps) {
   const [createOpen, setCreateOpen] = useState(false)
@@ -89,6 +93,23 @@ export const VersionToolbar = memo(function VersionToolbar({
           <History className="h-3.5 w-3.5" />
           版本历史
         </button>
+
+        {onToggleTriggers && (
+          <button
+            type="button"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              isTriggersOpen
+                ? 'border-violet-400/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/15'
+                : 'border-border bg-surface text-foreground hover:bg-muted',
+            )}
+            onClick={onToggleTriggers}
+            data-testid="btn-triggers"
+          >
+            <Clock3 className="h-3.5 w-3.5" />
+            {isTriggersOpen ? '隐藏触发器' : '触发器'}
+          </button>
+        )}
 
         {canPublish && (
           <button

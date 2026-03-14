@@ -4,7 +4,7 @@ NestJS v11 + Fastify v5 后端。多租户 SaaS，六层全局中间件链。
 
 ## 入口
 
-`main.ts` → `NestFactory.create(AppModule, FastifyAdapter)` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` → listen(APP_PORT‖3000)
+`main.ts` → `NestFactory.create(AppModule, FastifyAdapter, { rawBody: true })` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` → listen(APP_PORT‖3000)
 
 ## 全局中间件链 (执行顺序)
 
@@ -30,6 +30,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | agent | `modules/agent/` | **六边形架构**: ports/AgentRuntime → InProcess\|Sandbox 适配器 | LlmModule, SandboxModule |
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引 | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
+| trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD、cron 调度、webhook 验签与触发历史 | BullMQ, ExecutionModule, crypto HMAC |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
@@ -107,10 +108,22 @@ HTTP POST /executions
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
 | agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
+| trigger-scheduler | 3次 exp (2s base) | cron trigger repeatable jobs + webhook/cron 历史记录联动 |
 | notification | 3次 exp (1s base) | 通知分发与 WebSocket 推送 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
 | document-processing-queue | — | 文档解析 |
 | document-indexing-queue | — | Qdrant 向量索引 |
+
+## Trigger 系统 (Story 8-3) ✅
+
+- 数据表：`workflow_triggers` + `workflow_trigger_history`，schema 位于 `src/database/schema/workflow-triggers.schema.ts`
+- 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位
+- REST：`/workflow-definitions/:workflowId/triggers` 提供 create/list/detail/update/delete/toggle/history；RBAC 为读 viewer+、写 creator+
+- Public webhook：`POST /api/v1/webhooks/:token`，`AppModule.configure()` 已通过 `TenantMiddleware.exclude()` 放行 `webhooks` 与 `webhooks/{*splat}`
+- 验签：`WebhookService.verifySignature()` 使用 `x-agentloom-signature` + `x-agentloom-timestamp`，按 `${timestamp}.${rawBody}` 做 HMAC-SHA256，支持 IP 白名单
+- cron：`TriggerSchedulerService` 在 module init 时同步全部 enabled cron trigger 到 `trigger-scheduler` 队列；`TriggerSchedulerProcessor` 通过 `runInTenantTransaction()` 触��执行、写历史并回写 `lastTriggeredAt/triggerCount/nextFireAt`
+- 执行：当前复用 `ExecutionService.runWorkflow(workflowId, undefined, tenantId, SYSTEM_TRIGGER_USER_ID)`，因此 execution 记录里的 `triggerType` 仍为 `manual`；trigger 级别历史与 webhook/cron 元数据保存在 trigger history 中
+- DTO 兼容：由于预置 `trigger.dto.ts` 使用了当前 zod 运行时不存在的 `z.string().ip()`，模块现通过 `src/modules/trigger/dto/zod-ip.polyfill.ts` + `src/modules/trigger/trigger-dto.compat.ts` + `src/types/zod-ip-compat.d.ts` 做运行时/类型层兼容，避免直接修改 T1-T3 预置文件
 
 ## 数据库 (Drizzle + PostgreSQL)
 

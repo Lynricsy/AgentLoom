@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { useParams } from '@tanstack/react-router'
 import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
 import { CelebrationEffect } from '@/features/execution/components/CelebrationEffect'
 import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
 import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
 import { ExecutionHistoryPanel } from '@/features/execution/components/ExecutionHistoryPanel'
+import { TriggerTab } from '@/features/trigger'
 import {
   useExecutionId,
   useIsExecutionActive,
@@ -55,12 +57,19 @@ export function WorkflowCanvasPage() {
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   const [isExecutionHistoryOpen, setIsExecutionHistoryOpen] = useState(false)
+  const [isTriggerPanelOpen, setIsTriggerPanelOpen] = useState(false)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
   const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
   const handleToggleExecutionHistory = useCallback(() => {
     setIsExecutionHistoryOpen((current) => !current)
+  }, [])
+  const handleToggleTriggerPanel = useCallback(() => {
+    setIsTriggerPanelOpen((current) => !current)
+  }, [])
+  const handleCloseTriggerPanel = useCallback(() => {
+    setIsTriggerPanelOpen(false)
   }, [])
   const handleCloseExecutionHistory = useCallback(() => {
     setIsExecutionHistoryOpen(false)
@@ -164,7 +173,9 @@ export function WorkflowCanvasPage() {
             workflowStatus={workflow.status}
             onOpenVersionHistory={handleOpenVersionHistory}
             onOpenPublish={handleOpenPublishSheet}
+            onToggleTriggers={handleToggleTriggerPanel}
             onRun={handleRunWorkflow}
+            isTriggersOpen={isTriggerPanelOpen}
             isRunning={isStarting || isExecutionActive}
           />
         )}
@@ -187,6 +198,29 @@ export function WorkflowCanvasPage() {
                   workflowDefinitionId={workflow.id}
                   onClose={handleCloseExecutionHistory}
                 />
+              </div>
+            ) : null}
+
+            {isTriggerPanelOpen ? (
+              <div className="pointer-events-auto w-[min(480px,calc(100vw-3rem))]">
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
+                    onClick={handleCloseTriggerPanel}
+                    data-testid="close-trigger-panel"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    收起触发器
+                  </button>
+                </div>
+
+                <div className="h-[min(76vh,720px)]">
+                  <TriggerTab
+                    workflowId={workflow.id}
+                    isPublished={workflow.status === 'published'}
+                  />
+                </div>
               </div>
             ) : null}
           </div>

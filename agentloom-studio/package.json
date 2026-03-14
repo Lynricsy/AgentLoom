@@ -31,6 +31,7 @@
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cronstrue": "^3.13.0",
     "html-react-parser": "^5.2.7",
     "immer": "^10.2.0",
     "ky": "^1.14.3",

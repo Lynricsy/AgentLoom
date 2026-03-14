@@ -1,0 +1,844 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+vi.mock('@anatine/zod-nestjs', async () => {
+  const { createZodDto } = await import('nestjs-zod');
+  return { createZodDto };
+});
+
+import { Test } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import * as crypto from 'node:crypto';
+import * as jwt from 'jsonwebtoken';
+import type { JSONValue } from 'postgres';
+import request from 'supertest';
+import { eq } from 'drizzle-orm';
+
+import { AppModule } from '../src/app.module';
+import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
+import { RedisCacheService } from '../src/common/redis/redis-cache.service';
+import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
+import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
+import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
+import * as schema from '../src/database/schema';
+import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
+import { EXECUTION_QUEUE } from '../src/modules/execution/execution.constants';
+import {
+  MAX_TRIGGERS_PER_WORKFLOW,
+  TRIGGER_QUEUE,
+} from '../src/modules/trigger/trigger.constants';
+import {
+  createRlsTestContext,
+  seedAppUser,
+  seedMember,
+  seedOrg,
+  type OrganizationRole,
+  type RlsTestContext,
+} from './rls/rls-test-utils';
+
+const JWT_SECRET = 'test-e2e-jwt-secret';
+
+const EMPTY_NODES: JSONValue = [];
+const EMPTY_EDGES: JSONValue = [];
+const DEFAULT_VIEWPORT: JSONValue = { x: 0, y: 0, zoom: 1 };
+const DEFAULT_CRON_CONFIG: JSONValue = {
+  expression: '0 9 * * 1',
+  timezone: 'Asia/Hong_Kong',
+};
+
+type TestUser = {
+  id: string;
+  email: string;
+};
+
+type AuthenticatedTestUser = TestUser & {
+  tenantId?: string;
+  tenantRole?: OrganizationRole;
+};
+
+function signToken(payload: Record<string, unknown>) {
+  return jwt.sign(payload, JWT_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: '1h',
+  });
+}
+
+function authHeaders(user: AuthenticatedTestUser) {
+  const claims: Record<string, unknown> = {
+    sub: user.id,
+    email: user.email,
+    aud: 'authenticated',
+    jti: crypto.randomUUID(),
+  };
+
+  if (user.tenantId) {
+    claims.tenant_id = user.tenantId;
+  }
+
+  if (user.tenantRole) {
+    claims.tenant_role = user.tenantRole;
+  }
+
+  return {
+    authorization: `Bearer ${signToken(claims)}`,
+  };
+}
+
+function createMockSupabaseService() {
+  return {
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    refreshToken: vi.fn(),
+    signOut: vi.fn(),
+    getUser: vi.fn(),
+  };
+}
+
+function createMockRedisClient() {
+  return {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue('OK'),
+    del: vi.fn().mockResolvedValue(0),
+    keys: vi.fn().mockResolvedValue([]),
+    quit: vi.fn().mockResolvedValue('OK'),
+    publish: vi.fn().mockResolvedValue(1),
+  };
+}
+
+function createMockRedisCacheService() {
+  return {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    del: vi.fn().mockResolvedValue(undefined),
+    delByPattern: vi.fn().mockResolvedValue(undefined),
+    onModuleDestroy: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockRedisPubSubService() {
+  return {
+    publish: vi.fn().mockResolvedValue(undefined),
+    onModuleInit: vi.fn().mockResolvedValue(undefined),
+    onModuleDestroy: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockExecutionQueue() {
+  return {
+    add: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockTriggerQueue() {
+  return {
+    add: vi.fn().mockResolvedValue(undefined),
+    removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
+    getRepeatableJobs: vi.fn().mockResolvedValue([]),
+  };
+}
+
+function withTenantContext(
+  user: TestUser,
+  tenantId: string,
+  tenantRole: OrganizationRole,
+): AuthenticatedTestUser {
+  return {
+    ...user,
+    tenantId,
+    tenantRole,
+  };
+}
+
+function createTestUser(prefix: string): TestUser {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  return {
+    id: crypto.randomUUID(),
+    email: `${prefix}-${suffix}@example.com`,
+  };
+}
+
+describe('Trigger E2E', () => {
+  let ctx: RlsTestContext;
+  let app: NestFastifyApplication;
+  let drizzleDb: DrizzleDB;
+  let redisClientMock: ReturnType<typeof createMockRedisClient>;
+  let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
+  let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
+  let executionQueueMock: ReturnType<typeof createMockExecutionQueue>;
+  let triggerQueueMock: ReturnType<typeof createMockTriggerQueue>;
+
+  beforeAll(async () => {
+    process.env.APP_JWT_SECRET = JWT_SECRET;
+
+    ctx = await createRlsTestContext();
+    drizzleDb = ctx.db;
+    redisClientMock = createMockRedisClient();
+    redisCacheMock = createMockRedisCacheService();
+    redisPubSubMock = createMockRedisPubSubService();
+    executionQueueMock = createMockExecutionQueue();
+    triggerQueueMock = createMockTriggerQueue();
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(SupabaseService)
+      .useValue(createMockSupabaseService())
+      .overrideProvider(DRIZZLE)
+      .useValue(drizzleDb)
+      .overrideProvider(REDIS_CLIENT)
+      .useValue(redisClientMock)
+      .overrideProvider(RedisCacheService)
+      .useValue(redisCacheMock)
+      .overrideProvider(RedisPubSubService)
+      .useValue(redisPubSubMock)
+      .compile();
+
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+      { rawBody: true },
+    );
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalFilters(new AllExceptionsFilter());
+    app.useGlobalPipes(new ZodValidationPipe());
+
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
+    const executionQueue = app.get<Record<string, unknown>>(
+      getQueueToken(EXECUTION_QUEUE),
+    );
+    Reflect.set(executionQueue, 'add', executionQueueMock.add);
+
+    const triggerQueue = app.get<Record<string, unknown>>(
+      getQueueToken(TRIGGER_QUEUE),
+    );
+    Reflect.set(triggerQueue, 'add', triggerQueueMock.add);
+    Reflect.set(
+      triggerQueue,
+      'removeRepeatableByKey',
+      triggerQueueMock.removeRepeatableByKey,
+    );
+    Reflect.set(
+      triggerQueue,
+      'getRepeatableJobs',
+      triggerQueueMock.getRepeatableJobs,
+    );
+  }, 60_000);
+
+  afterAll(async () => {
+    await app?.close();
+    await ctx?.close();
+  });
+
+  beforeEach(async () => {
+    await ctx.reset();
+    vi.clearAllMocks();
+    redisCacheMock.get.mockResolvedValue(null);
+    redisCacheMock.set.mockResolvedValue(undefined);
+    redisCacheMock.del.mockResolvedValue(undefined);
+    redisCacheMock.delByPattern.mockResolvedValue(undefined);
+    redisClientMock.get.mockResolvedValue(null);
+    redisClientMock.set.mockResolvedValue('OK');
+    redisClientMock.del.mockResolvedValue(0);
+    redisClientMock.keys.mockResolvedValue([]);
+    redisClientMock.publish.mockResolvedValue(1);
+    executionQueueMock.add.mockResolvedValue(undefined);
+    triggerQueueMock.add.mockResolvedValue(undefined);
+    triggerQueueMock.removeRepeatableByKey.mockResolvedValue(undefined);
+    triggerQueueMock.getRepeatableJobs.mockResolvedValue([]);
+  });
+
+  async function seedTenant(prefix: string, role: OrganizationRole = 'owner') {
+    const user = createTestUser(prefix);
+    const tenantId = crypto.randomUUID();
+    const organizationId = crypto.randomUUID();
+
+    await seedAppUser(ctx.adminSql, user.id, user.email);
+    await seedOrg(
+      ctx.adminSql,
+      organizationId,
+      `${prefix} org`,
+      `org-${prefix}-${crypto.randomUUID().slice(0, 8)}`,
+      user.id,
+      tenantId,
+    );
+    await seedMember(ctx.adminSql, organizationId, user.id, role, user.id);
+    await ctx.adminSql`
+      UPDATE "users"
+      SET current_organization_id = ${organizationId}::uuid
+      WHERE id = ${user.id}::uuid
+    `;
+
+    return {
+      user,
+      tenantId,
+      organizationId,
+      headers: authHeaders(withTenantContext(user, tenantId, role)),
+    };
+  }
+
+  async function seedTenantMember(options: {
+    prefix: string;
+    tenantId: string;
+    organizationId: string;
+    invitedBy: string;
+    role: OrganizationRole;
+  }) {
+    const user = createTestUser(options.prefix);
+
+    await seedAppUser(ctx.adminSql, user.id, user.email);
+    await seedMember(
+      ctx.adminSql,
+      options.organizationId,
+      user.id,
+      options.role,
+      options.invitedBy,
+    );
+    await ctx.adminSql`
+      UPDATE "users"
+      SET current_organization_id = ${options.organizationId}::uuid
+      WHERE id = ${user.id}::uuid
+    `;
+
+    return {
+      user,
+      tenantId: options.tenantId,
+      organizationId: options.organizationId,
+      headers: authHeaders(
+        withTenantContext(user, options.tenantId, options.role),
+      ),
+    };
+  }
+
+  async function seedWorkflow(options: {
+    tenantId: string;
+    createdBy: string;
+    status: 'draft' | 'published';
+    name?: string;
+  }) {
+    const workflowId = crypto.randomUUID();
+
+    await ctx.adminSql`
+      INSERT INTO workflow_definitions (
+        id,
+        tenant_id,
+        name,
+        slug,
+        status,
+        nodes,
+        edges,
+        viewport,
+        version,
+        created_by,
+        updated_by
+      ) VALUES (
+        ${workflowId}::uuid,
+        ${options.tenantId}::uuid,
+        ${options.name ?? 'Test Workflow'},
+        ${`test-workflow-${crypto.randomUUID().slice(0, 8)}`},
+        ${options.status}::workflow_status_enum,
+        ${ctx.adminSql.json(EMPTY_NODES)},
+        ${ctx.adminSql.json(EMPTY_EDGES)},
+        ${ctx.adminSql.json(DEFAULT_VIEWPORT)},
+        1,
+        ${options.createdBy}::uuid,
+        ${options.createdBy}::uuid
+      )
+    `;
+
+    return workflowId;
+  }
+
+  async function seedPublishedWorkflow(options: {
+    tenantId: string;
+    organizationId: string;
+    createdBy: string;
+  }) {
+    return seedWorkflow({
+      tenantId: options.tenantId,
+      createdBy: options.createdBy,
+      status: 'published',
+    });
+  }
+
+  async function seedDraftWorkflow(options: {
+    tenantId: string;
+    organizationId: string;
+    createdBy: string;
+  }) {
+    return seedWorkflow({
+      tenantId: options.tenantId,
+      createdBy: options.createdBy,
+      status: 'draft',
+    });
+  }
+
+  async function seedTrigger(options: {
+    workflowId: string;
+    tenantId: string;
+    createdBy: string;
+    name?: string;
+    description?: string | null;
+    type?: 'cron' | 'webhook';
+    config?: JSONValue;
+    isEnabled?: boolean;
+  }) {
+    const triggerId = crypto.randomUUID();
+    const type = options.type ?? 'cron';
+    const config =
+      options.config ??
+      (type === 'cron'
+        ? DEFAULT_CRON_CONFIG
+        : {
+            token: crypto.randomUUID().replaceAll('-', ''),
+            secret:
+              crypto.randomUUID().replaceAll('-', '') +
+              crypto.randomUUID().replaceAll('-', ''),
+            ipWhitelist: [],
+          });
+
+    const [row] = await ctx.adminSql`
+      INSERT INTO workflow_triggers (
+        id,
+        workflow_definition_id,
+        tenant_id,
+        name,
+        description,
+        type,
+        config,
+        is_enabled,
+        created_by
+      ) VALUES (
+        ${triggerId}::uuid,
+        ${options.workflowId}::uuid,
+        ${options.tenantId}::uuid,
+        ${options.name ?? 'Seeded Trigger'},
+        ${options.description ?? null},
+        ${type}::trigger_type_enum,
+        ${ctx.adminSql.json(config)},
+        ${options.isEnabled ?? true},
+        ${options.createdBy}::uuid
+      )
+      RETURNING *
+    `;
+
+    return row;
+  }
+
+  async function seedTriggerHistory(options: {
+    triggerId: string;
+    tenantId: string;
+    count: number;
+  }) {
+    for (let index = 0; index < options.count; index++) {
+      await ctx.adminSql`
+        INSERT INTO workflow_trigger_history (
+          id,
+          trigger_id,
+          tenant_id,
+          status,
+          triggered_at
+        ) VALUES (
+          ${crypto.randomUUID()}::uuid,
+          ${options.triggerId}::uuid,
+          ${options.tenantId}::uuid,
+          'success',
+          ${new Date(Date.now() - index * 60_000)}
+        )
+      `;
+    }
+  }
+
+  it('应当完成 create → list → get → update → delete 的完整 CRUD 生命周期', async () => {
+    const owner = await seedTenant('trigger-crud-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Test Cron',
+        type: 'cron',
+        config: {
+          expression: '0 9 * * 1',
+          timezone: 'Asia/Hong_Kong',
+        },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data).toMatchObject({
+      workflowDefinitionId: workflowId,
+      name: 'Test Cron',
+      type: 'cron',
+      isEnabled: true,
+      config: {
+        expression: '0 9 * * 1',
+        timezone: 'Asia/Hong_Kong',
+      },
+    });
+
+    const triggerId = createResponse.body.data.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers?type=cron`)
+      .set(owner.headers);
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data).toHaveLength(1);
+    expect(listResponse.body.data[0]).toMatchObject({
+      id: triggerId,
+      workflowDefinitionId: workflowId,
+      type: 'cron',
+    });
+
+    const getResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`)
+      .set(owner.headers);
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.data).toMatchObject({
+      id: triggerId,
+      workflowDefinitionId: workflowId,
+      name: 'Test Cron',
+      type: 'cron',
+    });
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`)
+      .set(owner.headers)
+      .send({
+        name: 'Updated Name',
+        description: 'New description',
+      });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data).toMatchObject({
+      id: triggerId,
+      name: 'Updated Name',
+      description: 'New description',
+    });
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`)
+      .set(owner.headers);
+
+    expect(deleteResponse.status).toBe(204);
+
+    const [storedAfterDelete] = await drizzleDb
+      .select()
+      .from(schema.workflowTriggers)
+      .where(eq(schema.workflowTriggers.id, triggerId));
+
+    expect(storedAfterDelete).toBeUndefined();
+  });
+
+  it('应当完成 webhook 触发器创建并返回 token/secret', async () => {
+    const owner = await seedTenant('trigger-webhook-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Test Webhook',
+        type: 'webhook',
+        config: { ipWhitelist: [] },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.type).toBe('webhook');
+    expect(createResponse.body.data.config.ipWhitelist).toEqual([]);
+    expect(createResponse.body.data.config.token).toEqual(expect.any(String));
+    expect(createResponse.body.data.config.secret).toEqual(expect.any(String));
+    expect(createResponse.body.data.config.token.length).toBeGreaterThan(0);
+    expect(createResponse.body.data.config.secret.length).toBeGreaterThan(0);
+
+    const triggerId = createResponse.body.data.id as string;
+    const getResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`)
+      .set(owner.headers);
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.data.config).toMatchObject({
+      token: createResponse.body.data.config.token,
+      secret: createResponse.body.data.config.secret,
+      ipWhitelist: [],
+    });
+  });
+
+  it('应当支持启用状态 toggle', async () => {
+    const owner = await seedTenant('trigger-toggle-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Toggle Trigger',
+        type: 'cron',
+        config: {
+          expression: '0 9 * * 1',
+          timezone: 'Asia/Hong_Kong',
+        },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(201);
+    const triggerId = createResponse.body.data.id as string;
+
+    const disableResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`)
+      .set(owner.headers)
+      .send();
+
+    expect(disableResponse.status).toBe(200);
+    expect(disableResponse.body.data.isEnabled).toBe(false);
+
+    const enableResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`)
+      .set(owner.headers)
+      .send();
+
+    expect(enableResponse.status).toBe(200);
+    expect(enableResponse.body.data.isEnabled).toBe(true);
+
+    const [storedTrigger] = await drizzleDb
+      .select()
+      .from(schema.workflowTriggers)
+      .where(eq(schema.workflowTriggers.id, triggerId));
+
+    expect(storedTrigger?.isEnabled).toBe(true);
+  });
+
+  it('应返回触发历史分页结果', async () => {
+    const owner = await seedTenant('trigger-history-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const trigger = await seedTrigger({
+      workflowId,
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+      name: 'History Trigger',
+    });
+
+    await seedTriggerHistory({
+      triggerId: trigger.id,
+      tenantId: owner.tenantId,
+      count: 3,
+    });
+
+    const historyResponse = await request(app.getHttpServer())
+      .get(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}/history?page=1&pageSize=10`,
+      )
+      .set(owner.headers);
+
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.body.meta).toEqual({
+      page: 1,
+      pageSize: 10,
+      total: 3,
+      totalPages: 1,
+    });
+    expect(historyResponse.body.data).toHaveLength(3);
+    expect(historyResponse.body.data[0].triggerId).toBe(trigger.id);
+    expect(historyResponse.body.data[0].status).toBe('success');
+    expect(
+      Date.parse(historyResponse.body.data[0].triggeredAt),
+    ).toBeGreaterThanOrEqual(Date.parse(historyResponse.body.data[1].triggeredAt));
+  });
+
+  it('工作流未发布时创建触发器应返回 409', async () => {
+    const owner = await seedTenant('trigger-draft-owner');
+    const workflowId = await seedDraftWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Draft Trigger',
+        type: 'cron',
+        config: {
+          expression: '0 9 * * 1',
+          timezone: 'Asia/Hong_Kong',
+        },
+        isEnabled: true,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/workflow-not-published',
+      title: '工作流未发布',
+      status: 409,
+      workflowId,
+    });
+  });
+
+  it('viewer 可以读取但不能创建/更新/删除', async () => {
+    const owner = await seedTenant('trigger-viewer-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const trigger = await seedTrigger({
+      workflowId,
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+      name: 'Viewer Trigger',
+    });
+    const viewer = await seedTenantMember({
+      prefix: 'trigger-viewer-member',
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      invitedBy: owner.user.id,
+      role: 'viewer',
+    });
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(viewer.headers);
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data).toHaveLength(1);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(viewer.headers)
+      .send({
+        name: 'Viewer Create',
+        type: 'cron',
+        config: {
+          expression: '0 9 * * 1',
+          timezone: 'Asia/Hong_Kong',
+        },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(403);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .set(viewer.headers)
+      .send({ name: 'Viewer Update' });
+
+    expect(updateResponse.status).toBe(403);
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .set(viewer.headers);
+
+    expect(deleteResponse.status).toBe(403);
+  });
+
+  it('访问不存在或跨租户触发器时应返回 404', async () => {
+    const owner = await seedTenant('trigger-not-found-owner');
+    const outsider = await seedTenant('trigger-not-found-outsider');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const trigger = await seedTrigger({
+      workflowId,
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+      name: 'Cross Tenant Trigger',
+    });
+
+    const missingResponse = await request(app.getHttpServer())
+      .get(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${crypto.randomUUID()}`,
+      )
+      .set(owner.headers);
+
+    expect(missingResponse.status).toBe(404);
+    expect(missingResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/trigger-not-found',
+      title: '触发器不存在',
+      status: 404,
+    });
+
+    const crossTenantResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .set(outsider.headers);
+
+    expect(crossTenantResponse.status).toBe(404);
+    expect(crossTenantResponse.body.type).toBe(
+      'https://agentloom.dev/errors/trigger-not-found',
+    );
+  });
+
+  it('单个工作流触发器数量达到上限时应返回 409', async () => {
+    const owner = await seedTenant('trigger-limit-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    for (let index = 0; index < MAX_TRIGGERS_PER_WORKFLOW; index++) {
+      await seedTrigger({
+        workflowId,
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        name: `Seeded Trigger ${index + 1}`,
+      });
+    }
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Overflow Trigger',
+        type: 'cron',
+        config: {
+          expression: '0 9 * * 1',
+          timezone: 'Asia/Hong_Kong',
+        },
+        isEnabled: true,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/trigger-limit-exceeded',
+      title: '触发器数量超限',
+      status: 409,
+      limit: MAX_TRIGGERS_PER_WORKFLOW,
+      workflowId,
+    });
+  });
+});

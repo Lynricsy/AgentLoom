@@ -27,6 +27,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { TemplateModule } from './modules/template/template.module';
 import { ReusableBlockModule } from './modules/reusable-block/reusable-block.module';
+import { TriggerModule } from './modules/trigger/trigger.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -71,6 +72,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     EvidenceModule,
     TemplateModule,
     ReusableBlockModule,
+    TriggerModule,
   ],
   providers: [
     RbacCacheService,
@@ -99,6 +101,8 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'templates', method: RequestMethod.ALL },
         { path: 'templates/{*splat}', method: RequestMethod.ALL },
+        { path: 'webhooks', method: RequestMethod.ALL },
+        { path: 'webhooks/{*splat}', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

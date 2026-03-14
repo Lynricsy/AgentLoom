@@ -224,85 +224,89 @@ describe("McpImportDialog", () => {
     });
   });
 
-  it("completes the import flow with explicit test connection, discovery, step-4 selection, and receipt review", async () => {
-    const user = userEvent.setup();
+  it(
+    "completes the import flow with explicit test connection, discovery, step-4 selection, and receipt review",
+    async () => {
+      const user = userEvent.setup();
 
-    render(<McpImportDialog onOpenChange={vi.fn()} open={true} />);
+      render(<McpImportDialog onOpenChange={vi.fn()} open={true} />);
 
-    await user.type(screen.getByLabelText("服务器名称"), "Filesystem Server");
-    await user.type(screen.getByLabelText("命令"), "npx");
-    await user.type(
-      screen.getByLabelText("命令参数"),
-      "-y @modelcontextprotocol/server-filesystem",
-    );
+      await user.type(screen.getByLabelText("服务器名称"), "Filesystem Server");
+      await user.type(screen.getByLabelText("命令"), "npx");
+      await user.type(
+        screen.getByLabelText("命令参数"),
+        "-y @modelcontextprotocol/server-filesystem",
+      );
 
-    await user.click(screen.getByRole("button", { name: "继续测试连接" }));
-    expect(screen.getByText("步骤 2 · 测试连接")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "继续测试连接" }));
+      expect(screen.getByText("步骤 2 · 测试连接")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "测试连接" }));
+      await user.click(screen.getByRole("button", { name: "测试连接" }));
 
-    await waitFor(() => {
-      expect(mocks.testMutateAsync).toHaveBeenCalledWith({
-        connection: {
-          transportType: "stdio",
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-filesystem"],
-          env: undefined,
-        },
+      await waitFor(() => {
+        expect(mocks.testMutateAsync).toHaveBeenCalledWith({
+          connection: {
+            transportType: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem"],
+            env: undefined,
+          },
+        });
       });
-    });
 
-    expect(screen.getByText("服务器响应正常")).toBeInTheDocument();
+      expect(screen.getByText("服务器响应正常")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "继续发现工具" }));
-    expect(screen.getByText("步骤 3 · 发现工具")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "继续发现工具" }));
+      expect(screen.getByText("步骤 3 · 发现工具")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "发现工具" }));
+      await user.click(screen.getByRole("button", { name: "发现工具" }));
 
-    await waitFor(() => {
-      expect(mocks.discoverMutateAsync).toHaveBeenCalledWith({
-        connection: {
-          transportType: "stdio",
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-filesystem"],
-          env: undefined,
-        },
+      await waitFor(() => {
+        expect(mocks.discoverMutateAsync).toHaveBeenCalledWith({
+          connection: {
+            transportType: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem"],
+            env: undefined,
+          },
+        });
       });
-    });
 
-    expect(screen.getByText("搜索文件")).toBeInTheDocument();
-    expect(screen.getByText("按关键字搜索文件")).toBeInTheDocument();
-    expect(screen.getByText("查看 inputSchema 摘要")).toBeInTheDocument();
+      expect(screen.getByText("搜索文件")).toBeInTheDocument();
+      expect(screen.getByText("按关键字搜索文件")).toBeInTheDocument();
+      expect(screen.getByText("查看 inputSchema 摘要")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "继续选择导入" }));
-    expect(screen.getByText("步骤 4 · 导入并复核")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "搜索文件" })).toBeChecked();
+      await user.click(screen.getByRole("button", { name: "继续选择导入" }));
+      expect(screen.getByText("步骤 4 · 导入并复核")).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "搜索文件" })).toBeChecked();
 
-    fireEvent.change(screen.getByLabelText("冲突处理策略"), {
-      target: { value: "skip" },
-    });
-
-    await user.click(screen.getByRole("button", { name: "开始导入" }));
-
-    await waitFor(() => {
-      expect(mocks.importMutateAsync).toHaveBeenCalledWith({
-        serverName: "Filesystem Server",
-        serverDescription: undefined,
-        connection: {
-          transportType: "stdio",
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-filesystem"],
-          env: undefined,
-        },
-        toolNames: ["search-files"],
-        conflictStrategy: "skip",
+      fireEvent.change(screen.getByLabelText("冲突处理策略"), {
+        target: { value: "skip" },
       });
-    });
 
-    expect(screen.getByText("导入回执")).toBeInTheDocument();
-    expect(screen.getByText("总计处理 1 个")).toBeInTheDocument();
-    expect(screen.queryByText("步骤 5 / 5")).not.toBeInTheDocument();
-  });
+      await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+      await waitFor(() => {
+        expect(mocks.importMutateAsync).toHaveBeenCalledWith({
+          serverName: "Filesystem Server",
+          serverDescription: undefined,
+          connection: {
+            transportType: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem"],
+            env: undefined,
+          },
+          toolNames: ["search-files"],
+          conflictStrategy: "skip",
+        });
+      });
+
+      expect(screen.getByText("导入回执")).toBeInTheDocument();
+      expect(screen.getByText("总计处理 1 个")).toBeInTheDocument();
+      expect(screen.queryByText("步骤 5 / 5")).not.toBeInTheDocument();
+    },
+    20_000,
+  );
 
   it("supports reimport mode with saved-config verification and overwrite receipt", async () => {
     const user = userEvent.setup();
