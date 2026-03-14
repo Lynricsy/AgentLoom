@@ -20,6 +20,7 @@ import {
   GitBranch,
   Globe,
   MessageSquare,
+  Package,
   Play,
   Plug,
   Repeat,
@@ -56,6 +57,7 @@ import { TypedPort } from './TypedPort'
 import { KnowledgeBaseNodeBody } from './nodes/KnowledgeBaseNodeBody'
 import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { McpToolNodeBody } from './nodes/McpToolNodeBody'
+import { ReusableBlockBody } from './nodes/ReusableBlockBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
@@ -73,6 +75,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Braces,
   GitBranch,
   Repeat,
+  Package,
 }
 
 type NodeShellStatus =
@@ -575,6 +578,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <KnowledgeBaseNodeBody config={data.config} />
           ) : data.nodeType === 'sandbox' ? (
             <SandboxNodeBody data={data} />
+          ) : data.nodeType === 'reusable-block' ? (
+            <ReusableBlockBody nodeId={id} data={data} />
           ) : (
             config.description
           )}

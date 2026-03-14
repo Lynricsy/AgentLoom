@@ -140,7 +140,7 @@ describe('NestedFieldTree', () => {
       makeLeaf('name', 'name'),
       makeLeaf('email', 'email'),
     ]
-    const { container } = render(
+    render(
       <NestedFieldTree
         nodes={nodes}
         selectedPaths={new Set(['name'])}
@@ -227,5 +227,67 @@ describe('NestedFieldTree', () => {
     const field = screen.getByTestId('nested-field-name')
     fireEvent.dragStart(field)
     expect(onDragStart).toHaveBeenCalledWith('name')
+  })
+
+  it('applies forbidden class to forbidden paths', () => {
+    const nodes = [
+      makeLeaf('name', 'name'),
+      makeLeaf('email', 'email'),
+    ]
+    render(
+      <NestedFieldTree
+        nodes={nodes}
+        selectedPaths={new Set()}
+        onFieldClick={vi.fn()}
+        forbiddenPaths={new Set(['email'])}
+      />,
+    )
+
+    const nameEl = screen.getByTestId('nested-field-name')
+    const emailEl = screen.getByTestId('nested-field-email')
+    expect(nameEl.className).not.toContain('forbidden')
+    expect(emailEl.className).toContain('forbidden')
+  })
+
+  it('sets aria-disabled on forbidden leaf nodes', () => {
+    const nodes = [makeLeaf('name', 'name')]
+    render(
+      <NestedFieldTree
+        nodes={nodes}
+        selectedPaths={new Set()}
+        onFieldClick={vi.fn()}
+        forbiddenPaths={new Set(['name'])}
+      />,
+    )
+
+    expect(screen.getByTestId('nested-field-name')).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('blocks drag-over on forbidden fields', () => {
+    const onFieldDrop = vi.fn()
+    const nodes = [makeLeaf('target', 'target')]
+    render(
+      <NestedFieldTree
+        nodes={nodes}
+        selectedPaths={new Set()}
+        onFieldClick={vi.fn()}
+        onFieldDrop={onFieldDrop}
+        forbiddenPaths={new Set(['target'])}
+      />,
+    )
+
+    const field = screen.getByTestId('nested-field-target')
+    const dataTransfer = {
+      effectAllowed: 'move',
+      dropEffect: 'none',
+      getData: vi.fn(() => 'source'),
+      setData: vi.fn(),
+    }
+
+    fireEvent.dragOver(field, { dataTransfer })
+    expect(dataTransfer.dropEffect).toBe('none')
+
+    fireEvent.drop(field, { dataTransfer })
+    expect(onFieldDrop).not.toHaveBeenCalled()
   })
 })

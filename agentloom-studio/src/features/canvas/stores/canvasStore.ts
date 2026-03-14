@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
+import { enableMapSet } from 'immer'
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -24,6 +25,8 @@ import {
 } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import type { NodeType } from '../types/nodeTypeRegistry'
+
+enableMapSet()
 
 const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['llm-agent', 'chat-agent'])
 function isAgentNodeType(nodeType: string): boolean {
@@ -49,6 +52,7 @@ interface CanvasState {
   edges: CanvasEdge[]
   viewport: Viewport
   selectedNodeId: string | null
+  selectedNodeIds: Set<string>
   selectedEdgeId: string | null
   mappingPanelEdgeId: string | null
   isDirty: boolean
@@ -73,6 +77,10 @@ interface CanvasActions {
     createConnection: (connection: Connection, edgeData: CanvasEdgeData) => void
     addNode: (input: AddNodeInput) => void
     deleteSelectedNode: () => void
+    toggleNodeSelection: (nodeId: string) => void
+    selectNodes: (nodeIds: string[]) => void
+    clearSelection: () => void
+    deleteSelectedNodes: () => void
     selectNode: (nodeId: string | null) => void
     selectEdge: (edgeId: string | null) => void
     openFieldMapping: (edgeId: string) => void
@@ -110,6 +118,7 @@ function createInitialState(): CanvasState {
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeId: null,
+    selectedNodeIds: new Set<string>(),
     selectedEdgeId: null,
     mappingPanelEdgeId: null,
     isDirty: false,
@@ -152,6 +161,10 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
         actions: {
           onNodesChange: (changes) =>
             set((state) => {
+              const selectionChanges = changes.filter(
+                (change): change is NodeChange<CanvasNode> & { type: 'select'; selected: boolean } =>
+                  change.type === 'select',
+              )
               const removedNodeIds = changes
                 .filter(
                   (change): change is NodeChange<CanvasNode> & { type: 'remove' } =>
@@ -174,10 +187,25 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               if (isDirtyChange) {
                 state.isDirty = true
               }
-              const selectChange = changes.find((c) => c.type === 'select')
-              if (selectChange && selectChange.type === 'select') {
-                state.selectedNodeId = selectChange.selected ? selectChange.id : null
-                if (selectChange.selected) state.selectedEdgeId = null
+
+              if (selectionChanges.length > 0 || removedNodeIds.length > 0) {
+                const nextSelectedNodeIds = new Set(
+                  state.nodes.filter((node) => node.selected).map((node) => node.id),
+                )
+                const lastSelectedChange = [...selectionChanges]
+                  .reverse()
+                  .find((change) => change.selected)
+
+                state.selectedNodeIds = nextSelectedNodeIds
+
+                if (nextSelectedNodeIds.size === 0) {
+                  state.selectedNodeId = null
+                } else if (lastSelectedChange) {
+                  state.selectedNodeId = lastSelectedChange.id
+                  state.selectedEdgeId = null
+                } else if (!state.selectedNodeId || !nextSelectedNodeIds.has(state.selectedNodeId)) {
+                  state.selectedNodeId = Array.from(nextSelectedNodeIds).at(-1) ?? null
+                }
               }
             }),
 
@@ -283,7 +311,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 type: input.category,
                 position: input.position,
                 data: {
-                  label: input.label ?? config.label,
+                  label: input.label ?? input.blockName ?? config.label,
                   nodeType: input.nodeType,
                   category: input.category,
                   description: input.description ?? config.description,
@@ -292,6 +320,10 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   outputPorts: clonePortDefinitions(input.outputPorts ?? config.outputPorts),
                   ...(input.mcpToolDefinitionId ? { mcpToolDefinitionId: input.mcpToolDefinitionId } : {}),
                   ...(isAgentNodeType(input.nodeType) ? createDefaultAgentNodeData() : {}),
+                  ...(input.blockId ? { blockId: input.blockId } : {}),
+                  ...(input.blockName ? { blockName: input.blockName } : {}),
+                  ...(input.blockDefinition ? { blockDefinition: input.blockDefinition } : {}),
+                  ...(input.nodeType === 'reusable-block' ? { isExpanded: input.isExpanded ?? false } : {}),
                 },
               }
               state.nodes.push(node)
@@ -302,6 +334,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               if (!state.selectedNodeId) return
               const nodeId = state.selectedNodeId
+              const nextSelectedNodeIds = new Set(state.selectedNodeIds)
+              nextSelectedNodeIds.delete(nodeId)
               const removedEdgeIds = new Set(
                 state.edges.filter((e) => e.source === nodeId || e.target === nodeId).map((e) => e.id)
               )
@@ -309,7 +343,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.edges = state.edges.filter(
                 (e) => e.source !== nodeId && e.target !== nodeId
               )
-              state.selectedNodeId = null
+              state.selectedNodeIds = nextSelectedNodeIds
+              state.selectedNodeId = Array.from(nextSelectedNodeIds).at(-1) ?? null
               if (state.selectedEdgeId && removedEdgeIds.has(state.selectedEdgeId)) {
                 state.selectedEdgeId = null
               }
@@ -320,16 +355,85 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isDirty = true
             }),
 
+          toggleNodeSelection: (nodeId) =>
+            set((state) => {
+              const nextSelectedNodeIds = new Set(state.selectedNodeIds)
+              const wasSelected = nextSelectedNodeIds.has(nodeId)
+
+              if (wasSelected) {
+                nextSelectedNodeIds.delete(nodeId)
+              } else {
+                nextSelectedNodeIds.add(nodeId)
+              }
+
+              state.selectedNodeIds = nextSelectedNodeIds
+              state.selectedNodeId = wasSelected
+                ? Array.from(nextSelectedNodeIds).at(-1) ?? null
+                : nodeId
+              state.selectedEdgeId = null
+            }),
+
+          selectNodes: (nodeIds) =>
+            set((state) => {
+              state.selectedNodeIds = new Set(nodeIds)
+              state.selectedNodeId = nodeIds.length > 0 ? nodeIds[nodeIds.length - 1]! : null
+              state.selectedEdgeId = null
+            }),
+
+          clearSelection: () =>
+            set((state) => {
+              state.selectedNodeIds = new Set()
+              state.selectedNodeId = null
+              state.selectedEdgeId = null
+            }),
+
+          deleteSelectedNodes: () =>
+            set((state) => {
+              if (state.selectedNodeIds.size === 0) return
+
+              const nodeIdsToDelete = new Set(state.selectedNodeIds)
+              const removedEdgeIds = new Set(
+                state.edges
+                  .filter((edge) => nodeIdsToDelete.has(edge.source) || nodeIdsToDelete.has(edge.target))
+                  .map((edge) => edge.id),
+              )
+
+              state.nodes = state.nodes.filter((node) => !nodeIdsToDelete.has(node.id))
+              state.edges = state.edges.filter(
+                (edge) => !nodeIdsToDelete.has(edge.source) && !nodeIdsToDelete.has(edge.target),
+              )
+
+              for (const nodeId of nodeIdsToDelete) {
+                delete state.nodeValidationErrors[nodeId]
+              }
+
+              state.selectedNodeIds = new Set()
+              state.selectedNodeId = null
+
+              if (state.selectedEdgeId && removedEdgeIds.has(state.selectedEdgeId)) {
+                state.selectedEdgeId = null
+              }
+              if (state.mappingPanelEdgeId && removedEdgeIds.has(state.mappingPanelEdgeId)) {
+                state.mappingPanelEdgeId = null
+              }
+
+              state.isDirty = true
+            }),
+
           selectNode: (nodeId) =>
             set((state) => {
               state.selectedNodeId = nodeId
+              state.selectedNodeIds = nodeId ? new Set([nodeId]) : new Set()
               if (nodeId) state.selectedEdgeId = null
             }),
 
           selectEdge: (edgeId) =>
             set((state) => {
               state.selectedEdgeId = edgeId
-              if (edgeId) state.selectedNodeId = null
+              if (edgeId) {
+                state.selectedNodeId = null
+                state.selectedNodeIds = new Set()
+              }
             }),
 
           openFieldMapping: (edgeId) =>
@@ -337,6 +441,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.mappingPanelEdgeId = edgeId
               state.selectedEdgeId = edgeId
               state.selectedNodeId = null
+              state.selectedNodeIds = new Set()
             }),
 
           closeFieldMapping: () =>
@@ -519,6 +624,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.version = version
               state.isDirty = false
               state.selectedNodeId = null
+              state.selectedNodeIds = new Set()
               state.selectedEdgeId = null
               state.mappingPanelEdgeId = null
               state.nodeValidationErrors = {}
@@ -752,6 +858,8 @@ export const useCanvasSaveStatus = () =>
       lastSavedAt: s.lastSavedAt,
     }))
   )
+
+export const useSelectedNodeIds = () => useCanvasStore((s) => s.selectedNodeIds)
 
 export const useSelectedEdgeId = () => useCanvasStore((s) => s.selectedEdgeId)
 

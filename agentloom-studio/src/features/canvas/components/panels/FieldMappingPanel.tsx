@@ -1,15 +1,17 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { AlertTriangle, ArrowRightLeft, Check, X } from 'lucide-react'
 import type {
+  BatchPreviewItem,
   CandidateFieldMapping,
   CanvasEdge,
   CanvasNode,
+  CompatibilityLabel,
   FieldMapping,
   MappingSuggestion,
   NestedFieldNode,
   TypeCoercionConfig,
 } from '../../types'
-import type { PortDataType } from '../../types/typeSchema'
+import type { PortDataType, TypeSchema } from '../../types/typeSchema'
 import { NestedFieldTree } from './NestedFieldTree'
 import { CoercionConfigPopover } from './CoercionConfigPopover'
 import { MappingSuggestionCard } from './MappingSuggestionCard'
@@ -17,10 +19,13 @@ import { buildNestedFieldTree, collectLeafPaths } from '../../lib/nestedFieldTre
 import {
   generateSuggestions,
   getApplicableSuggestions,
-  normalizedLevenshteinSimilarity,
+  getCompatibilityLabel,
+  getSuggestedCoercionConfig,
 } from '../../lib/fieldSuggestionEngine'
 import type { SuggestionField } from '../../lib/fieldSuggestionEngine'
+import { getStrategyLabel } from '../../lib/coercionStrategies'
 import { useCanvasStore } from '../../stores/canvasStore'
+import { useToast } from '@/shared/ui/toast'
 
 export interface FieldMappingPanelProps {
   open: boolean
@@ -32,7 +37,6 @@ export interface FieldMappingPanelProps {
   onChange: (edgeId: string, mappings: FieldMapping[]) => void
 }
 
-/** C4 候选映射按 target 去重: autoRecommended 优先, 再按 confidence 排序 */
 function selectBestCandidatesByTarget(
   candidates: CandidateFieldMapping[],
 ): CandidateFieldMapping[] {
@@ -88,9 +92,54 @@ function buildLeafNodeMap(nodes: NestedFieldNode[]): Map<string, NestedFieldNode
   return map
 }
 
-const BATCH_NAME_MATCH_THRESHOLD = 0.3
+interface PendingCoercion {
+  sourceField: string
+  targetField: string
+  sourceType: PortDataType
+  targetType: PortDataType
+  initialConfig?: TypeCoercionConfig
+}
+
+interface BatchPreviewState {
+  items: BatchPreviewItem[]
+  unmatchedSources: string[]
+}
 
 const EMPTY_SET: ReadonlySet<string> = new Set<string>()
+
+const COMPAT_LABEL_TEXT: Record<CompatibilityLabel, string> = {
+  exact: '完全兼容',
+  coercible: '可转换',
+  incompatible: '不兼容',
+}
+
+function getLeafKey(path: string): string {
+  return path.split('.').at(-1) ?? path
+}
+
+function normalizeFieldName(value: string): string {
+  return value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+}
+
+function createBatchPreviewItem(
+  sourceField: string,
+  targetField: string,
+  matchType: BatchPreviewItem['matchType'],
+  getLeafSchema: (path: string, side: 'source' | 'target') => TypeSchema | undefined,
+): BatchPreviewItem {
+  const sourceSchema = getLeafSchema(sourceField, 'source')
+  const targetSchema = getLeafSchema(targetField, 'target')
+
+  return {
+    sourceField,
+    targetField,
+    matchType,
+    compatibilityLabel:
+      sourceSchema && targetSchema
+        ? getCompatibilityLabel(sourceSchema, targetSchema)
+        : 'exact',
+  }
+}
 
 export const FieldMappingPanel = memo(function FieldMappingPanel({
   open,
@@ -106,12 +155,27 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   const ctrlPressedRef = useRef(false)
   const batchDragSourcesRef = useRef<Set<string>>(new Set())
 
-  const saveMappingSnapshot = useCanvasStore((s) => s.saveMappingSnapshot)
-  const undoFieldMapping = useCanvasStore((s) => s.undoFieldMapping)
+  const [pendingCoercion, setPendingCoercion] = useState<PendingCoercion | null>(null)
+  const [applyAllConfirmPending, setApplyAllConfirmPending] = useState(false)
+  const [batchPreview, setBatchPreview] = useState<BatchPreviewState | null>(null)
+
+  const saveMappingSnapshot = useCanvasStore((s) => s.actions.saveMappingSnapshot)
+  const undoFieldMapping = useCanvasStore((s) => s.actions.undoFieldMapping)
+  const { notify } = useToast()
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Control' || e.key === 'Meta') ctrlPressedRef.current = true
+
+      if (
+        edgeId &&
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === 'z'
+      ) {
+        e.preventDefault()
+        undoFieldMapping(edgeId)
+      }
     }
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Control' || e.key === 'Meta') ctrlPressedRef.current = false
@@ -122,7 +186,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [])
+  }, [edgeId, undoFieldMapping])
 
   const edgeData = edge?.data
   const isReadonly = edgeData?.visualLevel === 'L0'
@@ -230,7 +294,48 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
     return map
   }, [suggestions])
 
-  const createMapping = useCallback(
+  const getLeafSchema = useCallback(
+    (path: string, side: 'source' | 'target'): TypeSchema | undefined => {
+      const leafMap = side === 'source' ? sourceLeafMap : targetLeafMap
+      return leafMap.get(path)?.schema
+    },
+    [sourceLeafMap, targetLeafMap],
+  )
+
+  const getLeafKind = useCallback(
+    (path: string, side: 'source' | 'target'): PortDataType | undefined => {
+      const schema = getLeafSchema(path, side)
+      return schema?.kind as PortDataType | undefined
+    },
+    [getLeafSchema],
+  )
+
+  const checkCompat = useCallback(
+    (sourceField: string, targetField: string): CompatibilityLabel => {
+      const sourceSchema = getLeafSchema(sourceField, 'source')
+      const targetSchema = getLeafSchema(targetField, 'target')
+      if (!sourceSchema || !targetSchema) return 'exact'
+      return getCompatibilityLabel(sourceSchema, targetSchema)
+    },
+    [getLeafSchema],
+  )
+
+  const forbiddenPaths = useMemo<ReadonlySet<string>>(() => {
+    const activeSource =
+      dragSource ??
+      (selectedSources.size === 1 ? (selectedSources.values().next().value as string | undefined) : undefined)
+    if (!activeSource) return EMPTY_SET
+
+    const forbidden = new Set<string>()
+    for (const path of targetLeafMap.keys()) {
+      if (checkCompat(activeSource, path) === 'incompatible') {
+        forbidden.add(path)
+      }
+    }
+    return forbidden
+  }, [dragSource, selectedSources, targetLeafMap, checkCompat])
+
+  const writeMapping = useCallback(
     (sourceField: string, targetField: string, coercionConfig?: TypeCoercionConfig) => {
       if (!edgeId) return
       const existing = mappings.filter((m) => m.targetField !== targetField)
@@ -246,12 +351,151 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
     [edgeId, mappings, onChange],
   )
 
+  const attemptMapping = useCallback(
+    (sourceField: string, targetField: string) => {
+      if (!edgeId) return 'incompatible' as CompatibilityLabel
+
+      const sourceSchema = getLeafSchema(sourceField, 'source')
+      const targetSchema = getLeafSchema(targetField, 'target')
+      const compat = checkCompat(sourceField, targetField)
+
+      if (compat === 'incompatible') {
+        notify({
+          variant: 'error',
+          description: '字段类型不兼容，且没有可用转换策略',
+        })
+        return compat
+      }
+
+      saveMappingSnapshot(edgeId)
+
+      if (compat === 'coercible') {
+        const srcKind = getLeafKind(sourceField, 'source')!
+        const tgtKind = getLeafKind(targetField, 'target')!
+        setPendingCoercion({
+          sourceField,
+          targetField,
+          sourceType: srcKind,
+          targetType: tgtKind,
+          initialConfig:
+            sourceSchema && targetSchema
+              ? getSuggestedCoercionConfig(sourceSchema, targetSchema)
+              : undefined,
+        })
+        return compat
+      }
+
+      writeMapping(sourceField, targetField)
+      return compat
+    },
+    [
+      edgeId,
+      getLeafSchema,
+      checkCompat,
+      notify,
+      saveMappingSnapshot,
+      getLeafKind,
+      writeMapping,
+    ],
+  )
+
+  const handlePendingCoercionConfirm = useCallback(
+    (config: TypeCoercionConfig) => {
+      if (!pendingCoercion) return
+      writeMapping(pendingCoercion.sourceField, pendingCoercion.targetField, config)
+      setPendingCoercion(null)
+    },
+    [pendingCoercion, writeMapping],
+  )
+
+  const handlePendingCoercionCancel = useCallback(() => {
+    if (!edgeId) return
+    undoFieldMapping(edgeId)
+    setPendingCoercion(null)
+  }, [edgeId, undoFieldMapping])
+
+  const buildBatchPreview = useCallback(
+    (sourcePaths: Set<string>, anchorTargetPath: string): BatchPreviewState | null => {
+      const allTargetLeafPaths = collectLeafPaths(targetTree)
+      const unmappedTargets = allTargetLeafPaths.filter((path) => !mappedTargets.has(path))
+      if (unmappedTargets.length === 0) return null
+
+      const anchorIndex = unmappedTargets.indexOf(anchorTargetPath)
+      const orderedTargets =
+        anchorIndex >= 0
+          ? [
+              ...unmappedTargets.slice(anchorIndex),
+              ...unmappedTargets.slice(0, anchorIndex),
+            ]
+          : unmappedTargets
+
+      const remainingSources = [...sourcePaths]
+      const remainingTargets = [...orderedTargets]
+      const previewItems: BatchPreviewItem[] = []
+
+      const claimTarget = (
+        sourcePath: string,
+        matcher: (targetPath: string) => boolean,
+        matchType: BatchPreviewItem['matchType'],
+      ) => {
+        const sourceIndex = remainingSources.indexOf(sourcePath)
+        if (sourceIndex === -1) return false
+
+        const targetIndex = remainingTargets.findIndex(matcher)
+        if (targetIndex === -1) return false
+
+        const [claimedSource] = remainingSources.splice(sourceIndex, 1)
+        const [claimedTarget] = remainingTargets.splice(targetIndex, 1)
+        if (!claimedSource || !claimedTarget) return false
+
+        previewItems.push(
+          createBatchPreviewItem(claimedSource, claimedTarget, matchType, getLeafSchema),
+        )
+        return true
+      }
+
+      for (const sourcePath of [...remainingSources]) {
+        const sourceLeafKey = getLeafKey(sourcePath)
+        claimTarget(
+          sourcePath,
+          (targetPath) => getLeafKey(targetPath) === sourceLeafKey,
+          'exact-name',
+        )
+      }
+
+      for (const sourcePath of [...remainingSources]) {
+        const normalizedSourceLeaf = normalizeFieldName(getLeafKey(sourcePath))
+        claimTarget(
+          sourcePath,
+          (targetPath) => normalizeFieldName(getLeafKey(targetPath)) === normalizedSourceLeaf,
+          'normalized-name',
+        )
+      }
+
+      const orderMatches = Math.min(remainingSources.length, remainingTargets.length)
+      for (let index = 0; index < orderMatches; index++) {
+        const sourcePath = remainingSources[index]
+        const targetPath = remainingTargets[index]
+        if (!sourcePath || !targetPath) continue
+
+        previewItems.push(
+          createBatchPreviewItem(sourcePath, targetPath, 'order', getLeafSchema),
+        )
+      }
+
+      return {
+        items: previewItems,
+        unmatchedSources: remainingSources.slice(orderMatches),
+      }
+    },
+    [targetTree, mappedTargets, getLeafSchema],
+  )
+
   const handleSourceClick = useCallback(
     (path: string) => {
       if (isReadonly) return
       setSelectedSources((prev) => {
         if (ctrlPressedRef.current) {
-          // Ctrl/Cmd: 切换多选
           const next = new Set(prev)
           if (next.has(path)) {
             next.delete(path)
@@ -260,7 +504,6 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
           }
           return next
         }
-        // 非 Ctrl: 切换单选
         if (prev.has(path) && prev.size === 1) {
           return new Set()
         }
@@ -273,19 +516,30 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   const handleTargetClick = useCallback(
     (path: string) => {
       if (isReadonly || selectedSources.size === 0) return
+
+      if (selectedSources.size > 1) {
+        const previewState = buildBatchPreview(selectedSources, path)
+        if (previewState) {
+          setBatchPreview(previewState)
+          setSelectedSources(new Set())
+        }
+        return
+      }
+
       const firstSource = selectedSources.values().next().value as string | undefined
       if (firstSource) {
-        createMapping(firstSource, path)
+        const compat = attemptMapping(firstSource, path)
+        if (compat !== 'incompatible') {
+          setSelectedSources(new Set())
+        }
       }
-      setSelectedSources(new Set())
     },
-    [isReadonly, selectedSources, createMapping],
+    [isReadonly, selectedSources, buildBatchPreview, attemptMapping],
   )
 
   const handleDragStart = useCallback(
     (path: string) => {
       if (isReadonly) return
-      // 若拖拽的字段属于多选组，批量拖拽所有选中源
       if (selectedSources.has(path) && selectedSources.size > 1) {
         batchDragSourcesRef.current = new Set(selectedSources)
       } else {
@@ -312,84 +566,112 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       const batchSources = batchDragSourcesRef.current
 
       if (batchSources.size > 1) {
-        // 批量拖放：按名称相似度匹配
-        const allTargetLeafPaths = collectLeafPaths(targetTree)
-        const unmappedTargets = allTargetLeafPaths.filter((p) => !mappedTargets.has(p))
-
-        let newMappings = [...mappings]
-        const claimed = new Set<string>()
-
-        for (const sourcePath of batchSources) {
-          const sourceLeafKey = sourcePath.split('.').at(-1) ?? sourcePath
-          let bestMatch: string | null = null
-          let bestScore = BATCH_NAME_MATCH_THRESHOLD
-
-          for (const tp of unmappedTargets) {
-            if (claimed.has(tp)) continue
-            const targetLeafKey = tp.split('.').at(-1) ?? tp
-            const score = normalizedLevenshteinSimilarity(sourceLeafKey, targetLeafKey)
-            if (score > bestScore) {
-              bestScore = score
-              bestMatch = tp
-            }
-          }
-
-          if (bestMatch) {
-            newMappings = newMappings.filter((m) => m.targetField !== bestMatch)
-            newMappings.push({
-              sourceField: sourcePath,
-              targetField: bestMatch,
-              compatLevel: 'L1',
-              autoRecommended: false,
-            })
-            claimed.add(bestMatch)
-          }
-        }
-
-        if (edgeId) {
-          saveMappingSnapshot(edgeId)
-          onChange(edgeId, newMappings)
+        const previewState = buildBatchPreview(batchSources, targetPath)
+        if (previewState && (previewState.items.length > 0 || previewState.unmatchedSources.length > 0)) {
+          setBatchPreview(previewState)
         }
       } else {
-        // 单个拖放
         const sourcePath = e.dataTransfer.getData('text/plain')
         if (sourcePath) {
-          createMapping(sourcePath, targetPath)
+          attemptMapping(sourcePath, targetPath)
         }
       }
 
       setDragSource(null)
       batchDragSourcesRef.current = new Set()
     },
-    [mappings, edgeId, onChange, createMapping, targetTree, mappedTargets, saveMappingSnapshot],
+    [buildBatchPreview, attemptMapping],
   )
+
+  const handleBatchPreviewConfirm = useCallback(() => {
+    if (!edgeId || !batchPreview) return
+    saveMappingSnapshot(edgeId)
+
+    const compatible = batchPreview.items.filter((item) => item.compatibilityLabel !== 'incompatible')
+    let newMappings = [...mappings]
+
+    for (const item of compatible) {
+      newMappings = newMappings.filter((m) => m.targetField !== item.targetField)
+      const sourceSchema = getLeafSchema(item.sourceField, 'source')
+      const targetSchema = getLeafSchema(item.targetField, 'target')
+      const coercionConfig =
+        item.compatibilityLabel === 'coercible' && sourceSchema && targetSchema
+          ? getSuggestedCoercionConfig(sourceSchema, targetSchema)
+          : undefined
+
+      newMappings.push({
+        sourceField: item.sourceField,
+        targetField: item.targetField,
+        compatLevel: 'L1',
+        autoRecommended: false,
+        ...(coercionConfig ? { coercionConfig } : {}),
+      })
+    }
+
+    onChange(edgeId, newMappings)
+    const skippedCount = batchPreview.items.length - compatible.length
+    notify({
+      variant: 'success',
+      description: `${compatible.length} 个映射已创建${skippedCount > 0 ? `，${skippedCount} 个不兼容已跳过` : ''}${batchPreview.unmatchedSources.length > 0 ? `，${batchPreview.unmatchedSources.length} 个未匹配` : ''}，Ctrl+Z 撤销`,
+    })
+    setBatchPreview(null)
+  }, [edgeId, batchPreview, mappings, onChange, saveMappingSnapshot, notify, getLeafSchema])
+
+  const handleBatchPreviewCancel = useCallback(() => {
+    setBatchPreview(null)
+  }, [])
 
   const handleRemoveMapping = useCallback(
     (targetField: string) => {
       if (isReadonly || !edgeId) return
+      saveMappingSnapshot(edgeId)
       onChange(
         edgeId,
         mappings.filter((m) => m.targetField !== targetField),
       )
     },
-    [isReadonly, edgeId, mappings, onChange],
+    [isReadonly, edgeId, mappings, onChange, saveMappingSnapshot],
   )
 
   const handleCoercionChange = useCallback(
     (targetField: string, coercionConfig: TypeCoercionConfig | undefined) => {
       if (isReadonly || !edgeId) return
+      saveMappingSnapshot(edgeId)
       const updated = mappings.map((m) =>
         m.targetField === targetField ? { ...m, coercionConfig } : m,
       )
       onChange(edgeId, updated)
     },
-    [isReadonly, edgeId, mappings, onChange],
+    [isReadonly, edgeId, mappings, onChange, saveMappingSnapshot],
   )
 
   const handleApplySuggestion = useCallback(
     (suggestion: MappingSuggestion) => {
       if (!edgeId) return
+      if (suggestion.compatibilityLabel === 'incompatible') {
+        notify({
+          variant: 'error',
+          description: '该推荐的字段类型不兼容，无法直接应用',
+        })
+        return
+      }
+
       saveMappingSnapshot(edgeId)
+
+      if (suggestion.compatibilityLabel === 'coercible') {
+        const srcKind = getLeafKind(suggestion.sourceField, 'source')
+        const tgtKind = getLeafKind(suggestion.targetField, 'target')
+        if (srcKind && tgtKind) {
+          setPendingCoercion({
+            sourceField: suggestion.sourceField,
+            targetField: suggestion.targetField,
+            sourceType: srcKind,
+            targetType: tgtKind,
+            initialConfig: suggestion.suggestedCoercion,
+          })
+          return
+        }
+      }
       const existing = mappings.filter((m) => m.targetField !== suggestion.targetField)
       const newMapping: FieldMapping = {
         sourceField: suggestion.sourceField,
@@ -401,19 +683,19 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       }
       onChange(edgeId, [...existing, newMapping])
     },
-    [edgeId, mappings, onChange, saveMappingSnapshot],
+    [edgeId, mappings, onChange, saveMappingSnapshot, getLeafKind, notify],
   )
 
   const handleApplyAllSuggestions = useCallback(() => {
     if (!edgeId || applicableSuggestions.length === 0) return
-    saveMappingSnapshot(edgeId)
+    setApplyAllConfirmPending(true)
+  }, [edgeId, applicableSuggestions.length])
 
-    // 跳过手动映射的 target
+  const applyAllConfirmData = useMemo(() => {
+    if (!applyAllConfirmPending) return null
     const manualMappedTargets = new Set(
       mappings.filter((m) => !m.autoRecommended).map((m) => m.targetField),
     )
-
-    // 每个 target 取最佳推荐
     const bestByTarget = new Map<string, MappingSuggestion>()
     for (const s of applicableSuggestions) {
       if (manualMappedTargets.has(s.targetField)) continue
@@ -422,9 +704,25 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         bestByTarget.set(s.targetField, s)
       }
     }
+    const suggestionsToReview = [...bestByTarget.values()]
+    const toApply = suggestionsToReview.filter(
+      (suggestion) => suggestion.compatibilityLabel !== 'incompatible',
+    )
+    const coercibleCount = toApply.filter((s) => s.compatibilityLabel === 'coercible').length
+    return {
+      toApply,
+      coercibleCount,
+      skippedManualCount: manualMappedTargets.size,
+      skippedIncompatibleCount: suggestionsToReview.length - toApply.length,
+    }
+  }, [applyAllConfirmPending, applicableSuggestions, mappings])
+
+  const confirmApplyAll = useCallback(() => {
+    if (!edgeId || !applyAllConfirmData) return
+    saveMappingSnapshot(edgeId)
 
     let newMappings = [...mappings]
-    for (const [, suggestion] of bestByTarget) {
+    for (const suggestion of applyAllConfirmData.toApply) {
       newMappings = newMappings.filter((m) => m.targetField !== suggestion.targetField)
       newMappings.push({
         sourceField: suggestion.sourceField,
@@ -439,7 +737,16 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
     }
 
     onChange(edgeId, newMappings)
-  }, [edgeId, applicableSuggestions, mappings, onChange, saveMappingSnapshot])
+    notify({
+      variant: 'success',
+      description: `${applyAllConfirmData.toApply.length} 个推荐已应用，Ctrl+Z 撤销`,
+    })
+    setApplyAllConfirmPending(false)
+  }, [edgeId, applyAllConfirmData, mappings, onChange, saveMappingSnapshot, notify])
+
+  const cancelApplyAll = useCallback(() => {
+    setApplyAllConfirmPending(false)
+  }, [])
 
   const handleUndo = useCallback(() => {
     if (!edgeId) return
@@ -449,6 +756,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   const acceptCandidate = useCallback(
     (candidate: CandidateFieldMapping) => {
       if (isReadonly || !edgeId) return
+      saveMappingSnapshot(edgeId)
       const existing = mappings.filter((m) => m.targetField !== candidate.targetPath)
       const newMapping: FieldMapping = {
         sourceField: candidate.sourcePath,
@@ -459,11 +767,12 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       }
       onChange(edgeId, [...existing, newMapping])
     },
-    [isReadonly, edgeId, mappings, onChange],
+    [isReadonly, edgeId, mappings, onChange, saveMappingSnapshot],
   )
 
   const acceptAllCandidates = useCallback(() => {
     if (isReadonly || !edgeId || visibleCandidates.length === 0) return
+    saveMappingSnapshot(edgeId)
     const newMappings = visibleCandidates.map(
       (c): FieldMapping => ({
         sourceField: c.sourcePath,
@@ -474,7 +783,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       }),
     )
     onChange(edgeId, [...mappings, ...newMappings])
-  }, [isReadonly, edgeId, visibleCandidates, mappings, onChange])
+  }, [isReadonly, edgeId, visibleCandidates, mappings, onChange, saveMappingSnapshot])
 
   const renderTargetSuffix = useCallback(
     (node: NestedFieldNode) => {
@@ -528,7 +837,6 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         )}
       </div>
 
-      {/* C4 候选映射 */}
       {!isReadonly && visibleCandidates.length > 0 && (
         <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
           <div className="flex items-center justify-between px-2 py-1">
@@ -566,7 +874,6 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         </div>
       )}
 
-      {/* 智能推荐 */}
       {!isReadonly && bestSuggestionsByTarget.size > 0 && (
         <div className="mapping-panel__suggestions" data-testid="mapping-suggestions-section">
           <div className="flex items-center justify-between px-2 py-1">
@@ -584,6 +891,45 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
               </button>
             )}
           </div>
+
+          {applyAllConfirmPending && applyAllConfirmData && (
+            <div className="apply-all-confirm" data-testid="apply-all-confirm">
+              <div className="apply-all-confirm__summary">
+                 将应用 {applyAllConfirmData.toApply.length} 个推荐
+                 {applyAllConfirmData.coercibleCount > 0 && (
+                   <span className="apply-all-confirm__coercible">
+                     （{applyAllConfirmData.coercibleCount} 个需要类型转换）
+                   </span>
+                 )}
+                 {applyAllConfirmData.skippedIncompatibleCount > 0 && (
+                   <span className="apply-all-confirm__coercible">
+                     （{applyAllConfirmData.skippedIncompatibleCount} 个不兼容已跳过）
+                   </span>
+                 )}
+               </div>
+              <div className="apply-all-confirm__actions">
+                <button
+                  type="button"
+                  data-testid="apply-all-confirm-btn"
+                  className="apply-all-confirm__btn--confirm"
+                  onClick={confirmApplyAll}
+                >
+                  <Check size={12} />
+                  确认
+                </button>
+                <button
+                  type="button"
+                  data-testid="apply-all-cancel-btn"
+                  className="apply-all-confirm__btn--cancel"
+                  onClick={cancelApplyAll}
+                >
+                  <X size={12} />
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
           {[...bestSuggestionsByTarget.values()].map((s) => (
             <MappingSuggestionCard
               key={`suggestion-${s.targetField}`}
@@ -594,10 +940,91 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         </div>
       )}
 
+      {batchPreview && (batchPreview.items.length > 0 || batchPreview.unmatchedSources.length > 0) && (
+        <div className="batch-preview" data-testid="batch-preview">
+          <div className="batch-preview__header">
+            批量映射预览 ({batchPreview.items.length} 对)
+          </div>
+              <div className="batch-preview__list">
+            {batchPreview.items.map((item) => (
+              <div
+                key={`${item.sourceField}->${item.targetField}`}
+                className={`batch-preview__item batch-preview__item--${item.compatibilityLabel}`}
+                data-testid={`batch-preview-item-${item.targetField}`}
+              >
+                <span className="truncate">{item.sourceField}</span>
+                <span className="shrink-0 text-muted">→</span>
+                <span className="truncate">{item.targetField}</span>
+                <span className={`batch-preview__match-type batch-preview__match-type--${item.matchType}`}>
+                  {item.matchType === 'exact-name' ? '精确' : item.matchType === 'normalized-name' ? '相似' : '序号'}
+                </span>
+                <span className={`batch-preview__compat batch-preview__compat--${item.compatibilityLabel}`}>
+                  {COMPAT_LABEL_TEXT[item.compatibilityLabel]}
+                </span>
+              </div>
+            ))}
+
+              {batchPreview.unmatchedSources.length > 0 && (
+               <div
+                 className="batch-preview__unmatched flex flex-col gap-1 rounded border border-dashed border-warning/30 bg-warning/5 px-2 py-1.5 text-[11px] text-foreground"
+                 data-testid="batch-preview-unmatched"
+               >
+                 <span className="batch-preview__unmatched-title text-[10px] font-semibold text-warning">
+                   未匹配来源
+                 </span>
+                 <span>{batchPreview.unmatchedSources.join('、')}</span>
+               </div>
+             )}
+          </div>
+          <div className="batch-preview__actions">
+            <button
+              type="button"
+              data-testid="batch-preview-confirm"
+              className="batch-preview__btn--confirm"
+              onClick={handleBatchPreviewConfirm}
+            >
+              <Check size={12} />
+              确认映射
+            </button>
+            <button
+              type="button"
+              data-testid="batch-preview-cancel"
+              className="batch-preview__btn--cancel"
+              onClick={handleBatchPreviewCancel}
+            >
+              <X size={12} />
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingCoercion && (
+        <div className="mapping-pending-coercion" data-testid="pending-coercion">
+          <div className="mapping-pending-coercion__info">
+            <AlertTriangle size={14} className="text-warning" />
+            <span>
+              {pendingCoercion.sourceField} → {pendingCoercion.targetField}
+            </span>
+            <span className="text-xs text-muted">
+              ({pendingCoercion.sourceType} → {pendingCoercion.targetType})
+            </span>
+          </div>
+          <CoercionConfigPopover
+            sourceType={pendingCoercion.sourceType}
+            targetType={pendingCoercion.targetType}
+            value={pendingCoercion.initialConfig}
+            mode="confirm"
+            defaultOpen
+            onConfirm={handlePendingCoercionConfirm}
+            onCancel={handlePendingCoercionCancel}
+          />
+        </div>
+      )}
+
       {!isReadonly && (
         <div className="mapping-panel__body">
           <div className="flex gap-2">
-            {/* 源字段树 */}
             <div className="flex-1 min-w-0">
               <div
                 className="mapping-panel__section-title"
@@ -615,7 +1042,6 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
               />
             </div>
 
-            {/* 目标字段树 */}
             <div className="flex-1 min-w-0">
               <div
                 className="mapping-panel__section-title"
@@ -632,11 +1058,11 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
                 suggestedPaths={suggestedTargetFields}
                 renderFieldSuffix={renderTargetSuffix}
                 disableLeafInteraction={targetDisabled}
+                forbiddenPaths={forbiddenPaths}
               />
             </div>
           </div>
 
-          {/* 映射连线 (含类型强制转换) */}
           {mappings.length > 0 && (
             <div className="mt-3 space-y-1">
               {mappings.map((m) => {
@@ -652,13 +1078,28 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
                     <span className="truncate">{m.sourceField}</span>
                     <span className="shrink-0 text-muted">→</span>
                     <span className="truncate">{m.targetField}</span>
+
                     {srcKind && tgtKind && srcKind !== tgtKind && (
-                      <CoercionConfigPopover
-                        sourceType={srcKind}
-                        targetType={tgtKind}
-                        value={m.coercionConfig}
-                        onChange={(config) => handleCoercionChange(m.targetField, config)}
-                      />
+                      <>
+                        <span
+                          className="mapping-line__coercion ml-auto inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning"
+                          data-testid={`mapping-line-coercion-${m.targetField}`}
+                        >
+                          <ArrowRightLeft size={12} />
+                          <span>
+                            {m.coercionConfig
+                              ? getStrategyLabel(m.coercionConfig.strategy)
+                              : '待配置转换'}
+                          </span>
+                        </span>
+
+                        <CoercionConfigPopover
+                          sourceType={srcKind}
+                          targetType={tgtKind}
+                          value={m.coercionConfig}
+                          onChange={(config) => handleCoercionChange(m.targetField, config)}
+                        />
+                      </>
                     )}
                   </div>
                 )
@@ -666,7 +1107,6 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
             </div>
           )}
 
-          {/* 撤销按钮 */}
           <button
             type="button"
             className="mt-2 text-xs text-muted hover:text-primary"

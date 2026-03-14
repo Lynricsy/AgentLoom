@@ -22,9 +22,10 @@ export const NODE_TYPES = [
   'json-output',
   'condition',
   'loop',
+  'reusable-block',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -474,6 +475,17 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       },
       required: [],
     },
+  },
+  'reusable-block': {
+    type: 'reusable-block',
+    category: 'control',
+    label: 'Reusable Block',
+    icon: 'Package',
+    description: 'A reusable group of nodes encapsulated as a single block',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [],
+    outputPorts: [],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
 }
 

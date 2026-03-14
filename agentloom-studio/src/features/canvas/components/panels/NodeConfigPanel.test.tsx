@@ -93,6 +93,10 @@ vi.mock('./HttpToolConfigPanel', () => ({
   ),
 }))
 
+vi.mock('./ReusableBlockPanel', () => ({
+  ReusableBlockPanel: () => <div>Reusable Block Panel</div>,
+}))
+
 vi.mock('./DynamicConfigForm', () => ({
   DynamicConfigForm: ({
     configSchema,
@@ -227,6 +231,7 @@ describe('NodeConfigPanel', () => {
     ['sandbox', 'Sandbox Panel'],
     ['llm-agent', 'LLM Agent Panel'],
     ['http-tool', 'HTTP Tool Panel'],
+    ['reusable-block', 'Reusable Block Panel'],
   ] as const)('prefers the custom panel mapping for %s nodes', (nodeType, panelText) => {
     mocks.node = createNode(nodeType)
 

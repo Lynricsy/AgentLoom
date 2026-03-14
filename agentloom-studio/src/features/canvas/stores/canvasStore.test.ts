@@ -25,8 +25,8 @@ const mockTypeEngineService: TypeEngineServiceLike = {
   }),
 }
 
-function flushMicrotasks(): Promise<void> {
-  return Promise.resolve().then(() => undefined)
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve()
 }
 
 function createDeferred<T>() {
@@ -128,6 +128,63 @@ describe('canvasStore', () => {
     expect(node.data.outputPorts).toHaveLength(4)
     expect(node.data.config).toEqual({})
     expect(state.isDirty).toBe(true)
+  })
+
+  it('stores reusable-block metadata when adding block nodes', () => {
+    const blockDefinition = {
+      nodes: [createNode({ id: 'inner-1' })],
+      edges: [],
+      inputPorts: [
+        {
+          id: 'derived-input-1',
+          label: '输入上下文',
+          dataType: 'json' as const,
+          sourceNodeId: 'inner-1',
+          sourcePortId: 'context',
+        },
+      ],
+      outputPorts: [
+        {
+          id: 'derived-output-1',
+          label: '结构化结果',
+          dataType: 'json' as const,
+          sourceNodeId: 'inner-1',
+          sourcePortId: 'result',
+        },
+      ],
+    }
+
+    useCanvasStore.getState().actions.addNode({
+      id: 'block-node-1',
+      nodeType: 'reusable-block',
+      category: 'control',
+      position: { x: 240, y: 180 },
+      label: '复用分析块',
+      blockId: 'block-def-1',
+      blockName: '复用分析块',
+      blockDefinition,
+      isExpanded: true,
+      inputPorts: clonePortDefinitions(customInputPorts),
+      outputPorts: clonePortDefinitions(customOutputPorts),
+    })
+
+    const node = useCanvasStore.getState().nodes[0]
+
+    expect(node).toMatchObject({
+      id: 'block-node-1',
+      type: 'control',
+      data: {
+        label: '复用分析块',
+        nodeType: 'reusable-block',
+        category: 'control',
+        blockId: 'block-def-1',
+        blockName: '复用分析块',
+        blockDefinition,
+        isExpanded: true,
+      },
+    })
+    expect(node?.data.inputPorts[0]?.id).toBe('custom-input')
+    expect(node?.data.outputPorts[0]?.id).toBe('custom-output')
   })
 
   it('deletes the selected node and its connected edges', () => {
@@ -233,6 +290,7 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.knowledgeBindings).toEqual([])
     expect(state.isDirty).toBe(false)
     expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
   })
 
   it('preserves existing ports and config during server snapshot hydration', () => {
@@ -323,7 +381,130 @@ describe('canvasStore', () => {
 
     const state = useCanvasStore.getState()
     expect(state.selectedNodeId).toBe('node-42')
+    expect(state.selectedNodeIds).toEqual(new Set(['node-42']))
     expect(state.viewport).toEqual({ x: 30, y: 40, zoom: 2 })
+    expect(state.isDirty).toBe(true)
+  })
+
+  it('toggles node selection in the multi-select set', () => {
+    useCanvasStore.getState().actions.toggleNodeSelection('node-1')
+
+    let state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-1']))
+    expect(state.selectedNodeId).toBe('node-1')
+    expect(state.selectedEdgeId).toBeNull()
+
+    useCanvasStore.getState().actions.toggleNodeSelection('node-2')
+
+    state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-1', 'node-2']))
+    expect(state.selectedNodeId).toBe('node-2')
+
+    useCanvasStore.getState().actions.toggleNodeSelection('node-2')
+
+    state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-1']))
+    expect(state.selectedNodeId).toBe('node-1')
+  })
+
+  it('replaces the multi-selection when selecting nodes in bulk', () => {
+    useCanvasStore.getState().actions.selectNodes(['node-1', 'node-2'])
+
+    let state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-1', 'node-2']))
+    expect(state.selectedNodeId).toBe('node-2')
+
+    useCanvasStore.getState().actions.selectNodes(['node-3'])
+
+    state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-3']))
+    expect(state.selectedNodeId).toBe('node-3')
+  })
+
+  it('clears both single and multi-selection state', () => {
+    useCanvasStore.setState((state) => ({
+      ...state,
+      selectedNodeId: 'node-2',
+      selectedNodeIds: new Set(['node-1', 'node-2']),
+      selectedEdgeId: 'edge-1',
+    }))
+
+    useCanvasStore.getState().actions.clearSelection()
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
+    expect(state.selectedEdgeId).toBeNull()
+  })
+
+  it('syncs selectedNodeIds when React Flow selection changes arrive', () => {
+    const nodeA = createNode({ id: 'node-1', selected: false })
+    const nodeB = createNode({ id: 'node-2', selected: false })
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [nodeA, nodeB],
+      selectedEdgeId: 'edge-1',
+    }))
+
+    useCanvasStore.getState().actions.onNodesChange([
+      { id: 'node-1', type: 'select', selected: true },
+      { id: 'node-2', type: 'select', selected: true },
+    ])
+
+    const state = useCanvasStore.getState()
+    expect(state.selectedNodeIds).toEqual(new Set(['node-1', 'node-2']))
+    expect(state.selectedNodeId).toBe('node-2')
+    expect(state.selectedEdgeId).toBeNull()
+  })
+
+  it('deletes all selected nodes and their connected edges', () => {
+    const nodeA = createNode({ id: 'node-1' })
+    const nodeB = createNode({ id: 'node-2' })
+    const nodeC = createNode({ id: 'node-3' })
+    const edgeA: CanvasEdge = {
+      id: 'edge-1',
+      source: 'node-1',
+      target: 'node-2',
+    }
+    const edgeB: CanvasEdge = {
+      id: 'edge-2',
+      source: 'node-2',
+      target: 'node-3',
+    }
+    const edgeC: CanvasEdge = {
+      id: 'edge-3',
+      source: 'node-3',
+      target: 'node-4',
+    }
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: [nodeA, nodeB, nodeC],
+      edges: [edgeA, edgeB, edgeC],
+      selectedNodeId: 'node-2',
+      selectedNodeIds: new Set(['node-1', 'node-2']),
+      selectedEdgeId: 'edge-1',
+      mappingPanelEdgeId: 'edge-1',
+      nodeValidationErrors: {
+        'node-1': true,
+        'node-2': true,
+        'node-3': true,
+      },
+    }))
+
+    useCanvasStore.getState().actions.deleteSelectedNodes()
+
+    const state = useCanvasStore.getState()
+    expect(state.nodes.map((node) => node.id)).toEqual(['node-3'])
+    expect(state.edges.map((edge) => edge.id)).toEqual(['edge-3'])
+    expect(state.nodeValidationErrors).toEqual({
+      'node-3': true,
+    })
+    expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
+    expect(state.selectedEdgeId).toBeNull()
+    expect(state.mappingPanelEdgeId).toBeNull()
     expect(state.isDirty).toBe(true)
   })
 
@@ -372,6 +553,7 @@ describe('canvasStore', () => {
     expect(state.nodes).toEqual([])
     expect(state.edges).toEqual([])
     expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
     expect(state.selectedEdgeId).toBeNull()
     expect(state.mappingPanelEdgeId).toBeNull()
     expect(state.isDirty).toBe(false)
@@ -387,6 +569,7 @@ describe('canvasStore', () => {
     const state = useCanvasStore.getState()
     expect(state.selectedEdgeId).toBe('edge-1')
     expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
   })
 
   it('selects a node and clears edge selection', () => {
@@ -395,7 +578,16 @@ describe('canvasStore', () => {
 
     const state = useCanvasStore.getState()
     expect(state.selectedNodeId).toBe('node-42')
+    expect(state.selectedNodeIds).toEqual(new Set(['node-42']))
     expect(state.selectedEdgeId).toBeNull()
+  })
+
+  it('keeps selectedNodeIds in sync when using selectNode for backward compatibility', () => {
+    useCanvasStore.getState().actions.selectNode('node-42')
+    expect(useCanvasStore.getState().selectedNodeIds).toEqual(new Set(['node-42']))
+
+    useCanvasStore.getState().actions.selectNode(null)
+    expect(useCanvasStore.getState().selectedNodeIds).toEqual(new Set())
   })
 
   it('opens field mapping panel for an edge', () => {
@@ -406,6 +598,7 @@ describe('canvasStore', () => {
     expect(state.mappingPanelEdgeId).toBe('edge-1')
     expect(state.selectedEdgeId).toBe('edge-1')
     expect(state.selectedNodeId).toBeNull()
+    expect(state.selectedNodeIds).toEqual(new Set())
   })
 
   it('closes field mapping panel', () => {

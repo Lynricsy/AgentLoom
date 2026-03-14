@@ -14,6 +14,7 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { useToast } from '@/shared/ui/toast'
 import type { WorkflowStatus } from '@/features/workflow/types'
+import { CanvasContextMenu } from './CanvasContextMenu'
 import { CanvasNodeShell } from './CanvasNode'
 import { SmartEdge } from './edges/SmartEdge'
 import { CanvasMiniMap } from './navigation/CanvasMiniMap'
@@ -34,12 +35,19 @@ import {
 } from '../lib/connectionCompatibility'
 import { validateDag } from '../lib/dagValidator'
 import {
+  useSelectedNodeIds,
   useCanvasActions,
   useCanvasEdges,
   useCanvasNodes,
   useCanvasStore,
 } from '../stores/canvasStore'
-import { createDefaultEdgeData, type CanvasEdge, type CanvasEdgeData, type CanvasNode } from '../types'
+import {
+  createDefaultEdgeData,
+  type CanvasContextMenuState,
+  type CanvasEdge,
+  type CanvasEdgeData,
+  type CanvasNode,
+} from '../types'
 
 interface WorkflowCanvasProps {
   className?: string
@@ -285,10 +293,16 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const nodes = useCanvasNodes()
   const edges = useCanvasEdges()
   const viewport = useCanvasStore((state) => state.viewport)
+  const selectedNodeIds = useSelectedNodeIds()
+  const selectedNodeCount = useCanvasStore((state) =>
+    state.selectedNodeIds.size > 0 ? state.selectedNodeIds.size : state.selectedNodeId ? 1 : 0,
+  )
   const {
+    clearSelection,
     commitViewport,
     createConnection,
     deleteSelectedNode,
+    deleteSelectedNodes,
     onEdgesChange,
     onNodesChange,
     openFieldMapping,
@@ -303,6 +317,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const isReadOnly = workflowStatus === 'archived'
 
   const [activeConnection, setActiveConnection] = useState<ActiveConnectionState | null>(null)
+  const [contextMenuState, setContextMenuState] = useState<CanvasContextMenuState | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>(hiddenPreviewState)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -317,6 +332,20 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   useEffect(() => {
     activeConnectionRef.current = activeConnection
   }, [activeConnection])
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuState(null)
+  }, [])
+
+  const handleDeleteSelection = useCallback(() => {
+    const { selectedNodeIds: currentSelectedNodeIds } = useCanvasStore.getState()
+    if (currentSelectedNodeIds.size > 1) {
+      deleteSelectedNodes()
+      return
+    }
+
+    deleteSelectedNode()
+  }, [deleteSelectedNode, deleteSelectedNodes])
 
   const resetConnectionPreview = useCallback(() => {
     dragSessionIdRef.current += 1
@@ -361,14 +390,14 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       }
 
       event.preventDefault()
-      deleteSelectedNode()
+      handleDeleteSelection()
     }
 
     window.addEventListener('keydown', handleWindowKeyDown)
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown)
     }
-  }, [deleteSelectedNode, isReadOnly, toggleSearch])
+  }, [handleDeleteSelection, isReadOnly, toggleSearch])
 
   useEffect(() => {
     if (!activeConnection) {
@@ -728,26 +757,75 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   )
 
   const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: CanvasNode) => {
+    (event: React.MouseEvent, node: CanvasNode) => {
+      closeContextMenu()
+      if (event.ctrlKey || event.metaKey || event.shiftKey) {
+        return
+      }
+
       selectNode(node.id)
     },
-    [selectNode],
+    [closeContextMenu, selectNode],
+  )
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: CanvasNode) => {
+      event.preventDefault()
+
+      if (isReadOnly) {
+        closeContextMenu()
+        return
+      }
+
+      if (!selectedNodeIds.has(node.id)) {
+        selectNode(node.id)
+      }
+
+      setContextMenuState({
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+      })
+    },
+    [closeContextMenu, isReadOnly, selectNode, selectedNodeIds],
   )
 
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: CanvasEdge) => {
+      closeContextMenu()
       selectEdge(edge.id)
       if (!isReadOnly) {
         openFieldMapping(edge.id)
       }
     },
-    [isReadOnly, openFieldMapping, selectEdge],
+    [closeContextMenu, isReadOnly, openFieldMapping, selectEdge],
   )
 
   const onPaneClick = useCallback(() => {
-    selectNode(null)
-    selectEdge(null)
-  }, [selectNode, selectEdge])
+    closeContextMenu()
+    clearSelection()
+  }, [clearSelection, closeContextMenu])
+
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
+      event.preventDefault()
+
+      if (isReadOnly) {
+        closeContextMenu()
+        return
+      }
+
+      setContextMenuState({
+        x: event.clientX,
+        y: event.clientY,
+      })
+    },
+    [closeContextMenu, isReadOnly],
+  )
+
+  const handleEncapsulate = useCallback(() => {
+    notify({ description: '封装为块功能将在下一步实现', variant: 'warning' })
+  }, [notify])
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
@@ -797,8 +875,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onPaneContextMenu={onPaneContextMenu}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onConnectStart={onConnectStart}
@@ -810,7 +890,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         nodesConnectable={!isReadOnly}
         connectOnClick={!isReadOnly}
         deleteKeyCode={null}
-        multiSelectionKeyCode="Shift"
+        multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
         selectionKeyCode="Shift"
         panOnScroll
         zoomOnScroll
@@ -844,6 +924,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       />
       <CanvasSearch />
       <NodeInfoCard />
+      <CanvasContextMenu
+        state={contextMenuState}
+        onClose={closeContextMenu}
+        onEncapsulate={handleEncapsulate}
+        selectedNodeCount={selectedNodeCount}
+      />
     </div>
   )
 })

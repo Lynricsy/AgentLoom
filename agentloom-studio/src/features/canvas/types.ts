@@ -2,7 +2,7 @@ import type { Edge, Node, Viewport, XYPosition } from '@xyflow/react'
 import { DEFAULT_AUTONOMY_CONFIG, DEFAULT_OUTPUT_FORMAT_STRATEGY } from './autonomy.types'
 import type { AutonomyConfig, OutputFormatStrategy } from './autonomy.types'
 import type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
-import type { TypeSchema } from './types/typeSchema'
+import type { PortDataType, TypeSchema } from './types/typeSchema'
 
 export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control'
 
@@ -100,6 +100,17 @@ export interface TypeCoercionConfig {
 /** 置信度等级 */
 export type ConfidenceLevel = 'high' | 'medium' | 'low'
 
+/** 类型兼容性标签 */
+export type CompatibilityLabel = 'exact' | 'coercible' | 'incompatible'
+
+/** 批量拖拽预览条目 */
+export interface BatchPreviewItem {
+  sourceField: string
+  targetField: string
+  matchType: 'exact-name' | 'normalized-name' | 'order'
+  compatibilityLabel: CompatibilityLabel
+}
+
 /** 嵌套字段树节点 */
 export interface NestedFieldNode {
   path: string
@@ -117,11 +128,14 @@ export interface NestedFieldNode {
 export interface MappingSuggestion {
   sourceField: string
   targetField: string
+  sourceTypeLabel: string
+  targetTypeLabel: string
   score: number
   nameScore: number
   semanticScore: number
   typeScore: number
   confidenceLevel: ConfidenceLevel
+  compatibilityLabel: CompatibilityLabel
   suggestedCoercion?: TypeCoercionConfig
 }
 
@@ -179,6 +193,31 @@ export function createDefaultEdgeData(): CanvasEdgeData {
 
 export type CanvasEdge = Edge<CanvasEdgeData>
 
+export interface BlockPort {
+  id: string
+  label: string
+  dataType: PortDataType
+  sourceNodeId?: string
+  sourcePortId?: string
+}
+
+export interface BlockDefinition {
+  nodes: CanvasNode[]
+  edges: CanvasEdge[]
+  inputPorts: BlockPort[]
+  outputPorts: BlockPort[]
+  viewport?: { x: number; y: number; zoom: number }
+}
+
+export interface BlockNodeData extends CanvasNodeData {
+  blockId?: string
+  blockName: string
+  blockDefinition: BlockDefinition
+  isExpanded: boolean
+}
+
+export type BlockCategory = 'analysis' | 'content' | 'development' | 'automation' | 'reporting'
+
 export interface AddNodeInput {
   id: string
   nodeType: NodeType
@@ -190,6 +229,10 @@ export interface AddNodeInput {
   inputPorts?: PortDefinition[]
   outputPorts?: PortDefinition[]
   mcpToolDefinitionId?: string
+  blockId?: string
+  blockName?: string
+  blockDefinition?: BlockDefinition
+  isExpanded?: boolean
 }
 
 export interface PaletteNodeItem {
@@ -217,6 +260,12 @@ export interface CanvasSnapshot {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport?: Viewport
+}
+
+export interface CanvasContextMenuState {
+  x: number
+  y: number
+  nodeId?: string
 }
 
 export type { NodeType, PortDefinition, CreatePortOptions } from './types/nodeTypeRegistry'

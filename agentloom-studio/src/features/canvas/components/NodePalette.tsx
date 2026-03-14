@@ -1,4 +1,6 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
+import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibraryPanel'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
 import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
@@ -16,6 +18,7 @@ interface NodePaletteProps {
 }
 
 export const NodePalette = memo(function NodePalette({ className }: NodePaletteProps) {
+  const [activeTab, setActiveTab] = useState('nodes')
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const { data: mcpTools = [] } = useMcpTools('mcp')
@@ -91,34 +94,54 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
         className
       )}
     >
-      <div className="border-b border-border p-3">
-        <input
-          type="text"
-          placeholder="搜索节点..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted outline-none focus:border-info"
-        />
-      </div>
+      <Tabs
+        className="flex h-full flex-col"
+        defaultValue="nodes"
+        onValueChange={setActiveTab}
+        value={activeTab}
+      >
+        <div className="border-b border-border p-3">
+          <TabsList>
+            <TabsTrigger value="nodes">节点</TabsTrigger>
+            <TabsTrigger value="blocks">My Blocks</TabsTrigger>
+          </TabsList>
+        </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        {filteredGroups.map((group) => {
-          const groupKey = getGroupKey(group)
-
-          return (
-            <PaletteGroupSection
-              key={groupKey}
-              group={group}
-              isCollapsed={collapsedGroups.has(groupKey)}
-              onToggle={() => toggleGroup(groupKey)}
-              onDragStart={onDragStart}
+        <TabsContent className="flex min-h-0 flex-1 flex-col" value="nodes">
+          <div className="border-b border-border p-3">
+            <input
+              type="text"
+              placeholder="搜索节点..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted outline-none focus:border-info"
             />
-          )
-        })}
-        {filteredGroups.length === 0 && (
-          <p className="mt-4 text-center text-sm text-muted">无匹配节点</p>
-        )}
-      </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2">
+            {filteredGroups.map((group) => {
+              const groupKey = getGroupKey(group)
+
+              return (
+                <PaletteGroupSection
+                  key={groupKey}
+                  group={group}
+                  isCollapsed={collapsedGroups.has(groupKey)}
+                  onToggle={() => toggleGroup(groupKey)}
+                  onDragStart={onDragStart}
+                />
+              )
+            })}
+            {filteredGroups.length === 0 && (
+              <p className="mt-4 text-center text-sm text-muted">无匹配节点</p>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent className="min-h-0 flex-1" value="blocks">
+          <BlockLibraryPanel className="h-full" />
+        </TabsContent>
+      </Tabs>
     </aside>
   )
 })

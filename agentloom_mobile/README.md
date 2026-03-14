@@ -21,8 +21,8 @@ AgentLoom Flutter 移动端应用，当前已覆盖 Story 7.3 / 7.3a / 7.4 / 7.4
   - `/executions/:executionId` 深链接 / Shell 外路由
 - 移动端推送通知：
   - `features/notifications/` 中的 FCM payload 模型、设备注册 API、通知服务与 Riverpod notifier
-  - 登录后自动初始化推送权限与 token 注册，登出/强制登出时清理注册与本地 token
-  - 前台消息转本地通知，点击推送或本地通知后跳转 `/executions/:executionId`
+  - 认证状态从未认证 → 已认证时统一初始化推送权限与 token 注册，登出/强制登出时清理注册与本地 token
+  - 前台消息转本地通知，点击系统推送、本地通知，以及本地通知冷启动恢复时都能跳转 `/executions/:executionId`
   - Android/iOS 已补齐 Firebase messaging 所需基础平台配置（不含 `google-services.json` / `GoogleService-Info.plist`）
 - WorkflowDetail FAB 先进入参数页，再由参数提交成功后跳转执行监控页
 
@@ -64,7 +64,7 @@ lib/
 ## 测试与验证
 
 - `fvm flutter analyze`：静态检查
-- `fvm flutter test`：当前全量测试应保持绿色（Story 7.6 落地后会高于原先的 370）
+- `fvm flutter test`：当前全量测试应保持绿色（最新基线为 416/416）
 - `fvm dart run build_runner build --delete-conflicting-outputs`：Freezed/JSON 生成物更新
 
 ## 环境文件

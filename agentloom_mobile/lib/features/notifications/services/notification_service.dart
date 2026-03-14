@@ -68,6 +68,15 @@ class NotificationService {
         onDidReceiveNotificationResponse: _onLocalNotificationTap,
       );
 
+      final localLaunchDetails = await _localNotifications
+          .getNotificationAppLaunchDetails();
+      if (localLaunchDetails?.didNotificationLaunchApp ?? false) {
+        final response = localLaunchDetails?.notificationResponse;
+        if (response != null) {
+          _onLocalNotificationTap(response);
+        }
+      }
+
       if (Platform.isAndroid) {
         await _localNotifications
             .resolvePlatformSpecificImplementation<

@@ -22,6 +22,7 @@ import { SandboxConfigPanel } from './SandboxConfigPanel'
 import { InterventionPanel } from './InterventionPanel'
 import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
 import { HttpToolConfigPanel } from './HttpToolConfigPanel'
+import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -269,6 +270,11 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
         onApply={onConfigChange}
         onValidationChange={onValidationChange}
       />
+    ),
+  },
+  'reusable-block': {
+    render: ({ node, onConfigChange }) => (
+      <ReusableBlockPanel data={node.data} onApply={onConfigChange} />
     ),
   },
 }

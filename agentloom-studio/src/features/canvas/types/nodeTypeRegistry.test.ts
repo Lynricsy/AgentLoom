@@ -31,6 +31,7 @@ describe('nodeTypeRegistry', () => {
       'json-output',
       'condition',
       'loop',
+      'reusable-block',
     ])
   })
 
@@ -128,6 +129,20 @@ describe('nodeTypeRegistry', () => {
       dataType: 'knowledge',
       required: false,
       multiple: false,
+    })
+  })
+
+  it('defines reusable-block as a control node with dynamic ports and no schema fields', () => {
+    const reusableBlockNode = getNodeTypeConfig('reusable-block')
+
+    expect(reusableBlockNode.category).toBe('control')
+    expect(reusableBlockNode.icon).toBe('Package')
+    expect(reusableBlockNode.inputPorts).toEqual([])
+    expect(reusableBlockNode.outputPorts).toEqual([])
+    expect(reusableBlockNode.configSchema).toEqual({
+      type: 'object',
+      properties: {},
+      required: [],
     })
   })
 

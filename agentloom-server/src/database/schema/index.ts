@@ -133,6 +133,14 @@ export {
   type TemplateMetadata,
 } from './workflow-templates.schema';
 export {
+  reusableBlocks,
+  type ReusableBlock,
+  type NewReusableBlock,
+  type BlockDefinition,
+  type BlockPort,
+  type BlockMetadata,
+} from './reusable-blocks.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

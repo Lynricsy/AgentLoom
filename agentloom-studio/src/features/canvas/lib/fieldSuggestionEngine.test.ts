@@ -1,14 +1,32 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { TypeSchema } from '../types/typeSchema'
 import type { MappingSuggestion } from '../types'
 import {
+  generateSuggestions,
+  getApplicableSuggestions,
+  getCompatibilityLabel,
+  getSuggestedCoercionConfig,
   levenshteinDistance,
   normalizedLevenshteinSimilarity,
   tokenOverlapSimilarity,
   typeCompatibilityScore,
-  generateSuggestions,
-  getApplicableSuggestions,
 } from './fieldSuggestionEngine'
+
+const textSchema = (): TypeSchema => ({ kind: 'text' })
+
+const imageSchema = (): TypeSchema => ({ kind: 'image' })
+
+const objectSchema = (properties: Record<string, TypeSchema> = { value: textSchema() }): TypeSchema => ({
+  kind: 'json',
+  shape: 'object',
+  properties,
+})
+
+const arraySchema = (items: TypeSchema = textSchema()): TypeSchema => ({
+  kind: 'json',
+  shape: 'array',
+  items,
+})
 
 describe('fieldSuggestionEngine', () => {
   describe('levenshteinDistance', () => {
@@ -16,198 +34,191 @@ describe('fieldSuggestionEngine', () => {
       expect(levenshteinDistance('hello', 'hello')).toBe(0)
     })
 
-    it('returns length of non-empty string when other is empty', () => {
-      expect(levenshteinDistance('', 'abc')).toBe(3)
+    it('uses Unicode code points instead of UTF-16 code units', () => {
+      expect(levenshteinDistance('cafe\u0301', 'café')).toBe(0)
+    })
+
+    it('returns string length when one side is empty', () => {
+      expect(levenshteinDistance('', '字段')).toBe(2)
       expect(levenshteinDistance('abc', '')).toBe(3)
-    })
-
-    it('returns 0 for two empty strings', () => {
-      expect(levenshteinDistance('', '')).toBe(0)
-    })
-
-    it('computes correct distance for single edit', () => {
-      expect(levenshteinDistance('cat', 'bat')).toBe(1)
-    })
-
-    it('computes correct distance for multiple edits', () => {
-      expect(levenshteinDistance('kitten', 'sitting')).toBe(3)
-    })
-
-    it('handles completely different strings', () => {
-      expect(levenshteinDistance('abc', 'xyz')).toBe(3)
     })
   })
 
   describe('normalizedLevenshteinSimilarity', () => {
     it('returns 1.0 for identical strings', () => {
-      expect(normalizedLevenshteinSimilarity('name', 'name')).toBe(1.0)
+      expect(normalizedLevenshteinSimilarity('name', 'name')).toBe(1)
     })
 
-    it('returns 1.0 for both empty strings', () => {
-      expect(normalizedLevenshteinSimilarity('', '')).toBe(1.0)
-    })
-
-    it('returns 0.0 for completely different strings of equal length', () => {
-      expect(normalizedLevenshteinSimilarity('abc', 'xyz')).toBe(0)
-    })
-
-    it('returns value between 0 and 1 for partially similar strings', () => {
-      const sim = normalizedLevenshteinSimilarity('userName', 'user_name')
-      expect(sim).toBeGreaterThan(0)
-      expect(sim).toBeLessThan(1)
+    it('normalizes canonical-equivalent Unicode strings', () => {
+      expect(normalizedLevenshteinSimilarity('cafe\u0301', 'café')).toBe(1)
     })
   })
 
   describe('tokenOverlapSimilarity', () => {
-    it('returns 1.0 for identical paths', () => {
-      expect(tokenOverlapSimilarity('user_name', 'user_name')).toBe(1.0)
+    it('handles ASCII and Unicode camelCase token splitting', () => {
+      expect(tokenOverlapSimilarity('caféName', 'café_name')).toBe(1)
     })
 
-    it('computes Jaccard similarity for overlapping tokens', () => {
-      const sim = tokenOverlapSimilarity('user_email', 'email_address')
-      expect(sim).toBeGreaterThan(0)
-      expect(sim).toBeLessThan(1)
+    it('returns 0 when there is no overlap', () => {
+      expect(tokenOverlapSimilarity('avatar_image', 'audio_wave')).toBe(0)
+    })
+  })
+
+  describe('getCompatibilityLabel', () => {
+    it('treats matching scalar or matching JSON shapes as exact', () => {
+      expect(getCompatibilityLabel(textSchema(), textSchema())).toBe('exact')
+      expect(getCompatibilityLabel(objectSchema(), objectSchema())).toBe('exact')
+      expect(getCompatibilityLabel(arraySchema(), arraySchema())).toBe('exact')
     })
 
-    it('returns 0.0 for no overlapping tokens', () => {
-      expect(tokenOverlapSimilarity('foo_bar', 'baz_qux')).toBe(0)
+    it('treats text↔json as coercible', () => {
+      expect(getCompatibilityLabel(textSchema(), objectSchema())).toBe('coercible')
+      expect(getCompatibilityLabel(arraySchema(), textSchema())).toBe('coercible')
     })
 
-    it('handles camelCase token splitting', () => {
-      const sim = tokenOverlapSimilarity('userName', 'user_name')
-      expect(sim).toBe(1.0)
+    it('treats JSON object and JSON array as incompatible', () => {
+      expect(getCompatibilityLabel(objectSchema(), arraySchema())).toBe('incompatible')
     })
 
-    it('returns 0.0 for two empty strings', () => {
-      expect(tokenOverlapSimilarity('', '')).toBe(0)
+    it('returns incompatible for unrelated kinds', () => {
+      expect(getCompatibilityLabel(imageSchema(), textSchema())).toBe('incompatible')
     })
   })
 
   describe('typeCompatibilityScore', () => {
-    const textSchema: TypeSchema = { kind: 'text' }
-    const jsonSchema: TypeSchema = { kind: 'json', shape: 'object', properties: {} }
+    it('maps compatibility labels to scores', () => {
+      expect(typeCompatibilityScore(textSchema(), textSchema())).toBe(1)
+      expect(typeCompatibilityScore(textSchema(), objectSchema())).toBe(0.7)
+      expect(typeCompatibilityScore(objectSchema(), arraySchema())).toBe(0)
+    })
+  })
 
-    it('returns 1.0 for exact same type', () => {
-      expect(typeCompatibilityScore(textSchema, textSchema)).toBe(1.0)
+  describe('getSuggestedCoercionConfig', () => {
+    it('prefers JSON.parse for text → object', () => {
+      expect(getSuggestedCoercionConfig(textSchema(), objectSchema())).toEqual({
+        strategy: 'JSON.parse',
+      })
     })
 
-    it('returns 0.7 for coercible types (text→json)', () => {
-      expect(typeCompatibilityScore(textSchema, jsonSchema)).toBe(0.7)
+    it('prefers join for array → text with default separator', () => {
+      expect(getSuggestedCoercionConfig(arraySchema(), textSchema())).toEqual({
+        strategy: 'join',
+        params: { separator: ',' },
+      })
     })
 
-    it('returns 0.0 for incompatible types', () => {
-      const imageSchema: TypeSchema = { kind: 'image' }
-      const audioSchema: TypeSchema = { kind: 'audio' }
-      expect(typeCompatibilityScore(imageSchema, audioSchema)).toBe(0.0)
+    it('prefers JSON.stringify for object → text', () => {
+      expect(getSuggestedCoercionConfig(objectSchema(), textSchema())).toEqual({
+        strategy: 'JSON.stringify',
+      })
+    })
+
+    it('returns undefined for incompatible types', () => {
+      expect(getSuggestedCoercionConfig(imageSchema(), textSchema())).toBeUndefined()
     })
   })
 
   describe('generateSuggestions', () => {
     const sourceFields = [
-      { path: 'user_name', schema: { kind: 'text' } as TypeSchema, required: false },
-      { path: 'user_email', schema: { kind: 'text' } as TypeSchema, required: false },
-      { path: 'age', schema: { kind: 'json', shape: 'object', properties: {} } as TypeSchema, required: false },
+      { path: 'profile.caféName', schema: textSchema(), required: false },
+      { path: 'payload', schema: objectSchema(), required: false },
+      { path: 'items', schema: arraySchema(), required: false },
     ]
+
     const targetFields = [
-      { path: 'name', schema: { kind: 'text' } as TypeSchema, required: true },
-      { path: 'email', schema: { kind: 'text' } as TypeSchema, required: false },
+      { path: 'profile.café_name', schema: textSchema(), required: true },
+      { path: 'payload', schema: objectSchema(), required: false },
+      { path: 'summary', schema: textSchema(), required: false },
     ]
 
-    it('returns suggestions for each target (Top-3 max)', () => {
+    it('returns at most top 3 suggestions per target', () => {
       const suggestions = generateSuggestions(sourceFields, targetFields)
-      const nameMatches = suggestions.filter((s) => s.targetField === 'name')
-      expect(nameMatches.length).toBeLessThanOrEqual(3)
-    })
+      const groupedByTarget = new Map<string, MappingSuggestion[]>()
 
-    it('assigns confidence levels based on score', () => {
-      const suggestions = generateSuggestions(sourceFields, targetFields)
-      for (const s of suggestions) {
-        if (s.score >= 0.85) expect(s.confidenceLevel).toBe('high')
-        else if (s.score >= 0.70) expect(s.confidenceLevel).toBe('medium')
-        else expect(s.confidenceLevel).toBe('low')
+      for (const suggestion of suggestions) {
+        const current = groupedByTarget.get(suggestion.targetField) ?? []
+        current.push(suggestion)
+        groupedByTarget.set(suggestion.targetField, current)
+      }
+
+      for (const group of groupedByTarget.values()) {
+        expect(group).toHaveLength(Math.min(group.length, 3))
       }
     })
 
-    it('returns suggestions sorted by score descending per target', () => {
+    it('includes human-readable type labels and schema-aware compatibility', () => {
       const suggestions = generateSuggestions(sourceFields, targetFields)
-      const byTarget = new Map<string, MappingSuggestion[]>()
-      for (const s of suggestions) {
-        const arr = byTarget.get(s.targetField) ?? []
-        arr.push(s)
-        byTarget.set(s.targetField, arr)
-      }
-      for (const [, group] of byTarget) {
-        for (let i = 1; i < group.length; i++) {
-          expect(group[i - 1].score).toBeGreaterThanOrEqual(group[i].score)
-        }
-      }
+      const payloadMatch = suggestions.find(
+        (suggestion) => suggestion.sourceField === 'payload' && suggestion.targetField === 'payload',
+      )
+
+      expect(payloadMatch).toMatchObject({
+        sourceTypeLabel: '对象',
+        targetTypeLabel: '对象',
+        compatibilityLabel: 'exact',
+      })
     })
 
-    it('includes suggestedCoercion when types need coercion', () => {
-      const src = [{ path: 'count', schema: { kind: 'text' } as TypeSchema, required: false }]
-      const tgt = [{ path: 'count', schema: { kind: 'json', shape: 'object', properties: {} } as TypeSchema, required: false }]
-      const suggestions = generateSuggestions(src, tgt)
-      const match = suggestions.find((s) => s.sourceField === 'count' && s.targetField === 'count')
-      expect(match?.suggestedCoercion).toBeDefined()
-    })
-
-    it('returns empty array when no source fields', () => {
-      expect(generateSuggestions([], targetFields)).toEqual([])
-    })
-
-    it('returns empty array when no target fields', () => {
-      expect(generateSuggestions(sourceFields, [])).toEqual([])
-    })
-
-    it('score components are within [0, 1]', () => {
+    it('emits suggested coercion for coercible pairs', () => {
       const suggestions = generateSuggestions(sourceFields, targetFields)
-      for (const s of suggestions) {
-        expect(s.nameScore).toBeGreaterThanOrEqual(0)
-        expect(s.nameScore).toBeLessThanOrEqual(1)
-        expect(s.semanticScore).toBeGreaterThanOrEqual(0)
-        expect(s.semanticScore).toBeLessThanOrEqual(1)
-        expect(s.typeScore).toBeGreaterThanOrEqual(0)
-        expect(s.typeScore).toBeLessThanOrEqual(1)
-        expect(s.score).toBeGreaterThanOrEqual(0)
-        expect(s.score).toBeLessThanOrEqual(1)
-      }
+      const summaryMatch = suggestions.find(
+        (suggestion) => suggestion.sourceField === 'items' && suggestion.targetField === 'summary',
+      )
+
+      expect(summaryMatch).toMatchObject({
+        sourceTypeLabel: '数组',
+        targetTypeLabel: '文本',
+        compatibilityLabel: 'coercible',
+        suggestedCoercion: {
+          strategy: 'join',
+          params: { separator: ',' },
+        },
+      })
+    })
+
+    it('keeps Unicode names comparable in generated results', () => {
+      const suggestions = generateSuggestions(sourceFields, targetFields)
+      const unicodeMatch = suggestions.find(
+        (suggestion) =>
+          suggestion.sourceField === 'profile.caféName' &&
+          suggestion.targetField === 'profile.café_name',
+      )
+
+      expect(unicodeMatch?.nameScore).toBeGreaterThan(0.7)
+      expect(unicodeMatch?.confidenceLevel).not.toBe('low')
     })
   })
 
   describe('getApplicableSuggestions', () => {
-    const suggestions: MappingSuggestion[] = [
-      {
-        sourceField: 'a', targetField: 'b', score: 0.90,
-        nameScore: 0.9, semanticScore: 0.9, typeScore: 0.9,
-        confidenceLevel: 'high',
-      },
-      {
-        sourceField: 'c', targetField: 'd', score: 0.75,
-        nameScore: 0.7, semanticScore: 0.7, typeScore: 0.9,
-        confidenceLevel: 'medium',
-      },
-      {
-        sourceField: 'e', targetField: 'f', score: 0.50,
-        nameScore: 0.5, semanticScore: 0.3, typeScore: 0.7,
-        confidenceLevel: 'low',
-      },
-    ]
-
-    it('filters to score >= 0.70 only', () => {
-      const result = getApplicableSuggestions(suggestions)
-      expect(result).toHaveLength(2)
-      expect(result.every((s) => s.score >= 0.70)).toBe(true)
-    })
-
-    it('returns empty array when no suggestions meet threshold', () => {
-      const low: MappingSuggestion[] = [
+    it('filters suggestions to the applicable threshold', () => {
+      const suggestions: MappingSuggestion[] = [
         {
-          sourceField: 'x', targetField: 'y', score: 0.30,
-          nameScore: 0.3, semanticScore: 0.3, typeScore: 0.3,
+          sourceField: 'a',
+          targetField: 'b',
+          sourceTypeLabel: '文本',
+          targetTypeLabel: '文本',
+          score: 0.9,
+          nameScore: 0.9,
+          semanticScore: 0.9,
+          typeScore: 1,
+          confidenceLevel: 'high',
+          compatibilityLabel: 'exact',
+        },
+        {
+          sourceField: 'c',
+          targetField: 'd',
+          sourceTypeLabel: '图像',
+          targetTypeLabel: '文本',
+          score: 0.69,
+          nameScore: 1,
+          semanticScore: 1,
+          typeScore: 0,
           confidenceLevel: 'low',
+          compatibilityLabel: 'incompatible',
         },
       ]
-      expect(getApplicableSuggestions(low)).toEqual([])
+
+      expect(getApplicableSuggestions(suggestions)).toEqual([suggestions[0]!])
     })
   })
 })

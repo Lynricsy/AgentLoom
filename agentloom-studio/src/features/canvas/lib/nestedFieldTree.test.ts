@@ -6,6 +6,14 @@ import {
   collectLeafPaths,
 } from './nestedFieldTree'
 
+function expectDefined<T>(value: T | undefined, message = 'Expected value to be defined'): T {
+  expect(value).toBeDefined()
+  if (value === undefined) {
+    throw new Error(message)
+  }
+  return value
+}
+
 function makePort(
   id: string,
   label: string,
@@ -31,9 +39,10 @@ describe('buildNestedFieldTree', () => {
       makePort('name', 'Name', 'text', true, { kind: 'text' }),
     ]
     const tree = buildNestedFieldTree(ports)
+    const root = expectDefined(tree[0])
 
     expect(tree).toHaveLength(1)
-    expect(tree[0]).toMatchObject({
+    expect(root).toMatchObject({
       path: 'name',
       leafKey: 'Name',
       depth: 0,
@@ -41,7 +50,7 @@ describe('buildNestedFieldTree', () => {
       isMapped: false,
       required: true,
     })
-    expect(tree[0].children).toBeUndefined()
+    expect(root.children).toBeUndefined()
   })
 
   it('expands object schema into child nodes', () => {
@@ -56,12 +65,14 @@ describe('buildNestedFieldTree', () => {
     }
     const ports = [makePort('user', 'User', 'json', false, schema)]
     const tree = buildNestedFieldTree(ports)
+    const root = expectDefined(tree[0])
+    const children = expectDefined(root.children)
 
     expect(tree).toHaveLength(1)
-    expect(tree[0].isLeaf).toBe(false)
-    expect(tree[0].children).toHaveLength(2)
+    expect(root.isLeaf).toBe(false)
+    expect(children).toHaveLength(2)
 
-    const firstNameChild = tree[0].children![0]
+    const firstNameChild = expectDefined(children[0], 'Expected firstName child')
     expect(firstNameChild).toMatchObject({
       path: 'user.firstName',
       leafKey: 'firstName',
@@ -70,7 +81,7 @@ describe('buildNestedFieldTree', () => {
       required: true,
     })
 
-    const ageChild = tree[0].children![1]
+    const ageChild = expectDefined(children[1], 'Expected age child')
     expect(ageChild).toMatchObject({
       path: 'user.age',
       leafKey: 'age',
@@ -88,12 +99,14 @@ describe('buildNestedFieldTree', () => {
     }
     const ports = [makePort('tags', 'Tags', 'json', false, schema)]
     const tree = buildNestedFieldTree(ports)
+    const root = expectDefined(tree[0])
+    const children = expectDefined(root.children)
 
     expect(tree).toHaveLength(1)
-    expect(tree[0].isLeaf).toBe(false)
-    expect(tree[0].children).toHaveLength(1)
+    expect(root.isLeaf).toBe(false)
+    expect(children).toHaveLength(1)
 
-    const virtualNode = tree[0].children![0]
+    const virtualNode = expectDefined(children[0], 'Expected virtual array node')
     expect(virtualNode).toMatchObject({
       path: 'tags[*]',
       leafKey: 'items[*]',
@@ -117,13 +130,16 @@ describe('buildNestedFieldTree', () => {
     }
     const ports = [makePort('items', 'Items', 'json', false, schema)]
     const tree = buildNestedFieldTree(ports)
+    const root = expectDefined(tree[0])
+    const children = expectDefined(root.children)
 
-    const virtualNode = tree[0].children![0]
+    const virtualNode = expectDefined(children[0], 'Expected virtual array node')
+    const virtualChildren = expectDefined(virtualNode.children)
     expect(virtualNode.path).toBe('items[*]')
     expect(virtualNode.isLeaf).toBe(false)
-    expect(virtualNode.children).toHaveLength(2)
-    expect(virtualNode.children![0].path).toBe('items[*].id')
-    expect(virtualNode.children![0].depth).toBe(2)
+    expect(virtualChildren).toHaveLength(2)
+    expect(expectDefined(virtualChildren[0], 'Expected first nested child').path).toBe('items[*].id')
+    expect(expectDefined(virtualChildren[0], 'Expected first nested child').depth).toBe(2)
   })
 
   it('marks mapped paths', () => {
@@ -138,10 +154,12 @@ describe('buildNestedFieldTree', () => {
     const ports = [makePort('contact', 'Contact', 'json', false, schema)]
     const mapped = new Set(['contact.name'])
     const tree = buildNestedFieldTree(ports, mapped)
+    const root = expectDefined(tree[0])
+    const children = expectDefined(root.children)
 
-    expect(tree[0].isMapped).toBe(false)
-    expect(tree[0].children![0].isMapped).toBe(true)
-    expect(tree[0].children![1].isMapped).toBe(false)
+    expect(root.isMapped).toBe(false)
+    expect(expectDefined(children[0], 'Expected mapped child').isMapped).toBe(true)
+    expect(expectDefined(children[1], 'Expected unmapped child').isMapped).toBe(false)
   })
 
   it('caps depth at MAX_NESTED_DEPTH', () => {
@@ -156,10 +174,10 @@ describe('buildNestedFieldTree', () => {
     const ports = [makePort('deep', 'Deep', 'json', false, schema)]
     const tree = buildNestedFieldTree(ports)
 
-    let node = tree[0]
+    let node = expectDefined(tree[0])
     let maxDepth = 0
     while (node.children && node.children.length > 0) {
-      node = node.children[0]
+      node = expectDefined(node.children[0], 'Expected nested child while traversing tree')
       maxDepth = Math.max(maxDepth, node.depth)
     }
     expect(maxDepth).toBe(MAX_NESTED_DEPTH)
@@ -180,11 +198,14 @@ describe('buildNestedFieldTree', () => {
       }),
     ]
     const tree = buildNestedFieldTree(ports)
+    const firstNode = expectDefined(tree[0])
+    const secondNode = expectDefined(tree[1])
+    const secondChildren = expectDefined(secondNode.children)
 
     expect(tree).toHaveLength(2)
-    expect(tree[0].isLeaf).toBe(true)
-    expect(tree[1].isLeaf).toBe(false)
-    expect(tree[1].children).toHaveLength(1)
+    expect(firstNode.isLeaf).toBe(true)
+    expect(secondNode.isLeaf).toBe(false)
+    expect(secondChildren).toHaveLength(1)
   })
 })
 

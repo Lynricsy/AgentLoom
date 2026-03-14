@@ -19,6 +19,12 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(const NotificationDetails());
+    registerFallbackValue(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
+      ),
+    );
   });
 
   setUp(() {
@@ -86,6 +92,89 @@ void main() {
       );
 
       await expectLater(service.requestPermission(), completion(isTrue));
+    });
+  });
+
+  group('initialize', () {
+    test('终止态 FCM 点击启动应用时发出 payload', () async {
+      when(
+        () => mockLocalNotifications.initialize(
+          any(),
+          onDidReceiveNotificationResponse: any(
+            named: 'onDidReceiveNotificationResponse',
+          ),
+        ),
+      ).thenAnswer((_) async => true);
+      when(
+        () => mockLocalNotifications.getNotificationAppLaunchDetails(),
+      ).thenAnswer((_) async => const NotificationAppLaunchDetails(false));
+      when(() => mockMessaging.getInitialMessage()).thenAnswer(
+        (_) async => const RemoteMessage(
+          data: {'type': 'execution_completed', 'executionId': 'exec-init-1'},
+        ),
+      );
+
+      final expectation = expectLater(
+        service.onNotificationTap,
+        emits(
+          isA<PushNotificationPayload>()
+              .having((payload) => payload.type, 'type', 'execution_completed')
+              .having(
+                (payload) => payload.executionId,
+                'executionId',
+                'exec-init-1',
+              ),
+        ),
+      );
+
+      await service.initialize();
+
+      await expectation;
+    });
+
+    test('本地通知启动应用时发出 payload', () async {
+      when(
+        () => mockLocalNotifications.initialize(
+          any(),
+          onDidReceiveNotificationResponse: any(
+            named: 'onDidReceiveNotificationResponse',
+          ),
+        ),
+      ).thenAnswer((_) async => true);
+      when(
+        () => mockLocalNotifications.getNotificationAppLaunchDetails(),
+      ).thenAnswer(
+        (_) async => const NotificationAppLaunchDetails(
+          true,
+          notificationResponse: NotificationResponse(
+            notificationResponseType:
+                NotificationResponseType.selectedNotification,
+            payload:
+                '{"type":"execution_failed","executionId":"exec-local-launch-1","nodeId":"node-launch-1"}',
+          ),
+        ),
+      );
+      when(
+        () => mockMessaging.getInitialMessage(),
+      ).thenAnswer((_) async => null);
+
+      final expectation = expectLater(
+        service.onNotificationTap,
+        emits(
+          isA<PushNotificationPayload>()
+              .having((payload) => payload.type, 'type', 'execution_failed')
+              .having(
+                (payload) => payload.executionId,
+                'executionId',
+                'exec-local-launch-1',
+              )
+              .having((payload) => payload.nodeId, 'nodeId', 'node-launch-1'),
+        ),
+      );
+
+      await service.initialize();
+
+      await expectation;
     });
   });
 

@@ -1,6 +1,6 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { Settings2 } from 'lucide-react'
+import { Check, Settings2, X } from 'lucide-react'
 import type { CoercionStrategy, PortDataType, TypeCoercionConfig } from '../../types'
 import { getAvailableStrategies, getStrategyLabel } from '../../lib/coercionStrategies'
 
@@ -8,7 +8,18 @@ export interface CoercionConfigPopoverProps {
   sourceType: PortDataType
   targetType: PortDataType
   value?: TypeCoercionConfig
-  onChange: (config: TypeCoercionConfig | undefined) => void
+  onChange?: (config: TypeCoercionConfig | undefined) => void
+  /**
+   * 'inline' — 旧行为：选择后立即 onChange
+   * 'confirm' — 选择后需要确认/取消才提交
+   */
+  mode?: 'inline' | 'confirm'
+  /** 控制初始打开状态（例如 coercible 类型不匹配时自动打开） */
+  defaultOpen?: boolean
+  /** confirm 模式下用户确认回调 */
+  onConfirm?: (config: TypeCoercionConfig) => void
+  /** confirm 模式下用户取消回调 */
+  onCancel?: () => void
 }
 
 export const CoercionConfigPopover = memo(function CoercionConfigPopover({
@@ -16,35 +27,100 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
   targetType,
   value,
   onChange,
+  mode = 'inline',
+  defaultOpen = false,
+  onConfirm,
+  onCancel,
 }: CoercionConfigPopoverProps) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const strategies = getAvailableStrategies(sourceType, targetType)
+  const cancellingRef = useRef(false)
+
+  const [stagedConfig, setStagedConfig] = useState<TypeCoercionConfig | undefined>(value)
+
+  useEffect(() => {
+    if (!open) {
+      setStagedConfig(value)
+    }
+  }, [value, open])
+
+  useEffect(() => {
+    if (defaultOpen) {
+      setOpen(true)
+    }
+  }, [defaultOpen])
 
   const handleSelect = useCallback(
     (strategy: CoercionStrategy) => {
-      const defaultParams = getDefaultParams(strategy)
-      onChange({ strategy, ...(defaultParams ? { params: defaultParams } : {}) })
+      if (mode === 'confirm') {
+        if (stagedConfig?.strategy === strategy) return
+        const defaultParams = getDefaultParams(strategy)
+        setStagedConfig({ strategy, ...(defaultParams ? { params: defaultParams } : {}) })
+      } else {
+        if (value?.strategy === strategy) return
+        const defaultParams = getDefaultParams(strategy)
+        onChange?.({ strategy, ...(defaultParams ? { params: defaultParams } : {}) })
+      }
     },
-    [onChange],
+    [mode, onChange, value, stagedConfig],
   )
 
   const handleClear = useCallback(() => {
-    onChange(undefined)
-    setOpen(false)
-  }, [onChange])
+    if (mode === 'confirm') {
+      setStagedConfig(undefined)
+    } else {
+      onChange?.(undefined)
+      setOpen(false)
+    }
+  }, [mode, onChange])
 
   const handleParamChange = useCallback(
     (params: Record<string, unknown>) => {
-      if (!value) return
-      onChange({ ...value, params })
+      if (mode === 'confirm') {
+        if (!stagedConfig) return
+        setStagedConfig({ ...stagedConfig, params })
+      } else {
+        if (!value) return
+        onChange?.({ ...value, params })
+      }
     },
-    [value, onChange],
+    [mode, value, stagedConfig, onChange],
+  )
+
+  const handleConfirm = useCallback(() => {
+    if (stagedConfig) {
+      onChange?.(stagedConfig)
+      onConfirm?.(stagedConfig)
+    }
+    setOpen(false)
+  }, [stagedConfig, onChange, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    if (cancellingRef.current) return
+    cancellingRef.current = true
+    setStagedConfig(value)
+    onCancel?.()
+    setOpen(false)
+    queueMicrotask(() => { cancellingRef.current = false })
+  }, [value, onCancel])
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && mode === 'confirm') {
+        handleCancel()
+        return
+      }
+      setOpen(nextOpen)
+    },
+    [mode, handleCancel],
   )
 
   if (strategies.length === 0) return null
 
+  const activeConfig = mode === 'confirm' ? stagedConfig : value
+
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <button
           type="button"
@@ -76,9 +152,9 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
                 key={strategy}
                 type="button"
                 role="option"
-                aria-selected={value?.strategy === strategy}
+                aria-selected={activeConfig?.strategy === strategy}
                 data-testid={`coercion-strategy-${strategy}`}
-                className={`coercion-strategy-item${value?.strategy === strategy ? ' coercion-strategy-item--selected' : ''}`}
+                className={`coercion-strategy-item${activeConfig?.strategy === strategy ? ' coercion-strategy-item--selected' : ''}`}
                 onClick={() => handleSelect(strategy)}
               >
                 {getStrategyLabel(strategy)}
@@ -86,23 +162,49 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
             ))}
           </div>
 
-          {value && hasParams(value.strategy) && (
+          {activeConfig && hasParams(activeConfig.strategy) && (
             <CoercionParamsInput
-              strategy={value.strategy}
-              params={value.params}
+              strategy={activeConfig.strategy}
+              params={activeConfig.params}
               onChange={handleParamChange}
             />
           )}
 
-          {value && (
-            <button
-              type="button"
-              data-testid="coercion-clear"
-              className="coercion-clear-btn"
-              onClick={handleClear}
-            >
-              清除转换
-            </button>
+          {mode === 'confirm' ? (
+            <div className="coercion-confirm-actions" data-testid="coercion-confirm-actions">
+              <button
+                type="button"
+                data-testid="coercion-confirm-btn"
+                className="coercion-confirm-btn"
+                onClick={handleConfirm}
+                disabled={!stagedConfig}
+                aria-label="确认转换配置"
+              >
+                <Check size={14} />
+                <span>确认</span>
+              </button>
+              <button
+                type="button"
+                data-testid="coercion-cancel-btn"
+                className="coercion-cancel-btn"
+                onClick={handleCancel}
+                aria-label="取消转换配置"
+              >
+                <X size={14} />
+                <span>取消</span>
+              </button>
+            </div>
+          ) : (
+            activeConfig && (
+              <button
+                type="button"
+                data-testid="coercion-clear"
+                className="coercion-clear-btn"
+                onClick={handleClear}
+              >
+                清除转换
+              </button>
+            )
           )}
 
           <Popover.Arrow className="coercion-popover-arrow" />

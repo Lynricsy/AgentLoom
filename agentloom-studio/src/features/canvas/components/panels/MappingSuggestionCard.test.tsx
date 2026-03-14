@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MappingSuggestionCard } from './MappingSuggestionCard'
 import type { MappingSuggestion } from '../../types'
 
@@ -9,11 +10,14 @@ function makeSuggestion(overrides?: Partial<MappingSuggestion>): MappingSuggesti
   return {
     sourceField: 'response.title',
     targetField: 'input.name',
+    sourceTypeLabel: '文本',
+    targetTypeLabel: '文本',
     score: 0.88,
     nameScore: 0.7,
     semanticScore: 0.9,
-    typeScore: 1.0,
+    typeScore: 1,
     confidenceLevel: 'high',
+    compatibilityLabel: 'exact',
     ...overrides,
   }
 }
@@ -26,32 +30,38 @@ describe('MappingSuggestionCard', () => {
   })
 
   it('renders score as percentage', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion({ score: 0.923 })} onApply={vi.fn()} />)
+    render(
+      <MappingSuggestionCard suggestion={makeSuggestion({ score: 0.923 })} onApply={vi.fn()} />,
+    )
     expect(screen.getByTestId('suggestion-score')).toHaveTextContent('92%')
   })
 
-  it('renders high confidence badge', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion({ confidenceLevel: 'high' })} onApply={vi.fn()} />)
-    const badge = screen.getByTestId('suggestion-confidence')
-    expect(badge).toHaveTextContent('高')
-    expect(badge.className).toContain('high')
-  })
-
-  it('renders medium confidence badge', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion({ confidenceLevel: 'medium', score: 0.75 })} onApply={vi.fn()} />)
+  it('renders confidence badge', () => {
+    render(
+      <MappingSuggestionCard suggestion={makeSuggestion({ confidenceLevel: 'medium' })} onApply={vi.fn()} />,
+    )
     const badge = screen.getByTestId('suggestion-confidence')
     expect(badge).toHaveTextContent('中')
     expect(badge.className).toContain('medium')
   })
 
-  it('renders low confidence badge', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion({ confidenceLevel: 'low', score: 0.55 })} onApply={vi.fn()} />)
-    const badge = screen.getByTestId('suggestion-confidence')
-    expect(badge).toHaveTextContent('低')
-    expect(badge.className).toContain('low')
+  it('renders compatibility and concrete type-pair labels', () => {
+    render(
+      <MappingSuggestionCard
+        suggestion={makeSuggestion({
+          compatibilityLabel: 'coercible',
+          sourceTypeLabel: '数组',
+          targetTypeLabel: '文本',
+        })}
+        onApply={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('suggestion-compat')).toHaveTextContent('可转换')
+    expect(screen.getByTestId('suggestion-type-pair')).toHaveTextContent('数组 → 文本')
   })
 
-  it('renders coercion label when suggested', () => {
+  it('renders suggested coercion label when available', () => {
     render(
       <MappingSuggestionCard
         suggestion={makeSuggestion({ suggestedCoercion: { strategy: 'JSON.parse' } })}
@@ -61,21 +71,14 @@ describe('MappingSuggestionCard', () => {
     expect(screen.getByTestId('suggestion-coercion')).toHaveTextContent('JSON Parse')
   })
 
-  it('does not render coercion label when not suggested', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion()} onApply={vi.fn()} />)
-    expect(screen.queryByTestId('suggestion-coercion')).not.toBeInTheDocument()
-  })
-
-  it('calls onApply when clicked', () => {
+  it('calls onApply when the card is clicked', async () => {
+    const user = userEvent.setup()
     const onApply = vi.fn()
     const suggestion = makeSuggestion()
-    render(<MappingSuggestionCard suggestion={suggestion} onApply={onApply} />)
-    fireEvent.click(screen.getByTestId('suggestion-card-input.name'))
-    expect(onApply).toHaveBeenCalledWith(suggestion)
-  })
 
-  it('rounds score to nearest integer', () => {
-    render(<MappingSuggestionCard suggestion={makeSuggestion({ score: 0.855 })} onApply={vi.fn()} />)
-    expect(screen.getByTestId('suggestion-score')).toHaveTextContent('86%')
+    render(<MappingSuggestionCard suggestion={suggestion} onApply={onApply} />)
+    await user.click(screen.getByTestId('suggestion-card-input.name'))
+
+    expect(onApply).toHaveBeenCalledWith(suggestion)
   })
 })

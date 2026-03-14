@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { ConfidenceLevel, MappingSuggestion } from '../../types'
+import type { CompatibilityLabel, ConfidenceLevel, MappingSuggestion } from '../../types'
 import { getStrategyLabel } from '../../lib/coercionStrategies'
 
 export interface MappingSuggestionCardProps {
@@ -19,11 +19,18 @@ const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
   low: '低',
 }
 
+const COMPAT_LABELS: Record<CompatibilityLabel, { text: string; className: string }> = {
+  exact: { text: '完全兼容', className: 'suggestion-compat--exact' },
+  coercible: { text: '可转换', className: 'suggestion-compat--coercible' },
+  incompatible: { text: '不兼容', className: 'suggestion-compat--incompatible' },
+}
+
 export const MappingSuggestionCard = memo(function MappingSuggestionCard({
   suggestion,
   onApply,
 }: MappingSuggestionCardProps) {
   const scorePercent = Math.round(suggestion.score * 100)
+  const compat = COMPAT_LABELS[suggestion.compatibilityLabel]
 
   return (
     <button
@@ -52,6 +59,20 @@ export const MappingSuggestionCard = memo(function MappingSuggestionCard({
           className={`suggestion-badge ${CONFIDENCE_COLORS[suggestion.confidenceLevel]}`}
         >
           {CONFIDENCE_LABELS[suggestion.confidenceLevel]}
+        </span>
+
+        <span
+          data-testid="suggestion-compat"
+          className={`suggestion-compat ${compat.className}`}
+        >
+          {compat.text}
+        </span>
+
+        <span
+          data-testid="suggestion-type-pair"
+          className="suggestion-type-pair inline-flex items-center whitespace-nowrap font-mono text-[10px] text-muted"
+        >
+          {suggestion.sourceTypeLabel} → {suggestion.targetTypeLabel}
         </span>
 
         {suggestion.suggestedCoercion && (

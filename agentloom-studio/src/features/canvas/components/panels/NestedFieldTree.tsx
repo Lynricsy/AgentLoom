@@ -14,6 +14,7 @@ export interface NestedFieldTreeProps {
   onFieldDrop?: (e: React.DragEvent, path: string) => void
   renderFieldSuffix?: (node: NestedFieldNode) => React.ReactNode
   disableLeafInteraction?: boolean
+  forbiddenPaths?: ReadonlySet<string>
 }
 
 interface FieldRowProps {
@@ -29,6 +30,7 @@ interface FieldRowProps {
   onFieldDrop?: (e: React.DragEvent, path: string) => void
   renderFieldSuffix?: (node: NestedFieldNode) => React.ReactNode
   disableLeafInteraction?: boolean
+  forbiddenPaths?: ReadonlySet<string>
 }
 
 const FieldRow = memo(function FieldRow({
@@ -44,10 +46,12 @@ const FieldRow = memo(function FieldRow({
   onFieldDrop,
   renderFieldSuffix,
   disableLeafInteraction,
+  forbiddenPaths,
 }: FieldRowProps) {
   const isExpanded = expandedPaths.has(node.path)
   const isSelected = selectedPaths.has(node.path)
   const isSuggested = suggestedPaths?.has(node.path) ?? false
+  const isForbidden = forbiddenPaths?.has(node.path) ?? false
   const indent = node.depth * 16
   const atDepthCap = node.depth >= MAX_NESTED_DEPTH
 
@@ -77,15 +81,31 @@ const FieldRow = memo(function FieldRow({
     [node.isLeaf, node.path, onFieldDragStart],
   )
 
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (isForbidden) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'none'
+        return
+      }
+      onFieldDragOver?.(e)
+    },
+    [isForbidden, onFieldDragOver],
+  )
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
+      if (isForbidden) {
+        e.preventDefault()
+        return
+      }
       e.preventDefault()
       onFieldDrop?.(e, node.path)
     },
-    [node.path, onFieldDrop],
+    [isForbidden, node.path, onFieldDrop],
   )
 
-  const baseClassName = `mapping-field${isSelected ? ' mapping-field--selected' : ''}${node.isMapped ? ' mapping-field--mapped' : ''}${isSuggested ? ' mapping-field--suggested' : ''}${node.isLeaf ? '' : ' mapping-field--group'}`
+  const baseClassName = `mapping-field${isSelected ? ' mapping-field--selected' : ''}${node.isMapped ? ' mapping-field--mapped' : ''}${isSuggested ? ' mapping-field--suggested' : ''}${isForbidden ? ' mapping-field--forbidden' : ''}${node.isLeaf ? '' : ' mapping-field--group'}`
 
   const content = (
     <>
@@ -139,9 +159,10 @@ const FieldRow = memo(function FieldRow({
       onClick={handleClick}
       onDragStart={handleDragStart}
       onDragEnd={onFieldDragEnd}
-      onDragOver={onFieldDragOver}
+      onDragOver={handleDragOver}
       onDrop={handleDrop}
       aria-pressed={isSelected}
+      aria-disabled={isForbidden || undefined}
     >
       {content}
     </button>
@@ -179,10 +200,11 @@ const FieldRow = memo(function FieldRow({
           onFieldDragStart={onFieldDragStart}
           onFieldDragEnd={onFieldDragEnd}
           suggestedPaths={suggestedPaths}
-          onFieldDragOver={onFieldDragOver}
-          onFieldDrop={onFieldDrop}
+          onFieldDragOver={handleDragOver}
+          onFieldDrop={handleDrop}
           renderFieldSuffix={renderFieldSuffix}
           disableLeafInteraction={disableLeafInteraction}
+          forbiddenPaths={forbiddenPaths}
         />
       ))}
     </>
@@ -200,6 +222,7 @@ export const NestedFieldTree = memo(function NestedFieldTree({
   onFieldDrop,
   renderFieldSuffix,
   disableLeafInteraction,
+  forbiddenPaths,
 }: NestedFieldTreeProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
 
@@ -232,6 +255,7 @@ export const NestedFieldTree = memo(function NestedFieldTree({
           onFieldDrop={onFieldDrop}
           renderFieldSuffix={renderFieldSuffix}
           disableLeafInteraction={disableLeafInteraction}
+          forbiddenPaths={forbiddenPaths}
         />
       ))}
     </div>

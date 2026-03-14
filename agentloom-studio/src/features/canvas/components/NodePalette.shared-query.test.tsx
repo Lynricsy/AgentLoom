@@ -15,6 +15,10 @@ vi.mock("@/shared/api/client", () => ({
   },
 }));
 
+vi.mock("@/features/block-library/components/BlockLibraryPanel", () => ({
+  BlockLibraryPanel: () => null,
+}));
+
 function createQueryClient() {
   return new QueryClient({
     defaultOptions: {

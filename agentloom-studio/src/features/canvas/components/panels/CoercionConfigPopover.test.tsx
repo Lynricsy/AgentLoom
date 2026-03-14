@@ -189,4 +189,112 @@ describe('CoercionConfigPopover', () => {
     const trigger = screen.getByTestId('coercion-config-trigger')
     expect(trigger.className).toContain('active')
   })
+
+  describe('confirm mode', () => {
+    it('stages strategy selection without calling onChange', () => {
+      const onChange = vi.fn()
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          onChange={onChange}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      fireEvent.click(screen.getByTestId('coercion-strategy-JSON.parse'))
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('calls onChange on confirm button click', () => {
+      const onChange = vi.fn()
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          onChange={onChange}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      fireEvent.click(screen.getByTestId('coercion-strategy-JSON.parse'))
+      fireEvent.click(screen.getByTestId('coercion-confirm-btn'))
+      expect(onChange).toHaveBeenCalledWith({ strategy: 'JSON.parse' })
+    })
+
+    it('shows confirm and cancel buttons in confirm mode', () => {
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          onChange={vi.fn()}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      expect(screen.getByTestId('coercion-confirm-actions')).toBeInTheDocument()
+      expect(screen.getByTestId('coercion-confirm-btn')).toBeInTheDocument()
+      expect(screen.getByTestId('coercion-cancel-btn')).toBeInTheDocument()
+    })
+
+    it('calls onCancel when cancel button clicked', () => {
+      const onCancel = vi.fn()
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          onChange={vi.fn()}
+          onCancel={onCancel}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      fireEvent.click(screen.getByTestId('coercion-cancel-btn'))
+      expect(onCancel).toHaveBeenCalled()
+    })
+
+    it('does not show clear button in confirm mode', () => {
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          value={{ strategy: 'JSON.parse' }}
+          onChange={vi.fn()}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      expect(screen.queryByTestId('coercion-clear')).not.toBeInTheDocument()
+    })
+
+    it('opens automatically when defaultOpen is true', () => {
+      render(
+        <CoercionConfigPopover
+          sourceType="text"
+          targetType="json"
+          mode="confirm"
+          defaultOpen
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByTestId('coercion-config-popover')).toBeInTheDocument()
+    })
+
+    it('preserves params when re-selecting the same strategy', () => {
+      const onChange = vi.fn()
+      render(
+        <CoercionConfigPopover
+          sourceType="json"
+          targetType="text"
+          mode="confirm"
+          value={{ strategy: 'toFixed', params: { precision: 5 } }}
+          onChange={onChange}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('coercion-config-trigger'))
+      fireEvent.click(screen.getByTestId('coercion-strategy-toFixed'))
+      fireEvent.click(screen.getByTestId('coercion-confirm-btn'))
+      expect(onChange).toHaveBeenCalledWith({ strategy: 'toFixed', params: { precision: 5 } })
+    })
+  })
 })

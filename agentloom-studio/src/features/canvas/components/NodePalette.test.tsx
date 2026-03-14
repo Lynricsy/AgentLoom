@@ -52,6 +52,10 @@ vi.mock('../types/mcpToolMapping', () => ({
   })),
 }))
 
+vi.mock('@/features/block-library/components/BlockLibraryPanel', () => ({
+  BlockLibraryPanel: () => <div data-testid="block-library-panel">块库面板</div>,
+}))
+
 const mockMcpTools = [
   {
     id: 'tool-1',
@@ -82,6 +86,13 @@ const mockMcpTools = [
 ]
 
 describe('NodePalette', () => {
+  it('renders tabs for nodes and blocks', () => {
+    render(<NodePalette />)
+
+    expect(screen.getByRole('button', { name: '节点' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'My Blocks' })).toBeInTheDocument()
+  })
+
   it('renders all palette groups', () => {
     render(<NodePalette />)
 
@@ -91,6 +102,16 @@ describe('NodePalette', () => {
     expect(screen.getByText('Knowledge')).toBeInTheDocument()
     expect(screen.getByText('Output')).toBeInTheDocument()
     expect(screen.getByText('Control')).toBeInTheDocument()
+  })
+
+  it('switches to the block library tab', async () => {
+    const user = userEvent.setup()
+    render(<NodePalette />)
+
+    await user.click(screen.getByRole('button', { name: 'My Blocks' }))
+
+    expect(screen.getByTestId('block-library-panel')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('搜索节点...')).not.toBeInTheDocument()
   })
 
   it('derives palette items from the node type registry', () => {
