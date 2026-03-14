@@ -1176,4 +1176,182 @@ describe('canvasStore', () => {
     expect(state.isMiniMapCollapsed).toBe(false)
     expect(state.hoveredNodeId).toBeNull()
   })
+
+  describe('field mapping undo/batch actions', () => {
+    const setupEdgeWithMappings = (mappings: import('../types').FieldMapping[] = []) => {
+      const defaultData = createDefaultEdgeData()
+      defaultData.missingFields = [
+        { path: 'name', expectedType: { kind: 'text', title: 'name' }, required: true },
+        { path: 'age', expectedType: { kind: 'json', shape: 'object', title: 'age', properties: {}, additionalProperties: false }, required: true },
+      ]
+      defaultData.fieldMapping = mappings
+      const edge: CanvasEdge = {
+        id: 'edge-1',
+        source: 'node-1',
+        target: 'node-2',
+        data: defaultData,
+      }
+      useCanvasStore.setState((s) => ({ ...s, edges: [edge] }))
+      return edge
+    }
+
+    const mapping1: import('../types').FieldMapping = {
+      sourceField: 'fullName',
+      targetField: 'name',
+      compatLevel: 'L0',
+      autoRecommended: true,
+      confidence: 0.95,
+    }
+
+    const mapping2: import('../types').FieldMapping = {
+      sourceField: 'userAge',
+      targetField: 'age',
+      compatLevel: 'L1',
+      autoRecommended: false,
+    }
+
+    describe('batchUpdateFieldMappings', () => {
+      it('replaces field mappings and recalculates summary', () => {
+        setupEdgeWithMappings()
+
+        useCanvasStore.getState().actions.batchUpdateFieldMappings('edge-1', [mapping1, mapping2])
+
+        const state = useCanvasStore.getState()
+        const updated = state.edges[0]?.data
+        expect(updated?.fieldMapping).toHaveLength(2)
+        expect(updated?.mappingSummary.autoMatchedCount).toBe(1)
+        expect(updated?.mappingSummary.manualCount).toBe(1)
+        expect(updated?.mappingSummary.requiredUnmappedCount).toBe(0)
+        expect(state.isDirty).toBe(true)
+      })
+
+      it('does nothing for non-existent edge', () => {
+        setupEdgeWithMappings()
+
+        useCanvasStore.getState().actions.batchUpdateFieldMappings('non-existent', [mapping1])
+
+        const state = useCanvasStore.getState()
+        expect(state.edges[0]?.data?.fieldMapping).toEqual([])
+      })
+    })
+
+    describe('saveMappingSnapshot', () => {
+      it('pushes current mappings onto undo stack', () => {
+        setupEdgeWithMappings([mapping1])
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+
+        const state = useCanvasStore.getState()
+        expect(state.fieldMappingUndoStack).toHaveLength(1)
+        expect(state.fieldMappingUndoStack[0]).toEqual({
+          edgeId: 'edge-1',
+          mappings: [mapping1],
+        })
+      })
+
+      it('caps undo stack at 10 entries (FIFO)', () => {
+        setupEdgeWithMappings([mapping1])
+
+        for (let i = 0; i < 12; i++) {
+          useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+        }
+
+        const state = useCanvasStore.getState()
+        expect(state.fieldMappingUndoStack).toHaveLength(10)
+      })
+
+      it('does nothing for non-existent edge', () => {
+        setupEdgeWithMappings()
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('non-existent')
+
+        const state = useCanvasStore.getState()
+        expect(state.fieldMappingUndoStack).toHaveLength(0)
+      })
+
+      it('saves empty mappings array when edge has no mappings', () => {
+        setupEdgeWithMappings([])
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+
+        const state = useCanvasStore.getState()
+        expect(state.fieldMappingUndoStack).toHaveLength(1)
+        expect(state.fieldMappingUndoStack[0]?.mappings).toEqual([])
+      })
+    })
+
+    describe('undoFieldMapping', () => {
+      it('pops last snapshot for the specific edge and applies it', () => {
+        setupEdgeWithMappings([mapping1])
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+        useCanvasStore.getState().actions.batchUpdateFieldMappings('edge-1', [mapping1, mapping2])
+
+        useCanvasStore.getState().actions.undoFieldMapping('edge-1')
+
+        const state = useCanvasStore.getState()
+        expect(state.edges[0]?.data?.fieldMapping).toEqual([mapping1])
+        expect(state.fieldMappingUndoStack).toHaveLength(0)
+      })
+
+      it('does nothing when undo stack is empty for the edge', () => {
+        setupEdgeWithMappings([mapping1, mapping2])
+
+        useCanvasStore.getState().actions.undoFieldMapping('edge-1')
+
+        const state = useCanvasStore.getState()
+        expect(state.edges[0]?.data?.fieldMapping).toEqual([mapping1, mapping2])
+      })
+
+      it('only pops snapshot for the matching edge', () => {
+        setupEdgeWithMappings([mapping1])
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+
+        const edge2Data = createDefaultEdgeData()
+        edge2Data.fieldMapping = [mapping2]
+        useCanvasStore.setState((s) => ({
+          ...s,
+          edges: [
+            ...s.edges,
+            { id: 'edge-2', source: 'node-2', target: 'node-3', data: edge2Data },
+          ],
+        }))
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-2')
+
+        useCanvasStore.getState().actions.undoFieldMapping('edge-1')
+
+        const state = useCanvasStore.getState()
+        expect(state.edges[0]?.data?.fieldMapping).toEqual([mapping1])
+        expect(state.fieldMappingUndoStack).toHaveLength(1)
+        expect(state.fieldMappingUndoStack[0]?.edgeId).toBe('edge-2')
+      })
+
+      it('recalculates mappingSummary after undo', () => {
+        setupEdgeWithMappings([])
+
+        useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+        useCanvasStore.getState().actions.batchUpdateFieldMappings('edge-1', [mapping1, mapping2])
+
+        useCanvasStore.getState().actions.undoFieldMapping('edge-1')
+
+        const summary = useCanvasStore.getState().edges[0]?.data?.mappingSummary
+        expect(summary?.autoMatchedCount).toBe(0)
+        expect(summary?.manualCount).toBe(0)
+        expect(summary?.requiredUnmappedCount).toBe(2)
+      })
+    })
+
+    it('reset clears fieldMappingUndoStack', () => {
+      setupEdgeWithMappings([mapping1])
+      useCanvasStore.getState().actions.saveMappingSnapshot('edge-1')
+
+      expect(useCanvasStore.getState().fieldMappingUndoStack).toHaveLength(1)
+
+      useCanvasStore.getState().actions.reset()
+
+      expect(useCanvasStore.getState().fieldMappingUndoStack).toHaveLength(0)
+    })
+  })
 })

@@ -76,6 +76,55 @@ export interface CandidateFieldMapping {
   autoRecommended: boolean
 }
 
+// ── L2 字段映射增强类型 ──────────────────────────────────────────
+
+/** 类型强制转换策略 */
+export type CoercionStrategy =
+  | 'parseInt'
+  | 'parseFloat'
+  | 'Number'
+  | 'toString'
+  | 'toFixed'
+  | 'JSON.stringify'
+  | 'JSON.parse'
+  | 'first'
+  | 'last'
+  | 'join'
+
+/** 类型强制转换配置 */
+export interface TypeCoercionConfig {
+  strategy: CoercionStrategy
+  params?: Record<string, unknown>
+}
+
+/** 置信度等级 */
+export type ConfidenceLevel = 'high' | 'medium' | 'low'
+
+/** 嵌套字段树节点 */
+export interface NestedFieldNode {
+  path: string
+  leafKey: string
+  schema: TypeSchema
+  required: boolean
+  depth: number
+  isExpanded: boolean
+  isLeaf: boolean
+  isMapped: boolean
+  children?: NestedFieldNode[]
+}
+
+/** 智能映射建议 */
+export interface MappingSuggestion {
+  sourceField: string
+  targetField: string
+  score: number
+  nameScore: number
+  semanticScore: number
+  typeScore: number
+  confidenceLevel: ConfidenceLevel
+  suggestedCoercion?: TypeCoercionConfig
+}
+
 /** 用户确认后的映射（区别于 CandidateFieldMapping 的 WASM 候选） */
 export interface FieldMapping {
   sourceField: string
@@ -84,6 +133,7 @@ export interface FieldMapping {
   autoRecommended: boolean
   confidence?: number
   required?: boolean
+  coercionConfig?: TypeCoercionConfig
 }
 
 export interface EdgeMappingSummary {

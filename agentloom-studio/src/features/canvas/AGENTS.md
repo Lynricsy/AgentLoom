@@ -65,7 +65,7 @@ WorkflowCanvasPage.tsx
 | `api/` | 画布相关 API 调用 |
 | `components/` | 上述组件树 |
 | `hooks/` | 画布交互 hooks（拖拽/连接/快捷键 + `useLevelOfDetail`） |
-| `lib/` | `connectionCompatibility.ts`（同步 guard + cache 读取 + async 适配）、`typeEngine/`（runtime/worker/fallback/serialize）、`configSchemaToZod.ts` |
+| `lib/` | `connectionCompatibility.ts`（同步 guard + cache 读取 + async 适配）、`typeEngine/`（runtime/worker/fallback/serialize）、`configSchemaToZod.ts`、`nestedFieldTree.ts`（MAX_NESTED_DEPTH=5，buildSchemaTree/buildNestedFieldTree/collectLeafPaths）、`fieldSuggestionEngine.ts`（Levenshtein + token overlap + type compat 三维评分，Top-3 建议 + 0.70 阈值）、`coercionStrategies.ts`（text↔json 转换策略注册表） |
 | `stores/` | canvasStore（Zustand，含 `nodeValidationErrors`） |
 | `types/` | nodeTypeRegistry.ts, typeSchema.ts |
 
@@ -73,7 +73,7 @@ WorkflowCanvasPage.tsx
 
 - `types/typeSchema.ts` — PortDataType, TypeSchema (Scalar|Object|Array)，手动镜像 Rust type-engine
 - `types/nodeTypeRegistry.ts` — NODE_TYPE_REGISTRY, PORT_DATA_TYPE_META, createPort(), clonePortDefinitions()
-- `types.ts` — RawCompatibilityLevel, CanvasEdgeData, FieldMapping
+- `types.ts` — RawCompatibilityLevel, CanvasEdgeData, FieldMapping (含可选 coercionConfig), CandidateFieldMapping, NestedFieldNode, MappingSuggestion, CoercionStrategy (10种), TypeCoercionConfig, ConfidenceLevel
 - `autonomy.types.ts` — Agent 自主性配置类型
 
 ## 注意事项
@@ -86,6 +86,8 @@ WorkflowCanvasPage.tsx
 - `TypeEngineRuntime.handleFatalError()` 必须在 worker crash / timeout / init fatal 后同步清空 `readyPromise`、compatibility cache 与 `inFlightCompatibility`，避免恢复路径命中 stale 结果
 - `FieldMappingPanel` 的摘要与“必填未映射”统计必须直接消费 canonical `edge.data.missingFields` / `mappingSummary`，不要从 target schema 重新推导兼容性差异
 - `FieldMappingPanel.acceptAllCandidates()` 需要先按 `targetPath` 择优去重（优先 `autoRecommended`，其次更高 `confidence`），保证同一 target 最多接受一条推荐映射
+- `FieldMappingPanel` 已升级为 L2：使用 `NestedFieldTree` 树形展示（取代 flat list），集成 `generateSuggestions()` 智能建议（Top-3、≥0.70 可自动应用）+ `MappingSuggestionCard` + `CoercionConfigPopover`（text↔json 类型不匹配时展示）+ Ctrl/Cmd 批量多选拖拽（name matching via `normalizedLevenshteinSimilarity > 0.3`）+ undo 支持（`canvasStore.saveMappingSnapshot/undoFieldMapping`）
+- `NestedFieldTree` 组件支持 `suggestedPaths`/`onFieldDragOver`/`onFieldDrop`/`renderFieldSuffix`/`disableLeafInteraction` 5 个可选 backward-compat props
 - `agentloom-studio/vite.config.ts` 通过 `server.fs.allow = [path.resolve(__dirname, '..')]` 放行 sibling `agentloom-type-engine/pkg` wasm，避免 Vite dev 下 `@fs/...agentloom_type_engine_bg.wasm` 被 403 拒绝
 - `canvasStore` 自动清理：删除 edge 时同步清理 binding mapping
 - `canvasStore.nodeValidationErrors` 记录节点级表单校验状态；删除节点和 `onNodesChange(remove)` 都需要同步清理

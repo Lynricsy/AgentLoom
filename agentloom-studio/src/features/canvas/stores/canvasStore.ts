@@ -30,6 +30,20 @@ function isAgentNodeType(nodeType: string): boolean {
   return AGENT_NODE_TYPES.has(nodeType as NodeType)
 }
 
+function findLastIndex<T>(arr: readonly T[], predicate: (item: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (predicate(arr[i]!)) return i
+  }
+  return -1
+}
+
+const MAX_UNDO_STACK_SIZE = 10
+
+interface FieldMappingSnapshot {
+  edgeId: string
+  mappings: FieldMapping[]
+}
+
 interface CanvasState {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
@@ -49,6 +63,7 @@ interface CanvasState {
   isMiniMapCollapsed: boolean
   hoveredNodeId: string | null
   nodeValidationErrors: Record<string, boolean>
+  fieldMappingUndoStack: FieldMappingSnapshot[]
 }
 
 interface CanvasActions {
@@ -67,6 +82,9 @@ interface CanvasActions {
       updates: Array<{ edgeId: string; edgeData: CanvasEdgeData }>,
     ) => void
     updateFieldMapping: (edgeId: string, mappings: FieldMapping[]) => void
+    batchUpdateFieldMappings: (edgeId: string, mappings: FieldMapping[]) => void
+    saveMappingSnapshot: (edgeId: string) => void
+    undoFieldMapping: (edgeId: string) => void
     setViewport: (viewport: Viewport) => void
     commitViewport: (viewport: Viewport) => void
     applyServerSnapshot: (snapshot: CanvasSnapshot & { workflowId: string; version: number }) => void
@@ -106,6 +124,7 @@ function createInitialState(): CanvasState {
     isMiniMapCollapsed: false,
     hoveredNodeId: null,
     nodeValidationErrors: {},
+    fieldMappingUndoStack: [],
   }
 }
 
@@ -371,6 +390,60 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               edge.data = data
               state.isDirty = true
             }),
+
+          batchUpdateFieldMappings: (edgeId, mappings) =>
+            set((state) => {
+              const edge = state.edges.find((e) => e.id === edgeId)
+              if (!edge) return
+              const data = edge.data ?? createDefaultEdgeData()
+              data.fieldMapping = mappings
+              data.mappingSummary = {
+                autoMatchedCount: mappings.filter((m) => m.autoRecommended).length,
+                manualCount: mappings.filter((m) => !m.autoRecommended).length,
+                requiredUnmappedCount: data.missingFields.filter(
+                  (f) => f.required && !mappings.some((m) => m.targetField === f.path)
+                ).length,
+              }
+              edge.data = data
+              state.isDirty = true
+            }, false, 'store/batchUpdateFieldMappings'),
+
+          saveMappingSnapshot: (edgeId) =>
+            set((state) => {
+              const edge = state.edges.find((e) => e.id === edgeId)
+              if (!edge?.data) return
+              const snapshot: FieldMappingSnapshot = {
+                edgeId,
+                mappings: [...edge.data.fieldMapping],
+              }
+              state.fieldMappingUndoStack.push(snapshot)
+              if (state.fieldMappingUndoStack.length > MAX_UNDO_STACK_SIZE) {
+                state.fieldMappingUndoStack.splice(0, state.fieldMappingUndoStack.length - MAX_UNDO_STACK_SIZE)
+              }
+            }, false, 'store/saveMappingSnapshot'),
+
+          undoFieldMapping: (edgeId) =>
+            set((state) => {
+              const lastIndex = findLastIndex(state.fieldMappingUndoStack, (s) => s.edgeId === edgeId)
+              if (lastIndex === -1) return
+              const snapshot = state.fieldMappingUndoStack[lastIndex]!
+              state.fieldMappingUndoStack.splice(lastIndex, 1)
+
+              const edge = state.edges.find((e) => e.id === edgeId)
+              if (!edge) return
+              const data = edge.data ?? createDefaultEdgeData()
+              const mappings = snapshot.mappings
+              data.fieldMapping = mappings
+              data.mappingSummary = {
+                autoMatchedCount: mappings.filter((m) => m.autoRecommended).length,
+                manualCount: mappings.filter((m) => !m.autoRecommended).length,
+                requiredUnmappedCount: data.missingFields.filter(
+                  (f) => f.required && !mappings.some((m) => m.targetField === f.path)
+                ).length,
+              }
+              edge.data = data
+              state.isDirty = true
+            }, false, 'store/undoFieldMapping'),
 
           setViewport: (viewport) =>
             set((state) => {

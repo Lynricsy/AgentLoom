@@ -6,13 +6,18 @@ export type {
   CanvasNodeData,
   CanvasSnapshot,
   CandidateFieldMapping,
+  CoercionStrategy,
+  ConfidenceLevel,
   EdgeMappingSummary,
   FieldMapping,
+  MappingSuggestion,
   MissingFieldInfo,
+  NestedFieldNode,
   NodeCategory,
   PaletteGroup,
   PaletteNodeItem,
   RawCompatibilityLevel,
+  TypeCoercionConfig,
   VisualCompatibilityLevel,
 } from './types'
 export { createDefaultEdgeData } from './types'

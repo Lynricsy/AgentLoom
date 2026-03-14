@@ -4,10 +4,23 @@ import type { CanvasEdge, CanvasNode, FieldMapping } from '../../types'
 import { createDefaultEdgeData } from '../../types'
 import { FieldMappingPanel, type FieldMappingPanelProps } from './FieldMappingPanel'
 
+const { mockSaveMappingSnapshot, mockUndoFieldMapping } = vi.hoisted(() => ({
+  mockSaveMappingSnapshot: vi.fn(),
+  mockUndoFieldMapping: vi.fn(),
+}))
+
+vi.mock('../../stores/canvasStore', () => ({
+  useCanvasStore: (selector: (state: any) => any) =>
+    selector({
+      saveMappingSnapshot: mockSaveMappingSnapshot,
+      undoFieldMapping: mockUndoFieldMapping,
+    }),
+}))
+
 function makeNode(
   id: string,
   inputPorts: CanvasNode['data']['inputPorts'] = [],
-  outputPorts: CanvasNode['data']['outputPorts'] = []
+  outputPorts: CanvasNode['data']['outputPorts'] = [],
 ): CanvasNode {
   return {
     id,
@@ -30,7 +43,7 @@ function makePort(
   label: string,
   direction: 'input' | 'output',
   dataType: 'text' | 'json' = 'text',
-  required = false
+  required = false,
 ) {
   const base = {
     id,
@@ -106,10 +119,22 @@ const defaultProps: FieldMappingPanelProps = {
   onChange: vi.fn(),
 }
 
+/** 展开源字段树的 out-obj 分组 */
+function expandSourceObj() {
+  fireEvent.click(screen.getByTestId('toggle-nested-field-out-obj'))
+}
+
+/** 展开目标字段树的 in-obj 分组 */
+function expandTargetObj() {
+  fireEvent.click(screen.getByTestId('toggle-nested-field-in-obj'))
+}
+
 describe('FieldMappingPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
+
+  // ─── 基础渲染 ───
 
   it('renders when open', () => {
     render(<FieldMappingPanel {...defaultProps} />)
@@ -134,20 +159,22 @@ describe('FieldMappingPanel', () => {
       <FieldMappingPanel
         {...defaultProps}
         edge={makeEdge({ visualLevel: 'L0' })}
-      />
+      />,
     )
     expect(screen.getByText('完全匹配，无需映射')).toBeInTheDocument()
   })
+
+  // ─── 摘要统计 ───
 
   it('shows required unmapped count from compatibility metadata', () => {
     render(
       <FieldMappingPanel
         {...defaultProps}
         edge={makeEdge({ missingFields: requiredMissingFields })}
-      />
+      />,
     )
     expect(screen.getByTestId('mapping-required-summary')).toHaveTextContent(
-      '2 个必填字段未映射'
+      '2 个必填字段未映射',
     )
   })
 
@@ -155,7 +182,7 @@ describe('FieldMappingPanel', () => {
     render(<FieldMappingPanel {...defaultProps} />)
 
     expect(screen.getByTestId('mapping-required-summary')).toHaveTextContent(
-      '所有必填字段已映射'
+      '所有必填字段已映射',
     )
   })
 
@@ -179,23 +206,30 @@ describe('FieldMappingPanel', () => {
     })
     render(<FieldMappingPanel {...defaultProps} edge={edge} />)
     expect(screen.getByTestId('mapping-required-summary')).toHaveTextContent(
-      '所有必填字段已映射'
+      '所有必填字段已映射',
     )
   })
 
-  it('flattens source output ports into field buttons', () => {
+  // ─── 字段树渲染 ───
+
+  it('renders source output ports as nested tree', () => {
     render(<FieldMappingPanel {...defaultProps} />)
-    expect(screen.getByTestId('mapping-field-out-text')).toBeInTheDocument()
-    expect(screen.getByTestId('mapping-field-out-obj.name')).toBeInTheDocument()
-    expect(screen.getByTestId('mapping-field-out-obj.age')).toBeInTheDocument()
+    expect(screen.getByTestId('nested-field-out-text')).toBeInTheDocument()
+    // out-obj 是分组节点，需展开才能看到子节点
+    expect(screen.queryByTestId('nested-field-out-obj.name')).not.toBeInTheDocument()
+    expandSourceObj()
+    expect(screen.getByTestId('nested-field-out-obj.name')).toBeInTheDocument()
+    expect(screen.getByTestId('nested-field-out-obj.age')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-source-summary')).toHaveTextContent('源: Node src (3)')
   })
 
-  it('flattens target input ports into field buttons', () => {
+  it('renders target input ports as nested tree', () => {
     render(<FieldMappingPanel {...defaultProps} />)
-    expect(screen.getByTestId('mapping-field-in-text')).toBeInTheDocument()
-    expect(screen.getByTestId('mapping-field-in-obj.name')).toBeInTheDocument()
-    expect(screen.getByTestId('mapping-field-in-obj.age')).toBeInTheDocument()
+    expect(screen.getByTestId('nested-field-in-text')).toBeInTheDocument()
+    expect(screen.queryByTestId('nested-field-in-obj.name')).not.toBeInTheDocument()
+    expandTargetObj()
+    expect(screen.getByTestId('nested-field-in-obj.name')).toBeInTheDocument()
+    expect(screen.getByTestId('nested-field-in-obj.age')).toBeInTheDocument()
     expect(screen.getByTestId('mapping-target-summary')).toHaveTextContent('目标: Node tgt (3)')
   })
 
@@ -213,23 +247,28 @@ describe('FieldMappingPanel', () => {
             },
           ],
         })}
-      />
+      />,
     )
 
-    expect(screen.getByTestId('mapping-field-out-obj.name').className).toContain(
-      'mapping-field--suggested'
+    expandSourceObj()
+    expect(screen.getByTestId('nested-field-out-obj.name').className).toContain(
+      'mapping-field--suggested',
     )
-    expect(screen.getByTestId('mapping-field-in-obj.name').className).toContain(
-      'mapping-field--suggested'
+
+    expandTargetObj()
+    expect(screen.getByTestId('nested-field-in-obj.name').className).toContain(
+      'mapping-field--suggested',
     )
   })
+
+  // ─── 映射操作 ───
 
   it('creates mapping via click-click', () => {
     const onChange = vi.fn()
     render(<FieldMappingPanel {...defaultProps} onChange={onChange} />)
 
-    fireEvent.click(screen.getByTestId('mapping-field-out-text'))
-    fireEvent.click(screen.getByTestId('mapping-field-in-text'))
+    fireEvent.click(screen.getByTestId('nested-field-out-text'))
+    fireEvent.click(screen.getByTestId('nested-field-in-text'))
 
     expect(onChange).toHaveBeenCalledWith('e-1', [
       {
@@ -252,10 +291,10 @@ describe('FieldMappingPanel', () => {
 
     render(<FieldMappingPanel {...defaultProps} onChange={onChange} />)
 
-    const sourceBtn = screen.getByTestId('mapping-field-out-text')
+    const sourceBtn = screen.getByTestId('nested-field-out-text')
     fireEvent.dragStart(sourceBtn, { dataTransfer })
 
-    const targetBtn = screen.getByTestId('mapping-field-in-text')
+    const targetBtn = screen.getByTestId('nested-field-in-text')
     expect(targetBtn).not.toBeDisabled()
 
     fireEvent.dragOver(targetBtn, { dataTransfer })
@@ -274,7 +313,7 @@ describe('FieldMappingPanel', () => {
 
   it('toggles source selection on repeated click', () => {
     render(<FieldMappingPanel {...defaultProps} />)
-    const sourceBtn = screen.getByTestId('mapping-field-out-text')
+    const sourceBtn = screen.getByTestId('nested-field-out-text')
 
     fireEvent.click(sourceBtn)
     expect(sourceBtn).toHaveAttribute('aria-pressed', 'true')
@@ -298,11 +337,12 @@ describe('FieldMappingPanel', () => {
         {...defaultProps}
         edge={makeEdge({ fieldMapping: existingMappings })}
         onChange={onChange}
-      />
+      />,
     )
 
-    fireEvent.click(screen.getByTestId('mapping-field-out-obj.name'))
-    fireEvent.click(screen.getByTestId('mapping-field-in-text'))
+    expandSourceObj()
+    fireEvent.click(screen.getByTestId('nested-field-out-obj.name'))
+    fireEvent.click(screen.getByTestId('nested-field-in-text'))
 
     expect(onChange).toHaveBeenCalledWith('e-1', [
       {
@@ -329,7 +369,7 @@ describe('FieldMappingPanel', () => {
         {...defaultProps}
         edge={makeEdge({ fieldMapping: existingMappings })}
         onChange={onChange}
-      />
+      />,
     )
 
     const removeBtn = screen.getByLabelText('删除 Text Input 映射')
@@ -347,41 +387,49 @@ describe('FieldMappingPanel', () => {
         autoRecommended: false,
       },
     ]
-    render(
+    const { container } = render(
       <FieldMappingPanel
         {...defaultProps}
         edge={makeEdge({ fieldMapping: existingMappings })}
-      />
+      />,
     )
 
-    const panel = screen.getByTestId('field-mapping-panel')
-    expect(within(panel).getByText('out-text')).toBeInTheDocument()
-    expect(within(panel).getByText('→')).toBeInTheDocument()
-    expect(within(panel).getByText('in-text')).toBeInTheDocument()
+    // 映射线与推荐卡都含 →，需限定在 .mapping-line 内查找
+    const line = container.querySelector('.mapping-line:not(.mapping-line--auto)') as HTMLElement
+    expect(line).toBeTruthy()
+    expect(line).toHaveTextContent('out-text')
+    expect(line).toHaveTextContent('→')
+    expect(line).toHaveTextContent('in-text')
   })
+
+  // ─── L0 只读 ───
 
   it('does not show mapping body in L0 readonly mode', () => {
     render(
       <FieldMappingPanel
         {...defaultProps}
         edge={makeEdge({ visualLevel: 'L0' })}
-      />
+      />,
     )
-    expect(screen.queryByTestId('mapping-field-out-text')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nested-field-out-text')).not.toBeInTheDocument()
   })
+
+  // ─── 目标按钮启用/禁用 ───
 
   it('disables target buttons when no source is selected', () => {
     render(<FieldMappingPanel {...defaultProps} />)
-    const targetBtn = screen.getByTestId('mapping-field-in-text')
+    const targetBtn = screen.getByTestId('nested-field-in-text')
     expect(targetBtn).toBeDisabled()
   })
 
   it('enables target buttons after source is selected', () => {
     render(<FieldMappingPanel {...defaultProps} />)
-    fireEvent.click(screen.getByTestId('mapping-field-out-text'))
-    const targetBtn = screen.getByTestId('mapping-field-in-text')
+    fireEvent.click(screen.getByTestId('nested-field-out-text'))
+    const targetBtn = screen.getByTestId('nested-field-in-text')
     expect(targetBtn).not.toBeDisabled()
   })
+
+  // ─── C4 候选映射 ───
 
   it('shows auto-recommended mapping line with correct class', () => {
     const mappings: FieldMapping[] = [
@@ -396,7 +444,7 @@ describe('FieldMappingPanel', () => {
       <FieldMappingPanel
         {...defaultProps}
         edge={makeEdge({ fieldMapping: mappings })}
-      />
+      />,
     )
     const autoLine = container.querySelector('.mapping-line--auto')
     expect(autoLine).toBeInTheDocument()
@@ -425,7 +473,7 @@ describe('FieldMappingPanel', () => {
           ],
         })}
         onChange={onChange}
-      />
+      />,
     )
 
     fireEvent.click(screen.getByTestId('accept-all-candidates'))
@@ -464,7 +512,7 @@ describe('FieldMappingPanel', () => {
           ],
         })}
         onChange={onChange}
-      />
+      />,
     )
 
     fireEvent.click(screen.getByTestId('accept-all-candidates'))
@@ -478,5 +526,121 @@ describe('FieldMappingPanel', () => {
         confidence: 0.72,
       },
     ])
+  })
+
+  // ─── L2 智能推荐 ───
+
+  it('shows smart suggestions section for unmapped targets', () => {
+    render(<FieldMappingPanel {...defaultProps} />)
+    expect(screen.getByTestId('mapping-suggestions-section')).toBeInTheDocument()
+    expect(screen.getByText(/个智能推荐/)).toBeInTheDocument()
+  })
+
+  it('applies single suggestion and saves snapshot', () => {
+    const onChange = vi.fn()
+    render(<FieldMappingPanel {...defaultProps} onChange={onChange} />)
+
+    fireEvent.click(screen.getByTestId('suggestion-card-in-text'))
+
+    expect(mockSaveMappingSnapshot).toHaveBeenCalledWith('e-1')
+    expect(onChange).toHaveBeenCalledWith(
+      'e-1',
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetField: 'in-text',
+          compatLevel: 'L1',
+          autoRecommended: false,
+        }),
+      ]),
+    )
+  })
+
+  it('applies all applicable suggestions and saves snapshot', () => {
+    const onChange = vi.fn()
+    render(<FieldMappingPanel {...defaultProps} onChange={onChange} />)
+
+    fireEvent.click(screen.getByTestId('apply-all-suggestions'))
+
+    expect(mockSaveMappingSnapshot).toHaveBeenCalledWith('e-1')
+    expect(onChange).toHaveBeenCalledOnce()
+
+    const [edgeId, mappings] = onChange.mock.calls[0]
+    expect(edgeId).toBe('e-1')
+    // in-text ↔ out-text Jaccard 得分 ≈0.65 低于 0.70 阈值，仅 2 个目标通过
+    const targets = (mappings as FieldMapping[]).map((m) => m.targetField).sort()
+    expect(targets).toEqual(['in-obj.age', 'in-obj.name'])
+  })
+
+  it('skips manually-mapped targets when applying all suggestions', () => {
+    const existingManualMapping: FieldMapping[] = [
+      {
+        sourceField: 'out-text',
+        targetField: 'in-text',
+        compatLevel: 'L1',
+        autoRecommended: false,
+      },
+    ]
+    const onChange = vi.fn()
+    render(
+      <FieldMappingPanel
+        {...defaultProps}
+        edge={makeEdge({ fieldMapping: existingManualMapping })}
+        onChange={onChange}
+      />,
+    )
+
+    const applyAllBtn = screen.queryByTestId('apply-all-suggestions')
+    if (applyAllBtn) {
+      fireEvent.click(applyAllBtn)
+
+      expect(onChange).toHaveBeenCalledOnce()
+      const [, mappings] = onChange.mock.calls[0]
+      const manualMapping = (mappings as FieldMapping[]).find(
+        (m) => m.targetField === 'in-text',
+      )
+      expect(manualMapping?.sourceField).toBe('out-text')
+    }
+  })
+
+  // ─── 撤销 ───
+
+  it('calls undoFieldMapping when undo button clicked', () => {
+    render(<FieldMappingPanel {...defaultProps} />)
+    fireEvent.click(screen.getByTestId('mapping-undo'))
+    expect(mockUndoFieldMapping).toHaveBeenCalledWith('e-1')
+  })
+
+  // ─── 批量多选 ───
+
+  it('supports Ctrl multi-select on source fields', () => {
+    render(<FieldMappingPanel {...defaultProps} />)
+    const outText = screen.getByTestId('nested-field-out-text')
+
+    fireEvent.click(outText)
+    expect(outText).toHaveAttribute('aria-pressed', 'true')
+
+    expandSourceObj()
+    const outObjName = screen.getByTestId('nested-field-out-obj.name')
+
+    fireEvent.keyDown(window, { key: 'Control' })
+    fireEvent.click(outObjName)
+    fireEvent.keyUp(window, { key: 'Control' })
+
+    expect(outText).toHaveAttribute('aria-pressed', 'true')
+    expect(outObjName).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('deselects in multi-select mode with Ctrl+click', () => {
+    render(<FieldMappingPanel {...defaultProps} />)
+    const outText = screen.getByTestId('nested-field-out-text')
+
+    fireEvent.click(outText)
+    expect(outText).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.keyDown(window, { key: 'Control' })
+    fireEvent.click(outText)
+    fireEvent.keyUp(window, { key: 'Control' })
+
+    expect(outText).toHaveAttribute('aria-pressed', 'false')
   })
 })
