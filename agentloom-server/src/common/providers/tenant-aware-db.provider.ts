@@ -8,5 +8,5 @@ import type { DrizzleDB } from '../../database/database.module';
  * 否则返回原始 db 连接（公开路由、无租户上下文场景）。
  */
 export function getTenantDb(db: DrizzleDB): DrizzleDB {
-  return transactionStorage.getStore() ?? db;
+  return transactionStorage.getStore()?.db ?? db;
 }

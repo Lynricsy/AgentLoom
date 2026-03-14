@@ -1,6 +1,6 @@
 export type TriggerType = 'cron' | 'webhook' | 'api_event'
 
-export type TriggerHistoryStatus = 'success' | 'failed' | 'skipped'
+export type TriggerHistoryStatus = 'success' | 'failed' | 'skipped' | 'signature_failed'
 
 export interface CronTriggerConfig {
   expression: string
@@ -9,7 +9,7 @@ export interface CronTriggerConfig {
 
 export interface WebhookTriggerConfig {
   token: string
-  secret: string
+  secret?: string
   ipWhitelist: string[]
 }
 
@@ -118,9 +118,15 @@ export function isWebhookConfig(config: TriggerConfig): config is WebhookTrigger
   return (
     isRecord(config) &&
     typeof config.token === 'string' &&
-    typeof config.secret === 'string' &&
+    (config.secret === undefined || typeof config.secret === 'string') &&
     Array.isArray(config.ipWhitelist)
   )
+}
+
+export function hasWebhookSecret(
+  config: TriggerConfig,
+): config is WebhookTriggerConfig & { secret: string } {
+  return isWebhookConfig(config) && typeof config.secret === 'string'
 }
 
 export function isApiEventConfig(config: TriggerConfig): config is ApiEventTriggerConfig {

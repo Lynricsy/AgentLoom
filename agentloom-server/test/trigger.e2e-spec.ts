@@ -57,6 +57,16 @@ const DEFAULT_CRON_CONFIG: JSONValue = {
   expression: '0 9 * * 1',
   timezone: 'Asia/Hong_Kong',
 };
+const DEFAULT_SNAPSHOT: JSONValue = {
+  nodes: [],
+  edges: [],
+  viewport: DEFAULT_VIEWPORT,
+  metadata: {
+    nodeCount: 0,
+    edgeCount: 0,
+    createdFromVersion: 1,
+  },
+};
 
 type TestUser = {
   id: string;
@@ -373,6 +383,48 @@ describe('Trigger E2E', () => {
     });
   }
 
+  async function seedExecutableWorkflow(options: {
+    tenantId: string;
+    organizationId: string;
+    createdBy: string;
+  }) {
+    const workflowId = await seedPublishedWorkflow(options);
+    const versionId = crypto.randomUUID();
+
+    await ctx.adminSql`
+      INSERT INTO workflow_versions (
+        id,
+        workflow_definition_id,
+        tenant_id,
+        version_number,
+        label,
+        snapshot,
+        published_at,
+        created_by
+      ) VALUES (
+        ${versionId}::uuid,
+        ${workflowId}::uuid,
+        ${options.tenantId}::uuid,
+        1,
+        ${'v1'},
+        ${ctx.adminSql.json(DEFAULT_SNAPSHOT)},
+        ${new Date()},
+        ${options.createdBy}::uuid
+      )
+    `;
+
+    await ctx.adminSql`
+      UPDATE workflow_definitions
+      SET published_version_id = ${versionId}::uuid
+      WHERE id = ${workflowId}::uuid
+    `;
+
+    return {
+      workflowId,
+      versionId,
+    };
+  }
+
   async function seedDraftWorkflow(options: {
     tenantId: string;
     organizationId: string;
@@ -391,7 +443,7 @@ describe('Trigger E2E', () => {
     createdBy: string;
     name?: string;
     description?: string | null;
-    type?: 'cron' | 'webhook';
+    type?: 'cron' | 'webhook' | 'api_event';
     config?: JSONValue;
     isEnabled?: boolean;
   }) {
@@ -401,13 +453,19 @@ describe('Trigger E2E', () => {
       options.config ??
       (type === 'cron'
         ? DEFAULT_CRON_CONFIG
-        : {
+        : type === 'webhook'
+          ? {
             token: crypto.randomUUID().replaceAll('-', ''),
             secret:
               crypto.randomUUID().replaceAll('-', '') +
               crypto.randomUUID().replaceAll('-', ''),
             ipWhitelist: [],
-          });
+          }
+          : {
+              eventSource: 'github',
+              eventType: 'pull_request',
+              filterExpression: 'payload.action == "opened"',
+            });
 
     const [row] = await ctx.adminSql`
       INSERT INTO workflow_triggers (
@@ -583,17 +641,122 @@ describe('Trigger E2E', () => {
     expect(getResponse.status).toBe(200);
     expect(getResponse.body.data.config).toMatchObject({
       token: createResponse.body.data.config.token,
-      secret: createResponse.body.data.config.secret,
       ipWhitelist: [],
     });
+    expect(getResponse.body.data.config).not.toHaveProperty('secret');
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`/api/v1/workflow-definitions/${workflowId}/triggers?type=webhook`)
+      .set(owner.headers);
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data[0].config).not.toHaveProperty('secret');
   });
 
-  it('应当支持启用状态 toggle', async () => {
+  it('应拒绝创建仅预览的 API Event 触发器', async () => {
+    const owner = await seedTenant('trigger-api-event-preview-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Preview API Event',
+        type: 'api_event',
+        config: {
+          eventSource: 'github',
+          eventType: 'pull_request',
+        },
+        isEnabled: true,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.title).toBe('触发器类型仅预览');
+    expect(response.body.detail).toContain('api_event');
+
+    const rows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggers)
+      .where(eq(schema.workflowTriggers.workflowDefinitionId, workflowId));
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it('应拒绝修改和启停仅预览的 API Event 触发器', async () => {
+    const owner = await seedTenant('trigger-api-event-preview-edit-owner');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const trigger = await seedTrigger({
+      workflowId,
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+      type: 'api_event',
+    });
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .set(owner.headers)
+      .send({
+        name: 'Blocked Preview Update',
+      });
+
+    expect(updateResponse.status).toBe(409);
+    expect(updateResponse.body.title).toBe('触发器类型仅预览');
+
+    const toggleResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}/toggle`)
+      .set(owner.headers)
+      .send();
+
+    expect(toggleResponse.status).toBe(409);
+    expect(toggleResponse.body.title).toBe('触发器类型仅预览');
+
+    const [storedTrigger] = await drizzleDb
+      .select()
+      .from(schema.workflowTriggers)
+      .where(eq(schema.workflowTriggers.id, trigger.id));
+
+    expect(storedTrigger?.name).toBe(trigger.name);
+    expect(storedTrigger?.isEnabled).toBe(true);
+  });
+
+  it('应当在 cron 启停时持久化并清空 nextFireAt', async () => {
     const owner = await seedTenant('trigger-toggle-owner');
     const workflowId = await seedPublishedWorkflow({
       tenantId: owner.tenantId,
       organizationId: owner.organizationId,
       createdBy: owner.user.id,
+    });
+    const nextFireAt = new Date('2025-01-06T01:00:00.000Z');
+    let scheduledTriggerId: string | null = null;
+
+    triggerQueueMock.add.mockImplementation(async (_name, data) => {
+      scheduledTriggerId = data.triggerId;
+      return undefined;
+    });
+    triggerQueueMock.getRepeatableJobs.mockImplementation(async () => {
+      if (!scheduledTriggerId) {
+        return [];
+      }
+
+      return [
+        {
+          key: 'repeat-key',
+          name: 'trigger-cron-execution',
+          id: scheduledTriggerId,
+          endDate: null,
+          tz: 'Asia/Hong_Kong',
+          pattern: '0 9 * * 1',
+          next: nextFireAt.getTime(),
+        },
+      ];
     });
 
     const createResponse = await request(app.getHttpServer())
@@ -610,6 +773,7 @@ describe('Trigger E2E', () => {
       });
 
     expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.nextFireAt).toBe(nextFireAt.toISOString());
     const triggerId = createResponse.body.data.id as string;
 
     const disableResponse = await request(app.getHttpServer())
@@ -619,6 +783,14 @@ describe('Trigger E2E', () => {
 
     expect(disableResponse.status).toBe(200);
     expect(disableResponse.body.data.isEnabled).toBe(false);
+    expect(disableResponse.body.data.nextFireAt).toBeNull();
+
+    const [storedAfterDisable] = await drizzleDb
+      .select()
+      .from(schema.workflowTriggers)
+      .where(eq(schema.workflowTriggers.id, triggerId));
+
+    expect(storedAfterDisable?.nextFireAt).toBeNull();
 
     const enableResponse = await request(app.getHttpServer())
       .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`)
@@ -627,6 +799,7 @@ describe('Trigger E2E', () => {
 
     expect(enableResponse.status).toBe(200);
     expect(enableResponse.body.data.isEnabled).toBe(true);
+    expect(enableResponse.body.data.nextFireAt).toBe(nextFireAt.toISOString());
 
     const [storedTrigger] = await drizzleDb
       .select()
@@ -634,6 +807,178 @@ describe('Trigger E2E', () => {
       .where(eq(schema.workflowTriggers.id, triggerId));
 
     expect(storedTrigger?.isEnabled).toBe(true);
+    expect(storedTrigger?.nextFireAt?.toISOString()).toBe(nextFireAt.toISOString());
+  });
+
+  it('公开 webhook 成功时应返回 accepted 并以 webhook 元数据创建 execution', async () => {
+    const owner = await seedTenant('trigger-public-webhook-success');
+    const { workflowId } = await seedExecutableWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Public Webhook',
+        type: 'webhook',
+        config: { ipWhitelist: [] },
+        isEnabled: true,
+      });
+
+    const token = createResponse.body.data.config.token as string;
+    const secret = createResponse.body.data.config.secret as string;
+    const triggerId = createResponse.body.data.id as string;
+    const payload = {
+      hello: 'world',
+      nested: { enabled: true },
+    };
+    const rawBody = JSON.stringify(payload);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = crypto
+      .createHmac('sha256', secret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest('hex');
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/webhooks/${token}`)
+      .set('content-type', 'application/json')
+      .set('x-agentloom-signature', signature)
+      .set('x-agentloom-timestamp', timestamp)
+      .send(rawBody);
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      executionId: expect.any(String),
+      status: 'accepted',
+    });
+    expect(executionQueueMock.add).toHaveBeenCalledWith(
+      'execute',
+      {
+        executionId: response.body.executionId,
+        tenantId: owner.tenantId,
+      },
+      {
+        jobId: response.body.executionId,
+      },
+    );
+
+    const [storedExecution] = await drizzleDb
+      .select()
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, response.body.executionId));
+
+    expect(storedExecution).toMatchObject({
+      workflowDefinitionId: workflowId,
+      tenantId: owner.tenantId,
+      triggerType: 'webhook',
+      inputParams: {
+        ...payload,
+        _meta: {
+          launchSource: 'webhook-trigger',
+        },
+      },
+    });
+
+    const historyRows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggerHistory)
+      .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
+
+    expect(historyRows).toHaveLength(1);
+    expect(historyRows[0]?.status).toBe('success');
+  });
+
+  it('公开 webhook 验签失败时应返回精确 401 JSON 并记录 signature_failed', async () => {
+    const owner = await seedTenant('trigger-public-webhook-signature-failed');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Bad Signature Webhook',
+        type: 'webhook',
+        config: { ipWhitelist: [] },
+        isEnabled: true,
+      });
+
+    const token = createResponse.body.data.config.token as string;
+    const triggerId = createResponse.body.data.id as string;
+    const rawBody = JSON.stringify({ hello: 'world' });
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/webhooks/${token}`)
+      .set('content-type', 'application/json')
+      .set('x-agentloom-signature', 'invalid-signature')
+      .set('x-agentloom-timestamp', timestamp)
+      .send(rawBody);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({
+      error: 'INVALID_SIGNATURE',
+      message: 'Webhook signature verification failed',
+    });
+
+    const historyRows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggerHistory)
+      .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
+
+    expect(historyRows).toHaveLength(1);
+    expect(historyRows[0]?.status).toBe('signature_failed');
+  });
+
+  it('公开 webhook 在禁用时应返回 404', async () => {
+    const owner = await seedTenant('trigger-public-webhook-disabled');
+    const workflowId = await seedPublishedWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'Disabled Webhook',
+        type: 'webhook',
+        config: { ipWhitelist: [] },
+        isEnabled: false,
+      });
+
+    const token = createResponse.body.data.config.token as string;
+    const secret = createResponse.body.data.config.secret as string;
+    const triggerId = createResponse.body.data.id as string;
+    const rawBody = JSON.stringify({ hello: 'world' });
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = crypto
+      .createHmac('sha256', secret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest('hex');
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/webhooks/${token}`)
+      .set('content-type', 'application/json')
+      .set('x-agentloom-signature', signature)
+      .set('x-agentloom-timestamp', timestamp)
+      .send(rawBody);
+
+    expect(response.status).toBe(404);
+
+    const historyRows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggerHistory)
+      .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
+
+    expect(historyRows).toHaveLength(0);
   });
 
   it('应返回触发历史分页结果', async () => {

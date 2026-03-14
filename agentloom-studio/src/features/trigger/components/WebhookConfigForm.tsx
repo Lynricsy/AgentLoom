@@ -3,7 +3,7 @@ import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
 import { isWebhookConfig, type Trigger } from '../types'
-import { WebhookSecretDisplay } from './WebhookSecretDisplay'
+import { buildWebhookUrl } from './WebhookSecretDisplay'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
 
 interface WebhookConfigFormProps {
@@ -42,7 +42,7 @@ export function WebhookConfigForm({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-foreground">启用触发器</p>
-              <p className="text-xs text-muted-foreground">关闭后 webhook 请求会被忽略。</p>
+              <p className="text-xs text-muted-foreground">关闭后该入口会返回 404，不再接受新的 webhook 请求。</p>
             </div>
             <Switch
               checked={isEnabled}
@@ -76,7 +76,7 @@ export function WebhookConfigForm({
           {...register('webhook.ipWhitelist')}
         />
         <p className="text-xs text-muted-foreground">
-          留空表示不限制来源 IP。Token 与 secret 会在创建后由服务端自动生成。
+          留空表示不限制来源 IP。Token 由服务端生成并长期保留；secret 仅会在首次创建成功后展示一次。
         </p>
         {errors.webhook?.ipWhitelist && (
           <p className="text-xs text-error">{errors.webhook.ipWhitelist.message}</p>
@@ -84,7 +84,32 @@ export function WebhookConfigForm({
       </label>
 
       {webhookConfig ? (
-        <WebhookSecretDisplay token={webhookConfig.token} secret={webhookConfig.secret} />
+        <div className="space-y-3 rounded-xl border border-border/70 bg-background/60 p-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">当前 Webhook 入口</p>
+            <p className="text-xs text-muted-foreground">
+              可继续使用当前 URL 与 Token；secret 出于安全原因不会再次显示。
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-200">
+              Webhook URL
+            </p>
+            <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
+              {buildWebhookUrl(webhookConfig.token)}
+            </code>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-200">
+              Token
+            </p>
+            <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
+              {webhookConfig.token}
+            </code>
+          </div>
+        </div>
       ) : null}
     </div>
   )

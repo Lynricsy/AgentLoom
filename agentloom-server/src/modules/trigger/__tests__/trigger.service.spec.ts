@@ -6,6 +6,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import {
   TriggerLimitExceededException,
   TriggerNotFoundException,
+  TriggerTypePreviewOnlyException,
   WorkflowNotPublishedException,
 } from '../trigger.exceptions';
 import { TriggerService } from '../trigger.service';
@@ -63,6 +64,16 @@ const publishedWorkflow = {
   id: WORKFLOW_ID,
   tenantId: TENANT_ID,
   status: 'published' as const,
+};
+
+const apiEventTrigger = {
+  ...baseTrigger,
+  type: 'api_event' as const,
+  config: {
+    eventSource: 'github',
+    eventType: 'pull_request',
+    filterExpression: 'payload.action == "opened"',
+  },
 };
 
 function createSelectWhereResolved(result: unknown) {
@@ -242,6 +253,23 @@ describe('TriggerService', () => {
         }),
       ).rejects.toThrow(TriggerLimitExceededException);
     });
+
+    it('api_event 仅预览时应拒绝创建', async () => {
+      await expect(
+        service.create(TENANT_ID, USER_ID, WORKFLOW_ID, {
+          name: 'API Event 预览',
+          isEnabled: true,
+          type: 'api_event',
+          config: {
+            eventSource: 'github',
+            eventType: 'pull_request',
+          },
+        }),
+      ).rejects.toThrow(TriggerTypePreviewOnlyException);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -288,6 +316,18 @@ describe('TriggerService', () => {
         }),
       );
     });
+
+    it('api_event 仅预览时应拒绝更新', async () => {
+      db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
+
+      await expect(
+        service.update(TENANT_ID, TRIGGER_ID, {
+          name: 'Updated preview name',
+        }),
+      ).rejects.toThrow(TriggerTypePreviewOnlyException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('remove', () => {
@@ -317,6 +357,16 @@ describe('TriggerService', () => {
         ...baseTrigger,
         isEnabled: false,
       });
+    });
+
+    it('api_event 仅预览时应拒绝切换启用状态', async () => {
+      db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
+
+      await expect(service.toggle(TENANT_ID, TRIGGER_ID)).rejects.toThrow(
+        TriggerTypePreviewOnlyException,
+      );
+
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 

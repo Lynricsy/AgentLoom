@@ -38,70 +38,115 @@ export class TriggerSchedulerProcessor extends WorkerHost {
 
     const { triggerId, tenantId, workflowId } = job.data;
 
-    return runInTenantTransaction(this.db, tenantId, async () => {
-      const trigger = await this.findTriggerSafely(tenantId, triggerId);
+    const trigger = await this.findTriggerSafely(tenantId, triggerId);
 
-      if (
-        !trigger ||
-        trigger.type !== 'cron' ||
-        trigger.workflowDefinitionId !== workflowId
-      ) {
-        this.logger.warn(
-          JSON.stringify({
-            action: 'trigger_cron_job_skipped_missing_trigger',
-            triggerId,
-            tenantId,
-            workflowId,
-          }),
-        );
+    if (
+      !trigger ||
+      trigger.type !== 'cron' ||
+      trigger.workflowDefinitionId !== workflowId
+    ) {
+      this.logger.warn(
+        JSON.stringify({
+          action: 'trigger_cron_job_skipped_missing_trigger',
+          triggerId,
+          tenantId,
+          workflowId,
+        }),
+      );
 
-        return { processed: false };
-      }
+      return { processed: false };
+    }
 
-      if (!trigger.isEnabled) {
+    if (!trigger.isEnabled) {
+      await runInTenantTransaction(this.db, tenantId, async () => {
         await this.triggerHistoryService.record(tenantId, {
           triggerId,
           status: 'skipped',
           payload: this.buildPayload(job, { reason: 'trigger_disabled' }),
         });
+      });
 
-        return { processed: false };
-      }
+      return { processed: false };
+    }
 
-      try {
-        const execution = await this.executionService.runWorkflow(
-          workflowId,
-          undefined,
-          tenantId,
-          SYSTEM_TRIGGER_USER_ID,
-        );
+    let execution: Awaited<ReturnType<ExecutionService['runWorkflow']>>;
 
+    try {
+      execution = await this.executionService.runWorkflow(
+        workflowId,
+        {
+          launchSource: 'cron-trigger',
+          triggerType: 'system',
+        },
+        tenantId,
+        SYSTEM_TRIGGER_USER_ID,
+      );
+    } catch (error) {
+      await this.recordFailedCronTrigger(job, triggerId, tenantId, workflowId, error);
+      throw error;
+    }
+
+    await this.recordSuccessfulCronTrigger(job, triggerId, tenantId, workflowId, execution.id);
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'trigger_cron_job_processed',
+        triggerId,
+        tenantId,
+        workflowId,
+        executionId: execution.id,
+      }),
+    );
+
+    return {
+      processed: true,
+      executionId: execution.id,
+    };
+  }
+
+  private async recordSuccessfulCronTrigger(
+    job: Job<TriggerCronJobData>,
+    triggerId: string,
+    tenantId: string,
+    workflowId: string,
+    executionId: string,
+  ): Promise<void> {
+    try {
+      await runInTenantTransaction(this.db, tenantId, async () => {
         await this.triggerHistoryService.record(tenantId, {
           triggerId,
           status: 'success',
-          executionId: execution.id,
+          executionId,
           payload: this.buildPayload(job),
         });
 
         await this.triggerService.markTriggered(tenantId, triggerId, {
           nextFireAt: await this.triggerSchedulerService.getNextFireAt(triggerId),
         });
+      });
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          action: 'trigger_cron_job_success_bookkeeping_failed',
+          triggerId,
+          tenantId,
+          workflowId,
+          executionId,
+          error: this.getErrorMessage(error),
+        }),
+      );
+    }
+  }
 
-        this.logger.log(
-          JSON.stringify({
-            action: 'trigger_cron_job_processed',
-            triggerId,
-            tenantId,
-            workflowId,
-            executionId: execution.id,
-          }),
-        );
-
-        return {
-          processed: true,
-          executionId: execution.id,
-        };
-      } catch (error) {
+  private async recordFailedCronTrigger(
+    job: Job<TriggerCronJobData>,
+    triggerId: string,
+    tenantId: string,
+    workflowId: string,
+    error: unknown,
+  ): Promise<void> {
+    try {
+      await runInTenantTransaction(this.db, tenantId, async () => {
         await this.triggerHistoryService.record(tenantId, {
           triggerId,
           status: 'failed',
@@ -112,20 +157,29 @@ export class TriggerSchedulerProcessor extends WorkerHost {
         await this.triggerService.markTriggered(tenantId, triggerId, {
           nextFireAt: await this.triggerSchedulerService.getNextFireAt(triggerId),
         });
+      });
+    } catch (bookkeepingError) {
+      this.logger.error(
+        JSON.stringify({
+          action: 'trigger_cron_job_failure_bookkeeping_failed',
+          triggerId,
+          tenantId,
+          workflowId,
+          originalError: this.getErrorMessage(error),
+          bookkeepingError: this.getErrorMessage(bookkeepingError),
+        }),
+      );
+    }
 
-        this.logger.error(
-          JSON.stringify({
-            action: 'trigger_cron_job_failed',
-            triggerId,
-            tenantId,
-            workflowId,
-            error: this.getErrorMessage(error),
-          }),
-        );
-
-        throw error;
-      }
-    });
+    this.logger.error(
+      JSON.stringify({
+        action: 'trigger_cron_job_failed',
+        triggerId,
+        tenantId,
+        workflowId,
+        error: this.getErrorMessage(error),
+      }),
+    );
   }
 
   private async findTriggerSafely(tenantId: string, triggerId: string) {

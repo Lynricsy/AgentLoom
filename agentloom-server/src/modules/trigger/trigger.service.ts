@@ -10,7 +10,6 @@ import type {
   WorkflowTrigger,
 } from '../../database/schema/workflow-triggers.schema';
 import {
-  ApiEventConfigSchema,
   CreateTriggerSchema,
   CronConfigSchema,
   QueryTriggerSchema,
@@ -29,6 +28,7 @@ import {
 import {
   TriggerLimitExceededException,
   TriggerNotFoundException,
+  TriggerTypePreviewOnlyException,
   WorkflowNotPublishedException,
 } from './trigger.exceptions';
 
@@ -85,6 +85,7 @@ export class TriggerService {
     dto: CreateTriggerDto,
   ): Promise<WorkflowTrigger> {
     const parsedDto = CreateTriggerSchema.parse(dto);
+    this.assertMutableTriggerType(parsedDto.type);
     const workflow = await this.findWorkflowDefinition(tenantId, workflowId);
 
     if (!workflow || workflow.status !== 'published') {
@@ -146,6 +147,7 @@ export class TriggerService {
   ): Promise<WorkflowTrigger> {
     const parsedDto = UpdateTriggerSchema.parse(dto);
     const currentTrigger = await this.findById(tenantId, triggerId);
+    this.assertMutableTriggerType(currentTrigger.type);
 
     const setClause: Record<string, unknown> = {
       updatedAt: new Date(),
@@ -220,6 +222,7 @@ export class TriggerService {
 
   async toggle(tenantId: string, triggerId: string): Promise<WorkflowTrigger> {
     const currentTrigger = await this.findById(tenantId, triggerId);
+    this.assertMutableTriggerType(currentTrigger.type);
 
     const [updated] = await this.tenantDb
       .update(schema.workflowTriggers)
@@ -329,7 +332,7 @@ export class TriggerService {
         };
       }
       case 'api_event':
-        return ApiEventConfigSchema.parse(config);
+        throw new TriggerTypePreviewOnlyException(type);
     }
   }
 
@@ -353,7 +356,13 @@ export class TriggerService {
         };
       }
       case 'api_event':
-        return ApiEventConfigSchema.parse(nextConfig);
+        throw new TriggerTypePreviewOnlyException(currentTrigger.type);
+    }
+  }
+
+  private assertMutableTriggerType(type: WorkflowTrigger['type']): void {
+    if (type === 'api_event') {
+      throw new TriggerTypePreviewOnlyException(type);
     }
   }
 

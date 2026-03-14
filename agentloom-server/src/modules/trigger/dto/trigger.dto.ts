@@ -135,6 +135,7 @@ export const TriggerHistoryStatusSchema = z.enum([
   'success',
   'failed',
   'skipped',
+  'signature_failed',
 ]);
 
 export const QueryTriggerHistorySchema = z.object({

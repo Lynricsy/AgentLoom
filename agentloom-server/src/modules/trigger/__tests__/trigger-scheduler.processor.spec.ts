@@ -128,7 +128,10 @@ describe('TriggerSchedulerProcessor', () => {
     );
     expect(mockExecutionService.runWorkflow).toHaveBeenCalledWith(
       WORKFLOW_ID,
-      undefined,
+      {
+        launchSource: 'cron-trigger',
+        triggerType: 'system',
+      },
       TENANT_ID,
       SYSTEM_TRIGGER_USER_ID,
     );
@@ -145,6 +148,27 @@ describe('TriggerSchedulerProcessor', () => {
       TRIGGER_ID,
       { nextFireAt: NEXT_FIRE_AT },
     );
+  });
+
+  it('入队成功后即使 bookkeeping 失败也应返回 processed=true 且不抛错', async () => {
+    mockTriggerService.findById.mockResolvedValue(cronTrigger);
+    mockExecutionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
+    mockTriggerHistoryService.record.mockRejectedValue(new Error('history failed'));
+
+    await expect(processor.process(createMockJob())).resolves.toEqual({
+      processed: true,
+      executionId: EXECUTION_ID,
+    });
+
+    expect(mockTriggerHistoryService.record).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({
+        triggerId: TRIGGER_ID,
+        status: 'success',
+        executionId: EXECUTION_ID,
+      }),
+    );
+    expect(mockTriggerService.markTriggered).not.toHaveBeenCalled();
   });
 
   it('应在触发器禁用时记录 skipped 历史', async () => {

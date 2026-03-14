@@ -117,12 +117,14 @@ HTTP POST /executions
 ## Trigger 系统 (Story 8-3) ✅
 
 - 数据表：`workflow_triggers` + `workflow_trigger_history`，schema 位于 `src/database/schema/workflow-triggers.schema.ts`
-- 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位
+- 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位，且 `TriggerService.create/update/toggle` 会对 `api_event` 抛出 preview-only 409，禁止创建、编辑或启用
 - REST：`/workflow-definitions/:workflowId/triggers` 提供 create/list/detail/update/delete/toggle/history；RBAC 为读 viewer+、写 creator+
 - Public webhook：`POST /api/v1/webhooks/:token`，`AppModule.configure()` 已通过 `TenantMiddleware.exclude()` 放行 `webhooks` 与 `webhooks/{*splat}`
-- 验签：`WebhookService.verifySignature()` 使用 `x-agentloom-signature` + `x-agentloom-timestamp`，按 `${timestamp}.${rawBody}` 做 HMAC-SHA256，支持 IP 白名单
-- cron：`TriggerSchedulerService` 在 module init 时同步全部 enabled cron trigger 到 `trigger-scheduler` 队列；`TriggerSchedulerProcessor` 通过 `runInTenantTransaction()` 触��执行、写历史并回写 `lastTriggeredAt/triggerCount/nextFireAt`
-- 执行：当前复用 `ExecutionService.runWorkflow(workflowId, undefined, tenantId, SYSTEM_TRIGGER_USER_ID)`，因此 execution 记录里的 `triggerType` 仍为 `manual`；trigger 级别历史与 webhook/cron 元数据保存在 trigger history 中
+- 验签：`WebhookService.verifySignature()` 使用 `x-agentloom-signature` + `x-agentloom-timestamp`，按 `${timestamp}.${rawBody}` 做 HMAC-SHA256，支持 IP 白名单；验签失败/缺 rawBody/时间戳问题/IP 白名单失败统一在 `WebhookController` 中映射为精确 `401 { error: 'INVALID_SIGNATURE', message: 'Webhook signature verification failed' }`
+- 历史：`workflow_trigger_history.status` 现包含 `success | failed | skipped | signature_failed`；公开 webhook 验签失败会写入 `signature_failed`，成功/失败继续保留 request body / clientIp payload
+- cron：`TriggerSchedulerService` 在 module init 时同步全部 enabled cron trigger 到 `trigger-scheduler` 队列；register/remove 会持久化/清空 `workflow_triggers.next_fire_at`；`TriggerSchedulerProcessor` 通过 `runInTenantTransaction()` 触发执行、写历史并回写 `lastTriggeredAt/triggerCount/nextFireAt`
+- 执行：`ExecutionService.runWorkflow()` 现支持内部 `triggerType` override 与 `cron-trigger|webhook-trigger` launch source；cron 执行写入 `triggerType='system'` + `_meta.launchSource='cron-trigger'`，webhook 执行写入 `triggerType='webhook'` + `_meta.launchSource='webhook-trigger'`，并把 webhook request body 透传为 `inputParams`。当调用方使用 `SYSTEM_TRIGGER_USER_ID` 时，`createdBy` 会回退到 `workflow.createdBy` 以满足外键约束；若在租户事务中调用，execution job 会延迟到提交后再 enqueue，且入队失败会把 execution 标记为 `failed`，避免回滚后残留孤儿任务
+- Webhook 停用语义：停用的 webhook token 现在直接返回 404；普通 trigger CRUD/list/detail/update/toggle 响应不再暴露 webhook secret，仅创建响应保留一次性明文展示
 - DTO 兼容：由于预置 `trigger.dto.ts` 使用了当前 zod 运行时不存在的 `z.string().ip()`，模块现通过 `src/modules/trigger/dto/zod-ip.polyfill.ts` + `src/modules/trigger/trigger-dto.compat.ts` + `src/types/zod-ip-compat.d.ts` 做运行时/类型层兼容，避免直接修改 T1-T3 预置文件
 
 ## 数据库 (Drizzle + PostgreSQL)

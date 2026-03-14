@@ -5,7 +5,11 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+  runInTenantTransaction,
+} from '../../common/interceptors/tenant-transaction.context';
 import {
   DeadLetterJobNotFoundException,
   ExecutionNotFoundException,
@@ -13,14 +17,14 @@ import {
   ExecutionNotCancellableException,
   WorkflowArchivedException,
 } from './execution.exceptions';
-import { ExecutionGateway } from './execution.gateway';
 import { EventBridgeService } from './services/event-bridge.service';
 import {
   EXECUTION_QUEUE,
   AGENT_TASK_QUEUE,
   type AgentTaskJobData,
 } from './execution.constants';
-import type { RunWorkflowDto } from './dto/run-workflow.dto';
+import type { InternalRunWorkflowRequest } from './dto/run-workflow.dto';
+import { SYSTEM_TRIGGER_USER_ID } from '../trigger/trigger.constants';
 
 export interface ExecutionJobData {
   executionId: string;
@@ -44,7 +48,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function buildExecutionInputParams(
-  runRequest: RunWorkflowDto | undefined,
+  runRequest: InternalRunWorkflowRequest | undefined,
 ): Record<string, unknown> {
   const inputParams = runRequest?.inputParams
     ? { ...runRequest.inputParams }
@@ -84,7 +88,7 @@ export class ExecutionService {
 
   async runWorkflow(
     workflowId: string,
-    runRequest: RunWorkflowDto | undefined,
+    runRequest: InternalRunWorkflowRequest | undefined,
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
@@ -119,29 +123,80 @@ export class ExecutionService {
         workflowVersionId: workflow.publishedVersionId,
         tenantId,
         status: 'pending',
-        triggerType: 'manual',
+        triggerType: runRequest?.triggerType ?? 'manual',
         inputParams,
         definitionSnapshot: publishedVersion.snapshot,
-        createdBy: userId,
+        createdBy:
+          userId === SYSTEM_TRIGGER_USER_ID ? workflow.createdBy : userId,
       })
       .returning();
 
-    await this.executionQueue.add(
-      'execute',
-      {
-        executionId: execution.id,
-        tenantId,
-      } satisfies ExecutionJobData,
-      {
-        jobId: execution.id,
-      },
-    );
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => {
+        await this.enqueueExecutionJob(execution.id, tenantId);
+      });
+    } else {
+      await this.enqueueExecutionJob(execution.id, tenantId);
+    }
 
     this.logger.log(
       `Workflow execution created: ${JSON.stringify({ executionId: execution.id, workflowId })}`,
     );
 
     return execution;
+  }
+
+  private async enqueueExecutionJob(
+    executionId: string,
+    tenantId: string,
+  ): Promise<void> {
+    try {
+      await this.executionQueue.add(
+        'execute',
+        {
+          executionId,
+          tenantId,
+        } satisfies ExecutionJobData,
+        {
+          jobId: executionId,
+        },
+      );
+    } catch (error) {
+      const message = this.getErrorMessage(error);
+
+      await this.db
+        .update(schema.workflowExecutions)
+        .set({
+          status: 'failed',
+          failedAt: new Date(),
+          errorMessage: {
+            message,
+          },
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.workflowExecutions.id, executionId),
+            eq(schema.workflowExecutions.tenantId, tenantId),
+          ),
+        );
+
+      this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
+        executionId,
+        status: 'failed',
+        errorMessage: message,
+      });
+
+      throw error;
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'Unknown execution enqueue error';
   }
 
   async getExecution(

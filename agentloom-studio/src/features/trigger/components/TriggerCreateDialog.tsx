@@ -11,6 +11,7 @@ import {
   useUpdateTrigger,
 } from '../api/triggerQueries'
 import {
+  hasWebhookSecret,
   isApiEventConfig,
   isCronConfig,
   isWebhookConfig,
@@ -52,8 +53,8 @@ const typeOptions: Array<{
   },
   {
     value: 'api_event',
-    label: 'API Event',
-    description: '监听外部事件总线或内部领域事件。',
+    label: 'API Event（预览）',
+    description: '预配置事件契约与过滤条件；当前版本暂不自动触发执行。',
     icon: <RadioTower className="h-5 w-5" />,
     toneClassName: 'border-amber-500/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/40',
   },
@@ -163,6 +164,9 @@ function parseIpWhitelist(raw: string): string[] {
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
 }
+
+const API_EVENT_PREVIEW_ONLY_MESSAGE =
+  'API Event 当前仅支持预览，不支持创建、编辑或启用触发器。'
 
 function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
   const defaultValues: TriggerDialogFormValues = {
@@ -285,6 +289,7 @@ export function TriggerCreateDialog({
 
   const isEditing = !!trigger
   const isSubmitting = createMutation.isPending || updateMutation.isPending
+  const isApiEventPreview = selectedType === 'api_event'
 
   const {
     register,
@@ -343,6 +348,15 @@ export function TriggerCreateDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     try {
+      if (values.type === 'api_event') {
+        notify({
+          title: 'API Event 仍在预览中',
+          description: API_EVENT_PREVIEW_ONLY_MESSAGE,
+          variant: 'warning',
+        })
+        return
+      }
+
       if (isEditing && trigger) {
         const updatedTrigger = await updateMutation.mutateAsync({
           triggerId: trigger.id,
@@ -366,7 +380,7 @@ export function TriggerCreateDialog({
         variant: 'success',
       })
 
-      if (createdTrigger.type === 'webhook' && isWebhookConfig(createdTrigger.config)) {
+      if (createdTrigger.type === 'webhook' && hasWebhookSecret(createdTrigger.config)) {
         setCreatedWebhookTrigger(createdTrigger)
         return
       }
@@ -405,7 +419,7 @@ export function TriggerCreateDialog({
             {dialogDescription}
           </Dialog.Description>
 
-          {createdWebhookTrigger?.type === 'webhook' && isWebhookConfig(createdWebhookTrigger.config) ? (
+          {createdWebhookTrigger?.type === 'webhook' && hasWebhookSecret(createdWebhookTrigger.config) ? (
             <div className="mt-5 space-y-5">
               <WebhookSecretDisplay
                 token={createdWebhookTrigger.config.token}
@@ -464,16 +478,23 @@ export function TriggerCreateDialog({
                   watch={watch}
                   setValue={setValue}
                   errors={errors}
+                  disabled
                 />
+              ) : null}
+
+              {isApiEventPreview ? (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  {API_EVENT_PREVIEW_ONLY_MESSAGE}
+                </div>
               ) : null}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Dialog.Close asChild>
                   <Button variant="outline">取消</Button>
                 </Dialog.Close>
-                <Button type="submit" className="gap-2" disabled={isSubmitting}>
+                <Button type="submit" className="gap-2" disabled={isSubmitting || isApiEventPreview}>
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {isEditing ? '保存更改' : '创建触发器'}
+                  {isApiEventPreview ? 'API Event 预览中' : isEditing ? '保存更改' : '创建触发器'}
                 </Button>
               </div>
             </form>

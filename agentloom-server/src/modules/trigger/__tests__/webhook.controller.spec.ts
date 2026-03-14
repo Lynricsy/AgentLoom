@@ -6,6 +6,10 @@ import type { RawBodyRequest } from '@nestjs/common';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { WebhookController } from '../webhook.controller';
+import {
+  TriggerNotFoundException,
+  WebhookVerificationFailedException,
+} from '../trigger.exceptions';
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
@@ -48,6 +52,7 @@ function createMockRequest(
 ): RawBodyRequest<FastifyRequest> {
   return {
     rawBody: Buffer.from('{"hello":"world"}'),
+    body: { hello: 'world' },
     headers: {
       'x-agentloom-signature': 'signature',
       'x-agentloom-timestamp': '1735689600',
@@ -55,6 +60,12 @@ function createMockRequest(
     ip: '127.0.0.1',
     ...overrides,
   } as RawBodyRequest<FastifyRequest>;
+}
+
+function createMockReply() {
+  return {
+    code: vi.fn().mockReturnThis(),
+  };
 }
 
 describe('WebhookController', () => {
@@ -88,16 +99,18 @@ describe('WebhookController', () => {
   });
 
   it('应处理 webhook 并返回 executionId', async () => {
+    const reply = createMockReply();
+
     webhookService.findTriggerByToken.mockResolvedValue(webhookTrigger);
     executionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
     triggerHistoryService.record.mockResolvedValue(undefined);
     triggerService.markTriggered.mockResolvedValue(undefined);
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest()),
+      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
     ).resolves.toEqual({
-      received: true,
       executionId: EXECUTION_ID,
+      status: 'accepted',
     });
 
     expect(webhookService.verifySignature).toHaveBeenCalled();
@@ -112,34 +125,85 @@ describe('WebhookController', () => {
     );
     expect(executionService.runWorkflow).toHaveBeenCalledWith(
       WORKFLOW_ID,
-      undefined,
+      {
+        inputParams: { hello: 'world' },
+        launchSource: 'webhook-trigger',
+        triggerType: 'webhook',
+      },
       TENANT_ID,
       '00000000-0000-0000-0000-000000000000',
     );
+    expect(reply.code).not.toHaveBeenCalled();
   });
 
-  it('应在触发器禁用时记录 skipped 历史', async () => {
-    webhookService.findTriggerByToken.mockResolvedValue({
-      ...webhookTrigger,
-      isEnabled: false,
-    });
-    triggerHistoryService.record.mockResolvedValue(undefined);
+  it('成功入队后即使 bookkeeping 失败也应继续返回 accepted', async () => {
+    const reply = createMockReply();
+
+    webhookService.findTriggerByToken.mockResolvedValue(webhookTrigger);
+    executionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
+    triggerHistoryService.record.mockRejectedValue(new Error('history failed'));
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest()),
+      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
     ).resolves.toEqual({
-      received: true,
-      executionId: null,
+      executionId: EXECUTION_ID,
+      status: 'accepted',
     });
 
-    expect(executionService.runWorkflow).not.toHaveBeenCalled();
     expect(triggerHistoryService.record).toHaveBeenCalledWith(
       TENANT_ID,
       expect.objectContaining({
         triggerId: TRIGGER_ID,
-        status: 'skipped',
+        status: 'success',
+        executionId: EXECUTION_ID,
       }),
     );
+    expect(triggerService.markTriggered).not.toHaveBeenCalled();
+    expect(reply.code).not.toHaveBeenCalled();
+  });
+
+  it('应在触发器禁用时返回 404', async () => {
+    const reply = createMockReply();
+
+    webhookService.findTriggerByToken.mockResolvedValue({
+      ...webhookTrigger,
+      isEnabled: false,
+    });
+
+    await expect(
+      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+    ).rejects.toThrow(TriggerNotFoundException);
+
+    expect(executionService.runWorkflow).not.toHaveBeenCalled();
+    expect(triggerHistoryService.record).not.toHaveBeenCalled();
+  });
+
+  it('应在签名验证失败时返回精确 401 JSON 并记录 signature_failed 历史', async () => {
+    const reply = createMockReply();
+
+    webhookService.findTriggerByToken.mockResolvedValue(webhookTrigger);
+    webhookService.verifySignature.mockImplementation(() => {
+      throw new WebhookVerificationFailedException('签名验证失败');
+    });
+    triggerHistoryService.record.mockResolvedValue(undefined);
+
+    await expect(
+      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+    ).resolves.toEqual({
+      error: 'INVALID_SIGNATURE',
+      message: 'Webhook signature verification failed',
+    });
+
+    expect(reply.code).toHaveBeenCalledWith(401);
+    expect(triggerHistoryService.record).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({
+        triggerId: TRIGGER_ID,
+        status: 'signature_failed',
+      }),
+    );
+    expect(executionService.runWorkflow).not.toHaveBeenCalled();
+    expect(triggerService.markTriggered).not.toHaveBeenCalled();
   });
 
   it('应为 webhook 路由声明 Public 元数据', () => {

@@ -10,6 +10,7 @@ const USER_ID = '019391d4-b000-7000-0000-000000000002';
 const WORKFLOW_ID = '019391d4-c000-7000-0000-000000000003';
 const OTHER_WORKFLOW_ID = '019391d4-d000-7000-0000-000000000004';
 const TRIGGER_ID = '019391d4-e000-7000-0000-000000000005';
+const NEXT_FIRE_AT = new Date('2025-01-02T08:00:00.000Z');
 
 const cronTrigger = {
   id: TRIGGER_ID,
@@ -29,6 +30,17 @@ const cronTrigger = {
   createdBy: USER_ID,
   createdAt: new Date('2025-01-01T00:00:00.000Z'),
   updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+};
+
+const webhookTrigger = {
+  ...cronTrigger,
+  type: 'webhook' as const,
+  name: 'Webhook Trigger',
+  config: {
+    token: 'webhook-token',
+    secret: 'webhook-secret',
+    ipWhitelist: [],
+  },
 };
 
 describe('TriggerController', () => {
@@ -61,7 +73,7 @@ describe('TriggerController', () => {
 
   it('应创建 cron ���发器并注册调度任务', async () => {
     triggerService.create.mockResolvedValue(cronTrigger);
-    triggerSchedulerService.registerCronJob.mockResolvedValue(undefined);
+    triggerSchedulerService.registerCronJob.mockResolvedValue(NEXT_FIRE_AT);
 
     await expect(
       controller.create(
@@ -75,7 +87,12 @@ describe('TriggerController', () => {
         TENANT_ID,
         USER_ID,
       ),
-    ).resolves.toEqual({ data: cronTrigger });
+    ).resolves.toEqual({
+      data: {
+        ...cronTrigger,
+        nextFireAt: NEXT_FIRE_AT,
+      },
+    });
 
     expect(triggerService.create).toHaveBeenCalledWith(
       TENANT_ID,
@@ -89,11 +106,37 @@ describe('TriggerController', () => {
   });
 
   it('应返回触发器列表', async () => {
-    triggerService.findAll.mockResolvedValue([cronTrigger]);
+    triggerService.findAll.mockResolvedValue([webhookTrigger]);
 
     await expect(
-      controller.findAll(WORKFLOW_ID, { type: 'cron' }, TENANT_ID),
-    ).resolves.toEqual({ data: [cronTrigger] });
+      controller.findAll(WORKFLOW_ID, { type: 'webhook' }, TENANT_ID),
+    ).resolves.toEqual({
+      data: [
+        {
+          ...webhookTrigger,
+          config: {
+            token: 'webhook-token',
+            ipWhitelist: [],
+          },
+        },
+      ],
+    });
+  });
+
+  it('应在查询 webhook 详情时隐藏 secret', async () => {
+    triggerService.findById.mockResolvedValue(webhookTrigger);
+
+    await expect(
+      controller.findById(WORKFLOW_ID, TRIGGER_ID, TENANT_ID),
+    ).resolves.toEqual({
+      data: {
+        ...webhookTrigger,
+        config: {
+          token: 'webhook-token',
+          ipWhitelist: [],
+        },
+      },
+    });
   });
 
   it('应在更新 cron 触发器后重建调度任务', async () => {
@@ -102,6 +145,7 @@ describe('TriggerController', () => {
       ...cronTrigger,
       config: { expression: '0 9 * * *', timezone: 'UTC' },
     });
+    triggerSchedulerService.registerCronJob.mockResolvedValue(NEXT_FIRE_AT);
 
     await expect(
       controller.update(
@@ -114,6 +158,7 @@ describe('TriggerController', () => {
       data: {
         ...cronTrigger,
         config: { expression: '0 9 * * *', timezone: 'UTC' },
+        nextFireAt: NEXT_FIRE_AT,
       },
     });
 
@@ -141,6 +186,7 @@ describe('TriggerController', () => {
     triggerService.toggle.mockResolvedValue({
       ...cronTrigger,
       isEnabled: false,
+      nextFireAt: NEXT_FIRE_AT,
     });
 
     await expect(
@@ -149,6 +195,7 @@ describe('TriggerController', () => {
       data: {
         ...cronTrigger,
         isEnabled: false,
+        nextFireAt: null,
       },
     });
 

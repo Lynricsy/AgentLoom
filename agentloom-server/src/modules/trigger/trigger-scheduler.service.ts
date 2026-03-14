@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, type RepeatableJob } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
 
+import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { WorkflowTrigger } from '../../database/schema/workflow-triggers.schema';
@@ -30,6 +31,10 @@ export class TriggerSchedulerService implements OnModuleInit {
 
   private get repeatableQueue(): RepeatableQueueCompat {
     return this.queue;
+  }
+
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
   }
 
   constructor(
@@ -67,6 +72,8 @@ export class TriggerSchedulerService implements OnModuleInit {
 
     const nextFireAt = await this.getNextFireAt(trigger.id);
 
+    await this.persistNextFireAt(trigger.id, nextFireAt);
+
     this.logger.log(
       JSON.stringify({
         action: 'trigger_cron_job_registered',
@@ -82,6 +89,8 @@ export class TriggerSchedulerService implements OnModuleInit {
 
   async removeCronJob(triggerId: string): Promise<boolean> {
     const repeatableJob = await this.findRepeatableJob(triggerId);
+
+    await this.persistNextFireAt(triggerId, null);
 
     if (!repeatableJob) {
       return false;
@@ -113,7 +122,7 @@ export class TriggerSchedulerService implements OnModuleInit {
   }
 
   async syncOnInit(): Promise<void> {
-    const triggers = await this.db
+    const triggers = await this.tenantDb
       .select()
       .from(schema.workflowTriggers)
       .where(
@@ -143,5 +152,15 @@ export class TriggerSchedulerService implements OnModuleInit {
     return repeatableJobs.find(
       (job) => job.name === TRIGGER_CRON_JOB && job.id === triggerId,
     );
+  }
+
+  private async persistNextFireAt(
+    triggerId: string,
+    nextFireAt: Date | null,
+  ): Promise<void> {
+    await this.tenantDb
+      .update(schema.workflowTriggers)
+      .set({ nextFireAt })
+      .where(eq(schema.workflowTriggers.id, triggerId));
   }
 }

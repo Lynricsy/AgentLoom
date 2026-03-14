@@ -4,6 +4,8 @@ import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ExecutionService } from '../execution.service';
 import { EventBridgeService } from '../services/event-bridge.service';
+import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
+import { SYSTEM_TRIGGER_USER_ID } from '../../trigger/trigger.constants';
 import {
   DeadLetterJobNotFoundException,
   ExecutionNotFoundException,
@@ -48,6 +50,7 @@ const mockPublishedWorkflow = {
   status: 'published' as const,
   publishedVersionId: VERSION_ID,
   name: 'Test Workflow',
+  createdBy: USER_ID,
 };
 
 const mockVersion = {
@@ -288,6 +291,144 @@ describe('ExecutionService', () => {
         topic: 'AI 趋势',
         _meta: { launchSource: 'mobile' },
       });
+    });
+
+    it('应允许内部触发请求覆盖 triggerType 并写入内部 launchSource', async () => {
+      const executionFromWebhook = {
+        ...mockExecution,
+        triggerType: 'webhook' as const,
+        inputParams: {
+          hello: 'world',
+          _meta: { launchSource: 'webhook-trigger' },
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([executionFromWebhook]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      const result = await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          inputParams: { hello: 'world' },
+          launchSource: 'webhook-trigger',
+          triggerType: 'webhook',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result).toEqual(executionFromWebhook);
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.triggerType).toBe('webhook');
+      expect(insertValues.inputParams).toEqual({
+        hello: 'world',
+        _meta: { launchSource: 'webhook-trigger' },
+      });
+    });
+
+    it('应在系统触发场景回退 execution.createdBy 到 workflow.createdBy', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([
+          {
+            ...mockExecution,
+            triggerType: 'system' as const,
+            createdBy: USER_ID,
+          },
+        ]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          launchSource: 'cron-trigger',
+          triggerType: 'system',
+        },
+        TENANT_ID,
+        SYSTEM_TRIGGER_USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.createdBy).toBe(USER_ID);
+      expect(insertValues.triggerType).toBe('system');
+      expect(insertValues.inputParams).toEqual({
+        _meta: { launchSource: 'cron-trigger' },
+      });
+    });
+
+    it('应在租户事务中延后到提交后再入队 execution job', async () => {
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      txDb.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await runInTenantTransaction(db as never, TENANT_ID, async () => {
+        await service.runWorkflow(
+          WORKFLOW_ID,
+          { inputParams: { source: 'cron' } },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        expect(mockQueue.add).not.toHaveBeenCalled();
+      });
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'execute',
+        {
+          executionId: EXECUTION_ID,
+          tenantId: TENANT_ID,
+        },
+        {
+          jobId: EXECUTION_ID,
+        },
+      );
+    });
+
+    it('应在入队失败时将 execution 标记为 failed 并广播状态变化', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockQueue.add.mockRejectedValueOnce(new Error('queue unavailable'));
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toThrow('queue unavailable');
+
+      expect(db.update).toHaveBeenCalledTimes(1);
+      const setValues = db.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setValues.status).toBe('failed');
+      expect(setValues.failedAt).toBeInstanceOf(Date);
+      expect(setValues.errorMessage).toEqual({
+        message: 'queue unavailable',
+      });
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          executionId: EXECUTION_ID,
+          status: 'failed',
+          errorMessage: 'queue unavailable',
+        },
+      );
     });
 
     it('应拒绝草稿工作流 (WorkflowNotPublishedException)', async () => {

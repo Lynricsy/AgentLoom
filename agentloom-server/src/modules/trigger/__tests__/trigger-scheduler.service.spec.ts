@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   }),
   createMockDb: () => ({
     select: vi.fn(),
+    update: vi.fn(),
   }),
 }));
 
@@ -51,6 +52,14 @@ function createSelectWhereResolved(result: unknown) {
   };
 }
 
+function createUpdateWhereResolved(result: unknown) {
+  return {
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(result),
+    }),
+  };
+}
+
 describe('TriggerSchedulerService', () => {
   let service: TriggerSchedulerService;
   let queue: ReturnType<typeof mocks.createMockQueue>;
@@ -62,6 +71,7 @@ describe('TriggerSchedulerService', () => {
 
     queue = mocks.createMockQueue();
     db = mocks.createMockDb();
+    db.update.mockReset();
 
     const module = await Test.createTestingModule({
       providers: [
@@ -87,6 +97,7 @@ describe('TriggerSchedulerService', () => {
         next: NEXT_FIRE_AT.getTime(),
       },
     ]);
+    db.update.mockReturnValueOnce(createUpdateWhereResolved(undefined));
 
     await expect(service.registerCronJob(cronTrigger)).resolves.toEqual(NEXT_FIRE_AT);
 
@@ -105,6 +116,9 @@ describe('TriggerSchedulerService', () => {
         },
       },
     );
+
+    const updateValues = db.update.mock.results[0].value.set.mock.calls[0][0];
+    expect(updateValues).toEqual({ nextFireAt: NEXT_FIRE_AT });
   });
 
   it('应按 repeatable key 删除 cron job', async () => {
@@ -119,9 +133,13 @@ describe('TriggerSchedulerService', () => {
       },
     ]);
     queue.removeRepeatableByKey.mockResolvedValue(true);
+    db.update.mockReturnValueOnce(createUpdateWhereResolved(undefined));
 
     await expect(service.removeCronJob(TRIGGER_ID)).resolves.toBe(true);
     expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('repeat-key');
+
+    const updateValues = db.update.mock.results[0].value.set.mock.calls[0][0];
+    expect(updateValues).toEqual({ nextFireAt: null });
   });
 
   it('应在模块初始化时同步全部启用的 cron 触发器', async () => {

@@ -120,7 +120,10 @@ describe('TenantTransactionInterceptor', () => {
       sql`SELECT set_config('app.current_tenant', ${tenantId}, true)`,
     );
     expect(next.handle).toHaveBeenCalledTimes(1);
-    expect(observedStore).toBe(mockTx);
+    expect(observedStore).toMatchObject({
+      db: mockTx,
+      afterCommitHooks: [],
+    });
   });
 
   it('subscriber 已关闭时不会重复向外抛出事务中的错误', async () => {

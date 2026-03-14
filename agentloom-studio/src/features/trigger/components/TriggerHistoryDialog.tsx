@@ -13,12 +13,14 @@ const statusLabels: Record<TriggerHistoryStatus, string> = {
   success: '成功',
   failed: '失败',
   skipped: '跳过',
+  signature_failed: '签名失败',
 }
 
 const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
   success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
   failed: 'border-rose-400/30 bg-rose-500/10 text-rose-200',
   skipped: 'border-amber-400/30 bg-amber-500/10 text-amber-200',
+  signature_failed: 'border-orange-400/30 bg-orange-500/10 text-orange-200',
 }
 
 interface TriggerHistoryDialogProps {
@@ -146,6 +148,7 @@ export function TriggerHistoryDialog({
                 <option value="success">成功</option>
                 <option value="failed">失败</option>
                 <option value="skipped">跳过</option>
+                <option value="signature_failed">签名失败</option>
               </Select>
             </div>
           </div>

@@ -28,6 +28,20 @@ export class TriggerLimitExceededException extends DomainException {
   }
 }
 
+export class TriggerTypePreviewOnlyException extends DomainException {
+  constructor(triggerType: 'api_event') {
+    super({
+      type: 'https://agentloom.dev/errors/trigger-type-preview-only',
+      title: '触发器类型仅预览',
+      status: HttpStatus.CONFLICT,
+      detail: `触发器类型 ${triggerType} 当前仅支持预览，暂不允许创建、编辑或启用`,
+      extensions: {
+        triggerType,
+      },
+    });
+  }
+}
+
 export class WebhookVerificationFailedException extends DomainException {
   constructor(reason: string = '签名验证失败') {
     super({

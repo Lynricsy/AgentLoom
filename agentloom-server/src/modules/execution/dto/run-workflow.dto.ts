@@ -16,4 +16,19 @@ export const runWorkflowSchema = z
     launchSource: value.launchSource ?? value.launch_source,
   }));
 
+type PublicRunWorkflowInput = z.infer<typeof runWorkflowSchema>;
+
+export type InternalLaunchSource =
+  | NonNullable<PublicRunWorkflowInput['launchSource']>
+  | 'cron-trigger'
+  | 'webhook-trigger';
+
+export type ExecutionTriggerType = 'manual' | 'api' | 'webhook' | 'system';
+
+export type InternalRunWorkflowRequest = {
+  inputParams?: PublicRunWorkflowInput['inputParams']
+  launchSource?: InternalLaunchSource;
+  triggerType?: ExecutionTriggerType;
+};
+
 export class RunWorkflowDto extends createZodDto(runWorkflowSchema) {}

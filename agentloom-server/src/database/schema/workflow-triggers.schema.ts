@@ -99,6 +99,7 @@ export const triggerHistoryStatusEnum = pgEnum('trigger_history_status_enum', [
   'success',
   'failed',
   'skipped',
+  'signature_failed',
 ]);
 
 export const workflowTriggerHistory = pgTable(
