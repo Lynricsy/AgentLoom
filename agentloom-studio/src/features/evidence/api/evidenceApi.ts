@@ -3,6 +3,7 @@ import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 
 import type {
   EvidenceChainResponse,
+  EvidenceGraphResponse,
   EvidenceQueryParams,
   EvidenceRecord,
   EvidenceVerifyResult,
@@ -81,4 +82,12 @@ export function fetchEvidenceChain(
   return apiClient
     .get(`executions/${executionId}/evidence/chain`, { searchParams })
     .json<ApiResponse<EvidenceChainResponse>>();
+}
+
+export function fetchEvidenceGraph(
+  executionId: string,
+): Promise<ApiResponse<EvidenceGraphResponse>> {
+  return apiClient
+    .get(`executions/${executionId}/evidence/graph`)
+    .json<ApiResponse<EvidenceGraphResponse>>();
 }

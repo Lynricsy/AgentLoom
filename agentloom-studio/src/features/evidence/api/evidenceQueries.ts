@@ -10,6 +10,7 @@ import {
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
+  fetchEvidenceGraph,
   verifyEvidenceHash,
 } from './evidenceApi';
 import { evidenceKeys } from './evidenceKeys';
@@ -80,6 +81,15 @@ export function useEvidenceChain(
   return useQuery({
     queryKey: evidenceKeys.chain(executionId, nodeId),
     queryFn: () => fetchEvidenceChain(executionId, nodeId),
+    enabled: !!executionId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useEvidenceGraph(executionId: string) {
+  return useQuery({
+    queryKey: evidenceKeys.graph(executionId),
+    queryFn: () => fetchEvidenceGraph(executionId),
     enabled: !!executionId,
     staleTime: 5 * 60 * 1000,
   });

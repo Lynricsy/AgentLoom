@@ -13,12 +13,16 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { Roles } from '../../common/decorators/roles.decorator';
 
 import { QueryEvidenceChainDto, QueryEvidenceDto } from './dto/evidence.dto';
+import { EvidenceGraphService } from './evidence-graph.service';
 import { EvidenceService } from './evidence.service';
 
 @ApiTags('Evidence')
 @Controller('executions/:executionId/evidence')
 export class EvidenceController {
-  constructor(private readonly evidenceService: EvidenceService) {}
+  constructor(
+    private readonly evidenceService: EvidenceService,
+    private readonly evidenceGraphService: EvidenceGraphService,
+  ) {}
 
   @Get()
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
@@ -28,6 +32,19 @@ export class EvidenceController {
     @Query() query: QueryEvidenceDto,
   ) {
     return this.evidenceService.findByExecution(tenantId, executionId, query);
+  }
+
+  @Get('graph')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  async getEvidenceGraph(
+    @CurrentTenant() tenantId: string,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
+    const { response, cached } =
+      await this.evidenceGraphService.buildGraph(tenantId, executionId);
+    res.header('X-Cache-Hit', cached ? 'true' : 'false');
+    return { data: response };
   }
 
   @Get('chain')

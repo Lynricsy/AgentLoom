@@ -30,6 +30,7 @@ export interface EvidenceUiState {
   highlightedEvidenceId: string | null;
   highlightUntil: number | null;
   documentViewer: DocumentViewerState | null;
+  graphSelectedNodeId: string | null;
 }
 
 export interface EvidenceUiActions {
@@ -50,6 +51,7 @@ export interface EvidenceUiActions {
     ) => void;
     clearHighlight: () => void;
     reset: () => void;
+    setGraphSelectedNodeId: (nodeId: string | null) => void;
   };
 }
 
@@ -63,6 +65,7 @@ function createInitialState(): EvidenceUiState {
     highlightedEvidenceId: null,
     highlightUntil: null,
     documentViewer: null,
+    graphSelectedNodeId: null,
   };
 }
 
@@ -193,6 +196,15 @@ export const useEvidenceUiStore = create<
             ),
 
           reset: () => set(createInitialState(), false, 'evidence-ui/reset'),
+
+          setGraphSelectedNodeId: (nodeId: string | null) =>
+            set(
+              (state) => {
+                state.graphSelectedNodeId = nodeId;
+              },
+              false,
+              'evidence-ui/setGraphSelectedNodeId',
+            ),
         },
       })),
     ),
@@ -218,3 +230,5 @@ export const useEvidenceUiDocumentViewer = () =>
   useEvidenceUiStore((s) => s.documentViewer);
 export const useEvidenceUiActions = () =>
   useEvidenceUiStore((s) => s.actions);
+export const useEvidenceUiGraphSelectedNodeId = () =>
+  useEvidenceUiStore((s) => s.graphSelectedNodeId);

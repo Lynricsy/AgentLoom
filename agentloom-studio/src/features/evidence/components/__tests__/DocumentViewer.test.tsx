@@ -122,6 +122,7 @@ describe('DocumentViewer', () => {
       openFromPhysicalLocation: vi.fn(),
       clearHighlight: vi.fn(),
       reset: vi.fn(),
+      setGraphSelectedNodeId: vi.fn(),
     })
     vi.mocked(useDocumentContent).mockReturnValue({
       data: undefined,

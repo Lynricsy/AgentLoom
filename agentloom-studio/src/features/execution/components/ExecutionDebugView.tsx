@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useExecution } from '../hooks/useExecutionList'
@@ -13,8 +13,10 @@ import {
   getExecutionStartedAt,
 } from '../lib/presentation'
 import { Button } from '@/shared/ui/button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 import { cn } from '@/shared/lib/utils'
 import { EvidenceReferencePanel } from '@/features/evidence/components/EvidenceReferencePanel'
+import { EvidenceGraphView } from '@/features/evidence/components/EvidenceGraphView'
 
 interface ExecutionDebugViewProps {
   executionId: string
@@ -32,6 +34,10 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const navigate = useNavigate()
   const { data: execution, isLoading, error } = useExecution(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'debug' | 'provenance'>('debug')
+  const handleTabChange = useCallback((value: string) => {
+    setActiveTab(value as 'debug' | 'provenance')
+  }, [])
   const { timelineData } = useTimelineData(
     executionId,
     execution?.steps ?? [],
@@ -176,28 +182,68 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden p-4">
-        <div ref={containerRef} className="hidden h-full min-h-0 lg:flex" data-testid="execution-debug-desktop-layout">
-          <div style={{ width: `${leftWidth}%` }} className="min-w-0" data-testid="execution-debug-left-panel">
+      <Tabs defaultValue="debug" value={activeTab} onValueChange={handleTabChange} className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex items-center gap-3 border-b border-border/40 px-5 py-2">
+          <TabsList>
+            <TabsTrigger value="debug" data-testid="execution-debug-tab-debug">调试面板</TabsTrigger>
+            <TabsTrigger value="provenance" data-testid="execution-debug-tab-provenance">溯源图</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="debug" className="flex-1 overflow-hidden p-4">
+          <div ref={containerRef} className="hidden h-full min-h-0 lg:flex" data-testid="execution-debug-desktop-layout">
+            <div style={{ width: `${leftWidth}%` }} className="min-w-0" data-testid="execution-debug-left-panel">
+              <ReadonlyCanvas
+                graph={execution.workflowVersion.graph}
+                steps={execution.steps}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+              />
+            </div>
+
+            <button
+              type="button"
+              aria-label="调整画布与时间线宽度"
+              className="mx-3 w-1 cursor-col-resize rounded-full bg-border/80 transition hover:bg-primary/60"
+              onMouseDown={() => {
+                activeHandleRef.current = 'left'
+              }}
+              data-testid="execution-debug-handle-left"
+            />
+
+            <div style={{ width: `${centerWidth}%` }} className="min-w-0" data-testid="execution-debug-center-panel">
+              <ExecutionTimelineVertical
+                timelineData={timelineData}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+                executionId={executionId}
+                executionStartedAt={execution.startedAt ?? null}
+                executionCompletedAt={execution.completedAt ?? null}
+              />
+            </div>
+
+            <button
+              type="button"
+              aria-label="调整时间线与详情宽度"
+              className="mx-3 w-1 cursor-col-resize rounded-full bg-border/80 transition hover:bg-primary/60"
+              onMouseDown={() => {
+                activeHandleRef.current = 'right'
+              }}
+              data-testid="execution-debug-handle-right"
+            />
+
+            <div style={{ width: `${rightWidth}%` }} className="min-w-0" data-testid="execution-debug-right-panel">
+              <ExecutionNodeDetail step={selectedStep} />
+            </div>
+          </div>
+
+          <div className="flex h-full min-h-0 flex-col gap-4 lg:hidden" data-testid="execution-debug-mobile-layout">
             <ReadonlyCanvas
               graph={execution.workflowVersion.graph}
               steps={execution.steps}
               selectedNodeId={selectedNodeId}
               onSelectNode={setSelectedNodeId}
             />
-          </div>
-
-          <button
-            type="button"
-            aria-label="调整画布与时间线宽度"
-            className="mx-3 w-1 cursor-col-resize rounded-full bg-border/80 transition hover:bg-primary/60"
-            onMouseDown={() => {
-              activeHandleRef.current = 'left'
-            }}
-            data-testid="execution-debug-handle-left"
-          />
-
-          <div style={{ width: `${centerWidth}%` }} className="min-w-0" data-testid="execution-debug-center-panel">
             <ExecutionTimelineVertical
               timelineData={timelineData}
               selectedNodeId={selectedNodeId}
@@ -206,41 +252,14 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               executionStartedAt={execution.startedAt ?? null}
               executionCompletedAt={execution.completedAt ?? null}
             />
-          </div>
-
-          <button
-            type="button"
-            aria-label="调整时间线与详情宽度"
-            className="mx-3 w-1 cursor-col-resize rounded-full bg-border/80 transition hover:bg-primary/60"
-            onMouseDown={() => {
-              activeHandleRef.current = 'right'
-            }}
-            data-testid="execution-debug-handle-right"
-          />
-
-          <div style={{ width: `${rightWidth}%` }} className="min-w-0" data-testid="execution-debug-right-panel">
             <ExecutionNodeDetail step={selectedStep} />
           </div>
-        </div>
+        </TabsContent>
 
-        <div className="flex h-full min-h-0 flex-col gap-4 lg:hidden" data-testid="execution-debug-mobile-layout">
-          <ReadonlyCanvas
-            graph={execution.workflowVersion.graph}
-            steps={execution.steps}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-          />
-          <ExecutionTimelineVertical
-            timelineData={timelineData}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-            executionId={executionId}
-            executionStartedAt={execution.startedAt ?? null}
-            executionCompletedAt={execution.completedAt ?? null}
-          />
-          <ExecutionNodeDetail step={selectedStep} />
-        </div>
-      </div>
+        <TabsContent value="provenance" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-provenance-tab">
+          <EvidenceGraphView executionId={executionId} />
+        </TabsContent>
+      </Tabs>
 
       <EvidenceReferencePanel />
     </div>

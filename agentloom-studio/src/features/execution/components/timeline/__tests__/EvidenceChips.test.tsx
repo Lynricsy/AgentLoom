@@ -23,6 +23,7 @@ describe('EvidenceChips', () => {
       openFromPhysicalLocation: vi.fn(),
       clearHighlight: vi.fn(),
       reset: vi.fn(),
+      setGraphSelectedNodeId: vi.fn(),
     })
   })
 

@@ -143,6 +143,7 @@ describe('EvidenceCard', () => {
       openFromPhysicalLocation,
       clearHighlight: vi.fn(),
       reset: vi.fn(),
+      setGraphSelectedNodeId: vi.fn(),
     })
 
     vi.mocked(useEvidenceDetail).mockReturnValue({

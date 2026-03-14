@@ -1,14 +1,18 @@
 export type {
   AgentDecision,
+  AgentGraphEdge,
+  AgentGraphNode,
   ChainIntegrityStatus,
   EvidenceChainNode,
   EvidenceChainResponse,
+  EvidenceGraphResponse,
   EvidencePacket,
   EvidencePacketSummary,
   EvidenceQueryParams,
   EvidenceRecord,
   EvidenceSourceType,
   EvidenceVerifyResult,
+  GraphTimelineEntry,
   IntegrityIssue,
   NodeErrorEvidencePacket,
   NodeErrorInfo,
@@ -22,6 +26,7 @@ export {
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
+  fetchEvidenceGraph,
   verifyEvidenceHash,
 } from './api/evidenceApi';
 
@@ -35,6 +40,7 @@ export {
   useDocumentContent,
   useEvidenceChain,
   useEvidenceDetail,
+  useEvidenceGraph,
   useEvidenceList,
   useEvidenceVerify,
 } from './api/evidenceQueries';
@@ -43,6 +49,7 @@ export {
   useEvidenceUiActions,
   useEvidenceUiDocumentViewer,
   useEvidenceUiExecutionId,
+  useEvidenceUiGraphSelectedNodeId,
   useEvidenceUiHighlightState,
   useEvidenceUiIsOpen,
   useEvidenceUiNodeId,
@@ -54,6 +61,7 @@ export type { DocumentViewerState } from './stores/evidenceUiStore';
 
 export { EvidenceCard } from './components/EvidenceCard';
 export { EvidenceReferencePanel } from './components/EvidenceReferencePanel';
+export { EvidenceGraphView } from './components/EvidenceGraphView';
 export { DocumentViewer } from './components/DocumentViewer';
 export { InlineEvidenceRef } from './components/InlineEvidenceRef';
 export { LocationLink } from './components/LocationLink';

@@ -215,3 +215,37 @@ export interface EvidenceChainResponse {
   integrityStatus: ChainIntegrityStatus;
   cachedAt?: string;
 }
+
+// ─── Graph types ────────────────────────────────────────
+
+export interface AgentGraphNode {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  executionStatus: string;
+  evidenceCount: number;
+  firstEvidenceAt: string | null;
+  lastEvidenceAt: string | null;
+}
+
+export interface AgentGraphEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  evidenceLinks: number;
+  dataTypeSummary: string[];
+}
+
+export interface GraphTimelineEntry {
+  timestamp: string;
+  type: 'node' | 'edge';
+  targetId: string;
+  label: string;
+}
+
+export interface EvidenceGraphResponse {
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+  timeline: GraphTimelineEntry[];
+}

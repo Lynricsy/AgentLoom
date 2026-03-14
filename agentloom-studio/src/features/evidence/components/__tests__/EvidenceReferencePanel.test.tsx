@@ -140,6 +140,7 @@ describe('EvidenceReferencePanel', () => {
       openFromPhysicalLocation: vi.fn(),
       clearHighlight,
       reset: vi.fn(),
+      setGraphSelectedNodeId: vi.fn(),
     })
     vi.mocked(useEvidenceChain).mockReturnValue({
       data: undefined,
