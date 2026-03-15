@@ -39,6 +39,7 @@ export interface EncryptedPayload {
 export interface GeneratedKeyPair {
   publicKeyPem: string
   privateKeyPem: string
+  privateKeyPkcs8: ArrayBuffer
   fingerprint: string
 }
 
@@ -47,4 +48,7 @@ export interface EncryptionMetadata {
   keyFingerprint?: string
   algorithm?: string
   encryptedAt?: string
+  plaintextHash?: string
+  contractVersion?: number
+  encryptedPayload?: EncryptedPayload
 }

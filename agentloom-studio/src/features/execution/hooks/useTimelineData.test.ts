@@ -32,6 +32,8 @@ function createStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
 }
 
 function createEvidenceRecord(overrides: Partial<EvidenceRecord> = {}): EvidenceRecord {
+  const { isEncrypted, encryptionMetadata, ...restOverrides } = overrides
+
   return {
     id: 'ev-1',
     executionId: 'exec-1',
@@ -54,8 +56,10 @@ function createEvidenceRecord(overrides: Partial<EvidenceRecord> = {}): Evidence
       },
     },
     contentHash: 'hash-1',
+    isEncrypted: isEncrypted ?? false,
     createdAt: '2026-01-01T00:00:30Z',
-    ...overrides,
+    ...(encryptionMetadata !== undefined ? { encryptionMetadata } : {}),
+    ...restOverrides,
   }
 }
 

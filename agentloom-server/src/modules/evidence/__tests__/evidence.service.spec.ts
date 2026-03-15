@@ -86,6 +86,14 @@ function normalizeForHash(value: unknown): unknown {
 function extractHashSource(
   packet: Record<string, unknown>,
 ): Record<string, unknown> {
+  if ('encryptedPacket' in packet) {
+    return {
+      sourceType: packet.sourceType,
+      encryptedPacket: packet.encryptedPacket,
+      summary: packet.summary,
+    };
+  }
+
   switch (packet.sourceType) {
     case 'rag_retrieval':
       return {
@@ -441,6 +449,8 @@ describe('EvidenceService', () => {
         },
         contentHash: 'a'.repeat(64),
         parentEvidenceId: null,
+        isEncrypted: false,
+        encryptionMetadata: null,
         createdAt: NOW,
       };
       queueSelectResult('offset', [record]);
@@ -525,6 +535,8 @@ describe('EvidenceService', () => {
         },
         contentHash: 'a'.repeat(64),
         parentEvidenceId: null,
+        isEncrypted: false,
+        encryptionMetadata: null,
         createdAt: NOW,
       };
       queueSelectResult('offset', [record]);
@@ -555,6 +567,8 @@ describe('EvidenceService', () => {
         },
         contentHash: 'a'.repeat(64),
         parentEvidenceId: null,
+        isEncrypted: false,
+        encryptionMetadata: null,
         createdAt: NOW,
       };
       // First select: step IDs matching nodeId
@@ -608,6 +622,8 @@ describe('EvidenceService', () => {
         },
         contentHash: 'b'.repeat(64),
         parentEvidenceId: null,
+        isEncrypted: false,
+        encryptionMetadata: null,
         createdAt: NOW,
       };
       queueSelectResult('limit', [record]);
@@ -689,6 +705,66 @@ describe('EvidenceService', () => {
         valid: true,
         integrityWarning: false,
         currentHash: contentHash,
+      });
+    });
+
+    it('should accept legacy encrypted evidence rows that still store ciphertext-only hash', async () => {
+      const encryptedPayload = {
+        ciphertext: 'legacy-ciphertext',
+        encryptedSessionKey: 'legacy-session-key',
+        iv: 'legacy-iv',
+        authTag: 'legacy-auth-tag',
+        aad: `${TENANT_ID}:${NOW}`,
+        keyFingerprint: 'legacy-fingerprint',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      };
+      const legacyHash = createHash('sha256')
+        .update(encryptedPayload.ciphertext)
+        .digest('hex');
+
+      queueSelectResult('limit', [
+        {
+          id: GENERATED_ID_1,
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          sourceType: 'agent_decision',
+          packet: {
+            sourceType: 'agent_decision',
+            agentDecision: {
+              nodeId: NODE_ID,
+              agentName: 'WriterAgent',
+              autonomyMode: 'llm_suggest',
+              selectedAction: 'approve',
+              alternatives: ['approve'],
+              confidence: 0.95,
+              reasoning: 'Auto-approved',
+            },
+            evidenceId: GENERATED_ID_1,
+            timestamp: NOW,
+            contentHash: 'plain-hash-should-be-hidden'.padEnd(64, '0'),
+          },
+          contentHash: legacyHash,
+          parentEvidenceId: null,
+          isEncrypted: true,
+          encryptionMetadata: {
+            isEncrypted: true,
+            keyFingerprint: encryptedPayload.keyFingerprint,
+            algorithm: encryptedPayload.algorithm,
+            encryptedAt: NOW,
+            encryptedPayload,
+          },
+          createdAt: NOW,
+        },
+      ]);
+
+      await expect(
+        service.verifyContentHash(TENANT_ID, EXECUTION_ID, GENERATED_ID_1),
+      ).resolves.toEqual({
+        evidenceId: GENERATED_ID_1,
+        valid: true,
+        integrityWarning: false,
+        currentHash: expect.any(String),
       });
     });
   });

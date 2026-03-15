@@ -17,9 +17,11 @@ beforeEach(async () => {
 
 describe('keyStorage', () => {
   it('stores and retrieves a private key by fingerprint', async () => {
-    await storePrivateKey('fingerprint-1', 'private-key-1')
+    await storePrivateKey('fingerprint-1', new Uint8Array([1, 2, 3, 4]))
 
-    await expect(getPrivateKey('fingerprint-1')).resolves.toBe('private-key-1')
+    await expect(getPrivateKey('fingerprint-1')).resolves.toEqual(
+      new Uint8Array([1, 2, 3, 4]).buffer,
+    )
   })
 
   it('returns null when the fingerprint does not exist', async () => {
@@ -27,7 +29,7 @@ describe('keyStorage', () => {
   })
 
   it('deletes a stored private key', async () => {
-    await storePrivateKey('fingerprint-1', 'private-key-1')
+    await storePrivateKey('fingerprint-1', new Uint8Array([1, 2, 3, 4]))
 
     await deletePrivateKey('fingerprint-1')
 
@@ -35,8 +37,8 @@ describe('keyStorage', () => {
   })
 
   it('lists all stored fingerprints', async () => {
-    await storePrivateKey('fingerprint-1', 'private-key-1')
-    await storePrivateKey('fingerprint-2', 'private-key-2')
+    await storePrivateKey('fingerprint-1', new Uint8Array([1]))
+    await storePrivateKey('fingerprint-2', new Uint8Array([2]))
 
     await expect(listStoredFingerprints()).resolves.toEqual([
       'fingerprint-1',
@@ -45,10 +47,12 @@ describe('keyStorage', () => {
   })
 
   it('overwrites an existing key for the same fingerprint', async () => {
-    await storePrivateKey('fingerprint-1', 'private-key-1')
-    await storePrivateKey('fingerprint-1', 'private-key-updated')
+    await storePrivateKey('fingerprint-1', new Uint8Array([1, 2]))
+    await storePrivateKey('fingerprint-1', new Uint8Array([9, 8, 7]))
 
-    await expect(getPrivateKey('fingerprint-1')).resolves.toBe('private-key-updated')
+    await expect(getPrivateKey('fingerprint-1')).resolves.toEqual(
+      new Uint8Array([9, 8, 7]).buffer,
+    )
     await expect(listStoredFingerprints()).resolves.toEqual(['fingerprint-1'])
   })
 })

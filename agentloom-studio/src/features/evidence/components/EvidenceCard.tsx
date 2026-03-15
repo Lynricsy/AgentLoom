@@ -21,6 +21,7 @@ import type { EncryptedPayload } from '@/features/tenant-key/types'
 import { useEvidenceDetail, useEvidenceVerify } from '../api/evidenceQueries'
 import type {
   EvidenceChainNode,
+  EvidenceEncryptionMetadata,
   EvidenceRecord,
   EvidenceSourceType,
   PhysicalLocation,
@@ -152,6 +153,10 @@ function renderStructuredDetails(
   node: EvidenceChainNode,
 ): ReactNode {
   if (!record) {
+    return null
+  }
+
+  if ('encryptedPacket' in record.packet) {
     return null
   }
 
@@ -326,6 +331,25 @@ function renderStructuredDetails(
   }
 }
 
+function resolveEncryptionMetadata(
+  record: EvidenceRecord | undefined,
+  node: EvidenceChainNode,
+): EvidenceEncryptionMetadata | null {
+  return record?.encryptionMetadata ?? node.encryptionMetadata ?? null
+}
+
+function resolveEncryptedPayload(record: EvidenceRecord | undefined): EncryptedPayload | undefined {
+  if (!record) {
+    return undefined
+  }
+
+  if ('encryptedPacket' in record.packet) {
+    return record.packet.encryptedPacket
+  }
+
+  return record.encryptionMetadata?.encryptedPayload
+}
+
 export const EvidenceCard = memo(function EvidenceCard({
   node,
   isSelected = false,
@@ -344,19 +368,19 @@ export const EvidenceCard = memo(function EvidenceCard({
   const refetchVerify = verifyQuery.refetch
 
   const isEncrypted =
-    node.encryptionMetadata?.isEncrypted === true ||
-    detailRecord?.encryptionMetadata?.isEncrypted === true
+    detailRecord?.isEncrypted === true ||
+    node.isEncrypted === true ||
+    detailRecord?.encryptionMetadata?.isEncrypted === true ||
+    node.encryptionMetadata?.isEncrypted === true
 
   const { decrypt, isDecrypting, error: decryptError, clearError } = useDecryptContent()
 
   async function handleDecrypt() {
     clearError()
-    const encMeta =
-      detailRecord?.encryptionMetadata ?? node.encryptionMetadata
+    const encMeta = resolveEncryptionMetadata(detailRecord, node)
     if (!encMeta?.keyFingerprint) return
 
-    const packetData = detailRecord?.packet as unknown as Record<string, unknown> | undefined
-    const encryptedPayload = packetData?.encryptedPacket as EncryptedPayload | undefined
+    const encryptedPayload = resolveEncryptedPayload(detailRecord)
     if (!encryptedPayload) {
       const syntheticPayload: EncryptedPayload = {
         ciphertext: '',
@@ -365,7 +389,7 @@ export const EvidenceCard = memo(function EvidenceCard({
         authTag: '',
         aad: '',
         keyFingerprint: encMeta.keyFingerprint,
-        algorithm: encMeta.algorithm ?? 'RSA-OAEP+AES-256-GCM',
+        algorithm: encMeta.algorithm ?? 'RSA-OAEP-4096+AES-256-GCM',
       }
       const result = await decrypt(syntheticPayload)
       if (result) setDecryptedContent(result)
@@ -412,38 +436,42 @@ export const EvidenceCard = memo(function EvidenceCard({
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
+        <div
           className="min-w-0 flex-1 text-left"
-          onClick={() => onSelect?.(node.evidenceId)}
-          data-testid={`evidence-card-${node.evidenceId}`}
         >
-          <div className="flex min-w-0 items-center gap-2">
-            <Icon className={cn('h-4 w-4 shrink-0', config.color)} />
-            <span className="truncate text-xs font-medium text-foreground">
-              {node.packetSummary?.title ?? config.label}
-            </span>
-            {isEncrypted && !decryptedContent && (
-              <Lock className="h-3 w-3 shrink-0 text-amber-500" />
+          <button
+            type="button"
+            className="w-full text-left"
+            onClick={() => onSelect?.(node.evidenceId)}
+            data-testid={`evidence-card-${node.evidenceId}`}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Icon className={cn('h-4 w-4 shrink-0', config.color)} />
+              <span className="truncate text-xs font-medium text-foreground">
+                {node.packetSummary?.title ?? config.label}
+              </span>
+              {isEncrypted && !decryptedContent && (
+                <Lock className="h-3 w-3 shrink-0 text-amber-500" />
+              )}
+              {isEncrypted && decryptedContent && (
+                <Unlock className="h-3 w-3 shrink-0 text-emerald-500" />
+              )}
+            </div>
+
+            {node.packetSummary?.excerpt && (
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                {node.packetSummary.excerpt}
+              </p>
             )}
-            {isEncrypted && decryptedContent && (
-              <Unlock className="h-3 w-3 shrink-0 text-emerald-500" />
+
+            {detailQuery.isLoading && (
+              <p className="mt-3 text-[11px] text-muted-foreground">加载证据详情中…</p>
             )}
-          </div>
 
-          {node.packetSummary?.excerpt && (
-            <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-              {node.packetSummary.excerpt}
-            </p>
-          )}
-
-          {detailQuery.isLoading && (
-            <p className="mt-3 text-[11px] text-muted-foreground">加载证据详情中…</p>
-          )}
-
-          {detailQuery.error && (
-            <p className="mt-3 text-[11px] text-rose-500">证据详情加载失败</p>
-          )}
+            {detailQuery.error && (
+              <p className="mt-3 text-[11px] text-rose-500">证据详情加载失败</p>
+            )}
+          </button>
 
           {isEncrypted && !decryptedContent && (
             <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
@@ -485,7 +513,7 @@ export const EvidenceCard = memo(function EvidenceCard({
           )}
 
           {!isEncrypted && renderStructuredDetails(detailRecord, node)}
-        </button>
+        </div>
 
         <SourceStatusBadge
           hashValid={node.hashValid}

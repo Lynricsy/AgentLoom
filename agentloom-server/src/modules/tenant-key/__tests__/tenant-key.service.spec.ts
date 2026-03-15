@@ -67,12 +67,14 @@ function createTenantKey(
 
 function createSelectChain<TResult>(result: TResult[]) {
   const where = vi.fn().mockResolvedValue(result);
-  const from = vi.fn().mockReturnValue({ where });
+  const orderBy = vi.fn().mockResolvedValue(result);
+  const from = vi.fn().mockReturnValue({ where, orderBy });
 
   return {
     chain: { from },
     from,
     where,
+    orderBy,
   };
 }
 
@@ -166,9 +168,11 @@ describe('TenantKeyService', () => {
   describe('findByOrg', () => {
     it('应返回当前组织的密钥列表', async () => {
       const records = [createTenantKey()];
-      const selectQuery = createSelectChain(records);
+      const orderBy = vi.fn().mockResolvedValue(records);
+      const where = vi.fn().mockReturnValue({ orderBy });
+      const from = vi.fn().mockReturnValue({ where });
 
-      db.select.mockReturnValueOnce(selectQuery.chain);
+      db.select.mockReturnValueOnce({ from });
 
       await expect(service.findByOrg(TENANT_ID, ORG_ID)).resolves.toEqual(records);
     });
@@ -199,32 +203,50 @@ describe('TenantKeyService', () => {
     it('应轮换公钥并返回更新后的记录', async () => {
       const dto: UploadPublicKeyDto = { publicKey: NEXT_PUBLIC_KEY };
       const existingKey = createTenantKey();
-      const updatedKey = createTenantKey({
-        publicKey: NEXT_PUBLIC_KEY,
-        keyFingerprint: 'b'.repeat(64),
+      const rotatingKey = createTenantKey({
+        status: 'rotating',
         rotatedAt: new Date('2025-01-02T00:00:00.000Z'),
         updatedAt: new Date('2025-01-02T00:00:00.000Z'),
       });
+      const createdKey = createTenantKey({
+        id: '44444444-4444-4444-8444-444444444444',
+        publicKey: NEXT_PUBLIC_KEY,
+        keyFingerprint: 'b'.repeat(64),
+        activatedAt: new Date('2025-01-02T00:00:00.000Z'),
+        createdAt: new Date('2025-01-02T00:00:00.000Z'),
+        updatedAt: new Date('2025-01-02T00:00:00.000Z'),
+      });
       const selectQuery = createSelectChain([existingKey]);
-      const updateQuery = createUpdateChain([updatedKey]);
+      const updateQuery = createUpdateChain([rotatingKey]);
+      const insertQuery = createInsertChain([createdKey]);
 
       mocks.computeKeyFingerprint.mockReturnValue('b'.repeat(64));
       db.select.mockReturnValueOnce(selectQuery.chain);
       db.update.mockReturnValueOnce(updateQuery.chain);
+      db.insert.mockReturnValueOnce(insertQuery.chain);
 
       const result = await service.rotateKey(TENANT_ID, KEY_ID, dto);
 
-      expect(result).toEqual(updatedKey);
+      expect(result).toEqual(createdKey);
       expect(mocks.validateRsaPublicKey).toHaveBeenCalledWith(NEXT_PUBLIC_KEY);
       expect(mocks.computeKeyFingerprint).toHaveBeenCalledWith(NEXT_PUBLIC_KEY);
       expect(db.update).toHaveBeenCalledWith(tenantEncryptionKeys);
       expect(updateQuery.set).toHaveBeenCalledWith(
         expect.objectContaining({
+          status: 'rotating',
+          rotatedAt: expect.any(Date),
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(db.insert).toHaveBeenCalledWith(tenantEncryptionKeys);
+      expect(insertQuery.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: ORG_ID,
+          tenantId: TENANT_ID,
           publicKey: NEXT_PUBLIC_KEY,
           keyFingerprint: 'b'.repeat(64),
           status: 'active',
-          rotatedAt: expect.any(Date),
-          updatedAt: expect.any(Date),
+          activatedAt: expect.any(Date),
         }),
       );
     });
@@ -259,6 +281,47 @@ describe('TenantKeyService', () => {
 
       expect(mocks.validateRsaPublicKey).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('插入新密钥失败时应恢复旧密钥状态', async () => {
+      const dto: UploadPublicKeyDto = { publicKey: NEXT_PUBLIC_KEY };
+      const existingKey = createTenantKey({
+        rotatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      const selectQuery = createSelectChain([existingKey]);
+      const updateBeforeInsert = createUpdateChain([
+        createTenantKey({
+          status: 'rotating',
+          rotatedAt: new Date('2025-01-02T00:00:00.000Z'),
+          updatedAt: new Date('2025-01-02T00:00:00.000Z'),
+        }),
+      ]);
+      const rollbackWhere = vi.fn().mockResolvedValue(undefined);
+      const rollbackSet = vi.fn().mockReturnValue({ where: rollbackWhere });
+
+      mocks.computeKeyFingerprint.mockReturnValue('b'.repeat(64));
+      db.select.mockReturnValueOnce(selectQuery.chain);
+      db.update
+        .mockReturnValueOnce(updateBeforeInsert.chain)
+        .mockReturnValueOnce({ set: rollbackSet });
+      db.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(new Error('insert failed')),
+        }),
+      });
+
+      await expect(service.rotateKey(TENANT_ID, KEY_ID, dto)).rejects.toThrow(
+        'insert failed',
+      );
+
+      expect(rollbackSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'active',
+          rotatedAt: existingKey.rotatedAt,
+          updatedAt: expect.any(Date),
+        }),
+      );
+      expect(rollbackWhere).toHaveBeenCalledOnce();
     });
   });
 

@@ -5,6 +5,7 @@ import type { EncryptedPayload, GeneratedKeyPair } from '../types'
 import {
   decryptWithPrivateKey,
   exportPrivateKeyPem,
+  exportPrivateKeyPkcs8,
   generateRsaKeyPair,
   importPrivateKeyPem,
 } from '../lib/clientCrypto'
@@ -23,6 +24,7 @@ describe('clientCrypto', () => {
     expect(keyPair.publicKeyPem).toMatch(/-----END PUBLIC KEY-----$/)
     expect(keyPair.privateKeyPem).toMatch(/^-----BEGIN PRIVATE KEY-----/)
     expect(keyPair.privateKeyPem).toMatch(/-----END PRIVATE KEY-----$/)
+    expect(keyPair.privateKeyPkcs8).toBeInstanceOf(ArrayBuffer)
     expect(keyPair.fingerprint).toMatch(/^[a-f0-9]{64}$/)
   })
 
@@ -39,10 +41,16 @@ describe('clientCrypto', () => {
   it('imports and exports a private key PEM roundtrip', async () => {
     const generated = await generateRsaKeyPair()
 
-    const imported = await importPrivateKeyPem(generated.privateKeyPem)
+    const imported = await importPrivateKeyPem(generated.privateKeyPem, {
+      extractable: true,
+    })
     const exported = await exportPrivateKeyPem(imported)
+    const exportedPkcs8 = await exportPrivateKeyPkcs8(imported)
 
     expect(exported).toBe(generated.privateKeyPem)
+    expect(new Uint8Array(exportedPkcs8)).toEqual(
+      new Uint8Array(generated.privateKeyPkcs8),
+    )
   })
 
   it('fails decryption when using the wrong private key', async () => {

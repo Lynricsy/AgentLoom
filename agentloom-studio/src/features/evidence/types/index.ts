@@ -1,3 +1,5 @@
+import type { EncryptedPayload, EncryptionMetadata } from '@/features/tenant-key/types'
+
 export type EvidenceSourceType =
   | 'rag_retrieval'
   | 'agent_decision'
@@ -94,6 +96,12 @@ export interface NodeErrorInfo {
   };
 }
 
+export interface EvidencePacketSummary {
+  title: string;
+  excerpt?: string;
+  metadata?: Record<string, string>;
+}
+
 interface BaseEvidencePacket {
   evidenceId: string;
   sourceType: EvidenceSourceType;
@@ -119,6 +127,18 @@ export interface ToolOutputEvidencePacket extends BaseEvidencePacket {
   toolOutput: ToolOutput;
 }
 
+export interface EncryptedAgentDecisionEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'agent_decision';
+  encryptedPacket: EncryptedPayload;
+  summary: EvidencePacketSummary;
+}
+
+export interface EncryptedToolOutputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'tool_output';
+  encryptedPacket: EncryptedPayload;
+  summary: EvidencePacketSummary;
+}
+
 export interface UserInputEvidencePacket extends BaseEvidencePacket {
   sourceType: 'user_input';
   userInput: UserInput;
@@ -137,10 +157,14 @@ export interface NodeErrorEvidencePacket extends BaseEvidencePacket {
 export type EvidencePacket =
   | RagRetrievalEvidencePacket
   | AgentDecisionEvidencePacket
+  | EncryptedAgentDecisionEvidencePacket
   | ToolOutputEvidencePacket
+  | EncryptedToolOutputEvidencePacket
   | UserInputEvidencePacket
   | InterventionEvidencePacket
   | NodeErrorEvidencePacket;
+
+export type EvidenceEncryptionMetadata = EncryptionMetadata
 
 export interface EvidenceRecord {
   id: string;
@@ -151,13 +175,9 @@ export interface EvidenceRecord {
   packet: EvidencePacket;
   contentHash: string;
   parentEvidenceId?: string | null;
+  isEncrypted: boolean;
   createdAt: string;
-  encryptionMetadata?: {
-    isEncrypted: boolean;
-    keyFingerprint?: string;
-    algorithm?: string;
-    encryptedAt?: string;
-  };
+  encryptionMetadata?: EvidenceEncryptionMetadata | null;
 }
 
 export interface EvidenceVerifyResult {
@@ -182,12 +202,6 @@ export interface IntegrityIssue {
   description: string;
 }
 
-export interface EvidencePacketSummary {
-  title: string;
-  excerpt?: string;
-  metadata?: Record<string, string>;
-}
-
 export interface ChainIntegrityStatus {
   chainCompleteness: number;
   totalNodes: number;
@@ -206,18 +220,14 @@ export interface EvidenceChainNode {
   parentEvidenceId?: string | null;
   createdAt: string;
   depth: number;
+  isEncrypted?: boolean;
   hashValid: boolean;
   sourceUnavailable?: boolean;
   sourceModified?: boolean;
   unavailableReason?: string;
   originalSnapshot?: string;
   children: EvidenceChainNode[];
-  encryptionMetadata?: {
-    isEncrypted: boolean;
-    keyFingerprint?: string;
-    algorithm?: string;
-    encryptedAt?: string;
-  };
+  encryptionMetadata?: EvidenceEncryptionMetadata | null;
 }
 
 export interface EvidenceChainResponse {

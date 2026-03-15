@@ -38,7 +38,7 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
       setState({ step: 'uploading' })
       await uploadMutation.mutateAsync({ publicKey: keyPair.publicKeyPem })
 
-      await storePrivateKey(keyPair.fingerprint, keyPair.privateKeyPem)
+      await storePrivateKey(keyPair.fingerprint, keyPair.privateKeyPkcs8)
 
       setState({ step: 'done', keyPair })
       onSuccess?.()
@@ -101,7 +101,7 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
             生成加密密钥对
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            生成 RSA-4096 密钥对用于端到端加密。私钥仅存储在您的浏览器中。
+            生成 RSA-4096 密钥对用于端到端加密。私钥不会上传到服务器，但浏览器扩展、同源脚本或本机受损时仍可能泄露本地密钥材料。
           </Dialog.Description>
 
           <div className="mt-5 space-y-4">
@@ -111,7 +111,7 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                     <p className="text-xs leading-relaxed text-amber-700">
-                      私钥仅存储在您的浏览器中，无法恢复。生成后请立即下载备份。
+                      私钥会保存到当前浏览器的本地密钥库中，无法由服务器恢复。生成后请立即下载备份。
                       更换浏览器或清除数据后将无法解密已加密内容。
                     </p>
                   </div>

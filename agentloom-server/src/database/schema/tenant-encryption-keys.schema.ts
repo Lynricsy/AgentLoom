@@ -7,7 +7,7 @@ import {
   varchar,
   timestamp,
   index,
-  unique,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { organizations } from './organizations.schema';
 import { createDirectTenantPolicies } from './rls-policies';
@@ -44,7 +44,13 @@ export const tenantEncryptionKeys = pgTable(
       .defaultNow(),
   },
   (table) => [
-    unique('uq_tenant_encryption_keys_org_id').on(table.organizationId),
+    uniqueIndex('uq_tenant_encryption_keys_org_fingerprint').on(
+      table.organizationId,
+      table.keyFingerprint,
+    ),
+    uniqueIndex('uq_tenant_encryption_keys_org_active')
+      .on(table.organizationId)
+      .where(sql`${table.status} = 'active'`),
     index('idx_tenant_encryption_keys_tenant_id').on(table.tenantId),
     index('idx_tenant_encryption_keys_fingerprint').on(table.keyFingerprint),
     index('idx_tenant_encryption_keys_status').on(table.status),

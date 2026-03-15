@@ -83,6 +83,32 @@ export interface NodeErrorInfo {
   typeMismatch?: TypeMismatchInfo;
 }
 
+export interface EncryptedPayload {
+  ciphertext: string;
+  encryptedSessionKey: string;
+  iv: string;
+  authTag: string;
+  aad: string;
+  keyFingerprint: string;
+  algorithm: string;
+}
+
+export interface EncryptedPacketSummary {
+  title: string;
+  excerpt?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface EvidenceEncryptionMetadata {
+  isEncrypted: boolean;
+  keyFingerprint?: string;
+  algorithm?: string;
+  encryptedAt?: string;
+  plaintextHash?: string;
+  contractVersion?: number;
+  encryptedPayload?: EncryptedPayload;
+}
+
 export const evidenceSourceTypes = [
   'rag_retrieval',
   'agent_decision',
@@ -119,6 +145,19 @@ export interface ToolOutputEvidencePacket extends BaseEvidencePacket {
   toolOutput: ToolOutput;
 }
 
+export interface EncryptedAgentDecisionEvidencePacket
+  extends BaseEvidencePacket {
+  sourceType: 'agent_decision';
+  encryptedPacket: EncryptedPayload;
+  summary: EncryptedPacketSummary;
+}
+
+export interface EncryptedToolOutputEvidencePacket extends BaseEvidencePacket {
+  sourceType: 'tool_output';
+  encryptedPacket: EncryptedPayload;
+  summary: EncryptedPacketSummary;
+}
+
 export interface UserInputEvidencePacket extends BaseEvidencePacket {
   sourceType: 'user_input';
   userInput: UserInput;
@@ -137,7 +176,9 @@ export interface NodeErrorEvidencePacket extends BaseEvidencePacket {
 export type EvidencePacket =
   | RagRetrievalEvidencePacket
   | AgentDecisionEvidencePacket
+  | EncryptedAgentDecisionEvidencePacket
   | ToolOutputEvidencePacket
+  | EncryptedToolOutputEvidencePacket
   | UserInputEvidencePacket
   | InterventionEvidencePacket
   | NodeErrorEvidencePacket;
@@ -167,7 +208,8 @@ export const evidenceRecords = pgTable(
     contentHash: varchar('content_hash', { length: 64 }).notNull(),
     parentEvidenceId: uuid('parent_evidence_id'),
     isEncrypted: boolean('is_encrypted').notNull().default(false),
-    encryptionMetadata: jsonb('encryption_metadata').$type<Record<string, unknown>>(),
+    encryptionMetadata:
+      jsonb('encryption_metadata').$type<EvidenceEncryptionMetadata | null>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

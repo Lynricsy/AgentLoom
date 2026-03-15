@@ -44,7 +44,7 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
         payload: { publicKey: keyPair.publicKeyPem },
       })
 
-      await storePrivateKey(keyPair.fingerprint, keyPair.privateKeyPem)
+      await storePrivateKey(keyPair.fingerprint, keyPair.privateKeyPkcs8)
 
       setState({ step: 'done', newFingerprint: keyPair.fingerprint })
       onSuccess?.()

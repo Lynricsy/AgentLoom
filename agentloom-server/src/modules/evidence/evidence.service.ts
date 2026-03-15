@@ -28,8 +28,10 @@ import type {
   CreateEvidenceRecordDto,
   EvidenceChainNode,
   EvidenceChainResponse,
+   EvidenceEncryptionMetadataDto,
   EvidencePacketDto,
   EvidencePacketInputDto,
+   EvidencePacketSummary,
   EvidenceSourceType,
   IntegrityIssue,
 } from './dto/evidence.dto';
@@ -45,17 +47,35 @@ import {
   type RagEvidenceRetrievedPayload,
   type RagEvidenceResultPayload,
 } from './evidence.events';
-import { LlmEncryptionService } from '../llm/llm-encryption.service';
+import {
+  LlmEncryptionService,
+  type EncryptedPayload,
+} from '../llm/llm-encryption.service';
 import {
   EvidenceNotFoundException,
   InvalidEvidencePacketException,
 } from './evidence.exceptions';
 
-type EvidenceRecord = typeof evidenceRecords.$inferSelect;
+type EvidenceRecordRow = typeof evidenceRecords.$inferSelect;
+type EvidenceRecord = Omit<EvidenceRecordRow, 'packet' | 'encryptionMetadata'> & {
+  packet: EvidencePacketDto;
+  encryptionMetadata: EvidenceEncryptionMetadataDto | null;
+};
 type RagEvidenceRecord = EvidenceRecord & {
-  packet: Extract<EvidenceRecord['packet'], { sourceType: 'rag_retrieval' }>;
+  packet: Extract<EvidencePacketDto, { sourceType: 'rag_retrieval' }>;
 };
 type ExecutionStepRecord = typeof executionSteps.$inferSelect;
+type PlainEncryptableEvidencePacket =
+  | (Extract<EvidencePacketInputDto, { sourceType: 'agent_decision' }> & {
+      evidenceId: string;
+      contentHash: string;
+      timestamp: string;
+    })
+  | (Extract<EvidencePacketInputDto, { sourceType: 'tool_output' }> & {
+      evidenceId: string;
+      contentHash: string;
+      timestamp: string;
+    });
 
 export interface PaginatedEvidenceResult {
   data: EvidenceRecord[];
@@ -93,6 +113,13 @@ interface PreparedEvidenceInsert {
   packet: EvidencePacketDto;
 }
 
+interface EncryptedPacketDraft {
+  sourceType: 'agent_decision' | 'tool_output';
+  encryptedPacket: EncryptedPayload;
+  summary: EvidencePacketSummary;
+  parentEvidenceId?: string;
+}
+
 interface FlatChainRecord {
   id: string;
   executionId: string;
@@ -101,7 +128,11 @@ interface FlatChainRecord {
   sourceType: string;
   packet: EvidencePacketDto;
   contentHash: string;
+  currentHash: string;
+  hashValid: boolean;
   parentEvidenceId: string | null;
+  isEncrypted: boolean;
+  encryptionMetadata: EvidenceEncryptionMetadataDto | null;
   createdAt: Date;
   depth: number;
 }
@@ -243,10 +274,13 @@ export class EvidenceService {
         .where(whereClause),
     ]);
 
+    const normalizedData = data.map((record) => this.projectEvidenceRecord(record).record);
+    const enrichedData = includeChunkContent
+      ? await this.enrichWithChunkContent(tenantDb, normalizedData)
+      : normalizedData;
+
     return {
-      data: includeChunkContent
-        ? await this.enrichWithChunkContent(tenantDb, data)
-        : data,
+      data: enrichedData,
       meta: {
         page,
         pageSize: limit,
@@ -308,6 +342,16 @@ export class EvidenceService {
     executionId: string,
     evidenceId: string,
   ): Promise<EvidenceRecord> {
+    const record = await this.findByIdRecord(tenantId, executionId, evidenceId);
+
+    return this.projectEvidenceRecord(record).record;
+  }
+
+  private async findByIdRecord(
+    tenantId: string,
+    executionId: string,
+    evidenceId: string,
+  ): Promise<EvidenceRecordRow> {
     const tenantDb = getTenantDb(this.db);
     const [record] = await tenantDb
       .select()
@@ -338,16 +382,14 @@ export class EvidenceService {
     integrityWarning: boolean;
     currentHash: string;
   }> {
-    const record = await this.findById(tenantId, executionId, evidenceId);
-    const packet = this.validateStoredPacket(record.packet);
-    const computedHash = this.computeContentHash(packet);
-    const valid = this.compareHashes(record.contentHash, computedHash);
+    const record = await this.findByIdRecord(tenantId, executionId, evidenceId);
+    const projection = this.projectEvidenceRecord(record);
 
     return {
       evidenceId,
-      valid,
-      integrityWarning: !valid,
-      currentHash: computedHash,
+      valid: projection.hashValid,
+      integrityWarning: !projection.hashValid,
+      currentHash: projection.currentHash,
     };
   }
 
@@ -765,14 +807,11 @@ export class EvidenceService {
       ...inputPacket,
       ...(parentEvidenceId ? { parentEvidenceId } : {}),
     } satisfies EvidencePacketInputDto;
-    const contentHash = this.computeContentHash(packetWithoutMetadata);
-
-    const storedPacket = this.validateStoredPacket({
-      ...packetWithoutMetadata,
+    const storedPacket = this.buildStoredPacket(
+      packetWithoutMetadata,
       evidenceId,
-      contentHash,
       timestamp,
-    });
+    );
 
     return {
       evidenceId,
@@ -784,7 +823,7 @@ export class EvidenceService {
         tenantId,
         sourceType: dto.sourceType,
         packet: storedPacket,
-        contentHash,
+        contentHash: storedPacket.contentHash,
         parentEvidenceId: parentEvidenceId ?? null,
       },
     };
@@ -810,7 +849,7 @@ export class EvidenceService {
       void this.invalidateChainCache(executionId);
     }
 
-    return records;
+    return records.map((record) => this.projectEvidenceRecord(record).record);
   }
 
   private async maybeEncryptEvidenceRecords(
@@ -845,25 +884,45 @@ export class EvidenceService {
     if (!enabled) return;
 
     for (const entry of encryptable) {
+      if (!this.isPlainEncryptablePacket(entry.packet)) {
+        continue;
+      }
+
+      const packet: PlainEncryptableEvidencePacket = entry.packet;
+
       try {
-        const contentToEncrypt = JSON.stringify(entry.packet);
+        const plaintextHash = packet.contentHash;
+        const contentToEncrypt = JSON.stringify(packet);
         const encrypted = await this.llmEncryptionService.encryptForTenant(
           tenantId,
           orgId,
           contentToEncrypt,
         );
 
-        const encryptedHash = createHash('sha256')
-          .update(encrypted.ciphertext)
-          .digest('hex');
+        const encryptedPacket = this.buildStoredPacket(
+          {
+            sourceType: packet.sourceType,
+            encryptedPacket: encrypted,
+            summary: this.buildEncryptedPacketSummary(packet),
+            ...(packet.parentEvidenceId
+              ? { parentEvidenceId: packet.parentEvidenceId }
+              : {}),
+          },
+          packet.evidenceId,
+          packet.timestamp,
+        );
 
-        entry.insertValue.contentHash = encryptedHash;
+        entry.packet = encryptedPacket;
+        entry.insertValue.packet = encryptedPacket;
+        entry.insertValue.contentHash = encryptedPacket.contentHash;
         entry.insertValue.isEncrypted = true;
         entry.insertValue.encryptionMetadata = {
+          isEncrypted: true,
           algorithm: encrypted.algorithm,
           keyFingerprint: encrypted.keyFingerprint,
           encryptedAt: new Date().toISOString(),
-          encryptedPayload: encrypted,
+          plaintextHash,
+          contractVersion: 2,
         };
 
         this.logger.debug(
@@ -1020,8 +1079,23 @@ export class EvidenceService {
     return result.data;
   }
 
+  private buildStoredPacket(
+    packetWithoutMetadata: EvidencePacketInputDto | EncryptedPacketDraft,
+    evidenceId: string,
+    timestamp: string,
+  ): EvidencePacketDto {
+    const contentHash = this.computeContentHash(packetWithoutMetadata);
+
+    return this.validateStoredPacket({
+      ...packetWithoutMetadata,
+      evidenceId,
+      contentHash,
+      timestamp,
+    });
+  }
+
   private computeContentHash(
-    packet: EvidencePacketInputDto | EvidencePacketDto,
+    packet: EvidencePacketInputDto | EvidencePacketDto | EncryptedPacketDraft,
   ): string {
     const hashSource = this.extractHashSource(packet);
     const normalized = this.normalizeForHash(hashSource);
@@ -1031,8 +1105,16 @@ export class EvidenceService {
   }
 
   private extractHashSource(
-    packet: EvidencePacketInputDto | EvidencePacketDto,
+    packet: EvidencePacketInputDto | EvidencePacketDto | EncryptedPacketDraft,
   ): Record<string, unknown> {
+    if ('encryptedPacket' in packet) {
+      return {
+        sourceType: packet.sourceType,
+        encryptedPacket: packet.encryptedPacket,
+        summary: packet.summary,
+      };
+    }
+
     switch (packet.sourceType) {
       case 'rag_retrieval':
         return {
@@ -1187,24 +1269,7 @@ export class EvidenceService {
     );
     const sourceStatusMap = await this.checkSourceAvailability(flatRecords);
 
-    const hashResults = new Map<string, boolean>();
-    for (const record of flatRecords) {
-      try {
-        const computedHash = this.computeContentHash(record.packet);
-        hashResults.set(
-          record.id,
-          this.compareHashes(record.contentHash, computedHash),
-        );
-      } catch {
-        hashResults.set(record.id, false);
-      }
-    }
-
-    const { roots, integrityIssues } = this.flatToTree(
-      flatRecords,
-      sourceStatusMap,
-      hashResults,
-    );
+    const { roots, integrityIssues } = this.flatToTree(flatRecords, sourceStatusMap);
 
     const totalNodes = flatRecords.length;
     const chainCompleteness =
@@ -1326,6 +1391,8 @@ export class EvidenceService {
              source_type,
              packet,
              content_hash,
+             is_encrypted,
+             encryption_metadata,
              parent_evidence_id,
              created_at,
              MIN(depth)::int AS depth
@@ -1337,6 +1404,8 @@ export class EvidenceService {
                source_type,
                packet,
                content_hash,
+               is_encrypted,
+               encryption_metadata,
                parent_evidence_id,
                created_at
       ORDER BY created_at ASC, id ASC
@@ -1344,24 +1413,44 @@ export class EvidenceService {
 
     const rows = (result as { rows?: unknown[] }).rows ?? result;
     return (rows as Record<string, unknown>[]).map<FlatChainRecord>((row) => {
-      const packet = this.validateStoredPacket(row.packet);
-
-      return {
+      const rawRecord: EvidenceRecord = {
         id: String(row.id),
         executionId: String(row.execution_id),
         stepId: String(row.step_id),
         tenantId: String(row.tenant_id),
-        sourceType: String(row.source_type),
-        packet,
+        sourceType: row.source_type as EvidenceRecord['sourceType'],
+        packet: row.packet as EvidenceRecord['packet'],
         contentHash: String(row.content_hash),
         parentEvidenceId:
           row.parent_evidence_id == null
             ? null
             : this.serializePreview(row.parent_evidence_id),
+        isEncrypted: Boolean(row.is_encrypted),
+        encryptionMetadata:
+          row.encryption_metadata == null
+            ? null
+            : (row.encryption_metadata as EvidenceRecord['encryptionMetadata']),
         createdAt:
           row.created_at instanceof Date
             ? row.created_at
             : new Date(String(row.created_at)),
+      };
+      const projection = this.projectEvidenceRecord(rawRecord);
+
+        return {
+          id: projection.record.id,
+          executionId: projection.record.executionId,
+          stepId: projection.record.stepId,
+          tenantId: projection.record.tenantId,
+          sourceType: projection.record.sourceType,
+          packet: projection.record.packet as EvidencePacketDto,
+          contentHash: projection.record.contentHash,
+          currentHash: projection.currentHash,
+          hashValid: projection.hashValid,
+        parentEvidenceId: projection.record.parentEvidenceId,
+        isEncrypted: projection.record.isEncrypted,
+        encryptionMetadata: projection.record.encryptionMetadata,
+        createdAt: projection.record.createdAt,
         depth: Number(row.depth),
       };
     });
@@ -1456,7 +1545,6 @@ export class EvidenceService {
   private flatToTree(
     records: FlatChainRecord[],
     sourceStatus: Map<string, SourceStatus>,
-    hashResults: Map<string, boolean>,
   ): { roots: EvidenceChainNode[]; integrityIssues: IntegrityIssue[] } {
     const nodeMap = new Map<string, EvidenceChainNode>();
     const integrityIssues: IntegrityIssue[] = [];
@@ -1466,7 +1554,7 @@ export class EvidenceService {
         sourceUnavailable: false,
         sourceModified: false,
       };
-      const hashValid = hashResults.get(record.id) ?? false;
+      const hashValid = record.hashValid;
 
       const node: EvidenceChainNode = {
         evidenceId: record.id,
@@ -1478,6 +1566,10 @@ export class EvidenceService {
         parentEvidenceId: record.parentEvidenceId,
         createdAt: record.createdAt.toISOString(),
         depth: 0,
+        ...(record.isEncrypted ? { isEncrypted: true } : {}),
+        ...(record.encryptionMetadata
+          ? { encryptionMetadata: record.encryptionMetadata }
+          : {}),
         ...(status.sourceUnavailable ? { sourceUnavailable: true } : {}),
         ...(status.sourceModified ? { sourceModified: true } : {}),
         ...(status.unavailableReason
@@ -1563,6 +1655,10 @@ export class EvidenceService {
   private buildPacketSummary(
     packet: EvidencePacketDto,
   ): EvidenceChainNode['packetSummary'] {
+    if ('encryptedPacket' in packet) {
+      return packet.summary;
+    }
+
     switch (packet.sourceType) {
       case 'rag_retrieval':
         return {
@@ -1679,5 +1775,207 @@ export class EvidenceService {
     } catch {
       this.logger.warn('Failed to invalidate chain cache');
     }
+  }
+
+  private projectEvidenceRecord(record: EvidenceRecordRow): {
+    record: EvidenceRecord;
+    currentHash: string;
+    hashValid: boolean;
+  } {
+    const packet = this.normalizeStoredPacket(record);
+    const currentHash = this.computeContentHash(packet);
+    const hashValid = this.matchesRecordHash(record, currentHash);
+    const encryptionMetadata = this.normalizeEncryptionMetadata(record, packet);
+
+    return {
+      record: {
+        ...record,
+        packet,
+        encryptionMetadata,
+      },
+      currentHash,
+      hashValid,
+    };
+  }
+
+  private normalizeStoredPacket(record: EvidenceRecordRow): EvidencePacketDto {
+    const packet = this.validateStoredPacket(record.packet);
+    if (!record.isEncrypted || 'encryptedPacket' in packet) {
+      return packet;
+    }
+
+    const legacyPayload =
+      this.readLegacyEncryptedPayload(record.encryptionMetadata) ??
+      this.buildSyntheticEncryptedPayload(record.encryptionMetadata);
+
+    if (packet.sourceType !== 'agent_decision' && packet.sourceType !== 'tool_output') {
+      return packet;
+    }
+
+    return this.validateStoredPacket({
+      sourceType: packet.sourceType,
+      encryptedPacket: legacyPayload,
+      summary: this.buildEncryptedPacketSummary(packet),
+      evidenceId: packet.evidenceId,
+      contentHash: record.contentHash,
+      timestamp: packet.timestamp,
+      ...(packet.parentEvidenceId
+        ? { parentEvidenceId: packet.parentEvidenceId }
+        : {}),
+    });
+  }
+
+  private normalizeEncryptionMetadata(
+    record: EvidenceRecordRow,
+    packet: EvidencePacketDto,
+  ): EvidenceEncryptionMetadataDto | null {
+    if (!record.isEncrypted && !record.encryptionMetadata) {
+      return null;
+    }
+
+    const metadata = record.encryptionMetadata;
+    const payload = 'encryptedPacket' in packet ? packet.encryptedPacket : undefined;
+
+    return {
+      isEncrypted: record.isEncrypted,
+      ...(typeof metadata?.keyFingerprint === 'string' || payload?.keyFingerprint
+        ? {
+            keyFingerprint:
+              (typeof metadata?.keyFingerprint === 'string'
+                ? metadata.keyFingerprint
+                : undefined) ?? payload?.keyFingerprint,
+          }
+        : {}),
+      ...(typeof metadata?.algorithm === 'string' || payload?.algorithm
+        ? {
+            algorithm:
+              (typeof metadata?.algorithm === 'string'
+                ? metadata.algorithm
+                : undefined) ?? payload?.algorithm,
+          }
+        : {}),
+      ...(typeof metadata?.encryptedAt === 'string'
+        ? { encryptedAt: metadata.encryptedAt }
+        : {}),
+      ...(typeof metadata?.plaintextHash === 'string'
+        ? { plaintextHash: metadata.plaintextHash }
+        : {}),
+      ...(typeof metadata?.contractVersion === 'number'
+        ? { contractVersion: metadata.contractVersion }
+        : {}),
+    };
+  }
+
+  private matchesRecordHash(record: EvidenceRecordRow, currentHash: string): boolean {
+    if (this.compareHashes(record.contentHash, currentHash)) {
+      return true;
+    }
+
+    const legacyPayload = this.readLegacyEncryptedPayload(record.encryptionMetadata);
+    if (!record.isEncrypted || !legacyPayload) {
+      return false;
+    }
+
+    const legacyHash = createHash('sha256')
+      .update(legacyPayload.ciphertext)
+      .digest('hex');
+
+    return this.compareHashes(record.contentHash, legacyHash);
+  }
+
+  private readLegacyEncryptedPayload(
+    metadata: EvidenceRecordRow['encryptionMetadata'],
+  ): EncryptedPayload | undefined {
+    if (!metadata || typeof metadata !== 'object') {
+      return undefined;
+    }
+
+    const value = metadata.encryptedPayload;
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    return this.validateEncryptedPayload(value);
+  }
+
+  private buildSyntheticEncryptedPayload(
+    metadata: EvidenceRecordRow['encryptionMetadata'],
+  ): EncryptedPayload {
+    const raw = metadata;
+
+    return {
+      ciphertext: '',
+      encryptedSessionKey: '',
+      iv: '',
+      authTag: '',
+      aad: '',
+      keyFingerprint: typeof raw?.keyFingerprint === 'string' ? raw.keyFingerprint : '',
+      algorithm:
+        typeof raw?.algorithm === 'string'
+          ? raw.algorithm
+          : 'RSA-OAEP-4096+AES-256-GCM',
+    };
+  }
+
+  private validateEncryptedPayload(value: unknown): EncryptedPayload {
+    if (!value || typeof value !== 'object') {
+      return this.buildSyntheticEncryptedPayload(null);
+    }
+
+    const payload = value as unknown as Record<string, unknown>;
+    return {
+      ciphertext: typeof payload.ciphertext === 'string' ? payload.ciphertext : '',
+      encryptedSessionKey:
+        typeof payload.encryptedSessionKey === 'string'
+          ? payload.encryptedSessionKey
+          : '',
+      iv: typeof payload.iv === 'string' ? payload.iv : '',
+      authTag: typeof payload.authTag === 'string' ? payload.authTag : '',
+      aad: typeof payload.aad === 'string' ? payload.aad : '',
+      keyFingerprint:
+        typeof payload.keyFingerprint === 'string' ? payload.keyFingerprint : '',
+      algorithm:
+        typeof payload.algorithm === 'string'
+          ? payload.algorithm
+          : 'RSA-OAEP-4096+AES-256-GCM',
+    };
+  }
+
+  private buildEncryptedPacketSummary(
+    packet: PlainEncryptableEvidencePacket,
+  ): EvidencePacketSummary {
+    if (packet.sourceType === 'agent_decision') {
+      return {
+        title: `Agent 决策 · ${packet.agentDecision.agentName}`,
+        metadata: {
+          nodeId: packet.agentDecision.nodeId,
+          selectedAction: packet.agentDecision.selectedAction,
+          autonomyMode: packet.agentDecision.autonomyMode,
+          ...(packet.agentDecision.confidence !== undefined
+            ? { confidence: packet.agentDecision.confidence.toFixed(2) }
+            : {}),
+        },
+      };
+    }
+
+    const lastTransition = packet.toolOutput.transitions?.at(-1);
+    return {
+      title: `工具输出 · ${packet.toolOutput.toolName}`,
+      metadata: {
+        ...(packet.toolOutput.toolCallId
+          ? { toolCallId: packet.toolOutput.toolCallId }
+          : {}),
+        ...(lastTransition ? { status: lastTransition.to } : {}),
+      },
+    };
+  }
+
+  private isPlainEncryptablePacket(
+    packet: EvidencePacketDto,
+  ): packet is PlainEncryptableEvidencePacket {
+    return (
+      (packet.sourceType === 'agent_decision' && 'agentDecision' in packet) ||
+      (packet.sourceType === 'tool_output' && 'toolOutput' in packet)
+    );
   }
 }

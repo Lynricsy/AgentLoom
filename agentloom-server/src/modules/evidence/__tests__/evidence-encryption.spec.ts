@@ -197,6 +197,38 @@ function computeCiphertextHash(ciphertext: string): string {
   return createHash('sha256').update(ciphertext).digest('hex');
 }
 
+function normalizeForHash(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeForHash(item));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .reduce<Record<string, unknown>>((acc, [key, entryValue]) => {
+        acc[key] = normalizeForHash(entryValue);
+        return acc;
+      }, {});
+  }
+
+  return value;
+}
+
+function computeStoredPacketHash(packet: Record<string, unknown>): string {
+  const hashSource = 'encryptedPacket' in packet
+    ? {
+        sourceType: packet.sourceType,
+        encryptedPacket: packet.encryptedPacket,
+        summary: packet.summary,
+      }
+    : packet;
+
+  return createHash('sha256')
+    .update(JSON.stringify(normalizeForHash(hashSource)))
+    .digest('hex');
+}
+
 describe('EvidenceService encryption integration', () => {
   let service: EvidenceService;
 
@@ -291,15 +323,33 @@ describe('EvidenceService encryption integration', () => {
         TENANT_ID,
         ORG_ID,
       );
-      expect(JSON.parse(encryptedPlaintext)).toEqual(inserted.packet);
+      const plaintextPacket = JSON.parse(encryptedPlaintext) as Record<string, unknown>;
+
+      expect(plaintextPacket).toMatchObject({
+        sourceType,
+        evidenceId: generatedId,
+        timestamp: NOW,
+      });
+      expect(inserted.packet).toMatchObject({
+        sourceType,
+        evidenceId: generatedId,
+        timestamp: NOW,
+        encryptedPacket: encryptedPayload,
+      });
+      expect(inserted.packet).toHaveProperty('summary.title');
       expect(inserted.isEncrypted).toBe(true);
       expect(inserted.encryptionMetadata).toEqual({
+        isEncrypted: true,
         algorithm: encryptedPayload.algorithm,
         keyFingerprint: encryptedPayload.keyFingerprint,
         encryptedAt: NOW,
-        encryptedPayload,
+        plaintextHash: plaintextPacket.contentHash,
+        contractVersion: 2,
       });
-      expect(inserted.contentHash).toBe(computeCiphertextHash(ciphertext));
+      expect(inserted.contentHash).toBe(inserted.packet.contentHash as string);
+      expect(inserted.contentHash).toBe(
+        computeStoredPacketHash(inserted.packet),
+      );
     },
   );
 
@@ -400,9 +450,9 @@ describe('EvidenceService encryption integration', () => {
     expect(firstEntry).not.toHaveProperty('encryptionMetadata');
     expect(firstEntry.contentHash).toBe(firstEntry.packet.contentHash as string);
     expect(secondEntry.isEncrypted).toBe(true);
-    expect(secondEntry.contentHash).toBe(
-      computeCiphertextHash('second-entry-ciphertext'),
-    );
+    expect(secondEntry.packet).toHaveProperty('encryptedPacket.ciphertext', 'second-entry-ciphertext');
+    expect(secondEntry.contentHash).toBe(secondEntry.packet.contentHash as string);
+    expect(secondEntry.contentHash).toBe(computeStoredPacketHash(secondEntry.packet));
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('E2EE: 证据加密失败，保留明文'),
       { evidenceId: GENERATED_ID_1 },

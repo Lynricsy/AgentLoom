@@ -230,3 +230,9 @@ Schema 在 `src/database/schema/`。24 张表，启用 RLS (`rls-policies.ts`)�
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建
 - `execution-response.dto.ts` / `workflow-version.e2e-spec.ts` — Story 6.5 收口补充：执行详情 DTO 已对齐 `errors/typeMismatch` 契约，工作流发布 E2E 已覆盖 `warnings[]` HTTP 路径
 - `auth.service.ts` (508L) — 认证全流程
+
+## Story 10-1 审查修复补充
+
+- `EvidenceService` 现对 `agent_decision` / `tool_output` 使用 canonical `packet.encryptedPacket` envelope 持久化密文，并在 `findByExecution()` / `findById()` / `verifyContentHash()` / `buildChain()` 中兼容 legacy `encryptionMetadata.encryptedPayload + ciphertext-only hash` 记录，避免历史加密证据被误判为 `hash_mismatch`
+- `buildPacketSummary()` 对加密证据使用 redacted summary，避免在 provenance chain / UI 中泄露明文 reasoning 或 tool output
+- `tenant_encryption_keys` 已通过 `0038_tenant_key_rotation_history.sql` 从 `org_id` 单行 UNIQUE 调整为 append-only 历史模型：`organization_id + key_fingerprint` 唯一，且仅 `status='active'` 受 partial unique index 约束；`TenantKeyService.rotateKey()` 先将旧 key 置为 `rotating`，再插入新 `active` key，并在插入失败时回滚旧状态

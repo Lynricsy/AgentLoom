@@ -22,6 +22,26 @@ function formatDate(value: string | null): string {
   }).format(date)
 }
 
+function sortKeysByStatus<T extends { status: string; updatedAt: string; createdAt: string }>(
+  keys: T[],
+): T[] {
+  const rank: Record<string, number> = {
+    active: 0,
+    rotating: 1,
+    revoked: 2,
+  }
+
+  return [...keys].sort((left, right) => {
+    const rankDiff = (rank[left.status] ?? 99) - (rank[right.status] ?? 99)
+    if (rankDiff !== 0) return rankDiff
+
+    const updatedDiff = new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    if (!Number.isNaN(updatedDiff) && updatedDiff !== 0) return updatedDiff
+
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  })
+}
+
 export function TenantKeyManagement() {
   const keysQuery = useTenantKeys()
   const revokeMutation = useRevokeTenantKey()
@@ -32,10 +52,14 @@ export function TenantKeyManagement() {
   const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false)
 
   const keys = keysQuery.data
-  const activeKey = Array.isArray(keys)
-    ? keys.find((k) => k.status === 'active' || k.status === 'rotating')
-    : undefined
+  const sortedKeys = Array.isArray(keys) ? sortKeysByStatus(keys) : []
+  const activeKey =
+    sortedKeys.find((k) => k.status === 'active') ??
+    sortedKeys.find((k) => k.status === 'rotating')
   const hasKey = !!activeKey
+  const historicalKeys = activeKey
+    ? sortedKeys.filter((key) => key.id !== activeKey.id)
+    : sortedKeys
 
   function handleRevoke() {
     if (!activeKey) return
@@ -70,7 +94,7 @@ export function TenantKeyManagement() {
       <div>
         <h2 className="text-base font-semibold text-foreground">端到端加密</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理租户级 RSA-4096 加密密钥。私钥仅存储在您的浏览器中，服务器无法访问。
+          管理租户级 RSA-4096 加密密钥。私钥不会上传到服务器，但浏览器扩展、同源脚本或本机受损���可能读取本地密钥材料，请务必保留离线备份。
         </p>
       </div>
 
@@ -173,13 +197,11 @@ export function TenantKeyManagement() {
         </div>
       )}
 
-      {Array.isArray(keys) && keys.filter((k) => k.status === 'revoked').length > 0 && (
+      {historicalKeys.length > 0 && (
         <div>
-          <h3 className="mb-3 text-sm font-medium text-foreground">已撤销的密钥</h3>
+          <h3 className="mb-3 text-sm font-medium text-foreground">历史密钥</h3>
           <div className="space-y-2">
-            {keys
-              .filter((k) => k.status === 'revoked')
-              .map((key) => (
+            {historicalKeys.map((key) => (
                 <div
                   key={key.id}
                   className="flex items-center justify-between rounded-lg border border-border/40 bg-card/30 px-4 py-3"
@@ -189,7 +211,9 @@ export function TenantKeyManagement() {
                       {key.keyFingerprint}
                     </p>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      撤销于 {formatDate(key.revokedAt)}
+                      {key.status === 'rotating'
+                        ? `轮换于 ${formatDate(key.rotatedAt)}`
+                        : `撤销于 ${formatDate(key.revokedAt)}`}
                     </p>
                   </div>
                   <KeyStatusBadge status={key.status} />

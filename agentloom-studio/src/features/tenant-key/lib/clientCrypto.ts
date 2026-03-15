@@ -35,20 +35,24 @@ export async function generateRsaKeyPair(): Promise<GeneratedKeyPair> {
   return {
     publicKeyPem,
     privateKeyPem,
+    privateKeyPkcs8: privateKeyDer.slice(0),
     fingerprint,
   }
 }
 
 export async function decryptWithPrivateKey(
   payload: EncryptedPayload,
-  privateKeyPem: string,
+  privateKey: string | ArrayBuffer | Uint8Array,
 ): Promise<string> {
-  const privateKey = await importPrivateKeyPem(privateKeyPem)
+  const resolvedPrivateKey =
+    typeof privateKey === 'string'
+      ? await importPrivateKeyPem(privateKey, { extractable: false })
+      : await importPrivateKeyPkcs8(toArrayBuffer(privateKey), false)
 
   const encryptedDek = base64ToBuffer(payload.encryptedSessionKey)
   const dek = await crypto.subtle.decrypt(
     { name: 'RSA-OAEP' },
-    privateKey,
+    resolvedPrivateKey,
     encryptedDek,
   )
 
@@ -84,17 +88,39 @@ export async function decryptWithPrivateKey(
 }
 
 export async function exportPrivateKeyPem(privateKey: CryptoKey): Promise<string> {
-  const der = await crypto.subtle.exportKey('pkcs8', privateKey)
+  const der = await exportPrivateKeyPkcs8(privateKey)
   return derToPem(der, 'PRIVATE KEY')
 }
 
-export async function importPrivateKeyPem(pem: string): Promise<CryptoKey> {
-  const der = pemToDer(pem)
+export async function exportPrivateKeyPkcs8(
+  privateKey: CryptoKey,
+): Promise<ArrayBuffer> {
+  return crypto.subtle.exportKey('pkcs8', privateKey)
+}
+
+export async function importPrivateKeyPem(
+  pem: string,
+  options: { extractable?: boolean } = {},
+): Promise<CryptoKey> {
+  return importPrivateKeyPkcs8(
+    privateKeyPemToPkcs8(pem),
+    options.extractable ?? true,
+  )
+}
+
+export function privateKeyPemToPkcs8(pem: string): ArrayBuffer {
+  return pemToDer(pem)
+}
+
+async function importPrivateKeyPkcs8(
+  der: ArrayBuffer,
+  extractable: boolean,
+): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'pkcs8',
     der,
     RSA_IMPORT_PARAMS,
-    true,
+    extractable,
     ['decrypt'],
   )
 }
@@ -112,6 +138,16 @@ function pemToDer(pem: string): ArrayBuffer {
     .replace(/\s/g, '')
 
   return base64ToBuffer(base64)
+}
+
+function toArrayBuffer(buffer: ArrayBuffer | Uint8Array): ArrayBuffer {
+  if (buffer instanceof Uint8Array) {
+    const cloned = new Uint8Array(buffer.byteLength)
+    cloned.set(buffer)
+    return cloned.buffer
+  }
+
+  return buffer.slice(0)
 }
 
 function bufferToBase64(buffer: Uint8Array): string {

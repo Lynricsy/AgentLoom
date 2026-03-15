@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -74,6 +74,15 @@ export class TenantKeyService {
           eq(tenantEncryptionKeys.tenantId, tenantId),
           eq(tenantEncryptionKeys.organizationId, orgId),
         ),
+      )
+      .orderBy(
+        sql`CASE ${tenantEncryptionKeys.status}
+            WHEN 'active' THEN 0
+            WHEN 'rotating' THEN 1
+            ELSE 2
+          END`,
+        desc(tenantEncryptionKeys.updatedAt),
+        desc(tenantEncryptionKeys.createdAt),
       );
   }
 
@@ -110,12 +119,10 @@ export class TenantKeyService {
     const keyFingerprint = computeKeyFingerprint(dto.publicKey);
     const rotatedAt = new Date();
 
-    const [updated] = await this.tenantDb
+    const [rotatingKey] = await this.tenantDb
       .update(tenantEncryptionKeys)
       .set({
-        publicKey: dto.publicKey,
-        keyFingerprint,
-        status: 'active',
+        status: 'rotating',
         rotatedAt,
         updatedAt: rotatedAt,
       })
@@ -127,19 +134,54 @@ export class TenantKeyService {
       )
       .returning();
 
-    if (!updated) {
+    if (!rotatingKey) {
       throw new TenantKeyNotFoundException(keyId);
     }
 
-    this.logger.log(
-      JSON.stringify({
-        action: 'tenant_key_rotated',
-        keyId: updated.id,
-        tenantId,
-      }),
-    );
+    try {
+      const [created] = await this.tenantDb
+        .insert(tenantEncryptionKeys)
+        .values({
+          organizationId: existingKey.organizationId,
+          tenantId,
+          publicKey: dto.publicKey,
+          keyFingerprint,
+          status: 'active',
+          activatedAt: rotatedAt,
+        })
+        .returning();
 
-    return updated;
+      if (!created) {
+        throw new TenantKeyNotFoundException(keyId);
+      }
+
+      this.logger.log(
+        JSON.stringify({
+          action: 'tenant_key_rotated',
+          previousKeyId: rotatingKey.id,
+          newKeyId: created.id,
+          tenantId,
+        }),
+      );
+
+      return created;
+    } catch (error) {
+      await this.tenantDb
+        .update(tenantEncryptionKeys)
+        .set({
+          status: existingKey.status,
+          rotatedAt: existingKey.rotatedAt,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(tenantEncryptionKeys.id, keyId),
+            eq(tenantEncryptionKeys.tenantId, tenantId),
+          ),
+        );
+
+      throw error;
+    }
   }
 
   async revokeKey(tenantId: string, keyId: string): Promise<TenantEncryptionKey> {

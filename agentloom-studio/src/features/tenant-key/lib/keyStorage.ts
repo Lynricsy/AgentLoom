@@ -4,7 +4,7 @@ const STORE_NAME = 'private-keys'
 
 interface StoredKey {
   fingerprint: string
-  privateKeyPem: string
+  privateKeyPkcs8: ArrayBuffer
   createdAt: string
 }
 
@@ -31,9 +31,17 @@ function closeDatabase(database: IDBDatabase) {
 
 export async function storePrivateKey(
   fingerprint: string,
-  privateKeyPem: string,
+  privateKeyPkcs8: ArrayBuffer | Uint8Array,
 ): Promise<void> {
   const database = await openDatabase()
+  const normalizedKey =
+    privateKeyPkcs8 instanceof Uint8Array
+      ? (() => {
+          const cloned = new Uint8Array(privateKeyPkcs8.byteLength)
+          cloned.set(privateKeyPkcs8)
+          return cloned.buffer
+        })()
+      : privateKeyPkcs8.slice(0)
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite')
@@ -41,7 +49,7 @@ export async function storePrivateKey(
 
     store.put({
       fingerprint,
-      privateKeyPem,
+      privateKeyPkcs8: normalizedKey,
       createdAt: new Date().toISOString(),
     } satisfies StoredKey)
 
@@ -62,7 +70,7 @@ export async function storePrivateKey(
   })
 }
 
-export async function getPrivateKey(fingerprint: string): Promise<string | null> {
+export async function getPrivateKey(fingerprint: string): Promise<ArrayBuffer | null> {
   const database = await openDatabase()
 
   return new Promise((resolve, reject) => {
@@ -73,7 +81,7 @@ export async function getPrivateKey(fingerprint: string): Promise<string | null>
     request.onsuccess = () => {
       closeDatabase(database)
       const result = request.result as StoredKey | undefined
-      resolve(result?.privateKeyPem ?? null)
+      resolve(result?.privateKeyPkcs8 ?? null)
     }
 
     request.onerror = () => {

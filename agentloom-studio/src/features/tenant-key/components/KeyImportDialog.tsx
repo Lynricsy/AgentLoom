@@ -6,7 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { Label } from '@/shared/ui/label'
 
 import { useUploadPublicKey } from '../api/tenantKeyMutations'
-import { exportPrivateKeyPem, importPrivateKeyPem } from '../lib/clientCrypto'
+import { importPrivateKeyPem, privateKeyPemToPkcs8 } from '../lib/clientCrypto'
 import { storePrivateKey } from '../lib/keyStorage'
 
 interface KeyImportDialogProps {
@@ -23,15 +23,10 @@ type ImportState =
 
 const PEM_HEADER = '-----BEGIN PRIVATE KEY-----'
 
-/**
- * 从私钥 CryptoKey 导出公钥 PEM
- */
 async function extractPublicKeyPem(
   privateKey: CryptoKey,
 ): Promise<string> {
-  // 用 Web Crypto 从私钥提取公钥
   const jwk = await crypto.subtle.exportKey('jwk', privateKey)
-  // 移除私钥字段以获取纯公钥
   delete jwk.d
   delete jwk.dp
   delete jwk.dq
@@ -54,9 +49,6 @@ async function extractPublicKeyPem(
   return `-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----`
 }
 
-/**
- * 计算 SPKI 指纹 (SHA-256)
- */
 async function computeFingerprint(publicKeyPem: string): Promise<string> {
   const b64 = publicKeyPem
     .replace(/-----BEGIN PUBLIC KEY-----/, '')
@@ -95,13 +87,13 @@ export const KeyImportDialog = memo(function KeyImportDialog({
     try {
       setState({ step: 'processing' })
 
-      const privateKey = await importPrivateKeyPem(trimmed)
-      const normalizedPem = await exportPrivateKeyPem(privateKey)
+      const privateKey = await importPrivateKeyPem(trimmed, { extractable: true })
+      const privateKeyPkcs8 = privateKeyPemToPkcs8(trimmed)
       const publicKeyPem = await extractPublicKeyPem(privateKey)
       const fingerprint = await computeFingerprint(publicKeyPem)
 
       await uploadMutation.mutateAsync({ publicKey: publicKeyPem })
-      await storePrivateKey(fingerprint, normalizedPem)
+      await storePrivateKey(fingerprint, privateKeyPkcs8)
 
       setState({ step: 'done', fingerprint })
       onSuccess?.()
@@ -169,8 +161,8 @@ export const KeyImportDialog = memo(function KeyImportDialog({
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                     <p className="text-xs leading-relaxed text-amber-700">
-                      私钥将存储在浏览器的 IndexedDB 中，不会发送到服务器。
-                      仅公钥会被上传用于加密。
+                      私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM 明文字符串。
+                      但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
                     </p>
                   </div>
                 </div>

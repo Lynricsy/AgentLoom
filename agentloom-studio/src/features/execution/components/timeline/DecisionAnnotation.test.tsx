@@ -34,6 +34,7 @@ function createAgentDecisionEvidence(
       },
     },
     contentHash: 'hash-1',
+    isEncrypted: false,
     createdAt: '2026-01-01T00:00:00Z',
     ...overrides,
   }
@@ -65,6 +66,7 @@ function createInterventionEvidence(
       },
     },
     contentHash: 'hash-2',
+    isEncrypted: false,
     createdAt: '2026-01-01T00:01:00Z',
   }
 }

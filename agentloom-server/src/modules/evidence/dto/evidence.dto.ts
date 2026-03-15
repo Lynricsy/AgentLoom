@@ -112,6 +112,38 @@ export const NodeErrorInfoSchema = z.object({
   typeMismatch: TypeMismatchInfoSchema.optional(),
 });
 
+export const EncryptedPayloadSchema = z.object({
+  ciphertext: z.string(),
+  encryptedSessionKey: z.string(),
+  iv: z.string(),
+  authTag: z.string(),
+  aad: z.string(),
+  keyFingerprint: z.string(),
+  algorithm: z.string(),
+});
+
+export const EvidencePacketSummarySchema = z.object({
+  title: z.string(),
+  excerpt: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+});
+
+export type EvidencePacketSummary = z.infer<typeof EvidencePacketSummarySchema>;
+
+export const EvidenceEncryptionMetadataSchema = z.object({
+  isEncrypted: z.boolean(),
+  keyFingerprint: z.string().optional(),
+  algorithm: z.string().optional(),
+  encryptedAt: z.string().datetime().optional(),
+  plaintextHash: z.string().length(64).optional(),
+  contractVersion: z.number().int().optional(),
+  encryptedPayload: EncryptedPayloadSchema.optional(),
+});
+
+export type EvidenceEncryptionMetadataDto = z.infer<
+  typeof EvidenceEncryptionMetadataSchema
+>;
+
 const StoredPacketMetadataSchema = z.object({
   evidenceId: z.string().uuid(),
   contentHash: z.string().length(64),
@@ -154,36 +186,60 @@ export const EvidencePacketInputSchema = z.discriminatedUnion('sourceType', [
   }),
 ]);
 
-export const EvidencePacketSchema = z
-  .discriminatedUnion('sourceType', [
-    z.object({
+export const EvidencePacketSchema = z.union([
+  z
+    .object({
       sourceType: z.literal('rag_retrieval'),
       physicalLocation: PhysicalLocationSchema,
       semanticLocation: SemanticLocationSchema,
       retrievedContent: z.string().min(1),
-    }),
-    z.object({
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
       sourceType: z.literal('agent_decision'),
       agentDecision: AgentDecisionSchema,
-    }),
-    z.object({
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
+      sourceType: z.literal('agent_decision'),
+      encryptedPacket: EncryptedPayloadSchema,
+      summary: EvidencePacketSummarySchema,
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
       sourceType: z.literal('tool_output'),
       toolOutput: ToolOutputSchema,
-    }),
-    z.object({
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
+      sourceType: z.literal('tool_output'),
+      encryptedPacket: EncryptedPayloadSchema,
+      summary: EvidencePacketSummarySchema,
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
       sourceType: z.literal('user_input'),
       userInput: UserInputSchema,
-    }),
-    z.object({
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
       sourceType: z.literal('intervention'),
       intervention: InterventionSchema,
-    }),
-    z.object({
+    })
+    .and(StoredPacketMetadataSchema),
+  z
+    .object({
       sourceType: z.literal('node_error'),
       nodeError: NodeErrorInfoSchema,
-    }),
-  ])
-  .and(StoredPacketMetadataSchema);
+    })
+    .and(StoredPacketMetadataSchema),
+]);
 
 export type EvidencePacketInputDto = z.infer<typeof EvidencePacketInputSchema>;
 export type EvidencePacketDto = z.infer<typeof EvidencePacketSchema>;
@@ -242,6 +298,8 @@ export const EvidenceRecordResponseSchema = z.object({
   packet: EvidencePacketSchema,
   contentHash: z.string().length(64),
   parentEvidenceId: z.string().uuid().nullable(),
+  isEncrypted: z.boolean(),
+  encryptionMetadata: EvidenceEncryptionMetadataSchema.nullable().optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -261,14 +319,6 @@ export class VerifyEvidenceResponseDto extends createZodDto(
 ) {}
 
 // -- Chain schemas (Story 6-2) --
-
-export const EvidencePacketSummarySchema = z.object({
-  title: z.string(),
-  excerpt: z.string().optional(),
-  metadata: z.record(z.string(), z.string()).optional(),
-});
-
-export type EvidencePacketSummary = z.infer<typeof EvidencePacketSummarySchema>;
 
 export const IntegrityIssueSchema = z.object({
   evidenceId: z.string().uuid(),
@@ -298,6 +348,8 @@ export interface EvidenceChainNode {
   parentEvidenceId: string | null;
   createdAt: string;
   depth: number;
+   isEncrypted?: boolean;
+   encryptionMetadata?: EvidenceEncryptionMetadataDto | null;
   sourceUnavailable?: boolean;
   sourceModified?: boolean;
   unavailableReason?: string;
@@ -316,6 +368,8 @@ const BaseChainNodeSchema = z.object({
   parentEvidenceId: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
   depth: z.number().int().min(0),
+  isEncrypted: z.boolean().optional(),
+  encryptionMetadata: EvidenceEncryptionMetadataSchema.nullable().optional(),
   sourceUnavailable: z.boolean().optional(),
   sourceModified: z.boolean().optional(),
   unavailableReason: z.string().optional(),

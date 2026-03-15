@@ -5,6 +5,7 @@ import type { EvidenceChainNode, EvidenceRecord } from '../../types'
 import { useEvidenceDetail, useEvidenceVerify } from '../../api/evidenceQueries'
 import { useEvidenceUiActions } from '../../stores/evidenceUiStore'
 import { EvidenceCard } from '../EvidenceCard'
+import { useDecryptContent } from '@/features/tenant-key/hooks/useDecryptContent'
 
 vi.mock('../../api/evidenceQueries', () => ({
   useEvidenceDetail: vi.fn(),
@@ -13,6 +14,10 @@ vi.mock('../../api/evidenceQueries', () => ({
 
 vi.mock('../../stores/evidenceUiStore', () => ({
   useEvidenceUiActions: vi.fn(),
+}))
+
+vi.mock('@/features/tenant-key/hooks/useDecryptContent', () => ({
+  useDecryptContent: vi.fn(),
 }))
 
 vi.mock('../SourceStatusBadge', () => ({
@@ -94,6 +99,8 @@ function createNode(overrides: Partial<EvidenceChainNode> = {}): EvidenceChainNo
 }
 
 function createRecord(overrides: Partial<EvidenceRecord> = {}): EvidenceRecord {
+  const { isEncrypted, encryptionMetadata, ...restOverrides } = overrides
+
   return {
     id: 'ev-001',
     executionId: 'exec-001',
@@ -122,14 +129,18 @@ function createRecord(overrides: Partial<EvidenceRecord> = {}): EvidenceRecord {
     },
     contentHash: 'f'.repeat(64),
     parentEvidenceId: null,
+    isEncrypted: isEncrypted ?? false,
     createdAt: '2026-03-10T10:00:00.000Z',
-    ...overrides,
+    ...(encryptionMetadata !== undefined ? { encryptionMetadata } : {}),
+    ...restOverrides,
   }
 }
 
 describe('EvidenceCard', () => {
   const openFromPhysicalLocation = vi.fn()
   const refetchVerify = vi.fn().mockResolvedValue({ data: undefined })
+  const decrypt = vi.fn().mockResolvedValue('已解密内容')
+  const clearError = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -164,6 +175,13 @@ describe('EvidenceCard', () => {
       isFetching: false,
       error: null,
       refetch: refetchVerify,
+    } as never)
+
+    vi.mocked(useDecryptContent).mockReturnValue({
+      decrypt,
+      isDecrypting: false,
+      error: null,
+      clearError,
     } as never)
   })
 
@@ -456,5 +474,144 @@ describe('EvidenceCard', () => {
     expect(screen.getByText('text 无法输入到 json')).toBeInTheDocument()
     expect(screen.getByText('text → json')).toBeInTheDocument()
     expect(screen.getByText(/node-source · output/)).toBeInTheDocument()
+  })
+
+  it('优先使用 canonical packet.encryptedPacket 解密加密证据', async () => {
+    vi.mocked(useEvidenceDetail).mockReturnValue({
+      data: {
+        data: createRecord({
+          sourceType: 'agent_decision',
+          isEncrypted: true,
+          packet: {
+            evidenceId: 'ev-001',
+            sourceType: 'agent_decision',
+            contentHash: 'f'.repeat(64),
+            timestamp: '2026-03-10T10:00:00.000Z',
+            encryptedPacket: {
+              ciphertext: 'ciphertext-1',
+              encryptedSessionKey: 'session-key-1',
+              iv: 'iv-1',
+              authTag: 'tag-1',
+              aad: 'aad-1',
+              keyFingerprint: 'fp-1',
+              algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+            },
+            summary: {
+              title: 'Agent 决策 · Planner',
+            },
+          },
+          encryptionMetadata: {
+            isEncrypted: true,
+            keyFingerprint: 'fp-1',
+            algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+            encryptedAt: '2026-03-10T10:00:00.000Z',
+          },
+        }),
+      },
+      isLoading: false,
+      error: null,
+    } as never)
+
+    render(
+      <EvidenceCard
+        node={createNode({
+          sourceType: 'agent_decision',
+          isEncrypted: true,
+          encryptionMetadata: {
+            isEncrypted: true,
+            keyFingerprint: 'fp-1',
+            algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+          },
+          packetSummary: {
+            title: 'Agent 决策 · Planner',
+          },
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: /解密/i }).at(-1)!)
+
+    await waitFor(() => {
+      expect(decrypt).toHaveBeenCalledWith({
+        ciphertext: 'ciphertext-1',
+        encryptedSessionKey: 'session-key-1',
+        iv: 'iv-1',
+        authTag: 'tag-1',
+        aad: 'aad-1',
+        keyFingerprint: 'fp-1',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      })
+    })
+    expect(screen.getAllByText('已解密内容')).toHaveLength(2)
+  })
+
+  it('在 legacy 记录上 fallback 到 encryptionMetadata.encryptedPayload 解密', async () => {
+    vi.mocked(useEvidenceDetail).mockReturnValue({
+      data: {
+        data: createRecord({
+          sourceType: 'tool_output',
+          isEncrypted: true,
+          packet: {
+            evidenceId: 'ev-001',
+            sourceType: 'tool_output',
+            contentHash: 'f'.repeat(64),
+            timestamp: '2026-03-10T10:00:00.000Z',
+            toolOutput: {
+              toolName: 'legacyTool',
+              toolInput: { query: 'legacy' },
+              toolOutput: { answer: 'legacy' },
+            },
+          },
+          encryptionMetadata: {
+            isEncrypted: true,
+            keyFingerprint: 'legacy-fp',
+            algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+            encryptedAt: '2026-03-10T10:00:00.000Z',
+            encryptedPayload: {
+              ciphertext: 'legacy-ciphertext',
+              encryptedSessionKey: 'legacy-session-key',
+              iv: 'legacy-iv',
+              authTag: 'legacy-tag',
+              aad: 'legacy-aad',
+              keyFingerprint: 'legacy-fp',
+              algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+            },
+          },
+        }),
+      },
+      isLoading: false,
+      error: null,
+    } as never)
+
+    render(
+      <EvidenceCard
+        node={createNode({
+          sourceType: 'tool_output',
+          isEncrypted: true,
+          encryptionMetadata: {
+            isEncrypted: true,
+            keyFingerprint: 'legacy-fp',
+            algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+          },
+          packetSummary: {
+            title: '工具输出 · legacyTool',
+          },
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: /解密/i }).at(-1)!)
+
+    await waitFor(() => {
+      expect(decrypt).toHaveBeenCalledWith({
+        ciphertext: 'legacy-ciphertext',
+        encryptedSessionKey: 'legacy-session-key',
+        iv: 'legacy-iv',
+        authTag: 'legacy-tag',
+        aad: 'legacy-aad',
+        keyFingerprint: 'legacy-fp',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      })
+    })
   })
 })
