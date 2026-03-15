@@ -107,3 +107,102 @@ export interface MyListingsFilters {
   pageSize?: number;
   status?: MarketplaceListingStatus;
 }
+
+export type MarketplaceCategory =
+  | 'analysis'
+  | 'content'
+  | 'development'
+  | 'automation'
+  | 'reporting';
+
+export type MarketplaceSortOption = 'popular' | 'rating' | 'newest';
+
+export const MARKETPLACE_CATEGORIES: {
+  value: MarketplaceCategory;
+  label: string;
+}[] = [
+  { value: 'analysis', label: 'Analysis' },
+  { value: 'content', label: 'Content' },
+  { value: 'development', label: 'Development' },
+  { value: 'automation', label: 'Automation' },
+  { value: 'reporting', label: 'Reporting' },
+];
+
+export const MARKETPLACE_SORT_OPTIONS: {
+  value: MarketplaceSortOption;
+  label: string;
+}[] = [
+  { value: 'popular', label: 'Most Popular' },
+  { value: 'rating', label: 'Highest Rated' },
+  { value: 'newest', label: 'Newest' },
+];
+
+export interface PublicMarketplaceListingItem {
+  id: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  coverImageUrl: string | null;
+  category: MarketplaceCategory | null;
+  useCount: number;
+  avgRating: number | null;
+  reviewCount: number;
+  publishedAt: string;
+  author: { displayName: string };
+}
+
+export interface MarketplaceReview {
+  id: string;
+  rating: number;
+  content: string | null;
+  createdAt: string;
+  author: { displayName: string };
+}
+
+export interface PublicMarketplaceListingDetail
+  extends PublicMarketplaceListingItem {
+  definition: {
+    nodes: unknown[];
+    edges: unknown[];
+    viewport: { x: number; y: number; zoom: number };
+  };
+  reviews: MarketplaceReview[];
+}
+
+export interface PublicListingsFilters {
+  category?: MarketplaceCategory;
+  search?: string;
+  sort?: MarketplaceSortOption;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PublicListingsResponse {
+  data: PublicMarketplaceListingItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface InstallMarketplaceListingRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface InstallMarketplaceListingResponse {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface SubmitReviewRequest {
+  rating: number;
+  content?: string;
+}
+
+export interface ReviewsResponse {
+  data: MarketplaceReview[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
