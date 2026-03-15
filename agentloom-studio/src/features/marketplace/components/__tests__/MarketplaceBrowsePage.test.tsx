@@ -98,9 +98,12 @@ describe('MarketplaceBrowsePage', () => {
         makeListing({ id: 'listing-1', title: 'Agent Workflow' }),
         makeListing({ id: 'listing-2', title: 'Content Pipeline', category: 'content' }),
       ],
-      total: 2,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 2,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
 
     render(<MarketplaceBrowsePage />)
@@ -115,9 +118,12 @@ describe('MarketplaceBrowsePage', () => {
     vi.useFakeTimers()
     listingsQueryMock.data = {
       data: [makeListing()],
-      total: 1,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
 
     render(<MarketplaceBrowsePage />)
@@ -154,14 +160,17 @@ describe('MarketplaceBrowsePage', () => {
   it('filters by category tab', () => {
     listingsQueryMock.data = {
       data: [makeListing()],
-      total: 1,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
 
     render(<MarketplaceBrowsePage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: '分析' }))
 
     expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
       category: 'analysis',
@@ -172,9 +181,12 @@ describe('MarketplaceBrowsePage', () => {
   it('updates sort selection', () => {
     listingsQueryMock.data = {
       data: [makeListing()],
-      total: 1,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
 
     render(<MarketplaceBrowsePage />)
@@ -192,15 +204,18 @@ describe('MarketplaceBrowsePage', () => {
   it('shows an empty state when no listings are returned', () => {
     listingsQueryMock.data = {
       data: [],
-      total: 0,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 0,
+        page: 1,
+        pageSize: 12,
+        totalPages: 0,
+      },
     }
 
     render(<MarketplaceBrowsePage />)
 
     expect(screen.getByTestId('marketplace-browse-empty')).toBeInTheDocument()
-    expect(screen.getByText('No listings found')).toBeInTheDocument()
+    expect(screen.getByText('未找到工作流')).toBeInTheDocument()
   })
 
   it('shows loading state while listings are loading', () => {

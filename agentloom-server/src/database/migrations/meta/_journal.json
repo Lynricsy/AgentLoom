@@ -246,6 +246,13 @@
       "when": 1773553569693,
       "tag": "0034_little_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1773563577691,
+      "tag": "0035_stormy_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

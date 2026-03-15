@@ -8,7 +8,10 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../../common/decorators/public.decorator';
-import { QueryPublicListingsDto } from './dto/marketplace.dto';
+import {
+  QueryPublicListingsDto,
+  QueryPublicReviewsDto,
+} from './dto/marketplace.dto';
 import { MarketplaceReviewUserService } from './marketplace-review-user.service';
 import { MarketplaceService } from './marketplace.service';
 
@@ -42,12 +45,8 @@ export class MarketplaceBrowseController {
   @ApiResponse({ status: 404, description: 'Listing 不存在' })
   async reviews(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query() query: Record<string, unknown>,
+    @Query() query: QueryPublicReviewsDto,
   ) {
-    return this.reviewUserService.findReviewsByListing(
-      id,
-      query.page as number | undefined,
-      query.pageSize as number | undefined,
-    );
+    return this.reviewUserService.findReviewsByListing(id, query);
   }
 }

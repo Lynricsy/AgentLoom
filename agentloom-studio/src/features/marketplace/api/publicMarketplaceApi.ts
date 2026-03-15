@@ -3,11 +3,11 @@ import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type {
   InstallMarketplaceListingRequest,
   InstallMarketplaceListingResponse,
-  MarketplaceReview,
   PublicListingsFilters,
   PublicListingsResponse,
   PublicMarketplaceListingDetail,
   ReviewsResponse,
+  SubmittedMarketplaceReview,
   SubmitReviewRequest,
 } from '../types'
 
@@ -66,12 +66,12 @@ export async function installMarketplaceListing(
 export async function submitMarketplaceReview(
   id: string,
   body: SubmitReviewRequest,
-): Promise<MarketplaceReview> {
+): Promise<SubmittedMarketplaceReview> {
   return apiClient
     .post(`${MARKETPLACE_LISTINGS_PATH}/${id}/reviews`, {
       json: body,
     })
-    .json<MarketplaceReview>()
+    .json<SubmittedMarketplaceReview>()
 }
 
 export { cleanParams }

@@ -26,6 +26,10 @@ interface MarketplaceInstallDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+function getDefaultWorkflowName(listingTitle: string) {
+  return listingTitle ? `${listingTitle} 副本` : ''
+}
+
 export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
   listingId,
   listingTitle,
@@ -45,7 +49,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
   } = useForm<InstallFormValues>({
     resolver: zodResolver(installFormSchema),
     values: {
-      name: listingTitle ? `${listingTitle} Copy` : '',
+      name: getDefaultWorkflowName(listingTitle),
       description: listingSummary ?? '',
     },
   })
@@ -63,7 +67,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
 
         onOpenChange(false)
         reset({
-          name: `${listingTitle} Copy`,
+          name: getDefaultWorkflowName(listingTitle),
           description: listingSummary ?? '',
         })
         notify({
@@ -73,7 +77,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
         })
         navigate({
           to: '/workflows/$workflowId',
-          params: { workflowId: result.id },
+          params: { workflowId: result.workflowDefinitionId },
         })
       } catch {
         notify({
@@ -145,7 +149,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
               </Dialog.Close>
               <Button type="submit" disabled={isPending} className="gap-2">
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                一键使用
+                确认安装
               </Button>
             </div>
           </form>

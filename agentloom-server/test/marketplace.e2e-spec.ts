@@ -630,25 +630,26 @@ describe('Marketplace E2E', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      total: 1,
+    expect(response.body.meta).toMatchObject({
       page: 1,
       pageSize: 20,
-      data: [
-        expect.objectContaining({
-          id: seeded.listingId,
-          title: 'Public Market Signals',
-          category: 'analysis',
-          useCount: 7,
-          avgRating: '4.70',
-          reviewCount: 3,
-          author: expect.objectContaining({
-            id: owner.user.id,
-            displayName: owner.user.email,
-          }),
-        }),
-      ],
+      total: 1,
+      totalPages: 1,
     });
+    expect(response.body.data).toEqual([
+      expect.objectContaining({
+        id: seeded.listingId,
+        title: 'Public Market Signals',
+        category: 'analysis',
+        useCount: 7,
+        avgRating: '4.70',
+        reviewCount: 3,
+        author: {
+          displayName: owner.user.email,
+        },
+      }),
+    ]);
+    expect(response.body.data[0].author).not.toHaveProperty('id');
   });
 
   it('supports public browse filters for category, search, and sort', async () => {
@@ -687,7 +688,12 @@ describe('Marketplace E2E', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.total).toBe(2);
+    expect(response.body.meta).toMatchObject({
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      totalPages: 1,
+    });
     expect(response.body.data.map((item: { id: string }) => item.id)).toEqual([
       first.listingId,
       second.listingId,
@@ -742,26 +748,26 @@ describe('Marketplace E2E', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       id: seeded.listingId,
-      workflowVersionId: seeded.workflow.versionId,
       title: 'Detail Listing',
       category: 'automation',
       definition: {
         nodes: snapshot.nodes,
         edges: snapshot.edges,
         viewport: DEFAULT_VIEWPORT,
-        inputSchema: snapshot.inputSchema,
       },
       reviews: [
         expect.objectContaining({
           rating: 5,
           content: '公开详情查看正常',
           author: expect.objectContaining({
-            id: reviewer.user.id,
             displayName: reviewer.user.email,
           }),
         }),
       ],
     });
+    expect(response.body).not.toHaveProperty('workflowVersionId');
+    expect(response.body.definition).not.toHaveProperty('inputSchema');
+    expect(response.body.reviews[0]?.author).not.toHaveProperty('id');
   });
 
   it('returns paginated public listing reviews', async () => {
@@ -796,9 +802,6 @@ describe('Marketplace E2E', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
-      total: 2,
-      page: 2,
-      pageSize: 1,
       data: [
         expect.objectContaining({
           id: olderReview.reviewId,
@@ -806,6 +809,12 @@ describe('Marketplace E2E', () => {
           content: '较早评论',
         }),
       ],
+      meta: {
+        page: 2,
+        pageSize: 1,
+        total: 2,
+        totalPages: 2,
+      },
     });
   });
 
@@ -839,13 +848,13 @@ describe('Marketplace E2E', () => {
       .send({});
 
     expect(installResponse.status).toBe(201);
-    expect(installResponse.body.data).toMatchObject({
-      tenantId: targetOwner.tenantId,
+    expect(installResponse.body).toMatchObject({
+      workflowDefinitionId: expect.any(String),
       name: 'Installable Listing',
-      description: '用于验证一键安装的公开摘要。',
+      message: 'Workflow installed successfully',
     });
 
-    const installedWorkflowId = installResponse.body.data.id as string;
+    const installedWorkflowId = installResponse.body.workflowDefinitionId as string;
     const [installedWorkflow] = await drizzleDb
       .select()
       .from(workflowDefinitions)
@@ -897,15 +906,14 @@ describe('Marketplace E2E', () => {
       .send({ rating: 5, content: '值得推荐' });
 
     expect(response.status).toBe(201);
-    expect(response.body.data).toMatchObject({
-      listingId: seeded.listingId,
+    expect(response.body).toMatchObject({
+      id: expect.any(String),
       rating: 5,
       content: '值得推荐',
-      author: expect.objectContaining({
-        id: reviewer.user.id,
-        displayName: reviewer.user.email,
-      }),
+      createdAt: expect.any(String),
     });
+    expect(response.body).not.toHaveProperty('listingId');
+    expect(response.body).not.toHaveProperty('author');
 
     const [listing] = await drizzleDb
       .select()

@@ -122,11 +122,13 @@ function createSelectChainWithSingleJoinPagination(result: unknown) {
   };
 }
 
-function createSelectChainWithSingleJoin(result: unknown) {
-  const where = vi.fn().mockResolvedValue(result);
+function createSelectChainWithSingleJoinOrdered(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const orderBy = vi.fn().mockReturnValue({ limit });
+  const where = vi.fn().mockReturnValue({ orderBy });
   const leftJoin = vi.fn().mockReturnValue({ where });
   const from = vi.fn().mockReturnValue({ leftJoin });
-  return { from, leftJoin, where };
+  return { from, leftJoin, where, orderBy, limit };
 }
 
 function createSelectChainWithInnerAndLeftJoin(result: unknown) {
@@ -135,14 +137,6 @@ function createSelectChainWithInnerAndLeftJoin(result: unknown) {
   const innerJoin = vi.fn().mockReturnValue({ leftJoin });
   const from = vi.fn().mockReturnValue({ innerJoin });
   return { from, innerJoin, leftJoin, where };
-}
-
-function createSelectChainWithSingleJoinOrdered(result: unknown) {
-  const orderBy = vi.fn().mockResolvedValue(result);
-  const where = vi.fn().mockReturnValue({ orderBy });
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const from = vi.fn().mockReturnValue({ leftJoin });
-  return { from, leftJoin, where, orderBy };
 }
 
 function createInsertChain(result: unknown) {
@@ -760,15 +754,16 @@ describe('MarketplaceService', () => {
             reviewCount: 6,
             publishedAt: NOW,
             author: {
-              id: USER_ID,
               displayName: '公开作者',
-              avatarUrl: 'https://cdn.agentloom.dev/public/avatar.png',
             },
           },
         ],
-        total: 1,
-        page: 2,
-        pageSize: 5,
+        meta: {
+          page: 2,
+          pageSize: 5,
+          total: 1,
+          totalPages: 1,
+        },
       });
     });
   });
@@ -810,21 +805,20 @@ describe('MarketplaceService', () => {
         rating: 5,
         content: '非常好用',
         createdAt: NOW,
-        updatedAt: NOW,
-        authorId: '00000000-0000-0000-0000-000000000008',
         authorDisplayName: '评论用户',
-        authorAvatarUrl: null,
       };
+
+      const selectReviews = createSelectChainWithSingleJoinOrdered([review]);
 
       db.select
         .mockReturnValueOnce(createSelectChainWithInnerAndLeftJoin([listing]))
-        .mockReturnValueOnce(createSelectChainWithSingleJoinOrdered([review]));
+        .mockReturnValueOnce(selectReviews);
 
       const result = await service.findPublicById(LISTING_ID);
 
+      expect(selectReviews.limit).toHaveBeenCalledWith(20);
       expect(result).toEqual({
         id: LISTING_ID,
-        workflowVersionId: VERSION_ID,
         title: listing.title,
         summary: listing.summary,
         tags: listing.tags,
@@ -835,15 +829,12 @@ describe('MarketplaceService', () => {
         reviewCount: 2,
         publishedAt: NOW,
         author: {
-          id: USER_ID,
           displayName: '详情作者',
-          avatarUrl: null,
         },
         definition: {
           nodes: snapshot.nodes,
           edges: snapshot.edges,
           viewport: { x: 0, y: 0, zoom: 1 },
-          inputSchema: snapshot.inputSchema,
         },
         reviews: [
           {
@@ -851,11 +842,8 @@ describe('MarketplaceService', () => {
             rating: 5,
             content: '非常好用',
             createdAt: NOW,
-            updatedAt: NOW,
             author: {
-              id: review.authorId,
               displayName: '评论用户',
-              avatarUrl: null,
             },
           },
         ],
@@ -914,7 +902,11 @@ describe('MarketplaceService', () => {
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({ updatedAt: NOW }),
       );
-      expect(result).toEqual(createdWorkflow);
+      expect(result).toEqual({
+        workflowDefinitionId: WORKFLOW_ID,
+        name: listing.title,
+        message: 'Workflow installed successfully',
+      });
     });
   });
 });

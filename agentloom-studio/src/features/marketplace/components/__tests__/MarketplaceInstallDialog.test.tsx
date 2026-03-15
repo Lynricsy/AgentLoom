@@ -125,7 +125,7 @@ describe('MarketplaceInstallDialog', () => {
       />,
     )
 
-    expect(screen.getByLabelText('工作流名称')).toHaveValue('Agent Workflow Copy')
+    expect(screen.getByLabelText('工作流名称')).toHaveValue('Agent Workflow 副本')
     expect(screen.getByLabelText(/描述/)).toHaveValue(
       'Install this workflow into your workspace.',
     )
@@ -135,9 +135,9 @@ describe('MarketplaceInstallDialog', () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
     installListingMock.mutateAsync.mockResolvedValue({
-      id: 'workflow-1',
-      name: 'Agent Workflow Copy',
-      slug: 'agent-workflow-copy',
+      workflowDefinitionId: 'workflow-1',
+      name: 'Agent Workflow 副本',
+      message: 'Workflow installed successfully',
     })
 
     render(
@@ -150,16 +150,16 @@ describe('MarketplaceInstallDialog', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '一键使用' }))
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
 
     await waitFor(() => {
-      expect(installListingMock.mutateAsync).toHaveBeenCalledWith({
-        id: 'listing-1',
-        body: {
-          name: 'Agent Workflow Copy',
-          description: 'Install this workflow into your workspace.',
-        },
-      })
+        expect(installListingMock.mutateAsync).toHaveBeenCalledWith({
+          id: 'listing-1',
+          body: {
+            name: 'Agent Workflow 副本',
+            description: 'Install this workflow into your workspace.',
+          },
+        })
     })
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
@@ -189,7 +189,7 @@ describe('MarketplaceInstallDialog', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '一键使用' }))
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
 
     await waitFor(() => {
       expect(notifyMock).toHaveBeenCalledWith(

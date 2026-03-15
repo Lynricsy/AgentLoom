@@ -122,14 +122,12 @@ export class MarketplaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InstallMarketplaceListingDto,
   ) {
-    const workflow = await this.marketplaceService.installListing(
+    return this.marketplaceService.installListing(
       tenantId,
       userId,
       id,
       dto,
     );
-
-    return { data: workflow };
   }
 
   @Post('listings/:id/reviews')
@@ -143,7 +141,6 @@ export class MarketplaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SubmitReviewDto,
   ) {
-    const review = await this.reviewUserService.submitReview(userId, id, dto);
-    return { data: review };
+    return this.reviewUserService.submitReview(userId, id, dto);
   }
 }

@@ -44,9 +44,13 @@ describe('MarketplaceController', () => {
   });
 
   describe('install', () => {
-    it('应调用 marketplaceService.installListing 并返回 {data}', async () => {
+    it('应调用 marketplaceService.installListing 并直接返回安装结果', async () => {
       const dto = { name: 'Marketplace 副本' };
-      const mockWorkflow = { id: 'wf-1', name: 'Marketplace 副本' };
+      const mockWorkflow = {
+        workflowDefinitionId: 'wf-1',
+        name: 'Marketplace 副本',
+        message: 'Workflow installed successfully',
+      };
       marketplaceService.installListing.mockResolvedValue(mockWorkflow);
 
       const result = await controller.install(TENANT_ID, USER_ID, LISTING_ID, dto);
@@ -57,14 +61,19 @@ describe('MarketplaceController', () => {
         LISTING_ID,
         dto,
       );
-      expect(result).toEqual({ data: mockWorkflow });
+      expect(result).toEqual(mockWorkflow);
     });
   });
 
   describe('submitReview', () => {
-    it('应调用 reviewUserService.submitReview 并返回 {data}', async () => {
+    it('应调用 reviewUserService.submitReview 并直接返回评论结果', async () => {
       const dto = { rating: 5, content: '非常好用' };
-      const mockReview = { id: 'review-1', rating: 5 };
+      const mockReview = {
+        id: 'review-1',
+        rating: 5,
+        content: '非常好用',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      };
       reviewUserService.submitReview.mockResolvedValue(mockReview);
 
       const result = await controller.submitReview(USER_ID, LISTING_ID, dto);
@@ -74,7 +83,7 @@ describe('MarketplaceController', () => {
         LISTING_ID,
         dto,
       );
-      expect(result).toEqual({ data: mockReview });
+      expect(result).toEqual(mockReview);
     });
   });
 });

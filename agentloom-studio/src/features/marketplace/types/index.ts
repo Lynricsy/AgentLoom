@@ -121,20 +121,20 @@ export const MARKETPLACE_CATEGORIES: {
   value: MarketplaceCategory;
   label: string;
 }[] = [
-  { value: 'analysis', label: 'Analysis' },
-  { value: 'content', label: 'Content' },
-  { value: 'development', label: 'Development' },
-  { value: 'automation', label: 'Automation' },
-  { value: 'reporting', label: 'Reporting' },
+  { value: 'analysis', label: '分析' },
+  { value: 'content', label: '内容' },
+  { value: 'development', label: '开发' },
+  { value: 'automation', label: '自动化' },
+  { value: 'reporting', label: '报告' },
 ];
 
 export const MARKETPLACE_SORT_OPTIONS: {
   value: MarketplaceSortOption;
   label: string;
 }[] = [
-  { value: 'popular', label: 'Most Popular' },
-  { value: 'rating', label: 'Highest Rated' },
-  { value: 'newest', label: 'Newest' },
+  { value: 'popular', label: '最受欢迎' },
+  { value: 'rating', label: '评分最高' },
+  { value: 'newest', label: '最新发布' },
 ];
 
 export interface PublicMarketplaceListingItem {
@@ -177,11 +177,16 @@ export interface PublicListingsFilters {
   pageSize?: number;
 }
 
-export interface PublicListingsResponse {
-  data: PublicMarketplaceListingItem[];
+export interface MarketplacePaginationMeta {
   total: number;
   page: number;
   pageSize: number;
+  totalPages: number;
+}
+
+export interface PublicListingsResponse {
+  data: PublicMarketplaceListingItem[];
+  meta: MarketplacePaginationMeta;
 }
 
 export interface InstallMarketplaceListingRequest {
@@ -190,9 +195,9 @@ export interface InstallMarketplaceListingRequest {
 }
 
 export interface InstallMarketplaceListingResponse {
-  id: string;
+  workflowDefinitionId: string;
   name: string;
-  slug: string;
+  message: string;
 }
 
 export interface SubmitReviewRequest {
@@ -200,9 +205,14 @@ export interface SubmitReviewRequest {
   content?: string;
 }
 
+export interface SubmittedMarketplaceReview {
+  id: string;
+  rating: number;
+  content: string | null;
+  createdAt: string;
+}
+
 export interface ReviewsResponse {
   data: MarketplaceReview[];
-  total: number;
-  page: number;
-  pageSize: number;
+  meta: MarketplacePaginationMeta;
 }

@@ -13,7 +13,9 @@ import {
 } from '../publicMarketplaceApi'
 import { publicMarketplaceKeys } from '../marketplaceKeys'
 import {
+  PUBLIC_MARKETPLACE_DETAIL_STALE_TIME,
   PUBLIC_MARKETPLACE_LIST_STALE_TIME,
+  PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
   useListingReviews,
   usePublicListingDetail,
   usePublicListings,
@@ -23,6 +25,7 @@ import type {
   MarketplaceReview,
   PublicMarketplaceListingDetail,
   PublicMarketplaceListingItem,
+  SubmittedMarketplaceReview,
 } from '../../types'
 
 const { getMock, postMock, toSnakeBodyMock } = vi.hoisted(() => ({
@@ -65,6 +68,18 @@ function makeReview(overrides: Partial<MarketplaceReview> = {}): MarketplaceRevi
     content: 'Excellent workflow.',
     createdAt: '2026-03-15T00:00:00.000Z',
     author: { displayName: '测试用户' },
+    ...overrides,
+  }
+}
+
+function makeSubmittedReview(
+  overrides: Partial<SubmittedMarketplaceReview> = {},
+): SubmittedMarketplaceReview {
+  return {
+    id: 'review-1',
+    rating: 5,
+    content: 'Excellent workflow.',
+    createdAt: '2026-03-15T00:00:00.000Z',
     ...overrides,
   }
 }
@@ -123,9 +138,12 @@ describe('publicMarketplaceApi', () => {
   it('fetches public listings with cleaned filters', async () => {
     const response = {
       data: [makeListing()],
-      total: 1,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -165,9 +183,12 @@ describe('publicMarketplaceApi', () => {
   it('fetches public listing reviews', async () => {
     const response = {
       data: [makeReview()],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      },
     }
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -183,13 +204,13 @@ describe('publicMarketplaceApi', () => {
 
   it('installs a marketplace listing with snake-cased body payload', async () => {
     const request = {
-      name: 'Agent Workflow Copy',
+      name: 'Agent Workflow 副本',
       description: 'Install this workflow into my workspace.',
     }
     const response = {
-      id: 'workflow-1',
-      name: 'Agent Workflow Copy',
-      slug: 'agent-workflow-copy',
+      workflowDefinitionId: 'workflow-1',
+      name: 'Agent Workflow 副本',
+      message: 'Workflow installed successfully',
     }
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -205,7 +226,7 @@ describe('publicMarketplaceApi', () => {
   })
 
   it('submits a marketplace review', async () => {
-    const response = makeReview()
+    const response = makeSubmittedReview()
     const request = { rating: 5, content: 'Great workflow.' }
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -228,9 +249,12 @@ describe('publicMarketplace query hooks', () => {
   it('returns public listings data and sets stale time', async () => {
     const response = {
       data: [makeListing()],
-      total: 1,
-      page: 1,
-      pageSize: 12,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
     }
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -263,7 +287,7 @@ describe('publicMarketplace query hooks', () => {
       json: vi.fn().mockResolvedValue(response),
     })
 
-    const { wrapper } = createWrapper()
+    const { queryClient, wrapper } = createWrapper()
     const { result } = renderHook(() => usePublicListingDetail('listing-1'), {
       wrapper,
     })
@@ -272,20 +296,30 @@ describe('publicMarketplace query hooks', () => {
 
     expect(result.current.data).toEqual(response)
     expect(getMock).toHaveBeenCalledWith('marketplace/browse/listing-1')
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: publicMarketplaceKeys.detail('listing-1'),
+    })
+    expect(query?.options).toMatchObject({
+      staleTime: PUBLIC_MARKETPLACE_DETAIL_STALE_TIME,
+    })
   })
 
   it('returns listing reviews data when id exists', async () => {
     const response = {
       data: [makeReview()],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      },
     }
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
     })
 
-    const { wrapper } = createWrapper()
+    const { queryClient, wrapper } = createWrapper()
     const { result } = renderHook(() => useListingReviews('listing-1'), {
       wrapper,
     })
@@ -295,6 +329,13 @@ describe('publicMarketplace query hooks', () => {
     expect(result.current.data).toEqual(response)
     expect(getMock).toHaveBeenCalledWith('marketplace/browse/listing-1/reviews', {
       searchParams: { page: 1, pageSize: 20 },
+    })
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: publicMarketplaceKeys.reviews('listing-1'),
+    })
+    expect(query?.options).toMatchObject({
+      staleTime: PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
     })
   })
 })
@@ -306,9 +347,9 @@ describe('publicMarketplace mutation hooks', () => {
 
   it('install mutation invalidates public marketplace caches', async () => {
     const response = {
-      id: 'workflow-1',
-      name: 'Agent Workflow Copy',
-      slug: 'agent-workflow-copy',
+      workflowDefinitionId: 'workflow-1',
+      name: 'Agent Workflow 副本',
+      message: 'Workflow installed successfully',
     }
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(response),
@@ -321,12 +362,12 @@ describe('publicMarketplace mutation hooks', () => {
     await act(async () => {
       await result.current.mutateAsync({
         id: 'listing-1',
-        body: { name: 'Agent Workflow Copy' },
+        body: { name: 'Agent Workflow 副本' },
       })
     })
 
     expect(postMock).toHaveBeenCalledWith('marketplace/listings/listing-1/install', {
-      json: { name: 'Agent Workflow Copy' },
+      json: { name: 'Agent Workflow 副本' },
     })
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
@@ -337,7 +378,7 @@ describe('publicMarketplace mutation hooks', () => {
 
   it('submit review mutation invalidates detail and review caches', async () => {
     postMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue(makeReview()),
+      json: vi.fn().mockResolvedValue(makeSubmittedReview()),
     })
 
     const { queryClient, wrapper } = createWrapper()

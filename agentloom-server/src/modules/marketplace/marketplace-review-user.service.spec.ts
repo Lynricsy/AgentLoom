@@ -84,7 +84,7 @@ describe('MarketplaceReviewUserService', () => {
   });
 
   describe('submitReview', () => {
-    it('应创建评论、回算评分并返回带作者信息的评论', async () => {
+    it('应创建评论、回算评分并返回精简评论数据', async () => {
       const insertChain = createInsertChain([{ id: REVIEW_ID }]);
       const updateChain = createUpdateWhereChain(undefined);
 
@@ -94,17 +94,12 @@ describe('MarketplaceReviewUserService', () => {
           createSelectChain([{ avgRating: '5.00', reviewCount: 1 }]),
         )
         .mockReturnValueOnce(
-          createSelectChainWithSingleJoin([
+          createSelectChain([
             {
               id: REVIEW_ID,
-              listingId: LISTING_ID,
               rating: 5,
               content: '非常实用',
               createdAt: NOW,
-              updatedAt: NOW,
-              authorId: USER_ID,
-              authorDisplayName: '评论用户',
-              authorAvatarUrl: null,
             },
           ]),
         );
@@ -131,16 +126,9 @@ describe('MarketplaceReviewUserService', () => {
       );
       expect(result).toEqual({
         id: REVIEW_ID,
-        listingId: LISTING_ID,
         rating: 5,
         content: '非常实用',
         createdAt: NOW,
-        updatedAt: NOW,
-        author: {
-          id: USER_ID,
-          displayName: '评论用户',
-          avatarUrl: null,
-        },
       });
     });
 
@@ -164,49 +152,47 @@ describe('MarketplaceReviewUserService', () => {
   });
 
   describe('findReviewsByListing', () => {
-    it('应返回分页评论列表并对 pageSize 做上限保护', async () => {
+    it('应返回分页评论列表', async () => {
       const dataChain = createSelectChainWithPaginatedJoin([
         {
           id: REVIEW_ID,
-          listingId: LISTING_ID,
           rating: 4,
           content: '很好',
           createdAt: NOW,
-          updatedAt: NOW,
-          authorId: USER_ID,
           authorDisplayName: '评论用户',
-          authorAvatarUrl: 'https://cdn.agentloom.dev/avatar.png',
         },
       ]);
 
       db.select
         .mockReturnValueOnce(createSelectChain([{ id: LISTING_ID }]))
         .mockReturnValueOnce(dataChain)
-        .mockReturnValueOnce(createSelectChain([{ count: 3 }]));
+        .mockReturnValueOnce(createSelectChain([{ count: 75 }]));
 
-      const result = await service.findReviewsByListing(LISTING_ID, 2, 120);
+      const result = await service.findReviewsByListing(LISTING_ID, {
+        page: 2,
+        pageSize: 50,
+      });
 
-      expect(dataChain.limit).toHaveBeenCalledWith(100);
-      expect(dataChain.offset).toHaveBeenCalledWith(100);
+      expect(dataChain.limit).toHaveBeenCalledWith(50);
+      expect(dataChain.offset).toHaveBeenCalledWith(50);
       expect(result).toEqual({
         data: [
           {
             id: REVIEW_ID,
-            listingId: LISTING_ID,
             rating: 4,
             content: '很好',
             createdAt: NOW,
-            updatedAt: NOW,
             author: {
-              id: USER_ID,
               displayName: '评论用户',
-              avatarUrl: 'https://cdn.agentloom.dev/avatar.png',
             },
           },
         ],
-        total: 3,
-        page: 2,
-        pageSize: 100,
+        meta: {
+          page: 2,
+          pageSize: 50,
+          total: 75,
+          totalPages: 2,
+        },
       });
     });
 
@@ -214,7 +200,7 @@ describe('MarketplaceReviewUserService', () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
-        service.findReviewsByListing(LISTING_ID, 1, 20),
+        service.findReviewsByListing(LISTING_ID, { page: 1, pageSize: 20 }),
       ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
     });
   });

@@ -177,6 +177,12 @@ export {
   type NewMarketplaceReview,
 } from './marketplace-reviews.schema';
 export {
+  shareTypeEnum,
+  workflowShares,
+  type WorkflowShare,
+  type NewWorkflowShare,
+} from './workflow-shares.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

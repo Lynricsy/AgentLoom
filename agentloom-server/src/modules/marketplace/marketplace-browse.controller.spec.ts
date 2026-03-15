@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { MarketplaceBrowseController } from './marketplace-browse.controller';
+import type { QueryPublicListingsDto } from './dto/marketplace.dto';
 import type { MarketplaceReviewUserService } from './marketplace-review-user.service';
 import type { MarketplaceService } from './marketplace.service';
 
@@ -31,18 +32,21 @@ describe('MarketplaceBrowseController', () => {
 
   describe('list', () => {
     it('应将查询参数透传给 marketplaceService.findPublicListings', async () => {
-      const query = {
-        category: 'analysis',
+      const query: QueryPublicListingsDto = {
+        category: 'analysis' as const,
         search: 'market',
-        sort: 'rating',
+        sort: 'rating' as const,
         page: 2,
         pageSize: 5,
       };
       const mockResult = {
         data: [{ id: LISTING_ID, title: '公开 listing' }],
-        total: 1,
-        page: 2,
-        pageSize: 5,
+        meta: {
+          page: 2,
+          pageSize: 5,
+          total: 1,
+          totalPages: 1,
+        },
       };
       marketplaceService.findPublicListings.mockResolvedValue(mockResult);
 
@@ -69,9 +73,12 @@ describe('MarketplaceBrowseController', () => {
     it('应调用 reviewUserService.findReviewsByListing', async () => {
       const mockResult = {
         data: [{ id: 'review-1', rating: 5 }],
-        total: 1,
-        page: 1,
-        pageSize: 20,
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
       };
       reviewUserService.findReviewsByListing.mockResolvedValue(mockResult);
 
@@ -82,8 +89,10 @@ describe('MarketplaceBrowseController', () => {
 
       expect(reviewUserService.findReviewsByListing).toHaveBeenCalledWith(
         LISTING_ID,
-        1,
-        20,
+        {
+          page: 1,
+          pageSize: 20,
+        },
       );
       expect(result).toEqual(mockResult);
     });

@@ -25,7 +25,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
 }: MarketplaceListingCardProps) {
   const categoryLabel = listing.category
     ? CATEGORY_LABELS[listing.category]
-    : 'Uncategorized'
+    : '未分类'
 
   return (
     <button
@@ -44,7 +44,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
               {categoryLabel}
             </span>
             <span className="text-xs text-muted-foreground">
-              by {listing.author.displayName}
+              作者：{listing.author.displayName}
             </span>
           </div>
           <h3 className="line-clamp-2 text-base font-semibold text-foreground">
@@ -75,7 +75,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
         <StarRating rating={listing.avgRating} count={listing.reviewCount} size="sm" />
         <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <Download className="h-3.5 w-3.5" />
-          <span>{listing.useCount} installs</span>
+          <span>{listing.useCount} 次安装</span>
         </div>
       </div>
     </button>

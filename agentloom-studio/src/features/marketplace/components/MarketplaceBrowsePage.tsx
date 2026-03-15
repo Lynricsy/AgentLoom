@@ -29,7 +29,7 @@ import { MarketplaceDetailDialog } from './MarketplaceDetailDialog'
 type BrowseCategory = MarketplaceCategory | 'all'
 
 const CATEGORY_TABS: { value: BrowseCategory; label: string }[] = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: '全部' },
   ...MARKETPLACE_CATEGORIES,
 ]
 
@@ -66,8 +66,8 @@ export function MarketplaceBrowsePage() {
   const { data, isLoading, isError, refetch } = usePublicListings(filters)
 
   const listings = data?.data ?? []
-  const total = data?.total ?? 0
-  const totalPages = data ? Math.max(1, Math.ceil(total / data.pageSize)) : 1
+  const total = data?.meta.total ?? 0
+  const totalPages = data?.meta.totalPages ?? 0
 
   const handleCategoryChange = useCallback((nextCategory: string) => {
     setCategory(nextCategory as BrowseCategory)
@@ -102,7 +102,7 @@ export function MarketplaceBrowsePage() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Store className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">Marketplace</h1>
+            <h1 className="text-2xl font-bold">工作流市场</h1>
           </div>
           <p className="text-sm text-muted-foreground">
             浏览社区共享工作流，并一键安装到你的工作区。
@@ -123,7 +123,7 @@ export function MarketplaceBrowsePage() {
           <Input
             value={searchInput}
             onChange={handleSearchChange}
-            placeholder="Search marketplace listings"
+            placeholder="搜索市场工作流"
             className="pl-9"
             data-testid="marketplace-search-input"
           />
@@ -132,7 +132,7 @@ export function MarketplaceBrowsePage() {
         <Select
           value={sort}
           onValueChange={handleSortChange}
-          aria-label="Sort marketplace listings"
+          aria-label="排序市场工作流"
           data-testid="marketplace-sort-select"
         >
           {MARKETPLACE_SORT_OPTIONS.map((option) => (
@@ -190,15 +190,15 @@ export function MarketplaceBrowsePage() {
         >
           <Store className="h-10 w-10 text-muted-foreground" />
           <div className="space-y-1">
-            <p className="text-base font-medium text-foreground">No listings found</p>
+            <p className="text-base font-medium text-foreground">未找到工作流</p>
             <p className="text-sm text-muted-foreground">尝试调整分类、搜索词或排序方式。</p>
           </div>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{total} listings</span>
-            <span>Page {page}</span>
+            <span>共 {total} 个工作流</span>
+            <span>第 {page} 页</span>
           </div>
 
           <div

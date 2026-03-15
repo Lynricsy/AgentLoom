@@ -141,10 +141,11 @@ Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)�
 ## Marketplace（Story 9-2）
 
 - public browse 路由：`GET /marketplace/browse`、`GET /marketplace/browse/:id`、`GET /marketplace/browse/:id/reviews`，已在 `AppModule.configure()` 中显式从 `TenantMiddleware` 排除。
-- `MarketplaceService.findPublicListings()` 支持 `category/search/sort(popular|rating|newest)`；作者名统一使用 `displayName ?? email`。
-- `MarketplaceReviewUserService` 负责用户评论写入、分页查询和 `avg_rating/review_count` 回刷；重复评论通过唯一索引映射为 409。
-- `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部走 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆快照，并原子递增 `use_count`。
-- marketplace clone 会从 `workflow_versions.snapshot` 复制 `nodes/edges/viewport/inputSchema`，若 `snapshot.viewport === null` 则回退 `{ x: 0, y: 0, zoom: 1 }`，并写入 `metadata.cloned_from_marketplace`。
+- `MarketplaceService.findPublicListings()` 支持 `category/search/sort(popular|rating|newest)`，并用 `array_to_string(tags, ' ') ILIKE` 补齐 tags 搜索；public browse 现返回 `{ data, meta }`，作者仅暴露 `displayName`。
+- `MarketplaceService.findPublicById()` 只返回 `definition { nodes, edges, viewport }` 与 latest 20 reviews，不再暴露 `workflowVersionId`、`definition.inputSchema`、author id/avatar 等内部字段。
+- `GET /marketplace/browse/:id/reviews` 现使用 `QueryPublicReviewsDto`（`pageSize.max(50)`）并返回 `{ data, meta }`；`MarketplaceReviewUserService.submitReview()` 返回精简 `{ id, rating, content, createdAt }`，重复评论继续映射 409。
+- `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部仍通过 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆 snapshot + inputSchema、写入 `metadata.cloned_from_marketplace`，并原子递增 `use_count`，但公开响应已收敛为 `{ workflowDefinitionId, name, message }`。
+- marketplace 相关 code-review 复验已通过：定向单测 34、定向 E2E 22、`pnpm build`。
 
 ## WebSocket
 

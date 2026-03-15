@@ -9,6 +9,8 @@ import { publicMarketplaceKeys } from './marketplaceKeys'
 import type { PublicListingsFilters } from '../types'
 
 export const PUBLIC_MARKETPLACE_LIST_STALE_TIME = 2 * 60 * 1000
+export const PUBLIC_MARKETPLACE_DETAIL_STALE_TIME = 5 * 60 * 1000
+export const PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME = 2 * 60 * 1000
 
 export function usePublicListings(filters: PublicListingsFilters) {
   return useQuery({
@@ -23,6 +25,7 @@ export function usePublicListingDetail(id: string | null) {
     queryKey: publicMarketplaceKeys.detail(id ?? ''),
     queryFn: () => fetchPublicListingDetail(id!),
     enabled: !!id,
+    staleTime: PUBLIC_MARKETPLACE_DETAIL_STALE_TIME,
   })
 }
 
@@ -31,5 +34,6 @@ export function useListingReviews(id: string | null) {
     queryKey: publicMarketplaceKeys.reviews(id ?? ''),
     queryFn: () => fetchListingReviews(id!),
     enabled: !!id,
+    staleTime: PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
   })
 }

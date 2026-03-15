@@ -9,7 +9,7 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
-import { Loader2, X } from 'lucide-react'
+import { Download, Loader2, X } from 'lucide-react'
 
 import {
   useListingReviews,
@@ -99,6 +99,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
 
   const listing = detailQuery.data
   const reviews = reviewsQuery.data?.data ?? listing?.reviews ?? []
+  const reviewsTotal = reviewsQuery.data?.meta.total ?? listing?.reviewCount ?? reviews.length
   const previewNodes = useMemo(() => toPreviewNodes(listing?.definition.nodes), [listing?.definition.nodes])
   const previewEdges = useMemo(() => toPreviewEdges(listing?.definition.edges), [listing?.definition.edges])
 
@@ -145,12 +146,16 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                 </Dialog.Description>
 
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span>by {listing.author.displayName}</span>
+                  <span>作者：{listing.author.displayName}</span>
                   {listing.category ? (
                     <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                       {CATEGORY_LABELS[listing.category]}
                     </span>
                   ) : null}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Download className="h-3.5 w-3.5" />
+                    <span>{listing.useCount} 次安装</span>
+                  </span>
                   <StarRating rating={listing.avgRating} count={listing.reviewCount} />
                 </div>
 
@@ -182,7 +187,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                       onClick={() => setInstallOpen(true)}
                       className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     >
-                      一键使用
+                      安装到工作区
                     </button>
                   </div>
 
@@ -220,7 +225,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                   <div className="space-y-1">
                     <h3 className="text-sm font-medium text-foreground">用户评价</h3>
                     <p className="text-xs text-muted-foreground">
-                      {reviewsQuery.isLoading ? '正在加载评价…' : `共 ${reviews.length} 条评价`}
+                      {reviewsQuery.isLoading ? '正在加载评价…' : `共 ${reviewsTotal} 条评价`}
                     </p>
                   </div>
                   <ReviewList reviews={reviews} />

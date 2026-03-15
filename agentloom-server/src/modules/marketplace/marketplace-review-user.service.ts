@@ -3,44 +3,49 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import { SubmitReviewSchema } from './dto/marketplace.dto';
+import {
+  QueryPublicReviewsSchema,
+  SubmitReviewSchema,
+} from './dto/marketplace.dto';
 import {
   MarketplaceListingNotFoundException,
   MarketplaceReviewConflictException,
 } from './marketplace.exceptions';
 
 interface MarketplaceReviewAuthor {
-  id: string;
   displayName: string;
-  avatarUrl: string | null;
 }
 
 export interface MarketplaceUserReviewItem {
   id: string;
-  listingId: string;
   rating: number;
   content: string | null;
   createdAt: Date;
-  updatedAt: Date;
   author: MarketplaceReviewAuthor;
 }
 
 export interface MarketplaceListingReviewsResult {
   data: MarketplaceUserReviewItem[];
-  total: number;
-  page: number;
-  pageSize: number;
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface MarketplaceSubmittedReviewItem {
+  id: string;
+  rating: number;
+  content: string | null;
+  createdAt: Date;
 }
 
 function buildReviewAuthor(params: {
-  id: string;
   displayName: string | null;
-  avatarUrl: string | null;
 }): MarketplaceReviewAuthor {
   return {
-    id: params.id,
     displayName: params.displayName ?? '未知用户',
-    avatarUrl: params.avatarUrl,
   };
 }
 
@@ -48,7 +53,11 @@ function buildReviewAuthor(params: {
 export class MarketplaceReviewUserService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
-  async submitReview(userId: string, listingId: string, dto: unknown) {
+  async submitReview(
+    userId: string,
+    listingId: string,
+    dto: unknown,
+  ): Promise<MarketplaceSubmittedReviewItem> {
     const parsedDto = SubmitReviewSchema.parse(dto);
 
     await this.ensureListedListingExists(listingId);
@@ -91,34 +100,25 @@ export class MarketplaceReviewUserService {
 
   async findReviewsByListing(
     listingId: string,
-    page = 1,
-    pageSize = 20,
+    query: unknown,
   ): Promise<MarketplaceListingReviewsResult> {
     await this.ensureListedListingExists(listingId);
 
-    const normalizedPage =
-      Number.isFinite(Number(page)) && Number(page) > 0 ? Math.trunc(Number(page)) : 1;
-    const normalizedPageSize = Math.min(
-      100,
-      Number.isFinite(Number(pageSize)) && Number(pageSize) > 0
-        ? Math.trunc(Number(pageSize))
-        : 20,
-    );
+    const parsedQuery = QueryPublicReviewsSchema.parse(query);
+    const { page, pageSize } = parsedQuery;
+    const normalizedPage = page;
+    const normalizedPageSize = pageSize;
     const offset = (normalizedPage - 1) * normalizedPageSize;
 
     const [data, countResult] = await Promise.all([
       this.db
         .select({
           id: schema.marketplaceReviews.id,
-          listingId: schema.marketplaceReviews.listingId,
           rating: schema.marketplaceReviews.rating,
           content: schema.marketplaceReviews.content,
           createdAt: schema.marketplaceReviews.createdAt,
-          updatedAt: schema.marketplaceReviews.updatedAt,
-          authorId: schema.marketplaceReviews.userId,
           authorDisplayName:
             sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
-          authorAvatarUrl: schema.users.avatarUrl,
         })
         .from(schema.marketplaceReviews)
         .leftJoin(schema.users, eq(schema.marketplaceReviews.userId, schema.users.id))
@@ -135,20 +135,22 @@ export class MarketplaceReviewUserService {
     return {
       data: data.map((review) => ({
         id: review.id,
-        listingId: review.listingId,
         rating: review.rating,
         content: review.content,
         createdAt: review.createdAt,
-        updatedAt: review.updatedAt,
         author: buildReviewAuthor({
-          id: review.authorId,
           displayName: review.authorDisplayName,
-          avatarUrl: review.authorAvatarUrl,
         }),
       })),
-      total: countResult[0]?.count ?? 0,
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
+      meta: {
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: countResult[0]?.count ?? 0,
+        totalPages:
+          (countResult[0]?.count ?? 0) === 0
+            ? 0
+            : Math.ceil((countResult[0]?.count ?? 0) / normalizedPageSize),
+      },
     };
   }
 
@@ -187,22 +189,17 @@ export class MarketplaceReviewUserService {
     }
   }
 
-  private async findReviewById(reviewId: string): Promise<MarketplaceUserReviewItem> {
+  private async findReviewById(
+    reviewId: string,
+  ): Promise<MarketplaceSubmittedReviewItem> {
     const [review] = await this.db
       .select({
         id: schema.marketplaceReviews.id,
-        listingId: schema.marketplaceReviews.listingId,
         rating: schema.marketplaceReviews.rating,
         content: schema.marketplaceReviews.content,
         createdAt: schema.marketplaceReviews.createdAt,
-        updatedAt: schema.marketplaceReviews.updatedAt,
-        authorId: schema.marketplaceReviews.userId,
-        authorDisplayName:
-          sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
-        authorAvatarUrl: schema.users.avatarUrl,
       })
       .from(schema.marketplaceReviews)
-      .leftJoin(schema.users, eq(schema.marketplaceReviews.userId, schema.users.id))
       .where(eq(schema.marketplaceReviews.id, reviewId));
 
     if (!review) {
@@ -211,16 +208,9 @@ export class MarketplaceReviewUserService {
 
     return {
       id: review.id,
-      listingId: review.listingId,
       rating: review.rating,
       content: review.content,
       createdAt: review.createdAt,
-      updatedAt: review.updatedAt,
-      author: buildReviewAuthor({
-        id: review.authorId,
-        displayName: review.authorDisplayName,
-        avatarUrl: review.authorAvatarUrl,
-      }),
     };
   }
 }

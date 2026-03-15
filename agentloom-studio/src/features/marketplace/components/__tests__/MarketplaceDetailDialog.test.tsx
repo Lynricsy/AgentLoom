@@ -189,9 +189,12 @@ describe('MarketplaceDetailDialog', () => {
     detailQueryMock.isError = false
     reviewsQueryMock.data = {
       data: detailQueryMock.data.reviews,
-      total: detailQueryMock.data.reviews.length,
-      page: 1,
-      pageSize: 20,
+      meta: {
+        total: detailQueryMock.data.reviews.length,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      },
     }
     reviewsQueryMock.isLoading = false
     reviewsQueryMock.isError = false
@@ -212,7 +215,8 @@ describe('MarketplaceDetailDialog', () => {
     expect(
       screen.getByText('A detailed workflow summary for marketplace preview.'),
     ).toBeInTheDocument()
-    expect(screen.getByText('by 酒狐')).toBeInTheDocument()
+    expect(screen.getByText('作者：酒狐')).toBeInTheDocument()
+    expect(screen.getByText('42 次安装')).toBeInTheDocument()
     expect(screen.getByText('4.5')).toBeInTheDocument()
     expect(screen.getByTestId('marketplace-preview')).toBeInTheDocument()
     expect(screen.getByTestId('reactflow-preview')).toHaveAttribute(
@@ -237,7 +241,7 @@ describe('MarketplaceDetailDialog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '一键使用' }))
+    fireEvent.click(screen.getByRole('button', { name: '安装到工作区' }))
 
     expect(screen.getByTestId('marketplace-install-dialog')).toBeInTheDocument()
     expect(screen.getByText('Install: Agent Workflow')).toBeInTheDocument()
