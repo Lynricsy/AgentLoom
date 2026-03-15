@@ -15,6 +15,7 @@ import { templatesRoute } from "./templates";
 import { marketplaceRoute } from "./marketplace";
 import { marketplaceMyListingsRoute } from './marketplace.my-listings';
 import { shareTokenRoute } from './share.$token';
+import { encryptionSettingsRoute } from './settings/encryption';
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -80,4 +81,5 @@ export const routeTree = rootRoute.addChildren([
   marketplaceRoute,
   marketplaceMyListingsRoute,
   shareTokenRoute,
+  encryptionSettingsRoute,
 ]);

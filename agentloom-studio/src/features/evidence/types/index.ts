@@ -152,6 +152,12 @@ export interface EvidenceRecord {
   contentHash: string;
   parentEvidenceId?: string | null;
   createdAt: string;
+  encryptionMetadata?: {
+    isEncrypted: boolean;
+    keyFingerprint?: string;
+    algorithm?: string;
+    encryptedAt?: string;
+  };
 }
 
 export interface EvidenceVerifyResult {
@@ -206,6 +212,12 @@ export interface EvidenceChainNode {
   unavailableReason?: string;
   originalSnapshot?: string;
   children: EvidenceChainNode[];
+  encryptionMetadata?: {
+    isEncrypted: boolean;
+    keyFingerprint?: string;
+    algorithm?: string;
+    encryptedAt?: string;
+  };
 }
 
 export interface EvidenceChainResponse {

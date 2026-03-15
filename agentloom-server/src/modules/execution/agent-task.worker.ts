@@ -27,6 +27,7 @@ import { ToolCallStateMachineService } from './services/tool-call-state-machine.
 import { SessionPersistenceService } from './services/session-persistence.service';
 import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
 import { NotificationService } from '../notification/notification.service';
+import { LlmEncryptionService } from '../llm/llm-encryption.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
@@ -83,6 +84,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly sessionPersistence: SessionPersistenceService,
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly notificationService: NotificationService,
+    private readonly llmEncryptionService: LlmEncryptionService,
   ) {
     super();
   }
@@ -333,6 +335,39 @@ export class AgentTaskWorker extends WorkerHost {
         result.decision = decision;
       }
 
+      // E2EE: 加密 LLM 输出（如租户已配置加密密钥）
+      let isEncrypted = false;
+      try {
+        const orgId = await this.resolveOrgId(tenantId);
+        if (orgId && (await this.llmEncryptionService.isE2EEEnabled(tenantId, orgId))) {
+          const encryptedContent = await this.llmEncryptionService.encryptForTenant(
+            tenantId,
+            orgId,
+            typeof accumulatedContent === 'string'
+              ? accumulatedContent
+              : JSON.stringify(accumulatedContent),
+          );
+          result.encryptedContent = encryptedContent;
+          result.content = '[ENCRYPTED]';
+          result.encryptionMetadata = {
+            algorithm: encryptedContent.algorithm,
+            keyFingerprint: encryptedContent.keyFingerprint,
+            encryptedAt: new Date().toISOString(),
+          };
+          isEncrypted = true;
+          this.logger.debug(
+            `E2EE: 已加密步骤 ${stepId} 的 LLM 输出 (fingerprint: ${encryptedContent.keyFingerprint})`,
+          );
+        }
+      } catch (encryptionError) {
+        // 优雅降级：加密失败时保留明文并记录警告
+        this.logger.warn(
+          `E2EE: 加密失败，降级为明文存储: ${encryptionError instanceof Error ? encryptionError.message : String(encryptionError)}`,
+          { executionId, stepId },
+        );
+        result.encryptionFailed = true;
+      }
+
       await this.withTenantContext(tenantId, async () => {
         await this.stepStateMachine.updateStepStatus(
           tenantId,
@@ -340,6 +375,7 @@ export class AgentTaskWorker extends WorkerHost {
           'completed',
           {
             result,
+            ...(isEncrypted ? { isEncrypted } : {}),
           },
         );
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
@@ -1418,6 +1454,15 @@ export class AgentTaskWorker extends WorkerHost {
     return typeof job.opts.attempts === 'number' && job.opts.attempts > 0
       ? job.opts.attempts
       : 1;
+  }
+
+  private async resolveOrgId(tenantId: string): Promise<string | null> {
+    const result = await this.tenantDb
+      .select({ id: schema.organizations.id })
+      .from(schema.organizations)
+      .where(eq(schema.organizations.tenantId, tenantId))
+      .limit(1);
+    return result[0]?.id ?? null;
   }
 
   private async withTenantContext<T>(

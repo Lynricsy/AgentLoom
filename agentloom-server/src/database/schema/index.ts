@@ -191,3 +191,9 @@ export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
+export {
+  encryptionKeyStatusEnum,
+  tenantEncryptionKeys,
+  type TenantEncryptionKey,
+  type NewTenantEncryptionKey,
+} from './tenant-encryption-keys.schema';

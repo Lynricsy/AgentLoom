@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   foreignKey,
   index,
   jsonb,
@@ -165,6 +166,8 @@ export const evidenceRecords = pgTable(
     packet: jsonb('packet').$type<EvidencePacket>().notNull(),
     contentHash: varchar('content_hash', { length: 64 }).notNull(),
     parentEvidenceId: uuid('parent_evidence_id'),
+    isEncrypted: boolean('is_encrypted').notNull().default(false),
+    encryptionMetadata: jsonb('encryption_metadata').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

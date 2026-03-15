@@ -6,6 +6,7 @@ import {
   jsonb,
   timestamp,
   integer,
+  boolean,
   index,
   text,
 } from 'drizzle-orm/pg-core';
@@ -81,6 +82,8 @@ export const executionSteps = pgTable(
     checkpointData: jsonb('checkpoint_data').$type<Record<string, unknown>>(),
 
     errorMessage: jsonb('error_message').$type<ExecutionStepErrorMessage>(),
+
+    isEncrypted: boolean('is_encrypted').notNull().default(false),
 
     startedAt: timestamp('started_at', { withTimezone: true }),
 

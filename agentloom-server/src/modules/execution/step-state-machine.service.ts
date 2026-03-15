@@ -59,6 +59,7 @@ export class StepStateMachineService {
       result?: schema.NewExecutionStep['result'];
       errorMessage?: schema.NewExecutionStep['errorMessage'];
       checkpointData?: schema.NewExecutionStep['checkpointData'];
+      isEncrypted?: boolean;
     },
   ): Promise<schema.ExecutionStep> {
     const [step] = await this.tenantDb
@@ -93,6 +94,9 @@ export class StepStateMachineService {
           : {}),
         ...(extra?.checkpointData !== undefined
           ? { checkpointData: extra.checkpointData }
+          : {}),
+        ...(extra?.isEncrypted !== undefined
+          ? { isEncrypted: extra.isEncrypted }
           : {}),
       })
       .where(

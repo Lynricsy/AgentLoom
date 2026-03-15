@@ -31,6 +31,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { TemplateModule } from './modules/template/template.module';
 import { ReusableBlockModule } from './modules/reusable-block/reusable-block.module';
+import { TenantKeyModule } from './modules/tenant-key/tenant-key.module';
 import { TriggerModule } from './modules/trigger/trigger.module';
 import { InterventionPolicyModule } from './modules/intervention-policy/intervention-policy.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
@@ -99,6 +100,7 @@ function createThrottlerOptions(configService: ConfigService) {
     EvidenceModule,
     TemplateModule,
     ReusableBlockModule,
+    TenantKeyModule,
     TriggerModule,
     InterventionPolicyModule,
     MarketplaceModule,

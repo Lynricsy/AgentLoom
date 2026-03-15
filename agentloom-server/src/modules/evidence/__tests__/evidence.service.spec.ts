@@ -19,6 +19,7 @@ import {
   EvidenceNotFoundException,
   InvalidEvidencePacketException,
 } from '../evidence.exceptions';
+import { LlmEncryptionService } from '../../llm/llm-encryption.service';
 import { EvidenceService } from '../evidence.service';
 
 const mocks = vi.hoisted(() => ({
@@ -35,6 +36,10 @@ const mocks = vi.hoisted(() => ({
     set: vi.fn(),
     del: vi.fn(),
     delByPattern: vi.fn(),
+  },
+  llmEncryptionService: {
+    isE2EEEnabled: vi.fn().mockResolvedValue(false),
+    encryptForTenant: vi.fn(),
   },
 }));
 
@@ -290,11 +295,15 @@ describe('EvidenceService', () => {
       ) => operation(mocks.tenantDb),
     );
 
+    mocks.llmEncryptionService.isE2EEEnabled.mockReset().mockResolvedValue(false);
+    mocks.llmEncryptionService.encryptForTenant.mockReset();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EvidenceService,
         { provide: DRIZZLE, useValue: {} },
         { provide: RedisCacheService, useValue: mocks.cacheService },
+        { provide: LlmEncryptionService, useValue: mocks.llmEncryptionService },
       ],
     }).compile();
 

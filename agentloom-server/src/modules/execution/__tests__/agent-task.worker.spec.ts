@@ -10,6 +10,7 @@ import { EventBridgeService } from '../services/event-bridge.service';
 import { SessionPersistenceService } from '../services/session-persistence.service';
 import { ToolCallStateMachineService } from '../services/tool-call-state-machine.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
+import { LlmEncryptionService } from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
 import {
   AgentExecutionException,
@@ -282,6 +283,13 @@ describe('AgentTaskWorker', () => {
           useValue: mockInterventionPolicyService,
         },
         { provide: NotificationService, useValue: mockNotificationService },
+        {
+          provide: LlmEncryptionService,
+          useValue: {
+            isE2EEEnabled: vi.fn().mockResolvedValue(false),
+            encryptForTenant: vi.fn(),
+          },
+        },
         { provide: ThrottleService, useValue: mockThrottle },
         { provide: EventBridgeService, useValue: mockEventBridge },
         {

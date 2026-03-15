@@ -4,13 +4,19 @@ import {
   AlertTriangle,
   Bot,
   FileSearch2,
+  Loader2,
+  Lock,
   MessageSquare,
   ShieldCheck,
+  Unlock,
   Wrench,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { useDecryptContent } from '@/features/tenant-key/hooks/useDecryptContent'
+import type { EncryptedPayload } from '@/features/tenant-key/types'
 
 import { useEvidenceDetail, useEvidenceVerify } from '../api/evidenceQueries'
 import type {
@@ -328,6 +334,7 @@ export const EvidenceCard = memo(function EvidenceCard({
   className,
 }: EvidenceCardProps) {
   const [snapshotVisible, setSnapshotVisible] = useState(false)
+  const [decryptedContent, setDecryptedContent] = useState<string | null>(null)
   const config = sourceTypeConfig[node.sourceType] ?? sourceTypeConfig.rag_retrieval
   const Icon = config.icon
 
@@ -335,6 +342,39 @@ export const EvidenceCard = memo(function EvidenceCard({
   const detailRecord = detailQuery.data?.data
   const verifyQuery = useEvidenceVerify(node.executionId, node.evidenceId)
   const refetchVerify = verifyQuery.refetch
+
+  const isEncrypted =
+    node.encryptionMetadata?.isEncrypted === true ||
+    detailRecord?.encryptionMetadata?.isEncrypted === true
+
+  const { decrypt, isDecrypting, error: decryptError, clearError } = useDecryptContent()
+
+  async function handleDecrypt() {
+    clearError()
+    const encMeta =
+      detailRecord?.encryptionMetadata ?? node.encryptionMetadata
+    if (!encMeta?.keyFingerprint) return
+
+    const packetData = detailRecord?.packet as unknown as Record<string, unknown> | undefined
+    const encryptedPayload = packetData?.encryptedPacket as EncryptedPayload | undefined
+    if (!encryptedPayload) {
+      const syntheticPayload: EncryptedPayload = {
+        ciphertext: '',
+        encryptedSessionKey: '',
+        iv: '',
+        authTag: '',
+        aad: '',
+        keyFingerprint: encMeta.keyFingerprint,
+        algorithm: encMeta.algorithm ?? 'RSA-OAEP+AES-256-GCM',
+      }
+      const result = await decrypt(syntheticPayload)
+      if (result) setDecryptedContent(result)
+      return
+    }
+
+    const result = await decrypt(encryptedPayload)
+    if (result) setDecryptedContent(result)
+  }
 
   useEffect(() => {
     if (node.sourceType !== 'rag_retrieval' || node.sourceUnavailable) {
@@ -383,6 +423,12 @@ export const EvidenceCard = memo(function EvidenceCard({
             <span className="truncate text-xs font-medium text-foreground">
               {node.packetSummary?.title ?? config.label}
             </span>
+            {isEncrypted && !decryptedContent && (
+              <Lock className="h-3 w-3 shrink-0 text-amber-500" />
+            )}
+            {isEncrypted && decryptedContent && (
+              <Unlock className="h-3 w-3 shrink-0 text-emerald-500" />
+            )}
           </div>
 
           {node.packetSummary?.excerpt && (
@@ -399,7 +445,46 @@ export const EvidenceCard = memo(function EvidenceCard({
             <p className="mt-3 text-[11px] text-rose-500">证据详情加载失败</p>
           )}
 
-          {renderStructuredDetails(detailRecord, node)}
+          {isEncrypted && !decryptedContent && (
+            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="text-[11px] font-medium text-amber-700">🔒 已加密</p>
+              {decryptError ? (
+                <p className="mt-1 text-[11px] text-rose-500">{decryptError}</p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  此证据内容已加密保护
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 text-[11px]"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleDecrypt()
+                }}
+                disabled={isDecrypting}
+              >
+                {isDecrypting ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Unlock className="mr-1 h-3 w-3" />
+                )}
+                解密
+              </Button>
+            </div>
+          )}
+
+          {isEncrypted && decryptedContent && (
+            <div className="mt-3 space-y-1">
+              <p className="text-[10px] font-medium text-emerald-600">已解密内容</p>
+              <pre className="max-h-40 overflow-auto rounded-lg bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                {decryptedContent}
+              </pre>
+            </div>
+          )}
+
+          {!isEncrypted && renderStructuredDetails(detailRecord, node)}
         </button>
 
         <SourceStatusBadge

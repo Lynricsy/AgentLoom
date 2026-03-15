@@ -22,6 +22,8 @@ export interface JwtPayload {
   aud: string | string[];
   exp: number;
   iat: number;
+  orgId?: string;
+  org_id?: string;
   tenantId?: string;
   tenantRole?: string;
 }
@@ -233,6 +235,8 @@ export class AuthGuard implements CanActivate {
       aud: payload.aud,
       exp: payload.exp,
       iat: payload.iat,
+      orgId: this.readStringClaim(payload, 'orgId', 'org_id'),
+      org_id: this.readStringClaim(payload, 'org_id', 'orgId'),
       tenantId: this.readStringClaim(payload, 'tenantId', 'tenant_id'),
       tenantRole: this.readStringClaim(payload, 'tenantRole', 'tenant_role'),
     };

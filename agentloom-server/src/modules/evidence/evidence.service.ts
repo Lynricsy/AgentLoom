@@ -13,6 +13,7 @@ import {
   documentChunks,
   evidenceRecords,
   executionSteps,
+  organizations,
   type NewEvidenceRecord,
 } from '../../database/schema';
 import {
@@ -44,6 +45,7 @@ import {
   type RagEvidenceRetrievedPayload,
   type RagEvidenceResultPayload,
 } from './evidence.events';
+import { LlmEncryptionService } from '../llm/llm-encryption.service';
 import {
   EvidenceNotFoundException,
   InvalidEvidencePacketException,
@@ -118,9 +120,15 @@ export class EvidenceService {
   private batchTimer: ReturnType<typeof setTimeout> | null = null;
 
   private static readonly BATCH_DELAY_MS = 50;
+  private static readonly ENCRYPTABLE_SOURCE_TYPES: EvidenceSourceType[] = [
+    'agent_decision',
+    'tool_output',
+  ];
+
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly cacheService: RedisCacheService,
+    private readonly llmEncryptionService: LlmEncryptionService,
   ) {}
 
   async createEvidenceRecord(
@@ -790,6 +798,8 @@ export class EvidenceService {
       return [];
     }
 
+    await this.maybeEncryptEvidenceRecords(prepared);
+
     const records = await tenantDb
       .insert(evidenceRecords)
       .values(prepared.map((entry) => entry.insertValue))
@@ -801,6 +811,80 @@ export class EvidenceService {
     }
 
     return records;
+  }
+
+  private async maybeEncryptEvidenceRecords(
+    prepared: PreparedEvidenceInsert[],
+  ): Promise<void> {
+    const encryptable = prepared.filter((p) =>
+      EvidenceService.ENCRYPTABLE_SOURCE_TYPES.includes(
+        p.insertValue.sourceType as EvidenceSourceType,
+      ),
+    );
+
+    if (encryptable.length === 0) return;
+
+    const tenantId = encryptable[0]!.insertValue.tenantId;
+    let orgId: string | null = null;
+
+    try {
+      orgId = await this.resolveOrgId(tenantId);
+    } catch {
+      return;
+    }
+
+    if (!orgId) return;
+
+    let enabled: boolean;
+    try {
+      enabled = await this.llmEncryptionService.isE2EEEnabled(tenantId, orgId);
+    } catch {
+      return;
+    }
+
+    if (!enabled) return;
+
+    for (const entry of encryptable) {
+      try {
+        const contentToEncrypt = JSON.stringify(entry.packet);
+        const encrypted = await this.llmEncryptionService.encryptForTenant(
+          tenantId,
+          orgId,
+          contentToEncrypt,
+        );
+
+        const encryptedHash = createHash('sha256')
+          .update(encrypted.ciphertext)
+          .digest('hex');
+
+        entry.insertValue.contentHash = encryptedHash;
+        entry.insertValue.isEncrypted = true;
+        entry.insertValue.encryptionMetadata = {
+          algorithm: encrypted.algorithm,
+          keyFingerprint: encrypted.keyFingerprint,
+          encryptedAt: new Date().toISOString(),
+          encryptedPayload: encrypted,
+        };
+
+        this.logger.debug(
+          `E2EE: 已加密证据记录 ${entry.evidenceId} (sourceType: ${entry.insertValue.sourceType})`,
+        );
+      } catch (encryptionError) {
+        this.logger.warn(
+          `E2EE: 证据加密失败，保留明文: ${encryptionError instanceof Error ? encryptionError.message : String(encryptionError)}`,
+          { evidenceId: entry.evidenceId },
+        );
+      }
+    }
+  }
+
+  private async resolveOrgId(tenantId: string): Promise<string | null> {
+    const result = await getTenantDb(this.db)
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.tenantId, tenantId))
+      .limit(1);
+    return result[0]?.id ?? null;
   }
 
   private async findExecutionStep(
