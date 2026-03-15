@@ -2,6 +2,8 @@ import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ExecutionStatus, TypeMismatchInfo } from '../types'
 
+export type ExecutionLaunchSource = 'web-studio' | 'mobile' | 'api'
+
 export interface ExecutionStepAttemptResponse {
   attempt: number
   error?: string
@@ -103,14 +105,25 @@ export interface InterventionResolveResponse {
   status: 'intervention_accepted'
 }
 
+export interface RunWorkflowRequest {
+  inputParams?: Record<string, unknown>
+  schemaVersion?: number
+  launchSource?: ExecutionLaunchSource
+}
+
 /** 启动工作流执行 — POST /workflow-definitions/:workflowId/run → 202 */
 export async function runWorkflow(
   workflowId: string,
-  inputParams?: Record<string, unknown>,
+  payload?: RunWorkflowRequest,
 ) {
+  const hasPayload =
+    payload?.inputParams !== undefined ||
+    payload?.schemaVersion !== undefined ||
+    payload?.launchSource !== undefined
+
   return apiClient
     .post(`workflow-definitions/${workflowId}/run`, {
-      json: inputParams ? toSnakeBody({ inputParams }) : undefined,
+      json: hasPayload ? toSnakeBody(payload) : undefined,
     })
     .json<ApiResponse<ExecutionResponse>>()
 }

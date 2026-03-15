@@ -55,12 +55,18 @@ describe('useStartExecution', () => {
     let execResult: unknown
 
     await act(async () => {
-      execResult = await result.current.startExecution('wf-001', { key: 'value' })
+      execResult = await result.current.startExecution('wf-001', {
+        inputParams: { key: 'value' },
+        schemaVersion: 2,
+        launchSource: 'web-studio',
+      })
     })
 
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workflowId: 'wf-001',
       inputParams: { key: 'value' },
+      schemaVersion: 2,
+      launchSource: 'web-studio',
     })
 
     expect(useExecutionStore.getState().executionId).toBe('exec-001')
@@ -79,6 +85,8 @@ describe('useStartExecution', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workflowId: 'wf-001',
       inputParams: undefined,
+      schemaVersion: undefined,
+      launchSource: undefined,
     })
 
     expect(useExecutionStore.getState().executionId).toBe('exec-001')

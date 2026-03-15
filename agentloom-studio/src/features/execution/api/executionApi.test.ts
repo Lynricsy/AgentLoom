@@ -60,11 +60,19 @@ describe('executionApi', () => {
       })
     })
 
-    it('带 inputParams 发送请求（转为 snake_case）', async () => {
-      await runWorkflow('wf-001', { myParam: 'value' })
+    it('带 launch payload 发送请求（转为 snake_case）', async () => {
+      await runWorkflow('wf-001', {
+        inputParams: { myParam: 'value' },
+        schemaVersion: 3,
+        launchSource: 'web-studio',
+      })
 
       expect(mocks.postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/run', {
-        json: { input_params: { myParam: 'value' } },
+        json: {
+          input_params: { myParam: 'value' },
+          schema_version: 3,
+          launch_source: 'web-studio',
+        },
       })
     })
 

@@ -1,12 +1,21 @@
 import { useCallback } from 'react'
 import { useExecutionActions } from '../stores/executionStore'
 import { useRunWorkflow } from '../api/executionMutations'
-import type { ExecutionResponse } from '../api/executionApi'
+import type {
+  ExecutionLaunchSource,
+  ExecutionResponse,
+} from '../api/executionApi'
+
+interface StartExecutionOptions {
+  inputParams?: Record<string, unknown>
+  schemaVersion?: number
+  launchSource?: ExecutionLaunchSource
+}
 
 interface StartExecutionResult {
   startExecution: (
     workflowId: string,
-    inputParams?: Record<string, unknown>,
+    options?: StartExecutionOptions,
   ) => Promise<ExecutionResponse>
   isStarting: boolean
   error: Error | null
@@ -21,11 +30,13 @@ export function useStartExecution(): StartExecutionResult {
   const startExecution = useCallback(
     async (
       workflowId: string,
-      inputParams?: Record<string, unknown>,
+      options?: StartExecutionOptions,
     ): Promise<ExecutionResponse> => {
       const result = await mutation.mutateAsync({
         workflowId,
-        inputParams,
+        inputParams: options?.inputParams,
+        schemaVersion: options?.schemaVersion,
+        launchSource: options?.launchSource,
       })
 
       // 初始化 executionStore — 触发 useExecutionId() 更新 → useExecutionMonitor 连接 socket

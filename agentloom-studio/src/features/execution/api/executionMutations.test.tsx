@@ -55,10 +55,16 @@ describe('executionMutations', () => {
         await result.current.mutateAsync({
           workflowId: 'wf-001',
           inputParams: { key: 'value' },
+          schemaVersion: 2,
+          launchSource: 'web-studio',
         })
       })
 
-      expect(mockRunWorkflow).toHaveBeenCalledWith('wf-001', { key: 'value' })
+      expect(mockRunWorkflow).toHaveBeenCalledWith('wf-001', {
+        inputParams: { key: 'value' },
+        schemaVersion: 2,
+        launchSource: 'web-studio',
+      })
 
       const cached = queryClient.getQueryData(executionKeys.detail('exec-001'))
       expect(cached).toEqual(mockExecutionResponse)

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   runWorkflow,
   cancelExecution,
+  type ExecutionLaunchSource,
   type ExecutionResponse,
 } from './executionApi'
 import { executionKeys } from './executionKeys'
@@ -9,6 +10,8 @@ import { executionKeys } from './executionKeys'
 interface RunWorkflowParams {
   workflowId: string
   inputParams?: Record<string, unknown>
+  schemaVersion?: number
+  launchSource?: ExecutionLaunchSource
 }
 
 interface CancelExecutionParams {
@@ -24,8 +27,12 @@ export function useRunWorkflow() {
     RunWorkflowParams
   >({
     mutationKey: ['execution', 'run'],
-    mutationFn: ({ workflowId, inputParams }) =>
-      runWorkflow(workflowId, inputParams),
+    mutationFn: ({ workflowId, inputParams, schemaVersion, launchSource }) =>
+      runWorkflow(workflowId, {
+        inputParams,
+        schemaVersion,
+        launchSource,
+      }),
     onSuccess: (data) => {
       queryClient.setQueryData(
         executionKeys.detail(data.data.id),
