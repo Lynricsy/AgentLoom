@@ -15,15 +15,21 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
+  InstallMarketplaceListingDto,
   QueryMyListingsDto,
   SubmitMarketplaceListingDto,
+  SubmitReviewDto,
 } from './dto/marketplace.dto';
+import { MarketplaceReviewUserService } from './marketplace-review-user.service';
 import { MarketplaceService } from './marketplace.service';
 
 @ApiTags('Marketplace')
 @Controller('marketplace')
 export class MarketplaceController {
-  constructor(private readonly marketplaceService: MarketplaceService) {}
+  constructor(
+    private readonly marketplaceService: MarketplaceService,
+    private readonly reviewUserService: MarketplaceReviewUserService,
+  ) {}
 
   @Post('listings')
   @Roles('owner', 'admin', 'creator')
@@ -102,5 +108,42 @@ export class MarketplaceController {
   ) {
     const listing = await this.marketplaceService.findById(tenantId, id);
     return { data: listing };
+  }
+
+  @Post('listings/:id/install')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '一键安装 Marketplace listing 到当前租户' })
+  @ApiResponse({ status: 201, description: '安装成功' })
+  @ApiResponse({ status: 404, description: 'Listing 不存在' })
+  async install(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InstallMarketplaceListingDto,
+  ) {
+    const workflow = await this.marketplaceService.installListing(
+      tenantId,
+      userId,
+      id,
+      dto,
+    );
+
+    return { data: workflow };
+  }
+
+  @Post('listings/:id/reviews')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '提交 Marketplace listing 用户评论' })
+  @ApiResponse({ status: 201, description: '评论提交成功' })
+  @ApiResponse({ status: 404, description: 'Listing 不存在' })
+  @ApiResponse({ status: 409, description: '用户已评论该 listing' })
+  async submitReview(
+    @CurrentUser('sub') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmitReviewDto,
+  ) {
+    const review = await this.reviewUserService.submitReview(userId, id, dto);
+    return { data: review };
   }
 }
