@@ -8,15 +8,19 @@ import type {
   MarketplaceListing,
   MarketplaceReviewResult,
 } from '../../database/schema';
-import type { SubmitMarketplaceListingDto } from './dto/marketplace.dto';
+import type {
+  QueryMyListingsDto,
+  SubmitMarketplaceListingDto,
+} from './dto/marketplace.dto';
 import { QueryMyListingsSchema } from './dto/marketplace.dto';
 import {
   MarketplaceListingConflictException,
   MarketplaceListingNotFoundException,
+  MarketplaceWorkflowNotPublishedException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
 
-interface MyMarketplaceListingItem {
+export interface MyMarketplaceListingItem {
   id: string;
   workflowVersionId: string;
   tenantId: string;
@@ -36,7 +40,7 @@ interface MyMarketplaceListingItem {
   versionNumber: number | null;
 }
 
-interface MyListingsResult {
+export interface MyListingsResult {
   data: MyMarketplaceListingItem[];
   meta: {
     page: number;
@@ -82,6 +86,8 @@ export class MarketplaceService {
         );
       }
 
+      await this.ensureWorkflowVersionPublished(workflowVersionId);
+
       return this.resubmit(tenantId, existing.id, userId, {
         title,
         summary,
@@ -90,6 +96,8 @@ export class MarketplaceService {
         workflowVersionId,
       });
     }
+
+    await this.ensureWorkflowVersionPublished(workflowVersionId);
 
     return this.createAndReview(tenantId, userId, {
       workflowVersionId,
@@ -200,7 +208,7 @@ export class MarketplaceService {
 
   async findMyListings(
     tenantId: string,
-    query: Record<string, unknown>,
+    query: QueryMyListingsDto,
   ): Promise<MyListingsResult> {
     const parsedQuery = QueryMyListingsSchema.parse(query);
     const { page, pageSize, status } = parsedQuery;
@@ -421,6 +429,23 @@ export class MarketplaceService {
       );
 
     return listing;
+  }
+
+  private async ensureWorkflowVersionPublished(
+    workflowVersionId: string,
+  ): Promise<void> {
+    const [version] = await this.tenantDb
+      .select({
+        id: schema.workflowVersions.id,
+        publishedAt: schema.workflowVersions.publishedAt,
+        archivedAt: schema.workflowVersions.archivedAt,
+      })
+      .from(schema.workflowVersions)
+      .where(eq(schema.workflowVersions.id, workflowVersionId));
+
+    if (!version || !version.publishedAt || version.archivedAt) {
+      throw new MarketplaceWorkflowNotPublishedException(workflowVersionId);
+    }
   }
 
   private async findByIdOrThrow(
