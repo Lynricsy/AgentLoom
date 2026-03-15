@@ -38,6 +38,10 @@ const startExecutionMock = vi.fn()
 const submitInterventionMock = vi.fn()
 const celebrationEffectMock = vi.fn()
 const executionLaunchDialogMock = vi.fn()
+const { exportWorkflowMutateMock, downloadWorkflowExportMock } = vi.hoisted(() => ({
+  exportWorkflowMutateMock: vi.fn(),
+  downloadWorkflowExportMock: vi.fn(),
+}))
 
 let mockAuthToken: string | undefined
 let mockExecutionId: string | null = null
@@ -109,7 +113,7 @@ vi.mock('@/features/workflow/components/WorkflowImportDialog', () => ({
 }))
 
 vi.mock('@/features/workflow/api/workflowMutations', () => ({
-  useExportWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useExportWorkflow: () => ({ mutate: exportWorkflowMutateMock, isPending: false }),
   useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
   useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
   useValidateImport: () => ({ mutateAsync: vi.fn() }),
@@ -117,7 +121,7 @@ vi.mock('@/features/workflow/api/workflowMutations', () => ({
 }))
 
 vi.mock('@/features/workflow/lib/workflowExportImport', () => ({
-  downloadWorkflowExport: vi.fn(),
+  downloadWorkflowExport: downloadWorkflowExportMock,
   parseImportFile: vi.fn(),
 }))
 
@@ -163,10 +167,18 @@ vi.mock('./toolbar/VersionToolbar', () => ({
     workflowStatus: WorkflowDefinition['status']
     onRun?: () => void
     isRunning?: boolean
+    onExport?: () => void
   }) => {
     versionToolbarMock(props)
     return (
       <>
+        <button
+          type="button"
+          data-testid="btn-export-workflow"
+          onClick={props.onExport}
+        >
+          Export workflow
+        </button>
         <button
           type="button"
           data-testid="version-toolbar-open-publish"
@@ -270,6 +282,8 @@ describe('WorkflowCanvasPage', () => {
     mockIsStarting = false
     mockExecutionStatus = null
     vi.clearAllMocks()
+    exportWorkflowMutateMock.mockReset()
+    downloadWorkflowExportMock.mockReset()
     useCanvasStore.getState().actions.reset()
   })
 
@@ -363,6 +377,34 @@ describe('WorkflowCanvasPage', () => {
 
     fireEvent.click(screen.getByTestId('version-history-open-publish'))
     expect(screen.getByTestId('publish-sheet')).toHaveAttribute('data-version-id', 'ver-003')
+  })
+
+  it('导出工作流时应使用持久化 slug', () => {
+    const exportData = {
+      schemaVersion: 'agentloom-workflow-v1',
+      exportedAt: '2026-03-16T00:00:00.000Z',
+      workflow: {
+        name: 'Renamed Workflow',
+        description: null,
+        definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      },
+    }
+
+    exportWorkflowMutateMock.mockImplementation((_workflowId, options) => {
+      options?.onSuccess?.(exportData)
+    })
+
+    render(<WorkflowCanvasPage />)
+
+    fireEvent.click(screen.getByTestId('btn-export-workflow'))
+
+    expect(exportWorkflowMutateMock).toHaveBeenCalledWith(
+      'wf-001',
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+      }),
+    )
+    expect(downloadWorkflowExportMock).toHaveBeenCalledWith(exportData, 'workflow-one')
   })
 
   it('归档工作流隐藏节点面板和字段映射面板，但仍传递只读状态', () => {

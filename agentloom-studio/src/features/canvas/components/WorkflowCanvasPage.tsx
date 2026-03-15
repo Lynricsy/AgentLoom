@@ -125,7 +125,7 @@ export function WorkflowCanvasPage() {
     if (!workflow) return
     exportMutation.mutate(workflowId, {
       onSuccess: (data) => {
-        downloadWorkflowExport(data, workflow.name)
+        downloadWorkflowExport(data, workflow.slug)
       },
     })
   }, [workflow, workflowId, exportMutation])

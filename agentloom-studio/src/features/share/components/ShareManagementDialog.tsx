@@ -23,6 +23,8 @@ interface ShareManagementDialogProps {
 }
 
 type ShareTypeOption = 'read_only' | 'copyable'
+type ShareStatus = 'active' | 'expired' | 'revoked'
+type ShareExpiryPreset = 'never' | '1d' | '7d' | '30d'
 
 const shareTypeLabels: Record<ShareTypeOption, string> = {
   read_only: '仅查看',
@@ -32,6 +34,25 @@ const shareTypeLabels: Record<ShareTypeOption, string> = {
 const shareTypeBadgeStyles: Record<ShareTypeOption, string> = {
   read_only: 'border-sky-500/30 bg-sky-500/10 text-sky-400',
   copyable: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+}
+
+const shareStatusLabels: Record<ShareStatus, string> = {
+  active: '生效中',
+  expired: '已过期',
+  revoked: '已撤销',
+}
+
+const shareStatusBadgeStyles: Record<ShareStatus, string> = {
+  active: 'border-green-500/30 bg-green-500/10 text-green-400',
+  expired: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+  revoked: 'border-rose-500/30 bg-rose-500/10 text-rose-400',
+}
+
+const shareExpiryPresetLabels: Record<ShareExpiryPreset, string> = {
+  never: '永不过期',
+  '1d': '1天',
+  '7d': '7天',
+  '30d': '30天',
 }
 
 function formatDate(dateStr: string): string {
@@ -48,6 +69,26 @@ function formatDate(dateStr: string): string {
 function isExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return false
   return new Date(expiresAt) < new Date()
+}
+
+function getShareStatus(share: ShareRecord): ShareStatus {
+  if (share.isRevoked) return 'revoked'
+  if (isExpired(share.expiresAt)) return 'expired'
+  return 'active'
+}
+
+function resolveShareExpiryPreset(preset: ShareExpiryPreset): string | undefined {
+  if (preset === 'never') {
+    return undefined
+  }
+
+  const durationDays: Record<Exclude<ShareExpiryPreset, 'never'>, number> = {
+    '1d': 1,
+    '7d': 7,
+    '30d': 30,
+  }
+
+  return new Date(Date.now() + durationDays[preset] * 24 * 60 * 60 * 1000).toISOString()
 }
 
 function truncateUrl(url: string, maxLen = 45): string {
@@ -67,7 +108,7 @@ const ShareItem = memo(function ShareItem({
   const { notify } = useToast()
   const [confirmRevoke, setConfirmRevoke] = useState(false)
 
-  const expired = isExpired(share.expiresAt)
+  const status = getShareStatus(share)
 
   const handleCopyUrl = useCallback(async () => {
     try {
@@ -91,8 +132,6 @@ const ShareItem = memo(function ShareItem({
     setConfirmRevoke(false)
   }, [])
 
-  if (share.isRevoked) return null
-
   return (
     <div
       className="rounded-md border border-border bg-background/50 p-3"
@@ -109,11 +148,15 @@ const ShareItem = memo(function ShareItem({
             >
               {shareTypeLabels[share.shareType]}
             </span>
-            {expired && (
-              <span className="inline-flex rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
-                已过期
-              </span>
-            )}
+            <span
+              className={cn(
+                'inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                shareStatusBadgeStyles[status],
+              )}
+              data-testid={`share-status-${status}`}
+            >
+              {shareStatusLabels[status]}
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -141,7 +184,7 @@ const ShareItem = memo(function ShareItem({
               <Copy className="h-3 w-3" />
               {share.copyCount}
             </span>
-            {share.expiresAt && !expired && (
+            {share.expiresAt && status !== 'revoked' && (
               <span>过期: {formatDate(share.expiresAt)}</span>
             )}
             <span>创建: {formatDate(share.createdAt)}</span>
@@ -149,7 +192,7 @@ const ShareItem = memo(function ShareItem({
         </div>
 
         <div className="shrink-0">
-          {confirmRevoke ? (
+          {share.isRevoked ? null : confirmRevoke ? (
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -201,22 +244,23 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
   const revokeShareMutation = useRevokeShare(workflowId)
 
   const [shareType, setShareType] = useState<ShareTypeOption>('read_only')
-  const [expiresAt, setExpiresAt] = useState('')
+  const [expiryPreset, setExpiryPreset] = useState<ShareExpiryPreset>('never')
 
   useEffect(() => {
     if (open) {
       setShareType('read_only')
-      setExpiresAt('')
+      setExpiryPreset('never')
       createShareMutation.reset()
     }
   }, [open, createShareMutation])
 
   const handleCreate = useCallback(async () => {
     try {
+      const expiresAt = resolveShareExpiryPreset(expiryPreset)
       const result = await createShareMutation.mutateAsync({
         workflowDefinitionId: workflowId,
         shareType,
-        ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
+        ...(expiresAt ? { expiresAt } : {}),
       })
       notify({ description: '分享链接已创建', variant: 'success' })
       try {
@@ -225,11 +269,11 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
       } catch {
         // noop
       }
-      setExpiresAt('')
+      setExpiryPreset('never')
     } catch {
       notify({ description: '创建分享链接失败', variant: 'error' })
     }
-  }, [workflowId, shareType, expiresAt, createShareMutation, notify])
+  }, [workflowId, shareType, expiryPreset, createShareMutation, notify])
 
   const handleRevoke = useCallback(
     async (shareId: string) => {
@@ -243,7 +287,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
     [revokeShareMutation, notify],
   )
 
-  const activeShares = shareList?.data.filter((s) => !s.isRevoked) ?? []
+  const shares = shareList?.data ?? []
   const isCreating = createShareMutation.isPending
 
   return (
@@ -290,14 +334,14 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : activeShares.length === 0 ? (
+              ) : shares.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border py-6 text-center">
                   <Link2 className="mx-auto h-8 w-8 text-muted-foreground/50" />
                   <p className="mt-2 text-sm text-muted-foreground">暂无分享链接</p>
                 </div>
               ) : (
                 <div className="space-y-2" data-testid="share-list">
-                  {activeShares.map((share) => (
+                  {shares.map((share) => (
                     <ShareItem
                       key={share.id}
                       share={share}
@@ -339,21 +383,25 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="share-expires" className="text-xs font-medium text-muted-foreground">
-                  过期时间
-                  <span className="ml-1 text-[10px] font-normal">(可选)</span>
-                </label>
-                <input
-                  id="share-expires"
-                  type="datetime-local"
-                  className={cn(
-                    'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                  )}
-                  value={expiresAt}
-                  onChange={(e) => setExpiresAt(e.target.value)}
-                  data-testid="share-expires-input"
-                />
+                <span className="text-xs font-medium text-muted-foreground">有效期</span>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="分享有效期">
+                  {(['never', '1d', '7d', '30d'] as const).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={cn(
+                        'rounded-md border px-3 py-2 text-xs font-medium transition-colors',
+                        expiryPreset === preset
+                          ? 'border-sky-500/50 bg-sky-500/10 text-sky-400'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted',
+                      )}
+                      onClick={() => setExpiryPreset(preset)}
+                      data-testid={`share-expiry-${preset}`}
+                    >
+                      {shareExpiryPresetLabels[preset]}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <button

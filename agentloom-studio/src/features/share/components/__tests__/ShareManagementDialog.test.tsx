@@ -203,7 +203,7 @@ describe('ShareManagementDialog', () => {
     expect(item).toHaveTextContent('app.example.com')
   })
 
-  it('filters out revoked shares', () => {
+  it('renders revoked shares with revoked status badge', () => {
     shareListMock.data = {
       data: [
         makeShare({ id: 's1', isRevoked: true }),
@@ -217,7 +217,8 @@ describe('ShareManagementDialog', () => {
         workflowId="test-wf-id"
       />,
     )
-    expect(screen.getAllByTestId('share-item')).toHaveLength(1)
+    expect(screen.getAllByTestId('share-item')).toHaveLength(2)
+    expect(screen.getByTestId('share-status-revoked')).toBeInTheDocument()
   })
 
   it('creates read_only share and calls mutateAsync with correct payload', async () => {
@@ -264,6 +265,31 @@ describe('ShareManagementDialog', () => {
     expect(createShareMock.mutateAsync).toHaveBeenCalledWith({
       workflowDefinitionId: 'test-wf-id',
       shareType: 'copyable',
+    })
+  })
+
+  it('creates share with preset expiry and maps it to expiresAt', async () => {
+    const user = userEvent.setup()
+    shareListMock.data = { data: [] }
+    createShareMock.mutateAsync.mockResolvedValue(
+      makeShare({ shareUrl: 'https://app.example.com/s/new-tok' }),
+    )
+
+    render(
+      <ShareManagementDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        workflowId="test-wf-id"
+      />,
+    )
+
+    await user.click(screen.getByTestId('share-expiry-7d'))
+    await user.click(screen.getByTestId('btn-create-share'))
+
+    expect(createShareMock.mutateAsync).toHaveBeenCalledWith({
+      workflowDefinitionId: 'test-wf-id',
+      shareType: 'read_only',
+      expiresAt: expect.any(String),
     })
   })
 

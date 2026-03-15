@@ -44,7 +44,7 @@ describe('workflowExportImport', () => {
         },
       }
 
-      downloadWorkflowExport(data, 'Test Workflow')
+      downloadWorkflowExport(data, 'test-workflow')
 
       expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
       expect(clickSpy).toHaveBeenCalledTimes(1)
@@ -53,7 +53,7 @@ describe('workflowExportImport', () => {
       expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:http://localhost/fake-blob')
     })
 
-    it('generates correct filename with slug + date extension', () => {
+    it('generates correct filename with export suffix + compact date', () => {
       const mockAnchor = {
         href: '',
         download: '',
@@ -74,16 +74,16 @@ describe('workflowExportImport', () => {
         },
       }
 
-      downloadWorkflowExport(data, 'My Cool Workflow')
+      downloadWorkflowExport(data, 'workflow-slug-001')
 
       expect(mockAnchor.download).toMatch(
-        /^my-cool-workflow-\d{4}-\d{2}-\d{2}\.agentloom-workflow\.json$/,
+        /^workflow-slug-001-export-\d{8}\.agentloom-workflow\.json$/,
       )
     })
   })
 
   describe('parseImportFile', () => {
-    it('rejects files larger than 5MB', async () => {
+    it('rejects files larger than 10MB', async () => {
       const bigFile = new File(['x'], 'big.json', { type: 'application/json' })
       Object.defineProperty(bigFile, 'size', {
         value: MAX_IMPORT_FILE_SIZE + 1,

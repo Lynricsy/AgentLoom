@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { shareKeys } from './shareKeys';
-import { copyShare, createShare, revokeShare } from './shareApi';
+import { createShare, revokeShare } from './shareApi';
 import type { CreateSharePayload, ShareRecord } from '../types';
 
 export function useCreateShare() {
@@ -28,16 +28,5 @@ export function useRevokeShare(workflowDefinitionId: string) {
         queryKey: shareKeys.list(workflowDefinitionId),
       });
     },
-  });
-}
-
-export function useCopyShare() {
-  return useMutation<
-    { workflowDefinitionId: string; name: string; message: string },
-    Error,
-    string
-  >({
-    mutationFn: copyShare,
-    gcTime: 0,
   });
 }

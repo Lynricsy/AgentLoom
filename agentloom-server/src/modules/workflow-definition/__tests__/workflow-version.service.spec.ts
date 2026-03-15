@@ -8,6 +8,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
+import { DomainException } from '../../../common/exceptions/domain.exception';
 import { DRIZZLE } from '../../../database/database.module';
 import { TemplateService } from '../../template/template.service';
 import { ShareService } from '../../share/share.service';
@@ -215,6 +216,7 @@ describe('WorkflowVersionService', () => {
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let redis: Record<string, ReturnType<typeof vi.fn>>;
   let templateService: Record<string, ReturnType<typeof vi.fn>>;
+  let shareService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -243,8 +245,9 @@ describe('WorkflowVersionService', () => {
       findBySlug: vi.fn(),
     };
 
-    const shareService = {
+    shareService = {
       getShareByToken: vi.fn(),
+      incrementCopyCount: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -1517,6 +1520,12 @@ describe('WorkflowVersionService', () => {
       description: '从 marketplace 安装',
       marketplace_listing_id: MARKETPLACE_LISTING_ID,
     };
+    const SHARE_TOKEN = 'share-token-123';
+    const MOCK_DTO_WITH_SHARE = {
+      name: '分享副本',
+      description: '从分享复制',
+      share_token: SHARE_TOKEN,
+    };
     const MOCK_TEMPLATE = {
       id: '00000000-0000-0000-0000-000000000099',
       name: '代码审查助手',
@@ -1709,6 +1718,92 @@ describe('WorkflowVersionService', () => {
       ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
 
       expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('应从可复制分享克隆定义并递增 copy count', async () => {
+      shareService.getShareByToken.mockResolvedValue({
+        shareType: 'copyable',
+        workflowName: '公开分享工作流',
+        snapshot: {
+          nodes: [
+            {
+              id: 'share-node-1',
+              type: 'agent',
+              position: { x: 0, y: 0 },
+              data: {},
+            },
+            {
+              id: 'share-node-2',
+              type: 'output',
+              position: { x: 240, y: 0 },
+              data: {},
+            },
+          ],
+          edges: [
+            {
+              id: 'share-edge-1',
+              source: 'share-node-1',
+              target: 'share-node-2',
+              sourceHandle: 'share-node-1-output',
+              targetHandle: 'share-node-2-input',
+            },
+          ],
+          viewport: MOCK_VIEWPORT,
+          inputSchema: MOCK_INPUT_SCHEMA,
+        },
+      });
+
+      const mockResult = createDraftWorkflow({
+        name: '分享副本',
+        slug: 'fen-xiang-fu-ben',
+        description: '从分享复制',
+      });
+      db.insert.mockReturnValue(createInsertReturning(mockResult));
+
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_SHARE,
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(shareService.getShareByToken).toHaveBeenCalledWith(SHARE_TOKEN);
+      expect(shareService.incrementCopyCount).toHaveBeenCalledWith(SHARE_TOKEN);
+
+      const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(valuesArg.nodes).toHaveLength(2);
+      expect(valuesArg.nodes[0].id).not.toBe('share-node-1');
+      expect(valuesArg.nodes[1].id).not.toBe('share-node-2');
+      expect(valuesArg.edges[0].source).toBe(valuesArg.nodes[0].id);
+      expect(valuesArg.edges[0].target).toBe(valuesArg.nodes[1].id);
+      expect(valuesArg.inputSchema).toEqual(MOCK_INPUT_SCHEMA);
+      expect(valuesArg.metadata).toMatchObject({
+        cloned_from_share: {
+          shareToken: SHARE_TOKEN,
+          workflowName: '公开分享工作流',
+        },
+      });
+      expect(valuesArg.metadata.cloned_from_share.clonedAt).toBeDefined();
+    });
+
+    it('read_only 分享链接不支持通过 share_token 克隆', async () => {
+      shareService.getShareByToken.mockResolvedValue({
+        shareType: 'read_only',
+        workflowName: '只读分享工作流',
+        snapshot: {
+          nodes: MOCK_NODES,
+          edges: MOCK_EDGES,
+          viewport: MOCK_VIEWPORT,
+          inputSchema: null,
+        },
+      });
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_SHARE),
+      ).rejects.toBeInstanceOf(DomainException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(shareService.incrementCopyCount).not.toHaveBeenCalled();
     });
 
     it('应在 slug 冲突时自动重试', async () => {

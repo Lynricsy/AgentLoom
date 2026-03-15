@@ -101,6 +101,40 @@ describe('useCreateWorkflow', () => {
     );
   });
 
+  it('包含 shareToken 时应原样透传并保持缓存失效行为', async () => {
+    createWorkflowMock.mockResolvedValue({ id: 'wf-3', name: '分享副本' });
+
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useCreateWorkflow(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        name: '分享副本',
+        shareToken: 'share-token-123',
+      });
+    });
+
+    expect(createWorkflowMock).toHaveBeenCalledWith(
+      {
+        name: '分享副本',
+        shareToken: 'share-token-123',
+      },
+      expect.objectContaining({
+        mutationKey: ['workflow', 'create'],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['workflows', 'list'],
+      });
+    });
+  });
+
   it('请求失败时抛出错误', async () => {
     createWorkflowMock.mockRejectedValue(new Error('Network error'));
 

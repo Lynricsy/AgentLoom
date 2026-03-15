@@ -1,9 +1,10 @@
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge } from '@xyflow/react'
 import { Eye, Copy, AlertTriangle, Loader2 } from 'lucide-react'
+import { useCreateWorkflow } from '@/features/workflow/api/workflowMutations'
 import { cn } from '@/shared/lib/utils'
 import { useToast } from '@/shared/ui/toast'
-import { usePublicShare, useCopyShare } from '../api'
+import { usePublicShare } from '../api/shareQueries'
 
 import '@xyflow/react/dist/style.css'
 
@@ -12,19 +13,7 @@ export function PublicSharePage() {
   const navigate = useNavigate()
   const { notify } = useToast()
   const { data, isLoading, error } = usePublicShare(token)
-  const copyMutation = useCopyShare()
-
-  const handleCopyToWorkspace = () => {
-    copyMutation.mutate(token, {
-      onSuccess: (result) => {
-        notify({ description: '已复制到您的工作区', variant: 'success' })
-        void navigate({ to: '/workflows/$workflowId', params: { workflowId: result.workflowDefinitionId } })
-      },
-      onError: () => {
-        notify({ description: '复制失败，请确认您已登录', variant: 'error' })
-      },
-    })
-  }
+  const createWorkflowMutation = useCreateWorkflow()
 
   if (isLoading) {
     return (
@@ -71,6 +60,25 @@ export function PublicSharePage() {
 
   if (!data) return null
 
+  const handleCopyToWorkspace = () => {
+    createWorkflowMutation.mutate(
+      {
+        name: data.workflowName,
+        ...(data.workflowDescription ? { description: data.workflowDescription } : {}),
+        shareToken: token,
+      },
+      {
+        onSuccess: (result) => {
+          notify({ description: '已复制到您的工作区', variant: 'success' })
+          void navigate({ to: '/workflows/$workflowId', params: { workflowId: result.id } })
+        },
+        onError: () => {
+          notify({ description: '复制失败，请确认您已登录', variant: 'error' })
+        },
+      },
+    )
+  }
+
   const nodes = (data.definition.nodes ?? []) as Node[]
   const edges = (data.definition.edges ?? []) as Edge[]
   const viewport = data.definition.viewport
@@ -102,10 +110,10 @@ export function PublicSharePage() {
               type="button"
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
               onClick={handleCopyToWorkspace}
-              disabled={copyMutation.isPending}
+              disabled={createWorkflowMutation.isPending}
               data-testid="btn-copy-to-workspace"
             >
-              {copyMutation.isPending ? (
+              {createWorkflowMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Copy className="h-4 w-4" />

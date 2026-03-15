@@ -390,6 +390,16 @@ export class WorkflowVersionService {
       };
     } else if (dto.share_token) {
       const share = await this.shareService.getShareByToken(dto.share_token);
+
+      if (share.shareType !== 'copyable') {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/share-copy-not-allowed',
+          title: '分享链接不支持复制',
+          status: HttpStatus.CONFLICT,
+          detail: `分享链接 ${dto.share_token} 不支持复制`,
+        });
+      }
+
       const snapshot = share.snapshot;
       const cloned = cloneDefinitionWithNewIds({
         nodes: snapshot.nodes,
@@ -436,6 +446,10 @@ export class WorkflowVersionService {
             updatedBy: userId,
           })
           .returning();
+
+        if (dto.share_token) {
+          await this.shareService.incrementCopyCount(dto.share_token);
+        }
 
         this.logger.log(
           JSON.stringify({

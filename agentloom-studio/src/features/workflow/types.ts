@@ -125,6 +125,7 @@ export interface CreateWorkflowPayload {
   name: string
   description?: string
   templateSlug?: string
+  shareToken?: string
 }
 
 export type VersionListResponse = PaginatedResponse<WorkflowVersion>
@@ -144,7 +145,23 @@ export interface WorkflowExportEnvelope {
   }
 }
 
-export type WorkflowImportFileContent = WorkflowExportEnvelope
+export interface WorkflowImportFileContent {
+  schemaVersion?: string
+  schema_version?: string
+  exportedAt?: string
+  exported_at?: string
+  workflow: {
+    name: string
+    description: string | null
+    definition: {
+      nodes: unknown[]
+      edges: unknown[]
+      viewport: { x: number; y: number; zoom: number }
+    }
+    inputSchema?: unknown
+    input_schema?: unknown
+  }
+}
 
 export interface ImportValidationResult {
   valid: boolean

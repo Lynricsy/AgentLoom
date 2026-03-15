@@ -112,8 +112,8 @@ const { WorkflowImportDialog } = await import('../WorkflowImportDialog')
 
 // --- helpers ---
 const validEnvelope = {
-  schemaVersion: 'agentloom-workflow-v1',
-  exportedAt: '2026-03-10T08:00:00.000Z',
+  schema_version: 'agentloom-workflow-v1',
+  exported_at: '2026-03-10T08:00:00.000Z',
   workflow: {
     name: 'My Workflow',
     description: 'A test workflow',
@@ -164,7 +164,7 @@ describe('WorkflowImportDialog', () => {
   })
 
   it('shows file error when parseImportFile rejects', async () => {
-    parseImportFileMock.mockRejectedValue(new Error('文件大小超出限制 (最大 5MB)'))
+    parseImportFileMock.mockRejectedValue(new Error('文件大小超出限制 (最大 10MB)'))
 
     render(<WorkflowImportDialog open={true} onOpenChange={vi.fn()} />)
 
@@ -172,7 +172,7 @@ describe('WorkflowImportDialog', () => {
     simulateFileUpload(input, 'any content')
 
     await waitFor(() => {
-      expect(screen.getByText('文件大小超出限制 (最大 5MB)')).toBeInTheDocument()
+      expect(screen.getByText('文件大小超出限制 (最大 10MB)')).toBeInTheDocument()
     })
   })
 
@@ -216,6 +216,7 @@ describe('WorkflowImportDialog', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('节点')).toBeInTheDocument()
     expect(screen.getByText('连线')).toBeInTheDocument()
+    expect(screen.getByText('agentloom-workflow-v1')).toBeInTheDocument()
 
     const nameInput = screen.getByTestId('import-name-input') as HTMLInputElement
     expect(nameInput.value).toBe('My Workflow 的副本')

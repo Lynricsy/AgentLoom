@@ -34,6 +34,12 @@ import type { ImportValidationResult } from './utils/validate-import.utils';
 import { validateImportFile } from './utils/validate-import.utils';
 import { WorkflowVersionService } from './workflow-version.service';
 
+function isImportValidationBodyWithFileContent(
+  body: unknown,
+): body is { file_content: unknown } {
+  return typeof body === 'object' && body !== null && 'file_content' in body;
+}
+
 @ApiTags('Workflow Definitions')
 @Controller('workflow-definitions')
 export class WorkflowDefinitionCreateController {
@@ -101,7 +107,9 @@ export class WorkflowDefinitionCreateController {
   @ApiOperation({ summary: '校验导入工作流文件' })
   @ApiResponse({ status: 200, description: '导入文件校验结果' })
   async validateImport(@Body() body: unknown): Promise<ImportValidationResult> {
-    return validateImportFile(body);
+    return validateImportFile(
+      isImportValidationBodyWithFileContent(body) ? body.file_content : body,
+    );
   }
 
   @Post('import')

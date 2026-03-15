@@ -39,11 +39,3 @@ export async function getPublicShare(
 ): Promise<PublicShareData> {
   return apiClient.get(`s/${token}`).json<PublicShareData>();
 }
-
-export async function copyShare(
-  token: string,
-): Promise<{ workflowDefinitionId: string; name: string; message: string }> {
-  return apiClient
-    .post(`workflow-shares/${token}/copy`)
-    .json<{ workflowDefinitionId: string; name: string; message: string }>();
-}

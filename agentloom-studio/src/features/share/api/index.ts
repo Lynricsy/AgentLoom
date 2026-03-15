@@ -1,4 +1,4 @@
 export { shareKeys } from './shareKeys';
-export { createShare, listShares, revokeShare, getPublicShare, copyShare } from './shareApi';
+export { createShare, listShares, revokeShare, getPublicShare } from './shareApi';
 export { useShareList, usePublicShare } from './shareQueries';
-export { useCreateShare, useRevokeShare, useCopyShare } from './shareMutations';
+export { useCreateShare, useRevokeShare } from './shareMutations';

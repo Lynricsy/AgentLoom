@@ -31,7 +31,7 @@ export async function validateImport(
 ): Promise<ImportValidationResult> {
   return apiClient
     .post('workflow-definitions/import/validate', {
-      json: toSnakeBody({ fileContent }),
+      json: toSnakeBody(fileContent),
     })
     .json<ImportValidationResult>()
 }

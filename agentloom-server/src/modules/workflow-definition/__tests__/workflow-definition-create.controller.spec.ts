@@ -6,12 +6,37 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
+import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowDefinitionCreateController } from '../workflow-definition-create.controller';
 import type { WorkflowVersionService } from '../workflow-version.service';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
 const WORKFLOW_ID = '00000000-0000-0000-0000-000000000003';
+
+function createImportEnvelope() {
+  return {
+    schema_version: WORKFLOW_EXPORT_VERSION,
+    exported_at: '2026-03-16T00:00:00.000Z',
+    workflow: {
+      name: '导入测试工作流',
+      description: '导入描述',
+      definition: {
+        nodes: [
+          {
+            id: 'node-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {},
+          },
+        ],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+      input_schema: null,
+    },
+  };
+}
 
 function getRoles(
   controller: WorkflowDefinitionCreateController,
@@ -199,6 +224,46 @@ describe('WorkflowDefinitionCreateController', () => {
 
       expect(service.create).toHaveBeenCalledWith(TENANT_ID, USER_ID, dto);
       expect(result).toEqual({ data: mockResult });
+    });
+  });
+
+  describe('validateImport', () => {
+    it('应支持直接校验原始 export envelope', async () => {
+      const { controller } = setup();
+
+      const result = await controller.validateImport(createImportEnvelope());
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          valid: true,
+          errors: [],
+          workflow: expect.objectContaining({
+            name: '导入测试工作流',
+            nodeCount: 1,
+            edgeCount: 0,
+          }),
+        }),
+      );
+    });
+
+    it('应兼容 file_content 包裹的校验请求体', async () => {
+      const { controller } = setup();
+
+      const result = await controller.validateImport({
+        file_content: createImportEnvelope(),
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          valid: true,
+          errors: [],
+          workflow: expect.objectContaining({
+            name: '导入测试工作流',
+            nodeCount: 1,
+            edgeCount: 0,
+          }),
+        }),
+      );
     });
   });
 

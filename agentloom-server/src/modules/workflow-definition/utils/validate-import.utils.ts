@@ -11,6 +11,8 @@ import {
 } from '../../workflow/dto/workflow-input-schema.dto';
 import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 
+export const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024;
+
 const passthroughObjectSchema = z.record(z.string(), z.unknown());
 
 const ImportWorkflowSchema = z.object({
@@ -29,6 +31,18 @@ const ImportWorkflowSchema = z.object({
 });
 
 type LooseObject = z.infer<typeof passthroughObjectSchema>;
+
+function getImportContentSize(content: unknown): number | null {
+  if (typeof content === 'string') {
+    return Buffer.byteLength(content, 'utf8');
+  }
+
+  try {
+    return Buffer.byteLength(JSON.stringify(content), 'utf8');
+  } catch {
+    return null;
+  }
+}
 
 export interface ImportValidationResult {
   valid: boolean;
@@ -162,6 +176,15 @@ function normalizeViewport(viewport: LooseObject): ReactFlowViewport | null {
 }
 
 export function validateImportFile(content: unknown): ImportValidationResult {
+  const contentSize = getImportContentSize(content);
+
+  if (contentSize !== null && contentSize > MAX_IMPORT_FILE_SIZE) {
+    return {
+      valid: false,
+      errors: ['Import file exceeds maximum size of 10MB'],
+    };
+  }
+
   const result = ImportWorkflowSchema.safeParse(content);
 
   if (!result.success) {
@@ -269,5 +292,3 @@ export function validateImportFile(content: unknown): ImportValidationResult {
     },
   };
 }
-
-export const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024;

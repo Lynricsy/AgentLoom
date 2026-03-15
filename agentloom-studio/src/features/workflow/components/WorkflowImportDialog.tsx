@@ -5,7 +5,7 @@ import { AlertCircle, CheckCircle2, FileUp, Loader2, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { useValidateImport, useImportWorkflow } from '../api/workflowMutations'
 import { parseImportFile } from '../lib/workflowExportImport'
-import type { WorkflowExportEnvelope } from '../types'
+import type { WorkflowImportFileContent } from '../types'
 
 interface WorkflowImportDialogProps {
   open: boolean
@@ -14,13 +14,17 @@ interface WorkflowImportDialogProps {
 
 type ImportStep = 'upload' | 'preview'
 
+function getImportSchemaVersion(content: WorkflowImportFileContent): string {
+  return content.schemaVersion ?? content.schema_version ?? '未知'
+}
+
 export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialogProps) {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState<ImportStep>('upload')
   const [fileError, setFileError] = useState<string | null>(null)
-  const [parsedContent, setParsedContent] = useState<WorkflowExportEnvelope | null>(null)
+  const [parsedContent, setParsedContent] = useState<WorkflowImportFileContent | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [nodeCount, setNodeCount] = useState(0)
   const [edgeCount, setEdgeCount] = useState(0)
@@ -66,9 +70,9 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
 
       try {
         const text = await parseImportFile(file)
-        let content: WorkflowExportEnvelope
+        let content: WorkflowImportFileContent
         try {
-          content = JSON.parse(text) as WorkflowExportEnvelope
+          content = JSON.parse(text) as WorkflowImportFileContent
         } catch {
           setFileError('文件内容不是有效的 JSON 格式')
           return
@@ -222,7 +226,7 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
                 </div>
                 <div className="rounded-md border border-border bg-muted/30 p-2">
                   <div className="text-lg font-semibold text-foreground">
-                    {parsedContent.schemaVersion}
+                     {getImportSchemaVersion(parsedContent)}
                   </div>
                   <div className="text-xs text-muted-foreground">版本</div>
                 </div>

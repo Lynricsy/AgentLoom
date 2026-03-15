@@ -5,14 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicShareData } from '../../types'
 
 // --- hoisted mocks ---
-const { publicShareMock, copyShareMock, navigateMock, notifyMock } =
+const { publicShareMock, createWorkflowMock, navigateMock, notifyMock } =
   vi.hoisted(() => ({
     publicShareMock: {
       data: undefined as PublicShareData | undefined,
       isLoading: false,
       error: null as unknown,
     },
-    copyShareMock: {
+    createWorkflowMock: {
       mutate: vi.fn(),
       isPending: false,
     },
@@ -29,8 +29,8 @@ vi.mock('../../api/shareQueries', () => ({
   usePublicShare: () => publicShareMock,
 }))
 
-vi.mock('../../api/shareMutations', () => ({
-  useCopyShare: () => copyShareMock,
+vi.mock('@/features/workflow/api/workflowMutations', () => ({
+  useCreateWorkflow: () => createWorkflowMock,
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -80,8 +80,8 @@ describe('PublicSharePage', () => {
     publicShareMock.data = undefined
     publicShareMock.isLoading = false
     publicShareMock.error = null
-    copyShareMock.mutate = vi.fn()
-    copyShareMock.isPending = false
+    createWorkflowMock.mutate = vi.fn()
+    createWorkflowMock.isPending = false
   })
 
   it('shows loading state while data is loading', () => {
@@ -159,20 +159,36 @@ describe('PublicSharePage', () => {
     expect(screen.getByText('加载失败')).toBeInTheDocument()
   })
 
-  it('calls copyMutation.mutate when copy button is clicked', async () => {
+  it('calls createWorkflow mutation and navigates after successful copy', async () => {
     const user = userEvent.setup()
     publicShareMock.data = makePublicShareData({ shareType: 'copyable' })
+    createWorkflowMock.mutate = vi.fn((payload, options) => {
+      options.onSuccess?.({ id: 'wf-copy-id' }, payload, undefined, undefined)
+    })
 
     render(<PublicSharePage />)
 
     await user.click(screen.getByTestId('btn-copy-to-workspace'))
 
-    expect(copyShareMock.mutate).toHaveBeenCalledWith(
-      'test-token',
+    expect(createWorkflowMock.mutate).toHaveBeenCalledWith(
+      {
+        name: 'Test Workflow',
+        description: 'A test workflow description',
+        shareToken: 'test-token',
+      },
       expect.objectContaining({
         onSuccess: expect.any(Function),
         onError: expect.any(Function),
       }),
     )
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: '/workflows/$workflowId',
+      params: { workflowId: 'wf-copy-id' },
+    })
+    expect(notifyMock).toHaveBeenCalledWith({
+      description: '已复制到您的工作区',
+      variant: 'success',
+    })
   })
 })

@@ -188,6 +188,21 @@ describe('validateImportFile', () => {
     expect(result.errors[0]).toContain('expected object');
   });
 
+  it('内容超过 10MB 时应返回大小限制错误', () => {
+    const envelope = createValidEnvelope();
+    envelope.workflow.definition.nodes[0] = {
+      ...envelope.workflow.definition.nodes[0],
+      data: {
+        payload: 'x'.repeat(MAX_IMPORT_FILE_SIZE),
+      },
+    };
+
+    const result = validateImportFile(envelope);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual(['Import file exceeds maximum size of 10MB']);
+  });
+
   it('节点缺少 id/type/position 或 position 非法时应返回对应错误', () => {
     const envelope = createValidEnvelope();
     envelope.workflow.definition.nodes = [
@@ -327,7 +342,7 @@ describe('validateImportFile', () => {
     ]);
   });
 
-  it('应导出 5MB 的 MAX_IMPORT_FILE_SIZE 常量', () => {
-    expect(MAX_IMPORT_FILE_SIZE).toBe(5 * 1024 * 1024);
+  it('应导出 10MB 的 MAX_IMPORT_FILE_SIZE 常量', () => {
+    expect(MAX_IMPORT_FILE_SIZE).toBe(10 * 1024 * 1024);
   });
 });

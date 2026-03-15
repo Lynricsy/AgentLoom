@@ -2,15 +2,12 @@ import type { WorkflowExportEnvelope } from '../types'
 
 export const WORKFLOW_EXPORT_FILE_EXTENSION = '.agentloom-workflow.json'
 
-export const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024
+export const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024
 
-export function downloadWorkflowExport(data: WorkflowExportEnvelope, workflowName: string): void {
-  const slug = workflowName
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
-    .replace(/^-|-$/g, '')
-  const date = new Date().toISOString().split('T')[0]
-  const filename = `${slug}-${date}${WORKFLOW_EXPORT_FILE_EXTENSION}`
+export function downloadWorkflowExport(data: WorkflowExportEnvelope, workflowSlug: string): void {
+  const safeWorkflowSlug = workflowSlug.trim() || 'workflow'
+  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '')
+  const filename = `${safeWorkflowSlug}-export-${date}${WORKFLOW_EXPORT_FILE_EXTENSION}`
 
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
