@@ -8,6 +8,9 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import Redis from 'ioredis';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { TokenBlacklistModule } from './common/services/token-blacklist.module';
@@ -38,6 +41,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { TenantTransactionInterceptor } from './common/interceptors/tenant-transaction.interceptor';
 import { RbacCacheService } from './common/services/rbac-cache.service';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 
 @Module({
   imports: [
@@ -46,6 +50,17 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     TokenBlacklistModule,
     RedisModule,
     EventEmitterModule.forRoot(),
+    ThrottlerModule.forRootAsync({
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          { name: 'default', ttl: 60_000, limit: 60 },
+        ],
+        storage: new ThrottlerStorageRedisService(
+          new Redis(configService.get<string>('APP_REDIS_URL')!),
+        ),
+      }),
+      inject: [ConfigService],
+    }),
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => {
         const redisUrl = configService.get<string>('APP_REDIS_URL')!;
@@ -87,6 +102,10 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantTransactionInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CustomThrottlerGuard,
     },
     {
       provide: APP_GUARD,
