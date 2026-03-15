@@ -34,6 +34,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
+| marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -129,13 +130,21 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。
+Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：Story 7-5 服务端已完成，`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
 - **Story 8-6 / 8-6a 已完成自动化收口**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 8-6a 新增的 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
 模板 `definition` 现与 `workflowDefinitions.definition` 保持同构，`nodes/edges/viewport` 均为必填；公共模板路由在 `AppModule.configure()` 里通过 `TenantMiddleware.exclude({ path: 'templates', method: RequestMethod.ALL }, { path: 'templates/{*splat}', method: RequestMethod.ALL })` 绕过租户中间件。
+
+## Marketplace（Story 9-2）
+
+- public browse 路由：`GET /marketplace/browse`、`GET /marketplace/browse/:id`、`GET /marketplace/browse/:id/reviews`，已在 `AppModule.configure()` 中显式从 `TenantMiddleware` 排除。
+- `MarketplaceService.findPublicListings()` 支持 `category/search/sort(popular|rating|newest)`；作者名统一使用 `displayName ?? email`。
+- `MarketplaceReviewUserService` 负责用户评论写入、分页查询和 `avg_rating/review_count` 回刷；重复评论通过唯一索引映射为 409。
+- `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部走 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆快照，并原子递增 `use_count`。
+- marketplace clone 会从 `workflow_versions.snapshot` 复制 `nodes/edges/viewport/inputSchema`，若 `snapshot.viewport === null` 则回退 `{ x: 0, y: 0, zoom: 1 }`，并写入 `metadata.cloned_from_marketplace`。
 
 ## WebSocket
 
