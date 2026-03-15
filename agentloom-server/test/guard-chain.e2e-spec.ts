@@ -34,6 +34,7 @@ import { RbacCacheService } from '../src/common/services/rbac-cache.service';
 import { TokenBlacklistService } from '../src/common/services/token-blacklist.service';
 import { TenantTransactionInterceptor } from '../src/common/interceptors/tenant-transaction.interceptor';
 import { DRIZZLE } from '../src/database/database.module';
+import { PlatformApiTokenService } from '../src/modules/platform-api-token/platform-api-token.service';
 
 const TEST_JWT_SECRET = 'test-e2e-jwt-secret';
 const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -143,6 +144,13 @@ const mockTxExecute = vi.fn().mockResolvedValue(undefined);
       provide: RbacCacheService,
       useValue: {
         getUserRole: vi.fn(),
+      },
+    },
+    {
+      provide: PlatformApiTokenService,
+      useValue: {
+        validateToken: vi.fn(),
+        updateLastUsedAt: vi.fn().mockResolvedValue(undefined),
       },
     },
     {

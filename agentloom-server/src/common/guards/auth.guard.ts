@@ -1,11 +1,10 @@
 import {
   CanActivate,
   ExecutionContext,
-  Inject,
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { ModuleRef, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
 import * as jwt from 'jsonwebtoken';
@@ -32,14 +31,25 @@ export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   private readonly jwtSecret: string;
 
+  private platformApiTokenService?: PlatformApiTokenService;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
     private readonly tokenBlacklist: TokenBlacklistService,
-    @Inject(PlatformApiTokenService)
-    private readonly platformApiTokenService: PlatformApiTokenService,
+    private readonly moduleRef: ModuleRef,
   ) {
     this.jwtSecret = this.configService.get<string>('APP_JWT_SECRET')!;
+  }
+
+  private getPlatformApiTokenService(): PlatformApiTokenService {
+    if (!this.platformApiTokenService) {
+      this.platformApiTokenService = this.moduleRef.get(
+        PlatformApiTokenService,
+        { strict: false },
+      );
+    }
+    return this.platformApiTokenService;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -131,8 +141,8 @@ export class AuthGuard implements CanActivate {
     apiKey: string,
   ): Promise<boolean> {
     try {
-      const validated =
-        await this.platformApiTokenService.validateToken(apiKey);
+      const tokenService = this.getPlatformApiTokenService();
+      const validated = await tokenService.validateToken(apiKey);
 
       const payload: JwtPayload = {
         sub: validated.userId,
@@ -146,13 +156,11 @@ export class AuthGuard implements CanActivate {
 
       this.setRequestAuth(request, payload, 'api_key');
 
-      this.platformApiTokenService
-        .updateLastUsedAt(validated.tokenId)
-        .catch((err) => {
-          this.logger.warn(
-            `Failed to update lastUsedAt for token ${validated.tokenId}: ${err.message}`,
-          );
-        });
+      tokenService.updateLastUsedAt(validated.tokenId).catch((err) => {
+        this.logger.warn(
+          `Failed to update lastUsedAt for token ${validated.tokenId}: ${err.message}`,
+        );
+      });
 
       return true;
     } catch (error) {
