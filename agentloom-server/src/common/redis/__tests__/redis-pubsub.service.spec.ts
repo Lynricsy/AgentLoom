@@ -8,6 +8,7 @@ import { REDIS_CLIENT, CACHE_INVALIDATION_CHANNEL } from '../redis.constants';
 
 vi.mock('ioredis', () => {
   const mockSubscriber = {
+    status: 'ready',
     subscribe: vi.fn().mockResolvedValue(undefined),
     unsubscribe: vi.fn().mockResolvedValue(undefined),
     quit: vi.fn().mockResolvedValue('OK'),
@@ -166,6 +167,32 @@ describe('RedisPubSubService', () => {
 
       const mockInstance = await getSubscriberMock();
 
+      expect(mockInstance.unsubscribe).toHaveBeenCalledWith(
+        CACHE_INVALIDATION_CHANNEL,
+      );
+      expect(mockInstance.quit).toHaveBeenCalled();
+    });
+
+    it('接続が既に終了している場合は unsubscribe/quit を呼ばない', async () => {
+      await service.onModuleInit();
+      const mockInstance = await getSubscriberMock();
+      mockInstance.status = 'end';
+
+      await service.onModuleDestroy();
+
+      expect(mockInstance.unsubscribe).not.toHaveBeenCalledWith(
+        CACHE_INVALIDATION_CHANNEL,
+      );
+      expect(mockInstance.quit).not.toHaveBeenCalled();
+    });
+
+    it('接続クローズ済みエラーは無視して終了する', async () => {
+      await service.onModuleInit();
+      const mockInstance = await getSubscriberMock();
+      mockInstance.status = 'ready';
+      mockInstance.unsubscribe.mockRejectedValue(new Error('Connection is closed.'));
+
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
       expect(mockInstance.unsubscribe).toHaveBeenCalledWith(
         CACHE_INVALIDATION_CHANNEL,
       );

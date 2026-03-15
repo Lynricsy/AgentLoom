@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
@@ -24,10 +25,18 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import type { CreatePlatformApiTokenDto } from './dto/create-platform-api-token.dto';
+import {
+  CreatePlatformApiTokenSwaggerDto,
+} from './dto/create-platform-api-token.dto';
 import { CreatePlatformApiTokenSchema } from './dto/create-platform-api-token.dto';
-import type { QueryPlatformApiTokenDto } from './dto/query-platform-api-token.dto';
+import {
+  QueryPlatformApiTokenSwaggerDto,
+} from './dto/query-platform-api-token.dto';
 import { QueryPlatformApiTokenSchema } from './dto/query-platform-api-token.dto';
+import {
+  PlatformApiTokenCreateEnvelopeSwaggerDto,
+  PlatformApiTokenListResponseSwaggerDto,
+} from './dto/platform-api-token-response.dto';
 import { PlatformApiTokenService } from './platform-api-token.service';
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -48,12 +57,19 @@ export class PlatformApiTokenController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建 API Token' })
-  @ApiResponse({ status: 201, description: 'Token 创建成功，仅此次返回明文' })
+  @ApiBody({ type: CreatePlatformApiTokenSwaggerDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Token 创建成功，仅此次返回明文',
+    type: PlatformApiTokenCreateEnvelopeSwaggerDto,
+  })
+  @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 409, description: 'Token 数量超限' })
   @ApiResponse({ status: 422, description: '请求参数校验失败' })
   async create(
     @Body(new ZodValidationPipe(CreatePlatformApiTokenSchema))
-    dto: CreatePlatformApiTokenDto,
+    dto: CreatePlatformApiTokenSwaggerDto,
     @Req() req: AuthenticatedRequest,
   ) {
     const data = await this.platformApiTokenService.generateToken(
@@ -68,10 +84,16 @@ export class PlatformApiTokenController {
   @Get()
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '分页查询当前用户的 API Token 列表' })
-  @ApiResponse({ status: 200, description: 'Token 列表' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token 列表',
+    type: PlatformApiTokenListResponseSwaggerDto,
+  })
+  @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   async list(
     @Query(new ZodValidationPipe(QueryPlatformApiTokenSchema))
-    query: QueryPlatformApiTokenDto,
+    query: QueryPlatformApiTokenSwaggerDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.platformApiTokenService.findAll(
@@ -85,6 +107,8 @@ export class PlatformApiTokenController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '撤销 API Token' })
   @ApiResponse({ status: 204, description: 'Token 已撤销' })
+  @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: 'Token 不存在' })
   @ApiResponse({ status: 409, description: 'Token 已被撤销' })
   async revoke(

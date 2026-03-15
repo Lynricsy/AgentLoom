@@ -441,6 +441,7 @@ describe('PlatformApiTokenService', () => {
         tenantId: TENANT_ID,
         scopes: 'workflow:read',
         tokenId: TOKEN_ID,
+        tokenPrefix: 'al_11111111',
         tenantRole: undefined,
       });
       expect(mockRbacCacheService.getUserRole).toHaveBeenCalledWith(

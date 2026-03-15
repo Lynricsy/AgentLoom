@@ -14,6 +14,7 @@ describe('RedisCacheService', () => {
       del: vi.fn(),
       keys: vi.fn(),
       quit: vi.fn(),
+      status: 'ready',
     };
 
     const module = await Test.createTestingModule({
@@ -99,6 +100,21 @@ describe('RedisCacheService', () => {
 
       await service.onModuleDestroy();
 
+      expect(mockRedis.quit).toHaveBeenCalled();
+    });
+
+    it('接続が既に閉じている場合は quit を呼ばずに終了する', async () => {
+      mockRedis.status = 'end';
+
+      await service.onModuleDestroy();
+
+      expect(mockRedis.quit).not.toHaveBeenCalled();
+    });
+
+    it('接続クローズ済みエラーは無視する', async () => {
+      mockRedis.quit.mockRejectedValue(new Error('Connection is closed.'));
+
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
       expect(mockRedis.quit).toHaveBeenCalled();
     });
   });

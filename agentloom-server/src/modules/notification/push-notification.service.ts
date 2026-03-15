@@ -1,4 +1,9 @@
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { DeviceTokenService } from './device-token.service';
@@ -16,7 +21,7 @@ export interface PushNotificationPayload {
 }
 
 @Injectable()
-export class PushNotificationService implements OnModuleInit {
+export class PushNotificationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PushNotificationService.name);
   private messagingClient: admin.messaging.Messaging | null = null;
 
@@ -56,6 +61,26 @@ export class PushNotificationService implements OnModuleInit {
       this.messagingClient = null;
       this.logger.error('Firebase Cloud Messaging 初始化失败', error);
     }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.messagingClient = null;
+
+    const firebaseAppDeletes: Array<Promise<void>> = [];
+
+    for (const app of admin.apps) {
+      if (!app) {
+        continue;
+      }
+
+      firebaseAppDeletes.push(app.delete());
+    }
+
+    if (firebaseAppDeletes.length === 0) {
+      return;
+    }
+
+    await Promise.all(firebaseAppDeletes);
   }
 
   async sendToUser(

@@ -2,6 +2,7 @@ import {
   type MiddlewareConsumer,
   Module,
   type NestModule,
+  type OnModuleDestroy,
   RequestMethod,
 } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -42,6 +43,20 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { TenantTransactionInterceptor } from './common/interceptors/tenant-transaction.interceptor';
 import { RbacCacheService } from './common/services/rbac-cache.service';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
+import { safeQuitRedis } from './common/redis/redis-shutdown.util';
+
+let throttlerRedisClient: Redis | null = null;
+
+function createThrottlerOptions(configService: ConfigService) {
+  throttlerRedisClient = new Redis(configService.get<string>('APP_REDIS_URL')!);
+
+  return {
+    throttlers: [
+      { name: 'default', ttl: 60_000, limit: 100 },
+    ],
+    storage: new ThrottlerStorageRedisService(throttlerRedisClient),
+  };
+}
 
 @Module({
   imports: [
@@ -51,14 +66,7 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     RedisModule,
     EventEmitterModule.forRoot(),
     ThrottlerModule.forRootAsync({
-      useFactory: (configService: ConfigService) => ({
-        throttlers: [
-          { name: 'default', ttl: 60_000, limit: 60 },
-        ],
-        storage: new ThrottlerStorageRedisService(
-          new Redis(configService.get<string>('APP_REDIS_URL')!),
-        ),
-      }),
+      useFactory: createThrottlerOptions,
       inject: [ConfigService],
     }),
     BullModule.forRootAsync({
@@ -121,7 +129,7 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     },
   ],
 })
-export class AppModule implements NestModule {
+export class AppModule implements NestModule, OnModuleDestroy {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantMiddleware)
@@ -136,5 +144,15 @@ export class AppModule implements NestModule {
         { path: 'webhooks/{*splat}', method: RequestMethod.ALL },
       )
       .forRoutes('*');
+  }
+
+  async onModuleDestroy() {
+    if (!throttlerRedisClient) {
+      return;
+    }
+
+    const redisClient = throttlerRedisClient;
+    throttlerRedisClient = null;
+    await safeQuitRedis(redisClient);
   }
 }

@@ -165,6 +165,7 @@ export class PlatformApiTokenService {
     tenantId: string;
     scopes: string | null;
     tokenId: string;
+    tokenPrefix: string;
     tenantRole?: string;
   }> {
     if (!rawToken.startsWith(TOKEN_PREFIX)) {
@@ -179,6 +180,7 @@ export class PlatformApiTokenService {
         userId: platformApiTokens.userId,
         tenantId: platformApiTokens.tenantId,
         scopes: platformApiTokens.scopes,
+        tokenPrefix: platformApiTokens.tokenPrefix,
         isRevoked: platformApiTokens.isRevoked,
         expiresAt: platformApiTokens.expiresAt,
       })
@@ -208,6 +210,7 @@ export class PlatformApiTokenService {
       tenantId: record.tenantId,
       scopes: record.scopes,
       tokenId: record.id,
+      tokenPrefix: record.tokenPrefix,
       tenantRole,
     };
   }

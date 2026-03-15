@@ -1,6 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
+import { safeQuitRedis } from './redis-shutdown.util';
 
 @Injectable()
 export class RedisCacheService implements OnModuleDestroy {
@@ -30,6 +31,6 @@ export class RedisCacheService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.redis.quit();
+    await safeQuitRedis(this.redis);
   }
 }

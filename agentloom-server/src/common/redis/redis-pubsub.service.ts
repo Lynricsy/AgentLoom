@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CACHE_INVALIDATION_CHANNEL, REDIS_CLIENT } from './redis.constants';
 import { RedisCacheService } from './redis-cache.service';
+import { safeQuitRedis, safeUnsubscribeRedis } from './redis-shutdown.util';
 
 @Injectable()
 export class RedisPubSubService implements OnModuleInit, OnModuleDestroy {
@@ -52,7 +53,7 @@ export class RedisPubSubService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.subscriber.unsubscribe(CACHE_INVALIDATION_CHANNEL);
-    await this.subscriber.quit();
+    await safeUnsubscribeRedis(this.subscriber, CACHE_INVALIDATION_CHANNEL);
+    await safeQuitRedis(this.subscriber);
   }
 }

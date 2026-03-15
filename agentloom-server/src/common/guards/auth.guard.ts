@@ -26,6 +26,13 @@ export interface JwtPayload {
   tenantRole?: string;
 }
 
+type RequestWithAuthContext = FastifyRequest & {
+  user: JwtPayload;
+  tenantId?: string;
+  authMethod: AuthMethod;
+  apiKeyPrefix?: string;
+};
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
@@ -154,7 +161,9 @@ export class AuthGuard implements CanActivate {
         tenantRole: validated.tenantRole,
       };
 
-      this.setRequestAuth(request, payload, 'api_key');
+      this.setRequestAuth(request, payload, 'api_key', {
+        apiKeyPrefix: validated.tokenPrefix,
+      });
 
       tokenService.updateLastUsedAt(validated.tokenId).catch((err) => {
         this.logger.warn(
@@ -181,18 +190,21 @@ export class AuthGuard implements CanActivate {
     request: FastifyRequest,
     payload: JwtPayload,
     authMethod: AuthMethod,
+    options: {
+      apiKeyPrefix?: string;
+    } = {},
   ): void {
-    const req = request as FastifyRequest & {
-      user: JwtPayload;
-      tenantId?: string;
-      authMethod: AuthMethod;
-    };
+    const req = request as RequestWithAuthContext;
     req.user = payload;
     req.authMethod = authMethod;
 
     if (authMethod === 'api_key' && payload.tenantId) {
       req.tenantId = payload.tenantId;
+      req.apiKeyPrefix = options.apiKeyPrefix;
+      return;
     }
+
+    delete req.apiKeyPrefix;
   }
 
   private isJwtPayloadObject(

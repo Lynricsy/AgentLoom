@@ -14,6 +14,7 @@ const TEST_USER_EMAIL = 'test@example.com';
 const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_API_KEY = 'al_test_platform_api_key';
 const TEST_API_TOKEN_ID = '22222222-2222-4222-8222-222222222222';
+const TEST_API_KEY_PREFIX = 'al_testpref';
 
 type ValidatedPlatformApiToken = Awaited<
   ReturnType<PlatformApiTokenService['validateToken']>
@@ -65,6 +66,7 @@ function createValidatedApiKeyResult(
     tenantId: TEST_TENANT_ID,
     scopes: null,
     tokenId: TEST_API_TOKEN_ID,
+    tokenPrefix: TEST_API_KEY_PREFIX,
     tenantRole: 'owner',
     ...overrides,
   };
@@ -308,6 +310,21 @@ describe('AuthGuard', () => {
 
       expect(result).toBe(true);
       expect(request.authMethod).toBe('api_key');
+    });
+
+    it('API Key 認証時は request.apiKeyPrefix に token prefix を设置する', async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      const { context, request } = createMockExecutionContext(
+        undefined,
+        TEST_API_KEY,
+      );
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(request.apiKeyPrefix).toBe(TEST_API_KEY_PREFIX);
     });
 
     it('検証済み API Key の tenantId を request.tenantId に設定する', async () => {

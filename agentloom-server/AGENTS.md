@@ -4,14 +4,14 @@ NestJS v11 + Fastify v5 后端。多租户 SaaS，七层全局中间件/守卫�
 
 ## 入口
 
-`main.ts` → `NestFactory.create(AppModule, FastifyAdapter, { rawBody: true })` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` (Bearer + X-Api-Key auth, `cleanupOpenApiDoc` from nestjs-zod) → listen(APP_PORT‖3000)
+`main.ts` → `NestFactory.create(AppModule, FastifyAdapter, { rawBody: true })` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` (Bearer + X-Api-Key auth, `createSwaggerDocument()` + OpenAPI 3.0 正规化) → listen(APP_PORT‖3000)
 
 ## 全局中间件/守卫链 (执行顺序)
 
 ```
 TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key present)
   → TenantTransactionInterceptor (AsyncLocalStorage, Drizzle tenant tx)
-    → CustomThrottlerGuard (60 req/min per user, Redis storage via @nestjs/throttler v6 + @nest-lab/throttler-storage-redis)
+    → CustomThrottlerGuard (100 req/min, 按 API key prefix 或 JWT sub 限流；429 同时返回 Retry-After + X-RateLimit-*；Redis storage via @nestjs/throttler v6 + @nest-lab/throttler-storage-redis)
       → AuthGuard (JWT priority → X-Api-Key fallback; ModuleRef lazy-loads PlatformApiTokenService)
         → TenantGuard (validate UUID tenantId)
           → RolesGuard (Redis-cached RBAC: owner>admin>creator>operator>viewer)
@@ -22,12 +22,12 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - API Key 认证链路: `extractApiKeyFromHeader()` → `PlatformApiTokenService.validateToken()` (SHA-256 hash lookup + revoked/expired check) → `RbacCacheService.getUserRole()` → `setRequestAuth(request, payload, 'api_key')`
 - `req.authMethod: 'jwt' | 'api_key'` 标识当前认证方式
 - API Key 认证时 AuthGuard 直接设置 `req.tenantId`，TenantMiddleware 检测到 `x-api-key` 头后跳过 JWT decode
-- `PlatformApiTokenService` 通过 `ModuleRef.get({strict:false})` 延迟解析，避免全局 APP_GUARD 的跨模块 DI 问题
+- `PlatformApiTokenService` 通过 `ModuleRef.get({strict:false})` 延迟解析，避免全局 APP_GUARD 的跨模块 DI 问题；API Key 认证成功时会把 `tokenPrefix` 写入 `req.apiKeyPrefix`
 
 ### 速率限制
-- `CustomThrottlerGuard` (`src/common/guards/custom-throttler.guard.ts`): 覆写 `getTracker()` 返回 `apikey:{userId}` 或 `jwt:{userId}`，无认证回退 `req.ip`
+- `CustomThrottlerGuard` (`src/common/guards/custom-throttler.guard.ts`): 先从原始 `x-api-key` / `authorization` 头提取 tracker，返回 `apikey:{prefix}` 或 `jwt:{sub}`，无认证回退 `req.ip`；blocked 分支也补写 `X-RateLimit-Limit/Remaining/Reset`
 - `@SkipThrottle({ default: true })` 用于 HealthController (v6 语法: `Record<string, boolean>`)
-- ThrottlerModule: `{ ttl: 60_000, limit: 60 }` (60 req/min, ttl 单位为毫秒 — v6 breaking change)
+- ThrottlerModule: `{ ttl: 60_000, limit: 100 }` (100 req/min, ttl 单位为毫秒 — v6 breaking change)；`AppModule.onModuleDestroy()` 会主动关闭 throttler 内联 Redis 连接
 
 ## 模块地图
 
@@ -209,10 +209,13 @@ Schema 在 `src/database/schema/`。24 张表，启用 RLS (`rls-policies.ts`)�
 ## OpenAPI & SDK (Story 9-4)
 
 - Swagger 注解已覆盖所有公开控制器（MCP 8、Health 1、Evidence 5、Notification 6、DeviceToken 2、InterventionPolicy 6、KnowledgeBase 9、Template 2、PlatformApiToken 3）
-- `main.ts`: `addBearerAuth()` + `addApiKey({ type: 'apiKey', in: 'header', name: 'X-Api-Key' }, 'X-Api-Key')` + `cleanupOpenApiDoc(document, { version: '3.0' })`
-- `scripts/export-openapi-spec.ts`: 独立 NestJS bootstrap → SwaggerModule.createDocument() → 输出 `sdk/openapi.json`（需 DB 连接）
+- `src/openapi/swagger-document.ts`: 统一 `DocumentBuilder`、稳定 `operationIdFactory`，并在导出前做 OpenAPI 3.0 正规化（`const -> enum`、删除 `propertyNames`、折叠 snake_case alias、移除空 `license.url`）
+- `main.ts`: 复用 `createSwaggerDocument()` 暴露 `/docs` + `/openapi.json`
+- `scripts/export-openapi-spec.mjs`: 基于 compiled dist 模块导出 `sdk/openapi.json`，为 one-shot CLI 注入最小 env、执行 teardown，并在 `app.close()` 后 `process.exit(0)` 收尾
 - `openapitools.json`: openapi-generator-cli v7.9.0，两个 generator：`typescript` (typescript-fetch → `sdk/typescript/`) 和 `python` (python → `sdk/python/`)
-- package.json scripts: `openapi:export`、`sdk:generate:ts`、`sdk:generate:py`
+- package.json scripts: `openapi:export`、`sdk:export-spec`、`sdk:generate:ts`、`sdk:generate:py`、`sdk:generate`、`sdk:build:ts`
+- `scripts/postprocess-typescript-sdk.mjs`: 为 oneOf union alias 补 `ToJSONTyped` shim，并向 `sdk/typescript/README.md` 注入 JWT / X-Api-Key 用法示例
+- `scripts/postprocess-python-sdk.mjs`: 向 `sdk/python/README.md` 注入 JWT / X-Api-Key 用法示例
 - `sdk/.gitignore`: 忽略 `typescript/` `python/`，保留 `openapi.json`
 
 ## 环境变量

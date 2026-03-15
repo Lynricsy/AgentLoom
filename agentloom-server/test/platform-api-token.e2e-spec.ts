@@ -110,6 +110,7 @@ function createTestAuthGuard(getCtx: () => RlsTestContext) {
         user?: Record<string, unknown>;
         tenantId?: string;
         authMethod?: 'jwt' | 'api_key';
+        apiKeyPrefix?: string;
       }>();
 
       const authorization = request.headers.authorization;
@@ -200,7 +201,7 @@ function createTestAuthGuard(getCtx: () => RlsTestContext) {
         }
 
         const [record] = await getCtx().adminSql`
-          SELECT id, user_id, tenant_id, is_revoked, expires_at
+          SELECT id, user_id, tenant_id, token_prefix, is_revoked, expires_at
           FROM "platform_api_tokens"
           WHERE token_hash = ${hashPlatformToken(apiKey)}
         `;
@@ -233,6 +234,7 @@ function createTestAuthGuard(getCtx: () => RlsTestContext) {
         };
         request.tenantId = record.tenant_id;
         request.authMethod = 'api_key';
+        request.apiKeyPrefix = record.token_prefix;
 
         void getCtx().adminSql`
           UPDATE "platform_api_tokens"
@@ -740,6 +742,40 @@ describe('PlatformApiToken E2E', () => {
         }
       }
     });
+
+    it('同一 API key 超过 100 次请求时应返回 429，并带 Retry-After 与限流头', async () => {
+      const primaryToken = await createToken({ name: 'Primary Rate Limit Token' });
+      const secondaryToken = await createToken({
+        name: 'Secondary Rate Limit Token',
+      });
+
+      for (let index = 0; index < 100; index += 1) {
+        const res = await listTokens(
+          { status: 'all' },
+          apiKeyHeaders(primaryToken.token),
+        );
+
+        expect(res.status).toBe(200);
+      }
+
+      const limited = await listTokens(
+        { status: 'all' },
+        apiKeyHeaders(primaryToken.token),
+      );
+
+      expect(limited.status).toBe(429);
+      expect(String(limited.headers['retry-after'] ?? '')).toMatch(/^\d+$/);
+      expect(String(limited.headers['x-ratelimit-limit'] ?? '')).toBe('100');
+      expect(limited.headers['x-ratelimit-remaining']).toBeDefined();
+      expect(limited.headers['x-ratelimit-reset']).toBeDefined();
+
+      const secondaryRes = await listTokens(
+        { status: 'all' },
+        apiKeyHeaders(secondaryToken.token),
+      );
+
+      expect(secondaryRes.status).toBe(200);
+    });
   });
 
   describe('RBAC', () => {
@@ -762,6 +798,17 @@ describe('PlatformApiToken E2E', () => {
         { name: 'viewer-create-should-fail' },
         viewerHeaders(),
       );
+
+      expect(res.status).toBe(403);
+      expect((res.body as ProblemDetailsBody).type).toBe(
+        'https://agentloom.dev/errors/insufficient-permissions',
+      );
+    });
+
+    it('viewer 角色不应可以撤销 token', async () => {
+      const created = await createToken({ name: 'viewer-delete-should-fail' });
+
+      const res = await revokeToken(created.id, viewerHeaders());
 
       expect(res.status).toBe(403);
       expect((res.body as ProblemDetailsBody).type).toBe(

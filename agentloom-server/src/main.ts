@@ -3,14 +3,19 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { cleanupOpenApiDoc } from 'nestjs-zod';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import multipart from '@fastify/multipart';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ZodValidationPipe } from './common/pipes/zod-validation.pipe';
 import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 import { Logger } from '@nestjs/common';
+import {
+  API_GLOBAL_PREFIX,
+  createSwaggerDocument,
+  SWAGGER_DOCUMENT_PATH,
+  SWAGGER_JSON_DOCUMENT_URL,
+} from './openapi/swagger-document';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -39,26 +44,13 @@ async function bootstrap() {
   }
   app.useWebSocketAdapter(redisIoAdapter);
 
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_GLOBAL_PREFIX);
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(new ZodValidationPipe());
 
-  const config = new DocumentBuilder()
-    .setTitle('AgentLoom API')
-    .setDescription('AgentLoom 多智能体协作平台 API')
-    .setVersion('1.0')
-    .setContact('AgentLoom', 'https://agentloom.dev', 'support@agentloom.dev')
-    .setLicense('Proprietary', '')
-    .addBearerAuth()
-    .addApiKey(
-      { type: 'apiKey', in: 'header', name: 'X-Api-Key' },
-      'X-Api-Key',
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  cleanupOpenApiDoc(document, { version: '3.0' });
-  SwaggerModule.setup('docs', app, document, {
-    jsonDocumentUrl: 'openapi.json',
+  const document = createSwaggerDocument(app);
+  SwaggerModule.setup(SWAGGER_DOCUMENT_PATH, app, document, {
+    jsonDocumentUrl: SWAGGER_JSON_DOCUMENT_URL,
   });
 
   const port = process.env.APP_PORT ?? 3000;

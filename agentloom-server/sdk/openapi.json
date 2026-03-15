@@ -1,0 +1,6767 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "Health_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "服务健康状态"
+          }
+        },
+        "summary": "健康检查",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "Auth_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "注册成功"
+          },
+          "409": {
+            "description": "邮箱已存在"
+          },
+          "422": {
+            "description": "请求验证失败（含密码强度校验）"
+          }
+        },
+        "summary": "用户注册",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "Auth_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功"
+          },
+          "401": {
+            "description": "凭据无效"
+          }
+        },
+        "summary": "用户登录",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "Auth_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "刷新成功"
+          },
+          "401": {
+            "description": "Refresh token 无效"
+          }
+        },
+        "summary": "Token 刷新",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "Auth_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "登出成功"
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "500": {
+            "description": "会话注销失败"
+          }
+        },
+        "summary": "用户登出",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/security": {
+      "get": {
+        "operationId": "Auth_getSecurityInfo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "获取安全信息成功"
+          },
+          "401": {
+            "description": "未认证"
+          }
+        },
+        "summary": "获取当前用户安全信息",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/{provider}": {
+      "post": {
+        "operationId": "OAuth_initiateOAuth",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthInitiateBodyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功返回 OAuth 授权地址"
+          },
+          "400": {
+            "description": "OAuth 提供商不支持"
+          }
+        },
+        "summary": "发起 OAuth 登录",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/callback": {
+      "get": {
+        "operationId": "OAuth_handleCallback",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "重定向到前端回调地址"
+          }
+        },
+        "summary": "处理 OAuth 回调",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/totp/enroll": {
+      "post": {
+        "operationId": "Mfa_enrollTotp",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "TOTP MFA 注册成功"
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "409": {
+            "description": "MFA 已启用"
+          }
+        },
+        "summary": "注册 TOTP MFA 因子",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/totp/verify": {
+      "post": {
+        "operationId": "Mfa_verifyTotp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaVerifyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA 验证成功"
+          },
+          "401": {
+            "description": "MFA 验证失败"
+          }
+        },
+        "summary": "验证 TOTP MFA 验证码",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/login/verify": {
+      "post": {
+        "operationId": "Mfa_verifyMfaLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaLoginVerifyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录 MFA 验证成功"
+          },
+          "401": {
+            "description": "MFA 令牌无效或已过期"
+          }
+        },
+        "summary": "完成登录阶段的 MFA 二次验证",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa": {
+      "delete": {
+        "operationId": "Mfa_disableMfa",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaDisableDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA 已禁用"
+          },
+          "401": {
+            "description": "未认证或验证码无效"
+          }
+        },
+        "summary": "禁用当前账号的 TOTP MFA",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/organizations": {
+      "post": {
+        "operationId": "Organization_createOrganization",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "组织创建成功"
+          },
+          "409": {
+            "description": "组织 slug 冲突"
+          }
+        },
+        "summary": "创建组织",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{id}": {
+      "get": {
+        "operationId": "Organization_getOrganization",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          },
+          "404": {
+            "description": "组织不存在或无权限"
+          }
+        },
+        "summary": "获取组织详情",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{id}/invitations": {
+      "post": {
+        "operationId": "Organization_inviteMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "邀请发送成功"
+          },
+          "403": {
+            "description": "无权限邀请成员"
+          },
+          "404": {
+            "description": "组织不存在"
+          },
+          "409": {
+            "description": "已存在待处理邀请或用户已是成员"
+          }
+        },
+        "summary": "邀请成员加入组织",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/invitations/{token}/accept": {
+      "post": {
+        "operationId": "Organization_acceptInvitation",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功加入组织"
+          },
+          "404": {
+            "description": "邀请不存在"
+          },
+          "409": {
+            "description": "已是组织成员"
+          },
+          "410": {
+            "description": "邀请已过期或已使用"
+          }
+        },
+        "summary": "接受组织邀请",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{id}/members/{userId}/role": {
+      "put": {
+        "operationId": "Organization_updateMemberRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "角色更新成功"
+          },
+          "403": {
+            "description": "无权限修改角色（仅 Owner 可操作）"
+          },
+          "404": {
+            "description": "组织或成员不存在"
+          },
+          "409": {
+            "description": "不能移除唯一的所有者"
+          }
+        },
+        "summary": "更新成员角色",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{id}/members/{userId}": {
+      "delete": {
+        "operationId": "Organization_removeMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "成员移除成功"
+          },
+          "403": {
+            "description": "无权限移除成员"
+          },
+          "404": {
+            "description": "组织或成员不存在"
+          },
+          "409": {
+            "description": "不能移除唯一的所有者"
+          }
+        },
+        "summary": "移除组织成员",
+        "tags": [
+          "Organizations"
+        ]
+      }
+    },
+    "/api/v1/api-keys": {
+      "post": {
+        "operationId": "ApiKey_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API 密钥创建成功"
+          }
+        },
+        "summary": "创建 API 密钥",
+        "tags": [
+          "API Keys"
+        ]
+      },
+      "get": {
+        "operationId": "ApiKey_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "API 密钥列表"
+          }
+        },
+        "summary": "获取租户下所有 API 密钥",
+        "tags": [
+          "API Keys"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{id}/rotate": {
+      "put": {
+        "operationId": "ApiKey_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateApiKeyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API 密钥轮换成功"
+          }
+        },
+        "summary": "轮换 API 密钥",
+        "tags": [
+          "API Keys"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "delete": {
+        "operationId": "ApiKey_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API 密钥已撤销"
+          }
+        },
+        "summary": "撤销 API 密钥",
+        "tags": [
+          "API Keys"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions": {
+      "get": {
+        "operationId": "WorkflowDefinitionCreate_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "archived"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "updatedAt",
+                "createdAt",
+                "name"
+              ]
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "desc",
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "工作流定义列表"
+          }
+        },
+        "summary": "查询工作流定义列表",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      },
+      "post": {
+        "operationId": "WorkflowDefinitionCreate_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowDefinitionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "工作流定义创建成功"
+          }
+        },
+        "summary": "创建工作流定义",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{id}": {
+      "get": {
+        "operationId": "WorkflowDefinitionCreate_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "工作流定义详情"
+          },
+          "404": {
+            "description": "工作流定义不存在"
+          }
+        },
+        "summary": "查询工作流定义详情",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      },
+      "patch": {
+        "operationId": "WorkflowDefinitionCreate_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowDefinitionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "工作流定义更新成功"
+          },
+          "404": {
+            "description": "工作流定义不存在"
+          },
+          "409": {
+            "description": "版本冲突"
+          }
+        },
+        "summary": "更新工作流定义",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      },
+      "delete": {
+        "operationId": "WorkflowDefinitionCreate_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "工作流定义删除成功"
+          },
+          "404": {
+            "description": "工作流定义不存在"
+          }
+        },
+        "summary": "删除（归档）工作流定义",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/export": {
+      "get": {
+        "operationId": "WorkflowDefinitionCreate_exportWorkflow",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "工作流导出成功"
+          },
+          "404": {
+            "description": "工作流定义不存在"
+          }
+        },
+        "summary": "导出工作流定义",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/import/validate": {
+      "post": {
+        "operationId": "WorkflowDefinitionCreate_validateImport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "导入文件校验结果"
+          }
+        },
+        "summary": "校验导入工作流文件",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/import": {
+      "post": {
+        "operationId": "WorkflowDefinitionCreate_importWorkflow",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "工作流定义导入成功"
+          }
+        },
+        "summary": "导入工作流定义",
+        "tags": [
+          "Workflow Definitions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/versions": {
+      "post": {
+        "operationId": "WorkflowVersion_createVersion",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "版本快照创建成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "工作流已归档"
+          }
+        },
+        "summary": "创建工作流版本快照",
+        "tags": [
+          "Workflow Versions"
+        ]
+      },
+      "get": {
+        "operationId": "WorkflowVersion_listVersions",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "版本列表获取成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          }
+        },
+        "summary": "获取工作流版本列表",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/versions/{versionId}/rollback": {
+      "post": {
+        "operationId": "WorkflowVersion_rollback",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "回滚成功"
+          },
+          "404": {
+            "description": "工作流或版本不存在"
+          },
+          "409": {
+            "description": "工作流已归档"
+          }
+        },
+        "summary": "回滚到指定版本",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/publish": {
+      "post": {
+        "operationId": "WorkflowVersion_publish",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishWorkflowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "工作流发布成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "状态转换无效或工作流已归档"
+          },
+          "422": {
+            "description": "工作流验证失败"
+          }
+        },
+        "summary": "发布工作流",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/archive": {
+      "post": {
+        "operationId": "WorkflowVersion_archive",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "工作流归档成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "工作流已归档"
+          }
+        },
+        "summary": "归档工作流",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/published-version": {
+      "get": {
+        "operationId": "WorkflowVersion_getPublishedVersion",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已发布版本获取成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          }
+        },
+        "summary": "获取已发布的工作流版本",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/input-schema": {
+      "get": {
+        "operationId": "WorkflowVersion_getInputSchema",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "输入参数 schema 获取成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "工作流未发布"
+          }
+        },
+        "summary": "获取工作流输入参数 schema",
+        "tags": [
+          "Workflow Versions"
+        ]
+      }
+    },
+    "/api/v1/llm-models": {
+      "post": {
+        "operationId": "Llm_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmModelConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "LLM 模型配置创建成功"
+          },
+          "409": {
+            "description": "模型配置名称冲突"
+          }
+        },
+        "summary": "创建 LLM 模型配置",
+        "tags": [
+          "LLM Models"
+        ]
+      },
+      "get": {
+        "operationId": "Llm_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "返回 LLM 模型配置列表"
+          }
+        },
+        "summary": "获取所有 LLM 模型配置",
+        "tags": [
+          "LLM Models"
+        ]
+      }
+    },
+    "/api/v1/llm-models/{id}": {
+      "get": {
+        "operationId": "Llm_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回 LLM 模型配置详情"
+          },
+          "404": {
+            "description": "模型配置未找到"
+          }
+        },
+        "summary": "获取指定 LLM 模型配置",
+        "tags": [
+          "LLM Models"
+        ]
+      },
+      "patch": {
+        "operationId": "Llm_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmModelConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "LLM 模型配置更新成功"
+          },
+          "404": {
+            "description": "模型配置未找到"
+          },
+          "409": {
+            "description": "模型配置名称冲突"
+          }
+        },
+        "summary": "更新 LLM 模型配置",
+        "tags": [
+          "LLM Models"
+        ]
+      },
+      "delete": {
+        "operationId": "Llm_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "LLM 模型配置删除成功"
+          },
+          "404": {
+            "description": "模型配置未找到"
+          }
+        },
+        "summary": "删除 LLM 模型配置",
+        "tags": [
+          "LLM Models"
+        ]
+      }
+    },
+    "/api/v1/llm-providers": {
+      "get": {
+        "operationId": "LlmProvider_getProviders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "返回 LLM 提供商目录"
+          }
+        },
+        "summary": "获取支持的 LLM 提供商列表",
+        "tags": [
+          "LLM Providers"
+        ]
+      }
+    },
+    "/api/v1/mcp/test": {
+      "post": {
+        "operationId": "Mcp_testConnection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestMcpConnectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "连接测试成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "测试 MCP 服务器连接",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/discover": {
+      "post": {
+        "operationId": "Mcp_discoverTools",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverMcpToolsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "工具发现成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "从 MCP 服务器发现工具列表",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/import": {
+      "post": {
+        "operationId": "Mcp_importTools",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportMcpToolsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "工具导入成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "从 MCP 服务器导入工具",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/configs/{mcpServerConfigId}/test": {
+      "post": {
+        "operationId": "Mcp_testSavedConfigConnection",
+        "parameters": [
+          {
+            "name": "mcpServerConfigId",
+            "required": true,
+            "in": "path",
+            "description": "MCP 服务器配置 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "连接测试成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "MCP 服务器配置不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "测试已保存的 MCP 服务器配置连接",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/configs/{mcpServerConfigId}/rediscover": {
+      "post": {
+        "operationId": "Mcp_rediscoverTools",
+        "parameters": [
+          {
+            "name": "mcpServerConfigId",
+            "required": true,
+            "in": "path",
+            "description": "MCP 服务器配置 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "工具重新发现成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "MCP 服务器配置不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "重新从已保存的 MCP 服务器配置发现工具",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/configs/{mcpServerConfigId}/reimport": {
+      "post": {
+        "operationId": "Mcp_reimportTools",
+        "parameters": [
+          {
+            "name": "mcpServerConfigId",
+            "required": true,
+            "in": "path",
+            "description": "MCP 服务器配置 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReimportMcpToolsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "工具重新导入成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "MCP 服务器配置不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "重新从已保存的 MCP 服务器配置导入工具",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/tools/{toolDefinitionId}/deactivate": {
+      "post": {
+        "operationId": "Mcp_deactivateTool",
+        "parameters": [
+          {
+            "name": "toolDefinitionId",
+            "required": true,
+            "in": "path",
+            "description": "工具定义 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "工具停用成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "工具定义不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "停用已导入的 MCP 工具",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/mcp/tools": {
+      "get": {
+        "operationId": "Mcp_listTools",
+        "parameters": [
+          {
+            "name": "source",
+            "required": false,
+            "in": "query",
+            "description": "工具来源过滤",
+            "schema": {
+              "enum": [
+                "mcp",
+                "builtin",
+                "custom"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "工具列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取工具定义列表",
+        "tags": [
+          "MCP"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases": {
+      "post": {
+        "operationId": "KnowledgeBase_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeBaseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "知识库创建成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建新的知识库",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      },
+      "get": {
+        "operationId": "KnowledgeBase_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "知识库列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前租户的知识库列表",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{id}": {
+      "get": {
+        "operationId": "KnowledgeBase_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "知识库详情获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "根据 ID 获取知识库详情",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      },
+      "delete": {
+        "operationId": "KnowledgeBase_deleteKnowledgeBase",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "知识库删除成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除知识库及其所有文档",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{id}/documents": {
+      "post": {
+        "operationId": "KnowledgeBase_uploadDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "文档上传成功，已加入处理队列"
+          },
+          "400": {
+            "description": "文件格式不支持或请求无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "向知识库上传文档",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      },
+      "get": {
+        "operationId": "KnowledgeBase_listDocuments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "uploaded",
+                  "processing",
+                  "ready",
+                  "failed"
+                ]
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文档列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取知识库中的文档列表",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{id}/settings": {
+      "patch": {
+        "operationId": "KnowledgeBase_updateSettings",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKnowledgeBaseSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "知识库设置更新成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新知识库设置",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{id}/documents/{documentId}": {
+      "delete": {
+        "operationId": "KnowledgeBase_deleteDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "description": "文档 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "文档删除成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "知识库或文档不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除知识库中的指定文档",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/knowledge-bases/{id}/documents/{documentId}/content": {
+      "get": {
+        "operationId": "KnowledgeBase_getDocumentContent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "知识库 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "description": "文档 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文档内容 URL 获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "文档内容不存在或已被删除"
+          },
+          "503": {
+            "description": "存储服务暂不可用"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取文档内容的预签名访问 URL",
+        "tags": [
+          "Knowledge Bases"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/run": {
+      "post": {
+        "operationId": "Execution_runWorkflow[0]",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunWorkflowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "执行已创建"
+          },
+          "409": {
+            "description": "工作流未发布"
+          }
+        },
+        "summary": "启动工作流执行",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/workflows/{workflowId}/run": {
+      "post": {
+        "operationId": "Execution_runWorkflow[1]",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunWorkflowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "执行已创建"
+          },
+          "409": {
+            "description": "工作流未发布"
+          }
+        },
+        "summary": "启动工作流执行",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}": {
+      "get": {
+        "operationId": "Execution_getExecution",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "执行详情"
+          },
+          "404": {
+            "description": "执行不存在"
+          }
+        },
+        "summary": "获取执行详情",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/executions": {
+      "get": {
+        "operationId": "Execution_listExecutions[0]",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "paused",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "执行列表"
+          }
+        },
+        "summary": "获取工作流执行历史",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/workflows/{workflowId}/executions": {
+      "get": {
+        "operationId": "Execution_listExecutions[1]",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "paused",
+                "completed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "执行列表"
+          }
+        },
+        "summary": "获取工作流执行历史",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/cancel": {
+      "post": {
+        "operationId": "Execution_cancelExecution",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "执行已取消"
+          },
+          "404": {
+            "description": "执行不存在"
+          },
+          "409": {
+            "description": "执行不可取消"
+          }
+        },
+        "summary": "取消执行",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/resume": {
+      "post": {
+        "operationId": "Execution_resumeExecution",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeExecutionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "执行恢复已启动"
+          },
+          "404": {
+            "description": "执行不存在"
+          },
+          "409": {
+            "description": "执行不可恢复"
+          }
+        },
+        "summary": "恢复失败的执行",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/steps/{stepId}/intervene": {
+      "post": {
+        "operationId": "Execution_interveneStep",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterveneStepDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "干预反馈已接受"
+          },
+          "409": {
+            "description": "步骤状态不允许干预"
+          }
+        },
+        "summary": "对等待干预的步骤提交反馈",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/steps/{stepId}/tool-calls/{toolCallId}/resolve": {
+      "post": {
+        "operationId": "Execution_resolveToolPermission",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "toolCallId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveToolPermissionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "权限解析已接受"
+          },
+          "409": {
+            "description": "工具调用状态不允许解析"
+          }
+        },
+        "summary": "解析工具调用权限（批准/拒绝）",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/dlq": {
+      "get": {
+        "operationId": "Execution_listDeadLetterJobs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "返回失败任务列表"
+          }
+        },
+        "summary": "查询死信队列中的失败任务",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/dlq/{jobId}/retry": {
+      "post": {
+        "operationId": "Execution_retryDeadLetterJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "任务已重新入队"
+          }
+        },
+        "summary": "重试死信队列中的失败任务",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/dlq/{jobId}/discard": {
+      "post": {
+        "operationId": "Execution_discardDeadLetterJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务已丢弃"
+          }
+        },
+        "summary": "丢弃死信队列中的失败任务",
+        "tags": [
+          "Executions"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "Notification_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "isRead",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "通知列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前用户的通知列表",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/unread-count": {
+      "get": {
+        "operationId": "Notification_getUnreadCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "未读通知数量获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前用户的未读通知数量",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "patch": {
+        "operationId": "Notification_markAllAsRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "全部通知标记已读成功"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "将所有通知标记为已读",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "Notification_markAsRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "通知 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "通知标记已读成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "404": {
+            "description": "通知不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "将指定通知标记为已读",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "operationId": "Notification_getPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "通知偏好设置获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前用户的通知偏好设置",
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "put": {
+        "operationId": "Notification_upsertPreference",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertPreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "通知偏好设置保存成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建或更新通知偏好设置",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/devices/register": {
+      "post": {
+        "operationId": "DeviceToken_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "设备令牌注册成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "注册设备推送令牌",
+        "tags": [
+          "Device Tokens"
+        ]
+      }
+    },
+    "/api/v1/devices/unregister": {
+      "delete": {
+        "operationId": "DeviceToken_unregister",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnregisterDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "设备令牌注销成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "注销设备推送令牌",
+        "tags": [
+          "Device Tokens"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/evidence": {
+      "get": {
+        "operationId": "Evidence_findByExecution",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "description": "执行 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rag_retrieval",
+                "agent_decision",
+                "tool_output",
+                "user_input",
+                "intervention",
+                "node_error"
+              ]
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeChunkContent",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "证据记录列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "执行不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取执行的证据记录列表",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/evidence/graph": {
+      "get": {
+        "operationId": "Evidence_getEvidenceGraph",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "description": "执行 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "证据关系图获取成功，含 X-Cache-Hit 响应头"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "执行不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取执行的证据关系图",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/evidence/chain": {
+      "get": {
+        "operationId": "Evidence_getEvidenceChain",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "description": "执行 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": false,
+            "in": "query",
+            "description": "节点 ID，用于过滤特定节点的溯源链",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "证据溯源链获取成功，含 X-Cache-Hit 响应头"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "执行不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取执行的证据溯源链",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/evidence/{evidenceId}": {
+      "get": {
+        "operationId": "Evidence_findById",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "description": "执行 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "evidenceId",
+            "required": true,
+            "in": "path",
+            "description": "证据记录 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "证据记录详情获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "证据记录不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取单条证据记录详情",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/executions/{executionId}/evidence/{evidenceId}/verify": {
+      "get": {
+        "operationId": "Evidence_verifyContentHash",
+        "parameters": [
+          {
+            "name": "executionId",
+            "required": true,
+            "in": "path",
+            "description": "执行 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "evidenceId",
+            "required": true,
+            "in": "path",
+            "description": "证据记录 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "证据完整性校验结果"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "证据记录不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "校验证据内容哈希完整性",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "operationId": "Template_list",
+        "parameters": [
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "description": "模板分类过滤",
+            "schema": {
+              "enum": [
+                "analysis",
+                "content",
+                "development",
+                "automation",
+                "reporting"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，默认 1",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页数量，默认 20",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "模板列表获取成功"
+          }
+        },
+        "summary": "获取工作流模板列表",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/templates/{slug}": {
+      "get": {
+        "operationId": "Template_detail",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "description": "模板唯一标识符",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "模板详情获取成功"
+          },
+          "404": {
+            "description": "模板不存在"
+          }
+        },
+        "summary": "获取工作流模板详情",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/reusable-blocks": {
+      "get": {
+        "operationId": "ReusableBlock_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "analysis",
+                "content",
+                "development",
+                "automation",
+                "reporting"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "可复用块列表"
+          }
+        },
+        "summary": "查询可复用块列表",
+        "tags": [
+          "Reusable Blocks"
+        ]
+      },
+      "post": {
+        "operationId": "ReusableBlock_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReusableBlockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "可复用块创建成功"
+          },
+          "422": {
+            "description": "可复用块定义无效"
+          }
+        },
+        "summary": "创建可复用块",
+        "tags": [
+          "Reusable Blocks"
+        ]
+      }
+    },
+    "/api/v1/reusable-blocks/{id}": {
+      "get": {
+        "operationId": "ReusableBlock_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "可复用块详情"
+          },
+          "404": {
+            "description": "可复用块不存在"
+          }
+        },
+        "summary": "查询可复用块详情",
+        "tags": [
+          "Reusable Blocks"
+        ]
+      },
+      "patch": {
+        "operationId": "ReusableBlock_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReusableBlockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "可复用块更新成功"
+          },
+          "404": {
+            "description": "可复用块不存在"
+          },
+          "409": {
+            "description": "版本冲突"
+          },
+          "422": {
+            "description": "可复用块定义无效"
+          }
+        },
+        "summary": "更新可复用块",
+        "tags": [
+          "Reusable Blocks"
+        ]
+      },
+      "delete": {
+        "operationId": "ReusableBlock_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "可复用块删除成功"
+          },
+          "404": {
+            "description": "可复用块不存在"
+          }
+        },
+        "summary": "删除可复用块",
+        "tags": [
+          "Reusable Blocks"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/triggers": {
+      "post": {
+        "operationId": "Trigger_create",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTriggerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "触发器创建成功"
+          }
+        },
+        "summary": "创建工作流触发器",
+        "tags": [
+          "Triggers"
+        ]
+      },
+      "get": {
+        "operationId": "Trigger_findAll",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cron",
+                "webhook",
+                "api_event"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "触发器列表"
+          }
+        },
+        "summary": "查询工作流触发器列表",
+        "tags": [
+          "Triggers"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/triggers/{triggerId}": {
+      "get": {
+        "operationId": "Trigger_findById",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "触发器详情"
+          },
+          "404": {
+            "description": "触发器不存在"
+          }
+        },
+        "summary": "获取触发器详情",
+        "tags": [
+          "Triggers"
+        ]
+      },
+      "patch": {
+        "operationId": "Trigger_update",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTriggerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "触发器更新成功"
+          },
+          "404": {
+            "description": "触发器不存在"
+          }
+        },
+        "summary": "更新触发器",
+        "tags": [
+          "Triggers"
+        ]
+      },
+      "delete": {
+        "operationId": "Trigger_remove",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "触发器删除成功"
+          },
+          "404": {
+            "description": "触发器不存在"
+          }
+        },
+        "summary": "删除触发器",
+        "tags": [
+          "Triggers"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/triggers/{triggerId}/toggle": {
+      "patch": {
+        "operationId": "Trigger_toggle",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "触发器状态切换成功"
+          },
+          "404": {
+            "description": "触发器不存在"
+          }
+        },
+        "summary": "切换触发器启用状态",
+        "tags": [
+          "Triggers"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/triggers/{triggerId}/history": {
+      "get": {
+        "operationId": "Trigger_findHistory",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed",
+                "skipped",
+                "signature_failed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "触发器执行历史"
+          }
+        },
+        "summary": "查询触发器执行历史",
+        "tags": [
+          "Triggers"
+        ]
+      }
+    },
+    "/api/v1/webhooks/{token}": {
+      "post": {
+        "operationId": "Webhook_handleWebhook",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Webhook 已接受处理"
+          },
+          "401": {
+            "description": "Webhook 验证失败"
+          }
+        },
+        "summary": "接收公开 webhook 触发请求",
+        "tags": [
+          "Triggers"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/intervention-policies": {
+      "get": {
+        "operationId": "InterventionPolicy_findAll",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（默认 1）",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页数量（默认 20）",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "介入策略列表获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "工作流不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取工作流的介入策略列表",
+        "tags": [
+          "Intervention Policies"
+        ]
+      },
+      "post": {
+        "operationId": "InterventionPolicy_create",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "介入策略创建成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "工作流不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建工作流介入策略",
+        "tags": [
+          "Intervention Policies"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/intervention-policies/resolve": {
+      "get": {
+        "operationId": "InterventionPolicy_resolvePolicy",
+        "parameters": [
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": false,
+            "in": "query",
+            "description": "节点 ID，用于获取节点级策略",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "解析的介入策略返回成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "工作流不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "解析工作流的有效介入策略",
+        "tags": [
+          "Intervention Policies"
+        ]
+      }
+    },
+    "/api/v1/workflow-definitions/{workflowId}/intervention-policies/{policyId}": {
+      "get": {
+        "operationId": "InterventionPolicy_findById",
+        "parameters": [
+          {
+            "name": "policyId",
+            "required": true,
+            "in": "path",
+            "description": "介入策略 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "介入策略详情获取成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "介入策略不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "根据 ID 获取介入策略详情",
+        "tags": [
+          "Intervention Policies"
+        ]
+      },
+      "patch": {
+        "operationId": "InterventionPolicy_update",
+        "parameters": [
+          {
+            "name": "policyId",
+            "required": true,
+            "in": "path",
+            "description": "介入策略 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "介入策略更新成功"
+          },
+          "400": {
+            "description": "请求参数无效"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "介入策略不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新介入策略",
+        "tags": [
+          "Intervention Policies"
+        ]
+      },
+      "delete": {
+        "operationId": "InterventionPolicy_remove",
+        "parameters": [
+          {
+            "name": "policyId",
+            "required": true,
+            "in": "path",
+            "description": "介入策略 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflowId",
+            "required": true,
+            "in": "path",
+            "description": "工作流 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "介入策略删除成功"
+          },
+          "401": {
+            "description": "未授权"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "介入策略不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除介入策略",
+        "tags": [
+          "Intervention Policies"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings": {
+      "post": {
+        "operationId": "Marketplace_submit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMarketplaceListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "提交成功"
+          },
+          "404": {
+            "description": "工作流版本不存在或无权访问"
+          },
+          "409": {
+            "description": "状态冲突（已上架/审查中）"
+          },
+          "422": {
+            "description": "审查未通过"
+          }
+        },
+        "summary": "提交工作流到 Marketplace（含自动审查）",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/unlist": {
+      "post": {
+        "operationId": "Marketplace_unlist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "下架成功"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          },
+          "409": {
+            "description": "状态冲突（非 listed 状态）"
+          }
+        },
+        "summary": "下架 Marketplace listing",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/relist": {
+      "post": {
+        "operationId": "Marketplace_relist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "重新上架完成"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          },
+          "409": {
+            "description": "状态冲突（非 unlisted 状态）"
+          }
+        },
+        "summary": "重新上架 Marketplace listing（含重新审查）",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/my-listings": {
+      "get": {
+        "operationId": "Marketplace_findMyListings",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending_review",
+                "review_failed",
+                "listed",
+                "unlisted"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listing 列表"
+          }
+        },
+        "summary": "查询我的 Marketplace listings",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}": {
+      "get": {
+        "operationId": "Marketplace_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listing 详情"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          }
+        },
+        "summary": "查询 Marketplace listing 详情",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/install": {
+      "post": {
+        "operationId": "Marketplace_install",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallMarketplaceListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "安装成功"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          }
+        },
+        "summary": "一键安装 Marketplace listing 到当前租户",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/reviews": {
+      "post": {
+        "operationId": "Marketplace_submitReview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "评论提交成功"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          },
+          "409": {
+            "description": "用户已评论该 listing"
+          }
+        },
+        "summary": "提交 Marketplace listing 用户评论",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/browse": {
+      "get": {
+        "operationId": "MarketplaceBrowse_list",
+        "parameters": [
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "analysis",
+                "content",
+                "development",
+                "automation",
+                "reporting"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "popular",
+              "type": "string",
+              "enum": [
+                "popular",
+                "rating",
+                "newest"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "公开 listing 列表"
+          }
+        },
+        "summary": "公开浏览 Marketplace listings",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/browse/{id}": {
+      "get": {
+        "operationId": "MarketplaceBrowse_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "公开 listing 详情"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          }
+        },
+        "summary": "公开查询 Marketplace listing 详情",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/browse/{id}/reviews": {
+      "get": {
+        "operationId": "MarketplaceBrowse_reviews",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "公开 listing 评论列表"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          }
+        },
+        "summary": "公开查询 Marketplace listing 评论",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/workflow-shares": {
+      "post": {
+        "operationId": "Share_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "分享链接创建成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "工作流未发布"
+          }
+        },
+        "summary": "创建工作流分享链接",
+        "tags": [
+          "Workflow Shares"
+        ]
+      },
+      "get": {
+        "operationId": "Share_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "分享链接列表"
+          }
+        },
+        "summary": "分页查询租户下的工作流分享链接",
+        "tags": [
+          "Workflow Shares"
+        ]
+      }
+    },
+    "/api/v1/workflow-shares/{shareId}": {
+      "delete": {
+        "operationId": "Share_revoke",
+        "parameters": [
+          {
+            "name": "shareId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "分享链接已撤销"
+          },
+          "404": {
+            "description": "分享链接不存在"
+          }
+        },
+        "summary": "撤销工作流分享链接",
+        "tags": [
+          "Workflow Shares"
+        ]
+      }
+    },
+    "/api/v1/workflow-shares/{token}/copy": {
+      "post": {
+        "operationId": "Share_incrementCopyCount",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "复制计数已更新"
+          },
+          "404": {
+            "description": "分享链接不存在"
+          },
+          "409": {
+            "description": "分享链接不支持复制或工作流未发布"
+          },
+          "410": {
+            "description": "分享链接已过期或已撤销"
+          }
+        },
+        "summary": "记录分享链接复制次数",
+        "tags": [
+          "Workflow Shares"
+        ]
+      }
+    },
+    "/api/v1/s/{token}": {
+      "get": {
+        "operationId": "SharePublic_getPublicShare",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "公开分享详情"
+          },
+          "404": {
+            "description": "分享链接不存在"
+          },
+          "409": {
+            "description": "工作流未发布"
+          },
+          "410": {
+            "description": "分享链接已过期或已撤销"
+          }
+        },
+        "summary": "公开访问分享的工作流定义",
+        "tags": [
+          "Workflow Shares"
+        ]
+      }
+    },
+    "/api/v1/platform-api-tokens": {
+      "post": {
+        "operationId": "PlatformApiToken_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlatformApiTokenSwaggerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token 创建成功，仅此次返回明文",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformApiTokenCreateEnvelopeSwaggerDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "409": {
+            "description": "Token 数量超限"
+          },
+          "422": {
+            "description": "请求参数校验失败"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建 API Token",
+        "tags": [
+          "Platform API Tokens"
+        ]
+      },
+      "get": {
+        "operationId": "PlatformApiToken_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "active",
+              "type": "string",
+              "enum": [
+                "active",
+                "revoked",
+                "all"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformApiTokenListResponseSwaggerDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败"
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "分页查询当前用户的 API Token 列表",
+        "tags": [
+          "Platform API Tokens"
+        ]
+      }
+    },
+    "/api/v1/platform-api-tokens/{tokenId}": {
+      "delete": {
+        "operationId": "PlatformApiToken_revoke",
+        "parameters": [
+          {
+            "name": "tokenId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Token 已撤销"
+          },
+          "401": {
+            "description": "认证失败"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "Token 不存在"
+          },
+          "409": {
+            "description": "Token 已被撤销"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "撤销 API Token",
+        "tags": [
+          "Platform API Tokens"
+        ]
+      }
+    },
+    "/api/v1/sandboxes/{sessionId}/logs": {
+      "get": {
+        "operationId": "Sandbox_getSandboxLogs",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "沙箱日志列表"
+          }
+        },
+        "summary": "获取沙箱日志",
+        "tags": [
+          "Sandboxes"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "AgentLoom API",
+    "description": "AgentLoom 多智能体协作平台 API",
+    "version": "1.0",
+    "contact": {
+      "name": "AgentLoom",
+      "url": "https://agentloom.dev",
+      "email": "support@agentloom.dev"
+    },
+    "license": {
+      "name": "Proprietary"
+    }
+  },
+  "tags": [],
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "X-Api-Key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "refresh_token"
+        ]
+      },
+      "OAuthInitiateBodyDto": {
+        "type": "object",
+        "properties": {
+          "redirectUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "MfaVerifyDto": {
+        "type": "object",
+        "properties": {
+          "factorId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6,
+            "pattern": "^\\d{6}$"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "MfaLoginVerifyDto": {
+        "type": "object",
+        "properties": {
+          "mfaToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "factorId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6,
+            "pattern": "^\\d{6}$"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "MfaDisableDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6,
+            "pattern": "^\\d{6}$"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "CreateOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "InviteMemberDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "role": {
+            "default": "viewer",
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "creator",
+              "operator",
+              "viewer"
+            ]
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "UpdateMemberRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "creator",
+              "operator",
+              "viewer"
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "CreateApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "anthropic",
+              "google",
+              "azure-openai",
+              "cohere",
+              "mistral",
+              "deepseek",
+              "groq"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isDefault": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "provider",
+          "label",
+          "apiKey"
+        ]
+      },
+      "RotateApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "apiKey"
+        ]
+      },
+      "CreateWorkflowDefinitionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "template_slug": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "marketplace_listing_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "share_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateWorkflowDefinitionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "viewport": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "zoom": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "zoom"
+            ],
+            "nullable": true
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "default": 1,
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "collectionMode": {
+                "default": "form",
+                "type": "string",
+                "enum": [
+                  "form",
+                  "conversation",
+                  "hybrid"
+                ]
+              },
+              "fields": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "number",
+                        "single_select",
+                        "multi_select"
+                      ]
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "validation": {
+                      "type": "object",
+                      "properties": {
+                        "minLength": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "maxLength": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "min": {
+                          "type": "number"
+                        },
+                        "max": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "default": {},
+                    "visibility": {
+                      "type": "object",
+                      "properties": {
+                        "fieldId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "equals": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "fieldId",
+                        "equals"
+                      ]
+                    },
+                    "collectionHint": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "label"
+                  ]
+                }
+              },
+              "conversationPlan": {
+                "type": "object",
+                "properties": {
+                  "systemPrompt": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "maxTurns": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "systemPrompt",
+                  "maxTurns"
+                ]
+              }
+            }
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "CreateVersionDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 255
+          }
+        }
+      },
+      "PublishWorkflowDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "releaseNotes": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      },
+      "CreateLlmModelConfigDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "anthropic",
+              "google",
+              "deepseek",
+              "custom"
+            ]
+          },
+          "modelName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "parameters": {
+            "default": {},
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "apiKeyId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "isDefault": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "modelName"
+        ]
+      },
+      "UpdateLlmModelConfigDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "anthropic",
+              "google",
+              "deepseek",
+              "custom"
+            ]
+          },
+          "modelName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "apiKeyId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TestMcpConnectionDto": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "stdio"
+                    ]
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "sse"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "streamable_http"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "connection"
+        ]
+      },
+      "DiscoverMcpToolsDto": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "stdio"
+                    ]
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "sse"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "streamable_http"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "connection"
+        ]
+      },
+      "ImportMcpToolsDto": {
+        "type": "object",
+        "properties": {
+          "serverName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "serverDescription": {
+            "type": "string"
+          },
+          "connection": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "stdio"
+                    ]
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "sse"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "transportType": {
+                    "type": "string",
+                    "enum": [
+                      "streamable_http"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "transportType",
+                  "url"
+                ]
+              }
+            ]
+          },
+          "toolNames": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "conflictStrategy": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "overwrite"
+            ]
+          }
+        },
+        "required": [
+          "serverName",
+          "connection",
+          "toolNames",
+          "conflictStrategy"
+        ]
+      },
+      "ReimportMcpToolsDto": {
+        "type": "object",
+        "properties": {
+          "toolNames": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "conflictStrategy": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "overwrite"
+            ]
+          }
+        },
+        "required": [
+          "toolNames",
+          "conflictStrategy"
+        ]
+      },
+      "CreateKnowledgeBaseDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "visibility": {
+            "default": "private",
+            "type": "string",
+            "enum": [
+              "private",
+              "organization"
+            ]
+          },
+          "chunkSize": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 8192
+          },
+          "chunkOverlap": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          },
+          "embeddingModel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateKnowledgeBaseSettingsDto": {
+        "type": "object",
+        "properties": {
+          "chunkSize": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 8192
+          },
+          "chunkOverlap": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          },
+          "embeddingModel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        }
+      },
+      "RunWorkflowDto": {
+        "type": "object",
+        "properties": {
+          "inputParams": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "launchSource": {
+            "type": "string",
+            "enum": [
+              "web-studio",
+              "mobile",
+              "api"
+            ]
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "ResumeExecutionDto": {
+        "type": "object",
+        "properties": {
+          "fromNodeId": {
+            "description": "指定从此节点开始恢复，重置该节点及所有下游节点",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "InterveneStepDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "modify",
+              "reject"
+            ]
+          },
+          "feedback": {
+            "type": "string",
+            "minLength": 1
+          },
+          "modifiedContent": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "ResolveToolPermissionDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "deny"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "UpsertPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "execution_completed",
+              "execution_failed",
+              "intervention_required",
+              "system"
+            ]
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "in_app",
+              "email",
+              "push"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "channel",
+          "enabled"
+        ]
+      },
+      "RegisterDeviceDto": {
+        "type": "object",
+        "properties": {
+          "deviceToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android",
+              "ios"
+            ]
+          }
+        },
+        "required": [
+          "deviceToken",
+          "platform"
+        ]
+      },
+      "UnregisterDeviceDto": {
+        "type": "object",
+        "properties": {
+          "deviceToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "deviceToken"
+        ]
+      },
+      "CreateReusableBlockDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "analysis",
+              "content",
+              "development",
+              "automation",
+              "reporting"
+            ]
+          },
+          "tags": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "definition": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "source": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "target": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "source",
+                    "target"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "inputPorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dataType": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "text",
+                        "json",
+                        "image",
+                        "audio",
+                        "tool",
+                        "sandbox",
+                        "knowledge"
+                      ]
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourcePortId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "dataType"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "outputPorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dataType": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "text",
+                        "json",
+                        "image",
+                        "audio",
+                        "tool",
+                        "sandbox",
+                        "knowledge"
+                      ]
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourcePortId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "dataType"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "viewport": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "zoom": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "zoom"
+                ]
+              }
+            },
+            "required": [
+              "nodes",
+              "edges",
+              "inputPorts",
+              "outputPorts"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "nodeCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "author": {
+                "type": "string",
+                "minLength": 1
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "createdFromWorkflowId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "exportedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "nodeCount",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name",
+          "definition"
+        ]
+      },
+      "UpdateReusableBlockDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "analysis",
+              "content",
+              "development",
+              "automation",
+              "reporting"
+            ],
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "definition": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "source": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "target": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "source",
+                    "target"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "inputPorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dataType": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "text",
+                        "json",
+                        "image",
+                        "audio",
+                        "tool",
+                        "sandbox",
+                        "knowledge"
+                      ]
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourcePortId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "dataType"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "outputPorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dataType": {
+                      "type": "string",
+                      "enum": [
+                        "model",
+                        "text",
+                        "json",
+                        "image",
+                        "audio",
+                        "tool",
+                        "sandbox",
+                        "knowledge"
+                      ]
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourcePortId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "dataType"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "viewport": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "zoom": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "zoom"
+                ]
+              }
+            },
+            "required": [
+              "nodes",
+              "edges",
+              "inputPorts",
+              "outputPorts"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "nodeCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "author": {
+                "type": "string",
+                "minLength": 1
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "createdFromWorkflowId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "exportedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "nodeCount",
+              "version"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          },
+          "isPublished": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "CreateTriggerDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "isEnabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "webhook",
+              "api_event"
+            ]
+          },
+          "config": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "expression": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(\\S+\\s+){4}\\S+$"
+                  },
+                  "timezone": {
+                    "default": "UTC",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "expression"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "ipWhitelist": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "eventSource": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "eventType": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "filterExpression": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventSource",
+                  "eventType"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "config"
+        ]
+      },
+      "UpdateTriggerDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "config": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "expression": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(\\S+\\s+){4}\\S+$"
+                  },
+                  "timezone": {
+                    "default": "UTC",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "expression"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "ipWhitelist": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "eventSource": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "eventType": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "filterExpression": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "eventSource",
+                  "eventType"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "isEnabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitMarketplaceListingDto": {
+        "type": "object",
+        "properties": {
+          "workflowVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 120
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 30,
+            "maxLength": 500
+          },
+          "tags": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "analysis",
+              "content",
+              "development",
+              "automation",
+              "reporting"
+            ]
+          }
+        },
+        "required": [
+          "workflowVersionId",
+          "title",
+          "summary",
+          "tags"
+        ]
+      },
+      "InstallMarketplaceListingDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      },
+      "SubmitReviewDto": {
+        "type": "object",
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "rating"
+        ]
+      },
+      "CreatePlatformApiTokenSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "scopes": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "PlatformApiTokenCreateEnvelopeSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tokenPrefix": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "string",
+                "nullable": true
+              },
+              "lastUsedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "nullable": true
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "nullable": true
+              },
+              "isRevoked": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "token": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "tokenPrefix",
+              "scopes",
+              "lastUsedAt",
+              "expiresAt",
+              "isRevoked",
+              "createdAt",
+              "token"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "PlatformApiTokenListResponseSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "tokenPrefix": {
+                  "type": "string"
+                },
+                "scopes": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "lastUsedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                  "nullable": true
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                  "nullable": true
+                },
+                "isRevoked": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "tokenPrefix",
+                "scopes",
+                "lastUsedAt",
+                "expiresAt",
+                "isRevoked",
+                "createdAt"
+              ]
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "page",
+              "pageSize",
+              "total"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      }
+    }
+  }
+}
