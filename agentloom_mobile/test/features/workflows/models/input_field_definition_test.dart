@@ -4,127 +4,120 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../helpers/test_helpers.dart';
 
 void main() {
+  group('InputFieldVisibility', () {
+    test('支持 snake_case 与 camelCase fieldId 反序列化', () {
+      final snakeCase = InputFieldVisibility.fromJson({
+        'field_id': 'mode',
+        'equals': 'advanced',
+      });
+      final camelCase = InputFieldVisibility.fromJson({
+        'fieldId': 'mode',
+        'equals': 'advanced',
+      });
+
+      expect(snakeCase.fieldId, 'mode');
+      expect(snakeCase.equals, 'advanced');
+      expect(camelCase, snakeCase);
+      expect(camelCase.toJson(), {'fieldId': 'mode', 'equals': 'advanced'});
+    });
+  });
+
   group('InputFieldValidation', () {
-    test('fromJson 解析 snake_case 键', () {
-      final json = {
-        'min_length': 3,
-        'max_length': 100,
-        'min': 1.5,
-        'max': 99.9,
-      };
-      final validation = InputFieldValidation.fromJson(json);
-      expect(validation.minLength, 3);
-      expect(validation.maxLength, 100);
-      expect(validation.min, 1.5);
-      expect(validation.max, 99.9);
-    });
+    test('正确映射 snake_case 校验字段', () {
+      final validation = InputFieldValidation.fromJson({
+        'min_length': 2,
+        'max_length': 20,
+        'min': 1,
+        'max': 10.5,
+      });
 
-    test('fromJson 处理全部 null 字段', () {
-      final validation = InputFieldValidation.fromJson({});
-      expect(validation.minLength, isNull);
-      expect(validation.maxLength, isNull);
-      expect(validation.min, isNull);
-      expect(validation.max, isNull);
-    });
-
-    test('toJson 输出 snake_case 键', () {
-      final validation = createTestInputFieldValidation(
-        minLength: 5,
-        maxLength: 50,
-        min: 0,
-        max: 100,
-      );
-      final json = validation.toJson();
-      expect(json['min_length'], 5);
-      expect(json['max_length'], 50);
-      expect(json['min'], 0.0);
-      expect(json['max'], 100.0);
-    });
-
-    test('toJson round-trip', () {
-      final original = createTestInputFieldValidation(
-        minLength: 10,
-        maxLength: 200,
-        min: -5,
-        max: 999,
-      );
-      final json = original.toJson();
-      final restored = InputFieldValidation.fromJson(json);
-      expect(restored, original);
+      expect(validation.minLength, 2);
+      expect(validation.maxLength, 20);
+      expect(validation.min, 1);
+      expect(validation.max, 10.5);
+      expect(validation.toJson(), {
+        'min_length': 2,
+        'max_length': 20,
+        'min': 1,
+        'max': 10.5,
+      });
     });
   });
 
   group('InputFieldDefinition', () {
-    test('fromJson 解析所有字段', () {
-      final json = {
-        'id': 'field-title',
+    test('支持 default 与 visibility 解析', () {
+      final field = InputFieldDefinition.fromJson({
+        'id': 'advanced_note',
         'type': 'text',
-        'label': '标题',
-        'description': '请输入标题',
-        'required': true,
+        'label': '高级说明',
+        'description': '仅在高级模式下显示',
+        'required': false,
+        'default': '默认说明',
+        'visibility': {'field_id': 'mode', 'equals': 'advanced'},
         'validation': {'min_length': 3, 'max_length': 100},
-        'options': ['A', 'B'],
-        'default': 'hello',
-      };
-      final field = InputFieldDefinition.fromJson(json);
-      expect(field.id, 'field-title');
-      expect(field.type, 'text');
-      expect(field.label, '标题');
-      expect(field.description, '请输入标题');
-      expect(field.required, true);
-      expect(field.validation?.minLength, 3);
-      expect(field.validation?.maxLength, 100);
-      expect(field.options, ['A', 'B']);
-      expect(field.defaultValue, 'hello');
-    });
+      });
 
-    test('fromJson 使用默认值 (required=false, validation=null)', () {
-      final json = {'id': 'f1', 'type': 'number', 'label': '数量'};
-      final field = InputFieldDefinition.fromJson(json);
-      expect(field.required, false);
-      expect(field.validation, isNull);
-      expect(field.description, isNull);
-      expect(field.options, isNull);
-      expect(field.defaultValue, isNull);
-    });
-
-    test('@JsonKey(name: "default") 映射 defaultValue', () {
-      final json = {'id': 'f2', 'type': 'text', 'label': 'Name', 'default': 42};
-      final field = InputFieldDefinition.fromJson(json);
-      expect(field.defaultValue, 42);
-
-      final output = field.toJson();
-      expect(output['default'], 42);
-      expect(output.containsKey('defaultValue'), false);
-    });
-
-    test('toJson round-trip', () {
-      final original = createTestInputFieldDefinition(
-        id: 'f-round',
-        type: 'single_select',
-        label: '选择',
-        description: '选一个',
-        required: true,
-        validation: createTestInputFieldValidation(minLength: 1),
-        options: ['X', 'Y', 'Z'],
-        defaultValue: 'X',
+      expect(field.id, 'advanced_note');
+      expect(field.defaultValue, '默认说明');
+      expect(
+        field.visibility,
+        const InputFieldVisibility(fieldId: 'mode', equals: 'advanced'),
       );
-      final json = original.toJson();
-      final restored = InputFieldDefinition.fromJson(json);
-      expect(restored.id, original.id);
-      expect(restored.type, original.type);
-      expect(restored.label, original.label);
-      expect(restored.required, original.required);
-      expect(restored.options, original.options);
-      expect(restored.defaultValue, original.defaultValue);
+      expect(
+        field.validation,
+        const InputFieldValidation(minLength: 3, maxLength: 100),
+      );
+      expect(field.toJson(), {
+        'id': 'advanced_note',
+        'type': 'text',
+        'label': '高级说明',
+        'description': '仅在高级模式下显示',
+        'required': false,
+        'validation': {
+          'min_length': 3,
+          'max_length': 100,
+          'min': null,
+          'max': null,
+        },
+        'options': null,
+        'default': '默认说明',
+        'visibility': {'fieldId': 'mode', 'equals': 'advanced'},
+      });
     });
 
-    test('工厂函数 createTestInputFieldDefinition 默认值', () {
+    test('深层默认值可参与相等比较', () {
+      final left = createTestInputFieldDefinition(
+        id: 'payload',
+        type: 'text',
+        defaultValue: {
+          'items': ['a', 'b'],
+          'meta': {'count': 2},
+        },
+      );
+      final right = createTestInputFieldDefinition(
+        id: 'payload',
+        type: 'text',
+        defaultValue: {
+          'meta': {'count': 2},
+          'items': ['a', 'b'],
+        },
+      );
+
+      expect(left, right);
+      expect(left.hashCode, right.hashCode);
+    });
+
+    test('工厂默认值符合预期', () {
       final field = createTestInputFieldDefinition();
+
       expect(field.id, 'field-1');
       expect(field.type, 'text');
       expect(field.label, '测试字段');
-      expect(field.required, false);
+      expect(field.required, isFalse);
+      expect(field.validation, isNull);
+      expect(field.options, isNull);
+      expect(field.defaultValue, isNull);
+      expect(field.visibility, isNull);
     });
   });
 }

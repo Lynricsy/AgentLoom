@@ -43,7 +43,6 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
   Widget build(BuildContext context) {
     final launchState = ref.watch(workflowLaunchProvider(widget.workflowId));
 
-    // 监听成功状态，自动导航
     ref.listen(workflowLaunchProvider(widget.workflowId), (prev, next) {
       final value = next.value;
       if (value is WorkflowLaunchSuccess && context.mounted) {
@@ -87,7 +86,6 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
           ),
         ),
         data: (state) {
-          // 从各种状态中提取 schema
           final schema = switch (state) {
             final WorkflowLaunchSchemaLoaded s => s.schema,
             final WorkflowLaunchSubmitting s => s.schema,
@@ -99,53 +97,40 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // 对话模式 → 引导到 Web 端
-          if (schema.collectionMode == 'conversation') {
+          if (schema.collectionMode != 'form') {
             return ConversationModePrompt(
               onBack: () => Navigator.of(context).pop(),
             );
           }
 
-          // 空字段 → 无参数确认
-          if (schema.fields.isEmpty) {
+          final visibleFields = _getVisibleFields(schema.fields);
+          if (visibleFields.isEmpty) {
             return NoParamsConfirmation(
               workflowName: widget.workflowName,
               isSubmitting: _isSubmitting || state is WorkflowLaunchSubmitting,
-              onConfirm: () => _handleSubmit(),
+              onConfirm: () => _handleSubmit(schema.fields),
               onCancel: () => Navigator.of(context).pop(),
             );
           }
 
-          // 渲染动态表单
-          return _buildForm(schema.fields, state is WorkflowLaunchSubmitting);
+          return _buildForm(
+            allFields: schema.fields,
+            visibleFields: visibleFields,
+            isSubmitting: state is WorkflowLaunchSubmitting,
+          );
         },
       ),
     );
   }
 
-  Widget _buildForm(List<InputFieldDefinition> fields, bool isSubmitting) {
-    // 初始化 controllers 和默认值
-    for (final field in fields) {
+  Widget _buildForm({
+    required List<InputFieldDefinition> allFields,
+    required List<InputFieldDefinition> visibleFields,
+    required bool isSubmitting,
+  }) {
+    for (final field in visibleFields) {
       if (field.type == 'text' || field.type == 'number') {
-        if (!_textControllers.containsKey(field.id)) {
-          final defaultVal = field.defaultValue;
-          final initText = defaultVal != null ? '$defaultVal' : '';
-          _textControllers[field.id] = TextEditingController(text: initText);
-          if (initText.isNotEmpty) {
-            _formValues[field.id] = field.type == 'number'
-                ? (double.tryParse(initText) ?? initText)
-                : initText;
-          }
-        }
-      } else if (field.type == 'single_select' ||
-          field.type == 'multi_select') {
-        if (!_formValues.containsKey(field.id)) {
-          if (field.defaultValue != null) {
-            _formValues[field.id] = field.defaultValue;
-          } else if (field.type == 'multi_select') {
-            _formValues[field.id] = <String>[];
-          }
-        }
+        _ensureTextController(field);
       }
     }
 
@@ -156,28 +141,26 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
-              itemCount: fields.length,
+              itemCount: visibleFields.length,
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
-                final field = fields[index];
+                final field = visibleFields[index];
                 return InputFieldBuilder(
                   field: field,
                   textController: _textControllers[field.id],
-                  currentValue: _formValues[field.id],
+                  currentValue: _resolveFieldValue(field),
                   onChanged: (value) {
                     setState(() {
-                      if (field.type == 'number' && value is String) {
-                        _formValues[field.id] = double.tryParse(value) ?? value;
-                      } else {
-                        _formValues[field.id] = value;
-                      }
+                      _formValues[field.id] = _normalizeFieldValue(
+                        field,
+                        value,
+                      );
                     });
                   },
                 );
               },
             ),
           ),
-          // 底部提交按钮
           Padding(
             padding: const EdgeInsets.all(16),
             child: SizedBox(
@@ -185,7 +168,7 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
               child: FilledButton.icon(
                 onPressed: (_isSubmitting || isSubmitting)
                     ? null
-                    : _handleSubmit,
+                    : () => _handleSubmit(allFields),
                 icon: (_isSubmitting || isSubmitting)
                     ? const SizedBox(
                         width: 16,
@@ -205,18 +188,120 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
     );
   }
 
-  Future<void> _handleSubmit() async {
+  TextEditingController _ensureTextController(InputFieldDefinition field) {
+    return _textControllers.putIfAbsent(field.id, () {
+      final currentValue = _formValues.containsKey(field.id)
+          ? _formValues[field.id]
+          : field.defaultValue;
+      return TextEditingController(
+        text: currentValue == null ? '' : '$currentValue',
+      );
+    });
+  }
+
+  List<InputFieldDefinition> _getVisibleFields(
+    List<InputFieldDefinition> fields,
+  ) {
+    final fieldsById = {for (final field in fields) field.id: field};
+    final visibilityCache = <String, bool>{};
+
+    bool isVisible(String fieldId, Set<String> path) {
+      final cached = visibilityCache[fieldId];
+      if (cached != null) {
+        return cached;
+      }
+
+      final field = fieldsById[fieldId];
+      if (field == null) {
+        visibilityCache[fieldId] = false;
+        return false;
+      }
+
+      final visibility = field.visibility;
+      if (visibility == null) {
+        visibilityCache[fieldId] = true;
+        return true;
+      }
+
+      if (path.contains(fieldId)) {
+        visibilityCache[fieldId] = false;
+        return false;
+      }
+
+      final nextPath = {...path, fieldId};
+      final controllerVisible = isVisible(visibility.fieldId, nextPath);
+      if (!controllerVisible) {
+        visibilityCache[fieldId] = false;
+        return false;
+      }
+
+      final controllerField = fieldsById[visibility.fieldId];
+      if (controllerField == null) {
+        visibilityCache[fieldId] = false;
+        return false;
+      }
+
+      final resolvedValue = _resolveFieldValue(controllerField);
+      final visible = resolvedValue == visibility.equals;
+      visibilityCache[fieldId] = visible;
+      return visible;
+    }
+
+    return fields.where((field) => isVisible(field.id, <String>{})).toList();
+  }
+
+  dynamic _resolveFieldValue(InputFieldDefinition field) {
+    final sourceValue = _formValues.containsKey(field.id)
+        ? _formValues[field.id]
+        : field.defaultValue;
+    return _normalizeFieldValue(field, sourceValue);
+  }
+
+  dynamic _normalizeFieldValue(InputFieldDefinition field, dynamic value) {
+    switch (field.type) {
+      case 'number':
+        if (value is num) {
+          return value.toDouble();
+        }
+        if (value is String) {
+          final trimmed = value.trim();
+          if (trimmed.isEmpty) {
+            return '';
+          }
+          return double.tryParse(trimmed) ?? value;
+        }
+        return value;
+      case 'text':
+        if (value == null) {
+          return null;
+        }
+        return value is String ? value : '$value';
+      case 'single_select':
+        if (value == null) {
+          return null;
+        }
+        return value is String ? value : '$value';
+      case 'multi_select':
+        if (value is List) {
+          return value.map((item) => '$item').toList();
+        }
+        return value;
+      default:
+        return value;
+    }
+  }
+
+  Future<void> _handleSubmit(List<InputFieldDefinition> allFields) async {
     final formState = _formKey.currentState;
     if (formState != null && !formState.validate()) return;
     setState(() => _isSubmitting = true);
 
-    // 构建提交数据
+    final visibleFields = _getVisibleFields(allFields);
     final submitValues = <String, dynamic>{};
-    for (final entry in _formValues.entries) {
-      if (entry.value != null &&
-          entry.value != '' &&
-          !(entry.value is List && (entry.value as List).isEmpty)) {
-        submitValues[entry.key] = entry.value;
+    for (final field in visibleFields) {
+      final value = _resolveFieldValue(field);
+      if (value != null && value != '' && !(value is List && value.isEmpty)) {
+        submitValues[field.id] = value;
       }
     }
 

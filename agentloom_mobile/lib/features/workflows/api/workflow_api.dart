@@ -73,10 +73,12 @@ class WorkflowApi {
   Future<Map<String, dynamic>> runWorkflow(
     String workflowId, {
     Map<String, dynamic>? inputParams,
+    int? schemaVersion,
     String? launchSource,
   }) async {
     final body = <String, dynamic>{};
     if (inputParams != null) body['inputParams'] = inputParams;
+    if (schemaVersion != null) body['schemaVersion'] = schemaVersion;
     if (launchSource != null) body['launchSource'] = launchSource;
 
     final response = await _dio.post(
@@ -134,6 +136,22 @@ class WorkflowApi {
           }
 
           normalizedField['validation'] = normalizedValidation;
+        }
+
+        final visibility = normalizedField['visibility'];
+        if (visibility is Map) {
+          final normalizedVisibility = Map<String, dynamic>.from(
+            visibility.cast<String, dynamic>(),
+          );
+          final fieldId =
+              normalizedVisibility['fieldId'] ??
+              normalizedVisibility['field_id'];
+
+          if (fieldId != null) {
+            normalizedVisibility['fieldId'] = fieldId;
+          }
+
+          normalizedField['visibility'] = normalizedVisibility;
         }
 
         return normalizedField;

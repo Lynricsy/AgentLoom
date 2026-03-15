@@ -69,6 +69,7 @@ class WorkflowLaunchNotifier extends AsyncNotifier<WorkflowLaunchState> {
       final response = await api.runWorkflow(
         workflowId,
         inputParams: formValues.isNotEmpty ? formValues : null,
+        schemaVersion: schema.version,
         launchSource: 'mobile',
       );
 

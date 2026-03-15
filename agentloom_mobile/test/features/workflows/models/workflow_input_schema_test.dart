@@ -56,5 +56,31 @@ void main() {
       expect(restored.collectionMode, original.collectionMode);
       expect(restored.fields.length, original.fields.length);
     });
+
+    test('支持字段 visibility round-trip', () {
+      final original = createTestWorkflowInputSchema(
+        fields: [
+          createTestInputFieldDefinition(
+            id: 'advanced_note',
+            type: 'text',
+            label: '高级说明',
+            visibility: createTestInputFieldVisibility(
+              fieldId: 'mode',
+              equals: 'advanced',
+            ),
+          ),
+        ],
+      );
+
+      final json = original.toJson();
+      expect((json['fields'] as List).first['visibility'], <String, dynamic>{
+        'fieldId': 'mode',
+        'equals': 'advanced',
+      });
+
+      final restored = WorkflowInputSchema.fromJson(json);
+      expect(restored.fields.first.visibility?.fieldId, 'mode');
+      expect(restored.fields.first.visibility?.equals, 'advanced');
+    });
   });
 }

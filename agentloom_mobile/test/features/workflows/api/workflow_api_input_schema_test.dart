@@ -87,6 +87,32 @@ void main() {
       expect(schema.fields.first.validation?.maxLength, 200);
     });
 
+    test('兼容 visibility 的 camelCase/snake_case 响应', () async {
+      when(
+        () => mockDio.get('/api/v1/workflow-definitions/wf-4/input-schema'),
+      ).thenAnswer(
+        (_) async => okResponse({
+          'data': {
+            'version': 1,
+            'collectionMode': 'form',
+            'fields': [
+              {'id': 'mode', 'type': 'single_select', 'label': '模式'},
+              {
+                'id': 'advanced_note',
+                'type': 'text',
+                'label': '高级说明',
+                'visibility': {'field_id': 'mode', 'equals': 'advanced'},
+              },
+            ],
+          },
+        }),
+      );
+
+      final schema = await api.getInputSchema('wf-4');
+      expect(schema.fields[1].visibility?.fieldId, 'mode');
+      expect(schema.fields[1].visibility?.equals, 'advanced');
+    });
+
     test('API 错误时抛出 DioException', () async {
       when(
         () => mockDio.get('/api/v1/workflow-definitions/wf-bad/input-schema'),
@@ -106,7 +132,7 @@ void main() {
   });
 
   group('runWorkflow (扩展参数)', () {
-    test('发送 POST 包含 inputParams 和 launchSource', () async {
+    test('发送 POST 包含 inputParams、schemaVersion 和 launchSource', () async {
       when(
         () => mockDio.post(
           '/api/v1/workflow-definitions/wf-1/run',
@@ -121,6 +147,7 @@ void main() {
       final result = await api.runWorkflow(
         'wf-1',
         inputParams: {'title': 'hello'},
+        schemaVersion: 3,
         launchSource: 'mobile',
       );
 
@@ -134,6 +161,7 @@ void main() {
       capturedCall.called(1);
       final sentBody = capturedCall.captured.first as Map<String, dynamic>;
       expect(sentBody['inputParams'], {'title': 'hello'});
+      expect(sentBody['schemaVersion'], 3);
       expect(sentBody['launchSource'], 'mobile');
     });
 

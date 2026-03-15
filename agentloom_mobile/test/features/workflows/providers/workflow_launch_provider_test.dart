@@ -25,8 +25,9 @@ void main() {
     container.dispose();
   });
 
-  WorkflowInputSchema schemaWithTextField() {
+  WorkflowInputSchema schemaWithTextField({int version = 1}) {
     return createTestWorkflowInputSchema(
+      version: version,
       fields: [
         createTestInputFieldDefinition(
           id: 'title',
@@ -70,8 +71,8 @@ void main() {
   });
 
   group('submit()', () {
-    test('提交成功后进入 Success 状态，返回 executionId', () async {
-      final schema = schemaWithTextField();
+    test('提交成功后透传 schemaVersion 并进入 Success 状态', () async {
+      final schema = schemaWithTextField(version: 3);
       when(
         () => mockApi.getInputSchema('wf-1'),
       ).thenAnswer((_) async => schema);
@@ -79,6 +80,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenAnswer(
@@ -101,6 +103,14 @@ void main() {
         (currentState.value as WorkflowLaunchSuccess).executionId,
         'exec-777',
       );
+      verify(
+        () => mockApi.runWorkflow(
+          'wf-1',
+          inputParams: {'title': 'hello'},
+          schemaVersion: 3,
+          launchSource: 'mobile',
+        ),
+      ).called(1);
     });
 
     test('从顶层 response 提取 executionId (无 data 嵌套)', () async {
@@ -112,6 +122,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenAnswer((_) async => {'id': 'exec-888'});
@@ -132,6 +143,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenThrow(
@@ -164,6 +176,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenThrow(
@@ -195,6 +208,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenThrow(
@@ -222,6 +236,7 @@ void main() {
         () => mockApi.runWorkflow(
           'wf-1',
           inputParams: any(named: 'inputParams'),
+          schemaVersion: any(named: 'schemaVersion'),
           launchSource: any(named: 'launchSource'),
         ),
       ).thenThrow(StateError('oops'));

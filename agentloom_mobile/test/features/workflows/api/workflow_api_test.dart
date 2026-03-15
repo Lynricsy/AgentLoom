@@ -163,7 +163,7 @@ void main() {
 
     group('runWorkflow', () {
       test('sends POST request', () async {
-        when(() => mockDio.post(any())).thenAnswer(
+        when(() => mockDio.post(any(), data: any(named: 'data'))).thenAnswer(
           (_) async => Response(
             data: {'executionId': 'exec-1'},
             statusCode: 201,
@@ -174,7 +174,8 @@ void main() {
         final result = await api.runWorkflow('wf-1');
 
         verify(
-          () => mockDio.post('/api/v1/workflow-definitions/wf-1/run'),
+          () =>
+              mockDio.post('/api/v1/workflow-definitions/wf-1/run', data: null),
         ).called(1);
         expect(result['executionId'], 'exec-1');
       });

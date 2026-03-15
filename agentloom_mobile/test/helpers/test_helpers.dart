@@ -37,6 +37,14 @@ InputFieldValidation createTestInputFieldValidation({
   });
 }
 
+/// 测试用 InputFieldVisibility 工厂
+InputFieldVisibility createTestInputFieldVisibility({
+  String fieldId = 'field-1',
+  Object? equals,
+}) {
+  return InputFieldVisibility.fromJson({'field_id': fieldId, 'equals': equals});
+}
+
 /// 测试用 InputFieldDefinition 工厂
 InputFieldDefinition createTestInputFieldDefinition({
   String id = 'field-1',
@@ -47,6 +55,7 @@ InputFieldDefinition createTestInputFieldDefinition({
   InputFieldValidation? validation,
   List<String>? options,
   Object? defaultValue,
+  InputFieldVisibility? visibility,
 }) {
   return InputFieldDefinition.fromJson({
     'id': id,
@@ -57,6 +66,7 @@ InputFieldDefinition createTestInputFieldDefinition({
     'validation': validation?.toJson(),
     'options': options,
     'default': defaultValue,
+    'visibility': visibility?.toJson(),
   });
 }
 
