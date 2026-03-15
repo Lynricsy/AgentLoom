@@ -18,6 +18,7 @@ import { useWorkflow } from '@/features/workflow'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
 import { ExecutionLaunchDialog } from '@/features/workflow-input-schema/components/ExecutionLaunchDialog'
+import { MarketplacePublishDialog } from '@/features/marketplace'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowStatusBar } from './status/WorkflowStatusBar'
@@ -67,6 +68,7 @@ export function WorkflowCanvasPage() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<WorkflowSettingsTab | null>(null)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
+  const [isMarketplacePublishOpen, setIsMarketplacePublishOpen] = useState(false)
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
   const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
   const handleToggleExecutionHistory = useCallback(() => {
@@ -103,6 +105,7 @@ export function WorkflowCanvasPage() {
       setPublishVersionId(null)
     }
   }, [])
+  const handleOpenMarketplacePublish = useCallback(() => setIsMarketplacePublishOpen(true), [])
 
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
@@ -195,6 +198,7 @@ export function WorkflowCanvasPage() {
             onToggleInterventionPolicies={handleToggleInterventionPolicyPanel}
             onToggleInputSchema={handleToggleInputSchemaPanel}
             onToggleTriggers={handleToggleTriggerPanel}
+            onPublishToMarketplace={workflow.status === 'published' ? handleOpenMarketplacePublish : undefined}
             onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
             isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
             isInputSchemaOpen={activeSettingsTab === 'input-schema'}
@@ -290,6 +294,14 @@ export function WorkflowCanvasPage() {
           workflowId={workflowId}
           initialVersionId={publishVersionId}
           onOpenChange={handlePublishSheetOpenChange}
+        />
+      )}
+
+      {workflow && (
+        <MarketplacePublishDialog
+          open={isMarketplacePublishOpen}
+          onOpenChange={setIsMarketplacePublishOpen}
+          workflowId={workflow.id}
         />
       )}
     </div>

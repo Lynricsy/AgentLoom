@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -13,6 +13,7 @@ interface VersionToolbarProps {
   onToggleInterventionPolicies?: () => void
   onToggleInputSchema?: () => void
   onToggleTriggers?: () => void
+  onPublishToMarketplace?: () => void
   onRun?: () => void
   isInterventionPoliciesOpen?: boolean
   isInputSchemaOpen?: boolean
@@ -43,6 +44,7 @@ export const VersionToolbar = memo(function VersionToolbar({
   onToggleInterventionPolicies,
   onToggleInputSchema,
   onToggleTriggers,
+  onPublishToMarketplace,
   onRun,
   isInterventionPoliciesOpen = false,
   isInputSchemaOpen = false,
@@ -162,6 +164,18 @@ export const VersionToolbar = memo(function VersionToolbar({
           >
             <Upload className="h-3.5 w-3.5" />
             发布
+          </button>
+        )}
+
+        {isPublished && onPublishToMarketplace && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700"
+            onClick={onPublishToMarketplace}
+            data-testid="btn-publish-to-marketplace"
+          >
+            <Store className="h-3.5 w-3.5" />
+            发布到市场
           </button>
         )}
 
