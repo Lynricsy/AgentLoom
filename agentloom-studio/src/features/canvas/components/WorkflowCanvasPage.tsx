@@ -15,8 +15,11 @@ import {
   useExecutionStatus,
 } from '@/features/execution/stores/executionStore'
 import { useWorkflow } from '@/features/workflow'
+import { useExportWorkflow } from '@/features/workflow/api/workflowMutations'
+import { downloadWorkflowExport } from '@/features/workflow/lib/workflowExportImport'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
+import { WorkflowImportDialog } from '@/features/workflow/components/WorkflowImportDialog'
 import { ExecutionLaunchDialog } from '@/features/workflow-input-schema/components/ExecutionLaunchDialog'
 import { MarketplacePublishDialog } from '@/features/marketplace'
 import { NodePalette } from './NodePalette'
@@ -75,6 +78,9 @@ export function WorkflowCanvasPage() {
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const [isMarketplacePublishOpen, setIsMarketplacePublishOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+
+  const exportMutation = useExportWorkflow()
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
   const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
   const handleToggleExecutionHistory = useCallback(() => {
@@ -112,6 +118,17 @@ export function WorkflowCanvasPage() {
     }
   }, [])
   const handleOpenMarketplacePublish = useCallback(() => setIsMarketplacePublishOpen(true), [])
+
+  const handleExportWorkflow = useCallback(() => {
+    if (!workflow) return
+    exportMutation.mutate(workflowId, {
+      onSuccess: (data) => {
+        downloadWorkflowExport(data, workflow.name)
+      },
+    })
+  }, [workflow, workflowId, exportMutation])
+
+  const handleOpenImportDialog = useCallback(() => setIsImportDialogOpen(true), [])
 
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
@@ -212,10 +229,14 @@ export function WorkflowCanvasPage() {
             onToggleTriggers={handleToggleTriggerPanel}
             onPublishToMarketplace={canPublishToMarketplace ? handleOpenMarketplacePublish : undefined}
             onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
+            onExport={handleExportWorkflow}
+            onImport={handleOpenImportDialog}
             isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
             isInputSchemaOpen={activeSettingsTab === 'input-schema'}
             isTriggersOpen={activeSettingsTab === 'triggers'}
             isRunning={isStarting || isExecutionActive}
+            isExporting={exportMutation.isPending}
+            hasNodes={(workflow.nodes ?? []).length > 0}
           />
         )}
 
@@ -316,6 +337,11 @@ export function WorkflowCanvasPage() {
           workflowId={workflow.id}
         />
       )}
+
+      <WorkflowImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+      />
     </div>
   )
 }

@@ -128,3 +128,39 @@ export interface CreateWorkflowPayload {
 }
 
 export type VersionListResponse = PaginatedResponse<WorkflowVersion>
+
+export interface WorkflowExportEnvelope {
+  schemaVersion: string
+  exportedAt: string
+  workflow: {
+    name: string
+    description: string | null
+    definition: {
+      nodes: unknown[]
+      edges: unknown[]
+      viewport: { x: number; y: number; zoom: number }
+    }
+    inputSchema?: unknown
+  }
+}
+
+export type WorkflowImportFileContent = WorkflowExportEnvelope
+
+export interface ImportValidationResult {
+  valid: boolean
+  errors: string[]
+  nodeCount?: number
+  edgeCount?: number
+}
+
+export interface WorkflowImportPayload {
+  name: string
+  description?: string
+  fileContent: WorkflowImportFileContent
+}
+
+export interface ImportWorkflowResult {
+  id: string
+  name: string
+  slug: string
+}

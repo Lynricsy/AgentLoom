@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store, Download, FolderInput } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -15,10 +15,14 @@ interface VersionToolbarProps {
   onToggleTriggers?: () => void
   onPublishToMarketplace?: () => void
   onRun?: () => void
+  onExport?: () => void
+  onImport?: () => void
   isInterventionPoliciesOpen?: boolean
   isInputSchemaOpen?: boolean
   isTriggersOpen?: boolean
   isRunning?: boolean
+  isExporting?: boolean
+  hasNodes?: boolean
 }
 
 const statusConfig: Record<WorkflowStatus, { label: string; className: string }> = {
@@ -46,10 +50,14 @@ export const VersionToolbar = memo(function VersionToolbar({
   onToggleTriggers,
   onPublishToMarketplace,
   onRun,
+  onExport,
+  onImport,
   isInterventionPoliciesOpen = false,
   isInputSchemaOpen = false,
   isTriggersOpen = false,
   isRunning = false,
+  isExporting = false,
+  hasNodes = false,
 }: VersionToolbarProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -176,6 +184,35 @@ export const VersionToolbar = memo(function VersionToolbar({
           >
             <Store className="h-3.5 w-3.5" />
             发布到市场
+          </button>
+        )}
+
+        {hasNodes && onExport && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted disabled:opacity-50"
+            onClick={onExport}
+            disabled={isExporting}
+            data-testid="btn-export-workflow"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            导出
+          </button>
+        )}
+
+        {onImport && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+            onClick={onImport}
+            data-testid="btn-import-workflow"
+          >
+            <FolderInput className="h-3.5 w-3.5" />
+            导入
           </button>
         )}
 

@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
   UpdateWorkflowPayload,
+  WorkflowImportPayload,
 } from '../types'
 import { workflowKeys } from './workflowKeys'
-import { createWorkflow } from './workflowApi'
+import { createWorkflow, exportWorkflow, importWorkflow, validateImport } from './workflowApi'
 import { apiClient, toSnakeBody } from '../../../shared/api/client'
 import type { ApiResponse } from '../../../shared/types/api'
-import type { WorkflowDefinition } from '../types'
+import type { WorkflowDefinition, WorkflowImportFileContent } from '../types'
 
 export function useUpdateWorkflow(id: string) {
   const queryClient = useQueryClient()
@@ -34,6 +35,35 @@ export function useCreateWorkflow() {
   return useMutation({
     mutationKey: ['workflow', 'create'],
     mutationFn: createWorkflow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workflowKeys.lists() })
+    },
+    gcTime: 0,
+  })
+}
+
+export function useExportWorkflow() {
+  return useMutation({
+    mutationKey: ['workflow', 'export'],
+    mutationFn: (workflowId: string) => exportWorkflow(workflowId),
+    gcTime: 0,
+  })
+}
+
+export function useValidateImport() {
+  return useMutation({
+    mutationKey: ['workflow', 'import', 'validate'],
+    mutationFn: (fileContent: WorkflowImportFileContent) => validateImport(fileContent),
+    gcTime: 0,
+  })
+}
+
+export function useImportWorkflow() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ['workflow', 'import'],
+    mutationFn: (payload: WorkflowImportPayload) => importWorkflow(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() })
     },
