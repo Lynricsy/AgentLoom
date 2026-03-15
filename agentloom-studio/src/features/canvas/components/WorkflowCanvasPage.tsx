@@ -22,6 +22,7 @@ import { VersionHistoryPanel } from '@/features/workflow/components/VersionHisto
 import { WorkflowImportDialog } from '@/features/workflow/components/WorkflowImportDialog'
 import { ExecutionLaunchDialog } from '@/features/workflow-input-schema/components/ExecutionLaunchDialog'
 import { MarketplacePublishDialog } from '@/features/marketplace'
+import { ShareManagementDialog } from '@/features/share/components/ShareManagementDialog'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowStatusBar } from './status/WorkflowStatusBar'
@@ -79,6 +80,7 @@ export function WorkflowCanvasPage() {
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const [isMarketplacePublishOpen, setIsMarketplacePublishOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
 
   const exportMutation = useExportWorkflow()
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
@@ -129,6 +131,7 @@ export function WorkflowCanvasPage() {
   }, [workflow, workflowId, exportMutation])
 
   const handleOpenImportDialog = useCallback(() => setIsImportDialogOpen(true), [])
+  const handleOpenShareDialog = useCallback(() => setIsShareDialogOpen(true), [])
 
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
@@ -231,6 +234,7 @@ export function WorkflowCanvasPage() {
             onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
             onExport={handleExportWorkflow}
             onImport={handleOpenImportDialog}
+            onShare={workflow.status === 'published' ? handleOpenShareDialog : undefined}
             isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
             isInputSchemaOpen={activeSettingsTab === 'input-schema'}
             isTriggersOpen={activeSettingsTab === 'triggers'}
@@ -342,6 +346,14 @@ export function WorkflowCanvasPage() {
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
       />
+
+      {workflow && (
+        <ShareManagementDialog
+          open={isShareDialogOpen}
+          onOpenChange={setIsShareDialogOpen}
+          workflowId={workflow.id}
+        />
+      )}
     </div>
   )
 }

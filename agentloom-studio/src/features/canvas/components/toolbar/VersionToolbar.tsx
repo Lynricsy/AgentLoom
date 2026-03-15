@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store, Download, FolderInput } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store, Download, FolderInput, Share2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -17,6 +17,7 @@ interface VersionToolbarProps {
   onRun?: () => void
   onExport?: () => void
   onImport?: () => void
+  onShare?: () => void
   isInterventionPoliciesOpen?: boolean
   isInputSchemaOpen?: boolean
   isTriggersOpen?: boolean
@@ -52,6 +53,7 @@ export const VersionToolbar = memo(function VersionToolbar({
   onRun,
   onExport,
   onImport,
+  onShare,
   isInterventionPoliciesOpen = false,
   isInputSchemaOpen = false,
   isTriggersOpen = false,
@@ -213,6 +215,18 @@ export const VersionToolbar = memo(function VersionToolbar({
           >
             <FolderInput className="h-3.5 w-3.5" />
             导入
+          </button>
+        )}
+
+        {isPublished && onShare && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+            onClick={onShare}
+            data-testid="btn-share-workflow"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            分享
           </button>
         )}
 
