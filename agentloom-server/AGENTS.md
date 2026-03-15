@@ -47,6 +47,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
+| smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 查询 | LlmModule |
 | marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
 | share | `modules/share/` | 工作流分享链接管理：租户内创建/分页/撤销分享，公开短链 `/s/:token` 只读访问，view/copy 计数原子递增 | ConfigModule, workflowVersions |
 | platform-api-token | `modules/platform-api-token/` | Platform API Token CRUD：生成 (al_ 前缀 + SHA-256)、列表 (分页+状态过滤)、撤销、验证；每租户 20 token 上限 | RbacCacheService |
@@ -146,7 +147,7 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。24 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
+Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：Story 7-5 服务端已完成，`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
 - **Story 8-6 / 8-6a 已完成自动化收口**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 8-6a 新增的 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
@@ -224,7 +225,7 @@ Schema 在 `src/database/schema/`。24 张表，启用 RLS (`rls-policies.ts`)�
 
 ## 复杂度热点
 
-- `node-scheduler.service.ts` (1215L) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
+- `node-scheduler.service.ts` (1400L+) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理/智能路由，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
 - `workflow-version.service.ts` — 版本管理逻辑 + PATCH 更新/OCC 并发控制 + 发布时端口类型兼容性警告 + 列表排序（camelCase + snake_case alias）
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建

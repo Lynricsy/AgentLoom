@@ -96,6 +96,7 @@ src/
 - **Story 6.5 证据扩展**: `EvidenceSourceType` 现包含 `node_error`；`EvidenceCard` 支持展示错误类型、节点 ID、错误摘要与类型不匹配对比；`InlineEvidenceRef` 的 source type 标签也已覆盖 `node_error`
 - **Story 10-1 审查修复补充**: `features/evidence/types/index.ts` 现除了明文 `rag_retrieval/user_input/intervention/node_error` packet 外，还支持 `agent_decision/tool_output` 的 canonical encrypted envelope（`packet.encryptedPacket + summary`）；`EvidenceRecord` / `EvidenceChainNode` 显式包含 `isEncrypted` 与 `encryptionMetadata`。`EvidenceCard` 现优先解 `packet.encryptedPacket`，并保留对 legacy `encryptionMetadata.encryptedPayload` 的 fallback；同时组件 DOM 已去除嵌套 button，避免 hydration 与可访问性问题。
 - **tenant-key feature 审查修复补充**: `clientCrypto.ts` 现返回 `GeneratedKeyPair { publicKeyPem, privateKeyPem, privateKeyPkcs8, fingerprint }`，`keyStorage.ts` 不再持久化 PEM 字符串，而是保存 PKCS8 二进制材料；`useDecryptContent()` 读取本地二进制密钥后按需导入 non-extractable `CryptoKey` 完成解密。`TenantKeyManagement` 现优先展示当前 `active` key，并把 `rotating/revoked` key 显示为“历史密钥”；生成/��入/轮换文案已明确说明“私钥不会上传服务器，但本地密钥材料仍受浏览器扩展、同源脚本与本机安全状态影响”。
+- **smart-routing feature** (`features/smart-routing/`): 智能路由 API 层 — `routingApi.ts` (fetchRoutingDecisions)、`routingKeys.ts` (query key factory)、`routingQueries.ts` (useRoutingDecisions hook)、`index.ts` barrel export。画布集成：`SmartRoutingNodeBody` 策略标签中文 + 模型计数徽章，`SmartRoutingConfigPanel` 策略选择器 + TOKEN_OPTIMIZED 阈值 + FALLBACK_CHAIN 拖拽排序 + 动态端口增减 (min 2)，均注册到 `NodeConfigPanel CUSTOM_PANEL_REGISTRY` 与 `CanvasNode.tsx` body dispatch。`nodeTypeRegistry.ts` 中 `'smart-routing'` 类型配置：category agent, icon GitFork, label '智能路由', 2 model input + 1 model output, configSchema 含 strategy enum
 - **执行历史** (`features/execution/components/ExecutionHistoryPanel.tsx`): WorkflowCanvasPage 左上角按需展开的运行记录面板，使用 `RunCard` 跳转 `/executions/$executionId`，空态文案为“还没有执行记录”
 - **执行调试视图** (`features/execution/components/ExecutionDebugView.tsx`): Desktop 三栏（ReadonlyCanvas + ExecutionTimelineVertical + ExecutionNodeDetail）/ Mobile 纵向堆叠，支持节点联动选择；中间栏使用 `useTimelineData` hook 聚合步骤与证据数据，`ExecutionNodeDetail` 读取 server DTO 暴露的真实 `steps[].input`
 - **垂直时间线** (`features/execution/components/timeline/`): 替代旧 `ExecutionTimeline`（Gantt 风格），包含：
@@ -156,7 +157,7 @@ react-hook-form + @hookform/resolvers + Zod v4
 - `KnowledgeBaseDetailPage.tsx` (700L) — WebSocket + form + pagination + upload
 - `LlmModelConfigPanel.tsx` (678L) — 多模型配置面板
 - `canvasStore.ts` (535L) — 画布完整状态管理
-- `nodeTypeRegistry.ts` (540L) — 13 种节点类型配置 (纯数据)
+- `nodeTypeRegistry.ts` (590L) — 16 种节点类型配置 (纯数据，含 smart-routing)
 
 ## 环境变量
 
