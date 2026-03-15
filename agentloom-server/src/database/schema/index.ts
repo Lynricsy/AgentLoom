@@ -160,15 +160,22 @@ export {
   type NewInterventionPolicy,
 } from './intervention-policies.schema';
 export {
+  marketplaceCategoryEnum,
   marketplaceListingStatusEnum,
   marketplaceListings,
   MARKETPLACE_REVIEW_LIMITS,
+  type MarketplaceCategory,
   type MarketplaceListing,
   type NewMarketplaceListing,
   type MarketplaceReviewCode,
   type MarketplaceReviewCheck,
   type MarketplaceReviewResult,
 } from './marketplace-listings.schema';
+export {
+  marketplaceReviews,
+  type MarketplaceReview,
+  type NewMarketplaceReview,
+} from './marketplace-reviews.schema';
 export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,

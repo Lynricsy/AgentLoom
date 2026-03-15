@@ -1,7 +1,10 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
+  integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -19,6 +22,17 @@ export const marketplaceListingStatusEnum = pgEnum(
   'marketplace_listing_status',
   ['pending_review', 'review_failed', 'listed', 'unlisted'],
 );
+
+export const marketplaceCategoryEnum = pgEnum('marketplace_category_enum', [
+  'analysis',
+  'content',
+  'development',
+  'automation',
+  'reporting',
+]);
+
+export type MarketplaceCategory =
+  (typeof marketplaceCategoryEnum.enumValues)[number];
 
 export type MarketplaceReviewCode =
   | 'WORKFLOW_VERSION_NOT_PUBLISHED'
@@ -84,9 +98,17 @@ export const marketplaceListings = pgTable(
 
     coverImageUrl: text('cover_image_url'),
 
+    category: marketplaceCategoryEnum('category'),
+
     status: marketplaceListingStatusEnum('status')
       .notNull()
       .default('pending_review'),
+
+    useCount: integer('use_count').notNull().default(0),
+
+    avgRating: numeric('avg_rating', { precision: 3, scale: 2 }),
+
+    reviewCount: integer('review_count').notNull().default(0),
 
     reviewResult: jsonb('review_result').$type<MarketplaceReviewResult>(),
 
@@ -125,7 +147,22 @@ export const marketplaceListings = pgTable(
     index('idx_marketplace_listings_listed')
       .on(table.status)
       .where(sql`status = 'listed'`),
+    index('marketplace_listings_category_listed_idx')
+      .on(table.category)
+      .where(sql`status = 'listed'`),
     index('idx_marketplace_listings_tags').using('gin', table.tags),
+    check(
+      'marketplace_listings_use_count_non_negative',
+      sql`${table.useCount} >= 0`,
+    ),
+    check(
+      'marketplace_listings_review_count_non_negative',
+      sql`${table.reviewCount} >= 0`,
+    ),
+    check(
+      'marketplace_listings_avg_rating_range',
+      sql`${table.avgRating} IS NULL OR (${table.avgRating} >= 1 AND ${table.avgRating} <= 5)`,
+    ),
     ...createDirectTenantPolicies('marketplace_listings'),
   ],
 );

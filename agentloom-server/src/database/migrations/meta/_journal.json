@@ -218,6 +218,34 @@
       "when": 1773561600000,
       "tag": "0030_trigger_system",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1773553553885,
+      "tag": "0031_trigger_history_signature_failed",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1773553553886,
+      "tag": "0032_intervention_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1773553553887,
+      "tag": "0033_marketplace_listings",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1773553569693,
+      "tag": "0034_little_odin",
+      "breakpoints": true
     }
   ]
 }
