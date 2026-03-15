@@ -44,6 +44,7 @@ import {
   WorkflowVersionConflictException,
   WorkflowVersionNotFoundException,
 } from './workflow-version.exceptions';
+import { MarketplaceListingNotFoundException } from '../marketplace/marketplace.exceptions';
 
 /** 发布版本缓存 TTL（秒） */
 const PUBLISHED_VERSION_TTL = 300;
@@ -51,6 +52,7 @@ const PUBLISHED_VERSION_TTL = 300;
 const NULL_CACHE_TTL = 60;
 /** 空值缓存标记 */
 const NULL_SENTINEL = '__NULL__';
+const DEFAULT_VIEWPORT: schema.ReactFlowViewport = { x: 0, y: 0, zoom: 1 };
 
 type WorkflowDbClient = Pick<
   DrizzleDB,
@@ -271,6 +273,52 @@ export class WorkflowVersionService {
           clonedAt: new Date().toISOString(),
         },
       };
+    } else if (dto.marketplace_listing_id) {
+      const [listing] = await this.db
+        .select({
+          id: schema.marketplaceListings.id,
+          title: schema.marketplaceListings.title,
+          snapshot: schema.workflowVersions.snapshot,
+        })
+        .from(schema.marketplaceListings)
+        .innerJoin(
+          schema.workflowVersions,
+          eq(
+            schema.marketplaceListings.workflowVersionId,
+            schema.workflowVersions.id,
+          ),
+        )
+        .where(
+          and(
+            eq(schema.marketplaceListings.id, dto.marketplace_listing_id),
+            eq(schema.marketplaceListings.status, 'listed'),
+          ),
+        );
+
+      if (!listing) {
+        throw new MarketplaceListingNotFoundException(dto.marketplace_listing_id);
+      }
+
+      const snapshot = listing.snapshot as WorkflowVersionSnapshot;
+      const cloned = cloneDefinitionWithNewIds({
+        nodes: snapshot.nodes,
+        edges: snapshot.edges,
+        viewport: snapshot.viewport ?? DEFAULT_VIEWPORT,
+      });
+
+      nodes = cloned.nodes;
+      edges = cloned.edges;
+      viewport = cloned.viewport;
+      inputSchema = snapshot.inputSchema
+        ? workflowInputSchemaSchema.parse(snapshot.inputSchema)
+        : null;
+      metadata = {
+        cloned_from_marketplace: {
+          listingId: listing.id,
+          listingTitle: listing.title,
+          clonedAt: new Date().toISOString(),
+        },
+      };
     }
 
     let slug = generateSlug(dto.name);
@@ -304,6 +352,7 @@ export class WorkflowVersionService {
             workflowId: created.id,
             slug,
             fromTemplate: dto.template_slug ?? null,
+            fromMarketplace: dto.marketplace_listing_id ?? null,
           }),
         );
 
