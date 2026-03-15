@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildKnowledgeBaseNodeConfig, type KnowledgeBase } from '@/features/knowledge/types'
@@ -123,7 +123,9 @@ describe('KnowledgeBaseConfigPanel', () => {
     await user.click(select)
     await user.tab()
 
-    expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
+    })
     expect(onValidationChange).toHaveBeenLastCalledWith(true)
 
     await user.selectOptions(select, 'kb-1')

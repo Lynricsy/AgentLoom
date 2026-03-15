@@ -96,6 +96,10 @@ vi.mock('@/features/execution/components/CelebrationEffect', () => ({
   },
 }))
 
+vi.mock('@/features/marketplace', () => ({
+  MarketplacePublishDialog: () => null,
+}))
+
 vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () => ({
   ExecutionLaunchDialog: (props: {
     open: boolean
