@@ -22,14 +22,21 @@ export const inputFieldDefinitionSchema = z.object({
   options: z.array(z.string()).optional(),
   default: z.unknown().optional(),
   visibility: inputFieldVisibilitySchema.optional(),
+  collectionHint: z.string().optional(),
 });
 
 export const collectionModeSchema = z.enum(['form', 'conversation', 'hybrid']);
+
+export const conversationPlanSchema = z.object({
+  systemPrompt: z.string().min(1),
+  maxTurns: z.number().int().positive(),
+});
 
 export const workflowInputSchemaSchema = z.object({
   version: z.number().int().positive().default(1),
   collectionMode: collectionModeSchema.default('form'),
   fields: z.array(inputFieldDefinitionSchema).default([]),
+  conversationPlan: conversationPlanSchema.optional(),
 }).superRefine((schema, ctx) => {
   const fieldIds = new Set(schema.fields.map((field) => field.id));
 
@@ -50,3 +57,4 @@ export type WorkflowInputSchema = z.infer<typeof workflowInputSchemaSchema>;
 export type InputFieldDefinition = z.infer<typeof inputFieldDefinitionSchema>;
 export type InputFieldVisibility = z.infer<typeof inputFieldVisibilitySchema>;
 export type CollectionMode = z.infer<typeof collectionModeSchema>;
+export type ConversationPlan = z.infer<typeof conversationPlanSchema>;

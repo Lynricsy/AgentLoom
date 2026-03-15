@@ -1,9 +1,15 @@
 import type {
+  ConversationPlan,
   WorkflowInputFieldDefinition,
   WorkflowInputFieldType,
   WorkflowInputFieldValidation,
   WorkflowInputSchema,
 } from '@/features/workflow/types'
+
+export const DEFAULT_CONVERSATION_PLAN: ConversationPlan = {
+  systemPrompt: '',
+  maxTurns: 10,
+}
 
 export const DEFAULT_WORKFLOW_INPUT_SCHEMA: WorkflowInputSchema = {
   version: 1,
@@ -14,14 +20,23 @@ export const DEFAULT_WORKFLOW_INPUT_SCHEMA: WorkflowInputSchema = {
 export function normalizeWorkflowInputSchema(
   schema?: WorkflowInputSchema | null,
 ): WorkflowInputSchema {
+  const shouldIncludeConversationPlan =
+    schema?.collectionMode === 'conversation' ||
+    schema?.collectionMode === 'hybrid' ||
+    schema?.conversationPlan !== undefined
+
   return {
     version: schema?.version ?? DEFAULT_WORKFLOW_INPUT_SCHEMA.version,
     collectionMode: schema?.collectionMode ?? DEFAULT_WORKFLOW_INPUT_SCHEMA.collectionMode,
+    conversationPlan: shouldIncludeConversationPlan
+      ? normalizeConversationPlan(schema?.conversationPlan)
+      : undefined,
     fields: (schema?.fields ?? []).map((field) => ({
       id: field.id,
       type: field.type,
       label: field.label,
       description: field.description?.trim() ? field.description.trim() : undefined,
+      collectionHint: field.collectionHint?.trim() ? field.collectionHint.trim() : undefined,
       required: field.required ?? false,
       validation: normalizeValidation(field.validation),
       options: normalizeOptions(field.options),
@@ -171,35 +186,61 @@ export function sanitizeLaunchInputParams(
 
     const rawValue = values[field.id]
 
-    if (rawValue === undefined || rawValue === null) {
+    const normalizedValue = normalizeLaunchFieldValue(field, rawValue)
+
+    if (normalizedValue === undefined) {
       return accumulator
     }
 
-    if (field.type === 'multi_select') {
-      if (!Array.isArray(rawValue) || rawValue.length === 0) {
-        return accumulator
-      }
-
-      accumulator[field.id] = rawValue
-      return accumulator
-    }
-
-    if (field.type === 'number') {
-      if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) {
-        return accumulator
-      }
-
-      accumulator[field.id] = rawValue
-      return accumulator
-    }
-
-    if (typeof rawValue === 'string' && rawValue.trim() === '') {
-      return accumulator
-    }
-
-    accumulator[field.id] = rawValue
+    accumulator[field.id] = normalizedValue
     return accumulator
   }, {})
+}
+
+export function normalizeLaunchFieldValue(
+  field: WorkflowInputFieldDefinition,
+  rawValue: unknown,
+): unknown {
+  if (rawValue === undefined || rawValue === null) {
+    return undefined
+  }
+
+  if (field.type === 'multi_select') {
+    if (Array.isArray(rawValue)) {
+      const normalized = rawValue
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+
+      return normalized.length > 0 ? normalized : undefined
+    }
+
+    if (typeof rawValue === 'string') {
+      return parseOptionsInput(rawValue)
+    }
+
+    return undefined
+  }
+
+  if (field.type === 'number') {
+    if (typeof rawValue === 'number') {
+      return Number.isFinite(rawValue) ? rawValue : undefined
+    }
+
+    if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim()
+      if (!trimmed) {
+        return undefined
+      }
+
+      const parsed = Number(trimmed)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+
+    return undefined
+  }
+
+  const normalized = String(rawValue).trim()
+  return normalized ? normalized : undefined
 }
 
 function normalizeOptions(options?: string[]): string[] | undefined {
@@ -234,4 +275,20 @@ function normalizeValidation(
   }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined
+}
+
+function normalizeConversationPlan(
+  conversationPlan?: ConversationPlan,
+): ConversationPlan {
+  const normalizedMaxTurns = conversationPlan?.maxTurns
+
+  return {
+    systemPrompt: conversationPlan?.systemPrompt?.trim() ?? DEFAULT_CONVERSATION_PLAN.systemPrompt,
+    maxTurns:
+      typeof normalizedMaxTurns === 'number' &&
+      Number.isInteger(normalizedMaxTurns) &&
+      normalizedMaxTurns > 0
+        ? normalizedMaxTurns
+        : DEFAULT_CONVERSATION_PLAN.maxTurns,
+  }
 }

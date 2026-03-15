@@ -3,6 +3,7 @@ import 'package:agentloom_mobile/features/execution/models/execution_state.dart'
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
+import 'package:agentloom_mobile/features/workflows/models/conversation_plan.dart';
 import 'package:agentloom_mobile/features/workflows/models/input_field_definition.dart';
 import 'package:agentloom_mobile/features/workflows/models/workflow_definition_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_summary_dto.dart';
@@ -56,6 +57,7 @@ InputFieldDefinition createTestInputFieldDefinition({
   List<String>? options,
   Object? defaultValue,
   InputFieldVisibility? visibility,
+  String? collectionHint,
 }) {
   return InputFieldDefinition.fromJson({
     'id': id,
@@ -67,6 +69,7 @@ InputFieldDefinition createTestInputFieldDefinition({
     'options': options,
     'default': defaultValue,
     'visibility': visibility?.toJson(),
+    'collection_hint': collectionHint,
   });
 }
 
@@ -75,11 +78,13 @@ WorkflowInputSchema createTestWorkflowInputSchema({
   int version = 1,
   String collectionMode = 'form',
   List<InputFieldDefinition>? fields,
+  ConversationPlan? conversationPlan,
 }) {
   return WorkflowInputSchema.fromJson({
     'version': version,
     'collection_mode': collectionMode,
     'fields': (fields ?? []).map((field) => field.toJson()).toList(),
+    'conversation_plan': conversationPlan?.toJson(),
   });
 }
 

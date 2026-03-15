@@ -17,6 +17,7 @@ import {
 } from '../execution.exceptions';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
+import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -85,6 +86,103 @@ const CONDITIONAL_RUN_INPUT_SCHEMA = {
   ],
 };
 
+const CONVERSATION_RUN_INPUT_SCHEMA = {
+  version: 3,
+  collectionMode: 'conversation' as const,
+  conversationPlan: {
+    systemPrompt: '你是一个对话式参数收集助手',
+    maxTurns: 5,
+  },
+  fields: [
+    {
+      id: 'topic',
+      type: 'text' as const,
+      label: '分析主题',
+      required: true,
+      collectionHint: '先确认用户最关注的主题',
+    },
+    {
+      id: 'depth',
+      type: 'single_select' as const,
+      label: '分析深度',
+      required: false,
+      options: ['brief', 'deep'],
+      default: 'brief',
+      collectionHint: '若用户没有明确说明，可保持 brief',
+    },
+    {
+      id: 'followUp',
+      type: 'text' as const,
+      label: '补充说明',
+      required: false,
+      collectionHint: '仅在深度分析时继续追问',
+      visibility: {
+        fieldId: 'depth',
+        equals: 'deep',
+      },
+    },
+  ],
+};
+
+const HYBRID_RUN_INPUT_SCHEMA = {
+  version: 4,
+  collectionMode: 'hybrid' as const,
+  conversationPlan: {
+    systemPrompt: '你先用对话补齐关键信息，再回到结构化确认',
+    maxTurns: 6,
+  },
+  fields: [
+    {
+      id: 'topic',
+      type: 'text' as const,
+      label: '主题',
+      required: true,
+      collectionHint: '先问用户本次需要分析什么',
+    },
+    {
+      id: 'mode',
+      type: 'single_select' as const,
+      label: '模式',
+      required: true,
+      options: ['quick', 'deep'],
+      default: 'quick',
+      collectionHint: '没有明确要求时使用 quick',
+    },
+    {
+      id: 'brief',
+      type: 'text' as const,
+      label: '摘要要求',
+      required: false,
+      default: '输出 3 条关键结论',
+      collectionHint: '可在确认阶段展示默认摘要要求',
+    },
+    {
+      id: 'deepNote',
+      type: 'text' as const,
+      label: '深度备注',
+      required: false,
+      collectionHint: '仅在 deep 模式时继续补齐',
+      visibility: {
+        fieldId: 'mode',
+        equals: 'deep',
+      },
+    },
+  ],
+};
+
+const FORM_ONLY_BACKWARD_COMPAT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form' as const,
+  fields: [
+    {
+      id: 'topic',
+      type: 'text' as const,
+      label: '主题',
+      required: true,
+    },
+  ],
+};
+
 const mockPublishedWorkflow = {
   id: WORKFLOW_ID,
   tenantId: TENANT_ID,
@@ -119,6 +217,27 @@ const mockExecution = {
   createdAt: NOW,
   updatedAt: NOW,
 };
+
+function createVersionWithInputSchema(inputSchema: unknown) {
+  return {
+    ...mockVersion,
+    snapshot: {
+      ...mockSnapshot,
+      inputSchema,
+    },
+  };
+}
+
+function createExecutionWithInputParams(
+  inputParams: Record<string, unknown>,
+  definitionSnapshot = mockSnapshot,
+) {
+  return {
+    ...mockExecution,
+    inputParams,
+    definitionSnapshot,
+  };
+}
 
 const txDb = {
   select: vi.fn(),
@@ -458,6 +577,461 @@ describe('ExecutionService', () => {
       }
 
       expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    describe('conversation/hybrid schema contract', () => {
+      it('应在 conversation 模式下保留 conversationPlan 与 collectionHint 并生成 launchConfig', async () => {
+        expect(
+          workflowInputSchemaSchema.parse(CONVERSATION_RUN_INPUT_SCHEMA),
+        ).toMatchObject({
+          collectionMode: 'conversation',
+          conversationPlan: CONVERSATION_RUN_INPUT_SCHEMA.conversationPlan,
+          fields: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'topic',
+              collectionHint: '先确认用户最关注的主题',
+            }),
+          ]),
+        });
+
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          CONVERSATION_RUN_INPUT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '企业级 AI 采用',
+          depth: 'brief',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 3,
+              collectionMode: 'conversation',
+              resolvedInputs: {
+                topic: '企业级 AI 采用',
+                depth: 'brief',
+              },
+              unresolvedFieldIds: ['followUp'],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+        const executionWithNormalizedLaunch = createExecutionWithInputParams(
+          normalizedInputParams,
+          versionWithInputSchema.snapshot,
+        );
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([executionWithNormalizedLaunch]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        const result = await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 3,
+            inputParams: {
+              topic: '企业级 AI 采用',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        expect(result).toEqual(executionWithNormalizedLaunch);
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
+
+      it('应在 hybrid 模式下保留 conversationPlan 并生成 launchConfig', async () => {
+        expect(workflowInputSchemaSchema.parse(HYBRID_RUN_INPUT_SCHEMA)).toMatchObject(
+          {
+            collectionMode: 'hybrid',
+            conversationPlan: HYBRID_RUN_INPUT_SCHEMA.conversationPlan,
+            fields: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'topic',
+                collectionHint: '先问用户本次需要分析什么',
+              }),
+            ]),
+          },
+        );
+
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: HYBRID_RUN_INPUT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          HYBRID_RUN_INPUT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '自动化客服',
+          mode: 'quick',
+          brief: '输出 3 条关键结论',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 4,
+              collectionMode: 'hybrid',
+              resolvedInputs: {
+                topic: '自动化客服',
+                mode: 'quick',
+                brief: '输出 3 条关键结论',
+              },
+              unresolvedFieldIds: ['deepNote'],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+        const executionWithNormalizedLaunch = createExecutionWithInputParams(
+          normalizedInputParams,
+          versionWithInputSchema.snapshot,
+        );
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([executionWithNormalizedLaunch]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        const result = await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 4,
+            inputParams: {
+              topic: '自动化客服',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        expect(result).toEqual(executionWithNormalizedLaunch);
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
+
+      it('应兼容不带 conversationPlan 的 form schema', async () => {
+        expect(
+          workflowInputSchemaSchema.parse(FORM_ONLY_BACKWARD_COMPAT_SCHEMA),
+        ).toMatchObject({
+          collectionMode: 'form',
+          fields: [
+            expect.objectContaining({
+              id: 'topic',
+            }),
+          ],
+        });
+
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: FORM_ONLY_BACKWARD_COMPAT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          FORM_ONLY_BACKWARD_COMPAT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '老 schema 兼容性',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 1,
+              collectionMode: 'form',
+              resolvedInputs: {
+                topic: '老 schema 兼容性',
+              },
+              unresolvedFieldIds: [],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+        const executionWithNormalizedLaunch = createExecutionWithInputParams(
+          normalizedInputParams,
+          versionWithInputSchema.snapshot,
+        );
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([executionWithNormalizedLaunch]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        const result = await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 1,
+            inputParams: {
+              topic: '老 schema 兼容性',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        expect(result).toEqual(executionWithNormalizedLaunch);
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
+    });
+
+    describe('conversation/hybrid launch normalization', () => {
+      it('应为 conversation 模式生成包含 resolved 与 unresolved 字段的 canonical launchConfig', async () => {
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          CONVERSATION_RUN_INPUT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '行业研究',
+          depth: 'brief',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 3,
+              collectionMode: 'conversation',
+              resolvedInputs: {
+                topic: '行业研究',
+                depth: 'brief',
+              },
+              unresolvedFieldIds: ['followUp'],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([
+            createExecutionWithInputParams(
+              normalizedInputParams,
+              versionWithInputSchema.snapshot,
+            ),
+          ]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 3,
+            inputParams: {
+              topic: '行业研究',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
+
+      it('应在 hybrid 模式下基于可见性规则排除隐藏字段并生成 canonical launchConfig', async () => {
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: HYBRID_RUN_INPUT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          HYBRID_RUN_INPUT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '客服自动化',
+          mode: 'quick',
+          brief: '输出 3 条关键结论',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 4,
+              collectionMode: 'hybrid',
+              resolvedInputs: {
+                topic: '客服自动化',
+                mode: 'quick',
+                brief: '输出 3 条关键结论',
+              },
+              unresolvedFieldIds: ['deepNote'],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([
+            createExecutionWithInputParams(
+              normalizedInputParams,
+              versionWithInputSchema.snapshot,
+            ),
+          ]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 4,
+            inputParams: {
+              topic: '客服自动化',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
+
+      it('应在 conversation 模式的手动启动中校验 schemaVersion', async () => {
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
+        };
+
+        db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+
+        await expect(
+          service.runWorkflow(
+            WORKFLOW_ID,
+            {
+              schemaVersion: 999,
+              inputParams: { topic: 'AI 趋势' },
+              launchSource: 'web-studio',
+            },
+            TENANT_ID,
+            USER_ID,
+          ),
+        ).rejects.toThrow(WorkflowLaunchSchemaVersionMismatchException);
+
+        expect(db.insert).not.toHaveBeenCalled();
+      });
+
+      it('应在 conversation 模式缺少必填字段时抛出 422', async () => {
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
+        };
+
+        db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+
+        try {
+          await service.runWorkflow(
+            WORKFLOW_ID,
+            {
+              schemaVersion: 3,
+              inputParams: {},
+              launchSource: 'web-studio',
+            },
+            TENANT_ID,
+            USER_ID,
+          );
+
+          throw new Error('应当抛出 WorkflowLaunchInputValidationException');
+        } catch (error) {
+          expect(error).toBeInstanceOf(WorkflowLaunchInputValidationException);
+          expect((error as WorkflowLaunchInputValidationException).errors).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                field: 'inputParams.topic',
+              }),
+            ]),
+          );
+        }
+
+        expect(db.insert).not.toHaveBeenCalled();
+      });
+
+      it('应在 hybrid 模式下为字段注入默认值', async () => {
+        const workflowWithInputSchema = {
+          ...mockPublishedWorkflow,
+          inputSchema: HYBRID_RUN_INPUT_SCHEMA,
+        };
+        const versionWithInputSchema = createVersionWithInputSchema(
+          HYBRID_RUN_INPUT_SCHEMA,
+        );
+        const normalizedInputParams = {
+          topic: '企业知识库',
+          mode: 'quick',
+          brief: '输出 3 条关键结论',
+          _meta: {
+            launchSource: 'web-studio',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 4,
+              collectionMode: 'hybrid',
+              resolvedInputs: {
+                topic: '企业知识库',
+                mode: 'quick',
+                brief: '输出 3 条关键结论',
+              },
+              unresolvedFieldIds: ['deepNote'],
+              launchSource: 'web-studio',
+            },
+          },
+        };
+
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+          .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+        db.insert.mockReturnValueOnce(
+          createInsertChainReturning([
+            createExecutionWithInputParams(
+              normalizedInputParams,
+              versionWithInputSchema.snapshot,
+            ),
+          ]),
+        );
+        mockQueue.add.mockResolvedValue(undefined);
+
+        await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 4,
+            inputParams: {
+              topic: '企业知识库',
+            },
+            launchSource: 'web-studio',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        const insertValues =
+          db.insert.mock.results[0].value.values.mock.calls[0][0];
+        expect(insertValues.inputParams).toEqual(normalizedInputParams);
+      });
     });
 
     it('应允许内部触发请求覆盖 triggerType 并写入内部 launchSource', async () => {

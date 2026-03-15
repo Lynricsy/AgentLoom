@@ -17,6 +17,8 @@ mixin _$WorkflowInputSchema {
   @JsonKey(name: 'collection_mode')
   String get collectionMode;
   List<InputFieldDefinition> get fields;
+  @JsonKey(name: 'conversation_plan')
+  ConversationPlan? get conversationPlan;
 
   /// Create a copy of WorkflowInputSchema
   /// with the given fields replaced by the non-null parameter values.
@@ -39,7 +41,9 @@ mixin _$WorkflowInputSchema {
             (identical(other.version, version) || other.version == version) &&
             (identical(other.collectionMode, collectionMode) ||
                 other.collectionMode == collectionMode) &&
-            const DeepCollectionEquality().equals(other.fields, fields));
+            const DeepCollectionEquality().equals(other.fields, fields) &&
+            (identical(other.conversationPlan, conversationPlan) ||
+                other.conversationPlan == conversationPlan));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -49,11 +53,12 @@ mixin _$WorkflowInputSchema {
     version,
     collectionMode,
     const DeepCollectionEquality().hash(fields),
+    conversationPlan,
   );
 
   @override
   String toString() {
-    return 'WorkflowInputSchema(version: $version, collectionMode: $collectionMode, fields: $fields)';
+    return 'WorkflowInputSchema(version: $version, collectionMode: $collectionMode, fields: $fields, conversationPlan: $conversationPlan)';
   }
 }
 
@@ -68,7 +73,10 @@ abstract mixin class $WorkflowInputSchemaCopyWith<$Res> {
     int version,
     @JsonKey(name: 'collection_mode') String collectionMode,
     List<InputFieldDefinition> fields,
+    @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
   });
+
+  $ConversationPlanCopyWith<$Res>? get conversationPlan;
 }
 
 /// @nodoc
@@ -87,6 +95,7 @@ class _$WorkflowInputSchemaCopyWithImpl<$Res>
     Object? version = null,
     Object? collectionMode = null,
     Object? fields = null,
+    Object? conversationPlan = freezed,
   }) {
     return _then(
       _self.copyWith(
@@ -102,8 +111,26 @@ class _$WorkflowInputSchemaCopyWithImpl<$Res>
             ? _self.fields
             : fields // ignore: cast_nullable_to_non_nullable
                   as List<InputFieldDefinition>,
+        conversationPlan: freezed == conversationPlan
+            ? _self.conversationPlan
+            : conversationPlan // ignore: cast_nullable_to_non_nullable
+                  as ConversationPlan?,
       ),
     );
+  }
+
+  /// Create a copy of WorkflowInputSchema
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ConversationPlanCopyWith<$Res>? get conversationPlan {
+    if (_self.conversationPlan == null) {
+      return null;
+    }
+
+    return $ConversationPlanCopyWith<$Res>(_self.conversationPlan!, (value) {
+      return _then(_self.copyWith(conversationPlan: value));
+    });
   }
 }
 
@@ -204,6 +231,7 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
       int version,
       @JsonKey(name: 'collection_mode') String collectionMode,
       List<InputFieldDefinition> fields,
+      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
     )?
     $default, {
     required TResult orElse(),
@@ -211,7 +239,12 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
     final _that = this;
     switch (_that) {
       case _WorkflowInputSchema() when $default != null:
-        return $default(_that.version, _that.collectionMode, _that.fields);
+        return $default(
+          _that.version,
+          _that.collectionMode,
+          _that.fields,
+          _that.conversationPlan,
+        );
       case _:
         return orElse();
     }
@@ -236,13 +269,19 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
       int version,
       @JsonKey(name: 'collection_mode') String collectionMode,
       List<InputFieldDefinition> fields,
+      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
     )
     $default,
   ) {
     final _that = this;
     switch (_that) {
       case _WorkflowInputSchema():
-        return $default(_that.version, _that.collectionMode, _that.fields);
+        return $default(
+          _that.version,
+          _that.collectionMode,
+          _that.fields,
+          _that.conversationPlan,
+        );
       case _:
         throw StateError('Unexpected subclass');
     }
@@ -266,13 +305,19 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
       int version,
       @JsonKey(name: 'collection_mode') String collectionMode,
       List<InputFieldDefinition> fields,
+      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
     )?
     $default,
   ) {
     final _that = this;
     switch (_that) {
       case _WorkflowInputSchema() when $default != null:
-        return $default(_that.version, _that.collectionMode, _that.fields);
+        return $default(
+          _that.version,
+          _that.collectionMode,
+          _that.fields,
+          _that.conversationPlan,
+        );
       case _:
         return null;
     }
@@ -286,6 +331,7 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
     this.version = 1,
     @JsonKey(name: 'collection_mode') this.collectionMode = 'form',
     final List<InputFieldDefinition> fields = const [],
+    @JsonKey(name: 'conversation_plan') this.conversationPlan,
   }) : _fields = fields;
   factory _WorkflowInputSchema.fromJson(Map<String, dynamic> json) =>
       _$WorkflowInputSchemaFromJson(json);
@@ -304,6 +350,10 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableListView(_fields);
   }
+
+  @override
+  @JsonKey(name: 'conversation_plan')
+  final ConversationPlan? conversationPlan;
 
   /// Create a copy of WorkflowInputSchema
   /// with the given fields replaced by the non-null parameter values.
@@ -329,7 +379,9 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
             (identical(other.version, version) || other.version == version) &&
             (identical(other.collectionMode, collectionMode) ||
                 other.collectionMode == collectionMode) &&
-            const DeepCollectionEquality().equals(other._fields, _fields));
+            const DeepCollectionEquality().equals(other._fields, _fields) &&
+            (identical(other.conversationPlan, conversationPlan) ||
+                other.conversationPlan == conversationPlan));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -339,11 +391,12 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
     version,
     collectionMode,
     const DeepCollectionEquality().hash(_fields),
+    conversationPlan,
   );
 
   @override
   String toString() {
-    return 'WorkflowInputSchema(version: $version, collectionMode: $collectionMode, fields: $fields)';
+    return 'WorkflowInputSchema(version: $version, collectionMode: $collectionMode, fields: $fields, conversationPlan: $conversationPlan)';
   }
 }
 
@@ -360,7 +413,11 @@ abstract mixin class _$WorkflowInputSchemaCopyWith<$Res>
     int version,
     @JsonKey(name: 'collection_mode') String collectionMode,
     List<InputFieldDefinition> fields,
+    @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
   });
+
+  @override
+  $ConversationPlanCopyWith<$Res>? get conversationPlan;
 }
 
 /// @nodoc
@@ -379,6 +436,7 @@ class __$WorkflowInputSchemaCopyWithImpl<$Res>
     Object? version = null,
     Object? collectionMode = null,
     Object? fields = null,
+    Object? conversationPlan = freezed,
   }) {
     return _then(
       _WorkflowInputSchema(
@@ -394,7 +452,25 @@ class __$WorkflowInputSchemaCopyWithImpl<$Res>
             ? _self._fields
             : fields // ignore: cast_nullable_to_non_nullable
                   as List<InputFieldDefinition>,
+        conversationPlan: freezed == conversationPlan
+            ? _self.conversationPlan
+            : conversationPlan // ignore: cast_nullable_to_non_nullable
+                  as ConversationPlan?,
       ),
     );
+  }
+
+  /// Create a copy of WorkflowInputSchema
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ConversationPlanCopyWith<$Res>? get conversationPlan {
+    if (_self.conversationPlan == null) {
+      return null;
+    }
+
+    return $ConversationPlanCopyWith<$Res>(_self.conversationPlan!, (value) {
+      return _then(_self.copyWith(conversationPlan: value));
+    });
   }
 }

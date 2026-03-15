@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { useUpdateWorkflow } from '@/features/workflow/api/workflowMutations'
 import type {
+  WorkflowInputCollectionMode,
   WorkflowInputFieldDefinition,
   WorkflowInputFieldType,
   WorkflowInputSchema,
@@ -12,6 +13,7 @@ import { Input } from '@/shared/ui/input'
 import { Select } from '@/shared/ui/select'
 import { useToast } from '@/shared/ui/toast'
 import {
+  DEFAULT_CONVERSATION_PLAN,
   buildLaunchInitialValues,
   createEmptyWorkflowInputField,
   formatDefaultValue,
@@ -36,6 +38,31 @@ const FIELD_TYPE_OPTIONS: Array<{ value: WorkflowInputFieldType; label: string }
   { value: 'single_select', label: '单选' },
   { value: 'multi_select', label: '多选' },
 ]
+
+const COLLECTION_MODE_OPTIONS: Array<{
+  value: WorkflowInputCollectionMode
+  label: string
+  description: string
+}> = [
+  {
+    value: 'form',
+    label: '表单模式',
+    description: '直接渲染结构化表单，适合一次性填写。',
+  },
+  {
+    value: 'conversation',
+    label: '对话模式',
+    description: '通过客户端对话壳逐项收集字段值。',
+  },
+  {
+    value: 'hybrid',
+    label: '混合模式',
+    description: '先表单补充，再通过对话追问剩余字段。',
+  },
+]
+
+const TEXTAREA_CLASSNAME =
+  'min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50'
 
 export function WorkflowInputSchemaTab({
   workflowId,
@@ -69,7 +96,8 @@ export function WorkflowInputSchemaTab({
     [schema.fields],
   )
 
-  const unsupportedCollectionMode = schema.collectionMode !== 'form'
+  const showsConversationPlan =
+    schema.collectionMode === 'conversation' || schema.collectionMode === 'hybrid'
 
   const updateField = (
     index: number,
@@ -108,11 +136,10 @@ export function WorkflowInputSchemaTab({
     const validationErrors = validateWorkflowInputSchema(schema)
     setErrorMessages(validationErrors)
 
-    if (validationErrors.length > 0 || unsupportedCollectionMode) {
+    if (validationErrors.length > 0) {
       notify({
         title: '无法保存输入参数',
-        description:
-          validationErrors[0] ?? '当前 Web Studio 仅支持表单模式编辑，请先调整 schema。',
+        description: validationErrors[0] ?? '请先修正输入 Schema 中的配置问题。',
         variant: 'error',
       })
       return
@@ -148,15 +175,9 @@ export function WorkflowInputSchemaTab({
       <div className="space-y-1">
         <div className="text-sm font-semibold text-foreground">输入参数</div>
         <p className="text-xs text-muted-foreground">
-          当前 Studio 仅提供表单模式编辑；运行对话框会按这里定义的字段生成表单。
+          支持表单、对话与混合三种收集模式；运行弹窗会复用这里定义的字段、提示与对话计划。
         </p>
       </div>
-
-      {unsupportedCollectionMode ? (
-        <div className="rounded-xl border border-warning/60 bg-warning/10 px-3 py-2 text-xs text-warning">
-          当前 schema 不是表单模式，Web Studio 暂不支持直接编辑该 collectionMode。
-        </div>
-      ) : null}
 
       {isReadOnly ? (
         <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
@@ -175,6 +196,92 @@ export function WorkflowInputSchemaTab({
       ) : null}
 
       <fieldset disabled={isReadOnly} className="contents">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,240px)_1fr]">
+          <FieldInput label="收集模式">
+            <Select
+              value={schema.collectionMode}
+              onValueChange={(value) => {
+                const nextMode = value as WorkflowInputCollectionMode
+
+                setSchema((current) => ({
+                  ...current,
+                  collectionMode: nextMode,
+                  conversationPlan:
+                    nextMode === 'form'
+                      ? current.conversationPlan
+                      : current.conversationPlan ?? { ...DEFAULT_CONVERSATION_PLAN },
+                }))
+              }}
+              aria-label="收集模式"
+              data-testid="input-schema-collection-mode"
+            >
+              {COLLECTION_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </FieldInput>
+
+          <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+            {
+              COLLECTION_MODE_OPTIONS.find((option) => option.value === schema.collectionMode)
+                ?.description
+            }
+          </div>
+        </div>
+
+        {showsConversationPlan ? (
+          <div className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">对话计划</h3>
+              <p className="text-xs text-muted-foreground">
+                对话模式会先展示系统提示词，再按字段顺序结合 collectionHint 逐项追问。
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+              <FieldInput label="系统提示词">
+                <textarea
+                  className={TEXTAREA_CLASSNAME}
+                  value={schema.conversationPlan?.systemPrompt ?? ''}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    setSchema((current) => ({
+                      ...current,
+                      conversationPlan: {
+                        ...(current.conversationPlan ?? DEFAULT_CONVERSATION_PLAN),
+                        systemPrompt: nextValue,
+                      },
+                    }))
+                  }}
+                  aria-label="系统提示词"
+                />
+              </FieldInput>
+
+              <FieldInput label="最大轮次">
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={schema.conversationPlan?.maxTurns ?? DEFAULT_CONVERSATION_PLAN.maxTurns}
+                  onChange={(event) => {
+                    const nextTurns = Number(event.target.value)
+                    setSchema((current) => ({
+                      ...current,
+                      conversationPlan: {
+                        ...(current.conversationPlan ?? DEFAULT_CONVERSATION_PLAN),
+                        maxTurns: Number.isFinite(nextTurns) && nextTurns > 0 ? nextTurns : 1,
+                      },
+                    }))
+                  }}
+                  aria-label="最大轮次"
+                />
+              </FieldInput>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-muted-foreground">
             Schema 版本 {schema.version} · 工作流版本 {currentWorkflowVersion}
@@ -186,13 +293,13 @@ export function WorkflowInputSchemaTab({
               setSchema((current) => ({
                 ...current,
                 fields: [...current.fields, createEmptyWorkflowInputField(current.fields)],
-              }))
-            }}
-            disabled={isReadOnly || unsupportedCollectionMode}
-            data-testid="add-input-schema-field"
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            添加字段
+                }))
+              }}
+              disabled={isReadOnly}
+              data-testid="add-input-schema-field"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              添加字段
           </Button>
         </div>
 
@@ -217,7 +324,11 @@ export function WorkflowInputSchemaTab({
                   <div>
                     <h3 className="text-sm font-medium text-foreground">字段 {index + 1}</h3>
                     <p className="text-xs text-muted-foreground">
-                      配置字段标识、类型、默认值和显示条件。
+                      {schema.collectionMode === 'form'
+                        ? '配置字段标识、类型、默认值和显示条件。'
+                        : schema.collectionMode === 'conversation'
+                          ? '字段会作为对话采集目标展示，建议补充 collectionHint 指导逐项追问。'
+                          : '字段会先出现在表单阶段，未解决的内容再进入对话阶段继续补充。'}
                     </p>
                   </div>
 
@@ -369,6 +480,24 @@ export function WorkflowInputSchemaTab({
                     }}
                     aria-label={`字段 ${index + 1} 描述`}
                     data-testid={`input-schema-field-description-${index}`}
+                  />
+                </FieldInput>
+
+                <FieldInput
+                  label={schema.collectionMode === 'form' ? '收集提示' : 'collectionHint'}
+                  className="md:col-span-2"
+                >
+                  <textarea
+                    className={TEXTAREA_CLASSNAME}
+                    value={field.collectionHint ?? ''}
+                    onChange={(event) => {
+                      updateField(index, (currentField) => ({
+                        ...currentField,
+                        collectionHint: event.target.value,
+                      }))
+                    }}
+                    aria-label={`字段 ${index + 1} 收集提示`}
+                    data-testid={`input-schema-field-collection-hint-${index}`}
                   />
                 </FieldInput>
 
@@ -543,41 +672,47 @@ export function WorkflowInputSchemaTab({
           })}
         </div>
 
-        <div
-          className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
-          data-testid="workflow-input-schema-preview"
-        >
-          <div className="space-y-1">
-            <h3 className="text-sm font-medium text-foreground">表单预览</h3>
-            <p className="text-xs text-muted-foreground">
-              该预览与运行弹窗共用同一套 canonical schema 渲染逻辑，可即时检查默认值与条件显示。
-            </p>
-          </div>
+        {schema.collectionMode !== 'conversation' ? (
+          <div
+            className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
+            data-testid="workflow-input-schema-preview"
+          >
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">表单预览</h3>
+              <p className="text-xs text-muted-foreground">
+                该预览与运行弹窗共用同一套 canonical schema 渲染逻辑，可即时检查默认值与条件显示。
+              </p>
+            </div>
 
-          <InputSchemaRenderer
-            schema={schema}
-            values={previewValues}
-            readOnly={isReadOnly}
-            idPrefix="workflow-input-schema-preview"
-            dataTestId="workflow-input-schema-preview-fields"
-            emptyState={
-              <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
-                当前 schema 没有可预览的字段，保存后运行弹窗会直接走确认启动流程。
-              </div>
-            }
-            onChange={(fieldId, nextValue) => {
-              setPreviewValues((current) => ({
-                ...current,
-                [fieldId]: nextValue,
-              }))
-            }}
-          />
-        </div>
+            <InputSchemaRenderer
+              schema={schema}
+              values={previewValues}
+              readOnly={isReadOnly}
+              idPrefix="workflow-input-schema-preview"
+              dataTestId="workflow-input-schema-preview-fields"
+              emptyState={
+                <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
+                  当前 schema 没有可预览的字段，保存后运行弹窗会直接走确认启动流程。
+                </div>
+              }
+              onChange={(fieldId, nextValue) => {
+                setPreviewValues((current) => ({
+                  ...current,
+                  [fieldId]: nextValue,
+                }))
+              }}
+            />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-4 text-sm text-muted-foreground">
+            对话模式不会直接渲染完整表单；运行时会根据字段顺序、显示条件与 collectionHint 逐项引导用户补全参数。
+          </div>
+        )}
 
         <div className="flex justify-end">
           <Button
             onClick={handleSave}
-            disabled={isReadOnly || updateWorkflow.isPending || unsupportedCollectionMode}
+            disabled={isReadOnly || updateWorkflow.isPending}
             data-testid="save-input-schema"
           >
             {updateWorkflow.isPending ? '保存中...' : '保存输入参数'}
@@ -648,6 +783,19 @@ function normalizeFieldValidation(
 function validateWorkflowInputSchema(schema: WorkflowInputSchema): string[] {
   const errors: string[] = []
   const seenIds = new Set<string>()
+
+  if (schema.collectionMode === 'conversation' || schema.collectionMode === 'hybrid') {
+    const systemPrompt = schema.conversationPlan?.systemPrompt?.trim() ?? ''
+    const maxTurns = schema.conversationPlan?.maxTurns
+
+    if (!systemPrompt) {
+      errors.push('对话/混合模式需要填写系统提示词。')
+    }
+
+    if (!Number.isInteger(maxTurns) || (maxTurns ?? 0) <= 0) {
+      errors.push('对话/混合模式的最大轮次必须是正整数。')
+    }
+  }
 
   schema.fields.forEach((field, index) => {
     const fieldPosition = `字段 ${index + 1}`

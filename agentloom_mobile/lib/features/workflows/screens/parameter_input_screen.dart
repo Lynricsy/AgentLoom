@@ -99,6 +99,7 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
 
           if (schema.collectionMode != 'form') {
             return ConversationModePrompt(
+              schema: schema,
               onBack: () => Navigator.of(context).pop(),
             );
           }

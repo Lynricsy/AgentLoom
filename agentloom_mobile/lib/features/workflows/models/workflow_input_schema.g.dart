@@ -17,6 +17,11 @@ _WorkflowInputSchema _$WorkflowInputSchemaFromJson(Map<String, dynamic> json) =>
               )
               .toList() ??
           const [],
+      conversationPlan: json['conversation_plan'] == null
+          ? null
+          : ConversationPlan.fromJson(
+              json['conversation_plan'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$WorkflowInputSchemaToJson(
@@ -25,4 +30,5 @@ Map<String, dynamic> _$WorkflowInputSchemaToJson(
   'version': instance.version,
   'collection_mode': instance.collectionMode,
   'fields': instance.fields.map((e) => e.toJson()).toList(),
+  'conversation_plan': instance.conversationPlan?.toJson(),
 };

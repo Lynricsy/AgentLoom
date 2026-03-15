@@ -256,6 +256,201 @@ describe('WorkflowInputSchemaTab', () => {
     expect(screen.getByLabelText('阈值')).toBeInTheDocument()
   })
 
+  it('渲染收集模式切换器，并允许切换到对话模式', () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 1,
+      collectionMode: 'form',
+      fields: [
+        {
+          id: 'topic',
+          type: 'text',
+          label: '主题',
+          required: true,
+        },
+      ],
+    }
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={3}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    fireEvent.change(screen.getByTestId('input-schema-collection-mode'), {
+      target: { value: 'conversation' },
+    })
+
+    expect(screen.getByLabelText('系统提示词')).toBeInTheDocument()
+    expect(screen.getByLabelText('最大轮次')).toBeInTheDocument()
+  })
+
+  it('对话模式渲染 conversation plan 编辑器', () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 2,
+      collectionMode: 'conversation',
+      conversationPlan: {
+        systemPrompt: '请逐步引导用户补全信息。',
+        maxTurns: 8,
+      },
+      fields: [
+        {
+          id: 'goal',
+          type: 'text',
+          label: '目标',
+          required: true,
+        },
+      ],
+    }
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={5}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    expect(screen.getByLabelText('系统提示词')).toHaveValue('请逐步引导用户补全信息。')
+    expect(screen.getByLabelText('最大轮次')).toHaveValue(8)
+  })
+
+  it('保存 conversation plan 变更', async () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 2,
+      collectionMode: 'conversation',
+      conversationPlan: {
+        systemPrompt: '请逐步引导用户补全信息。',
+        maxTurns: 8,
+      },
+      fields: [
+        {
+          id: 'goal',
+          type: 'text',
+          label: '目标',
+          required: true,
+        },
+      ],
+    }
+
+    mutateAsyncMock.mockResolvedValue({
+      version: 9,
+      inputSchema: {
+        ...inputSchema,
+        version: 3,
+        conversationPlan: {
+          systemPrompt: '请先确认背景，再逐项追问。',
+          maxTurns: 12,
+        },
+      },
+    })
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={8}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('系统提示词'), {
+      target: { value: '请先确认背景，再逐项追问。' },
+    })
+    fireEvent.change(screen.getByLabelText('最大轮次'), {
+      target: { value: '12' },
+    })
+    fireEvent.click(screen.getByTestId('save-input-schema'))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        version: 8,
+        inputSchema: {
+          version: 2,
+          collectionMode: 'conversation',
+          conversationPlan: {
+            systemPrompt: '请先确认背景，再逐项追问。',
+            maxTurns: 12,
+          },
+          fields: [
+            {
+              id: 'goal',
+              type: 'text',
+              label: '目标',
+              required: true,
+            },
+          ],
+        },
+      })
+    })
+  })
+
+  it('字段编辑器渲染 collectionHint 输入框', () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 1,
+      collectionMode: 'form',
+      fields: [
+        {
+          id: 'topic',
+          type: 'text',
+          label: '主题',
+          required: true,
+          collectionHint: '先让用户说明受众和输出目标。',
+        },
+      ],
+    }
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={3}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    expect(screen.getByTestId('input-schema-field-collection-hint-0')).toHaveValue(
+      '先让用户说明受众和输出目标。',
+    )
+  })
+
+  it('hybrid 模式同时展示字段编辑器与 conversation plan', () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 3,
+      collectionMode: 'hybrid',
+      conversationPlan: {
+        systemPrompt: '先收集可结构化字段，再追问剩余信息。',
+        maxTurns: 6,
+      },
+      fields: [
+        {
+          id: 'topic',
+          type: 'text',
+          label: '主题',
+          required: true,
+          collectionHint: '若用户未直接给出主题，先追问业务背景。',
+        },
+      ],
+    }
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={4}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    expect(screen.getByLabelText('系统提示词')).toBeInTheDocument()
+    expect(screen.getByTestId('input-schema-field-label-0')).toBeInTheDocument()
+    expect(screen.getByTestId('input-schema-field-collection-hint-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workflow-input-schema-preview')).toBeInTheDocument()
+  })
+
   it('viewer/operator 只读时禁用编辑与保存', () => {
     const inputSchema: WorkflowInputSchema = {
       version: 1,

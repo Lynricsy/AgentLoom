@@ -238,10 +238,6 @@ function buildNormalizedExecutionInputParams(
     );
   }
 
-  if (workflowInputSchema.collectionMode !== 'form') {
-    return buildExecutionInputParams(runRequest);
-  }
-
   const fieldMap = new Map(
     workflowInputSchema.fields.map((field) => [field.id, field]),
   );

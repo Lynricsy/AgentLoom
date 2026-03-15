@@ -20,11 +20,17 @@ export interface WorkflowInputFieldVisibility {
   equals: string | number
 }
 
+export interface ConversationPlan {
+  systemPrompt: string
+  maxTurns: number
+}
+
 export interface WorkflowInputFieldDefinition {
   id: string
   type: WorkflowInputFieldType
   label: string
   description?: string
+  collectionHint?: string
   required: boolean
   validation?: WorkflowInputFieldValidation
   options?: string[]
@@ -35,6 +41,7 @@ export interface WorkflowInputFieldDefinition {
 export interface WorkflowInputSchema {
   version: number
   collectionMode: WorkflowInputCollectionMode
+  conversationPlan?: ConversationPlan
   fields: WorkflowInputFieldDefinition[]
 }
 

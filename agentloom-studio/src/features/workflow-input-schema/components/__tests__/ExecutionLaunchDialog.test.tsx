@@ -335,12 +335,71 @@ describe('ExecutionLaunchDialog', () => {
     })
   })
 
-  it('非 form collectionMode 时显示不支持提示并禁用启动', () => {
+  it('对话模式渲染会话壳，并展示 systemPrompt', () => {
     useWorkflowInputSchemaMock.mockReturnValue({
       data: {
         version: 5,
         collectionMode: 'conversation',
-        fields: [],
+        conversationPlan: {
+          systemPrompt: '请像助理一样逐项确认输入参数。',
+          maxTurns: 6,
+        },
+        fields: [
+          {
+            id: 'goal',
+            type: 'text',
+            label: '目标',
+            required: true,
+            collectionHint: '优先确认交付物和受众。',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+        />,
+      )
+
+    expect(screen.getByTestId('launch-conversation-shell')).toBeInTheDocument()
+    expect(screen.getByText('请像助理一样逐项确认输入参数。')).toBeInTheDocument()
+    expect(screen.getByText('目标')).toBeInTheDocument()
+  })
+
+  it('hybrid 模式先渲染表单阶段', () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 7,
+        collectionMode: 'hybrid',
+        conversationPlan: {
+          systemPrompt: '先通过表单拿到已知信息，再追问缺口。',
+          maxTurns: 5,
+        },
+        fields: [
+          {
+            id: 'topic',
+            type: 'text',
+            label: '主题',
+            required: true,
+          },
+          {
+            id: 'tone',
+            type: 'text',
+            label: '语气',
+            required: true,
+            collectionHint: '若无法直接确认，请通过对话追问风格偏好。',
+          },
+        ],
       },
       isLoading: false,
       error: null,
@@ -359,7 +418,232 @@ describe('ExecutionLaunchDialog', () => {
       />,
     )
 
-    expect(screen.getByText('当前 Web Studio 仅支持表单模式启动。')).toBeInTheDocument()
-    expect(screen.getByTestId('confirm-launch-workflow')).toBeDisabled()
+    expect(screen.getByText('步骤 1：表单补充')).toBeInTheDocument()
+    expect(screen.getByLabelText('主题')).toBeInTheDocument()
+    expect(screen.queryByTestId('launch-conversation-shell')).not.toBeInTheDocument()
+  })
+
+  it('hybrid 模式支持在表单与对话阶段之间切换', () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 7,
+        collectionMode: 'hybrid',
+        conversationPlan: {
+          systemPrompt: '先通过表单拿到已知信息，再追问缺口。',
+          maxTurns: 5,
+        },
+        fields: [
+          {
+            id: 'topic',
+            type: 'text',
+            label: '主题',
+            required: true,
+          },
+          {
+            id: 'tone',
+            type: 'text',
+            label: '语气',
+            required: true,
+            collectionHint: '若无法直接确认，请通过对话追问风格偏好。',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('launch-dialog-next-stage'))
+
+    expect(screen.getByText('步骤 2：对话补充')).toBeInTheDocument()
+    expect(screen.getByTestId('launch-conversation-shell')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('launch-dialog-back-stage'))
+
+    expect(screen.getByText('步骤 1：表单补充')).toBeInTheDocument()
+  })
+
+  it('对话模式在最终提交前展示结果摘要', async () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 5,
+        collectionMode: 'conversation',
+        conversationPlan: {
+          systemPrompt: '请像助理一样逐项确认输入参数。',
+          maxTurns: 6,
+        },
+        fields: [
+          {
+            id: 'goal',
+            type: 'text',
+            label: '目标',
+            required: true,
+            collectionHint: '优先确认交付物和受众。',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '输出一份市场周报' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByText('确认运行参数')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('输出一份市场周报')).toBeInTheDocument()
+    expect(startExecutionMock).not.toHaveBeenCalled()
+  })
+
+  it('对话模式按正确 payload 提交', async () => {
+    renderConversationModeDialog()
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '输出一份市场周报' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByText('确认运行参数')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('confirm-launch-workflow'))
+
+    await waitFor(() => {
+      expect(startExecutionMock).toHaveBeenCalledWith('wf-001', {
+        inputParams: { goal: '输出一份市场周报' },
+        schemaVersion: 5,
+        launchSource: 'web-studio',
+      })
+    })
+  })
+
+  it('hybrid 模式按正确 payload 提交合并后的表单与对话值', async () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 7,
+        collectionMode: 'hybrid',
+        conversationPlan: {
+          systemPrompt: '先通过表单拿到已知信息，再追问缺口。',
+          maxTurns: 5,
+        },
+        fields: [
+          {
+            id: 'topic',
+            type: 'text',
+            label: '主题',
+            required: true,
+          },
+          {
+            id: 'tone',
+            type: 'text',
+            label: '语气',
+            required: true,
+            collectionHint: '若无法直接确认，请通过对话追问风格偏好。',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('主题'), {
+      target: { value: '行业周报' },
+    })
+    fireEvent.click(screen.getByTestId('launch-dialog-next-stage'))
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '正式专业' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByText('确认运行参数')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('confirm-launch-workflow'))
+
+    await waitFor(() => {
+      expect(startExecutionMock).toHaveBeenCalledWith('wf-001', {
+        inputParams: {
+          topic: '行业周报',
+          tone: '正式专业',
+        },
+        schemaVersion: 7,
+        launchSource: 'web-studio',
+      })
+    })
   })
 })
+
+function renderConversationModeDialog() {
+  useWorkflowInputSchemaMock.mockReturnValue({
+    data: {
+      version: 5,
+      collectionMode: 'conversation',
+      conversationPlan: {
+        systemPrompt: '请像助理一样逐项确认输入参数。',
+        maxTurns: 6,
+      },
+      fields: [
+        {
+          id: 'goal',
+          type: 'text',
+          label: '目标',
+          required: true,
+          collectionHint: '优先确认交付物和受众。',
+        },
+      ],
+    },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  })
+
+  render(
+    <ExecutionLaunchDialog
+      open
+      workflowId="wf-001"
+      workflowName="Workflow One"
+      workflowStatus="published"
+      draftInputSchema={null}
+      onStartExecution={startExecutionMock}
+      onOpenChange={vi.fn()}
+    />,
+  )
+}

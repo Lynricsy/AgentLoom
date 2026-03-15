@@ -119,5 +119,59 @@ void main() {
       expect(field.defaultValue, isNull);
       expect(field.visibility, isNull);
     });
+
+    test('should parse collectionHint from snake_case JSON', () {
+      final field = InputFieldDefinition.fromJson({
+        'id': 'goal',
+        'type': 'text',
+        'label': '目标',
+        'collection_hint': '请先描述你希望达到的结果。',
+      });
+
+      expect(field.collectionHint, '请先描述你希望达到的结果。');
+    });
+
+    test('should parse collectionHint from camelCase JSON', () {
+      final field = InputFieldDefinition.fromJson({
+        'id': 'goal',
+        'type': 'text',
+        'label': '目标',
+        'collectionHint': '请补充成功标准。',
+      });
+
+      expect(field.collectionHint, '请补充成功标准。');
+    });
+
+    test('should handle missing collectionHint (backward compat)', () {
+      final field = InputFieldDefinition.fromJson({
+        'id': 'goal',
+        'type': 'text',
+        'label': '目标',
+      });
+
+      expect(field.collectionHint, isNull);
+    });
+
+    test('should include collectionHint in toJson', () {
+      final field = createTestInputFieldDefinition(
+        id: 'goal',
+        collectionHint: '请描述期望成果。',
+      );
+
+      expect(field.toJson()['collection_hint'], '请描述期望成果。');
+    });
+
+    test('should include collectionHint in equality', () {
+      final left = createTestInputFieldDefinition(
+        id: 'goal',
+        collectionHint: '先描述背景。',
+      );
+      final right = createTestInputFieldDefinition(
+        id: 'goal',
+        collectionHint: '先描述成功标准。',
+      );
+
+      expect(left == right, isFalse);
+    });
   });
 }

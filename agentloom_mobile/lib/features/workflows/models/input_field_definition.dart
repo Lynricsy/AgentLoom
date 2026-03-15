@@ -84,6 +84,7 @@ class InputFieldDefinition {
     this.validation,
     this.options,
     this.defaultValue,
+    this.collectionHint,
     this.visibility,
   });
 
@@ -95,6 +96,7 @@ class InputFieldDefinition {
   final InputFieldValidation? validation;
   final List<String>? options;
   final Object? defaultValue;
+  final String? collectionHint;
   final InputFieldVisibility? visibility;
 
   factory InputFieldDefinition.fromJson(Map<String, dynamic> json) {
@@ -117,6 +119,8 @@ class InputFieldDefinition {
           ? options.map((option) => '$option').toList()
           : null,
       defaultValue: json['default'],
+      collectionHint:
+          (json['collectionHint'] ?? json['collection_hint']) as String?,
       visibility: visibility is Map<String, dynamic>
           ? InputFieldVisibility.fromJson(visibility)
           : visibility is Map
@@ -134,6 +138,7 @@ class InputFieldDefinition {
     'validation': validation?.toJson(),
     'options': options,
     'default': defaultValue,
+    if (collectionHint != null) 'collection_hint': collectionHint,
     'visibility': visibility?.toJson(),
   };
 
@@ -148,6 +153,7 @@ class InputFieldDefinition {
         other.required == required &&
         other.validation == validation &&
         listEquals(other.options, options) &&
+        other.collectionHint == collectionHint &&
         other.visibility == visibility &&
         _jsonValueEquals(other.defaultValue, defaultValue);
   }
@@ -161,6 +167,7 @@ class InputFieldDefinition {
     required,
     validation,
     options == null ? null : Object.hashAll(options!),
+    collectionHint,
     visibility,
     _jsonValueHash(defaultValue),
   );
