@@ -42,6 +42,7 @@ WorkflowCanvasPage.tsx
     │   ├── ConnectionStateOverlay.tsx (连接状态覆盖层)
     │   └── NodeInfoOverlay.tsx
     ├── panels/
+    │   ├── WorkflowSettingsPanel.tsx (触发器/介入策略共享设置面板，tabs 容器)
     │   ├── NodeConfigPanel.tsx (节点配置 + 实时输出 + 自定义面板/动态表单分发，含 `ReusableBlockPanel`)
     │   ├── DynamicConfigForm.tsx (schema 驱动表单)
     │   ├── LlmAgentConfigPanel.tsx (lazy Monaco + output schema title)
@@ -94,6 +95,7 @@ WorkflowCanvasPage.tsx
 - `canvasStore` 自动清理：删除 edge 时同步清理 binding mapping
 - `canvasStore` 现在同时维护 `selectedNodeId`（向后兼容单选）与 `selectedNodeIds`（多选 Set）；涉及 `selectNode/selectEdge/openFieldMapping/onNodesChange(reset/applyServerSnapshot)` 时需保持两者同步
 - `canvasStore.nodeValidationErrors` 记录节点级表单校验状态；删除节点和 `onNodesChange(remove)` 都需要同步清理
+- `WorkflowCanvasPage` 左上角设置区现使用共享 `WorkflowSettingsPanel`：toolbar 的“触发器 / 介入策略”两个按钮会打开同一个 settings panel 并切换 tabs，而不是渲染两个独立 overlay；实现时不要用会卸载内容的 `TabsContent` 破坏 `TriggerTab` / `InterventionPolicyTab` 本地状态
 - `WorkflowCanvas` 现使用自定义 Portal `CanvasContextMenu`（禁止使用 Radix ContextMenu）；多选封装相关的纯函数分析/替换逻辑位于 `lib/encapsulation.ts`，创建前确认表单位于 `components/BlockCreateDialog.tsx`
 - `CanvasNode` 使用 `React.memo` 避免重渲染
 - `CanvasNode` 现在有 3 档 LOD：`full (>=0.7)` / `compact (0.4–0.7)` / `minimal (<0.4)`；minimal 模式应保持图标方块 + 可连线 handles，不渲染 body、port row 与 execution overlay
