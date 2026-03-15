@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import { RedisDomain, redisKey } from '../../common/redis/redis-key.util';
+import { DomainException } from '../../common/exceptions/domain.exception';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
@@ -18,12 +19,18 @@ import { TemplateService } from '../template/template.service';
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
+import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
+import type { ImportWorkflowDto } from './dto/workflow-import.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
 import type { UpdateWorkflowDefinitionDto } from './dto/update-workflow-definition.dto';
+import {
+  WORKFLOW_EXPORT_VERSION,
+  type WorkflowExportDto,
+} from './dto/workflow-export.dto';
 import type {
   VersionResponseDto,
   PublishWarning,
@@ -45,6 +52,8 @@ import {
   WorkflowVersionNotFoundException,
 } from './workflow-version.exceptions';
 import { MarketplaceListingNotFoundException } from '../marketplace/marketplace.exceptions';
+import { ShareService } from '../share/share.service';
+import { validateImportFile } from './utils/validate-import.utils';
 
 /** 发布版本缓存 TTL（秒） */
 const PUBLISHED_VERSION_TTL = 300;
@@ -106,6 +115,7 @@ export class WorkflowVersionService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly redisCacheService: RedisCacheService,
     private readonly templateService: TemplateService,
+    private readonly shareService: ShareService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -234,6 +244,65 @@ export class WorkflowVersionService {
     return workflowInputSchemaSchema.parse(workflow.inputSchema);
   }
 
+  async exportWorkflow(
+    tenantId: string,
+    workflowId: string,
+  ): Promise<WorkflowExportDto> {
+    const [workflow] = await this.tenantDb
+      .select()
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      );
+
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
+    let definition = {
+      nodes: workflow.nodes ?? [],
+      edges: workflow.edges ?? [],
+      viewport: workflow.viewport ?? DEFAULT_VIEWPORT,
+    };
+    let inputSchema = workflow.inputSchema ?? null;
+
+    if (workflow.status === 'published' && workflow.publishedVersionId) {
+      const [publishedVersion] = await this.tenantDb
+        .select({ snapshot: schema.workflowVersions.snapshot })
+        .from(schema.workflowVersions)
+        .where(
+          and(
+            eq(schema.workflowVersions.id, workflow.publishedVersionId),
+            eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+            eq(schema.workflowVersions.tenantId, tenantId),
+          ),
+        );
+
+      if (publishedVersion) {
+        definition = {
+          nodes: publishedVersion.snapshot.nodes ?? [],
+          edges: publishedVersion.snapshot.edges ?? [],
+          viewport: publishedVersion.snapshot.viewport ?? DEFAULT_VIEWPORT,
+        };
+        inputSchema = publishedVersion.snapshot.inputSchema ?? inputSchema;
+      }
+    }
+
+    return {
+      schema_version: WORKFLOW_EXPORT_VERSION,
+      exported_at: new Date().toISOString(),
+      workflow: {
+        name: workflow.name,
+        description: workflow.description,
+        definition: sanitizeDefinition(definition),
+        input_schema: inputSchema,
+      },
+    };
+  }
+
   // ─── 创建工作流定义 ─────────────────────────────────────────────
 
   private static readonly MAX_SLUG_RETRIES = 3;
@@ -319,6 +388,28 @@ export class WorkflowVersionService {
           clonedAt: new Date().toISOString(),
         },
       };
+    } else if (dto.share_token) {
+      const share = await this.shareService.getShareByToken(dto.share_token);
+      const snapshot = share.snapshot;
+      const cloned = cloneDefinitionWithNewIds({
+        nodes: snapshot.nodes,
+        edges: snapshot.edges,
+        viewport: snapshot.viewport ?? DEFAULT_VIEWPORT,
+      });
+
+      nodes = cloned.nodes;
+      edges = cloned.edges;
+      viewport = cloned.viewport;
+      inputSchema = snapshot.inputSchema
+        ? workflowInputSchemaSchema.parse(snapshot.inputSchema)
+        : null;
+      metadata = {
+        cloned_from_share: {
+          shareToken: dto.share_token,
+          workflowName: share.workflowName,
+          clonedAt: new Date().toISOString(),
+        },
+      };
     }
 
     let slug = generateSlug(dto.name);
@@ -353,6 +444,109 @@ export class WorkflowVersionService {
             slug,
             fromTemplate: dto.template_slug ?? null,
             fromMarketplace: dto.marketplace_listing_id ?? null,
+            fromShare: dto.share_token ?? null,
+          }),
+        );
+
+        return created;
+      } catch (error: unknown) {
+        const isUniqueViolation =
+          error instanceof Error &&
+          'code' in error &&
+          (error as Record<string, unknown>).code === '23505';
+
+        if (
+          !isUniqueViolation ||
+          attempt === WorkflowVersionService.MAX_SLUG_RETRIES
+        ) {
+          throw error;
+        }
+
+        slug = appendSlugSuffix(slug);
+      }
+    }
+
+    throw new Error('Unreachable: slug retry loop exhausted');
+  }
+
+  async importWorkflow(
+    tenantId: string,
+    userId: string,
+    dto: ImportWorkflowDto,
+  ): Promise<{ id: string; name: string; slug: string }> {
+    const { name, description, file_content } = dto;
+    const validationResult = validateImportFile(file_content);
+
+    if (!validationResult.valid || !validationResult.workflow) {
+      throw new DomainException({
+        type: 'workflow/import-validation-failed',
+        title: 'Import Validation Failed',
+        status: HttpStatus.BAD_REQUEST,
+        detail: 'The imported workflow file is invalid.',
+        errors: validationResult.errors.map((message) => {
+          const separatorIndex = message.indexOf(': ');
+
+          if (separatorIndex === -1) {
+            return {
+              field: 'file_content',
+              message,
+            };
+          }
+
+          return {
+            field: message.slice(0, separatorIndex),
+            message: message.slice(separatorIndex + 2),
+          };
+        }),
+      });
+    }
+
+    const importedWorkflow = validationResult.workflow;
+    const clonedDefinition = cloneDefinitionWithNewIds(
+      importedWorkflow.definition,
+    );
+    let slug = generateSlug(name);
+
+    for (
+      let attempt = 0;
+      attempt <= WorkflowVersionService.MAX_SLUG_RETRIES;
+      attempt++
+    ) {
+      try {
+        const [created] = await this.tenantDb
+          .insert(schema.workflowDefinitions)
+          .values({
+            tenantId,
+            name,
+            slug,
+            description: description ?? importedWorkflow.description,
+            nodes: clonedDefinition.nodes,
+            edges: clonedDefinition.edges,
+            viewport: clonedDefinition.viewport,
+            inputSchema: importedWorkflow.inputSchema,
+            metadata: {
+              imported_from: {
+                schemaVersion: file_content.schema_version,
+                originalName: importedWorkflow.name,
+                exportedAt: file_content.exported_at,
+                importedAt: new Date().toISOString(),
+              },
+            },
+            createdBy: userId,
+            updatedBy: userId,
+          })
+          .returning({
+            id: schema.workflowDefinitions.id,
+            name: schema.workflowDefinitions.name,
+            slug: schema.workflowDefinitions.slug,
+          });
+
+        this.logger.log(
+          JSON.stringify({
+            action: 'workflow_imported',
+            workflowId: created.id,
+            slug,
+            originalName: importedWorkflow.name,
           }),
         );
 

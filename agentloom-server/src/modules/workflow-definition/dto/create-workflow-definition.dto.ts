@@ -19,12 +19,25 @@ export const CreateWorkflowDefinitionSchema = z
       .string()
       .uuid({ message: 'Marketplace listing ID 必须是合法的 UUID' })
       .optional(),
+    share_token: z
+      .string()
+      .min(1, { message: '分享 token 不能为空' })
+      .max(128, { message: '分享 token 不能超过 128 个字符' })
+      .optional(),
   })
   .refine(
-    (value) => !(value.template_slug && value.marketplace_listing_id),
+    (value) => {
+      const sources = [
+        value.template_slug,
+        value.marketplace_listing_id,
+        value.share_token,
+      ].filter(Boolean);
+      return sources.length <= 1;
+    },
     {
-      message: 'template_slug 与 marketplace_listing_id 不能同时提供',
-      path: ['marketplace_listing_id'],
+      message:
+        'template_slug、marketplace_listing_id 与 share_token 只能同时提供其中之一',
+      path: ['share_token'],
     },
   );
 

@@ -16,14 +16,22 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
 import { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
+import {
+  ImportWorkflowSchema,
+  type ImportWorkflowDto,
+} from './dto/workflow-import.dto';
 import { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import { UpdateWorkflowDefinitionDto } from './dto/update-workflow-definition.dto';
+import type { WorkflowExportDto } from './dto/workflow-export.dto';
 import type {
   WorkflowDefinitionDetailResponseDto,
   WorkflowDefinitionListResponseDto,
 } from './dto/workflow-definition-response.dto';
+import type { ImportValidationResult } from './utils/validate-import.utils';
+import { validateImportFile } from './utils/validate-import.utils';
 import { WorkflowVersionService } from './workflow-version.service';
 
 @ApiTags('Workflow Definitions')
@@ -57,6 +65,18 @@ export class WorkflowDefinitionCreateController {
     return { data };
   }
 
+  @Get(':workflowId/export')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '导出工作流定义' })
+  @ApiResponse({ status: 200, description: '工作流导出成功' })
+  @ApiResponse({ status: 404, description: '工作流定义不存在' })
+  async exportWorkflow(
+    @Param('workflowId', ParseUUIDPipe) workflowId: string,
+    @CurrentTenant() tenantId: string,
+  ): Promise<WorkflowExportDto> {
+    return this.workflowVersionService.exportWorkflow(tenantId, workflowId);
+  }
+
   @Post()
   @Roles('owner', 'admin', 'creator')
   @HttpCode(HttpStatus.CREATED)
@@ -73,6 +93,28 @@ export class WorkflowDefinitionCreateController {
       dto,
     );
     return { data };
+  }
+
+  @Post('import/validate')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '校验导入工作流文件' })
+  @ApiResponse({ status: 200, description: '导入文件校验结果' })
+  async validateImport(@Body() body: unknown): Promise<ImportValidationResult> {
+    return validateImportFile(body);
+  }
+
+  @Post('import')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '导入工作流定义' })
+  @ApiResponse({ status: 201, description: '工作流定义导入成功' })
+  async importWorkflow(
+    @Body(new ZodValidationPipe(ImportWorkflowSchema)) dto: ImportWorkflowDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ): Promise<{ id: string; name: string; slug: string }> {
+    return this.workflowVersionService.importWorkflow(tenantId, userId, dto);
   }
 
   @Patch(':id')

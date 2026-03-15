@@ -13,6 +13,11 @@ export {
   UpdateWorkflowDefinitionDto,
   UpdateWorkflowDefinitionSchema,
 } from './update-workflow-definition.dto';
+export type { WorkflowExportDto } from './workflow-export.dto';
+export {
+  WORKFLOW_EXPORT_VERSION,
+  WorkflowExportSchema,
+} from './workflow-export.dto';
 export type {
   PublishResult,
   PublishWarning,

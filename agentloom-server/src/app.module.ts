@@ -30,6 +30,7 @@ import { ReusableBlockModule } from './modules/reusable-block/reusable-block.mod
 import { TriggerModule } from './modules/trigger/trigger.module';
 import { InterventionPolicyModule } from './modules/intervention-policy/intervention-policy.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
+import { ShareModule } from './modules/share/share.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -77,6 +78,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     TriggerModule,
     InterventionPolicyModule,
     MarketplaceModule,
+    ShareModule,
   ],
   providers: [
     RbacCacheService,
@@ -107,6 +109,8 @@ export class AppModule implements NestModule {
         { path: 'templates/{*splat}', method: RequestMethod.ALL },
         { path: 'marketplace/browse', method: RequestMethod.ALL },
         { path: 'marketplace/browse/{*splat}', method: RequestMethod.ALL },
+        { path: 's', method: RequestMethod.ALL },
+        { path: 's/{*splat}', method: RequestMethod.ALL },
         { path: 'webhooks', method: RequestMethod.ALL },
         { path: 'webhooks/{*splat}', method: RequestMethod.ALL },
       )
