@@ -3,14 +3,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
-import { useCreateWorkflow } from './workflowMutations';
+import { useCreateWorkflow, useUpdateWorkflow } from './workflowMutations';
+import type { WorkflowInputSchema } from '../types';
 
-const { createWorkflowMock } = vi.hoisted(() => ({
+const { createWorkflowMock, patchMock, patchJsonMock } = vi.hoisted(() => ({
   createWorkflowMock: vi.fn(),
+  patchMock: vi.fn(),
+  patchJsonMock: vi.fn(),
 }));
 
 vi.mock('./workflowApi', () => ({
   createWorkflow: createWorkflowMock,
+}));
+
+vi.mock('../../../shared/api/client', () => ({
+  apiClient: {
+    patch: (...args: unknown[]) => patchMock(...args),
+  },
+  toSnakeBody: (data: Record<string, unknown>) => data,
 }));
 
 function createWrapper() {
@@ -105,5 +115,75 @@ describe('useCreateWorkflow', () => {
         await result.current.mutateAsync({ name: '失败测试' });
       }),
     ).rejects.toThrow('Network error');
+  });
+});
+
+describe('useUpdateWorkflow', () => {
+  const inputSchema: WorkflowInputSchema = {
+    version: 1,
+    collectionMode: 'form',
+    fields: [
+      {
+        id: 'topic',
+        type: 'text',
+        label: '主题',
+        required: true,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    patchMock.mockReturnValue({ json: patchJsonMock });
+  });
+
+  it('提交 inputSchema 并更新 detail cache', async () => {
+    const updatedWorkflow = {
+      id: 'wf-1',
+      tenantId: 'tenant-1',
+      name: '测试工作流',
+      slug: 'test-workflow',
+      description: null,
+      nodes: [],
+      edges: [],
+      viewport: null,
+      inputSchema: {
+        ...inputSchema,
+        version: 2,
+      },
+      version: 8,
+      status: 'draft',
+      publishedVersionId: null,
+      createdBy: 'user-1',
+      updatedBy: 'user-1',
+      createdAt: '2026-03-10T00:00:00Z',
+      updatedAt: '2026-03-10T00:00:00Z',
+    };
+
+    patchJsonMock.mockResolvedValue({ data: updatedWorkflow });
+
+    const { Wrapper, queryClient } = createWrapper();
+    const { result } = renderHook(() => useUpdateWorkflow('wf-1'), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      const data = await result.current.mutateAsync({
+        version: 7,
+        inputSchema,
+      });
+      expect(data).toEqual(updatedWorkflow);
+    });
+
+    expect(patchMock).toHaveBeenCalledWith('workflow-definitions/wf-1', {
+      json: {
+        version: 7,
+        inputSchema,
+      },
+    });
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['workflows', 'detail', 'wf-1'])).toEqual(updatedWorkflow);
+    });
   });
 });

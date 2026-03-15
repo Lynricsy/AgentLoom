@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
 import type { ExecutionStatus } from '@/features/execution/types'
+import type { WorkflowInputSchema } from '@/features/workflow/types'
 import { useCanvasStore } from '../stores/canvasStore'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { WorkflowCanvasPage } from './WorkflowCanvasPage'
@@ -36,6 +37,7 @@ const useExecutionMonitorMock = vi.fn()
 const startExecutionMock = vi.fn()
 const submitInterventionMock = vi.fn()
 const celebrationEffectMock = vi.fn()
+const executionLaunchDialogMock = vi.fn()
 
 let mockAuthToken: string | undefined
 let mockExecutionId: string | null = null
@@ -91,6 +93,19 @@ vi.mock('@/features/execution/components/CelebrationEffect', () => ({
   }) => {
     celebrationEffectMock(props)
     return <div data-testid="celebration-effect" />
+  },
+}))
+
+vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () => ({
+  ExecutionLaunchDialog: (props: {
+    open: boolean
+    workflowId: string
+    workflowName: string
+    workflowStatus: WorkflowDefinition['status']
+    draftInputSchema: WorkflowInputSchema | null
+  }) => {
+    executionLaunchDialogMock(props)
+    return props.open ? <div data-testid="execution-launch-dialog" /> : null
   },
 }))
 
@@ -190,6 +205,7 @@ const workflowOne: WorkflowDefinition = {
   ],
   edges: [],
   viewport: { x: 10, y: 20, zoom: 1.25 },
+  inputSchema: null,
   version: 1,
   status: 'draft',
   publishedVersionId: null,
@@ -419,6 +435,15 @@ describe('WorkflowCanvasPage', () => {
   })
 
   it('toolbar 接收 onRun 和 isRunning 属性', () => {
+    workflowResult = {
+      ...workflowResult,
+      data: {
+        ...workflowOne,
+        status: 'published',
+        publishedVersionId: 'ver-001',
+      },
+    }
+
     render(<WorkflowCanvasPage />)
 
     expect(versionToolbarMock).toHaveBeenCalledWith(
@@ -427,6 +452,18 @@ describe('WorkflowCanvasPage', () => {
         isRunning: false,
       }),
     )
+  })
+
+  it('草稿工作流不向 toolbar 透传 onRun', () => {
+    render(<WorkflowCanvasPage />)
+
+    expect(versionToolbarMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onRun: undefined,
+        isRunning: false,
+      }),
+    )
+    expect(screen.queryByTestId('btn-run-workflow')).not.toBeInTheDocument()
   })
 
   it('isStarting 为 true 时 toolbar 显示执行中', () => {
@@ -441,11 +478,32 @@ describe('WorkflowCanvasPage', () => {
     )
   })
 
-  it('点击运行按钮调用 startExecution', () => {
+  it('已发布工作流点击运行按钮时打开 launch dialog', () => {
+    workflowResult = {
+      ...workflowResult,
+      data: {
+        ...workflowOne,
+        status: 'published',
+        publishedVersionId: 'ver-001',
+      },
+    }
+
     render(<WorkflowCanvasPage />)
+
+    expect(screen.queryByTestId('execution-launch-dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('btn-run-workflow'))
 
-    expect(startExecutionMock).toHaveBeenCalledWith('wf-001')
+    expect(startExecutionMock).not.toHaveBeenCalled()
+    expect(screen.getByTestId('execution-launch-dialog')).toBeInTheDocument()
+    expect(executionLaunchDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        open: true,
+        workflowId: 'wf-001',
+        workflowName: 'Workflow One',
+        workflowStatus: 'published',
+        draftInputSchema: null,
+      }),
+    )
   })
 })

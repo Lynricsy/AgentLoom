@@ -75,6 +75,13 @@ describe('VersionToolbar', () => {
       expect(screen.queryByTestId('btn-publish')).not.toBeInTheDocument();
       expect(screen.queryByTestId('btn-archive')).not.toBeInTheDocument();
     });
+
+    it('提供 onToggleInputSchema 时显示输入参数按钮', () => {
+      render(<VersionToolbar {...defaultProps} onToggleInputSchema={vi.fn()} />);
+
+      expect(screen.getByTestId('btn-input-schema')).toBeInTheDocument();
+      expect(screen.getByTestId('btn-input-schema')).toHaveTextContent('输入参数');
+    });
   });
 
   describe('按钮交互', () => {
@@ -106,6 +113,26 @@ describe('VersionToolbar', () => {
       expect(screen.queryByTestId('mock-archive-dialog')).not.toBeInTheDocument();
       fireEvent.click(screen.getByTestId('btn-archive'));
       expect(screen.getByTestId('mock-archive-dialog')).toBeInTheDocument();
+    });
+
+    it('点击输入参数按钮调用 onToggleInputSchema，并在打开时显示隐藏文案', () => {
+      const onToggleInputSchema = vi.fn();
+      const { rerender } = render(
+        <VersionToolbar {...defaultProps} onToggleInputSchema={onToggleInputSchema} />,
+      );
+
+      fireEvent.click(screen.getByTestId('btn-input-schema'));
+      expect(onToggleInputSchema).toHaveBeenCalled();
+
+      rerender(
+        <VersionToolbar
+          {...defaultProps}
+          onToggleInputSchema={onToggleInputSchema}
+          isInputSchemaOpen
+        />,
+      );
+
+      expect(screen.getByTestId('btn-input-schema')).toHaveTextContent('隐藏输入参数');
     });
   });
 

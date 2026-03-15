@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2, Clock3 } from 'lucide-react'
+import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import type { WorkflowStatus } from '@/features/workflow'
 import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
@@ -10,8 +10,12 @@ interface VersionToolbarProps {
   workflowStatus: WorkflowStatus
   onOpenVersionHistory: () => void
   onOpenPublish: (versionId?: string) => void
+  onToggleInterventionPolicies?: () => void
+  onToggleInputSchema?: () => void
   onToggleTriggers?: () => void
   onRun?: () => void
+  isInterventionPoliciesOpen?: boolean
+  isInputSchemaOpen?: boolean
   isTriggersOpen?: boolean
   isRunning?: boolean
 }
@@ -36,8 +40,12 @@ export const VersionToolbar = memo(function VersionToolbar({
   workflowStatus,
   onOpenVersionHistory,
   onOpenPublish,
+  onToggleInterventionPolicies,
+  onToggleInputSchema,
   onToggleTriggers,
   onRun,
+  isInterventionPoliciesOpen = false,
+  isInputSchemaOpen = false,
   isTriggersOpen = false,
   isRunning = false,
 }: VersionToolbarProps) {
@@ -93,6 +101,40 @@ export const VersionToolbar = memo(function VersionToolbar({
           <History className="h-3.5 w-3.5" />
           版本历史
         </button>
+
+        {onToggleInterventionPolicies && (
+          <button
+            type="button"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              isInterventionPoliciesOpen
+                ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15'
+                : 'border-border bg-surface text-foreground hover:bg-muted',
+            )}
+            onClick={onToggleInterventionPolicies}
+            data-testid="btn-intervention-policies"
+          >
+            <ShieldAlert className="h-3.5 w-3.5" />
+            {isInterventionPoliciesOpen ? '隐藏介入策略' : '介入策略'}
+          </button>
+        )}
+
+        {onToggleInputSchema && (
+          <button
+            type="button"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              isInputSchemaOpen
+                ? 'border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15'
+                : 'border-border bg-surface text-foreground hover:bg-muted',
+            )}
+            onClick={onToggleInputSchema}
+            data-testid="btn-input-schema"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            {isInputSchemaOpen ? '隐藏输入参数' : '输入参数'}
+          </button>
+        )}
 
         {onToggleTriggers && (
           <button

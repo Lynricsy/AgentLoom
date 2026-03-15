@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { X } from 'lucide-react'
 import { useParams } from '@tanstack/react-router'
 import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
 import { CelebrationEffect } from '@/features/execution/components/CelebrationEffect'
 import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
 import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
 import { ExecutionHistoryPanel } from '@/features/execution/components/ExecutionHistoryPanel'
-import { TriggerTab } from '@/features/trigger'
+import {
+  canManageInterventionPolicies,
+  getInterventionPolicyRoleFromToken,
+} from '@/features/intervention-policy'
 import {
   useExecutionId,
   useIsExecutionActive,
@@ -15,11 +17,16 @@ import {
 import { useWorkflow } from '@/features/workflow'
 import { PublishSheet } from '@/features/workflow/components/PublishSheet'
 import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
+import { ExecutionLaunchDialog } from '@/features/workflow-input-schema/components/ExecutionLaunchDialog'
 import { NodePalette } from './NodePalette'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowStatusBar } from './status/WorkflowStatusBar'
 import { FieldMappingPanel } from './panels/FieldMappingPanel'
 import { NodeConfigPanel } from './panels/NodeConfigPanel'
+import {
+  WorkflowSettingsPanel,
+  type WorkflowSettingsTab,
+} from './panels/WorkflowSettingsPanel'
 import { VersionToolbar } from './toolbar/VersionToolbar'
 import { useAutoSave } from '../hooks/useAutoSave'
 import {
@@ -43,21 +50,21 @@ export function WorkflowCanvasPage() {
   const isExecutionActive = useIsExecutionActive()
   const executionStatus = useExecutionStatus()
   const authToken = useAuthToken()
+  const currentUserRole = getInterventionPolicyRoleFromToken(authToken)
+  const isInterventionPolicyReadOnly = !canManageInterventionPolicies(currentUserRole)
+  const isInputSchemaReadOnly = !canManageInterventionPolicies(currentUserRole)
   const { startExecution, isStarting } = useStartExecution()
   useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId, authToken })
 
-  const handleRunWorkflow = useCallback(async () => {
+  const handleRunWorkflow = useCallback(() => {
     if (!workflowId || isStarting || isExecutionActive) return
-    try {
-      await startExecution(workflowId)
-    } catch {
-      // mutation error 已通过 useStartExecution 暴露
-    }
-  }, [workflowId, isStarting, isExecutionActive, startExecution])
+    setIsExecutionLaunchDialogOpen(true)
+  }, [workflowId, isStarting, isExecutionActive])
 
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   const [isExecutionHistoryOpen, setIsExecutionHistoryOpen] = useState(false)
-  const [isTriggerPanelOpen, setIsTriggerPanelOpen] = useState(false)
+  const [isExecutionLaunchDialogOpen, setIsExecutionLaunchDialogOpen] = useState(false)
+  const [activeSettingsTab, setActiveSettingsTab] = useState<WorkflowSettingsTab | null>(null)
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
   const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
@@ -65,11 +72,23 @@ export function WorkflowCanvasPage() {
   const handleToggleExecutionHistory = useCallback(() => {
     setIsExecutionHistoryOpen((current) => !current)
   }, [])
-  const handleToggleTriggerPanel = useCallback(() => {
-    setIsTriggerPanelOpen((current) => !current)
+  const handleToggleWorkflowSettingsTab = useCallback((tab: WorkflowSettingsTab) => {
+    setActiveSettingsTab((current) => (current === tab ? null : tab))
   }, [])
-  const handleCloseTriggerPanel = useCallback(() => {
-    setIsTriggerPanelOpen(false)
+  const handleToggleInterventionPolicyPanel = useCallback(() => {
+    handleToggleWorkflowSettingsTab('intervention-policies')
+  }, [handleToggleWorkflowSettingsTab])
+  const handleToggleInputSchemaPanel = useCallback(() => {
+    handleToggleWorkflowSettingsTab('input-schema')
+  }, [handleToggleWorkflowSettingsTab])
+  const handleToggleTriggerPanel = useCallback(() => {
+    handleToggleWorkflowSettingsTab('triggers')
+  }, [handleToggleWorkflowSettingsTab])
+  const handleCloseWorkflowSettingsPanel = useCallback(() => {
+    setActiveSettingsTab(null)
+  }, [])
+  const handleWorkflowSettingsTabChange = useCallback((tab: WorkflowSettingsTab) => {
+    setActiveSettingsTab(tab)
   }, [])
   const handleCloseExecutionHistory = useCallback(() => {
     setIsExecutionHistoryOpen(false)
@@ -173,12 +192,29 @@ export function WorkflowCanvasPage() {
             workflowStatus={workflow.status}
             onOpenVersionHistory={handleOpenVersionHistory}
             onOpenPublish={handleOpenPublishSheet}
+            onToggleInterventionPolicies={handleToggleInterventionPolicyPanel}
+            onToggleInputSchema={handleToggleInputSchemaPanel}
             onToggleTriggers={handleToggleTriggerPanel}
-            onRun={handleRunWorkflow}
-            isTriggersOpen={isTriggerPanelOpen}
+            onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
+            isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
+            isInputSchemaOpen={activeSettingsTab === 'input-schema'}
+            isTriggersOpen={activeSettingsTab === 'triggers'}
             isRunning={isStarting || isExecutionActive}
           />
         )}
+
+        {workflow ? (
+          <ExecutionLaunchDialog
+            open={isExecutionLaunchDialogOpen}
+            workflowId={workflow.id}
+            workflowName={workflow.name}
+            workflowStatus={workflow.status}
+            draftInputSchema={workflow.inputSchema}
+            isStarting={isStarting}
+            onStartExecution={startExecution}
+            onOpenChange={setIsExecutionLaunchDialogOpen}
+          />
+        ) : null}
 
         {workflow && (
           <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3">
@@ -201,26 +237,21 @@ export function WorkflowCanvasPage() {
               </div>
             ) : null}
 
-            {isTriggerPanelOpen ? (
+            {activeSettingsTab ? (
               <div className="pointer-events-auto w-[min(480px,calc(100vw-3rem))]">
-                <div className="mb-2 flex justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
-                    onClick={handleCloseTriggerPanel}
-                    data-testid="close-trigger-panel"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    收起触发器
-                  </button>
-                </div>
-
-                <div className="h-[min(76vh,720px)]">
-                  <TriggerTab
-                    workflowId={workflow.id}
-                    isPublished={workflow.status === 'published'}
-                  />
-                </div>
+                <WorkflowSettingsPanel
+                  activeTab={activeSettingsTab}
+                  onTabChange={handleWorkflowSettingsTabChange}
+                  onClose={handleCloseWorkflowSettingsPanel}
+                  workflowId={workflow.id}
+                  workflowName={workflow.name}
+                  workflowVersion={workflow.version}
+                  nodes={workflow.nodes ?? []}
+                  inputSchema={workflow.inputSchema}
+                  isInputSchemaReadOnly={isInputSchemaReadOnly}
+                  isPublished={workflow.status === 'published'}
+                  isInterventionPolicyReadOnly={isInterventionPolicyReadOnly}
+                />
               </div>
             ) : null}
           </div>
