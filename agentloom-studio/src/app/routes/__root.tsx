@@ -13,6 +13,7 @@ import { executionDebugRoute } from "./executions/$executionId";
 import { toolLibraryRoute } from "./settings/tool-library";
 import { templatesRoute } from "./templates";
 import { marketplaceRoute } from "./marketplace";
+import { marketplaceMyListingsRoute } from './marketplace.my-listings';
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -76,4 +77,5 @@ export const routeTree = rootRoute.addChildren([
   toolLibraryRoute,
   templatesRoute,
   marketplaceRoute,
+  marketplaceMyListingsRoute,
 ]);
