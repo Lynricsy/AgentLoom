@@ -6,6 +6,7 @@ import { Script } from 'node:vm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import * as schema from '../../database/schema';
 import type { ReactFlowEdge } from '../../database/schema';
 import type { ExecutionStep } from '../../database/schema';
@@ -18,6 +19,7 @@ import {
 import {
   AGENT_TASK_QUEUE,
   INTERVENTION_TIMEOUT_MS,
+  MAX_ESCALATION_ATTEMPTS,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
@@ -28,6 +30,7 @@ import {
   NodeInputResolutionException,
   InterventionNotAllowedException,
   AgentExecutionException,
+  InterventionPermissionDeniedException,
   InvalidStepTransitionException,
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,
@@ -38,9 +41,26 @@ import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
+import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
+
+interface InterventionTimeoutOptions {
+  readonly escalated?: boolean;
+  readonly escalationCount?: number;
+}
+
+function buildInterventionTimeoutJobId(stepId: string): string {
+  return `intervention-timeout:${stepId}`;
+}
+
+function buildEscalatedInterventionTimeoutJobId(
+  stepId: string,
+  escalationCount: number,
+): string {
+  return `intervention-timeout:${stepId}:escalated:${escalationCount}`;
+}
 
 @Injectable()
 export class NodeSchedulerService {
@@ -53,6 +73,8 @@ export class NodeSchedulerService {
     private readonly sandboxService: SandboxService,
     private readonly checkpointService: CheckpointService,
     private readonly eventBridge: EventBridgeService,
+    private readonly interventionPolicyService: InterventionPolicyService,
+    private readonly rbacCacheService: RbacCacheService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {}
@@ -469,6 +491,20 @@ export class NodeSchedulerService {
       throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
     }
 
+    if (userId !== SYSTEM_TIMEOUT_INTERVENTION_USER_ID) {
+      const workflowDefinitionId = await this.loadWorkflowDefinitionId(executionId);
+      const resolvedPolicy = await this.interventionPolicyService.resolvePolicy(
+        tenantId,
+        workflowDefinitionId,
+        step.nodeId,
+      );
+      const userRole = await this.rbacCacheService.getUserRole(tenantId, userId);
+
+      if (!userRole || !resolvedPolicy.allowedRoles.includes(userRole)) {
+        throw new InterventionPermissionDeniedException();
+      }
+    }
+
     const requestedAt =
       resolution.requestedAt ??
       (typeof checkpoint.interventionRequestedAt === 'string'
@@ -657,29 +693,110 @@ export class NodeSchedulerService {
     executionId: string,
     stepId: string,
     tenantId: string,
+    options: InterventionTimeoutOptions | number = {},
   ): Promise<void> {
+    const timeoutOptions: InterventionTimeoutOptions =
+      typeof options === 'number' ? {} : options;
+    const timeoutMs =
+      typeof options === 'number'
+        ? options
+        : await this.resolveInterventionTimeoutMs(executionId, stepId, tenantId);
+
     await this.agentTaskQueue.add(
       'intervention-timeout',
-      { executionId, stepId, tenantId } satisfies AgentTaskJobData,
       {
-        delay: INTERVENTION_TIMEOUT_MS,
-        jobId: `intervention-timeout:${stepId}`,
+        executionId,
+        stepId,
+        tenantId,
+        ...(typeof timeoutOptions.escalationCount === 'number'
+          ? { escalationCount: timeoutOptions.escalationCount }
+          : {}),
+      } satisfies AgentTaskJobData,
+      {
+        delay: timeoutMs,
+        jobId: timeoutOptions.escalated
+          ? buildEscalatedInterventionTimeoutJobId(
+              stepId,
+              timeoutOptions.escalationCount ?? 1,
+            )
+          : buildInterventionTimeoutJobId(stepId),
         attempts: 1,
         removeOnComplete: true,
         removeOnFail: true,
       },
     );
+    const timeoutHours = Math.round(timeoutMs / 3600000);
     this.logger.log(
-      `Intervention timeout enqueued (24h): ${JSON.stringify({ executionId, stepId })}`,
+      `Intervention timeout enqueued (${timeoutHours}h): ${JSON.stringify({ executionId, stepId })}`,
     );
   }
 
+  private async resolveInterventionTimeoutMs(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+  ): Promise<number> {
+    const [context] = await this.tenantDb
+      .select({
+        nodeId: schema.executionSteps.nodeId,
+        workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
+      })
+      .from(schema.executionSteps)
+      .innerJoin(
+        schema.workflowExecutions,
+        eq(schema.workflowExecutions.id, schema.executionSteps.executionId),
+      )
+      .where(eq(schema.executionSteps.id, stepId))
+      .limit(1);
+
+    if (!context) {
+      throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
+    }
+
+    const resolvedPolicy = await this.interventionPolicyService.resolvePolicy(
+      tenantId,
+      context.workflowDefinitionId,
+      context.nodeId,
+    );
+
+    return resolvedPolicy.timeoutSeconds * 1000;
+  }
+
+  private async loadWorkflowDefinitionId(executionId: string): Promise<string> {
+    const [execution] = await this.tenantDb
+      .select({
+        workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
+      })
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId))
+      .limit(1);
+
+    if (!execution) {
+      throw new AgentExecutionException(`执行 ${executionId} 不存在`);
+    }
+
+    return execution.workflowDefinitionId;
+  }
+
   private async removeInterventionTimeout(stepId: string): Promise<void> {
-    const jobId = `intervention-timeout:${stepId}`;
+    // 移除主超时任务
+    const jobId = buildInterventionTimeoutJobId(stepId);
     const job = await this.agentTaskQueue.getJob(jobId);
     if (job) {
       await job.remove();
       this.logger.log(`Intervention timeout removed: ${jobId}`);
+    }
+
+    for (let escalationCount = 1; escalationCount <= MAX_ESCALATION_ATTEMPTS; escalationCount += 1) {
+      const escJobId = buildEscalatedInterventionTimeoutJobId(
+        stepId,
+        escalationCount,
+      );
+      const escJob = await this.agentTaskQueue.getJob(escJobId);
+      if (escJob) {
+        await escJob.remove();
+        this.logger.log(`Escalation timeout removed: ${escJobId}`);
+      }
     }
   }
 

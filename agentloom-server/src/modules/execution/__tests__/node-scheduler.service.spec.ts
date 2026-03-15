@@ -17,6 +17,8 @@ import { StepStateMachineService } from '../step-state-machine.service';
 import { EventBridgeService } from '../services/event-bridge.service';
 import {
   AGENT_TASK_QUEUE,
+  MAX_ESCALATION_ATTEMPTS,
+  SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type InterventionResolution,
   type ToolPermissionResolution,
 } from '../execution.constants';
@@ -27,10 +29,13 @@ import {
   NodeInputResolutionException,
   NodeTypeMismatchException,
   ToolCallNotFoundException,
+  InterventionPermissionDeniedException,
   ToolPermissionResolutionNotAllowedException,
 } from '../execution.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
+import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
+import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -124,10 +129,14 @@ function makePlan(
 function createSelectChain(result: unknown) {
   const limit = vi.fn().mockResolvedValue(result);
   const whereResult = Object.assign(Promise.resolve(result), { limit });
+  const joinedChain = {
+    where: vi.fn().mockReturnValue(whereResult),
+  };
 
   return {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue(whereResult),
+      innerJoin: vi.fn().mockReturnValue(joinedChain),
     }),
   };
 }
@@ -165,6 +174,12 @@ describe('NodeSchedulerService', () => {
   let mockEventBridge: {
     emitInterventionResolved: ReturnType<typeof vi.fn>;
     emitToolPermissionResolved: ReturnType<typeof vi.fn>;
+  };
+  let mockInterventionPolicyService: {
+    resolvePolicy: ReturnType<typeof vi.fn>;
+  };
+  let mockRbacCacheService: {
+    getUserRole: ReturnType<typeof vi.fn>;
   };
 
   beforeAll(() => {
@@ -215,6 +230,19 @@ describe('NodeSchedulerService', () => {
       emitInterventionResolved: vi.fn(),
       emitToolPermissionResolved: vi.fn(),
     };
+    mockInterventionPolicyService = {
+      resolvePolicy: vi.fn().mockResolvedValue({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 86400,
+        timeoutAction: 'reject',
+        escalateToRole: null,
+        notifyChannels: ['in_app'],
+        source: 'system_default',
+      }),
+    };
+    mockRbacCacheService = {
+      getUserRole: vi.fn().mockResolvedValue('owner'),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -226,6 +254,11 @@ describe('NodeSchedulerService', () => {
         { provide: SandboxService, useValue: mockSandboxService },
         { provide: CheckpointService, useValue: mockCheckpointService },
         { provide: EventBridgeService, useValue: mockEventBridge },
+        {
+          provide: InterventionPolicyService,
+          useValue: mockInterventionPolicyService,
+        },
+        { provide: RbacCacheService, useValue: mockRbacCacheService },
       ],
     }).compile();
 
@@ -953,7 +986,11 @@ describe('NodeSchedulerService', () => {
         feedback: '请按这个版本提交',
       };
 
-      db.select.mockReturnValueOnce(createSelectChain([step]));
+      db.select
+        .mockReturnValueOnce(createSelectChain([step]))
+        .mockReturnValueOnce(
+          createSelectChain([{ workflowDefinitionId: 'workflow-001' }]),
+        );
 
       await service.resolveIntervention(
         EXECUTION_ID,
@@ -987,6 +1024,15 @@ describe('NodeSchedulerService', () => {
       expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
+      );
+      expect(mockInterventionPolicyService.resolvePolicy).toHaveBeenCalledWith(
+        TENANT_ID,
+        'workflow-001',
+        step.nodeId,
+      );
+      expect(mockRbacCacheService.getUserRole).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
       );
 
       expect(mockEventBridge.emitInterventionResolved).toHaveBeenCalledWith(
@@ -1034,6 +1080,9 @@ describe('NodeSchedulerService', () => {
 
       db.select
         .mockReturnValueOnce(createSelectChain([step]))
+        .mockReturnValueOnce(
+          createSelectChain([{ workflowDefinitionId: 'workflow-001' }]),
+        )
         .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
       mockStateMachine.updateStepStatus.mockRejectedValueOnce(
         new InvalidStepTransitionException(
@@ -1102,6 +1151,80 @@ describe('NodeSchedulerService', () => {
       ).rejects.toThrow(AgentExecutionException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('角色不在策略允许列表时抛出 InterventionPermissionDeniedException', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          interventionRequestedAt: '2024-12-31T23:59:00.000Z',
+        },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([step]))
+        .mockReturnValueOnce(
+          createSelectChain([{ workflowDefinitionId: 'workflow-001' }]),
+        );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 600,
+        timeoutAction: 'reject',
+        escalateToRole: null,
+        notifyChannels: ['in_app'],
+        source: 'workflow',
+      });
+      mockRbacCacheService.getUserRole.mockResolvedValueOnce('operator');
+
+      await expect(
+        service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        }),
+      ).rejects.toThrow(InterventionPermissionDeniedException);
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('system_timeout 路径应绕过人工角色校验', async () => {
+      const step = makeStep({
+        id: STEP_ID,
+        status: 'waiting_intervention',
+        checkpointData: {
+          sessionId: SESSION_ID,
+          interventionRequestedAt: '2024-12-31T23:59:00.000Z',
+        },
+      });
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+
+      await service.resolveIntervention(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+        {
+          action: 'reject',
+          feedback: '干预超时，系统自动拒绝',
+          timeout: true,
+        },
+      );
+
+      expect(mockRbacCacheService.getUserRole).not.toHaveBeenCalled();
+      expect(mockInterventionPolicyService.resolvePolicy).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'running',
+        expect.objectContaining({
+          checkpointData: expect.objectContaining({
+            intervention: expect.objectContaining({
+              timeout: true,
+              resolved_by_user_id: SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+            }),
+          }),
+        }),
+      );
     });
   });
 
@@ -1353,11 +1476,34 @@ describe('NodeSchedulerService', () => {
   });
 
   describe('enqueueInterventionTimeout', () => {
-    it('应以 24 小时延迟将超时任务入队', async () => {
+    it('应使用 resolved policy 的 timeoutSeconds 计算延迟并入队', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            nodeId: 'node-x',
+            workflowDefinitionId: 'workflow-timeout-001',
+          },
+        ]),
+      );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner'],
+        timeoutSeconds: 900,
+        timeoutAction: 'escalate',
+        escalateToRole: 'admin',
+        notifyChannels: ['in_app', 'push'],
+        source: 'node',
+      });
+
       await service.enqueueInterventionTimeout(
         EXECUTION_ID,
         'step-x',
         TENANT_ID,
+      );
+
+      expect(mockInterventionPolicyService.resolvePolicy).toHaveBeenCalledWith(
+        TENANT_ID,
+        'workflow-timeout-001',
+        'node-x',
       );
 
       expect(mockQueue.add).toHaveBeenCalledWith(
@@ -1368,7 +1514,7 @@ describe('NodeSchedulerService', () => {
           tenantId: TENANT_ID,
         },
         expect.objectContaining({
-          delay: 24 * 60 * 60 * 1000,
+          delay: 900 * 1000,
           jobId: 'intervention-timeout:step-x',
           attempts: 1,
           removeOnComplete: true,
@@ -1376,12 +1522,55 @@ describe('NodeSchedulerService', () => {
         }),
       );
     });
+
+    it('升级超时时应使用包含 escalationCount 的唯一 jobId', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            nodeId: 'node-x',
+            workflowDefinitionId: 'workflow-timeout-001',
+          },
+        ]),
+      );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner'],
+        timeoutSeconds: 900,
+        timeoutAction: 'escalate',
+        escalateToRole: 'admin',
+        notifyChannels: ['in_app', 'push'],
+        source: 'node',
+      });
+
+      await service.enqueueInterventionTimeout(EXECUTION_ID, 'step-x', TENANT_ID, {
+        escalated: true,
+        escalationCount: 2,
+      });
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'intervention-timeout',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-x',
+          tenantId: TENANT_ID,
+          escalationCount: 2,
+        },
+        expect.objectContaining({
+          jobId: 'intervention-timeout:step-x:escalated:2',
+        }),
+      );
+    });
   });
 
   describe('removeInterventionTimeout (via resolveIntervention)', () => {
-    it('存在超时任务时应移除', async () => {
+    it('存在普通与全部升级超时任务时应一并移除', async () => {
       const mockJob = { remove: vi.fn().mockResolvedValue(undefined) };
+      const escalatedJobs = Array.from({ length: MAX_ESCALATION_ATTEMPTS }, () => ({
+        remove: vi.fn().mockResolvedValue(undefined),
+      }));
       mockQueue.getJob.mockResolvedValueOnce(mockJob);
+      for (const escalatedJob of escalatedJobs) {
+        mockQueue.getJob.mockResolvedValueOnce(escalatedJob);
+      }
 
       const step = makeStep({
         id: '019391d4-0000-7000-0000-000000000099',
@@ -1391,7 +1580,11 @@ describe('NodeSchedulerService', () => {
           interventionRequestedAt: '2025-01-01T00:00:00.000Z',
         },
       });
-      db.select.mockReturnValueOnce(createSelectChain([step]));
+      db.select
+        .mockReturnValueOnce(createSelectChain([step]))
+        .mockReturnValueOnce(
+          createSelectChain([{ workflowDefinitionId: 'workflow-001' }]),
+        );
 
       await service.resolveIntervention(
         EXECUTION_ID,
@@ -1406,7 +1599,15 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.getJob).toHaveBeenCalledWith(
         'intervention-timeout:019391d4-0000-7000-0000-000000000099',
       );
+      for (let escalationCount = 1; escalationCount <= MAX_ESCALATION_ATTEMPTS; escalationCount += 1) {
+        expect(mockQueue.getJob).toHaveBeenCalledWith(
+          `intervention-timeout:019391d4-0000-7000-0000-000000000099:escalated:${escalationCount}`,
+        );
+      }
       expect(mockJob.remove).toHaveBeenCalled();
+      for (const escalatedJob of escalatedJobs) {
+        expect(escalatedJob.remove).toHaveBeenCalled();
+      }
     });
   });
 

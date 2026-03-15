@@ -6,8 +6,9 @@ import type { TypeMismatchInfo } from '../../database/schema/execution-steps.sch
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import type { OrgRole } from '../../common/types/org-role.type';
 import {
   AGENT_RUNTIME,
   type IAgentRuntime,
@@ -24,6 +25,8 @@ import { ThrottleService } from './services/throttle.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
 import { SessionPersistenceService } from './services/session-persistence.service';
+import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
@@ -42,6 +45,7 @@ import type {
 } from '../agent/types/tool-call-event.types';
 import {
   AGENT_TASK_QUEUE,
+  MAX_ESCALATION_ATTEMPTS,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
@@ -77,6 +81,8 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly eventBridge: EventBridgeService,
     private readonly toolCallStateMachine: ToolCallStateMachineService,
     private readonly sessionPersistence: SessionPersistenceService,
+    private readonly interventionPolicyService: InterventionPolicyService,
+    private readonly notificationService: NotificationService,
   ) {
     super();
   }
@@ -1251,18 +1257,94 @@ export class AgentTaskWorker extends WorkerHost {
     }
 
     try {
-      await this.withTenantContext(tenantId, () =>
-        this.nodeScheduler.resolveIntervention(
+      const timeoutAction = await this.withTenantContext(tenantId, async () => {
+        const context = await this.loadInterventionTimeoutContext(executionId);
+        const resolvedPolicy = await this.interventionPolicyService.resolvePolicy(
+          tenantId,
+          context.workflowDefinitionId,
+          step.nodeId,
+        );
+        const escalationCount = job.data.escalationCount ?? 0;
+
+        if (resolvedPolicy.timeoutAction === 'approve') {
+          await this.nodeScheduler.resolveIntervention(
+            executionId,
+            stepId,
+            tenantId,
+            SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+            {
+              action: 'approve',
+              feedback: '干预超时，系统自动批准',
+              timeout: true,
+            },
+          );
+          return 'approve';
+        }
+
+        if (
+          resolvedPolicy.timeoutAction === 'escalate' &&
+          resolvedPolicy.escalateToRole &&
+          this.isOrgRole(resolvedPolicy.escalateToRole) &&
+          escalationCount < MAX_ESCALATION_ATTEMPTS
+        ) {
+          const nextEscalationCount = escalationCount + 1;
+          const recipientIds = await this.loadEscalationRecipientIds(
+            tenantId,
+            resolvedPolicy.escalateToRole,
+          );
+          const body = {
+            workflowId: context.workflowDefinitionId,
+            workflowName: context.workflowName,
+            executionId,
+            nodeId: step.nodeId,
+            nodeName: this.resolveNodeName(step),
+            timelineUrl: `/executions/${executionId}`,
+            notifyChannels: resolvedPolicy.notifyChannels,
+            escalationCount: nextEscalationCount,
+          };
+
+          for (const userId of recipientIds) {
+            await this.notificationService.create(tenantId, {
+              userId,
+              type: 'system',
+              title: '节点人工干预已升级',
+              body,
+            });
+          }
+
+          await this.nodeScheduler.enqueueInterventionTimeout(
+            executionId,
+            stepId,
+            tenantId,
+            {
+              escalated: true,
+              escalationCount: nextEscalationCount,
+            },
+          );
+
+          return 'escalate';
+        }
+
+        await this.nodeScheduler.resolveIntervention(
           executionId,
           stepId,
           tenantId,
           SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
           {
             action: 'reject',
-            feedback: '干预超时，系统自动拒绝',
+            feedback:
+              resolvedPolicy.timeoutAction === 'escalate'
+                ? '干预升级达到上限，系统自动拒绝'
+                : '干预超时，系统自动拒绝',
             timeout: true,
           },
-        ),
+        );
+
+        return 'reject';
+      });
+
+      this.logger.log(
+        `Intervention timeout handled with action=${timeoutAction}: ${JSON.stringify({ executionId, stepId })}`,
       );
     } catch (error) {
       if (error instanceof InterventionNotAllowedException) {
@@ -1274,9 +1356,58 @@ export class AgentTaskWorker extends WorkerHost {
 
       throw error;
     }
-    this.logger.log(
-      `Intervention timeout auto-rejected: ${JSON.stringify({ executionId, stepId })}`,
-    );
+  }
+
+  private async loadInterventionTimeoutContext(executionId: string): Promise<{
+    workflowDefinitionId: string;
+    workflowName: string;
+  }> {
+    const [context] = await this.tenantDb
+      .select({
+        workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
+        workflowName: schema.workflowDefinitions.name,
+      })
+      .from(schema.workflowExecutions)
+      .innerJoin(
+        schema.workflowDefinitions,
+        eq(
+          schema.workflowDefinitions.id,
+          schema.workflowExecutions.workflowDefinitionId,
+        ),
+      )
+      .where(eq(schema.workflowExecutions.id, executionId))
+      .limit(1);
+
+    if (!context) {
+      throw new AgentExecutionException(`执行 ${executionId} 不存在`);
+    }
+
+    return context;
+  }
+
+  private async loadEscalationRecipientIds(
+    tenantId: string,
+    role: OrgRole,
+  ): Promise<string[]> {
+    const recipients = await this.tenantDb
+      .select({ userId: schema.organizationMembers.userId })
+      .from(schema.organizationMembers)
+      .innerJoin(
+        schema.organizations,
+        eq(schema.organizations.id, schema.organizationMembers.organizationId),
+      )
+      .where(
+        and(
+          eq(schema.organizations.tenantId, tenantId),
+          eq(schema.organizationMembers.role, role),
+        ),
+      );
+
+    return [...new Set(recipients.map((recipient) => recipient.userId))];
+  }
+
+  private isOrgRole(value: string): value is OrgRole {
+    return ['owner', 'admin', 'creator', 'operator', 'viewer'].includes(value);
   }
 
   private shouldRetry(job: Job<AgentTaskJobData>): boolean {

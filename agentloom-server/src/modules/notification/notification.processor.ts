@@ -46,6 +46,12 @@ export class NotificationProcessor extends WorkerHost {
         return { pushed: false };
       }
 
+      const notifyChannels = this.resolveNotifyChannels(notification.body);
+      const allowsInApp =
+        !notifyChannels || notifyChannels.includes('in_app');
+      const allowsPush =
+        !notifyChannels || notifyChannels.includes(NOTIFICATION_CHANNEL_PUSH);
+
       const inAppPreference =
         await this.notificationService.getPreferenceForChannel(
           job.data.tenantId,
@@ -55,7 +61,7 @@ export class NotificationProcessor extends WorkerHost {
         );
       const inAppEnabled = !inAppPreference || inAppPreference.enabled;
 
-      if (inAppEnabled) {
+      if (inAppEnabled && allowsInApp) {
         this.notificationGateway.sendToUser(
           job.data.tenantId,
           job.data.userId,
@@ -72,7 +78,7 @@ export class NotificationProcessor extends WorkerHost {
         );
       const pushEnabled = !pushPreference || pushPreference.enabled;
 
-      if (pushEnabled) {
+      if (pushEnabled && allowsPush) {
         await this.pushNotificationService.sendToUser(
           job.data.userId,
           this.buildPushPayload(notification),
@@ -129,7 +135,24 @@ export class NotificationProcessor extends WorkerHost {
       return undefined;
     }
 
-    return value as Record<string, unknown>;
+    const record: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      record[key] = entry;
+    }
+
+    return record;
+  }
+
+  private resolveNotifyChannels(value: unknown): string[] | undefined {
+    const body = this.asRecord(value);
+    const rawChannels = body?.notifyChannels;
+    if (!Array.isArray(rawChannels)) {
+      return undefined;
+    }
+
+    return rawChannels.filter(
+      (channel): channel is string => typeof channel === 'string',
+    );
   }
 
   private toDataString(value: unknown): string | undefined {

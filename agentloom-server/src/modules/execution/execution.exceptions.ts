@@ -1,5 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import type { FieldError } from '../../common/types/problem-details.type';
 
 export class ExecutionNotFoundException extends DomainException {
   constructor(executionId: string) {
@@ -41,6 +42,39 @@ export class WorkflowArchivedException extends DomainException {
       title: '工作流已归档',
       status: HttpStatus.CONFLICT,
       detail: `工作流 ${workflowId} 已归档，无法启动执行`,
+    });
+  }
+}
+
+export class WorkflowLaunchSchemaVersionMismatchException extends DomainException {
+  constructor(currentSchemaVersion: number, providedSchemaVersion?: number) {
+    super({
+      type: 'https://agentloom.dev/errors/workflow-launch-schema-version-mismatch',
+      title: '启动参数 schemaVersion 不匹配',
+      status: HttpStatus.CONFLICT,
+      detail: `启动请求使用的 schemaVersion=${providedSchemaVersion ?? 'undefined'} 与当前已发布输入契约版本 ${currentSchemaVersion} 不一致`,
+      errors: [
+        {
+          field: 'schemaVersion',
+          message: `当前可用版本为 ${currentSchemaVersion}`,
+        },
+      ],
+      extensions: {
+        currentSchemaVersion,
+        providedSchemaVersion: providedSchemaVersion ?? null,
+      },
+    });
+  }
+}
+
+export class WorkflowLaunchInputValidationException extends DomainException {
+  constructor(errors: FieldError[]) {
+    super({
+      type: 'https://agentloom.dev/errors/workflow-launch-input-invalid',
+      title: '启动参数校验失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: '工作流启动参数未通过输入契约校验，请修正后重试',
+      errors,
     });
   }
 }
@@ -108,6 +142,13 @@ export class InterventionNotAllowedException extends DomainException {
       status: HttpStatus.CONFLICT,
       detail: `步骤 ${stepId} 当前状态为 ${currentStatus}，无法进行人工干预`,
     });
+  }
+}
+
+export class InterventionPermissionDeniedException extends Error {
+  constructor() {
+    super('Your role does not have permission to intervene on this node');
+    this.name = 'InterventionPermissionDeniedException';
   }
 }
 

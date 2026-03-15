@@ -8,10 +8,12 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
+import type { FastifyReply } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -29,7 +31,13 @@ import {
   resolveToolPermissionSchema,
 } from './dto/resolve-tool-permission.dto';
 import { EXECUTION_QUEUE } from './execution.constants';
+import { InterventionPermissionDeniedException } from './execution.exceptions';
 import { NodeSchedulerService } from './node-scheduler.service';
+
+const INTERVENTION_NOT_ALLOWED_RESPONSE = {
+  error: 'INTERVENTION_NOT_ALLOWED',
+  message: 'Your role does not have permission to intervene on this node',
+} as const;
 
 @ApiTags('Executions')
 @Controller()
@@ -152,15 +160,26 @@ export class ExecutionController {
     @Body() dto: InterveneStepDto,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
+    @Res({ passthrough: true }) reply?: FastifyReply,
   ) {
     const resolution = interveneStepSchema.parse(dto);
-    await this.nodeScheduler.resolveIntervention(
-      executionId,
-      stepId,
-      tenantId,
-      userId,
-      resolution,
-    );
+    try {
+      await this.nodeScheduler.resolveIntervention(
+        executionId,
+        stepId,
+        tenantId,
+        userId,
+        resolution,
+      );
+    } catch (error) {
+      if (error instanceof InterventionPermissionDeniedException) {
+        reply?.code(HttpStatus.FORBIDDEN);
+        return INTERVENTION_NOT_ALLOWED_RESPONSE;
+      }
+
+      throw error;
+    }
+
     return { data: { executionId, stepId, status: 'intervention_accepted' } };
   }
 

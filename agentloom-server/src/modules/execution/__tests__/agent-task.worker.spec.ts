@@ -9,6 +9,8 @@ import { ThrottleService } from '../services/throttle.service';
 import { EventBridgeService } from '../services/event-bridge.service';
 import { SessionPersistenceService } from '../services/session-persistence.service';
 import { ToolCallStateMachineService } from '../services/tool-call-state-machine.service';
+import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
+import { NotificationService } from '../../notification/notification.service';
 import {
   AgentExecutionException,
   ToolCallNotFoundException,
@@ -16,6 +18,7 @@ import {
 } from '../execution.exceptions';
 import {
   AGENT_TASK_QUEUE,
+  SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
 } from '../execution.constants';
@@ -135,11 +138,16 @@ async function* createEventStream(
 }
 
 function createSelectChain(result: unknown) {
+  const resolvedResult = Array.isArray(result) ? result : [result];
+  const limit = vi.fn().mockResolvedValue(resolvedResult);
+  const whereResult = Object.assign(Promise.resolve(resolvedResult), { limit });
+
   return {
     from: vi.fn().mockReturnValue({
-      where: vi
-        .fn()
-        .mockResolvedValue(Array.isArray(result) ? result : [result]),
+      where: vi.fn().mockReturnValue(whereResult),
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue(whereResult),
+      }),
     }),
   };
 }
@@ -170,6 +178,15 @@ describe('AgentTaskWorker', () => {
 
   const mockThrottle: Record<string, ReturnType<typeof vi.fn>> = {
     bufferOutputChunk: vi.fn(),
+  };
+
+  const mockInterventionPolicyService: Record<string, ReturnType<typeof vi.fn>> =
+    {
+      resolvePolicy: vi.fn(),
+    };
+
+  const mockNotificationService: Record<string, ReturnType<typeof vi.fn>> = {
+    create: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockEventBridge: Record<string, ReturnType<typeof vi.fn>> = {
@@ -237,12 +254,34 @@ describe('AgentTaskWorker', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockDb.select.mockReset();
+    mockDb.update.mockReset().mockReturnValue(createUpdateChain());
+    mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
+    mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
+    mockNodeScheduler.enqueueInterventionTimeout
+      .mockReset()
+      .mockResolvedValue(undefined);
+    mockNodeScheduler.resolveIntervention.mockReset().mockResolvedValue(undefined);
+    mockNotificationService.create.mockReset().mockResolvedValue(undefined);
+    mockInterventionPolicyService.resolvePolicy.mockResolvedValue({
+      allowedRoles: ['owner', 'admin'],
+      timeoutSeconds: 86400,
+      timeoutAction: 'reject',
+      escalateToRole: null,
+      notifyChannels: ['in_app'],
+      source: 'system_default',
+    });
 
     const module = await Test.createTestingModule({
       providers: [
         AgentTaskWorker,
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: NodeSchedulerService, useValue: mockNodeScheduler },
+        {
+          provide: InterventionPolicyService,
+          useValue: mockInterventionPolicyService,
+        },
+        { provide: NotificationService, useValue: mockNotificationService },
         { provide: ThrottleService, useValue: mockThrottle },
         { provide: EventBridgeService, useValue: mockEventBridge },
         {
@@ -809,12 +848,27 @@ describe('AgentTaskWorker', () => {
       );
     });
 
-    it('intervention-timeout 任务在步骤仍为 waiting_intervention 时自动拒绝', async () => {
+    it('intervention-timeout 会按 resolved policy=reject 自动拒绝', async () => {
       const step = makeStep({
         status: 'waiting_intervention',
         checkpointData: { sessionId: SESSION_ID },
       });
-      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockDb.select
+        .mockReturnValueOnce(createSelectChain(step))
+        .mockReturnValueOnce(
+          createSelectChain({
+            workflowDefinitionId: 'workflow-1',
+            workflowName: '审核工作流',
+          }),
+        );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 1200,
+        timeoutAction: 'reject',
+        escalateToRole: null,
+        notifyChannels: ['in_app'],
+        source: 'workflow',
+      });
 
       await worker.process(
         createMockJob({
@@ -831,10 +885,193 @@ describe('AgentTaskWorker', () => {
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
-        'system_timeout',
+        SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
         {
           action: 'reject',
           feedback: '干预超时，系统自动拒绝',
+          timeout: true,
+        },
+      );
+      expect(mockInterventionPolicyService.resolvePolicy).toHaveBeenCalledWith(
+        TENANT_ID,
+        'workflow-1',
+        'node-1',
+      );
+    });
+
+    it('intervention-timeout 会按 resolved policy=approve 自动批准', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: SESSION_ID },
+      });
+      mockDb.select
+        .mockReturnValueOnce(createSelectChain(step))
+        .mockReturnValueOnce(
+          createSelectChain({
+            workflowDefinitionId: 'workflow-approve-1',
+            workflowName: '自动批准流',
+          }),
+        );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 60,
+        timeoutAction: 'approve',
+        escalateToRole: null,
+        notifyChannels: ['in_app'],
+        source: 'workflow',
+      });
+
+      await worker.process(
+        createMockJob({
+          name: 'intervention-timeout',
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+          },
+        }),
+      );
+
+      expect(mockNodeScheduler.resolveIntervention).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+        {
+          action: 'approve',
+          feedback: '干预超时，系统自动批准',
+          timeout: true,
+        },
+      );
+    });
+
+    it('intervention-timeout 会按 resolved policy=escalate 通知目标角色并重新排队', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: SESSION_ID },
+        nodeData: { label: '法务复核节点' },
+      });
+      mockDb.select
+        .mockReturnValueOnce(createSelectChain(step))
+        .mockReturnValueOnce(
+          createSelectChain({
+            workflowDefinitionId: 'workflow-escalate-1',
+            workflowName: '法务审批流',
+          }),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            { userId: 'owner-user-1' },
+            { userId: 'owner-user-2' },
+          ]),
+        );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 300,
+        timeoutAction: 'escalate',
+        escalateToRole: 'owner',
+        notifyChannels: ['in_app', 'push', 'email'],
+        source: 'node',
+      });
+
+      await worker.process(
+        createMockJob({
+          name: 'intervention-timeout',
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+          },
+        }),
+      );
+
+      expect(mockNodeScheduler.resolveIntervention).not.toHaveBeenCalled();
+      expect(mockNotificationService.create).toHaveBeenCalledTimes(2);
+      expect(mockNotificationService.create).toHaveBeenNthCalledWith(1, TENANT_ID, {
+        userId: 'owner-user-1',
+        type: 'system',
+        title: '节点人工干预已升级',
+        body: {
+          workflowId: 'workflow-escalate-1',
+          workflowName: '法务审批流',
+          executionId: EXECUTION_ID,
+          nodeId: 'node-1',
+          nodeName: '法务复核节点',
+          timelineUrl: `/executions/${EXECUTION_ID}`,
+          notifyChannels: ['in_app', 'push', 'email'],
+          escalationCount: 1,
+        },
+      });
+      expect(mockNotificationService.create).toHaveBeenNthCalledWith(2, TENANT_ID, {
+        userId: 'owner-user-2',
+        type: 'system',
+        title: '节点人工干预已升级',
+        body: {
+          workflowId: 'workflow-escalate-1',
+          workflowName: '法务审批流',
+          executionId: EXECUTION_ID,
+          nodeId: 'node-1',
+          nodeName: '法务复核节点',
+          timelineUrl: `/executions/${EXECUTION_ID}`,
+          notifyChannels: ['in_app', 'push', 'email'],
+          escalationCount: 1,
+        },
+      });
+      expect(mockNodeScheduler.enqueueInterventionTimeout).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        {
+          escalated: true,
+          escalationCount: 1,
+        },
+      );
+    });
+
+    it('升级次数达到 3 后下一次超时应自动拒绝', async () => {
+      const step = makeStep({
+        status: 'waiting_intervention',
+        checkpointData: { sessionId: SESSION_ID },
+      });
+      mockDb.select
+        .mockReturnValueOnce(createSelectChain(step))
+        .mockReturnValueOnce(
+          createSelectChain({
+            workflowDefinitionId: 'workflow-escalate-limit',
+            workflowName: '升级上限流',
+          }),
+        );
+      mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 300,
+        timeoutAction: 'escalate',
+        escalateToRole: 'admin',
+        notifyChannels: ['in_app'],
+        source: 'workflow',
+      });
+
+      await worker.process(
+        createMockJob({
+          name: 'intervention-timeout',
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            escalationCount: 3,
+          },
+        }),
+      );
+
+      expect(mockNotificationService.create).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.enqueueInterventionTimeout).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.resolveIntervention).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+        {
+          action: 'reject',
+          feedback: '干预升级达到上限，系统自动拒绝',
           timeout: true,
         },
       );

@@ -219,4 +219,72 @@ describe('NotificationProcessor', () => {
       9,
     );
   });
+
+  it('notifyChannels 仅允许 in_app 时不应发送 push', async () => {
+    notificationService.getById.mockResolvedValue({
+      ...notification,
+      body: {
+        ...notification.body,
+        notifyChannels: ['in_app'],
+      },
+    });
+    notificationService.getPreferenceForChannel
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    notificationService.getUnreadCount.mockResolvedValue({ count: 2 });
+
+    await expect(processor.process(createJob())).resolves.toEqual({
+      pushed: true,
+    });
+
+    expect(notificationGateway.sendToUser).toHaveBeenCalledOnce();
+    expect(pushNotificationService.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('notifyChannels 仅允许 push 时不应发送 in_app', async () => {
+    notificationService.getById.mockResolvedValue({
+      ...notification,
+      body: {
+        ...notification.body,
+        notifyChannels: ['push'],
+      },
+    });
+    notificationService.getPreferenceForChannel
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    notificationService.getUnreadCount.mockResolvedValue({ count: 4 });
+
+    await expect(processor.process(createJob())).resolves.toEqual({
+      pushed: true,
+    });
+
+    expect(notificationGateway.sendToUser).not.toHaveBeenCalled();
+    expect(pushNotificationService.sendToUser).toHaveBeenCalledOnce();
+  });
+
+  it('notifyChannels 仅含 email 时不应触发 in_app 或 push 发送', async () => {
+    notificationService.getById.mockResolvedValue({
+      ...notification,
+      body: {
+        ...notification.body,
+        notifyChannels: ['email'],
+      },
+    });
+    notificationService.getPreferenceForChannel
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    notificationService.getUnreadCount.mockResolvedValue({ count: 6 });
+
+    await expect(processor.process(createJob())).resolves.toEqual({
+      pushed: true,
+    });
+
+    expect(notificationGateway.sendToUser).not.toHaveBeenCalled();
+    expect(pushNotificationService.sendToUser).not.toHaveBeenCalled();
+    expect(notificationGateway.sendUnreadCount).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+      6,
+    );
+  });
 });

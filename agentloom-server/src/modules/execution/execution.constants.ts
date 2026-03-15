@@ -19,6 +19,7 @@ export const AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS = {
 
 export const INTERVENTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 export const SYSTEM_TIMEOUT_INTERVENTION_USER_ID = 'system_timeout';
+export const MAX_ESCALATION_ATTEMPTS = 3;
 
 export type InterventionAction = 'approve' | 'modify' | 'reject';
 
@@ -57,4 +58,6 @@ export interface AgentTaskJobData {
   toolPermission?: ToolPermissionResolution;
   /** 标记该 agent 任务应使用沙箱适配器 */
   hasSandbox?: boolean;
+  /** 升级超时已触发的次数（防止循环） */
+  escalationCount?: number;
 }

@@ -155,6 +155,11 @@ export {
   type ApiEventTriggerConfig,
 } from './workflow-triggers.schema';
 export {
+  interventionPolicies,
+  type InterventionPolicy,
+  type NewInterventionPolicy,
+} from './intervention-policies.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

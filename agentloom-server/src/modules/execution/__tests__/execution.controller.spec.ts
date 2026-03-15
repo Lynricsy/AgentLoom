@@ -6,6 +6,7 @@ import { ExecutionService } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
 import { CheckpointService } from '../checkpoint.service';
 import { EXECUTION_QUEUE } from '../execution.constants';
+import { InterventionPermissionDeniedException } from '../execution.exceptions';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -56,6 +57,12 @@ const mockCheckpointService: Record<string, ReturnType<typeof vi.fn>> = {
 const mockExecutionQueue: Record<string, ReturnType<typeof vi.fn>> = {
   add: vi.fn(),
 };
+
+function createMockReply() {
+  return {
+    code: vi.fn().mockReturnThis(),
+  };
+}
 
 describe('ExecutionController', () => {
   let controller: ExecutionController;
@@ -279,6 +286,29 @@ describe('ExecutionController', () => {
         USER_ID,
         resolution,
       );
+    });
+
+    it('当角色无权干预时应返回精确 403 载荷', async () => {
+      const reply = createMockReply();
+      mockNodeScheduler.resolveIntervention.mockRejectedValue(
+        new InterventionPermissionDeniedException(),
+      );
+
+      await expect(
+        controller.interveneStep(
+          EXECUTION_ID,
+          STEP_ID,
+          { action: 'approve' },
+          TENANT_ID,
+          USER_ID,
+          reply as never,
+        ),
+      ).resolves.toEqual({
+        error: 'INTERVENTION_NOT_ALLOWED',
+        message: 'Your role does not have permission to intervene on this node',
+      });
+
+      expect(reply.code).toHaveBeenCalledWith(403);
     });
   });
 
