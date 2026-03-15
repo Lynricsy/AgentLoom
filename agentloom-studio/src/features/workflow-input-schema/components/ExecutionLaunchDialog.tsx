@@ -77,6 +77,8 @@ export function ExecutionLaunchDialog({
   const [conversationError, setConversationError] = useState<string | null>(null)
   const [conversationCompletedFieldIds, setConversationCompletedFieldIds] = useState<string[]>([])
   const [currentConversationFieldId, setCurrentConversationFieldId] = useState<string | null>(null)
+  const [conversationTurnCount, setConversationTurnCount] = useState(0)
+  const [conversationLimitReached, setConversationLimitReached] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -90,6 +92,8 @@ export function ExecutionLaunchDialog({
     setConversationInput('')
     setConversationError(null)
     setConversationCompletedFieldIds([])
+    setConversationTurnCount(0)
+    setConversationLimitReached(false)
 
     if (schema.collectionMode === 'conversation') {
       const nextField = findNextConversationField(schema, initialValues, [])
@@ -114,6 +118,12 @@ export function ExecutionLaunchDialog({
         ? schema.fields.find((field) => field.id === currentConversationFieldId) ?? null
         : null,
     [currentConversationFieldId, schema.fields],
+  )
+  const unresolvedVisibleFieldCount = useMemo(
+    () =>
+      visibleFields.filter((field) => normalizeLaunchFieldValue(field, values[field.id]) === undefined)
+        .length,
+    [values, visibleFields],
   )
 
   const handleFinalSubmit = async () => {
@@ -147,6 +157,8 @@ export function ExecutionLaunchDialog({
     setConversationMessages(buildConversationIntroMessages(nextField))
     setConversationInput('')
     setConversationError(null)
+    setConversationTurnCount(0)
+    setConversationLimitReached(false)
     setCurrentConversationFieldId(nextField?.id ?? null)
     setStage(nextField ? 'conversation' : 'summary')
   }
@@ -181,6 +193,9 @@ export function ExecutionLaunchDialog({
     }
     const nextCompletedFieldIds = [...conversationCompletedFieldIds, currentConversationField.id]
     const nextField = findNextConversationField(schema, nextValues, nextCompletedFieldIds)
+    const nextTurnCount = conversationTurnCount + 1
+    const reachedTurnLimit = nextTurnCount >= getConversationTurnLimit(schema.conversationPlan)
+    const shouldStopAtSummary = !nextField || reachedTurnLimit
 
     setValues(nextValues)
     setErrors((current) => {
@@ -194,6 +209,8 @@ export function ExecutionLaunchDialog({
       }
     })
     setConversationCompletedFieldIds(nextCompletedFieldIds)
+    setConversationTurnCount(nextTurnCount)
+    setConversationLimitReached(reachedTurnLimit && Boolean(nextField))
     setConversationMessages((current) => [
       ...current,
       {
@@ -204,15 +221,17 @@ export function ExecutionLaunchDialog({
       {
         id: `${nextField?.id ?? 'summary'}-assistant-${current.length}`,
         role: 'assistant',
-        content: nextField
-          ? buildConversationFieldPrompt(nextField)
-          : '已完成当前可见字段的采集，请确认最终运行参数。',
+        content: shouldStopAtSummary
+          ? nextField
+            ? `已达到最大轮次 ${getConversationTurnLimit(schema.conversationPlan)}，请在确认页补充剩余字段后再运行。`
+            : '已完成当前可见字段的采集，请确认最终运行参数。'
+          : buildConversationFieldPrompt(nextField),
       },
     ])
     setConversationInput('')
     setConversationError(null)
-    setCurrentConversationFieldId(nextField?.id ?? null)
-    setStage(nextField ? 'conversation' : 'summary')
+    setCurrentConversationFieldId(shouldStopAtSummary ? null : nextField?.id ?? null)
+    setStage(shouldStopAtSummary ? 'summary' : 'conversation')
   }
 
   return (
@@ -281,6 +300,8 @@ export function ExecutionLaunchDialog({
                   currentField={currentConversationField}
                   inputValue={conversationInput}
                   errorMessage={conversationError}
+                  turnsUsed={conversationTurnCount}
+                  onSubmit={handleConversationSend}
                   onInputChange={setConversationInput}
                 />
               ) : null}
@@ -324,6 +345,8 @@ export function ExecutionLaunchDialog({
                     currentField={currentConversationField}
                     inputValue={conversationInput}
                     errorMessage={conversationError}
+                    turnsUsed={conversationTurnCount}
+                    onSubmit={handleConversationSend}
                     onInputChange={setConversationInput}
                   />
                 </div>
@@ -334,6 +357,8 @@ export function ExecutionLaunchDialog({
                   schema={schema}
                   values={values}
                   errors={errors}
+                  showConversationLimitNotice={conversationLimitReached}
+                  unresolvedVisibleFieldCount={unresolvedVisibleFieldCount}
                   onChange={(fieldId, nextValue) => {
                     setValues((current) => ({
                       ...current,
@@ -448,6 +473,8 @@ function ConversationStage({
   currentField,
   inputValue,
   errorMessage,
+  turnsUsed,
+  onSubmit,
   onInputChange,
 }: {
   conversationPlan?: ConversationPlan
@@ -455,8 +482,12 @@ function ConversationStage({
   currentField: WorkflowInputFieldDefinition | null
   inputValue: string
   errorMessage: string | null
+  turnsUsed: number
+  onSubmit: () => void
   onInputChange: (value: string) => void
 }) {
+  const maxTurns = getConversationTurnLimit(conversationPlan)
+
   return (
     <section
       className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4"
@@ -465,7 +496,7 @@ function ConversationStage({
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">对话收集</h3>
         <p className="text-xs text-muted-foreground">
-          系统提示词会先给出收集策略，再结合字段顺序逐项提问。最多 {conversationPlan?.maxTurns ?? DEFAULT_CONVERSATION_PLAN.maxTurns} 轮。
+          系统提示词会先给出收集策略，再结合字段顺序逐项提问。已使用 {turnsUsed}/{maxTurns} 轮。
         </p>
       </div>
 
@@ -501,9 +532,21 @@ function ConversationStage({
         <Input
           value={inputValue}
           onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter' &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              currentField
+            ) {
+              event.preventDefault()
+              onSubmit()
+            }
+          }}
           aria-label="回复内容"
           placeholder={currentField ? `请输入 ${currentField.label}` : '当前没有待回复字段'}
           disabled={!currentField}
+          autoFocus
         />
 
         {errorMessage ? <p className="text-xs text-error">{errorMessage}</p> : null}
@@ -516,11 +559,15 @@ function SummaryStage({
   schema,
   values,
   errors,
+  showConversationLimitNotice,
+  unresolvedVisibleFieldCount,
   onChange,
 }: {
   schema: WorkflowInputSchema
   values: Record<string, unknown>
   errors: Record<string, string>
+  showConversationLimitNotice: boolean
+  unresolvedVisibleFieldCount: number
   onChange: (fieldId: string, value: unknown) => void
 }) {
   return (
@@ -532,9 +579,22 @@ function SummaryStage({
         </p>
       </div>
 
+      {showConversationLimitNotice ? (
+        <div
+          className="rounded-xl border border-border/70 bg-warning/10 px-4 py-3 text-sm text-foreground"
+          data-testid="launch-conversation-limit-notice"
+        >
+          已达到当前对话计划的最大轮次；请在这里补充剩余 {unresolvedVisibleFieldCount} 个字段后再运行。
+        </div>
+      ) : null}
+
       <FormStage schema={schema} values={values} errors={errors} onChange={onChange} />
     </section>
   )
+}
+
+function getConversationTurnLimit(conversationPlan?: ConversationPlan): number {
+  return conversationPlan?.maxTurns ?? DEFAULT_CONVERSATION_PLAN.maxTurns
 }
 
 function findNextConversationField(
@@ -577,9 +637,11 @@ function buildConversationIntroMessages(
 
 function buildConversationFieldPrompt(field: WorkflowInputFieldDefinition): string {
   const hint = field.collectionHint?.trim() || field.description?.trim()
+  const options = field.options?.length ? `可选值：${field.options.join('、')}` : null
 
   return [
     `请提供「${field.label}」${field.required ? '（必填）' : '（可选）'}。`,
+    options,
     hint ? `提示：${hint}` : null,
   ]
     .filter(Boolean)
@@ -642,6 +704,22 @@ function validateLaunchValues(
       }
       if (field.validation?.max !== undefined && value > field.validation.max) {
         accumulator[field.id] = `${field.label}不能大于 ${field.validation.max}`
+        return accumulator
+      }
+    }
+
+    if (field.type === 'single_select' && typeof value === 'string' && value.trim()) {
+      if (field.options && !field.options.includes(value)) {
+        accumulator[field.id] = `${field.label}必须选择预定义选项`
+        return accumulator
+      }
+    }
+
+    if (field.type === 'multi_select' && Array.isArray(value)) {
+      const options = field.options
+
+      if (options && value.some((item) => !options.includes(String(item)))) {
+        accumulator[field.id] = `${field.label}只能包含预定义选项`
         return accumulator
       }
     }

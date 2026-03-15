@@ -124,7 +124,9 @@ function RendererField({
       {field.type === 'multi_select' ? (
         <div className="space-y-2 rounded-md border border-input bg-background px-3 py-2">
           {(field.options ?? []).map((option) => {
-            const currentValues = Array.isArray(value) ? value.map(String) : []
+            const currentValues = Array.isArray(value)
+              ? value.map(String).filter((currentValue) => (field.options ?? []).includes(currentValue))
+              : []
             const checked = currentValues.includes(option)
 
             return (

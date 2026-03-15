@@ -18,6 +18,8 @@ import {
   createEmptyWorkflowInputField,
   formatDefaultValue,
   formatOptionsInput,
+  isWorkflowInputFieldVisible,
+  normalizeLaunchFieldValue,
   normalizeDefaultValue,
   normalizeVisibilityEquals,
   normalizeWorkflowInputSchema,
@@ -703,11 +705,15 @@ export function WorkflowInputSchemaTab({
               }}
             />
           </div>
-        ) : (
-          <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-4 text-sm text-muted-foreground">
-            对话模式不会直接渲染完整表单；运行时会根据字段顺序、显示条件与 collectionHint 逐项引导用户补全参数。
-          </div>
-        )}
+        ) : null}
+
+        {showsConversationPlan ? (
+          <ConversationCollectionPreview
+            schema={schema}
+            previewValues={previewValues}
+            mode={schema.collectionMode}
+          />
+        ) : null}
 
         <div className="flex justify-end">
           <Button
@@ -736,6 +742,93 @@ function FieldInput({
     <div className={cn('space-y-1.5', className)}>
       <span className="text-xs font-medium text-foreground">{label}</span>
       {children}
+    </div>
+  )
+}
+
+function ConversationCollectionPreview({
+  schema,
+  previewValues,
+  mode,
+}: {
+  schema: WorkflowInputSchema
+  previewValues: Record<string, unknown>
+  mode: WorkflowInputCollectionMode
+}) {
+  const systemPrompt =
+    schema.conversationPlan?.systemPrompt?.trim() || '请逐项补全工作流运行所需的输入参数。'
+  const maxTurns = schema.conversationPlan?.maxTurns ?? DEFAULT_CONVERSATION_PLAN.maxTurns
+  const visibleFields = schema.fields.filter((field) =>
+    isWorkflowInputFieldVisible(field, previewValues),
+  )
+  const promptFields = visibleFields.filter(
+    (field) => normalizeLaunchFieldValue(field, previewValues[field.id]) === undefined,
+  )
+  const conditionalFields = schema.fields.filter(
+    (field) => field.visibility && !visibleFields.some((candidate) => candidate.id === field.id),
+  )
+
+  return (
+    <div
+      className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4"
+      data-testid="workflow-input-schema-conversation-preview"
+    >
+      <div className="space-y-1">
+        <h3 className="text-sm font-medium text-foreground">
+          {mode === 'hybrid' ? '对话补充预览' : '对话流程预览'}
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          {mode === 'hybrid'
+            ? '预览表单阶段之后，还会有哪些字段继续进入对话补充。'
+            : '基于当前 canonical schema 预览系统提示词、字段顺序与逐项追问提示。'}
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+        <div
+          className="rounded-xl border border-border/70 bg-surface/80 px-4 py-3 text-sm text-foreground whitespace-pre-wrap"
+          data-testid="workflow-input-schema-conversation-preview-prompt"
+        >
+          {systemPrompt}
+        </div>
+        <div className="rounded-xl border border-border/70 bg-surface/60 px-4 py-3 text-sm text-foreground">
+          最多 {maxTurns} 轮
+        </div>
+      </div>
+
+      {promptFields.length > 0 ? (
+        <ol className="space-y-3" data-testid="workflow-input-schema-conversation-preview-fields">
+          {promptFields.map((field, index) => (
+            <li
+              key={field.id}
+              className="rounded-xl border border-border/70 bg-surface/60 px-4 py-3"
+            >
+              <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+                <span className="font-medium">
+                  {index + 1}. {field.label}
+                </span>
+                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                  {field.required ? '必填' : '可选'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {field.collectionHint?.trim() || field.description?.trim() || '未配置额外追问提示。'}
+              </p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
+          当前可见字段已经由默认值或预设内容覆盖；运行时会直接进入确认页，或在条件满足后再追问其余字段。
+        </div>
+      )}
+
+      {conditionalFields.length > 0 ? (
+        <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">
+          以下字段会在满足显示条件后进入对话阶段：
+          {conditionalFields.map((field) => ` ${field.label}`).join('、')}
+        </div>
+      ) : null}
     </div>
   )
 }

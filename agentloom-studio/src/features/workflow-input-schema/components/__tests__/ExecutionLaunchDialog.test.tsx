@@ -374,6 +374,7 @@ describe('ExecutionLaunchDialog', () => {
     expect(screen.getByTestId('launch-conversation-shell')).toBeInTheDocument()
     expect(screen.getByText('请像助理一样逐项确认输入参数。')).toBeInTheDocument()
     expect(screen.getByText('目标')).toBeInTheDocument()
+    expect(screen.getByTestId('launch-conversation-shell')).toHaveTextContent('已使用 0/6 轮。')
   })
 
   it('hybrid 模式先渲染表单阶段', () => {
@@ -540,6 +541,185 @@ describe('ExecutionLaunchDialog', () => {
         launchSource: 'web-studio',
       })
     })
+  })
+
+  it('对话模式达到最大轮次后会进入摘要页并要求手动补齐剩余字段', async () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 6,
+        collectionMode: 'conversation',
+        conversationPlan: {
+          systemPrompt: '按顺序收集参数。',
+          maxTurns: 1,
+        },
+        fields: [
+          {
+            id: 'goal',
+            type: 'text',
+            label: '目标',
+            required: true,
+          },
+          {
+            id: 'audience',
+            type: 'text',
+            label: '受众',
+            required: true,
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '输出一份市场周报' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByTestId('launch-conversation-limit-notice')).toHaveTextContent(
+      '剩余 1 个字段',
+    )
+    expect(screen.getByLabelText('受众')).toBeInTheDocument()
+    expect(startExecutionMock).not.toHaveBeenCalled()
+  })
+
+  it('对话模式支持使用 Enter 提交当前回复', async () => {
+    renderConversationModeDialog()
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '输出一份市场周报' },
+    })
+    fireEvent.keyDown(screen.getByLabelText('回复内容'), {
+      key: 'Enter',
+      code: 'Enter',
+      charCode: 13,
+    })
+
+    expect(await screen.findByText('确认运行参数')).toBeInTheDocument()
+  })
+
+  it('对话模式在 IME 组合输入期间不会把 Enter 当作提交', async () => {
+    renderConversationModeDialog()
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: '输出一份市场周报' },
+    })
+    fireEvent.keyDown(screen.getByLabelText('回复内容'), {
+      key: 'Enter',
+      code: 'Enter',
+      charCode: 13,
+      isComposing: true,
+    })
+
+    expect(screen.queryByText('确认运行参数')).not.toBeInTheDocument()
+    expect(startExecutionMock).not.toHaveBeenCalled()
+  })
+
+  it('对话模式会拒绝 single_select 的非法选项', async () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 7,
+        collectionMode: 'conversation',
+        conversationPlan: {
+          systemPrompt: '请选择一个合法模式。',
+          maxTurns: 3,
+        },
+        fields: [
+          {
+            id: 'mode',
+            type: 'single_select',
+            label: '模式',
+            required: true,
+            options: ['basic', 'advanced'],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('launch-conversation-shell')).toHaveTextContent(
+      '可选值：basic、advanced',
+    )
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: 'invalid-mode' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByText('模式必须选择预定义选项')).toBeInTheDocument()
+    expect(startExecutionMock).not.toHaveBeenCalled()
+  })
+
+  it('对话模式会拒绝 multi_select 的非法选项', async () => {
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 8,
+        collectionMode: 'conversation',
+        conversationPlan: {
+          systemPrompt: '请选择合法标签。',
+          maxTurns: 3,
+        },
+        fields: [
+          {
+            id: 'tags',
+            type: 'multi_select',
+            label: '标签',
+            required: true,
+            options: ['report', 'brief'],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={null}
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('回复内容'), {
+      target: { value: 'report, unknown' },
+    })
+    fireEvent.click(screen.getByTestId('launch-conversation-send'))
+
+    expect(await screen.findByText('标签只能包含预定义选项')).toBeInTheDocument()
+    expect(startExecutionMock).not.toHaveBeenCalled()
   })
 
   it('hybrid 模式按正确 payload 提交合并后的表单与对话值', async () => {

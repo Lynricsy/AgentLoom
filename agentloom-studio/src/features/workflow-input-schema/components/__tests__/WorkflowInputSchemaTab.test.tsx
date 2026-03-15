@@ -316,6 +316,54 @@ describe('WorkflowInputSchemaTab', () => {
 
     expect(screen.getByLabelText('系统提示词')).toHaveValue('请逐步引导用户补全信息。')
     expect(screen.getByLabelText('最大轮次')).toHaveValue(8)
+    expect(screen.getByTestId('workflow-input-schema-conversation-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('workflow-input-schema-conversation-preview-prompt')).toHaveTextContent(
+      '请逐步引导用户补全信息。',
+    )
+  })
+
+  it('对话预览会随着 conversation plan 变更立即更新', () => {
+    const inputSchema: WorkflowInputSchema = {
+      version: 2,
+      collectionMode: 'conversation',
+      conversationPlan: {
+        systemPrompt: '请逐步引导用户补全信息。',
+        maxTurns: 8,
+      },
+      fields: [
+        {
+          id: 'goal',
+          type: 'text',
+          label: '目标',
+          required: true,
+          collectionHint: '优先确认交付物。',
+        },
+      ],
+    }
+
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={5}
+        inputSchema={inputSchema}
+        isReadOnly={false}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('系统提示词'), {
+      target: { value: '先确认业务背景，再逐项补齐输入。' },
+    })
+    fireEvent.change(screen.getByLabelText('最大轮次'), {
+      target: { value: '12' },
+    })
+
+    expect(screen.getByTestId('workflow-input-schema-conversation-preview-prompt')).toHaveTextContent(
+      '先确认业务背景，再逐项补齐输入。',
+    )
+    expect(screen.getByText('最多 12 轮')).toBeInTheDocument()
+    expect(screen.getByTestId('workflow-input-schema-conversation-preview-fields')).toHaveTextContent(
+      '目标',
+    )
   })
 
   it('保存 conversation plan 变更', async () => {
@@ -449,6 +497,7 @@ describe('WorkflowInputSchemaTab', () => {
     expect(screen.getByTestId('input-schema-field-label-0')).toBeInTheDocument()
     expect(screen.getByTestId('input-schema-field-collection-hint-0')).toBeInTheDocument()
     expect(screen.getByTestId('workflow-input-schema-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('workflow-input-schema-conversation-preview')).toBeInTheDocument()
   })
 
   it('viewer/operator 只读时禁用编辑与保存', () => {
