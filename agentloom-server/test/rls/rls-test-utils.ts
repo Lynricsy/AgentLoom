@@ -97,6 +97,7 @@ export async function createRlsTestContext(): Promise<RlsTestContext> {
 }
 
 export async function cleanupTables(sqlClient: TestSql) {
+  await sqlClient`DELETE FROM "marketplace_listings"`;
   await sqlClient`DELETE FROM "reusable_blocks"`;
   await sqlClient`DELETE FROM "workflow_definitions"`;
   await sqlClient`DELETE FROM "organization_invitations"`;

@@ -160,6 +160,16 @@ export {
   type NewInterventionPolicy,
 } from './intervention-policies.schema';
 export {
+  marketplaceListingStatusEnum,
+  marketplaceListings,
+  MARKETPLACE_REVIEW_LIMITS,
+  type MarketplaceListing,
+  type NewMarketplaceListing,
+  type MarketplaceReviewCode,
+  type MarketplaceReviewCheck,
+  type MarketplaceReviewResult,
+} from './marketplace-listings.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';

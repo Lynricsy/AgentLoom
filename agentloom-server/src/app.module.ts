@@ -29,6 +29,7 @@ import { TemplateModule } from './modules/template/template.module';
 import { ReusableBlockModule } from './modules/reusable-block/reusable-block.module';
 import { TriggerModule } from './modules/trigger/trigger.module';
 import { InterventionPolicyModule } from './modules/intervention-policy/intervention-policy.module';
+import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -75,6 +76,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     ReusableBlockModule,
     TriggerModule,
     InterventionPolicyModule,
+    MarketplaceModule,
   ],
   providers: [
     RbacCacheService,
