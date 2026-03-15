@@ -1,0 +1,6 @@
+# SDK generated files
+typescript/
+python/
+
+# Keep the spec
+!openapi.json

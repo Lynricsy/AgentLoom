@@ -4,6 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import multipart from '@fastify/multipart';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -46,9 +47,16 @@ async function bootstrap() {
     .setTitle('AgentLoom API')
     .setDescription('AgentLoom 多智能体协作平台 API')
     .setVersion('1.0')
+    .setContact('AgentLoom', 'https://agentloom.dev', 'support@agentloom.dev')
+    .setLicense('Proprietary', undefined)
     .addBearerAuth()
+    .addApiKey(
+      { type: 'apiKey', in: 'header', name: 'X-Api-Key' },
+      'X-Api-Key',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
+  cleanupOpenApiDoc(document, { version: '3.0' });
   SwaggerModule.setup('docs', app, document, {
     jsonDocumentUrl: 'openapi.json',
   });

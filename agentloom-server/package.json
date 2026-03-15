@@ -21,7 +21,10 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx --env-file=.env drizzle/seed/templates.ts"
+    "db:seed": "tsx --env-file=.env drizzle/seed/templates.ts",
+    "openapi:export": "tsx scripts/export-openapi-spec.ts",
+    "sdk:generate:ts": "openapi-generator-cli generate --generator-key typescript",
+    "sdk:generate:py": "openapi-generator-cli generate --generator-key python"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
