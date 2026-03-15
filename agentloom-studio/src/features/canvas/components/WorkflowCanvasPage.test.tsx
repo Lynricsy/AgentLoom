@@ -100,6 +100,27 @@ vi.mock('@/features/marketplace', () => ({
   MarketplacePublishDialog: () => null,
 }))
 
+vi.mock('@/features/share/components/ShareManagementDialog', () => ({
+  ShareManagementDialog: () => null,
+}))
+
+vi.mock('@/features/workflow/components/WorkflowImportDialog', () => ({
+  WorkflowImportDialog: () => null,
+}))
+
+vi.mock('@/features/workflow/api/workflowMutations', () => ({
+  useExportWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useValidateImport: () => ({ mutateAsync: vi.fn() }),
+  useImportWorkflow: () => ({ mutateAsync: vi.fn() }),
+}))
+
+vi.mock('@/features/workflow/lib/workflowExportImport', () => ({
+  downloadWorkflowExport: vi.fn(),
+  parseImportFile: vi.fn(),
+}))
+
 vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () => ({
   ExecutionLaunchDialog: (props: {
     open: boolean

@@ -23,7 +23,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
-| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) + 自动保存/更新 (`PATCH /workflow-definitions/:id`，Creator/Admin/Owner 可写，OCC version 乐观并发，409 顶层 `currentVersion`) + 软删除 (`DELETE /workflow-definitions/:id` → archive) + 列表排序别名 (`updatedAt/createdAt/name` + `updated_at/created_at`) | TemplateModule |
+| workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) + 导出（`GET /workflow-definitions/:id/export`，返回已清洗的 `agentloom-workflow-v1` envelope，移除 API key/credentials/tenant/org/user 标识等敏感字段） + 自动保存/更新 (`PATCH /workflow-definitions/:id`，Creator/Admin/Owner 可写，OCC version 乐观并发，409 顶层 `currentVersion`) + 软删除 (`DELETE /workflow-definitions/:id` → archive) + 列表排序别名 (`updatedAt/createdAt/name` + `updated_at/created_at`) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
 | mcp | `modules/mcp/` | MCP 服务器 测试/已保存配置测试/发现/导入/重导入/停用 | ApiKeyModule |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
@@ -35,6 +35,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
 | marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
+| share | `modules/share/` | 工作流分享链接管理：租户内创建/分页/撤销分享，公开短链 `/s/:token` 只读访问，view/copy 计数原子递增 | ConfigModule, workflowVersions |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -121,6 +122,7 @@ HTTP POST /executions
 - 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位，且 `TriggerService.create/update/toggle` 会对 `api_event` 抛出 preview-only 409，禁止创建、编辑或启用
 - REST：`/workflow-definitions/:workflowId/triggers` 提供 create/list/detail/update/delete/toggle/history；RBAC 为读 viewer+、写 creator+
 - Public webhook：`POST /api/v1/webhooks/:token`，`AppModule.configure()` 已通过 `TenantMiddleware.exclude()` 放行 `webhooks` 与 `webhooks/{*splat}`
+- Public share：`GET /api/v1/s/:token`，`SharePublicController` 类级 `@Public()`，`AppModule.configure()` 仅对 `s` 与 `s/{*splat}` 排除 `TenantMiddleware`；管理端 `/api/v1/workflow-shares` 仍保留租户上下文与 RBAC。`ShareService` 通过 `workflow_shares -> workflow_definitions -> workflow_versions.snapshot` 返回公开定义，并使用 `sql\`view_count + 1\`` / `sql\`copy_count + 1\`` 原子更新访问与复制计数
 - 验签：`WebhookService.verifySignature()` 使用 `x-agentloom-signature` + `x-agentloom-timestamp`，按 `${timestamp}.${rawBody}` 做 HMAC-SHA256，支持 IP 白名单；验签失败/缺 rawBody/时间戳问题/IP 白名单失败统一在 `WebhookController` 中映射为精确 `401 { error: 'INVALID_SIGNATURE', message: 'Webhook signature verification failed' }`
 - 历史：`workflow_trigger_history.status` 现包含 `success | failed | skipped | signature_failed`；公开 webhook 验签失败会写入 `signature_failed`，成功/失败继续保留 request body / clientIp payload
 - cron：`TriggerSchedulerService` 在 module init 时同步全部 enabled cron trigger 到 `trigger-scheduler` 队列；register/remove 会持久化/清空 `workflow_triggers.next_fire_at`；`TriggerSchedulerProcessor` 通过 `runInTenantTransaction()` 触发执行、写历史并回写 `lastTriggeredAt/triggerCount/nextFireAt`

@@ -10,6 +10,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import { TemplateService } from '../../template/template.service';
+import { ShareService } from '../../share/share.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import { MarketplaceListingNotFoundException } from '../../marketplace/marketplace.exceptions';
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
@@ -242,12 +243,17 @@ describe('WorkflowVersionService', () => {
       findBySlug: vi.fn(),
     };
 
+    const shareService = {
+      getShareByToken: vi.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkflowVersionService,
         { provide: DRIZZLE, useValue: db },
         { provide: RedisCacheService, useValue: redis },
         { provide: TemplateService, useValue: templateService },
+        { provide: ShareService, useValue: shareService },
       ],
     }).compile();
 

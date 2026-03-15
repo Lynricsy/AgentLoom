@@ -39,6 +39,7 @@ AgentLoomAUTO/
 | 添加后端 API 端点 | `agentloom-server/src/modules/` | NestJS 模块，每模块有 controller/service/dto |
 | 添加数据库表 | `agentloom-server/src/database/schema/` | Drizzle ORM，需 `pnpm db:generate` |
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
+| 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
 | 添加画布节点类型 | `agentloom-studio/src/features/canvas/` | 见 canvas 子 AGENTS.md |
@@ -117,6 +118,7 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 ## 注意事项
 
 - **Story 5.8 已完成**: workflow session 现持久化到 `execution_steps.checkpointData.session`；工具权限端点为 `/executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve`；`awaiting_permission` 是 tool-level 状态且 step 保持 `running`；`ToolCallEvent` 现包含 `transitions[{ from?, to, source, timestamp }]`
+- **ShareModule 已接通**: Server 新增 `agentloom-server/src/modules/share/`，管理端 `POST/GET/DELETE /workflow-shares` + `POST /workflow-shares/:token/copy` 走租户上下文与 RBAC，公开只读短链为 `GET /s/:token`；`AppModule.configure()` 仅排除 `s`/`s/{*splat}` 的 TenantMiddleware。分享创建要求 workflow `publishedVersionId` 非空，公开读取从 `workflow_definitions.publishedVersionId -> workflow_versions.snapshot` 返回 `nodes/edges/viewport`，并原子递增 `workflow_shares.view_count/copy_count`；分享 URL 基于 `APP_FRONTEND_URL` 生成
 - **Studio 执行历史/调试视图已接通**: `WorkflowCanvasPage` 可按需展开 `ExecutionHistoryPanel` 浏览 `/workflow-definitions/:id/executions`，点击 `RunCard` 跳转 `/executions/$executionId`；调试页为只读 React Flow + 垂直时间线 + 节点详情三栏布局（移动端纵向堆叠），中间栏使用 `ExecutionTimelineVertical` + `useTimelineData` hook，节点详情读取真实 `execution_steps.input` JSONB
 - **Story 2-4a 已完成**: Studio 现通过 `agentloom-studio/src/features/canvas/lib/typeEngine/` 中的 `TypeEngineService -> TypeEngineRuntime -> runtime.worker.ts` 接入 WASM；主线程保留同步 guard/cache 读取，慢检查走单例 worker + cache + 受控 fallback；`canvasStore.updateNodeData()` 仅在端口契约签名变化时重算相邻边并触发 autosave 持久化新的 `edge.data`
 - **PortDataType 对齐已收口**: Rust 与 Studio 使用 canonical 8 值；Server 的 MCP DTO 与执行/发布诊断链路现已对齐该集合。Studio `mcpToolMapping` 现直接消费 `model|text|json|image|audio|tool|sandbox|knowledge`，并兼容 legacy `number`/`boolean -> json` 回退
