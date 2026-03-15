@@ -21,6 +21,9 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private extractTenantId(req: IncomingMessage): string | undefined {
+    // API Key 认证时跳过 JWT decode — AuthGuard 会直接设置 tenantId
+    if (req.headers['x-api-key']) return undefined;
+
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return undefined;
 

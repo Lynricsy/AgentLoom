@@ -7,6 +7,7 @@ import { TenantRequiredException } from '../../common/exceptions/auth.exceptions
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { platformApiTokens } from '../../database/schema';
 import type { PlatformApiToken } from '../../database/schema';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import type { CreatePlatformApiTokenDto } from './dto/create-platform-api-token.dto';
 import { CreatePlatformApiTokenSchema } from './dto/create-platform-api-token.dto';
 import type { QueryPlatformApiTokenDto } from './dto/query-platform-api-token.dto';
@@ -29,7 +30,10 @@ const TOKEN_BYTE_LENGTH = 32;
 
 @Injectable()
 export class PlatformApiTokenService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly rbacCacheService: RbacCacheService,
+  ) {}
 
   async generateToken(
     tenantId: string,
@@ -161,6 +165,7 @@ export class PlatformApiTokenService {
     tenantId: string;
     scopes: string | null;
     tokenId: string;
+    tenantRole?: string;
   }> {
     if (!rawToken.startsWith(TOKEN_PREFIX)) {
       throw new PlatformApiTokenInvalidException();
@@ -192,11 +197,18 @@ export class PlatformApiTokenService {
       throw new PlatformApiTokenExpiredException();
     }
 
+    const tenantRole =
+      (await this.rbacCacheService.getUserRole(
+        record.tenantId,
+        record.userId,
+      )) ?? undefined;
+
     return {
       userId: record.userId,
       tenantId: record.tenantId,
       scopes: record.scopes,
       tokenId: record.id,
+      tenantRole,
     };
   }
 
