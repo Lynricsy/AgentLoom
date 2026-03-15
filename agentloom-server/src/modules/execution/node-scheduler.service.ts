@@ -42,6 +42,8 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
+import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import type { RoutingStrategy, RoutingContext } from '../smart-routing/dto/routing-context.dto';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -75,6 +77,7 @@ export class NodeSchedulerService {
     private readonly eventBridge: EventBridgeService,
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly rbacCacheService: RbacCacheService,
+    private readonly smartRoutingService: SmartRoutingService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {}
@@ -257,6 +260,10 @@ export class NodeSchedulerService {
 
       case 'conditional':
         await this.executeConditional(step, input, tenantId, executionId);
+        break;
+
+      case 'smart-routing':
+        await this.executeSmartRouting(step, input, tenantId, executionId);
         break;
 
       default:
@@ -953,6 +960,117 @@ export class NodeSchedulerService {
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
+  }
+
+  async executeSmartRouting(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = step.nodeData ?? {};
+      const strategy = (nodeData.strategy as RoutingStrategy) ?? 'QUALITY_FIRST';
+
+      const modelConfigIds = this.collectModelConfigIds(nodeData, input);
+
+      const context: RoutingContext = {
+        inputTokenCount:
+          typeof nodeData.tokenThreshold === 'number'
+            ? nodeData.tokenThreshold
+            : 0,
+      };
+
+      const decision = await this.smartRoutingService.evaluate(
+        modelConfigIds,
+        context,
+        strategy,
+        tenantId,
+      );
+
+      await this.smartRoutingService.recordDecision(
+        step.id,
+        tenantId,
+        step.nodeId,
+        decision,
+      );
+
+      const result = {
+        selectedModelId: decision.selectedModelId,
+        strategy: decision.strategy,
+        reasoning: decision.reasoning,
+        evaluatedModels: decision.evaluatedModels,
+        latencyMs: decision.latencyMs,
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private collectModelConfigIds(
+    nodeData: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ): string[] {
+    const ids: string[] = [];
+
+    if (Array.isArray(nodeData.modelConfigIds)) {
+      for (const id of nodeData.modelConfigIds) {
+        if (typeof id === 'string' && id.length > 0) ids.push(id);
+      }
+    }
+
+    for (const value of Object.values(input)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const obj = value as Record<string, unknown>;
+        if (typeof obj.selectedModelId === 'string') {
+          ids.push(obj.selectedModelId);
+        } else if (typeof obj.llmModelConfigId === 'string') {
+          ids.push(obj.llmModelConfigId);
+        } else if (typeof obj.modelConfigId === 'string') {
+          ids.push(obj.modelConfigId);
+        }
+      }
+    }
+
+    return [...new Set(ids)];
   }
 
   // ── 私有辅助 ───────────────────────────────────────────────

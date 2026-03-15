@@ -6,6 +6,7 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { InterventionPolicyModule } from '../intervention-policy/intervention-policy.module';
 import { NotificationModule } from '../notification/notification.module';
 import { LlmModule } from '../llm/llm.module';
+import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
@@ -35,6 +36,7 @@ import {
     InterventionPolicyModule,
     NotificationModule,
     LlmModule,
+    SmartRoutingModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,

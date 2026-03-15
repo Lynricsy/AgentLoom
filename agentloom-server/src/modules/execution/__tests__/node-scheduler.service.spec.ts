@@ -27,14 +27,14 @@ import {
   InvalidStepTransitionException,
   InterventionNotAllowedException,
   NodeInputResolutionException,
-  NodeTypeMismatchException,
-  ToolCallNotFoundException,
   InterventionPermissionDeniedException,
   ToolPermissionResolutionNotAllowedException,
+  ToolCallNotFoundException,
 } from '../execution.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
+import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import type {
   ExecutionStep,
@@ -178,6 +178,10 @@ describe('NodeSchedulerService', () => {
   let mockInterventionPolicyService: {
     resolvePolicy: ReturnType<typeof vi.fn>;
   };
+  let mockSmartRoutingService: {
+    evaluate: ReturnType<typeof vi.fn>;
+    recordDecision: ReturnType<typeof vi.fn>;
+  };
   let mockRbacCacheService: {
     getUserRole: ReturnType<typeof vi.fn>;
   };
@@ -240,6 +244,16 @@ describe('NodeSchedulerService', () => {
         source: 'system_default',
       }),
     };
+    mockSmartRoutingService = {
+      evaluate: vi.fn().mockResolvedValue({
+        selectedModelId: 'model-1',
+        strategy: 'fallback_chain',
+        reasoning: 'mock smart routing decision',
+        evaluatedModels: [],
+        latencyMs: 0,
+      }),
+      recordDecision: vi.fn().mockResolvedValue(undefined),
+    };
     mockRbacCacheService = {
       getUserRole: vi.fn().mockResolvedValue('owner'),
     };
@@ -258,6 +272,7 @@ describe('NodeSchedulerService', () => {
           provide: InterventionPolicyService,
           useValue: mockInterventionPolicyService,
         },
+        { provide: SmartRoutingService, useValue: mockSmartRoutingService },
         { provide: RbacCacheService, useValue: mockRbacCacheService },
       ],
     }).compile();
@@ -1085,11 +1100,7 @@ describe('NodeSchedulerService', () => {
         )
         .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
       mockStateMachine.updateStepStatus.mockRejectedValueOnce(
-        new InvalidStepTransitionException(
-          STEP_ID,
-          'waiting_intervention',
-          'running',
-        ),
+        new InvalidStepTransitionException('waiting_intervention', 'running'),
       );
 
       await expect(

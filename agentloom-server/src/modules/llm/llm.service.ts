@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -174,6 +174,22 @@ export class LlmService {
     }
 
     return results[0];
+  }
+
+  async findByIds(ids: string[], tenantId: string) {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return this.tenantDb
+      .select()
+      .from(llmModelConfigs)
+      .where(
+        and(
+          inArray(llmModelConfigs.id, ids),
+          eq(llmModelConfigs.tenantId, tenantId),
+        ),
+      );
   }
 
   async update(id: string, dto: UpdateLlmModelConfigDto, tenantId: string) {

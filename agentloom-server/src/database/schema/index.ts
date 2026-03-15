@@ -197,3 +197,9 @@ export {
   type TenantEncryptionKey,
   type NewTenantEncryptionKey,
 } from './tenant-encryption-keys.schema';
+export {
+  routingDecisions,
+  type RoutingDecision,
+  type NewRoutingDecision,
+  type ModelEvaluation,
+} from './routing-decisions.schema';
