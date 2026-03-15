@@ -71,6 +71,31 @@ function createDefaultWorkflowInputSchema(): WorkflowInputSchema {
   return workflowInputSchemaSchema.parse({});
 }
 
+function stripWorkflowInputSchemaVersion(schema: WorkflowInputSchema) {
+  const { version: _version, ...rest } = schema;
+
+  return rest;
+}
+
+function normalizeWorkflowInputSchemaForUpdate(
+  currentInputSchema: WorkflowInputSchema | null,
+  nextInputSchema: WorkflowInputSchema,
+): WorkflowInputSchema {
+  const currentSchema = currentInputSchema ?? createDefaultWorkflowInputSchema();
+  const parsedCurrentSchema = workflowInputSchemaSchema.parse(currentSchema);
+  const parsedNextSchema = workflowInputSchemaSchema.parse(nextInputSchema);
+  const schemaChanged =
+    JSON.stringify(stripWorkflowInputSchemaVersion(parsedCurrentSchema)) !==
+    JSON.stringify(stripWorkflowInputSchemaVersion(parsedNextSchema));
+
+  return {
+    ...parsedNextSchema,
+    version: schemaChanged
+      ? parsedCurrentSchema.version + 1
+      : parsedCurrentSchema.version,
+  };
+}
+
 @Injectable()
 export class WorkflowVersionService {
   private readonly logger = new Logger(WorkflowVersionService.name);
@@ -331,6 +356,12 @@ export class WorkflowVersionService {
         if (dto.nodes !== undefined) setClause.nodes = dto.nodes;
         if (dto.edges !== undefined) setClause.edges = dto.edges;
         if (dto.viewport !== undefined) setClause.viewport = dto.viewport;
+        if (dto.inputSchema !== undefined) {
+          setClause.inputSchema = normalizeWorkflowInputSchemaForUpdate(
+            workflow.inputSchema,
+            dto.inputSchema,
+          );
+        }
 
         const updateResult = await dbClient
           .update(schema.workflowDefinitions)
@@ -791,7 +822,7 @@ export class WorkflowVersionService {
     const currentTransaction = transactionStorage.getStore();
 
     if (currentTransaction) {
-      const dbClient = currentTransaction as unknown as WorkflowDbClient;
+      const dbClient = currentTransaction.db as unknown as WorkflowDbClient;
       await this.lockWorkflowVersions(dbClient, workflowId);
       return operation(dbClient);
     }

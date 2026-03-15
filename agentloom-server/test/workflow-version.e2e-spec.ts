@@ -78,6 +78,45 @@ const WORKFLOW_INPUT_SCHEMA = {
   ],
 };
 
+const CONDITIONAL_WORKFLOW_INPUT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form',
+  fields: [
+    {
+      id: 'topic',
+      type: 'text',
+      label: '分析主题',
+      required: true,
+      validation: { maxLength: 200 },
+    },
+    {
+      id: 'depth',
+      type: 'single_select',
+      label: '分析深度',
+      required: true,
+      options: ['浅度', '中度', '深度'],
+      default: '浅度',
+    },
+    {
+      id: 'locale',
+      type: 'text',
+      label: '语言',
+      required: false,
+      default: 'zh-CN',
+    },
+    {
+      id: 'advancedPrompt',
+      type: 'text',
+      label: '高级提示词',
+      required: false,
+      visibility: {
+        fieldId: 'depth',
+        equals: '深度',
+      },
+    },
+  ],
+};
+
 function signToken(payload: Record<string, unknown>) {
   return jwt.sign(payload, JWT_SECRET, {
     algorithm: 'HS256',
@@ -654,13 +693,13 @@ describe('WorkflowVersion E2E', () => {
   });
 
   describe('POST /api/v1/workflow-definitions/:workflowId/run', () => {
-    it('应接受 inputParams 和 launchSource', async () => {
+    it('应接受 schemaVersion 并规范化 execution inputParams', async () => {
       const owner = await seedTenant('run-with-inputs');
       const workflow = await seedDraftWorkflow({
         tenantId: owner.tenantId,
         createdBy: owner.user.id,
         slug: 'run-with-inputs-workflow',
-        inputSchema: WORKFLOW_INPUT_SCHEMA,
+        inputSchema: CONDITIONAL_WORKFLOW_INPUT_SCHEMA,
       });
 
       const publishResponse = await request(app.getHttpServer())
@@ -676,8 +715,9 @@ describe('WorkflowVersion E2E', () => {
         .send({
           inputParams: {
             topic: 'AI 趋势',
-            depth: '中度',
+            advancedPrompt: '这条隐藏字段应在服务端被清理',
           },
+          schemaVersion: 1,
           launchSource: 'mobile',
         });
 
@@ -701,9 +741,22 @@ describe('WorkflowVersion E2E', () => {
 
       expect(storedExecution?.inputParams).toEqual({
         topic: 'AI 趋势',
-        depth: '中度',
+        depth: '浅度',
+        locale: 'zh-CN',
         _meta: {
           launchSource: 'mobile',
+          launchConfig: {
+            workflowId: workflow.id,
+            schemaVersion: 1,
+            collectionMode: 'form',
+            resolvedInputs: {
+              topic: 'AI 趋势',
+              depth: '浅度',
+              locale: 'zh-CN',
+            },
+            unresolvedFieldIds: ['advancedPrompt'],
+            launchSource: 'mobile',
+          },
         },
       });
     });
@@ -732,6 +785,7 @@ describe('WorkflowVersion E2E', () => {
             topic: '移动端兼容',
             depth: '浅度',
           },
+          schema_version: 1,
           launch_source: 'mobile',
         });
 
@@ -747,8 +801,106 @@ describe('WorkflowVersion E2E', () => {
         depth: '浅度',
         _meta: {
           launchSource: 'mobile',
+          launchConfig: {
+            workflowId: workflow.id,
+            schemaVersion: 1,
+            collectionMode: 'form',
+            resolvedInputs: {
+              topic: '移动端兼容',
+              depth: '浅度',
+            },
+            unresolvedFieldIds: [],
+            launchSource: 'mobile',
+          },
         },
       });
+    });
+
+    it('schemaVersion 不匹配时应返回 409 并携带当前版本信息', async () => {
+      const owner = await seedTenant('run-schema-version-conflict');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'run-schema-version-conflict-workflow',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const publishResponse = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+        .set(owner.headers)
+        .send({ label: 'v1' });
+
+      expect(publishResponse.status).toBe(200);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({
+          schemaVersion: 99,
+          inputParams: {
+            topic: '版本冲突',
+            depth: '浅度',
+          },
+          launchSource: 'mobile',
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-launch-schema-version-mismatch',
+        title: '启动参数 schemaVersion 不匹配',
+        status: 409,
+        currentSchemaVersion: 1,
+        providedSchemaVersion: 99,
+      });
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'schemaVersion',
+          }),
+        ]),
+      );
+    });
+
+    it('缺少可见必填字段时应返回 422', async () => {
+      const owner = await seedTenant('run-input-validation');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'run-input-validation-workflow',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const publishResponse = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+        .set(owner.headers)
+        .send({ label: 'v1' });
+
+      expect(publishResponse.status).toBe(200);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({
+          schemaVersion: 1,
+          inputParams: {
+            depth: '浅度',
+          },
+          launchSource: 'mobile',
+        });
+
+      expect(response.status).toBe(422);
+      expect(response.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-launch-input-invalid',
+        title: '启动参数校验失败',
+        status: 422,
+      });
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'inputParams.topic',
+          }),
+        ]),
+      );
     });
   });
 
@@ -1074,6 +1226,7 @@ describe('WorkflowVersion E2E', () => {
         createdBy: owner.user.id,
         name: '详情工作流',
         slug: 'detail-workflow',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
         status: 'published',
       });
 
@@ -1097,8 +1250,10 @@ describe('WorkflowVersion E2E', () => {
       expect(response.body.data).toHaveProperty('nodes');
       expect(response.body.data).toHaveProperty('edges');
       expect(response.body.data).toHaveProperty('viewport');
+      expect(response.body.data).toHaveProperty('inputSchema');
       expect(response.body.data.nodes).toEqual(expect.any(Array));
       expect(response.body.data.edges).toEqual(expect.any(Array));
+      expect(response.body.data.inputSchema).toEqual(WORKFLOW_INPUT_SCHEMA);
     });
 
     it('不存在的工作流应返回 RFC7807 404', async () => {
@@ -1338,6 +1493,40 @@ describe('WorkflowVersion E2E', () => {
       expect(response.body.data.updatedBy).toBe(owner.user.id);
     });
 
+    it('应持久化 inputSchema 并在逻辑 schema 变化时递增 inputSchema.version', async () => {
+      const owner = await seedTenant('patch-input-schema');
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: 'patch-input-schema-wf',
+        inputSchema: WORKFLOW_INPUT_SCHEMA,
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({
+          version: workflow.version,
+          inputSchema: CONDITIONAL_WORKFLOW_INPUT_SCHEMA,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.version).toBe(workflow.version + 1);
+      expect(response.body.data.inputSchema).toEqual({
+        ...CONDITIONAL_WORKFLOW_INPUT_SCHEMA,
+        version: 2,
+      });
+
+      const storedWorkflow = await drizzleDb.query.workflowDefinitions.findFirst({
+        where: eq(schema.workflowDefinitions.id, workflow.id),
+      });
+
+      expect(storedWorkflow?.inputSchema).toEqual({
+        ...CONDITIONAL_WORKFLOW_INPUT_SCHEMA,
+        version: 2,
+      });
+    });
+
     it('版本冲突应返回 409 并携带当前版本号', async () => {
       const owner = await seedTenant('patch-conflict');
       const workflow = await seedDraftWorkflow({
@@ -1500,6 +1689,10 @@ describe('WorkflowVersion E2E', () => {
         tenantId: owner.tenantId,
         createdBy: owner.user.id,
         slug: 'sequential-wf',
+        inputSchema: {
+          ...WORKFLOW_INPUT_SCHEMA,
+          version: 3,
+        },
       });
 
       const first = await request(app.getHttpServer())
@@ -1519,6 +1712,19 @@ describe('WorkflowVersion E2E', () => {
       expect(second.body.data.version).toBe(v2 + 1);
       expect(second.body.data.name).toBe('第一次更新');
       expect(second.body.data.description).toBe('第二次更新');
+      expect(second.body.data.inputSchema).toEqual({
+        ...WORKFLOW_INPUT_SCHEMA,
+        version: 3,
+      });
+
+      const storedWorkflow = await drizzleDb.query.workflowDefinitions.findFirst({
+        where: eq(schema.workflowDefinitions.id, workflow.id),
+      });
+
+      expect(storedWorkflow?.inputSchema).toEqual({
+        ...WORKFLOW_INPUT_SCHEMA,
+        version: 3,
+      });
     });
   });
 

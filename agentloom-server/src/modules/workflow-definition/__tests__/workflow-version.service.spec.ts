@@ -48,6 +48,30 @@ const MOCK_INPUT_SCHEMA = {
   ],
 };
 
+const CONDITIONAL_INPUT_SCHEMA = {
+  version: 1,
+  collectionMode: 'form' as const,
+  fields: [
+    {
+      id: 'mode',
+      type: 'single_select' as const,
+      label: '运行模式',
+      required: true,
+      options: ['basic', 'advanced'],
+    },
+    {
+      id: 'advancedNote',
+      type: 'text' as const,
+      label: '高级说明',
+      required: true,
+      visibility: {
+        fieldId: 'mode',
+        equals: 'advanced',
+      },
+    },
+  ],
+};
+
 const MOCK_SNAPSHOT = {
   nodes: MOCK_NODES,
   edges: MOCK_EDGES,
@@ -481,6 +505,7 @@ describe('WorkflowVersionService', () => {
       const workflow = createDraftWorkflow({
         description: '详情描述',
         metadata: { category: 'analysis' },
+        inputSchema: MOCK_INPUT_SCHEMA,
         updatedBy: USER_ID,
         createdAt: new Date('2025-02-01T08:00:00Z'),
         updatedAt: new Date('2025-02-02T09:30:00Z'),
@@ -500,6 +525,7 @@ describe('WorkflowVersionService', () => {
         nodes: MOCK_NODES,
         edges: MOCK_EDGES,
         viewport: MOCK_VIEWPORT,
+        inputSchema: MOCK_INPUT_SCHEMA,
         metadata: { category: 'analysis' },
         createdBy: USER_ID,
         updatedBy: USER_ID,
@@ -603,6 +629,7 @@ describe('WorkflowVersionService', () => {
         nodes: MOCK_NODES,
         edges: MOCK_EDGES,
         viewport: MOCK_VIEWPORT,
+        inputSchema: null,
         metadata: null,
         createdBy: USER_ID,
         updatedBy: USER_ID,
@@ -671,6 +698,75 @@ describe('WorkflowVersionService', () => {
       expect(result.edges).toEqual(newEdges);
       expect(result.viewport).toEqual(newViewport);
       expect(result.version).toBe(2);
+    });
+
+    it('应当在 detail PATCH 时持久化 inputSchema 并返回最新 schema', async () => {
+      const workflow = createDraftWorkflow({
+        version: 4,
+        inputSchema: MOCK_INPUT_SCHEMA,
+      });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 5,
+        inputSchema: {
+          ...CONDITIONAL_INPUT_SCHEMA,
+          version: 2,
+        },
+        updatedBy: USER_ID,
+        updatedAt: NOW,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 4,
+        inputSchema: CONDITIONAL_INPUT_SCHEMA,
+      });
+
+      expect(result.inputSchema).toEqual({
+        ...CONDITIONAL_INPUT_SCHEMA,
+        version: 2,
+      });
+      expect(db.update.mock.results[0].value.set.mock.calls[0][0].inputSchema).toEqual({
+        ...CONDITIONAL_INPUT_SCHEMA,
+        version: 2,
+      });
+    });
+
+    it('非 schema 更新时不应变更现有 inputSchema.version', async () => {
+      const workflow = createDraftWorkflow({
+        version: 2,
+        inputSchema: {
+          ...MOCK_INPUT_SCHEMA,
+          version: 3,
+        },
+      });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 3,
+        description: '仅更新描述',
+        inputSchema: {
+          ...MOCK_INPUT_SCHEMA,
+          version: 3,
+        },
+        updatedBy: USER_ID,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 2,
+        description: '仅更新描述',
+      });
+
+      expect(result.version).toBe(3);
+      expect(result.inputSchema).toEqual({
+        ...MOCK_INPUT_SCHEMA,
+        version: 3,
+      });
+      expect(db.update.mock.results[0].value.set.mock.calls[0][0]).not.toHaveProperty(
+        'inputSchema',
+      );
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {

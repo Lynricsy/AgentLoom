@@ -4,6 +4,7 @@ import type {
   ReactFlowViewport,
   WorkflowDefinition,
 } from '../../../database/schema/workflow-definitions.schema';
+import type { WorkflowInputSchema } from '../../workflow/dto/workflow-input-schema.dto';
 
 /**
  * 工作流定义响应 DTO（排除 nodes/edges/viewport 大字段）
@@ -29,6 +30,7 @@ export interface WorkflowDefinitionDetailResponseDto extends WorkflowDefinitionR
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
   viewport: ReactFlowViewport | null;
+  inputSchema: WorkflowInputSchema | null;
 }
 
 /**
@@ -92,5 +94,6 @@ export function serializeWorkflowDefinitionDetail(
     nodes: row.nodes ?? [],
     edges: row.edges ?? [],
     viewport: row.viewport ?? null,
+    inputSchema: row.inputSchema ?? null,
   };
 }

@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
+
 export const UpdateWorkflowDefinitionSchema = z
   .object({
     name: z
@@ -23,6 +25,7 @@ export const UpdateWorkflowDefinitionSchema = z
       })
       .nullable()
       .optional(),
+    inputSchema: workflowInputSchemaSchema.optional(),
     version: z.number().int().min(1, { message: '版本号必须为正整数' }),
   })
   .strict();

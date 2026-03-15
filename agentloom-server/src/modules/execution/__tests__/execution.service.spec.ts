@@ -11,6 +11,8 @@ import {
   ExecutionNotFoundException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
+  WorkflowLaunchInputValidationException,
+  WorkflowLaunchSchemaVersionMismatchException,
   WorkflowArchivedException,
 } from '../execution.exceptions';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from '../execution.constants';
@@ -42,6 +44,45 @@ const mockSnapshot = {
   edges: [{ id: 'edge-1', source: 'node-1', target: 'node-2' }],
   viewport: { x: 0, y: 0, zoom: 1 },
   metadata: { nodeCount: 2, edgeCount: 1, createdFromVersion: 1 },
+};
+
+const CONDITIONAL_RUN_INPUT_SCHEMA = {
+  version: 2,
+  collectionMode: 'form' as const,
+  fields: [
+    {
+      id: 'topic',
+      type: 'text' as const,
+      label: '分析主题',
+      required: true,
+      validation: { maxLength: 200 },
+    },
+    {
+      id: 'mode',
+      type: 'single_select' as const,
+      label: '运行模式',
+      required: true,
+      options: ['basic', 'advanced'],
+      default: 'basic',
+    },
+    {
+      id: 'locale',
+      type: 'text' as const,
+      label: '语言',
+      required: false,
+      default: 'zh-CN',
+    },
+    {
+      id: 'advancedNote',
+      type: 'text' as const,
+      label: '高级说明',
+      required: false,
+      visibility: {
+        fieldId: 'mode',
+        equals: 'advanced',
+      },
+    },
+  ],
 };
 
 const mockPublishedWorkflow = {
@@ -291,6 +332,132 @@ describe('ExecutionService', () => {
         topic: 'AI 趋势',
         _meta: { launchSource: 'mobile' },
       });
+    });
+
+    it('应根据已发布 inputSchema 注入默认值、清理隐藏字段并写入 launchConfig', async () => {
+      const workflowWithInputSchema = {
+        ...mockPublishedWorkflow,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+      const versionWithInputSchema = {
+        ...mockVersion,
+        snapshot: {
+          ...mockSnapshot,
+          inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+        },
+      };
+      const normalizedInputParams = {
+        topic: 'AI 趋势',
+        mode: 'basic',
+        locale: 'zh-CN',
+        _meta: {
+          launchSource: 'mobile',
+          launchConfig: {
+            workflowId: WORKFLOW_ID,
+            schemaVersion: 2,
+            collectionMode: 'form',
+            resolvedInputs: {
+              topic: 'AI 趋势',
+              mode: 'basic',
+              locale: 'zh-CN',
+            },
+            unresolvedFieldIds: ['advancedNote'],
+            launchSource: 'mobile',
+          },
+        },
+      };
+      const executionWithNormalizedLaunch = {
+        ...mockExecution,
+        inputParams: normalizedInputParams,
+        definitionSnapshot: versionWithInputSchema.snapshot,
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+        .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([executionWithNormalizedLaunch]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      const result = await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          schemaVersion: 2,
+          inputParams: {
+            topic: 'AI 趋势',
+            advancedNote: '这条隐藏字段应被清理',
+          },
+          launchSource: 'mobile',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result).toEqual(executionWithNormalizedLaunch);
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.inputParams).toEqual(normalizedInputParams);
+    });
+
+    it('应在 schemaVersion 与已发布 inputSchema.version 不匹配时抛出 409', async () => {
+      const workflowWithInputSchema = {
+        ...mockPublishedWorkflow,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+
+      db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+
+      await expect(
+        service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 1,
+            inputParams: { topic: 'AI 趋势' },
+            launchSource: 'mobile',
+          },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toThrow(WorkflowLaunchSchemaVersionMismatchException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('应在缺少可见必填字段时抛出 422', async () => {
+      const workflowWithInputSchema = {
+        ...mockPublishedWorkflow,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+
+      db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+
+      try {
+        await service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 2,
+            inputParams: {},
+            launchSource: 'mobile',
+          },
+          TENANT_ID,
+          USER_ID,
+        );
+
+        throw new Error('应当抛出 WorkflowLaunchInputValidationException');
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowLaunchInputValidationException);
+        expect((error as WorkflowLaunchInputValidationException).errors).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              field: 'inputParams.topic',
+            }),
+          ]),
+        );
+      }
+
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('应允许内部触发请求覆盖 triggerType 并写入内部 launchSource', async () => {

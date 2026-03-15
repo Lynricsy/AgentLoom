@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import type { FieldError } from '../../common/types/problem-details.type';
 import {
   hasActiveTenantTransaction,
   registerAfterCommitHook,
@@ -13,6 +14,8 @@ import {
 import {
   DeadLetterJobNotFoundException,
   ExecutionNotFoundException,
+  WorkflowLaunchInputValidationException,
+  WorkflowLaunchSchemaVersionMismatchException,
   WorkflowNotPublishedException,
   ExecutionNotCancellableException,
   WorkflowArchivedException,
@@ -25,6 +28,12 @@ import {
 } from './execution.constants';
 import type { InternalRunWorkflowRequest } from './dto/run-workflow.dto';
 import { SYSTEM_TRIGGER_USER_ID } from '../trigger/trigger.constants';
+import {
+  workflowInputSchemaSchema,
+  type CollectionMode,
+  type InputFieldDefinition,
+  type WorkflowInputSchema,
+} from '../workflow/dto/workflow-input-schema.dto';
 
 export interface ExecutionJobData {
   executionId: string;
@@ -45,6 +54,297 @@ function isRemovableJobState(state: string): state is JobType {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+interface ExecutionLaunchConfig {
+  workflowId: string;
+  schemaVersion: number;
+  collectionMode: CollectionMode;
+  resolvedInputs: Record<string, unknown>;
+  unresolvedFieldIds: string[];
+  launchSource: InternalRunWorkflowRequest['launchSource'] | null;
+}
+
+function createDefaultWorkflowInputSchema(): WorkflowInputSchema {
+  return workflowInputSchemaSchema.parse({});
+}
+
+function createInputFieldError(fieldId: string, message: string): FieldError {
+  return {
+    field: `inputParams.${fieldId}`,
+    message,
+  };
+}
+
+function isEmptyInputValue(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  );
+}
+
+function shouldNormalizeLaunchInput(
+  workflowInputSchema: WorkflowInputSchema | null | undefined,
+  runRequest: InternalRunWorkflowRequest | undefined,
+): boolean {
+  return workflowInputSchema != null || runRequest?.schemaVersion !== undefined;
+}
+
+function shouldRequireSchemaVersion(
+  runRequest: InternalRunWorkflowRequest | undefined,
+): boolean {
+  const triggerType = runRequest?.triggerType ?? 'manual';
+
+  return triggerType === 'manual' || triggerType === 'api';
+}
+
+function getRawLaunchInputParams(
+  runRequest: InternalRunWorkflowRequest | undefined,
+): Record<string, unknown> {
+  if (!runRequest?.inputParams) {
+    return {};
+  }
+
+  const rawInputParams = { ...runRequest.inputParams };
+  delete rawInputParams._meta;
+
+  return rawInputParams;
+}
+
+function validateResolvedFieldValue(
+  field: InputFieldDefinition,
+  value: unknown,
+  errors: FieldError[],
+): unknown {
+  if (isEmptyInputValue(value)) {
+    if (field.required) {
+      errors.push(createInputFieldError(field.id, '该字段为必填项'));
+    }
+
+    return undefined;
+  }
+
+  switch (field.type) {
+    case 'text': {
+      if (typeof value !== 'string') {
+        errors.push(createInputFieldError(field.id, '该字段必须是字符串'));
+        return undefined;
+      }
+
+      if (
+        field.validation?.minLength !== undefined &&
+        value.length < field.validation.minLength
+      ) {
+        errors.push(
+          createInputFieldError(
+            field.id,
+            `长度不能少于 ${field.validation.minLength} 个字符`,
+          ),
+        );
+      }
+
+      if (
+        field.validation?.maxLength !== undefined &&
+        value.length > field.validation.maxLength
+      ) {
+        errors.push(
+          createInputFieldError(
+            field.id,
+            `长度不能超过 ${field.validation.maxLength} 个字符`,
+          ),
+        );
+      }
+
+      return value;
+    }
+    case 'number': {
+      if (typeof value !== 'number' || Number.isNaN(value)) {
+        errors.push(createInputFieldError(field.id, '该字段必须是数字'));
+        return undefined;
+      }
+
+      if (field.validation?.min !== undefined && value < field.validation.min) {
+        errors.push(
+          createInputFieldError(field.id, `数值不能小于 ${field.validation.min}`),
+        );
+      }
+
+      if (field.validation?.max !== undefined && value > field.validation.max) {
+        errors.push(
+          createInputFieldError(field.id, `数值不能大于 ${field.validation.max}`),
+        );
+      }
+
+      return value;
+    }
+    case 'single_select': {
+      if (typeof value !== 'string') {
+        errors.push(createInputFieldError(field.id, '该字段必须是字符串选项'));
+        return undefined;
+      }
+
+      if (field.options && !field.options.includes(value)) {
+        errors.push(createInputFieldError(field.id, '该字段必须是预定义选项之一'));
+      }
+
+      return value;
+    }
+    case 'multi_select': {
+      if (!Array.isArray(value)) {
+        errors.push(createInputFieldError(field.id, '该字段必须是字符串数组'));
+        return undefined;
+      }
+
+      if (value.some((item) => typeof item !== 'string')) {
+        errors.push(createInputFieldError(field.id, '该字段必须是字符串数组'));
+        return undefined;
+      }
+
+      if (
+        field.options &&
+        value.some((item) => !field.options?.includes(item))
+      ) {
+        errors.push(createInputFieldError(field.id, '该字段包含未定义的选项'));
+      }
+
+      return value;
+    }
+  }
+}
+
+function buildNormalizedExecutionInputParams(
+  workflowId: string,
+  runRequest: InternalRunWorkflowRequest | undefined,
+  workflowInputSchema: WorkflowInputSchema,
+): Record<string, unknown> {
+  const rawInputParams = getRawLaunchInputParams(runRequest);
+  const schemaVersion = runRequest?.schemaVersion;
+
+  if (schemaVersion === undefined) {
+    if (shouldRequireSchemaVersion(runRequest)) {
+      throw new WorkflowLaunchInputValidationException([
+        {
+          field: 'schemaVersion',
+          message: 'schemaVersion 是必填字段',
+        },
+      ]);
+    }
+  } else if (schemaVersion !== workflowInputSchema.version) {
+    throw new WorkflowLaunchSchemaVersionMismatchException(
+      workflowInputSchema.version,
+      schemaVersion,
+    );
+  }
+
+  if (workflowInputSchema.collectionMode !== 'form') {
+    return buildExecutionInputParams(runRequest);
+  }
+
+  const fieldMap = new Map(
+    workflowInputSchema.fields.map((field) => [field.id, field]),
+  );
+  const errors: FieldError[] = [];
+
+  Object.keys(rawInputParams).forEach((fieldId) => {
+    if (!fieldMap.has(fieldId)) {
+      errors.push(createInputFieldError(fieldId, '该字段不存在于当前输入契约中'));
+    }
+  });
+
+  if (errors.length > 0) {
+    throw new WorkflowLaunchInputValidationException(errors);
+  }
+
+  const fieldStateCache = new Map<
+    string,
+    { visible: boolean; value: unknown }
+  >();
+
+  const resolveFieldState = (
+    fieldId: string,
+    path = new Set<string>(),
+  ): { visible: boolean; value: unknown } => {
+    const cachedState = fieldStateCache.get(fieldId);
+    if (cachedState) {
+      return cachedState;
+    }
+
+    const field = fieldMap.get(fieldId);
+    if (!field) {
+      return { visible: false, value: undefined };
+    }
+
+    if (path.has(fieldId)) {
+      return { visible: false, value: undefined };
+    }
+
+    let visible = true;
+    if (field.visibility) {
+      const nextPath = new Set(path);
+      nextPath.add(fieldId);
+
+      const controllerState = resolveFieldState(field.visibility.fieldId, nextPath);
+      visible =
+        controllerState.visible && controllerState.value === field.visibility.equals;
+    }
+
+    const state = {
+      visible,
+      value: visible
+        ? Object.prototype.hasOwnProperty.call(rawInputParams, field.id)
+          ? rawInputParams[field.id]
+          : field.default
+        : undefined,
+    };
+
+    fieldStateCache.set(fieldId, state);
+    return state;
+  };
+
+  const resolvedInputs: Record<string, unknown> = {};
+  const unresolvedFieldIds: string[] = [];
+
+  workflowInputSchema.fields.forEach((field) => {
+    const fieldState = resolveFieldState(field.id);
+
+    if (!fieldState.visible) {
+      unresolvedFieldIds.push(field.id);
+      return;
+    }
+
+    const resolvedValue = validateResolvedFieldValue(field, fieldState.value, errors);
+    if (resolvedValue !== undefined) {
+      resolvedInputs[field.id] = resolvedValue;
+    }
+  });
+
+  if (errors.length > 0) {
+    throw new WorkflowLaunchInputValidationException(errors);
+  }
+
+  const launchConfig: ExecutionLaunchConfig = {
+    workflowId,
+    schemaVersion: workflowInputSchema.version,
+    collectionMode: workflowInputSchema.collectionMode,
+    resolvedInputs: { ...resolvedInputs },
+    unresolvedFieldIds,
+    launchSource: runRequest?.launchSource ?? null,
+  };
+
+  const meta: Record<string, unknown> = {
+    launchConfig,
+  };
+
+  if (runRequest?.launchSource) {
+    meta.launchSource = runRequest.launchSource;
+  }
+
+  return {
+    ...resolvedInputs,
+    _meta: meta,
+  };
 }
 
 function buildExecutionInputParams(
@@ -92,8 +392,6 @@ export class ExecutionService {
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
-    const inputParams = buildExecutionInputParams(runRequest);
-
     const [workflow] = await this.tenantDb
       .select()
       .from(schema.workflowDefinitions)
@@ -110,6 +408,18 @@ export class ExecutionService {
     ) {
       throw new WorkflowNotPublishedException(workflowId);
     }
+
+    const workflowInputSchema = workflow.inputSchema
+      ? workflowInputSchemaSchema.parse(workflow.inputSchema)
+      : createDefaultWorkflowInputSchema();
+
+    const inputParams = shouldNormalizeLaunchInput(workflow.inputSchema, runRequest)
+      ? buildNormalizedExecutionInputParams(
+          workflowId,
+          runRequest,
+          workflowInputSchema,
+        )
+      : buildExecutionInputParams(runRequest);
 
     const [publishedVersion] = await this.tenantDb
       .select()
