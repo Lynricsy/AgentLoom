@@ -30,6 +30,7 @@ export class MarketplaceController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '提交工作流到 Marketplace（含自动审查）' })
   @ApiResponse({ status: 201, description: '提交成功' })
+  @ApiResponse({ status: 404, description: '工作流版本不存在或无权访问' })
   @ApiResponse({ status: 409, description: '状态冲突（已上架/审查中）' })
   @ApiResponse({ status: 422, description: '审查未通过' })
   async submit(

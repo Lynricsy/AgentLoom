@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import * as crypto from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
@@ -73,12 +74,16 @@ function createVersionRecord(
     id: string;
     publishedAt: Date | null;
     archivedAt: Date | null;
+    workflowStatus: 'draft' | 'published' | 'archived';
+    publishedVersionId: string | null;
   }> = {},
 ) {
   return {
     id: VERSION_ID,
     publishedAt: NOW,
     archivedAt: null,
+    workflowStatus: 'published' as const,
+    publishedVersionId: VERSION_ID,
     ...overrides,
   };
 }
@@ -95,8 +100,9 @@ function createExecutionRecord(
 
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
-  const from = vi.fn().mockReturnValue({ where });
-  return { from, where };
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ where, innerJoin });
+  return { from, where, innerJoin };
 }
 
 function createExecutionSelectChain(
@@ -225,6 +231,50 @@ describe('MarketplaceReviewService', () => {
       'passed',
     );
     expect(getCheck(result, 'WORKFLOW_VERSION_ARCHIVED').status).toBe('failed');
+    expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('工作流定义不是 published 时应视为未发布并短路画布与执行检查', async () => {
+    db.select.mockReturnValueOnce(
+      createSelectChain([
+        createVersionRecord({
+          workflowStatus: 'draft',
+          publishedVersionId: null,
+        }),
+      ]),
+    );
+
+    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+
+    expect(result.outcome).toBe('failed');
+    expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED').status).toBe(
+      'failed',
+    );
+    expect(getCheck(result, 'WORKFLOW_VERSION_ARCHIVED').status).toBe('passed');
+    expect(getCheck(result, 'WORKFLOW_EMPTY_NODE_DETECTED')).toMatchObject({
+      status: 'failed',
+      message: '无法检查画布结构：工作流版本未发布',
+    });
+    expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('不是当前 publishedVersionId 的版本时应视为未发布', async () => {
+    db.select.mockReturnValueOnce(
+      createSelectChain([
+        createVersionRecord({
+          publishedVersionId: crypto.randomUUID(),
+        }),
+      ]),
+    );
+
+    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+
+    expect(result.outcome).toBe('failed');
+    expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED')).toMatchObject({
+      status: 'failed',
+      fixHint: '请先发布工作流版本',
+    });
+    expect(getCheck(result, 'WORKFLOW_VERSION_ARCHIVED').status).toBe('passed');
     expect(db.select).toHaveBeenCalledTimes(1);
   });
 

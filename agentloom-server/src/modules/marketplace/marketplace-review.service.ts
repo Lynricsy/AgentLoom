@@ -103,11 +103,25 @@ export class MarketplaceReviewService {
         id: schema.workflowVersions.id,
         publishedAt: schema.workflowVersions.publishedAt,
         archivedAt: schema.workflowVersions.archivedAt,
+        workflowStatus: schema.workflowDefinitions.status,
+        publishedVersionId: schema.workflowDefinitions.publishedVersionId,
       })
       .from(schema.workflowVersions)
+      .innerJoin(
+        schema.workflowDefinitions,
+        eq(
+          schema.workflowVersions.workflowDefinitionId,
+          schema.workflowDefinitions.id,
+        ),
+      )
       .where(eq(schema.workflowVersions.id, workflowVersionId));
 
-    if (!version || !version.publishedAt) {
+    const isPublishedVersion =
+      !!version?.publishedAt &&
+      version.publishedVersionId === workflowVersionId &&
+      version.workflowStatus !== 'draft';
+
+    if (!version || !isPublishedVersion) {
       checks.push(
         this.fail(
           'WORKFLOW_VERSION_NOT_PUBLISHED',
@@ -119,7 +133,7 @@ export class MarketplaceReviewService {
       checks.push(this.pass('WORKFLOW_VERSION_NOT_PUBLISHED', '工作流版本已发布'));
     }
 
-    if (version?.archivedAt) {
+    if (version?.archivedAt || version?.workflowStatus === 'archived') {
       checks.push(
         this.fail(
           'WORKFLOW_VERSION_ARCHIVED',

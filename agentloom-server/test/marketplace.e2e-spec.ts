@@ -598,6 +598,7 @@ describe('Marketplace E2E', () => {
         workflowName: workflow.workflowName,
         versionNumber: workflow.versionNumber,
         status: 'listed',
+        reviewResult: expect.objectContaining({ outcome: 'passed' }),
       }),
     ]);
 
@@ -674,6 +675,68 @@ describe('Marketplace E2E', () => {
     expect(
       findReviewCheck(reviewResult, 'RECENT_SUCCESSFUL_EXECUTION_MISSING'),
     ).toMatchObject({
+      status: 'failed',
+    });
+  });
+
+  it('marks listing as review_failed when the workflow no longer has a current published version', async () => {
+    const owner = await seedTenant('marketplace-no-current-published-version');
+    const workflow = await seedWorkflowForMarketplace(
+      owner.tenantId,
+      owner.user.id,
+    );
+
+    await drizzleDb
+      .update(workflowDefinitions)
+      .set({ publishedVersionId: null })
+      .where(eq(workflowDefinitions.id, workflow.workflowId));
+
+    const response = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings`)
+      .set(owner.headers)
+      .send(createSubmitPayload(workflow.versionId));
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      workflowVersionId: workflow.versionId,
+      status: 'review_failed',
+      publishedAt: null,
+    });
+
+    const reviewResult = response.body.reviewResult as MarketplaceReviewResult;
+    expect(reviewResult.outcome).toBe('failed');
+    expect(findReviewCheck(reviewResult, 'WORKFLOW_VERSION_NOT_PUBLISHED')).toMatchObject({
+      status: 'failed',
+    });
+  });
+
+  it('marks listing as review_failed when the workflow definition is archived', async () => {
+    const owner = await seedTenant('marketplace-archived-definition');
+    const workflow = await seedWorkflowForMarketplace(
+      owner.tenantId,
+      owner.user.id,
+    );
+
+    await drizzleDb
+      .update(workflowDefinitions)
+      .set({ status: 'archived' })
+      .where(eq(workflowDefinitions.id, workflow.workflowId));
+
+    const response = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings`)
+      .set(owner.headers)
+      .send(createSubmitPayload(workflow.versionId));
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      workflowVersionId: workflow.versionId,
+      status: 'review_failed',
+      publishedAt: null,
+    });
+
+    const reviewResult = response.body.reviewResult as MarketplaceReviewResult;
+    expect(reviewResult.outcome).toBe('failed');
+    expect(findReviewCheck(reviewResult, 'WORKFLOW_VERSION_ARCHIVED')).toMatchObject({
       status: 'failed',
     });
   });
@@ -771,6 +834,22 @@ describe('Marketplace E2E', () => {
     });
   });
 
+  it('returns 404 when submitting an unknown workflow version id', async () => {
+    const owner = await seedTenant('marketplace-unknown-version-submit');
+
+    const response = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings`)
+      .set(owner.headers)
+      .send(createSubmitPayload(crypto.randomUUID()));
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/marketplace-workflow-version-not-found',
+      title: '工作流版本不存在',
+      status: 404,
+    });
+  });
+
   it('returns 404 for an unknown marketplace listing id', async () => {
     const owner = await seedTenant('marketplace-missing');
     const missingId = crypto.randomUUID();
@@ -823,6 +902,26 @@ describe('Marketplace E2E', () => {
     expect(tenantBGetResponse.status).toBe(404);
     expect(tenantBGetResponse.body).toMatchObject({
       type: 'https://agentloom.dev/errors/marketplace-listing-not-found',
+      status: 404,
+    });
+  });
+
+  it('returns 404 when submitting a workflow version from another tenant', async () => {
+    const tenantA = await seedTenant('marketplace-submit-tenant-a');
+    const workflow = await seedWorkflowForMarketplace(
+      tenantA.tenantId,
+      tenantA.user.id,
+    );
+    const tenantB = await seedTenant('marketplace-submit-tenant-b');
+
+    const response = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings`)
+      .set(tenantB.headers)
+      .send(createSubmitPayload(workflow.versionId));
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/marketplace-workflow-version-not-found',
       status: 404,
     });
   });
@@ -884,6 +983,52 @@ describe('Marketplace E2E', () => {
       type: 'https://agentloom.dev/errors/marketplace-listing-conflict',
       status: 409,
       currentStatus: 'listed',
+    });
+  });
+
+  it('clears publishedAt when relist review fails after a listing was previously listed', async () => {
+    const owner = await seedTenant('marketplace-relist-failed-published-at');
+    const workflow = await seedWorkflowForMarketplace(
+      owner.tenantId,
+      owner.user.id,
+    );
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings`)
+      .set(owner.headers)
+      .send(createSubmitPayload(workflow.versionId));
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.status).toBe('listed');
+
+    const listingId = createResponse.body.data.id as string;
+
+    const unlistResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${listingId}/unlist`)
+      .set(owner.headers);
+
+    expect(unlistResponse.status).toBe(200);
+
+    await drizzleDb
+      .update(workflowExecutions)
+      .set({ completedAt: new Date('2024-11-30T00:00:00.000Z') })
+      .where(eq(workflowExecutions.workflowVersionId, workflow.versionId));
+
+    const relistResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${listingId}/relist`)
+      .set(owner.headers);
+
+    expect(relistResponse.status).toBe(200);
+    expect(relistResponse.body.data).toMatchObject({
+      id: listingId,
+      status: 'review_failed',
+      publishedAt: null,
+    });
+
+    const reviewResult = relistResponse.body.reviewResult as MarketplaceReviewResult;
+    expect(reviewResult.outcome).toBe('failed');
+    expect(findReviewCheck(reviewResult, 'RECENT_SUCCESSFUL_EXECUTION_MISSING')).toMatchObject({
+      status: 'failed',
     });
   });
 

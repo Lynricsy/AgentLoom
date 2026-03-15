@@ -11,7 +11,7 @@ import { SubmitMarketplaceListingDto } from './dto/marketplace.dto';
 import {
   MarketplaceListingConflictException,
   MarketplaceListingNotFoundException,
-  MarketplaceWorkflowNotPublishedException,
+  MarketplaceWorkflowVersionNotFoundException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
 import { MarketplaceService } from './marketplace.service';
@@ -183,9 +183,7 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(
-          createSelectChain([
-            { id: VERSION_ID, publishedAt: NOW, archivedAt: null },
-          ]),
+          createSelectChain([{ id: VERSION_ID }]),
         );
       db.insert.mockReturnValue(createInsertChain([createdListing]));
       db.update.mockReturnValue(createUpdateChain([updatedListing]));
@@ -238,9 +236,7 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(
-          createSelectChain([
-            { id: VERSION_ID, publishedAt: NOW, archivedAt: null },
-          ]),
+          createSelectChain([{ id: VERSION_ID }]),
         );
       db.insert.mockReturnValue(createInsertChain([createdListing]));
       db.update.mockReturnValue(createUpdateChain([updatedListing]));
@@ -278,9 +274,7 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([existingListing]))
         .mockReturnValueOnce(
-          createSelectChain([
-            { id: VERSION_ID, publishedAt: NOW, archivedAt: null },
-          ]),
+          createSelectChain([{ id: VERSION_ID }]),
         );
       db.update
         .mockReturnValueOnce(updatePending)
@@ -338,37 +332,17 @@ describe('MarketplaceService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
 
-    it('工作流版本未发布时应抛出 422', async () => {
+    it('工作流版本不存在时应抛出 404', async () => {
       db.select
         .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         service.submit(TENANT_ID, USER_ID, createSubmitDto()),
-      ).rejects.toBeInstanceOf(MarketplaceWorkflowNotPublishedException);
+      ).rejects.toBeInstanceOf(MarketplaceWorkflowVersionNotFoundException);
       expect(reviewService.review).not.toHaveBeenCalled();
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('工作流版本已归档时也应抛出 422', async () => {
-      db.select
-        .mockReturnValueOnce(createSelectChain([]))
-        .mockReturnValueOnce(
-          createSelectChain([
-            {
-              id: VERSION_ID,
-              publishedAt: NOW,
-              archivedAt: new Date('2025-01-02T00:00:00.000Z'),
-            },
-          ]),
-        );
-
-      await expect(
-        service.submit(TENANT_ID, USER_ID, createSubmitDto()),
-      ).rejects.toBeInstanceOf(MarketplaceWorkflowNotPublishedException);
-      expect(reviewService.review).not.toHaveBeenCalled();
-      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('封面图缺失时首次提交应写入 null', async () => {
@@ -395,9 +369,7 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(
-          createSelectChain([
-            { id: VERSION_ID, publishedAt: NOW, archivedAt: null },
-          ]),
+          createSelectChain([{ id: VERSION_ID }]),
         );
       db.insert.mockReturnValue(insertChain);
       db.update.mockReturnValue(createUpdateChain([updatedListing]));
@@ -429,9 +401,7 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(createSelectChain([existingListing]))
         .mockReturnValueOnce(
-          createSelectChain([
-            { id: VERSION_ID, publishedAt: NOW, archivedAt: null },
-          ]),
+          createSelectChain([{ id: VERSION_ID }]),
         );
       db.update
         .mockReturnValueOnce(updatePending)
@@ -551,7 +521,7 @@ describe('MarketplaceService', () => {
       const updatedListing = createMarketplaceListing({
         status: 'review_failed',
         reviewResult,
-        publishedAt: NOW,
+        publishedAt: null,
         unlistedAt: NOW,
       });
 
@@ -564,6 +534,7 @@ describe('MarketplaceService', () => {
       const result = await service.relist(TENANT_ID, LISTING_ID, USER_ID);
 
       expect(result.listing.status).toBe('review_failed');
+      expect(result.listing.publishedAt).toBeNull();
       expect(result.reviewResult).toEqual(reviewResult);
     });
 
@@ -590,6 +561,7 @@ describe('MarketplaceService', () => {
 
   describe('findMyListings', () => {
     it('应返回分页数据与 meta 信息', async () => {
+      const reviewResult = createReviewResult({ outcome: 'passed' });
       const listItem = {
         id: LISTING_ID,
         workflowVersionId: VERSION_ID,
@@ -599,6 +571,7 @@ describe('MarketplaceService', () => {
         tags: ['analysis'],
         coverImageUrl: null,
         status: 'listed' as const,
+        reviewResult,
         submittedBy: USER_ID,
         submittedAt: NOW,
         publishedAt: NOW,

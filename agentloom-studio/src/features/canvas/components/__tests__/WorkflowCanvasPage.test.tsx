@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import * as crypto from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
 import type { WorkflowInputSchema } from '@/features/workflow/types'
@@ -31,6 +32,7 @@ const interventionPolicyTabMock = vi.fn()
 const triggerTabMock = vi.fn()
 const workflowInputSchemaTabMock = vi.fn()
 const executionLaunchDialogMock = vi.fn()
+const marketplacePublishDialogMock = vi.fn()
 
 const workflowInputSchema: WorkflowInputSchema = {
   version: 1,
@@ -136,7 +138,14 @@ vi.mock('@/features/workflow-input-schema/components/WorkflowInputSchemaTab', ()
 }))
 
 vi.mock('@/features/marketplace', () => ({
-  MarketplacePublishDialog: () => null,
+  MarketplacePublishDialog: (props: {
+    open: boolean
+    workflowId: string
+    onOpenChange: (open: boolean) => void
+  }) => {
+    marketplacePublishDialogMock(props)
+    return props.open ? <div data-testid="marketplace-publish-dialog" /> : null
+  },
 }))
 
 vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () => ({
@@ -194,6 +203,7 @@ vi.mock('../toolbar/VersionToolbar', () => ({
     onToggleInterventionPolicies?: () => void
     onToggleInputSchema?: () => void
     onToggleTriggers?: () => void
+    onPublishToMarketplace?: () => void
     onRun?: () => void
     isInputSchemaOpen?: boolean
     isInterventionPoliciesOpen?: boolean
@@ -223,6 +233,15 @@ vi.mock('../toolbar/VersionToolbar', () => ({
         >
           {props.isTriggersOpen ? 'close-trigger' : 'open-trigger'}
         </button>
+        {props.onPublishToMarketplace ? (
+          <button
+            type="button"
+            data-testid="btn-publish-to-marketplace"
+            onClick={props.onPublishToMarketplace}
+          >
+            publish-to-marketplace
+          </button>
+        ) : null}
         {props.onRun ? (
           <button type="button" data-testid="btn-run-workflow" onClick={props.onRun}>
             run-workflow
@@ -401,5 +420,45 @@ describe('WorkflowCanvasPage workflow settings integration', () => {
         draftInputSchema: workflowInputSchema,
       }),
     )
+  })
+
+  it('owner 在存在 publishedVersionId 的已发布工作流上可以看到 Marketplace CTA 并打开弹窗', () => {
+    authToken = createJwt({ role: 'owner', jti: crypto.randomUUID() })
+    workflow.status = 'published'
+    workflow.publishedVersionId = 'ver-001'
+
+    render(<WorkflowCanvasPage />)
+
+    fireEvent.click(screen.getByTestId('btn-publish-to-marketplace'))
+
+    expect(screen.getByTestId('marketplace-publish-dialog')).toBeInTheDocument()
+    expect(marketplacePublishDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        open: true,
+        workflowId: 'wf-001',
+      }),
+    )
+  })
+
+  it('viewer 即使面对已发布工作流也不应看到 Marketplace CTA', () => {
+    authToken = createJwt({ role: 'viewer', jti: crypto.randomUUID() })
+    workflow.status = 'published'
+    workflow.publishedVersionId = 'ver-001'
+
+    render(<WorkflowCanvasPage />)
+
+    expect(screen.queryByTestId('btn-publish-to-marketplace')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('marketplace-publish-dialog')).not.toBeInTheDocument()
+  })
+
+  it('缺少 publishedVersionId 时不应提供 Marketplace CTA', () => {
+    authToken = createJwt({ role: 'owner', jti: crypto.randomUUID() })
+    workflow.status = 'published'
+    workflow.publishedVersionId = null
+
+    render(<WorkflowCanvasPage />)
+
+    expect(screen.queryByTestId('btn-publish-to-marketplace')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('marketplace-publish-dialog')).not.toBeInTheDocument()
   })
 })

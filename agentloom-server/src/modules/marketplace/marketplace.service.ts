@@ -16,7 +16,7 @@ import { QueryMyListingsSchema } from './dto/marketplace.dto';
 import {
   MarketplaceListingConflictException,
   MarketplaceListingNotFoundException,
-  MarketplaceWorkflowNotPublishedException,
+  MarketplaceWorkflowVersionNotFoundException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
 
@@ -29,6 +29,7 @@ export interface MyMarketplaceListingItem {
   tags: string[];
   coverImageUrl: string | null;
   status: MarketplaceListing['status'];
+  reviewResult: MarketplaceReviewResult | null;
   submittedBy: string;
   submittedAt: Date;
   publishedAt: Date | null;
@@ -86,7 +87,7 @@ export class MarketplaceService {
         );
       }
 
-      await this.ensureWorkflowVersionPublished(workflowVersionId);
+      await this.ensureWorkflowVersionExists(workflowVersionId);
 
       return this.resubmit(tenantId, existing.id, userId, {
         title,
@@ -97,7 +98,7 @@ export class MarketplaceService {
       });
     }
 
-    await this.ensureWorkflowVersionPublished(workflowVersionId);
+    await this.ensureWorkflowVersionExists(workflowVersionId);
 
     return this.createAndReview(tenantId, userId, {
       workflowVersionId,
@@ -186,8 +187,7 @@ export class MarketplaceService {
       .set({
         status: newStatus,
         reviewResult,
-        publishedAt:
-          newStatus === 'listed' ? new Date() : listing.publishedAt,
+        publishedAt: newStatus === 'listed' ? new Date() : null,
         updatedAt: new Date(),
       })
       .where(eq(schema.marketplaceListings.id, listingId))
@@ -235,6 +235,7 @@ export class MarketplaceService {
           tags: schema.marketplaceListings.tags,
           coverImageUrl: schema.marketplaceListings.coverImageUrl,
           status: schema.marketplaceListings.status,
+          reviewResult: schema.marketplaceListings.reviewResult,
           submittedBy: schema.marketplaceListings.submittedBy,
           submittedAt: schema.marketplaceListings.submittedAt,
           publishedAt: schema.marketplaceListings.publishedAt,
@@ -431,20 +432,18 @@ export class MarketplaceService {
     return listing;
   }
 
-  private async ensureWorkflowVersionPublished(
+  private async ensureWorkflowVersionExists(
     workflowVersionId: string,
   ): Promise<void> {
     const [version] = await this.tenantDb
       .select({
         id: schema.workflowVersions.id,
-        publishedAt: schema.workflowVersions.publishedAt,
-        archivedAt: schema.workflowVersions.archivedAt,
       })
       .from(schema.workflowVersions)
       .where(eq(schema.workflowVersions.id, workflowVersionId));
 
-    if (!version || !version.publishedAt || version.archivedAt) {
-      throw new MarketplaceWorkflowNotPublishedException(workflowVersionId);
+    if (!version) {
+      throw new MarketplaceWorkflowVersionNotFoundException(workflowVersionId);
     }
   }
 

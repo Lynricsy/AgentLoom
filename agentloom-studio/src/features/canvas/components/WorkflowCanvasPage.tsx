@@ -52,10 +52,16 @@ export function WorkflowCanvasPage() {
   const executionStatus = useExecutionStatus()
   const authToken = useAuthToken()
   const currentUserRole = getInterventionPolicyRoleFromToken(authToken)
-  const isInterventionPolicyReadOnly = !canManageInterventionPolicies(currentUserRole)
-  const isInputSchemaReadOnly = !canManageInterventionPolicies(currentUserRole)
+  const canManageWorkflowSettings = canManageInterventionPolicies(currentUserRole)
+  const isInterventionPolicyReadOnly = !canManageWorkflowSettings
+  const isInputSchemaReadOnly = !canManageWorkflowSettings
   const { startExecution, isStarting } = useStartExecution()
   useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId, authToken })
+  const canPublishToMarketplace =
+    !!workflow &&
+    workflow.status === 'published' &&
+    workflow.publishedVersionId !== null &&
+    canManageWorkflowSettings
 
   const handleRunWorkflow = useCallback(() => {
     if (!workflowId || isStarting || isExecutionActive) return
@@ -152,6 +158,12 @@ export function WorkflowCanvasPage() {
     }
   }, [closeFieldMapping, isWorkflowArchived])
 
+  useEffect(() => {
+    if (!canPublishToMarketplace) {
+      setIsMarketplacePublishOpen(false)
+    }
+  }, [canPublishToMarketplace])
+
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center">
@@ -198,7 +210,7 @@ export function WorkflowCanvasPage() {
             onToggleInterventionPolicies={handleToggleInterventionPolicyPanel}
             onToggleInputSchema={handleToggleInputSchemaPanel}
             onToggleTriggers={handleToggleTriggerPanel}
-            onPublishToMarketplace={workflow.status === 'published' ? handleOpenMarketplacePublish : undefined}
+            onPublishToMarketplace={canPublishToMarketplace ? handleOpenMarketplacePublish : undefined}
             onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
             isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
             isInputSchemaOpen={activeSettingsTab === 'input-schema'}
@@ -297,7 +309,7 @@ export function WorkflowCanvasPage() {
         />
       )}
 
-      {workflow && (
+      {workflow && canPublishToMarketplace && (
         <MarketplacePublishDialog
           open={isMarketplacePublishOpen}
           onOpenChange={setIsMarketplacePublishOpen}

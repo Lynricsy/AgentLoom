@@ -41,13 +41,13 @@ export class MarketplaceReviewFailedException extends DomainException {
   }
 }
 
-export class MarketplaceWorkflowNotPublishedException extends DomainException {
+export class MarketplaceWorkflowVersionNotFoundException extends DomainException {
   constructor(workflowVersionId: string) {
     super({
-      type: 'https://agentloom.dev/errors/marketplace-workflow-not-published',
-      title: '工作流版本未发布',
-      status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: `工作流版本 ${workflowVersionId} 未发布或已归档，无法提交到 Marketplace`,
+      type: 'https://agentloom.dev/errors/marketplace-workflow-version-not-found',
+      title: '工作流版本不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `工作流版本 ${workflowVersionId} 不存在或无权访问，无法提交到 Marketplace`,
     });
   }
 }
