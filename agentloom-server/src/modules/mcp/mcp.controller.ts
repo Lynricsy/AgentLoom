@@ -8,7 +8,15 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -21,6 +29,8 @@ import {
 import { McpService } from './mcp.service';
 
 @ApiTags('MCP')
+@ApiBearerAuth()
+@ApiSecurity('X-Api-Key')
 @Controller('mcp')
 export class McpController {
   constructor(private readonly mcpService: McpService) {}
@@ -28,7 +38,11 @@ export class McpController {
   @Post('test')
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Test MCP server connection' })
+  @ApiOperation({ summary: '测试 MCP 服务器连接' })
+  @ApiResponse({ status: 200, description: '连接测试成功' })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   async testConnection(@Body() dto: TestMcpConnectionDto) {
     const result = await this.mcpService.testConnection(dto);
     return { data: result };
@@ -37,7 +51,11 @@ export class McpController {
   @Post('discover')
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Discover tools from MCP server' })
+  @ApiOperation({ summary: '从 MCP 服务器发现工具列表' })
+  @ApiResponse({ status: 200, description: '工具发现成功' })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   async discoverTools(@Body() dto: DiscoverMcpToolsDto) {
     const result = await this.mcpService.discoverTools(dto);
     return { data: result };
@@ -45,7 +63,11 @@ export class McpController {
 
   @Post('import')
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Import tools from MCP server' })
+  @ApiOperation({ summary: '从 MCP 服务器导入工具' })
+  @ApiResponse({ status: 201, description: '工具导入成功' })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   async importTools(
     @Body() dto: ImportMcpToolsDto,
     @CurrentUser('sub') userId: string,
@@ -58,7 +80,12 @@ export class McpController {
   @Post('configs/:mcpServerConfigId/test')
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Test a saved MCP server config connection' })
+  @ApiOperation({ summary: '测试已保存的 MCP 服务器配置连接' })
+  @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
+  @ApiResponse({ status: 200, description: '连接测试成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 404, description: 'MCP 服务器配置不存在' })
   async testSavedConfigConnection(
     @Param('mcpServerConfigId') mcpServerConfigId: string,
     @CurrentTenant() tenantId: string,
@@ -73,7 +100,12 @@ export class McpController {
   @Post('configs/:mcpServerConfigId/rediscover')
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Rediscover tools from a saved MCP server config' })
+  @ApiOperation({ summary: '重新从已保存的 MCP 服务器配置发现工具' })
+  @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
+  @ApiResponse({ status: 200, description: '工具重新发现成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 404, description: 'MCP 服务器配置不存在' })
   async rediscoverTools(
     @Param('mcpServerConfigId') mcpServerConfigId: string,
     @CurrentTenant() tenantId: string,
@@ -87,7 +119,13 @@ export class McpController {
 
   @Post('configs/:mcpServerConfigId/reimport')
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Re-import tools from a saved MCP server config' })
+  @ApiOperation({ summary: '重新从已保存的 MCP 服务器配置导入工具' })
+  @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
+  @ApiResponse({ status: 201, description: '工具重新导入成功' })
+  @ApiResponse({ status: 400, description: '请求参数无效' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 404, description: 'MCP 服务器配置不存在' })
   async reimportTools(
     @Param('mcpServerConfigId') mcpServerConfigId: string,
     @Body() dto: ReimportMcpToolsDto,
@@ -103,7 +141,12 @@ export class McpController {
 
   @Post('tools/:toolDefinitionId/deactivate')
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'Deactivate an imported MCP tool' })
+  @ApiOperation({ summary: '停用已导入的 MCP 工具' })
+  @ApiParam({ name: 'toolDefinitionId', description: '工具定义 ID' })
+  @ApiResponse({ status: 201, description: '工具停用成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 404, description: '工具定义不存在' })
   async deactivateTool(
     @Param('toolDefinitionId') toolDefinitionId: string,
     @CurrentTenant() tenantId: string,
@@ -117,12 +160,16 @@ export class McpController {
 
   @Get('tools')
   @Roles('owner', 'admin')
-  @ApiOperation({ summary: 'List tool definitions' })
+  @ApiOperation({ summary: '获取工具定义列表' })
   @ApiQuery({
     name: 'source',
     required: false,
     enum: ['mcp', 'builtin', 'custom'],
+    description: '工具来源过滤',
   })
+  @ApiResponse({ status: 200, description: '工具列表获取成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 403, description: '权限不足' })
   async listTools(
     @CurrentTenant() tenantId: string,
     @Query('source') source?: string,

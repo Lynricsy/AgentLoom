@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -10,6 +10,7 @@ export class HealthController {
   @Get()
   @Public()
   @ApiOperation({ summary: '健康检查' })
+  @ApiResponse({ status: 200, description: '服务健康状态' })
   check() {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }
