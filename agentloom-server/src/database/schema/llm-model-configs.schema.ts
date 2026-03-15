@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   timestamp,
@@ -31,6 +32,10 @@ export const llmModelConfigs = pgTable(
     apiKeyId: uuid('api_key_id').references(() => apiKeys.id, {
       onDelete: 'set null',
     }),
+    endpointUrl: varchar('endpoint_url', { length: 2048 }),
+    authMethod: varchar('auth_method', { length: 20 }),
+    authConfig: jsonb('auth_config'),
+    timeoutMs: integer('timeout_ms'),
     isDefault: boolean('is_default').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

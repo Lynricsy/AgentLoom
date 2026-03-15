@@ -69,6 +69,14 @@ export const LLM_PROVIDER_CATALOG: LlmProviderInfo[] = [
     supportsStreaming: true,
     supportsStructuredOutput: false,
   },
+  {
+    id: 'private_cloud',
+    name: 'Private Cloud',
+    models: [],
+    defaultModel: '',
+    supportsStreaming: true,
+    supportsStructuredOutput: false,
+  },
 ];
 
 export function supportsNativeStructuredOutput(providerId: string): boolean {

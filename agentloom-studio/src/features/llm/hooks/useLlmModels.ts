@@ -6,6 +6,8 @@ import {
   fetchLlmModel,
   fetchLlmModels,
   fetchLlmProviders,
+  fetchPrivateCloudModels,
+  testPrivateCloudConnection,
   updateLlmModel,
 } from '../api/llmModelApi'
 import type { CreateLlmModelInput, UpdateLlmModelInput } from '../types'
@@ -76,5 +78,17 @@ export function useUpdateLlmModel() {
         queryClient.invalidateQueries({ queryKey: llmModelKeys.detail(model.id) }),
       ])
     },
+  })
+}
+
+export function useTestPrivateCloudConnection() {
+  return useMutation({
+    mutationFn: testPrivateCloudConnection,
+  })
+}
+
+export function usePrivateCloudModels() {
+  return useMutation({
+    mutationFn: fetchPrivateCloudModels,
   })
 }

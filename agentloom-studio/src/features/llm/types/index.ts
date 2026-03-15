@@ -4,9 +4,14 @@ export const LLM_PROVIDER_IDS = [
   'google',
   'deepseek',
   'custom',
+  'private_cloud',
 ] as const
 
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number]
+
+export const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const
+
+export type AuthMethod = (typeof AUTH_METHODS)[number]
 
 export type ApiKeyStatus = 'active' | 'revoked' | 'expired'
 
@@ -58,6 +63,10 @@ export interface LlmModelInfo {
   isDefault: boolean
   createdAt: string
   updatedAt: string
+  endpointUrl?: string | null
+  authMethod?: string | null
+  authConfig?: Record<string, unknown> | null
+  timeoutMs?: number | null
 }
 
 export interface LlmModelConfig extends Record<string, unknown> {
@@ -68,6 +77,10 @@ export interface LlmModelConfig extends Record<string, unknown> {
   parameters: LlmParameters
   apiKeyId: string | null
   isDefault: boolean
+  endpointUrl?: string | null
+  authMethod?: string | null
+  authConfig?: Record<string, unknown> | null
+  timeoutMs?: number | null
 }
 
 export interface CreateLlmModelInput {
@@ -77,6 +90,10 @@ export interface CreateLlmModelInput {
   parameters: LlmParameters
   apiKeyId?: string | null
   isDefault?: boolean
+  endpointUrl?: string
+  authMethod?: string
+  authConfig?: Record<string, unknown>
+  timeoutMs?: number
 }
 
 export type UpdateLlmModelInput = Partial<CreateLlmModelInput>
@@ -86,6 +103,40 @@ export interface LlmNodeDataPatch {
   llmConfigId: string | null
   parameters: LlmParameters
   label: string
+}
+
+export interface PrivateCloudAuthConfig {
+  apiKey?: string
+  certPath?: string
+  keyPath?: string
+}
+
+export interface TestConnectionInput {
+  endpointUrl: string
+  authMethod: AuthMethod
+  authConfig?: PrivateCloudAuthConfig
+  timeoutMs?: number
+}
+
+export interface TestConnectionResult {
+  success: boolean
+  latencyMs: number
+  serverInfo?: {
+    models?: string[]
+    version?: string
+  }
+}
+
+export interface PrivateCloudModelInfo {
+  id: string
+  name: string
+  ownedBy?: string
+}
+
+export interface FetchModelsInput {
+  endpointUrl: string
+  authMethod: AuthMethod
+  authConfig?: PrivateCloudAuthConfig
 }
 
 export const LLM_PROVIDERS: readonly LlmProviderInfo[] = [
@@ -117,6 +168,12 @@ export const LLM_PROVIDERS: readonly LlmProviderInfo[] = [
     id: 'custom',
     name: '自定义',
     description: '自定义兼容 API',
+    models: [],
+  },
+  {
+    id: 'private_cloud',
+    name: 'Private Cloud',
+    description: '连接到私有部署的 OpenAI 兼容推理端点',
     models: [],
   },
 ] as const
@@ -199,6 +256,14 @@ export function parseLlmModelConfig(value: unknown): LlmModelConfig | null {
     parameters: normalizeLlmParameters(record.parameters),
     apiKeyId: parseNullableString(record.apiKeyId),
     isDefault: record.isDefault === true,
+    endpointUrl: parseNullableString(record.endpointUrl),
+    authMethod: parseNullableString(record.authMethod),
+    authConfig: typeof record.authConfig === 'object' && record.authConfig !== null
+      ? record.authConfig as Record<string, unknown>
+      : null,
+    timeoutMs: typeof record.timeoutMs === 'number' && Number.isFinite(record.timeoutMs)
+      ? record.timeoutMs
+      : null,
   }
 }
 
@@ -211,6 +276,10 @@ export function toLlmModelConfig(model: LlmModelInfo): LlmModelConfig {
     parameters: normalizeLlmParameters(model.parameters),
     apiKeyId: model.apiKeyId,
     isDefault: model.isDefault,
+    endpointUrl: model.endpointUrl ?? null,
+    authMethod: model.authMethod ?? null,
+    authConfig: model.authConfig ?? null,
+    timeoutMs: model.timeoutMs ?? null,
   }
 }
 
@@ -233,6 +302,14 @@ export function getLlmConfigState(
 
   if (!parsed) {
     return 'unconfigured' as const
+  }
+
+  if (parsed.provider === 'private_cloud') {
+    if (!parsed.endpointUrl) {
+      return 'warning' as const
+    }
+
+    return 'configured' as const
   }
 
   if (!parsed.apiKeyId && !hasProviderDefaultKey) {

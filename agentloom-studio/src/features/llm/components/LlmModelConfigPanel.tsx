@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react'
-import { Controller, useForm, useWatch } from 'react-hook-form'
+import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { RotateCcw, Sparkles, X } from 'lucide-react'
 import { z } from 'zod'
@@ -40,6 +40,7 @@ import {
   useUpdateLlmModel,
 } from '../hooks/useLlmModels'
 import { ProviderIcon } from './ProviderIcon'
+import { PrivateCloudConfigSection } from './PrivateCloudConfigSection'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -56,6 +57,10 @@ const llmModelFormSchema = z.object({
   frequencyPenalty: z.number().min(-2, 'Frequency Penalty 不能小于 -2').max(2, 'Frequency Penalty 不能大于 2'),
   presencePenalty: z.number().min(-2, 'Presence Penalty 不能小于 -2').max(2, 'Presence Penalty 不能大于 2'),
   stop: z.array(z.string().trim().min(1)),
+  endpointUrl: z.string().url('请输入有效的 URL').optional().or(z.literal('')),
+  authMethod: z.enum(['api_key', 'mtls', 'none']).optional(),
+  authConfig: z.record(z.string(), z.string()).optional(),
+  timeoutMs: z.number().int().min(1000, '超时时间不能小于 1000ms').max(300000, '超时时间不能大于 300000ms').optional(),
 })
 
 type LlmModelFormValues = z.infer<typeof llmModelFormSchema>
@@ -84,6 +89,10 @@ function createEmptyConfig(provider: LlmProvider = 'openai'): LlmModelConfig {
     parameters: { ...DEFAULT_LLM_PARAMETERS },
     apiKeyId: null,
     isDefault: false,
+    endpointUrl: provider === 'private_cloud' ? '' : null,
+    authMethod: provider === 'private_cloud' ? 'none' : null,
+    authConfig: null,
+    timeoutMs: null,
   }
 }
 
@@ -104,6 +113,12 @@ function toFormValues(config: LlmModelConfig | null): LlmModelFormValues {
     frequencyPenalty: current.parameters.frequencyPenalty,
     presencePenalty: current.parameters.presencePenalty,
     stop: current.parameters.stop,
+    endpointUrl: current.endpointUrl ?? '',
+    authMethod: (current.authMethod === 'api_key' || current.authMethod === 'mtls' ? current.authMethod : 'none') as 'api_key' | 'mtls' | 'none',
+    authConfig: Object.fromEntries(
+      Object.entries(current.authConfig ?? {}).map(([k, v]) => [k, String(v ?? '')]),
+    ),
+    timeoutMs: typeof current.timeoutMs === 'number' ? current.timeoutMs : undefined,
   }
 }
 
@@ -112,7 +127,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
-  return {
+  const payload: CreateLlmModelInput = {
     name: values.name.trim(),
     provider: values.provider,
     modelName: values.modelName.trim(),
@@ -127,6 +142,18 @@ function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
     },
     isDefault: false,
   }
+
+  if (values.provider === 'private_cloud') {
+    payload.endpointUrl = values.endpointUrl || undefined
+    payload.authMethod = values.authMethod || undefined
+    payload.authConfig = values.authConfig && Object.keys(values.authConfig).length > 0
+      ? values.authConfig
+      : undefined
+    payload.timeoutMs = values.timeoutMs
+    payload.apiKeyId = null
+  }
+
+  return payload
 }
 
 function TagInput({ tags, onChange, placeholder = '输入后回车添加 stop token' }: TagInputProps) {
@@ -245,7 +272,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
   const [selectedConfigId, setSelectedConfigId] = useState(config?.llmConfigId ?? '')
 
   const form = useForm<LlmModelFormValues>({
-    resolver: zodResolver(llmModelFormSchema),
+    resolver: zodResolver(llmModelFormSchema) as Resolver<LlmModelFormValues>,
     defaultValues: toFormValues(config),
   })
 
@@ -294,7 +321,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
   }, [form, normalizedConfig])
 
   useEffect(() => {
-    if (selectedProvider === 'custom') {
+    if (selectedProvider === 'custom' || selectedProvider === 'private_cloud') {
       return
     }
 
@@ -368,7 +395,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
     [form, llmModelsQuery.data, notify, onApply],
   )
 
-  const handleSubmit = form.handleSubmit(async (values: LlmModelFormValues) => {
+  const handleSubmit = form.handleSubmit(async (values) => {
     try {
       const payload = buildCreatePayload(values)
       const currentConfigId = selectedConfigId.trim()
@@ -478,52 +505,60 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>模型</Label>
-                {selectedProvider === 'custom' ? (
-                  <Input placeholder="输入自定义模型名称" {...form.register('modelName')} />
-                ) : (
-                  <Controller
-                    control={form.control}
-                    name="modelName"
-                    render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <option value="">请选择模型</option>
-                        {availableModels.map((model) => (
-                          <option key={model} value={model}>
-                            {model}
-                          </option>
-                        ))}
-                      </Select>
+              {selectedProvider === 'private_cloud' ? (
+                <div className="sm:col-span-2">
+                  <PrivateCloudConfigSection />
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>模型</Label>
+                    {selectedProvider === 'custom' ? (
+                      <Input placeholder="输入自定义模型名称" {...form.register('modelName')} />
+                    ) : (
+                      <Controller
+                        control={form.control}
+                        name="modelName"
+                        render={({ field }) => (
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <option value="">请选择模型</option>
+                            {availableModels.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
+                      />
                     )}
-                  />
-                )}
-                {form.formState.errors.modelName ? (
-                  <p className="text-[11px] text-error">{form.formState.errors.modelName.message}</p>
-                ) : null}
-              </div>
+                    {form.formState.errors.modelName ? (
+                      <p className="text-[11px] text-error">{form.formState.errors.modelName.message}</p>
+                    ) : null}
+                  </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label>API Key</Label>
-                <Controller
-                  control={form.control}
-                  name="apiKeyId"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <option value="">暂不绑定 API Key</option>
-                      {providerApiKeys.map((apiKey) => (
-                        <option key={apiKey.id} value={apiKey.id}>
-                          {apiKey.label} / {apiKey.keyPreview}
-                          {apiKey.isDefault ? ' / 默认' : ''}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                />
-                {selectedApiKeyId ? null : (
-                  <p className="text-[11px] text-warning">未选择 API Key 时，节点会进入 warning 视觉状态。</p>
-                )}
-              </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>API Key</Label>
+                    <Controller
+                      control={form.control}
+                      name="apiKeyId"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <option value="">暂不绑定 API Key</option>
+                          {providerApiKeys.map((apiKey) => (
+                            <option key={apiKey.id} value={apiKey.id}>
+                              {apiKey.label} / {apiKey.keyPreview}
+                              {apiKey.isDefault ? ' / 默认' : ''}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    />
+                    {selectedApiKeyId ? null : (
+                      <p className="text-[11px] text-warning">未选择 API Key 时，节点会进入 warning 视觉状态。</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">

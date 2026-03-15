@@ -50,6 +50,10 @@ function createConfig(overrides: Partial<LlmModelConfig> = {}): LlmModelConfig {
     modelName: 'gpt-4o',
     parameters: {},
     apiKeyId: null,
+    endpointUrl: null,
+    authMethod: null,
+    authConfig: null,
+    timeoutMs: null,
     isDefault: false,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -145,6 +149,28 @@ describe('PiAiAdapter', () => {
         expect.objectContaining({ baseURL: 'https://my-llm.example.com/v1' }),
       );
     });
+
+    it('应当为 private_cloud 使用 endpointUrl 和 apiKey 创建模型', async () => {
+      const result = await adapter.getModel(
+        createConfig({
+          provider: 'private_cloud',
+          modelName: 'private-model',
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 45_000,
+        }),
+        'sk-private-cloud',
+      );
+
+      expect(result).toBeTypeOf('object');
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'sk-private-cloud',
+          baseURL: 'https://private-cloud.example.com/v1',
+        }),
+      );
+    });
   });
 
   describe('getModel - 错误处理', () => {
@@ -190,10 +216,49 @@ describe('PiAiAdapter', () => {
       ).rejects.toBeInstanceOf(DefaultApiKeyNotConfiguredException);
     });
 
+    it('应当在 private_cloud 非 api_key 认证时跳过 API Key 解析', async () => {
+      const result = await adapter.getModel(
+        createConfig({
+          provider: 'private_cloud',
+          modelName: 'private-model',
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'none',
+          authConfig: {},
+        }),
+      );
+
+      expect(result).toBeTypeOf('object');
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'not-needed',
+          baseURL: 'https://private-cloud.example.com/v1',
+        }),
+      );
+    });
+
     it('应当在 custom 缺少 baseUrl 时抛出 LlmProviderException', async () => {
       await expect(
         adapter.getModel(createConfig({ provider: 'custom' }), 'sk-key'),
       ).rejects.toBeInstanceOf(LlmProviderException);
+    });
+
+    it('应当在 private_cloud 缺少 endpointUrl 时抛出 LlmProviderException', async () => {
+      await expect(
+        adapter.getModel(
+          createConfig({
+            provider: 'private_cloud',
+            endpointUrl: null,
+            authMethod: 'api_key',
+            authConfig: { apiKey: 'secret-key' },
+          }),
+          'sk-key',
+        ),
+      ).rejects.toMatchObject({
+        detail: 'Private Cloud 提供商必须指定 endpointUrl',
+      });
     });
 
     it('应当在不支持的提供商时抛出 LlmProviderException', async () => {
@@ -281,6 +346,15 @@ describe('PiAiAdapter', () => {
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: 'https://my-proxy.com/v1' }),
       );
+    });
+
+    it('应当将 401 和 403 视为不可重试错误', () => {
+      const isRetryableError = (
+        adapter as unknown as { isRetryableError: (error: unknown) => boolean }
+      ).isRetryableError.bind(adapter);
+
+      expect(isRetryableError({ status: 401 })).toBe(false);
+      expect(isRetryableError({ statusCode: 403 })).toBe(false);
     });
   });
 });

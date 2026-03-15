@@ -1,5 +1,7 @@
 export type {
   ApiKeyInfo,
+  AuthMethod,
+  FetchModelsInput,
   LlmProvider,
   LlmProviderInfo,
   LlmParameters,
@@ -8,8 +10,13 @@ export type {
   LlmNodeDataPatch,
   CreateLlmModelInput,
   UpdateLlmModelInput,
+  PrivateCloudAuthConfig,
+  PrivateCloudModelInfo,
+  TestConnectionInput,
+  TestConnectionResult,
 } from './types'
 export {
+  AUTH_METHODS,
   DEFAULT_LLM_PARAMETERS,
   LLM_PROVIDERS,
   LLM_PROVIDER_IDS,
@@ -28,6 +35,8 @@ export {
   updateLlmModel,
   fetchLlmProviders,
   fetchApiKeys,
+  testPrivateCloudConnection,
+  fetchPrivateCloudModels,
 } from './api/llmModelApi'
 export {
   useCreateLlmModel,
@@ -36,6 +45,9 @@ export {
   useLlmModels,
   useLlmProviders,
   useUpdateLlmModel,
+  useTestPrivateCloudConnection,
+  usePrivateCloudModels,
 } from './hooks/useLlmModels'
 export { ProviderIcon } from './components/ProviderIcon'
 export { LlmModelConfigPanel } from './components/LlmModelConfigPanel'
+export { PrivateCloudConfigSection } from './components/PrivateCloudConfigSection'

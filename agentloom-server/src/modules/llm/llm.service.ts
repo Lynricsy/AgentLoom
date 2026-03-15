@@ -64,6 +64,10 @@ export class LlmService {
         parameters: dto.parameters ?? {},
         apiKeyId: dto.apiKeyId,
         isDefault: dto.isDefault ?? false,
+        endpointUrl: dto.endpointUrl ?? null,
+        authMethod: dto.authMethod ?? null,
+        authConfig: dto.authConfig ?? null,
+        timeoutMs: dto.timeoutMs ?? null,
       })
       .returning();
 
@@ -126,12 +130,18 @@ export class LlmService {
       await this.clearDefaultInOrg(existing.orgId);
     }
 
+    const updateData: Record<string, unknown> = {
+      ...dto,
+      updatedAt: new Date(),
+    };
+    if ('endpointUrl' in dto) updateData.endpointUrl = dto.endpointUrl ?? null;
+    if ('authMethod' in dto) updateData.authMethod = dto.authMethod ?? null;
+    if ('authConfig' in dto) updateData.authConfig = dto.authConfig ?? null;
+    if ('timeoutMs' in dto) updateData.timeoutMs = dto.timeoutMs ?? null;
+
     const [result] = await this.tenantDb
       .update(llmModelConfigs)
-      .set({
-        ...dto,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(
         and(eq(llmModelConfigs.id, id), eq(llmModelConfigs.tenantId, tenantId)),
       )

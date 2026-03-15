@@ -24,48 +24,66 @@ export class PiAiAdapter {
   ) {}
 
   async getModel(config: LlmModelConfig, apiKey?: string): Promise<unknown> {
-    const resolvedApiKey = apiKey ?? (await this.resolveApiKey(config));
+    // private_cloud: 仅 authMethod=api_key 时解密 key，否则跳过
+    const resolvedApiKey =
+      config.provider === 'private_cloud' && config.authMethod !== 'api_key'
+        ? undefined
+        : apiKey ?? (await this.resolveApiKey(config));
+
     const provider = await this.resolveProvider(
       config.provider,
       resolvedApiKey,
-      config.parameters,
+      config,
     );
 
-    return this.wrapModelWithRetry(provider(config.modelName), config.provider);
+    // private_cloud 使用配置的超时时间
+    const timeout =
+      config.provider === 'private_cloud'
+        ? (config.timeoutMs ?? TIMEOUT_MS)
+        : TIMEOUT_MS;
+
+    return this.wrapModelWithRetry(
+      provider(config.modelName),
+      config.provider,
+      timeout,
+    );
   }
 
   private async resolveProvider(
     providerName: string,
-    apiKey: string,
-    parameters: unknown,
+    apiKey: string | undefined,
+    config: LlmModelConfig,
   ): Promise<LanguageModelProvider> {
-    const baseUrl = (parameters as Record<string, unknown>)?.baseUrl as
+    const baseUrl = (config.parameters as Record<string, unknown>)?.baseUrl as
       | string
       | undefined;
 
     switch (providerName) {
       case 'openai': {
         const { createOpenAI } = await import('@ai-sdk/openai');
-        return createOpenAI({ apiKey, ...(baseUrl && { baseURL: baseUrl }) });
+        return createOpenAI({
+          apiKey: apiKey!,
+          ...(baseUrl && { baseURL: baseUrl }),
+        });
       }
       case 'anthropic': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
         return createAnthropic({
-          apiKey,
+          apiKey: apiKey!,
           ...(baseUrl && { baseURL: baseUrl }),
         });
       }
       case 'google': {
         const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
         return createGoogleGenerativeAI({
-          apiKey,
+          apiKey: apiKey!,
           ...(baseUrl && { baseURL: baseUrl }),
         });
       }
       case 'deepseek': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         return createOpenAI({
-          apiKey,
+          apiKey: apiKey!,
           baseURL: baseUrl ?? 'https://api.deepseek.com/v1',
         });
       }
@@ -77,7 +95,20 @@ export class PiAiAdapter {
             'Custom 提供商必须在 parameters 中指定 baseUrl',
           );
         }
-        return createOpenAI({ apiKey, baseURL: baseUrl });
+        return createOpenAI({ apiKey: apiKey!, baseURL: baseUrl });
+      }
+      case 'private_cloud': {
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        if (!config.endpointUrl) {
+          throw new LlmProviderException(
+            providerName,
+            'Private Cloud 提供商必须指定 endpointUrl',
+          );
+        }
+        return createOpenAI({
+          apiKey: apiKey ?? 'not-needed',
+          baseURL: config.endpointUrl,
+        });
       }
       default:
         throw new LlmProviderException(
@@ -90,6 +121,7 @@ export class PiAiAdapter {
   private async executeWithRetry<T>(
     fn: () => Promise<T> | T,
     provider: string,
+    timeout = TIMEOUT_MS,
   ): Promise<T> {
     let lastError: unknown;
 
@@ -97,7 +129,7 @@ export class PiAiAdapter {
       try {
         return await this.withTimeout(
           Promise.resolve().then(fn),
-          TIMEOUT_MS,
+          timeout,
           provider,
         );
       } catch (error) {
@@ -157,6 +189,7 @@ export class PiAiAdapter {
     const statusCode =
       (error as { status?: number; statusCode?: number })?.status ??
       (error as { status?: number; statusCode?: number })?.statusCode;
+    if (statusCode === 401 || statusCode === 403) return false;
     return statusCode !== undefined && statusCode >= 500;
   }
 
@@ -188,7 +221,11 @@ export class PiAiAdapter {
     );
   }
 
-  private wrapModelWithRetry(model: unknown, provider: string): unknown {
+  private wrapModelWithRetry(
+    model: unknown,
+    provider: string,
+    timeout = TIMEOUT_MS,
+  ): unknown {
     if (!this.isWrappableModel(model)) {
       return model;
     }
@@ -205,6 +242,7 @@ export class PiAiAdapter {
           this.executeWithRetry(
             () => Reflect.apply(value, target, args),
             provider,
+            timeout,
           );
       },
     });

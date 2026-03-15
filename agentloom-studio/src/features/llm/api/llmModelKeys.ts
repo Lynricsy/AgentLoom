@@ -1,4 +1,5 @@
-/** TanStack Query 键工厂 */
+import type { FetchModelsInput, TestConnectionInput } from '../types'
+
 export const llmModelKeys = {
   all: ['llm-models'] as const,
   lists: () => [...llmModelKeys.all, 'list'] as const,
@@ -7,4 +8,6 @@ export const llmModelKeys = {
   detail: (id: string) => [...llmModelKeys.details(), id] as const,
   providers: () => [...llmModelKeys.all, 'providers'] as const,
   apiKeys: () => [...llmModelKeys.all, 'api-keys'] as const,
+  privateCloudConnection: (input: TestConnectionInput) => [...llmModelKeys.all, 'private-cloud-connection', input] as const,
+  privateCloudModels: (input: FetchModelsInput) => [...llmModelKeys.all, 'private-cloud-models', input] as const,
 }

@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { LLM_PROVIDERS } from './create-llm-model-config.dto';
+import { AUTH_METHODS, LLM_PROVIDERS } from './create-llm-model-config.dto';
 
 const updateLlmModelConfigSchema = z.object({
   name: z
@@ -22,6 +22,19 @@ const updateLlmModelConfigSchema = z.object({
   parameters: z.record(z.string(), z.unknown()).optional(),
   apiKeyId: z.string().uuid('API Key ID 格式无效').nullish(),
   isDefault: z.boolean().optional(),
+  endpointUrl: z
+    .string()
+    .url('端点 URL 格式无效')
+    .max(2048, '端点 URL 不能超过 2048 个字符')
+    .nullish(),
+  authMethod: z.enum(AUTH_METHODS).nullish(),
+  authConfig: z.record(z.string(), z.unknown()).nullish(),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000, '超时时间不能小于 1000ms')
+    .max(300000, '超时时间不能超过 300000ms')
+    .nullish(),
 });
 
 export class UpdateLlmModelConfigDto extends createZodDto(

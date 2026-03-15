@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Bot, Globe, Search, Settings, Sparkles, type LucideIcon } from 'lucide-react'
+import { Bot, Globe, Search, Server, Settings, Sparkles, type LucideIcon } from 'lucide-react'
 import type { LlmProvider } from '../types'
 
 const PROVIDER_ICONS: Record<LlmProvider, LucideIcon> = {
@@ -8,6 +8,7 @@ const PROVIDER_ICONS: Record<LlmProvider, LucideIcon> = {
   google: Globe,
   deepseek: Search,
   custom: Settings,
+  private_cloud: Server,
 }
 
 interface ProviderIconProps {

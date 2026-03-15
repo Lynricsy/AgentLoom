@@ -58,6 +58,10 @@ function mockConfig(overrides: Record<string, unknown> = {}) {
     modelName: 'gpt-4o',
     parameters: {},
     apiKeyId: null,
+    endpointUrl: null,
+    authMethod: null,
+    authConfig: null,
+    timeoutMs: null,
     isDefault: false,
     createdAt: NOW,
     updatedAt: NOW,
@@ -125,6 +129,56 @@ describe('LlmService', () => {
           name: 'My GPT Config',
           provider: 'openai',
           modelName: 'gpt-4o',
+        }),
+      );
+    });
+
+    it('应当在创建 private_cloud 配置时写入新增列', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const insertChain = createInsertChain([
+        mockConfig({
+          provider: 'private_cloud',
+          modelName: 'private-model',
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 30_000,
+        }),
+      ]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      const result = await service.create(
+        {
+          name: 'Private Cloud Config',
+          provider: 'private_cloud',
+          modelName: 'private-model',
+          parameters: {},
+          isDefault: false,
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 30_000,
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result.provider).toBe('private_cloud');
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orgId: ORG_ID,
+          tenantId: TENANT_ID,
+          name: 'Private Cloud Config',
+          provider: 'private_cloud',
+          modelName: 'private-model',
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 30_000,
         }),
       );
     });
@@ -260,6 +314,94 @@ describe('LlmService', () => {
         TENANT_ID,
       );
       expect(result.modelName).toBe('gpt-4o-mini');
+    });
+
+    it('应当在更新时写入 private_cloud 新增列', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+      const updateChain = createUpdateChain([
+        mockConfig({
+          provider: 'private_cloud',
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 45_000,
+        }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.update(
+        CONFIG_ID,
+        {
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 45_000,
+        },
+        TENANT_ID,
+      );
+
+      expect(result.endpointUrl).toBe('https://private-cloud.example.com/v1');
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          authConfig: { apiKey: 'secret-key' },
+          timeoutMs: 45_000,
+          updatedAt: NOW,
+        }),
+      );
+    });
+
+    it('应当在更新时允许将 private_cloud 新增列清空为 null', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          mockConfig({
+            endpointUrl: 'https://private-cloud.example.com/v1',
+            authMethod: 'mtls',
+            authConfig: { clientCert: 'cert-data' },
+            timeoutMs: 60_000,
+          }),
+        ]),
+      );
+
+      const updateChain = createUpdateChain([
+        mockConfig({
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
+        }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.update(
+        CONFIG_ID,
+        {
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
+        },
+        TENANT_ID,
+      );
+
+      expect(result.endpointUrl).toBeNull();
+      expect(result.authMethod).toBeNull();
+      expect(result.authConfig).toBeNull();
+      expect(result.timeoutMs).toBeNull();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
+          updatedAt: NOW,
+        }),
+      );
     });
 
     it('应当在名称冲突时抛出 409', async () => {
