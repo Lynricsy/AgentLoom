@@ -12,6 +12,7 @@ import { knowledgeBaseDetailRoute } from "./settings/knowledge-bases/$knowledgeB
 import { executionDebugRoute } from "./executions/$executionId";
 import { toolLibraryRoute } from "./settings/tool-library";
 import { templatesRoute } from "./templates";
+import { marketplaceRoute } from "./marketplace";
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -35,6 +36,12 @@ function RootLayout() {
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               模板
+            </Link>
+            <Link
+              to="/marketplace"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              市场
             </Link>
             <Link
               to="/settings/tool-library"
@@ -68,4 +75,5 @@ export const routeTree = rootRoute.addChildren([
   knowledgeBaseDetailRoute,
   toolLibraryRoute,
   templatesRoute,
+  marketplaceRoute,
 ]);
