@@ -34,6 +34,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import {
   marketplaceListings,
+  marketplaceReviews,
   workflowDefinitions,
   workflowExecutions,
   workflowVersions,
@@ -533,6 +534,419 @@ describe('Marketplace E2E', () => {
       executionCompletedAt,
     };
   }
+
+  async function seedListedMarketplaceListing(options: {
+    owner: SeededTenant;
+    workflow?: SeededWorkflow;
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    coverImageUrl?: string | null;
+    category?:
+      | 'analysis'
+      | 'content'
+      | 'development'
+      | 'automation'
+      | 'reporting'
+      | null;
+    useCount?: number;
+    avgRating?: string | null;
+    reviewCount?: number;
+    publishedAt?: Date;
+    snapshot?: WorkflowVersionSnapshot;
+  }) {
+    const workflow =
+      options.workflow ??
+      (await seedWorkflowForMarketplace(options.owner.tenantId, options.owner.user.id, {
+        snapshot: options.snapshot,
+      }));
+    const listingId = crypto.randomUUID();
+    const publishedAt = options.publishedAt ?? new Date();
+
+    await drizzleDb.insert(marketplaceListings).values({
+      id: listingId,
+      workflowVersionId: workflow.versionId,
+      tenantId: options.owner.tenantId,
+      title:
+        options.title ?? `Marketplace Listing ${crypto.randomUUID().slice(0, 8)}`,
+      summary:
+        options.summary ??
+        '这是一个用于 Marketplace 浏览与安装测试的公开工作流摘要，包含足够长的描述内容。',
+      tags: options.tags ?? ['analysis', 'marketplace'],
+      coverImageUrl: options.coverImageUrl ?? null,
+      category: options.category ?? 'analysis',
+      useCount: options.useCount ?? 0,
+      avgRating: options.avgRating ?? null,
+      reviewCount: options.reviewCount ?? 0,
+      status: 'listed',
+      reviewResult: null,
+      submittedBy: options.owner.user.id,
+      submittedAt: publishedAt,
+      publishedAt,
+      unlistedAt: null,
+      createdAt: publishedAt,
+      updatedAt: publishedAt,
+    });
+
+    return { listingId, workflow };
+  }
+
+  async function seedMarketplaceReview(options: {
+    listingId: string;
+    userId: string;
+    rating: number;
+    content?: string;
+    createdAt?: Date;
+  }) {
+    const reviewId = crypto.randomUUID();
+    const createdAt = options.createdAt ?? new Date();
+
+    await drizzleDb.insert(marketplaceReviews).values({
+      id: reviewId,
+      listingId: options.listingId,
+      userId: options.userId,
+      rating: options.rating,
+      content: options.content ?? null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    return { reviewId, createdAt };
+  }
+
+  it('allows anonymous users to browse listed marketplace listings', async () => {
+    const owner = await seedTenant('marketplace-browse-public');
+    const seeded = await seedListedMarketplaceListing({
+      owner,
+      title: 'Public Market Signals',
+      category: 'analysis',
+      useCount: 7,
+      avgRating: '4.70',
+      reviewCount: 3,
+    });
+
+    const response = await request(app.getHttpServer()).get(
+      `${MARKETPLACE_BASE_PATH}/browse`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      data: [
+        expect.objectContaining({
+          id: seeded.listingId,
+          title: 'Public Market Signals',
+          category: 'analysis',
+          useCount: 7,
+          avgRating: '4.70',
+          reviewCount: 3,
+          author: expect.objectContaining({
+            id: owner.user.id,
+            displayName: owner.user.email,
+          }),
+        }),
+      ],
+    });
+  });
+
+  it('supports public browse filters for category, search, and sort', async () => {
+    const owner = await seedTenant('marketplace-browse-filters');
+
+    const first = await seedListedMarketplaceListing({
+      owner,
+      title: 'AI insights alpha',
+      summary: 'insights summary alpha',
+      category: 'analysis',
+      avgRating: '4.80',
+      reviewCount: 11,
+      useCount: 9,
+    });
+    const second = await seedListedMarketplaceListing({
+      owner,
+      title: 'Market watcher beta',
+      summary: 'deep insights for operations teams',
+      category: 'analysis',
+      avgRating: '4.20',
+      reviewCount: 5,
+      useCount: 20,
+    });
+    await seedListedMarketplaceListing({
+      owner,
+      title: 'Reporting assistant gamma',
+      summary: 'insights for reporting only',
+      category: 'reporting',
+      avgRating: '5.00',
+      reviewCount: 2,
+      useCount: 30,
+    });
+
+    const response = await request(app.getHttpServer()).get(
+      `${MARKETPLACE_BASE_PATH}/browse?category=analysis&search=insights&sort=rating`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(2);
+    expect(response.body.data.map((item: { id: string }) => item.id)).toEqual([
+      first.listingId,
+      second.listingId,
+    ]);
+  });
+
+  it('returns public listing detail with definition and reviews', async () => {
+    const owner = await seedTenant('marketplace-browse-detail-owner');
+    const reviewer = await seedTenant('marketplace-browse-detail-reviewer');
+    const snapshot = {
+      nodes: [
+        {
+          id: 'detail-node-1',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { label: 'Detail Agent' },
+        },
+      ],
+      edges: [],
+      viewport: DEFAULT_VIEWPORT,
+      inputSchema: {
+        version: 1,
+        collectionMode: 'form' as const,
+        fields: [],
+      },
+      metadata: {
+        nodeCount: 1,
+        edgeCount: 0,
+        createdFromVersion: 1,
+      },
+    } satisfies WorkflowVersionSnapshot;
+    const seeded = await seedListedMarketplaceListing({
+      owner,
+      title: 'Detail Listing',
+      category: 'automation',
+      avgRating: '5.00',
+      reviewCount: 1,
+      snapshot,
+    });
+
+    await seedMarketplaceReview({
+      listingId: seeded.listingId,
+      userId: reviewer.user.id,
+      rating: 5,
+      content: '公开详情查看正常',
+    });
+
+    const response = await request(app.getHttpServer()).get(
+      `${MARKETPLACE_BASE_PATH}/browse/${seeded.listingId}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: seeded.listingId,
+      workflowVersionId: seeded.workflow.versionId,
+      title: 'Detail Listing',
+      category: 'automation',
+      definition: {
+        nodes: snapshot.nodes,
+        edges: snapshot.edges,
+        viewport: DEFAULT_VIEWPORT,
+        inputSchema: snapshot.inputSchema,
+      },
+      reviews: [
+        expect.objectContaining({
+          rating: 5,
+          content: '公开详情查看正常',
+          author: expect.objectContaining({
+            id: reviewer.user.id,
+            displayName: reviewer.user.email,
+          }),
+        }),
+      ],
+    });
+  });
+
+  it('returns paginated public listing reviews', async () => {
+    const owner = await seedTenant('marketplace-public-reviews-owner');
+    const reviewerA = await seedTenant('marketplace-public-reviews-a');
+    const reviewerB = await seedTenant('marketplace-public-reviews-b');
+    const seeded = await seedListedMarketplaceListing({
+      owner,
+      title: 'Review Listing',
+      avgRating: '4.50',
+      reviewCount: 2,
+    });
+
+    await seedMarketplaceReview({
+      listingId: seeded.listingId,
+      userId: reviewerA.user.id,
+      rating: 5,
+      content: '最新评论',
+      createdAt: new Date('2025-01-02T00:00:00.000Z'),
+    });
+    const olderReview = await seedMarketplaceReview({
+      listingId: seeded.listingId,
+      userId: reviewerB.user.id,
+      rating: 4,
+      content: '较早评论',
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer()).get(
+      `${MARKETPLACE_BASE_PATH}/browse/${seeded.listingId}/reviews?page=2&pageSize=1`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      total: 2,
+      page: 2,
+      pageSize: 1,
+      data: [
+        expect.objectContaining({
+          id: olderReview.reviewId,
+          rating: 4,
+          content: '较早评论',
+        }),
+      ],
+    });
+  });
+
+  it('allows operator installation but blocks viewer installation', async () => {
+    const sourceOwner = await seedTenant('marketplace-install-source');
+    const seeded = await seedListedMarketplaceListing({
+      owner: sourceOwner,
+      title: 'Installable Listing',
+      summary: '用于验证一键安装的公开摘要。',
+      useCount: 2,
+    });
+    const targetOwner = await seedTenant('marketplace-install-target-owner');
+    const operator = await seedTenantMember({
+      prefix: 'marketplace-install-operator',
+      tenantId: targetOwner.tenantId,
+      organizationId: targetOwner.organizationId,
+      invitedBy: targetOwner.user.id,
+      role: 'operator',
+    });
+    const viewer = await seedTenantMember({
+      prefix: 'marketplace-install-viewer',
+      tenantId: targetOwner.tenantId,
+      organizationId: targetOwner.organizationId,
+      invitedBy: targetOwner.user.id,
+      role: 'viewer',
+    });
+
+    const installResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/install`)
+      .set(operator.headers)
+      .send({});
+
+    expect(installResponse.status).toBe(201);
+    expect(installResponse.body.data).toMatchObject({
+      tenantId: targetOwner.tenantId,
+      name: 'Installable Listing',
+      description: '用于验证一键安装的公开摘要。',
+    });
+
+    const installedWorkflowId = installResponse.body.data.id as string;
+    const [installedWorkflow] = await drizzleDb
+      .select()
+      .from(workflowDefinitions)
+      .where(eq(workflowDefinitions.id, installedWorkflowId));
+
+    expect(installedWorkflow).toMatchObject({
+      id: installedWorkflowId,
+      tenantId: targetOwner.tenantId,
+      name: 'Installable Listing',
+      description: '用于验证一键安装的公开摘要。',
+      createdBy: operator.user.id,
+    });
+    expect(
+      (installedWorkflow?.metadata as { cloned_from_marketplace?: { listingId: string } })
+        ?.cloned_from_marketplace?.listingId,
+    ).toBe(seeded.listingId);
+
+    const [updatedListing] = await drizzleDb
+      .select()
+      .from(marketplaceListings)
+      .where(eq(marketplaceListings.id, seeded.listingId));
+
+    expect(updatedListing?.useCount).toBe(3);
+
+    const viewerResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/install`)
+      .set(viewer.headers)
+      .send({});
+
+    expect(viewerResponse.status).toBe(403);
+    expect(viewerResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/insufficient-permissions',
+      status: 403,
+    });
+  });
+
+  it('allows authenticated users to submit marketplace reviews and updates aggregates', async () => {
+    const owner = await seedTenant('marketplace-review-submit-owner');
+    const reviewer = await seedTenant('marketplace-review-submit-reviewer');
+    const seeded = await seedListedMarketplaceListing({
+      owner,
+      title: 'Reviewable Listing',
+      useCount: 1,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/reviews`)
+      .set(reviewer.headers)
+      .send({ rating: 5, content: '值得推荐' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      listingId: seeded.listingId,
+      rating: 5,
+      content: '值得推荐',
+      author: expect.objectContaining({
+        id: reviewer.user.id,
+        displayName: reviewer.user.email,
+      }),
+    });
+
+    const [listing] = await drizzleDb
+      .select()
+      .from(marketplaceListings)
+      .where(eq(marketplaceListings.id, seeded.listingId));
+    const reviews = await drizzleDb
+      .select()
+      .from(marketplaceReviews)
+      .where(eq(marketplaceReviews.listingId, seeded.listingId));
+
+    expect(listing).toMatchObject({
+      avgRating: '5.00',
+      reviewCount: 1,
+    });
+    expect(reviews).toHaveLength(1);
+  });
+
+  it('returns 409 when the same user submits a duplicate marketplace review', async () => {
+    const owner = await seedTenant('marketplace-review-duplicate-owner');
+    const reviewer = await seedTenant('marketplace-review-duplicate-reviewer');
+    const seeded = await seedListedMarketplaceListing({ owner });
+
+    const firstResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/reviews`)
+      .set(reviewer.headers)
+      .send({ rating: 4, content: '第一次评论' });
+
+    expect(firstResponse.status).toBe(201);
+
+    const secondResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/reviews`)
+      .set(reviewer.headers)
+      .send({ rating: 5, content: '重复评论' });
+
+    expect(secondResponse.status).toBe(409);
+    expect(secondResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/marketplace-review-conflict',
+      title: 'Review Already Exists',
+      status: 409,
+    });
+  });
 
   it('covers submit → list → get → unlist → relist lifecycle', async () => {
     const owner = await seedTenant('marketplace-lifecycle');
