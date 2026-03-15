@@ -183,6 +183,11 @@ export {
   type NewWorkflowShare,
 } from './workflow-shares.schema';
 export {
+  platformApiTokens,
+  type PlatformApiToken,
+  type NewPlatformApiToken,
+} from './platform-api-tokens.schema';
+export {
   createDirectTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
