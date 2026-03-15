@@ -21,6 +21,7 @@ import {
 } from 'd3-force'
 import { Loader2, AlertCircle, GitBranch } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import { useEvidenceGraph } from '../api/evidenceQueries'
 import { useEvidenceUiStore } from '../stores/evidenceUiStore'
 import type {
@@ -50,6 +51,26 @@ const edgeTypes: EdgeTypes = {
 }
 
 type LayoutType = 'dagre' | 'force'
+
+function buildFlowEdges(
+  graphNodes: AgentGraphNodeType[],
+  graphEdges: AgentGraphEdgeType[],
+): AgentGraphFlowEdge[] {
+  const nodeNameMap = new Map(graphNodes.map((node) => [node.id, node.nodeName]))
+
+  return graphEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    type: 'agentGraphEdge' as const,
+    data: {
+      ...edge,
+      sourceNodeName: nodeNameMap.get(edge.sourceNodeId) ?? edge.sourceNodeId,
+      targetNodeName: nodeNameMap.get(edge.targetNodeId) ?? edge.targetNodeId,
+      isHighlighted: false,
+    } satisfies AgentGraphEdgeFlowData,
+  }))
+}
 
 function applyDagreLayout(
   graphNodes: AgentGraphNodeType[],
@@ -83,16 +104,7 @@ function applyDagreLayout(
     }
   })
 
-  const edges: AgentGraphFlowEdge[] = graphEdges.map((edge) => ({
-    id: edge.id,
-    source: edge.sourceNodeId,
-    target: edge.targetNodeId,
-    type: 'agentGraphEdge' as const,
-    data: {
-      ...edge,
-      isHighlighted: false,
-    } satisfies AgentGraphEdgeFlowData,
-  }))
+  const edges = buildFlowEdges(graphNodes, graphEdges)
 
   return { nodes, edges }
 }
@@ -144,13 +156,7 @@ function applyForceLayout(
     }
   })
 
-  const edges: AgentGraphFlowEdge[] = graphEdges.map((edge) => ({
-    id: edge.id,
-    source: edge.sourceNodeId,
-    target: edge.targetNodeId,
-    type: 'agentGraphEdge' as const,
-    data: { ...edge, isHighlighted: false } satisfies AgentGraphEdgeFlowData,
-  }))
+  const edges = buildFlowEdges(graphNodes, graphEdges)
 
   return { nodes, edges }
 }
@@ -292,6 +298,22 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
       >
         <AlertCircle className="h-8 w-8" />
         <p className="text-sm">{error?.message ?? '加载溯源图失败'}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleRefresh()}
+          disabled={isRefreshing}
+          data-testid="evidence-graph-retry"
+        >
+          {isRefreshing ? (
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              重试中...
+            </>
+          ) : (
+            '重试加载'
+          )}
+        </Button>
       </div>
     )
   }

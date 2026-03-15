@@ -10,6 +10,7 @@ const EXPECTED_ROLES = ['viewer', 'operator', 'creator', 'admin', 'owner'];
 
 type EvidenceControllerHandlerName =
   | 'findByExecution'
+  | 'getEvidenceGraph'
   | 'getEvidenceChain'
   | 'findById'
   | 'verifyContentHash';
@@ -36,13 +37,89 @@ function createMockEvidenceService() {
   };
 }
 
+function createMockEvidenceGraphService() {
+  return {
+    buildGraph: vi.fn(),
+  };
+}
+
+function createGraphResponse() {
+  return {
+    nodes: [
+      {
+        id: 'graph-node-1',
+        nodeId: 'node-1',
+        nodeName: '规划节点',
+        nodeType: 'llm-agent',
+        executionStatus: 'completed',
+        evidenceCount: 2,
+        firstEvidenceAt: '2026-03-14T10:00:00.000Z',
+        lastEvidenceAt: '2026-03-14T10:05:00.000Z',
+      },
+    ],
+    edges: [
+      {
+        id: 'graph-edge-1',
+        sourceNodeId: 'graph-node-1',
+        targetNodeId: 'graph-node-2',
+        evidenceLinks: 1,
+        dataTypeSummary: 'text → json',
+      },
+    ],
+    timeline: [
+      {
+        timestamp: '2026-03-14T10:00:00.000Z',
+        type: 'node',
+        targetId: 'graph-node-1',
+        label: '规划节点 开始执行',
+      },
+    ],
+  };
+}
+
 describe('EvidenceController', () => {
   let controller: EvidenceController;
   let mockService: ReturnType<typeof createMockEvidenceService>;
+  let mockGraphService: ReturnType<typeof createMockEvidenceGraphService>;
 
   beforeEach(() => {
     mockService = createMockEvidenceService();
-    controller = new EvidenceController(mockService as never);
+    mockGraphService = createMockEvidenceGraphService();
+    controller = new EvidenceController(
+      mockService as never,
+      mockGraphService as never,
+    );
+  });
+
+  it('should delegate graph query to graph service and return graph data', async () => {
+    const graphResponse = createGraphResponse();
+    const mockRes = { header: vi.fn() };
+    mockGraphService.buildGraph.mockResolvedValue({
+      response: graphResponse,
+      cached: false,
+    });
+
+    await expect(
+      controller.getEvidenceGraph(TENANT_ID, EXECUTION_ID, mockRes as never),
+    ).resolves.toEqual({ data: graphResponse });
+
+    expect(mockGraphService.buildGraph).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+    );
+    expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'false');
+  });
+
+  it('should set graph X-Cache-Hit header to true on cache hit', async () => {
+    const mockRes = { header: vi.fn() };
+    mockGraphService.buildGraph.mockResolvedValue({
+      response: createGraphResponse(),
+      cached: true,
+    });
+
+    await controller.getEvidenceGraph(TENANT_ID, EXECUTION_ID, mockRes as never);
+
+    expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'true');
   });
 
   it('should delegate list queries with execution scope', async () => {
@@ -56,13 +133,14 @@ describe('EvidenceController', () => {
       controller.findByExecution(TENANT_ID, EXECUTION_ID, {
         page: 1,
         limit: 20,
+        includeChunkContent: false,
       }),
     ).resolves.toEqual(response);
 
     expect(mockService.findByExecution).toHaveBeenCalledWith(
       TENANT_ID,
       EXECUTION_ID,
-      { page: 1, limit: 20 },
+      { page: 1, limit: 20, includeChunkContent: false },
     );
   });
 
@@ -79,13 +157,20 @@ describe('EvidenceController', () => {
         limit: 20,
         sourceType: 'agent_decision',
         nodeId: 'node-abc',
+        includeChunkContent: false,
       }),
     ).resolves.toEqual(response);
 
     expect(mockService.findByExecution).toHaveBeenCalledWith(
       TENANT_ID,
       EXECUTION_ID,
-      { page: 1, limit: 20, sourceType: 'agent_decision', nodeId: 'node-abc' },
+      {
+        page: 1,
+        limit: 20,
+        sourceType: 'agent_decision',
+        nodeId: 'node-abc',
+        includeChunkContent: false,
+      },
     );
   });
 
@@ -254,6 +339,9 @@ describe('EvidenceController', () => {
   it('should expose viewer through owner roles on every endpoint', () => {
     expect(
       Reflect.getMetadata(ROLES_KEY, getHandler('findByExecution')),
+    ).toEqual(EXPECTED_ROLES);
+    expect(
+      Reflect.getMetadata(ROLES_KEY, getHandler('getEvidenceGraph')),
     ).toEqual(EXPECTED_ROLES);
     expect(
       Reflect.getMetadata(ROLES_KEY, getHandler('getEvidenceChain')),

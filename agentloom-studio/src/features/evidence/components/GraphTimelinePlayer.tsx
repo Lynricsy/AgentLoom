@@ -11,6 +11,16 @@ interface GraphTimelinePlayerProps {
 
 const INTERVAL_MS = 800
 
+function formatTimelineTimestamp(timestamp: string): string {
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) {
+    return timestamp
+  }
+
+  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+}
+
 export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
   timeline,
   onStepChange,
@@ -41,7 +51,8 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
 
         if (next >= totalSteps) {
           setIsPlaying(false)
-          return prev
+          onStepChange(-1)
+          return -1
         }
 
         onStepChange(next)
@@ -126,9 +137,20 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
       </span>
 
       {currentEntry && (
-        <span className="truncate text-[10px] text-foreground/80" data-testid="timeline-step-label">
-          {currentEntry.label}
-        </span>
+        <>
+          <span
+            className="truncate text-[10px] text-foreground/80"
+            data-testid="timeline-step-label"
+          >
+            {currentEntry.label}
+          </span>
+          <span
+            className="truncate text-[10px] text-muted-foreground tabular-nums"
+            data-testid="timeline-step-timestamp"
+          >
+            {formatTimelineTimestamp(currentEntry.timestamp)}
+          </span>
+        </>
       )}
     </div>
   )

@@ -242,7 +242,7 @@ function createGraphData(
         sourceNodeId: 'graph-node-1',
         targetNodeId: 'graph-node-2',
         evidenceLinks: 3,
-        dataTypeSummary: ['text → json'],
+        dataTypeSummary: 'text → json',
       },
     ],
     timeline: [createTimelineEntry()],
@@ -284,8 +284,10 @@ function createFlowEdge(
       id: 'graph-edge-1',
       sourceNodeId: 'graph-node-1',
       targetNodeId: 'graph-node-2',
+      sourceNodeName: '起始节点',
+      targetNodeName: '请求工具',
       evidenceLinks: 3,
-      dataTypeSummary: ['text → json'],
+      dataTypeSummary: 'text → json',
       isHighlighted: false,
     },
     ...overrides,
@@ -346,8 +348,10 @@ function renderEdge(
           id: 'edge-1',
           sourceNodeId: 'graph-node-1',
           targetNodeId: 'graph-node-2',
+          sourceNodeName: '起始节点',
+          targetNodeName: '请求工具',
           evidenceLinks: 3,
-          dataTypeSummary: ['text → json'],
+          dataTypeSummary: 'text → json',
           isHighlighted: false,
           ...data,
         }}
@@ -462,12 +466,21 @@ describe('EvidenceGraph components', () => {
       )
     })
 
-    it('高亮时显示 tooltip，并展示证据数量与数据类型摘要', () => {
-      renderEdge({ isHighlighted: true, evidenceLinks: 4, dataTypeSummary: ['text → json'] })
+    it('高亮时显示 tooltip，并展示源目标节点、证据数量与数据类型摘要', () => {
+      renderEdge({ isHighlighted: true, evidenceLinks: 4, dataTypeSummary: 'text → json' })
 
       const tooltip = screen.getByTestId('agent-graph-edge-tooltip-edge-1')
+      expect(tooltip).toHaveTextContent('起始节点 → 请求工具')
       expect(tooltip).toHaveTextContent('4 条证据链接')
       expect(tooltip).toHaveTextContent('text → json')
+    })
+
+    it('hover 边命中区域时显示 tooltip', () => {
+      renderEdge()
+
+      fireEvent.mouseEnter(screen.getByTestId('agent-graph-edge-hit-area-edge-1'))
+
+      expect(screen.getByTestId('agent-graph-edge-tooltip-edge-1')).toBeInTheDocument()
     })
 
     it('selected=true 时也会显示 tooltip', () => {
@@ -539,7 +552,7 @@ describe('EvidenceGraph components', () => {
       expect(onStepChange).toHaveBeenCalledWith(-1)
     })
 
-    it('播放到活动步骤时显示当前标签', async () => {
+    it('播放到活动步骤时显示当前标签与时间戳', async () => {
       render(
         <GraphTimelinePlayer
           timeline={[
@@ -558,6 +571,38 @@ describe('EvidenceGraph components', () => {
       expect(onStepChange).toHaveBeenCalledWith(0)
       expect(screen.getByTestId('timeline-step-info')).toHaveTextContent('1/2')
       expect(screen.getByTestId('timeline-step-label')).toHaveTextContent('开始执行')
+      expect(screen.getByTestId('timeline-step-timestamp')).toHaveTextContent(
+        '2026-03-14 10:00:00 UTC',
+      )
+    })
+
+    it('播放结束后自动重置到初始状态并清除高亮步骤', async () => {
+      render(
+        <GraphTimelinePlayer
+          timeline={[createTimelineEntry({ label: '唯一一步' })]}
+          onStepChange={onStepChange}
+        />,
+      )
+
+      fireEvent.click(screen.getByTestId('timeline-play'))
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(800)
+      })
+
+      expect(onStepChange).toHaveBeenNthCalledWith(1, 0)
+      expect(screen.getByTestId('timeline-step-info')).toHaveTextContent('1/1')
+      expect(screen.getByTestId('timeline-step-label')).toHaveTextContent('唯一一步')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(800)
+      })
+
+      expect(onStepChange).toHaveBeenLastCalledWith(-1)
+      expect(screen.getByTestId('timeline-step-info')).toHaveTextContent('0/1')
+      expect(screen.queryByTestId('timeline-step-label')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('timeline-step-timestamp')).not.toBeInTheDocument()
+      expect(screen.getByTestId('timeline-play')).toBeInTheDocument()
     })
   })
 
@@ -634,7 +679,7 @@ describe('EvidenceGraph components', () => {
       expect(screen.getByTestId('evidence-graph-loading')).toBeInTheDocument()
     })
 
-    it('错误时显示 error state 和错误消息', () => {
+    it('错误时显示 error state、错误消息与重试按钮，并允许重试', async () => {
       vi.mocked(useEvidenceGraph).mockReturnValue({
         data: undefined,
         isLoading: false,
@@ -647,6 +692,13 @@ describe('EvidenceGraph components', () => {
 
       expect(screen.getByTestId('evidence-graph-error')).toBeInTheDocument()
       expect(screen.getByText('图谱加载失败')).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('evidence-graph-retry'))
+        await Promise.resolve()
+      })
+
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
     })
 
     it('无节点时显示 empty state', () => {
@@ -699,6 +751,19 @@ describe('EvidenceGraph components', () => {
       expect(screen.getByTestId('graph-timeline-player')).toBeInTheDocument()
       expect(capturedReactFlowProps.nodes).toEqual(mockNodesState)
       expect(capturedReactFlowProps.edges).toEqual(mockEdgesState)
+
+      const graphEdgeCall = mockSetEdges.mock.calls.find((call) => Array.isArray(call[0]))
+      expect(graphEdgeCall).toBeDefined()
+      expect(graphEdgeCall?.[0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              sourceNodeName: '起始节点',
+              targetNodeName: '请求工具',
+            }),
+          }),
+        ]),
+      )
     })
   })
 })

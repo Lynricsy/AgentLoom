@@ -234,7 +234,7 @@ export interface AgentGraphEdge {
   sourceNodeId: string;
   targetNodeId: string;
   evidenceLinks: number;
-  dataTypeSummary: string[];
+  dataTypeSummary: string;
 }
 
 export interface GraphTimelineEntry {
