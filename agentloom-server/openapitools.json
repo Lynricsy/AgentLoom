@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/@openapitools/openapi-generator-cli/config.schema.json",
+  "spaces": 2,
+  "generator-cli": {
+    "version": "7.9.0",
+    "generators": {
+      "typescript": {
+        "generatorName": "typescript-fetch",
+        "output": "#{cwd}/sdk/typescript",
+        "glob": "sdk/openapi.json",
+        "additionalProperties": {
+          "npmName": "@agentloom/sdk",
+          "npmVersion": "1.0.0",
+          "supportsES6": true,
+          "typescriptThreePlus": true,
+          "withInterfaces": true
+        }
+      },
+      "python": {
+        "generatorName": "python",
+        "output": "#{cwd}/sdk/python",
+        "glob": "sdk/openapi.json",
+        "additionalProperties": {
+          "packageName": "agentloom_sdk",
+          "packageVersion": "1.0.0",
+          "projectName": "agentloom-sdk"
+        }
+      }
+    }
+  }
+}
