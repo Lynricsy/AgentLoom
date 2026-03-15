@@ -51,3 +51,14 @@ export class MarketplaceWorkflowVersionNotFoundException extends DomainException
     });
   }
 }
+
+export class MarketplaceReviewConflictException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/marketplace-review-conflict',
+      title: 'Review Already Exists',
+      status: HttpStatus.CONFLICT,
+      detail: 'You have already reviewed this listing',
+    });
+  }
+}

@@ -1,7 +1,12 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { MARKETPLACE_REVIEW_LIMITS } from '../../../database/schema';
+import {
+  MARKETPLACE_REVIEW_LIMITS,
+  marketplaceCategoryEnum,
+} from '../../../database/schema';
+
+const MarketplaceCategorySchema = z.enum(marketplaceCategoryEnum.enumValues);
 
 export const SubmitMarketplaceListingSchema = z.object({
   workflowVersionId: z.string().uuid(),
@@ -40,6 +45,7 @@ export const SubmitMarketplaceListingSchema = z.object({
       message: `最多 ${MARKETPLACE_REVIEW_LIMITS.maxTags} 个标签`,
     }),
   coverImageUrl: z.string().url().optional(),
+  category: MarketplaceCategorySchema.optional(),
 });
 
 export class SubmitMarketplaceListingDto extends createZodDto(
@@ -55,3 +61,31 @@ export const QueryMyListingsSchema = z.object({
 });
 
 export class QueryMyListingsDto extends createZodDto(QueryMyListingsSchema) {}
+
+export const QueryPublicListingsSchema = z.object({
+  category: MarketplaceCategorySchema.optional(),
+  search: z.string().trim().max(200).optional(),
+  sort: z.enum(['popular', 'rating', 'newest']).default('popular'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export class QueryPublicListingsDto extends createZodDto(
+  QueryPublicListingsSchema,
+) {}
+
+export const InstallMarketplaceListingSchema = z.object({
+  name: z.string().trim().min(1).max(255).optional(),
+  description: z.string().trim().max(2000).optional(),
+});
+
+export class InstallMarketplaceListingDto extends createZodDto(
+  InstallMarketplaceListingSchema,
+) {}
+
+export const SubmitReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  content: z.string().trim().max(2000).optional(),
+});
+
+export class SubmitReviewDto extends createZodDto(SubmitReviewSchema) {}
