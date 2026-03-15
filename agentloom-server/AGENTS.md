@@ -1,20 +1,33 @@
 # AGENTLOOM SERVER 知识库
 
-NestJS v11 + Fastify v5 后端。多租户 SaaS，六层全局中间件链。
+NestJS v11 + Fastify v5 后端。多租户 SaaS，七层全局中间件/守卫链。
 
 ## 入口
 
-`main.ts` → `NestFactory.create(AppModule, FastifyAdapter, { rawBody: true })` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` → listen(APP_PORT‖3000)
+`main.ts` → `NestFactory.create(AppModule, FastifyAdapter, { rawBody: true })` → multipart(50MB) → RedisIoAdapter → prefix `api/v1` → AllExceptionsFilter + ZodValidationPipe → Swagger `/docs` (Bearer + X-Api-Key auth, `cleanupOpenApiDoc` from nestjs-zod) → listen(APP_PORT‖3000)
 
-## 全局中间件链 (执行顺序)
+## 全局中间件/守卫链 (执行顺序)
 
 ```
-TenantMiddleware (extract tenantId from JWT, no-verify)
+TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key present)
   → TenantTransactionInterceptor (AsyncLocalStorage, Drizzle tenant tx)
-    → AuthGuard (JWT HS256 verify + blacklist + MFA check)
-      → TenantGuard (validate UUID tenantId)
-        → RolesGuard (Redis-cached RBAC: owner>admin>creator>operator>viewer)
+    → CustomThrottlerGuard (60 req/min per user, Redis storage via @nestjs/throttler v6 + @nest-lab/throttler-storage-redis)
+      → AuthGuard (JWT priority → X-Api-Key fallback; ModuleRef lazy-loads PlatformApiTokenService)
+        → TenantGuard (validate UUID tenantId)
+          → RolesGuard (Redis-cached RBAC: owner>admin>creator>operator>viewer)
 ```
+
+### 双重认证 (Story 9-4)
+- AuthGuard 优先检查 Bearer JWT，无 JWT 时回退 X-Api-Key 头
+- API Key 认证链路: `extractApiKeyFromHeader()` → `PlatformApiTokenService.validateToken()` (SHA-256 hash lookup + revoked/expired check) → `RbacCacheService.getUserRole()` → `setRequestAuth(request, payload, 'api_key')`
+- `req.authMethod: 'jwt' | 'api_key'` 标识当前认证方式
+- API Key 认证时 AuthGuard 直接设置 `req.tenantId`，TenantMiddleware 检测到 `x-api-key` 头后跳过 JWT decode
+- `PlatformApiTokenService` 通过 `ModuleRef.get({strict:false})` 延迟解析，避免全局 APP_GUARD 的跨模块 DI 问题
+
+### 速率限制
+- `CustomThrottlerGuard` (`src/common/guards/custom-throttler.guard.ts`): 覆写 `getTracker()` 返回 `apikey:{userId}` 或 `jwt:{userId}`，无认证回退 `req.ip`
+- `@SkipThrottle({ default: true })` 用于 HealthController (v6 语法: `Record<string, boolean>`)
+- ThrottlerModule: `{ ttl: 60_000, limit: 60 }` (60 req/min, ttl 单位为毫秒 — v6 breaking change)
 
 ## 模块地图
 
@@ -36,6 +49,7 @@ TenantMiddleware (extract tenantId from JWT, no-verify)
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
 | marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
 | share | `modules/share/` | 工作流分享链接管理：租户内创建/分页/撤销分享，公开短链 `/s/:token` 只读访问，view/copy 计数原子递增 | ConfigModule, workflowVersions |
+| platform-api-token | `modules/platform-api-token/` | Platform API Token CRUD：生成 (al_ 前缀 + SHA-256)、列表 (分页+状态过滤)、撤销、验证；每租户 20 token 上限 | RbacCacheService |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
@@ -132,7 +146,7 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
+Schema 在 `src/database/schema/`。24 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：Story 7-5 服务端已完成，`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
 - **Story 8-6 / 8-6a 已完成自动化收口**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 8-6a 新增的 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
@@ -174,7 +188,7 @@ Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)�
 
 | 目录 | 内容 |
 |------|------|
-| `guards/` | AuthGuard, TenantGuard, RolesGuard, WsJwtGuard |
+| `guards/` | AuthGuard (dual JWT/API-Key), CustomThrottlerGuard, TenantGuard, RolesGuard, WsJwtGuard |
 | `interceptors/` | TenantTransactionInterceptor |
 | `middleware/` | TenantMiddleware |
 | `filters/` | AllExceptionsFilter |
@@ -191,6 +205,15 @@ Schema 在 `src/database/schema/`。23 张表，启用 RLS (`rls-policies.ts`)�
 - **Mock**: `vi.hoisted()` + mock factory 函数 (`createMockXxxService`)
 - **覆盖率**: 80% 阈值 (V8)，Vitest + SWC
 - `test/workflow-version.e2e-spec.ts` 初始化链路较重；为避免全量 E2E 下的冷启动 hook timeout，suite 的 `beforeAll` 明确使用 `30_000ms` timeout，`afterAll` 使用可选关闭保证初始化失败时也能安全清理。
+
+## OpenAPI & SDK (Story 9-4)
+
+- Swagger 注解已覆盖所有公开控制器（MCP 8、Health 1、Evidence 5、Notification 6、DeviceToken 2、InterventionPolicy 6、KnowledgeBase 9、Template 2、PlatformApiToken 3）
+- `main.ts`: `addBearerAuth()` + `addApiKey({ type: 'apiKey', in: 'header', name: 'X-Api-Key' }, 'X-Api-Key')` + `cleanupOpenApiDoc(document, { version: '3.0' })`
+- `scripts/export-openapi-spec.ts`: 独立 NestJS bootstrap → SwaggerModule.createDocument() → 输出 `sdk/openapi.json`（需 DB 连接）
+- `openapitools.json`: openapi-generator-cli v7.9.0，两个 generator：`typescript` (typescript-fetch → `sdk/typescript/`) 和 `python` (python → `sdk/python/`)
+- package.json scripts: `openapi:export`、`sdk:generate:ts`、`sdk:generate:py`
+- `sdk/.gitignore`: 忽略 `typescript/` `python/`，保留 `openapi.json`
 
 ## 环境变量
 
