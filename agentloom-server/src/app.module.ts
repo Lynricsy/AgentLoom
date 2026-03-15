@@ -31,6 +31,7 @@ import { TriggerModule } from './modules/trigger/trigger.module';
 import { InterventionPolicyModule } from './modules/intervention-policy/intervention-policy.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { ShareModule } from './modules/share/share.module';
+import { PlatformApiTokenModule } from './modules/platform-api-token/platform-api-token.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -79,6 +80,7 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
     InterventionPolicyModule,
     MarketplaceModule,
     ShareModule,
+    PlatformApiTokenModule,
   ],
   providers: [
     RbacCacheService,
