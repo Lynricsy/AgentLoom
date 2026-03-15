@@ -11,6 +11,7 @@ import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
 import { TemplateService } from '../../template/template.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
+import { MarketplaceListingNotFoundException } from '../../marketplace/marketplace.exceptions';
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
@@ -168,6 +169,13 @@ function createSelectChainWithPagination(result: unknown) {
   const where = vi.fn().mockReturnValue({ orderBy });
   const from = vi.fn().mockReturnValue({ where });
   return { from, where, orderBy, limit, offset };
+}
+
+function createSelectChainWithInnerJoin(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ innerJoin });
+  return { from, innerJoin, where };
 }
 
 function createInsertChain(result: unknown) {
@@ -1497,6 +1505,12 @@ describe('WorkflowVersionService', () => {
       description: '从模板创建',
       template_slug: 'code-review-assistant',
     };
+    const MARKETPLACE_LISTING_ID = '00000000-0000-0000-0000-000000000088';
+    const MOCK_DTO_WITH_MARKETPLACE = {
+      name: 'Marketplace 副本',
+      description: '从 marketplace 安装',
+      marketplace_listing_id: MARKETPLACE_LISTING_ID,
+    };
     const MOCK_TEMPLATE = {
       id: '00000000-0000-0000-0000-000000000099',
       name: '代码审查助手',
@@ -1610,6 +1624,85 @@ describe('WorkflowVersionService', () => {
       });
       expect(valuesArg.metadata.cloned_from_template.clonedAt).toBeDefined();
       expect(valuesArg.description).toBe('从模板创建');
+    });
+
+    it('应从 marketplace listing 克隆定义并处理空 viewport', async () => {
+      const marketplaceSnapshot = {
+        nodes: [
+          {
+            id: 'market-node-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {},
+          },
+          {
+            id: 'market-node-2',
+            type: 'output',
+            position: { x: 240, y: 0 },
+            data: {},
+          },
+        ],
+        edges: [
+          {
+            id: 'market-edge-1',
+            source: 'market-node-1',
+            target: 'market-node-2',
+            sourceHandle: 'market-node-1-output',
+            targetHandle: 'market-node-2-input',
+          },
+        ],
+        viewport: null,
+        inputSchema: MOCK_INPUT_SCHEMA,
+        metadata: { nodeCount: 2, edgeCount: 1, createdFromVersion: 3 },
+      };
+      const selectListing = createSelectChainWithInnerJoin([
+        {
+          id: MARKETPLACE_LISTING_ID,
+          title: 'Marketplace 热门工作流',
+          snapshot: marketplaceSnapshot,
+        },
+      ]);
+      const mockResult = createDraftWorkflow({
+        name: 'Marketplace 副本',
+        slug: 'marketplace-fu-ben',
+        description: '从 marketplace 安装',
+      });
+
+      db.select.mockReturnValueOnce(selectListing);
+      db.insert.mockReturnValue(createInsertReturning(mockResult));
+
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_MARKETPLACE,
+      );
+
+      expect(result).toEqual(mockResult);
+      const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(valuesArg.nodes).toHaveLength(2);
+      expect(valuesArg.nodes[0].id).not.toBe('market-node-1');
+      expect(valuesArg.nodes[1].id).not.toBe('market-node-2');
+      expect(valuesArg.edges[0].source).toBe(valuesArg.nodes[0].id);
+      expect(valuesArg.edges[0].target).toBe(valuesArg.nodes[1].id);
+      expect(valuesArg.viewport).toEqual(MOCK_VIEWPORT);
+      expect(valuesArg.inputSchema).toEqual(MOCK_INPUT_SCHEMA);
+      expect(valuesArg.metadata).toMatchObject({
+        cloned_from_marketplace: {
+          listingId: MARKETPLACE_LISTING_ID,
+          listingTitle: 'Marketplace 热门工作流',
+        },
+      });
+      expect(valuesArg.metadata.cloned_from_marketplace.clonedAt).toBeDefined();
+    });
+
+    it('marketplace listing 不存在时应抛出 MarketplaceListingNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithInnerJoin([]));
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_MARKETPLACE),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('应在 slug 冲突时自动重试', async () => {
