@@ -105,6 +105,8 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'templates', method: RequestMethod.ALL },
         { path: 'templates/{*splat}', method: RequestMethod.ALL },
+        { path: 'marketplace/browse', method: RequestMethod.ALL },
+        { path: 'marketplace/browse/{*splat}', method: RequestMethod.ALL },
         { path: 'webhooks', method: RequestMethod.ALL },
         { path: 'webhooks/{*splat}', method: RequestMethod.ALL },
       )
