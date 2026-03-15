@@ -48,7 +48,7 @@ async function bootstrap() {
     .setDescription('AgentLoom 多智能体协作平台 API')
     .setVersion('1.0')
     .setContact('AgentLoom', 'https://agentloom.dev', 'support@agentloom.dev')
-    .setLicense('Proprietary', undefined)
+    .setLicense('Proprietary', '')
     .addBearerAuth()
     .addApiKey(
       { type: 'apiKey', in: 'header', name: 'X-Api-Key' },

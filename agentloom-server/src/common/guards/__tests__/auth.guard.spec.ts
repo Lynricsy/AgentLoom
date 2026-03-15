@@ -6,11 +6,18 @@ import * as jwt from 'jsonwebtoken';
 import { AuthGuard } from '../auth.guard';
 import { DomainException } from '../../exceptions/domain.exception';
 import { TokenBlacklistService } from '../../services/token-blacklist.service';
+import { PlatformApiTokenService } from '../../../modules/platform-api-token/platform-api-token.service';
 
 const TEST_JWT_SECRET = 'test-secret-key-for-unit-tests';
 const TEST_USER_SUB = 'user-uuid-12345';
 const TEST_USER_EMAIL = 'test@example.com';
 const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
+const TEST_API_KEY = 'al_test_platform_api_key';
+const TEST_API_TOKEN_ID = '22222222-2222-4222-8222-222222222222';
+
+type ValidatedPlatformApiToken = Awaited<
+  ReturnType<PlatformApiTokenService['validateToken']>
+>;
 
 function createValidToken(extraClaims: Record<string, unknown> = {}): string {
   return jwt.sign(
@@ -50,7 +57,43 @@ function createInvalidSignatureToken(): string {
   );
 }
 
-function createMockExecutionContext(authorizationHeader?: string): {
+function createValidatedApiKeyResult(
+  overrides: Partial<ValidatedPlatformApiToken> = {},
+): ValidatedPlatformApiToken {
+  return {
+    userId: TEST_USER_SUB,
+    tenantId: TEST_TENANT_ID,
+    scopes: null,
+    tokenId: TEST_API_TOKEN_ID,
+    tenantRole: 'owner',
+    ...overrides,
+  };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
+function createMockExecutionContext(
+  authorizationHeader?: string,
+  apiKeyHeader?: string,
+): {
   context: ReturnType<typeof vi.fn> & {
     switchToHttp: ReturnType<typeof vi.fn>;
     getHandler: ReturnType<typeof vi.fn>;
@@ -61,6 +104,7 @@ function createMockExecutionContext(authorizationHeader?: string): {
   const request: Record<string, unknown> = {
     headers: {
       authorization: authorizationHeader,
+      'x-api-key': apiKeyHeader,
     },
   };
 
@@ -82,6 +126,7 @@ describe('AuthGuard', () => {
   let authGuard: AuthGuard;
   let reflector: Reflector;
   let tokenBlacklist: TokenBlacklistService;
+  let platformApiTokenService: PlatformApiTokenService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -105,12 +150,20 @@ describe('AuthGuard', () => {
             isBlacklisted: vi.fn().mockResolvedValue(false),
           },
         },
+        {
+          provide: PlatformApiTokenService,
+          useValue: {
+            validateToken: vi.fn(),
+            updateLastUsedAt: vi.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
     authGuard = module.get(AuthGuard);
     reflector = module.get(Reflector);
     tokenBlacklist = module.get(TokenBlacklistService);
+    platformApiTokenService = module.get(PlatformApiTokenService);
   });
 
   it('有効なトークンでアクセスを許可し、request.user を設定する', async () => {
@@ -211,5 +264,162 @@ describe('AuthGuard', () => {
       expect(de.getStatus()).toBe(401);
       expect(de.type).toBe('https://agentloom.dev/errors/token-revoked');
     }
+  });
+
+  describe('API Key Authentication', () => {
+    it('有効な API Key でアクセスを許可し、request.user を設定する', async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      const { context, request } = createMockExecutionContext(
+        undefined,
+        TEST_API_KEY,
+      );
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(platformApiTokenService.validateToken).toHaveBeenCalledWith(
+        TEST_API_KEY,
+      );
+
+      const user = request.user as {
+        sub: string;
+        email: string;
+        tenantId?: string;
+        tenantRole?: string;
+      };
+      expect(user.sub).toBe(TEST_USER_SUB);
+      expect(user.email).toBe('');
+      expect(user.tenantId).toBe(TEST_TENANT_ID);
+      expect(user.tenantRole).toBe('owner');
+    });
+
+    it("API Key 認証時は request.authMethod に 'api_key' を設定する", async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      const { context, request } = createMockExecutionContext(
+        undefined,
+        TEST_API_KEY,
+      );
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(request.authMethod).toBe('api_key');
+    });
+
+    it('検証済み API Key の tenantId を request.tenantId に設定する', async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      const { context, request } = createMockExecutionContext(
+        undefined,
+        TEST_API_KEY,
+      );
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(request.tenantId).toBe(TEST_TENANT_ID);
+    });
+
+    it('無効な API Key は api-key-invalid で 401 を返す', async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockRejectedValueOnce(
+        new Error('invalid api key'),
+      );
+      const { context } = createMockExecutionContext(undefined, TEST_API_KEY);
+
+      try {
+        await authGuard.canActivate(context as never);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(DomainException);
+        const de = error as DomainException;
+        expect(de.getStatus()).toBe(401);
+        expect(de.type).toBe('https://agentloom.dev/errors/api-key-invalid');
+      }
+    });
+
+    it('updateLastUsedAt を fire-and-forget で非同期実行する', async () => {
+      const deferred = createDeferred<void>();
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      vi.mocked(platformApiTokenService.updateLastUsedAt).mockImplementation(
+        () => deferred.promise,
+      );
+      const { context } = createMockExecutionContext(undefined, TEST_API_KEY);
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(platformApiTokenService.updateLastUsedAt).toHaveBeenCalledWith(
+        TEST_API_TOKEN_ID,
+      );
+
+      deferred.resolve(undefined);
+      await deferred.promise;
+    });
+
+    it('updateLastUsedAt 失败时只记录 warning，不应导致认证失败', async () => {
+      vi.mocked(platformApiTokenService.validateToken).mockResolvedValue(
+        createValidatedApiKeyResult(),
+      );
+      vi.mocked(platformApiTokenService.updateLastUsedAt).mockRejectedValueOnce(
+        new Error('write failed'),
+      );
+      const logger = (authGuard as unknown as {
+        logger: { warn: (message: string) => void };
+      }).logger;
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {
+        return undefined;
+      });
+      const { context } = createMockExecutionContext(undefined, TEST_API_KEY);
+
+      try {
+        const result = await authGuard.canActivate(context as never);
+
+        expect(result).toBe(true);
+        await Promise.resolve();
+        expect(warnSpy).toHaveBeenCalledWith(
+          `Failed to update lastUsedAt for token ${TEST_API_TOKEN_ID}: write failed`,
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('同时提供 JWT 与 API Key 时优先使用 JWT', async () => {
+      const token = createValidToken({ tenant_id: TEST_TENANT_ID });
+      vi.mocked(platformApiTokenService.validateToken).mockRejectedValueOnce(
+        new Error('should not be called'),
+      );
+      const { context, request } = createMockExecutionContext(
+        `Bearer ${token}`,
+        TEST_API_KEY,
+      );
+
+      const result = await authGuard.canActivate(context as never);
+
+      expect(result).toBe(true);
+      expect(request.authMethod).toBe('jwt');
+      expect(platformApiTokenService.validateToken).not.toHaveBeenCalled();
+    });
+
+    it('Authorization 与 X-Api-Key 都缺失时返回 token-missing', async () => {
+      const { context } = createMockExecutionContext(undefined, undefined);
+
+      try {
+        await authGuard.canActivate(context as never);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(DomainException);
+        const de = error as DomainException;
+        expect(de.getStatus()).toBe(401);
+        expect(de.type).toBe('https://agentloom.dev/errors/token-missing');
+      }
+    });
   });
 });
