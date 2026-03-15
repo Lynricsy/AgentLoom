@@ -18,6 +18,8 @@ type WrappableModel = Record<PropertyKey, unknown>;
 @Injectable()
 export class PiAiAdapter {
   private readonly logger = new Logger(PiAiAdapter.name);
+  private static readonly PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER =
+    '__agentloom_private_cloud_no_auth__';
 
   constructor(
     private readonly decryptionBoundaryService: DecryptionBoundaryService,
@@ -105,9 +107,15 @@ export class PiAiAdapter {
             'Private Cloud 提供商必须指定 endpointUrl',
           );
         }
+
+        const requiresAuth = config.authMethod === 'api_key';
         return createOpenAI({
-          apiKey: apiKey ?? 'not-needed',
+          apiKey:
+            apiKey ?? PiAiAdapter.PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
           baseURL: config.endpointUrl,
+          ...(requiresAuth
+            ? {}
+            : { fetch: this.createAuthorizationStrippingFetch() }),
         });
       }
       default:
@@ -202,11 +210,36 @@ export class PiAiAdapter {
     }
 
     const message = error instanceof Error ? error.message : String(error);
-    throw new LlmProviderException(provider, message);
+    const statusCode =
+      (error as { status?: number; statusCode?: number })?.status ??
+      (error as { status?: number; statusCode?: number })?.statusCode;
+
+    throw new LlmProviderException(
+      provider,
+      message,
+      statusCode === 401 || statusCode === 403
+        ? { authenticationFailed: true }
+        : undefined,
+    );
   }
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private createAuthorizationStrippingFetch(): typeof fetch {
+    return async (input, init) => {
+      const headers = new Headers(
+        input instanceof Request ? (init?.headers ?? input.headers) : init?.headers,
+      );
+
+      headers.delete('authorization');
+
+      return fetch(input, {
+        ...init,
+        headers,
+      });
+    };
   }
 
   private async resolveApiKey(config: LlmModelConfig): Promise<string> {

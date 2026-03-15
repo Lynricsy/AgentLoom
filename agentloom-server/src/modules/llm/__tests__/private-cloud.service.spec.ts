@@ -1,16 +1,26 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import type { FetchPrivateCloudModelsDto } from '../dto/private-cloud-models.dto';
 import type { TestConnectionDto } from '../dto/test-connection.dto';
 import {
   LlmProviderException,
   LlmTimeoutException,
 } from '../llm.exceptions';
-import { PrivateCloudService } from '../private-cloud.service';
+import {
+  PrivateCloudService,
+  type PrivateCloudRequestContext,
+  type PrivateCloudServerInfo,
+} from '../private-cloud.service';
 
 type PrivateCloudServiceInternals = {
-  extractServerInfo: (res: Response) => Promise<string | undefined>;
+  extractServerInfo: (res: Response) => Promise<PrivateCloudServerInfo | undefined>;
+};
+
+const REQUEST_CONTEXT: PrivateCloudRequestContext = {
+  tenantId: 'tenant-id',
+  orgId: 'org-id',
 };
 
 function createTestConnectionDto(
@@ -19,7 +29,7 @@ function createTestConnectionDto(
   return {
     endpointUrl: 'https://private-cloud.example.com/',
     authMethod: 'api_key',
-    authConfig: { apiKey: 'secret-key' },
+    apiKeyId: '00000000-0000-0000-0000-000000000001',
     timeoutMs: 10_000,
     ...overrides,
   } as TestConnectionDto;
@@ -31,7 +41,7 @@ function createFetchModelsDto(
   return {
     endpointUrl: 'https://private-cloud.example.com/',
     authMethod: 'api_key',
-    authConfig: { apiKey: 'secret-key' },
+    apiKeyId: '00000000-0000-0000-0000-000000000001',
     ...overrides,
   } as FetchPrivateCloudModelsDto;
 }
@@ -40,6 +50,9 @@ describe('PrivateCloudService', () => {
   let service: PrivateCloudService;
   let savedFetch: typeof globalThis.fetch;
   let mockFetch: ReturnType<typeof vi.fn>;
+  let decryptionBoundaryService: {
+    decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,7 +60,12 @@ describe('PrivateCloudService', () => {
     savedFetch = globalThis.fetch;
     mockFetch = vi.fn();
     globalThis.fetch = mockFetch as typeof fetch;
-    service = new PrivateCloudService();
+    decryptionBoundaryService = {
+      decryptConfiguredApiKey: vi.fn().mockResolvedValue('decrypted-key'),
+    };
+    service = new PrivateCloudService(
+      decryptionBoundaryService as unknown as DecryptionBoundaryService,
+    );
   });
 
   afterEach(() => {
@@ -56,13 +74,13 @@ describe('PrivateCloudService', () => {
   });
 
   describe('testConnection', () => {
-    it('应当在 /health 成功时返回连接结果和服务器版本', async () => {
+    it('应当在 /health 成功时返回连接结果和服务器信息', async () => {
       vi.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(1_025);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ version: 'v1.2.3' }),
+        json: async () => ({ version: 'v1.2.3', status: 'healthy' }),
         headers: new Headers({ 'content-type': 'application/json' }),
       });
 
@@ -70,19 +88,33 @@ describe('PrivateCloudService', () => {
         createTestConnectionDto({
           endpointUrl: 'https://private-cloud.example.com///',
         }),
+        REQUEST_CONTEXT,
       );
 
       expect(result).toEqual({
         success: true,
         latencyMs: 25,
-        serverInfo: 'v1.2.3',
+        serverInfo: {
+          version: 'v1.2.3',
+          status: 'healthy',
+        },
       });
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).toHaveBeenCalledWith(
+        {
+          apiKeyId: '00000000-0000-0000-0000-000000000001',
+          organizationId: 'org-id',
+          tenantId: 'tenant-id',
+          provider: 'private_cloud',
+        },
+        'PrivateCloudService',
+      );
       expect(mockFetch).toHaveBeenCalledWith(
         'https://private-cloud.example.com/health',
         expect.objectContaining({
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer secret-key',
+            Authorization: 'Bearer decrypted-key',
           },
           signal: expect.any(AbortSignal),
         }),
@@ -90,6 +122,7 @@ describe('PrivateCloudService', () => {
     });
 
     it('应当在 /health 返回非 ok 时回退到 /v1/models', async () => {
+      vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
       vi.spyOn(Date, 'now').mockReturnValueOnce(2_000).mockReturnValueOnce(2_018);
 
       mockFetch
@@ -102,20 +135,28 @@ describe('PrivateCloudService', () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({ data: [] }),
+          json: async () => ({ data: [{ id: 'llama-3' }] }),
           headers: new Headers({ 'content-type': 'application/json' }),
         });
 
       const result = await service.testConnection(
-        createTestConnectionDto({ authMethod: 'none', authConfig: {} }),
+        createTestConnectionDto({ authMethod: 'none', apiKeyId: undefined }),
+        REQUEST_CONTEXT,
       );
 
-      expect(result).toEqual({ success: true, latencyMs: 18 });
+      expect(result).toEqual({
+        success: true,
+        latencyMs: 18,
+        serverInfo: { models: ['llama-3'] },
+      });
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
         'https://private-cloud.example.com/health',
         expect.objectContaining({
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
           signal: expect.any(AbortSignal),
         }),
       );
@@ -123,7 +164,7 @@ describe('PrivateCloudService', () => {
         2,
         'https://private-cloud.example.com/v1/models',
         expect.objectContaining({
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
           signal: expect.any(AbortSignal),
         }),
       );
@@ -143,7 +184,10 @@ describe('PrivateCloudService', () => {
           headers: new Headers({ 'content-type': 'application/json' }),
         });
 
-      const result = await service.testConnection(createTestConnectionDto());
+      const result = await service.testConnection(
+        createTestConnectionDto(),
+        REQUEST_CONTEXT,
+      );
 
       expect(result.success).toBe(true);
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -151,7 +195,7 @@ describe('PrivateCloudService', () => {
     });
 
     it.each([401, 403])(
-      '应当在 /v1/models 返回 %i 时抛出认证错误',
+      '应当在 /v1/models 返回 %i 时抛出结构化认证错误',
       async (status) => {
         mockFetch
           .mockResolvedValueOnce({
@@ -167,11 +211,15 @@ describe('PrivateCloudService', () => {
             headers: new Headers(),
           });
 
-        const promise = service.testConnection(createTestConnectionDto());
+        const promise = service.testConnection(
+          createTestConnectionDto(),
+          REQUEST_CONTEXT,
+        );
 
         await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
         await expect(promise).rejects.toMatchObject({
           detail: `认证失败 (${status})，请检查认证配置`,
+          extensions: { authenticationFailed: true },
         });
       },
     );
@@ -185,6 +233,7 @@ describe('PrivateCloudService', () => {
 
       const promise = service.testConnection(
         createTestConnectionDto({ timeoutMs: 15_000 }),
+        REQUEST_CONTEXT,
       );
 
       await expect(promise).rejects.toBeInstanceOf(LlmTimeoutException);
@@ -198,7 +247,10 @@ describe('PrivateCloudService', () => {
         .mockRejectedValueOnce(new Error('health unavailable'))
         .mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
 
-      const promise = service.testConnection(createTestConnectionDto());
+      const promise = service.testConnection(
+        createTestConnectionDto(),
+        REQUEST_CONTEXT,
+      );
 
       await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
       await expect(promise).rejects.toMatchObject({
@@ -221,7 +273,10 @@ describe('PrivateCloudService', () => {
           headers: new Headers(),
         });
 
-      const promise = service.testConnection(createTestConnectionDto());
+      const promise = service.testConnection(
+        createTestConnectionDto(),
+        REQUEST_CONTEXT,
+      );
 
       await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
       await expect(promise).rejects.toMatchObject({
@@ -246,6 +301,7 @@ describe('PrivateCloudService', () => {
 
       const result = await service.fetchModels(
         createFetchModelsDto({ endpointUrl: 'https://private-cloud.example.com///' }),
+        REQUEST_CONTEXT,
       );
 
       expect(result).toEqual([
@@ -256,8 +312,7 @@ describe('PrivateCloudService', () => {
         'https://private-cloud.example.com/v1/models',
         expect.objectContaining({
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer secret-key',
+            Authorization: 'Bearer decrypted-key',
           },
           signal: expect.any(AbortSignal),
         }),
@@ -273,10 +328,14 @@ describe('PrivateCloudService', () => {
       });
 
       const result = await service.fetchModels(
-        createFetchModelsDto({ authMethod: 'none', authConfig: {} }),
+        createFetchModelsDto({ authMethod: 'none', apiKeyId: undefined }),
+        REQUEST_CONTEXT,
       );
 
       expect(result).toEqual([]);
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
     });
 
     it('应当在响应缺少 data 时返回空数组', async () => {
@@ -288,21 +347,22 @@ describe('PrivateCloudService', () => {
       });
 
       const result = await service.fetchModels(
-        createFetchModelsDto({ authMethod: 'mtls', authConfig: {} }),
+        createFetchModelsDto({ authMethod: 'mtls', apiKeyId: undefined }),
+        REQUEST_CONTEXT,
       );
 
       expect(result).toEqual([]);
       expect(mockFetch).toHaveBeenCalledWith(
         'https://private-cloud.example.com/v1/models',
         expect.objectContaining({
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
           signal: expect.any(AbortSignal),
         }),
       );
     });
 
     it.each([401, 403])(
-      '应当在获取模型时将 %i 视为认证错误',
+      '应当在获取模型时将 %i 视为结构化认证错误',
       async (status) => {
         mockFetch.mockResolvedValueOnce({
           ok: false,
@@ -311,11 +371,15 @@ describe('PrivateCloudService', () => {
           headers: new Headers(),
         });
 
-        const promise = service.fetchModels(createFetchModelsDto());
+        const promise = service.fetchModels(
+          createFetchModelsDto(),
+          REQUEST_CONTEXT,
+        );
 
         await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
         await expect(promise).rejects.toMatchObject({
           detail: `认证失败 (${status})，请检查认证配置`,
+          extensions: { authenticationFailed: true },
         });
       },
     );
@@ -323,7 +387,10 @@ describe('PrivateCloudService', () => {
     it('应当在超时时抛出 LlmTimeoutException', async () => {
       mockFetch.mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'));
 
-      const promise = service.fetchModels(createFetchModelsDto());
+      const promise = service.fetchModels(
+        createFetchModelsDto(),
+        REQUEST_CONTEXT,
+      );
 
       await expect(promise).rejects.toBeInstanceOf(LlmTimeoutException);
       await expect(promise).rejects.toMatchObject({
@@ -339,7 +406,10 @@ describe('PrivateCloudService', () => {
         headers: new Headers(),
       });
 
-      const promise = service.fetchModels(createFetchModelsDto());
+      const promise = service.fetchModels(
+        createFetchModelsDto(),
+        REQUEST_CONTEXT,
+      );
 
       await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
       await expect(promise).rejects.toMatchObject({
@@ -350,7 +420,10 @@ describe('PrivateCloudService', () => {
     it('应当在网络错误时包装为提供商异常', async () => {
       mockFetch.mockRejectedValueOnce(new Error('socket hang up'));
 
-      const promise = service.fetchModels(createFetchModelsDto());
+      const promise = service.fetchModels(
+        createFetchModelsDto(),
+        REQUEST_CONTEXT,
+      );
 
       await expect(promise).rejects.toBeInstanceOf(LlmProviderException);
       await expect(promise).rejects.toMatchObject({
@@ -360,17 +433,29 @@ describe('PrivateCloudService', () => {
   });
 
   describe('extractServerInfo', () => {
-    it('应当在响应包含 status 时返回 status', async () => {
+    it('应当在响应包含 version 和 status 时返回结构化信息', async () => {
       const internals = service as unknown as PrivateCloudServiceInternals;
 
       const result = await internals.extractServerInfo({
-        json: async () => ({ status: 'healthy' }),
+        json: async () => ({ version: 'v1.2.3', status: 'healthy' }),
       } as Response);
 
-      expect(result).toBe('healthy');
+      expect(result).toEqual({ version: 'v1.2.3', status: 'healthy' });
     });
 
-    it('应当在响应缺少 version 和 status 时返回 undefined', async () => {
+    it('应当在响应包含模型列表时返回 models 字段', async () => {
+      const internals = service as unknown as PrivateCloudServiceInternals;
+
+      const result = await internals.extractServerInfo({
+        json: async () => ({
+          data: [{ id: 'llama-3' }, { id: 'deepseek-r1' }, { id: 123 }],
+        }),
+      } as Response);
+
+      expect(result).toEqual({ models: ['llama-3', 'deepseek-r1'] });
+    });
+
+    it('应当在响应缺少可识别字段时返回 undefined', async () => {
       const internals = service as unknown as PrivateCloudServiceInternals;
 
       const result = await internals.extractServerInfo({
@@ -387,7 +472,7 @@ describe('PrivateCloudService', () => {
         json: async () => {
           throw new Error('invalid json');
         },
-      } as Response);
+      } as unknown as Response);
 
       expect(result).toBeUndefined();
     });

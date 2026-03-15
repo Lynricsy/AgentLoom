@@ -7,7 +7,10 @@ import type { PrivateCloudService } from '../private-cloud.service';
 const TEST_CONNECTION_RESULT = {
   success: true,
   latencyMs: 32,
-  serverInfo: 'v1.2.3',
+  serverInfo: {
+    version: 'v1.2.3',
+    status: 'healthy',
+  },
 };
 
 const PRIVATE_CLOUD_MODELS = [
@@ -66,13 +69,20 @@ describe('PrivateCloudController', () => {
       const dto = {
         endpointUrl: 'https://private-cloud.example.com/v1',
         authMethod: 'api_key',
-        authConfig: { apiKey: 'secret-key' },
+        apiKeyId: '00000000-0000-0000-0000-000000000001',
         timeoutMs: 10_000,
       };
 
-      const result = await controller.testConnection(dto as never);
+      const result = await controller.testConnection(
+        dto as never,
+        'tenant-id',
+        'org-id',
+      );
 
-      expect(service.testConnection).toHaveBeenCalledWith(dto);
+      expect(service.testConnection).toHaveBeenCalledWith(dto, {
+        tenantId: 'tenant-id',
+        orgId: 'org-id',
+      });
       expect(result).toEqual({ data: TEST_CONNECTION_RESULT });
     });
   });
@@ -82,12 +92,18 @@ describe('PrivateCloudController', () => {
       const dto = {
         endpointUrl: 'https://private-cloud.example.com/v1',
         authMethod: 'none',
-        authConfig: {},
       };
 
-      const result = await controller.fetchModels(dto as never);
+      const result = await controller.fetchModels(
+        dto as never,
+        'tenant-id',
+        'org-id',
+      );
 
-      expect(service.fetchModels).toHaveBeenCalledWith(dto);
+      expect(service.fetchModels).toHaveBeenCalledWith(dto, {
+        tenantId: 'tenant-id',
+        orgId: 'org-id',
+      });
       expect(result).toEqual({ data: PRIVATE_CLOUD_MODELS });
     });
   });

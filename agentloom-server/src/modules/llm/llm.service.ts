@@ -10,6 +10,7 @@ import type { UpdateLlmModelConfigDto } from './dto/update-llm-model-config.dto'
 import {
   LlmModelConfigConflictException,
   LlmModelConfigNotFoundException,
+  LlmModelConfigValidationException,
 } from './llm.exceptions';
 
 @Injectable()
@@ -22,7 +23,59 @@ export class LlmService {
     return getTenantDb(this.db);
   }
 
-  async create(dto: CreateLlmModelConfigDto, tenantId: string, userId: string) {
+  private validatePrivateCloudConfig(params: {
+    provider: string;
+    endpointUrl?: string | null;
+    authMethod?: string | null;
+    apiKeyId?: string | null;
+  }) {
+    if (params.provider !== 'private_cloud') {
+      return;
+    }
+
+    if (!params.endpointUrl) {
+      throw new LlmModelConfigValidationException('私有云部署必须提供端点 URL');
+    }
+
+    if (!params.authMethod) {
+      throw new LlmModelConfigValidationException('私有云部署必须指定认证方式');
+    }
+
+    if (params.authMethod === 'api_key' && !params.apiKeyId) {
+      throw new LlmModelConfigValidationException(
+        '私有云 API Key 认证必须选择 API Key',
+      );
+    }
+  }
+
+  private buildPrivateCloudFields(params: {
+    provider: string;
+    endpointUrl?: string | null;
+    authMethod?: string | null;
+    authConfig?: Record<string, unknown> | null;
+    timeoutMs?: number | null;
+    apiKeyId?: string | null;
+  }) {
+    if (params.provider !== 'private_cloud') {
+      return {
+        endpointUrl: null,
+        authMethod: null,
+        authConfig: null,
+        timeoutMs: null,
+      };
+    }
+
+    return {
+      endpointUrl: params.endpointUrl ?? null,
+      authMethod: params.authMethod ?? null,
+      authConfig:
+        params.authMethod === 'mtls' ? (params.authConfig ?? null) : null,
+      timeoutMs: params.timeoutMs ?? null,
+      apiKeyId: params.authMethod === 'api_key' ? (params.apiKeyId ?? null) : null,
+    };
+  }
+
+  async create(dto: CreateLlmModelConfigDto, tenantId: string, _userId: string) {
     const orgResult = await this.tenantDb
       .select({ id: organizations.id })
       .from(organizations)
@@ -53,6 +106,22 @@ export class LlmService {
       await this.clearDefaultInOrg(orgId);
     }
 
+    this.validatePrivateCloudConfig({
+      provider: dto.provider,
+      endpointUrl: dto.endpointUrl,
+      authMethod: dto.authMethod,
+      apiKeyId: dto.apiKeyId,
+    });
+
+    const privateCloudFields = this.buildPrivateCloudFields({
+      provider: dto.provider,
+      endpointUrl: dto.endpointUrl,
+      authMethod: dto.authMethod,
+      authConfig: dto.authConfig,
+      timeoutMs: dto.timeoutMs,
+      apiKeyId: dto.apiKeyId,
+    });
+
     const [result] = await this.tenantDb
       .insert(llmModelConfigs)
       .values({
@@ -62,12 +131,12 @@ export class LlmService {
         provider: dto.provider,
         modelName: dto.modelName,
         parameters: dto.parameters ?? {},
-        apiKeyId: dto.apiKeyId,
+        apiKeyId: privateCloudFields.apiKeyId ?? dto.apiKeyId,
         isDefault: dto.isDefault ?? false,
-        endpointUrl: dto.endpointUrl ?? null,
-        authMethod: dto.authMethod ?? null,
-        authConfig: dto.authConfig ?? null,
-        timeoutMs: dto.timeoutMs ?? null,
+        endpointUrl: privateCloudFields.endpointUrl,
+        authMethod: privateCloudFields.authMethod,
+        authConfig: privateCloudFields.authConfig,
+        timeoutMs: privateCloudFields.timeoutMs,
       })
       .returning();
 
@@ -110,6 +179,36 @@ export class LlmService {
   async update(id: string, dto: UpdateLlmModelConfigDto, tenantId: string) {
     const existing = await this.findById(id, tenantId);
 
+    const provider = dto.provider ?? existing.provider;
+    const endpointUrl = 'endpointUrl' in dto ? dto.endpointUrl : existing.endpointUrl;
+    const authMethod = 'authMethod' in dto ? dto.authMethod : existing.authMethod;
+    const apiKeyId = 'apiKeyId' in dto ? dto.apiKeyId : existing.apiKeyId;
+    const authConfig: Record<string, unknown> | null =
+      'authConfig' in dto
+        ? dto.authConfig && typeof dto.authConfig === 'object'
+          ? (dto.authConfig as Record<string, unknown>)
+          : null
+        : existing.authConfig && typeof existing.authConfig === 'object'
+          ? (existing.authConfig as Record<string, unknown>)
+          : null;
+    const timeoutMs = 'timeoutMs' in dto ? dto.timeoutMs : existing.timeoutMs;
+
+    this.validatePrivateCloudConfig({
+      provider,
+      endpointUrl,
+      authMethod,
+      apiKeyId,
+    });
+
+    const privateCloudFields = this.buildPrivateCloudFields({
+      provider,
+      endpointUrl,
+      authMethod,
+      authConfig,
+      timeoutMs,
+      apiKeyId,
+    });
+
     if (dto.name && dto.name !== existing.name) {
       const nameConflict = await this.tenantDb
         .select({ id: llmModelConfigs.id })
@@ -134,10 +233,36 @@ export class LlmService {
       ...dto,
       updatedAt: new Date(),
     };
-    if ('endpointUrl' in dto) updateData.endpointUrl = dto.endpointUrl ?? null;
-    if ('authMethod' in dto) updateData.authMethod = dto.authMethod ?? null;
-    if ('authConfig' in dto) updateData.authConfig = dto.authConfig ?? null;
-    if ('timeoutMs' in dto) updateData.timeoutMs = dto.timeoutMs ?? null;
+    const touchesPrivateCloudFields =
+      'provider' in dto ||
+      'endpointUrl' in dto ||
+      'authMethod' in dto ||
+      'authConfig' in dto ||
+      'timeoutMs' in dto ||
+      'apiKeyId' in dto;
+
+    if (touchesPrivateCloudFields && provider !== 'private_cloud') {
+      updateData.endpointUrl = null;
+      updateData.authMethod = null;
+      updateData.authConfig = null;
+      updateData.timeoutMs = null;
+      updateData.apiKeyId = null;
+    }
+    if ('endpointUrl' in dto || provider === 'private_cloud') {
+      updateData.endpointUrl = privateCloudFields.endpointUrl;
+    }
+    if ('authMethod' in dto || provider === 'private_cloud') {
+      updateData.authMethod = privateCloudFields.authMethod;
+    }
+    if ('authConfig' in dto || provider === 'private_cloud') {
+      updateData.authConfig = privateCloudFields.authConfig;
+    }
+    if ('timeoutMs' in dto || provider === 'private_cloud') {
+      updateData.timeoutMs = privateCloudFields.timeoutMs;
+    }
+    if ('apiKeyId' in dto || provider === 'private_cloud') {
+      updateData.apiKeyId = privateCloudFields.apiKeyId ?? dto.apiKeyId ?? null;
+    }
 
     const [result] = await this.tenantDb
       .update(llmModelConfigs)

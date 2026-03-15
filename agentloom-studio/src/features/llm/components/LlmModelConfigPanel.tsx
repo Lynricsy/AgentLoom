@@ -60,7 +60,35 @@ const llmModelFormSchema = z.object({
   endpointUrl: z.string().url('请输入有效的 URL').optional().or(z.literal('')),
   authMethod: z.enum(['api_key', 'mtls', 'none']).optional(),
   authConfig: z.record(z.string(), z.string()).optional(),
-  timeoutMs: z.number().int().min(1000, '超时时间不能小于 1000ms').max(300000, '超时时间不能大于 300000ms').optional(),
+  timeoutMs: z.number().int().min(5000, '超时时间不能小于 5000ms').max(600000, '超时时间不能大于 600000ms').optional(),
+}).superRefine((values, ctx) => {
+  if (values.provider !== 'private_cloud') {
+    return
+  }
+
+  if (!values.endpointUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endpointUrl'],
+      message: '请输入私有云端点 URL',
+    })
+  }
+
+  if (!values.authMethod) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['authMethod'],
+      message: '请选择认证方式',
+    })
+  }
+
+  if (values.authMethod === 'api_key' && !values.apiKeyId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['apiKeyId'],
+      message: '请选择 API Key',
+    })
+  }
 })
 
 type LlmModelFormValues = z.infer<typeof llmModelFormSchema>
@@ -90,7 +118,7 @@ function createEmptyConfig(provider: LlmProvider = 'openai'): LlmModelConfig {
     apiKeyId: null,
     isDefault: false,
     endpointUrl: provider === 'private_cloud' ? '' : null,
-    authMethod: provider === 'private_cloud' ? 'none' : null,
+    authMethod: provider === 'private_cloud' ? 'api_key' : null,
     authConfig: null,
     timeoutMs: null,
   }
@@ -146,11 +174,13 @@ function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
   if (values.provider === 'private_cloud') {
     payload.endpointUrl = values.endpointUrl || undefined
     payload.authMethod = values.authMethod || undefined
-    payload.authConfig = values.authConfig && Object.keys(values.authConfig).length > 0
+    payload.authConfig = values.authMethod === 'mtls' && values.authConfig && Object.keys(values.authConfig).length > 0
       ? values.authConfig
       : undefined
     payload.timeoutMs = values.timeoutMs
-    payload.apiKeyId = null
+    payload.apiKeyId = values.authMethod === 'api_key' && values.apiKeyId
+      ? values.apiKeyId
+      : null
   }
 
   return payload

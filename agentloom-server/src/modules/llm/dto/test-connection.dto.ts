@@ -1,22 +1,42 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { AUTH_METHODS } from './create-llm-model-config.dto';
+import {
+  AUTH_METHODS,
+  PRIVATE_CLOUD_TIMEOUT_MAX,
+  PRIVATE_CLOUD_TIMEOUT_MIN,
+} from './create-llm-model-config.dto';
 
-const testConnectionSchema = z.object({
-  endpointUrl: z
-    .string()
-    .url('端点 URL 格式无效')
-    .max(2048, '端点 URL 不能超过 2048 个字符'),
-  authMethod: z.enum(AUTH_METHODS),
-  authConfig: z.record(z.string(), z.unknown()).optional().default({}),
-  timeoutMs: z
-    .number()
-    .int()
-    .min(1000, '超时时间不能小于 1000ms')
-    .max(300000, '超时时间不能超过 300000ms')
-    .optional()
-    .default(10000),
-});
+const testConnectionSchema = z
+  .object({
+    endpointUrl: z
+      .string()
+      .url('端点 URL 格式无效')
+      .max(2048, '端点 URL 不能超过 2048 个字符'),
+    authMethod: z.enum(AUTH_METHODS),
+    apiKeyId: z.string().uuid('API Key ID 格式无效').optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(
+        PRIVATE_CLOUD_TIMEOUT_MIN,
+        `超时时间不能小于 ${PRIVATE_CLOUD_TIMEOUT_MIN}ms`,
+      )
+      .max(
+        PRIVATE_CLOUD_TIMEOUT_MAX,
+        `超时时间不能超过 ${PRIVATE_CLOUD_TIMEOUT_MAX}ms`,
+      )
+      .optional()
+      .default(10000),
+  })
+  .superRefine((data, ctx) => {
+    if (data.authMethod === 'api_key' && !data.apiKeyId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '私有云 API Key 认证必须选择 API Key',
+        path: ['apiKeyId'],
+      });
+    }
+  });
 
 export class TestConnectionDto extends createZodDto(testConnectionSchema) {}

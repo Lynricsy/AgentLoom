@@ -6,6 +6,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import {
   LlmModelConfigConflictException,
   LlmModelConfigNotFoundException,
+  LlmModelConfigValidationException,
 } from '../llm.exceptions';
 import { LlmService } from '../llm.service';
 
@@ -143,9 +144,10 @@ describe('LlmService', () => {
         mockConfig({
           provider: 'private_cloud',
           modelName: 'private-model',
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
+          authConfig: null,
           timeoutMs: 30_000,
         }),
       ]);
@@ -158,6 +160,7 @@ describe('LlmService', () => {
           modelName: 'private-model',
           parameters: {},
           isDefault: false,
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
           authConfig: { apiKey: 'secret-key' },
@@ -175,10 +178,69 @@ describe('LlmService', () => {
           name: 'Private Cloud Config',
           provider: 'private_cloud',
           modelName: 'private-model',
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
+          authConfig: null,
           timeoutMs: 30_000,
+        }),
+      );
+    });
+
+    it('应当在 private_cloud 使用 api_key 且缺少 apiKeyId 时抛出验证错误', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.create(
+          {
+            name: 'Private Cloud Config',
+            provider: 'private_cloud',
+            modelName: 'private-model',
+            parameters: {},
+            isDefault: false,
+            endpointUrl: 'https://private-cloud.example.com/v1',
+            authMethod: 'api_key',
+          },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(LlmModelConfigValidationException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('应当在非 private_cloud provider 时清空私有云专属字段', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const insertChain = createInsertChain([mockConfig()]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      await service.create(
+        {
+          name: 'OpenAI Config',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          parameters: {},
+          isDefault: false,
+          endpointUrl: 'https://should-be-cleared.example.com',
+          authMethod: 'none',
+          authConfig: { leaked: true },
+          timeoutMs: 15_000,
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
         }),
       );
     });
@@ -323,9 +385,10 @@ describe('LlmService', () => {
       const updateChain = createUpdateChain([
         mockConfig({
           provider: 'private_cloud',
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
+          authConfig: null,
           timeoutMs: 45_000,
         }),
       ]);
@@ -334,6 +397,8 @@ describe('LlmService', () => {
       const result = await service.update(
         CONFIG_ID,
         {
+          provider: 'private_cloud',
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
           authConfig: { apiKey: 'secret-key' },
@@ -345,9 +410,10 @@ describe('LlmService', () => {
       expect(result.endpointUrl).toBe('https://private-cloud.example.com/v1');
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({
+          apiKeyId: 'api-key-id',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
+          authConfig: null,
           timeoutMs: 45_000,
           updatedAt: NOW,
         }),
@@ -360,6 +426,7 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
           mockConfig({
+            apiKeyId: 'legacy-api-key-id',
             endpointUrl: 'https://private-cloud.example.com/v1',
             authMethod: 'mtls',
             authConfig: { clientCert: 'cert-data' },
@@ -393,6 +460,71 @@ describe('LlmService', () => {
       expect(result.authMethod).toBeNull();
       expect(result.authConfig).toBeNull();
       expect(result.timeoutMs).toBeNull();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKeyId: null,
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
+          updatedAt: NOW,
+        }),
+      );
+    });
+
+    it('应当在更新为 private_cloud api_key 且缺少 apiKeyId 时抛出验证错误', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+
+      await expect(
+        service.update(
+          CONFIG_ID,
+          {
+            provider: 'private_cloud',
+            endpointUrl: 'https://private-cloud.example.com/v1',
+            authMethod: 'api_key',
+          },
+          TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(LlmModelConfigValidationException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('应当在更新为非 private_cloud provider 时清空私有云字段', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          mockConfig({
+            provider: 'private_cloud',
+            apiKeyId: 'api-key-id',
+            endpointUrl: 'https://private-cloud.example.com/v1',
+            authMethod: 'api_key',
+            authConfig: null,
+            timeoutMs: 60_000,
+          }),
+        ]),
+      );
+
+      const updateChain = createUpdateChain([
+        mockConfig({
+          provider: 'openai',
+          endpointUrl: null,
+          authMethod: null,
+          authConfig: null,
+          timeoutMs: null,
+        }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.update(
+        CONFIG_ID,
+        {
+          provider: 'openai',
+        },
+        TENANT_ID,
+      );
+
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({
           endpointUrl: null,

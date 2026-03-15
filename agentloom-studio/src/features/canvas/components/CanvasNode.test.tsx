@@ -401,6 +401,83 @@ describe('CanvasNodeShell', () => {
     expect(within(node).getByRole('heading', { name: 'claude-3-7-sonnet' })).toBeInTheDocument()
   })
 
+  it('marks private_cloud llm-model nodes as warning when api_key auth has no explicit or default key', () => {
+    llmModuleMocks.setMockApiKeys([])
+
+    renderNode(
+      {
+        ...createMockNodeData('llm-model'),
+        config: {
+          llmConfigId: 'config-private-cloud-warning',
+          name: '私有云配置',
+          provider: 'private_cloud',
+          modelName: 'llama-3-70b',
+          parameters: {
+            temperature: 0.4,
+            topP: 1,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            stop: [],
+          },
+          apiKeyId: null,
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+        },
+      },
+      { id: 'llm-node-private-cloud-warning' },
+    )
+
+    const node = screen.getByTestId('canvas-node-llm-node-private-cloud-warning')
+
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'warning')
+    expect(within(node).getByText('缺少 API Key')).toBeInTheDocument()
+    expect(within(node).getByRole('heading', { name: 'llama-3-70b' })).toBeInTheDocument()
+  })
+
+  it('treats private_cloud default api keys as configured when explicit key is absent', () => {
+    llmModuleMocks.setMockApiKeys([
+      {
+        id: 'key-private-cloud-default',
+        provider: 'private_cloud',
+        label: '默认 Private Cloud Key',
+        keyPreview: 'sk-****',
+        isDefault: true,
+        status: 'active',
+      },
+    ])
+
+    renderNode(
+      {
+        ...createMockNodeData('llm-model'),
+        label: '私有云 LLM',
+        config: {
+          llmConfigId: 'config-private-cloud-default',
+          name: '默认私有云模型',
+          provider: 'private_cloud',
+          modelName: 'qwen-2.5-72b',
+          parameters: {
+            temperature: 0.5,
+            topP: 1,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            stop: [],
+          },
+          apiKeyId: null,
+          endpointUrl: 'https://private-cloud.example.com/v1',
+          authMethod: 'api_key',
+          isDefault: false,
+        },
+      },
+      { id: 'llm-node-private-cloud-default-key' },
+    )
+
+    const node = screen.getByTestId('canvas-node-llm-node-private-cloud-default-key')
+
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'configured')
+    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
+    expect(within(node).getByRole('heading', { name: 'qwen-2.5-72b' })).toBeInTheDocument()
+  })
+
   it('renders compact mode with icon, title, and a compact status badge while hiding body details', () => {
     nodeShellMocks.mockUseLevelOfDetail.mockReturnValue('compact' as LevelOfDetail)
     useExecutionStore.setState((state) => ({

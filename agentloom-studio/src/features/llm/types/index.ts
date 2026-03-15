@@ -106,7 +106,7 @@ export interface LlmNodeDataPatch {
 }
 
 export interface PrivateCloudAuthConfig {
-  apiKey?: string
+  apiKeyId?: string
   certPath?: string
   keyPath?: string
 }
@@ -114,7 +114,7 @@ export interface PrivateCloudAuthConfig {
 export interface TestConnectionInput {
   endpointUrl: string
   authMethod: AuthMethod
-  authConfig?: PrivateCloudAuthConfig
+  apiKeyId?: string
   timeoutMs?: number
 }
 
@@ -123,6 +123,7 @@ export interface TestConnectionResult {
   latencyMs: number
   serverInfo?: {
     models?: string[]
+    status?: string
     version?: string
   }
 }
@@ -136,7 +137,7 @@ export interface PrivateCloudModelInfo {
 export interface FetchModelsInput {
   endpointUrl: string
   authMethod: AuthMethod
-  authConfig?: PrivateCloudAuthConfig
+  apiKeyId?: string
 }
 
 export const LLM_PROVIDERS: readonly LlmProviderInfo[] = [
@@ -305,7 +306,11 @@ export function getLlmConfigState(
   }
 
   if (parsed.provider === 'private_cloud') {
-    if (!parsed.endpointUrl) {
+    if (!parsed.endpointUrl || !parsed.modelName) {
+      return 'warning' as const
+    }
+
+     if (parsed.authMethod === 'api_key' && !parsed.apiKeyId && !hasProviderDefaultKey) {
       return 'warning' as const
     }
 

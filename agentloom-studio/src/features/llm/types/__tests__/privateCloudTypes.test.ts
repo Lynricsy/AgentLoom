@@ -45,7 +45,7 @@ describe('private_cloud 类型与辅助函数', () => {
       expect(getLlmConfigState(config)).toBe('warning')
     })
 
-    it('有 endpointUrl 返回 configured（即使无 apiKeyId）', () => {
+    it('api_key 模式缺少 apiKeyId 且无默认 key 时返回 warning', () => {
       const config = {
         provider: 'private_cloud',
         modelName: 'llama-3-70b',
@@ -55,8 +55,53 @@ describe('private_cloud 类型与辅助函数', () => {
         apiKeyId: null,
         isDefault: false,
         endpointUrl: 'https://my-vllm:8000/v1',
+        authMethod: 'api_key',
+      }
+      expect(getLlmConfigState(config)).toBe('warning')
+    })
+
+    it('api_key 模式缺少 apiKeyId 但存在默认 key 时返回 configured', () => {
+      const config = {
+        provider: 'private_cloud',
+        modelName: 'llama-3-70b',
+        name: 'test',
+        llmConfigId: 'id-1',
+        parameters: { temperature: 0.7, topP: 1, frequencyPenalty: 0, presencePenalty: 0, stop: [] },
+        apiKeyId: null,
+        isDefault: false,
+        endpointUrl: 'https://my-vllm:8000/v1',
+        authMethod: 'api_key',
+      }
+      expect(getLlmConfigState(config, true)).toBe('configured')
+    })
+
+    it('none 模式有 endpointUrl 和 modelName 返回 configured', () => {
+      const config = {
+        provider: 'private_cloud',
+        modelName: 'llama-3-70b',
+        name: 'test',
+        llmConfigId: 'id-1',
+        parameters: { temperature: 0.7, topP: 1, frequencyPenalty: 0, presencePenalty: 0, stop: [] },
+        apiKeyId: null,
+        isDefault: false,
+        endpointUrl: 'https://my-vllm:8000/v1',
+        authMethod: 'none',
       }
       expect(getLlmConfigState(config)).toBe('configured')
+    })
+
+    it('有 endpointUrl 但无 modelName 返回 unconfigured', () => {
+      const config = {
+        provider: 'private_cloud',
+        modelName: '',
+        name: 'test',
+        llmConfigId: 'id-1',
+        parameters: { temperature: 0.7, topP: 1, frequencyPenalty: 0, presencePenalty: 0, stop: [] },
+        apiKeyId: null,
+        isDefault: false,
+        endpointUrl: 'https://my-vllm:8000/v1',
+      }
+      expect(getLlmConfigState(config)).toBe('unconfigured')
     })
   })
 
@@ -68,11 +113,11 @@ describe('private_cloud 类型与辅助函数', () => {
         name: 'My Private Model',
         llmConfigId: 'cfg-1',
         parameters: { temperature: 0.5, topP: 0.9, frequencyPenalty: 0, presencePenalty: 0, stop: [] },
-        apiKeyId: null,
+        apiKeyId: 'key-ref-1',
         isDefault: false,
         endpointUrl: 'https://vllm.internal:8000/v1',
         authMethod: 'api_key',
-        authConfig: { apiKey: 'sk-secret' },
+        authConfig: null,
         timeoutMs: 60000,
       }
 
@@ -80,7 +125,8 @@ describe('private_cloud 类型与辅助函数', () => {
       expect(parsed).not.toBeNull()
       expect(parsed?.endpointUrl).toBe('https://vllm.internal:8000/v1')
       expect(parsed?.authMethod).toBe('api_key')
-      expect(parsed?.authConfig).toEqual({ apiKey: 'sk-secret' })
+      expect(parsed?.apiKeyId).toBe('key-ref-1')
+      expect(parsed?.authConfig).toBeNull()
       expect(parsed?.timeoutMs).toBe(60000)
     })
 

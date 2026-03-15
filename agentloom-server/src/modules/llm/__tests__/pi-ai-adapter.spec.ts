@@ -83,6 +83,7 @@ describe('PiAiAdapter', () => {
       adapter as unknown as { sleep: (ms: number) => Promise<void> },
       'sleep',
     ).mockResolvedValue(undefined as never);
+    vi.unstubAllGlobals();
   });
 
   describe('getModel - 各提供商', () => {
@@ -157,7 +158,7 @@ describe('PiAiAdapter', () => {
           modelName: 'private-model',
           endpointUrl: 'https://private-cloud.example.com/v1',
           authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
+          apiKeyId: 'config-key-id',
           timeoutMs: 45_000,
         }),
         'sk-private-cloud',
@@ -231,12 +232,40 @@ describe('PiAiAdapter', () => {
       expect(
         decryptionBoundaryService.decryptConfiguredApiKey,
       ).not.toHaveBeenCalled();
-      expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({
-          apiKey: 'not-needed',
-          baseURL: 'https://private-cloud.example.com/v1',
+
+      const privateCloudOptions = mockCreateOpenAI.mock.calls.at(-1)?.[0] as
+        | {
+            apiKey: string;
+            baseURL: string;
+            fetch?: typeof fetch;
+          }
+        | undefined;
+
+      expect(privateCloudOptions).toMatchObject({
+        apiKey: '__agentloom_private_cloud_no_auth__',
+        baseURL: 'https://private-cloud.example.com/v1',
+      });
+      expect(privateCloudOptions?.fetch).toBeTypeOf('function');
+
+      const rawFetch = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 200 }));
+      vi.stubGlobal('fetch', rawFetch);
+
+      await privateCloudOptions?.fetch?.(
+        new Request('https://private-cloud.example.com/v1/responses', {
+          headers: {
+            Authorization: 'Bearer should-not-leak',
+            'X-Test-Header': 'preserved',
+          },
         }),
       );
+
+      expect(rawFetch).toHaveBeenCalledTimes(1);
+      const [, forwardedInit] = rawFetch.mock.calls[0];
+      const forwardedHeaders = new Headers(forwardedInit?.headers);
+      expect(forwardedHeaders.get('authorization')).toBeNull();
+      expect(forwardedHeaders.get('x-test-header')).toBe('preserved');
     });
 
     it('应当在 custom 缺少 baseUrl 时抛出 LlmProviderException', async () => {
@@ -252,7 +281,7 @@ describe('PiAiAdapter', () => {
             provider: 'private_cloud',
             endpointUrl: null,
             authMethod: 'api_key',
-            authConfig: { apiKey: 'secret-key' },
+            apiKeyId: 'config-key-id',
           }),
           'sk-key',
         ),
@@ -355,6 +384,23 @@ describe('PiAiAdapter', () => {
 
       expect(isRetryableError({ status: 401 })).toBe(false);
       expect(isRetryableError({ statusCode: 403 })).toBe(false);
+    });
+
+    it('应当将 401 结构化包装为 authenticationFailed 错误', async () => {
+      mockModel.doGenerate.mockRejectedValue(
+        Object.assign(new Error('Unauthorized'), { status: 401 }),
+      );
+
+      const result = (await adapter.getModel(
+        createConfig(),
+        'sk-key',
+      )) as WrappedModel;
+
+      await expect(result.doGenerate('prompt')).rejects.toMatchObject({
+        detail: 'Unauthorized',
+        extensions: { authenticationFailed: true },
+      });
+      expect(mockModel.doGenerate).toHaveBeenCalledTimes(1);
     });
   });
 });

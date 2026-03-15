@@ -43,9 +43,11 @@ export async function fetchApiKeys(): Promise<ApiKeyInfo[]> {
 }
 
 export async function testPrivateCloudConnection(input: TestConnectionInput): Promise<TestConnectionResult> {
-  return apiClient.post('llm/test-connection', { json: toSnakeBody(input) }).json<TestConnectionResult>()
+  const res = await apiClient.post('llm/test-connection', { json: toSnakeBody(input) }).json<ApiResponse<TestConnectionResult>>()
+  return res.data
 }
 
 export async function fetchPrivateCloudModels(input: FetchModelsInput): Promise<PrivateCloudModelInfo[]> {
-  return apiClient.post('llm/private-cloud/models', { json: toSnakeBody(input) }).json<PrivateCloudModelInfo[]>()
+  const res = await apiClient.post('llm/private-cloud/models', { json: toSnakeBody(input) }).json<ApiResponse<PrivateCloudModelInfo[]>>()
+  return res.data
 }

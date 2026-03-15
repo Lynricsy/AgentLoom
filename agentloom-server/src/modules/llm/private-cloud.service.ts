@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import {
   LlmProviderException,
   LlmTimeoutException,
@@ -13,20 +14,38 @@ export interface PrivateCloudModelInfo {
   ownedBy: string;
 }
 
+export interface PrivateCloudServerInfo {
+  version?: string;
+  status?: string;
+  models?: string[];
+}
+
 export interface TestConnectionResult {
   success: boolean;
   latencyMs: number;
-  serverInfo?: string;
+  serverInfo?: PrivateCloudServerInfo;
+}
+
+export interface PrivateCloudRequestContext {
+  tenantId: string;
+  orgId: string;
 }
 
 @Injectable()
 export class PrivateCloudService {
   private readonly logger = new Logger(PrivateCloudService.name);
 
-  async testConnection(dto: TestConnectionDto): Promise<TestConnectionResult> {
-    const { endpointUrl, authMethod, authConfig, timeoutMs } = dto;
+  constructor(
+    private readonly decryptionBoundaryService: DecryptionBoundaryService,
+  ) {}
+
+  async testConnection(
+    dto: TestConnectionDto,
+    context: PrivateCloudRequestContext,
+  ): Promise<TestConnectionResult> {
+    const { endpointUrl, authMethod, apiKeyId, timeoutMs } = dto;
     const timeout = timeoutMs ?? 10000;
-    const headers = this.buildHeaders(authMethod, authConfig);
+    const headers = await this.buildHeaders(authMethod, apiKeyId, context);
     const baseUrl = this.normalizeBaseUrl(endpointUrl);
 
     const start = Date.now();
@@ -38,14 +57,26 @@ export class PrivateCloudService {
         timeout,
       );
 
+      this.checkAuthError(healthRes, 'private_cloud');
+
       if (healthRes.ok) {
+        const serverInfo = await this.extractServerInfo(healthRes);
         return {
           success: true,
           latencyMs: Date.now() - start,
-          serverInfo: await this.extractServerInfo(healthRes),
+          ...(serverInfo ? { serverInfo } : {}),
         };
       }
-    } catch {
+
+      this.logger.debug(`/health 返回状态 ${healthRes.status}，尝试 /v1/models`);
+    } catch (error) {
+      if (
+        error instanceof LlmProviderException ||
+        error instanceof LlmTimeoutException
+      ) {
+        throw error;
+      }
+
       this.logger.debug(`/health 端点不可用，尝试 /v1/models`);
     }
 
@@ -59,9 +90,11 @@ export class PrivateCloudService {
       this.checkAuthError(modelsRes, 'private_cloud');
 
       if (modelsRes.ok) {
+        const serverInfo = await this.extractServerInfo(modelsRes);
         return {
           success: true,
           latencyMs: Date.now() - start,
+          ...(serverInfo ? { serverInfo } : {}),
         };
       }
 
@@ -86,9 +119,10 @@ export class PrivateCloudService {
 
   async fetchModels(
     dto: FetchPrivateCloudModelsDto,
+    context: PrivateCloudRequestContext,
   ): Promise<PrivateCloudModelInfo[]> {
-    const { endpointUrl, authMethod, authConfig } = dto;
-    const headers = this.buildHeaders(authMethod, authConfig);
+    const { endpointUrl, authMethod, apiKeyId } = dto;
+    const headers = await this.buildHeaders(authMethod, apiKeyId, context);
     const baseUrl = this.normalizeBaseUrl(endpointUrl);
 
     try {
@@ -135,19 +169,28 @@ export class PrivateCloudService {
     }
   }
 
-  private buildHeaders(
+  private async buildHeaders(
     authMethod: string,
-    authConfig?: Record<string, unknown>,
-  ): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (authMethod === 'api_key' && authConfig?.apiKey) {
-      headers['Authorization'] = `Bearer ${String(authConfig.apiKey)}`;
+    apiKeyId: string | undefined,
+    context: PrivateCloudRequestContext,
+  ): Promise<Record<string, string>> {
+    if (authMethod !== 'api_key') {
+      return {};
     }
 
-    return headers;
+    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
+      {
+        apiKeyId: apiKeyId ?? null,
+        organizationId: context.orgId,
+        tenantId: context.tenantId,
+        provider: 'private_cloud',
+      },
+      PrivateCloudService.name,
+    );
+
+    return {
+      Authorization: `Bearer ${apiKey}`,
+    };
   }
 
   private normalizeBaseUrl(url: string): string {
@@ -185,20 +228,42 @@ export class PrivateCloudService {
       throw new LlmProviderException(
         provider,
         `认证失败 (${res.status})，请检查认证配置`,
+        { authenticationFailed: true },
       );
     }
   }
 
-  private async extractServerInfo(res: Response): Promise<string | undefined> {
+  private async extractServerInfo(
+    res: Response,
+  ): Promise<PrivateCloudServerInfo | undefined> {
     try {
-      const body = (await res.json()) as Record<string, unknown>;
+      const body = (await res.json()) as {
+        version?: unknown;
+        status?: unknown;
+        data?: Array<{ id?: unknown }>;
+      };
+
+      const serverInfo: PrivateCloudServerInfo = {};
+
       if (typeof body.version === 'string') {
-        return body.version;
+        serverInfo.version = body.version;
       }
+
       if (typeof body.status === 'string') {
-        return body.status;
+        serverInfo.status = body.status;
       }
-      return undefined;
+
+      if (Array.isArray(body.data)) {
+        const models = body.data
+          .flatMap((item) => (typeof item.id === 'string' ? [item.id] : []))
+          .slice(0, 10);
+
+        if (models.length > 0) {
+          serverInfo.models = models;
+        }
+      }
+
+      return Object.keys(serverInfo).length > 0 ? serverInfo : undefined;
     } catch {
       return undefined;
     }

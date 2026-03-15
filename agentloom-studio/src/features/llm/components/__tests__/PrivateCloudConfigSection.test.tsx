@@ -23,13 +23,46 @@ const formSchema = z.object({
   endpointUrl: z.string().url().optional().or(z.literal('')),
   authMethod: z.enum(['api_key', 'mtls', 'none']).optional(),
   authConfig: z.record(z.string(), z.string()).optional(),
-  timeoutMs: z.number().int().min(1000).max(300000).optional(),
+  timeoutMs: z.number().int().min(5000).max(600000).optional(),
+}).superRefine((values, ctx) => {
+  if (values.provider !== 'private_cloud') {
+    return
+  }
+
+  if (!values.endpointUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endpointUrl'],
+      message: '请输入私有云端点 URL',
+    })
+  }
+
+  if (!values.authMethod) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['authMethod'],
+      message: '请选择认证方式',
+    })
+  }
+
+  if (values.authMethod === 'api_key' && !values.apiKeyId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['apiKeyId'],
+      message: '请选择 API Key',
+    })
+  }
 })
 
 type FormValues = z.infer<typeof formSchema>
 
 const testConnectionMock = vi.fn()
 const fetchModelsMock = vi.fn()
+
+const mockApiKeys = [
+  { id: '11111111-1111-1111-8111-111111111111', provider: 'private_cloud', label: 'My vLLM Key', keyPreview: 'sk-...abc', isDefault: false, status: 'active' as const },
+  { id: '22222222-2222-2222-8222-222222222222', provider: 'private_cloud', label: 'Backup Key', keyPreview: 'sk-...xyz', isDefault: false, status: 'active' as const },
+]
 
 vi.mock('../../hooks/useLlmModels', () => ({
   useTestPrivateCloudConnection: () => ({
@@ -39,6 +72,10 @@ vi.mock('../../hooks/useLlmModels', () => ({
   usePrivateCloudModels: () => ({
     mutateAsync: fetchModelsMock,
     isPending: false,
+  }),
+  useLlmApiKeys: () => ({
+    data: mockApiKeys,
+    isLoading: false,
   }),
 }))
 
@@ -114,7 +151,7 @@ describe('PrivateCloudConfigSection', () => {
     expect(screen.getByTestId('test-connection-btn')).toBeEnabled()
   })
 
-  it('测试连接成功后显示成功状态和获取模型按钮', async () => {
+  it('测试连接成功后显示成功状态、服务器版本和获取模型按钮', async () => {
     render(
       <FormWrapper defaultValues={{ endpointUrl: 'https://my-vllm:8000/v1' }}>
         <PrivateCloudConfigSection />
@@ -135,6 +172,7 @@ describe('PrivateCloudConfigSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('connection-status')).toHaveTextContent('连接成功')
       expect(screen.getByTestId('connection-status')).toHaveTextContent('42ms')
+      expect(screen.getByTestId('connection-status')).toHaveTextContent('版本 0.1.0')
     })
 
     expect(screen.getByTestId('fetch-models-btn')).toBeInTheDocument()
@@ -228,7 +266,7 @@ describe('PrivateCloudConfigSection', () => {
     })
   })
 
-  it('选择 api_key 认证方式时显示 API Key 输入框', () => {
+  it('选择 api_key 认证方式时显示 API Key 选择器', () => {
     render(
       <FormWrapper defaultValues={{ authMethod: 'api_key' }}>
         <PrivateCloudConfigSection />
@@ -236,10 +274,21 @@ describe('PrivateCloudConfigSection', () => {
     )
 
     expect(screen.getByTestId('api-key-auth-section')).toBeInTheDocument()
-    expect(screen.getByTestId('auth-api-key-input')).toBeInTheDocument()
+    expect(screen.getByTestId('api-key-select')).toBeInTheDocument()
   })
 
-  it('选择 mtls 认证方式时显示证书路径输入框', () => {
+  it('api_key 模式未选择 API Key 时禁用连接测试并显示提示', () => {
+    render(
+      <FormWrapper defaultValues={{ endpointUrl: 'https://my-vllm:8000/v1', authMethod: 'api_key' }}>
+        <PrivateCloudConfigSection />
+      </FormWrapper>,
+    )
+
+    expect(screen.getByTestId('test-connection-btn')).toBeDisabled()
+    expect(screen.getByText('请选择 API Key 以测试连接或获取模型。')).toBeInTheDocument()
+  })
+
+  it('选择 mtls 认证方式时显示即将支持提示', () => {
     render(
       <FormWrapper defaultValues={{ authMethod: 'mtls' }}>
         <PrivateCloudConfigSection />
@@ -247,6 +296,7 @@ describe('PrivateCloudConfigSection', () => {
     )
 
     expect(screen.getByTestId('mtls-auth-section')).toBeInTheDocument()
+    expect(screen.getByTestId('mtls-auth-section')).toHaveTextContent('即将支持')
   })
 
   it('选择 none 认证方式时不显示额外认证字段', () => {
@@ -278,6 +328,30 @@ describe('PrivateCloudConfigSection', () => {
     await waitFor(() => {
       const select = screen.getByTestId('remote-model-select') as HTMLSelectElement
       expect(select.value).toBe('llama-3-70b')
+    })
+  })
+
+  it('使用 api_key 认证方式时连接测试携带 apiKeyId', async () => {
+    render(
+      <FormWrapper defaultValues={{
+        endpointUrl: 'https://my-vllm:8000/v1',
+        authMethod: 'api_key',
+        apiKeyId: '11111111-1111-1111-8111-111111111111',
+      }}>
+        <PrivateCloudConfigSection />
+      </FormWrapper>,
+    )
+
+    fireEvent.click(screen.getByTestId('test-connection-btn'))
+
+    await waitFor(() => {
+      expect(testConnectionMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpointUrl: 'https://my-vllm:8000/v1',
+          authMethod: 'api_key',
+          apiKeyId: '11111111-1111-1111-8111-111111111111',
+        }),
+      )
     })
   })
 })

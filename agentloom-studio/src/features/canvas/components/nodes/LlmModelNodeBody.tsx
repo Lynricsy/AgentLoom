@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { AlertTriangle, Brain } from 'lucide-react'
+import { AlertTriangle, Brain, Server } from 'lucide-react'
 import {
   getLlmConfigState,
   getProviderInfo,
@@ -12,6 +12,14 @@ type LlmNodeVisualState = 'unconfigured' | 'configured' | 'warning'
 interface LlmModelNodeBodyProps {
   config: Record<string, unknown>
   state?: LlmNodeVisualState
+}
+
+function extractHostname(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
 }
 
 export const LlmModelNodeBody = memo(function LlmModelNodeBody({
@@ -32,6 +40,15 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
 
   const providerInfo = getProviderInfo(llmConfig.provider)
   const hasWarning = resolvedState === 'warning'
+  const isPrivateCloud = llmConfig.provider === 'private_cloud'
+
+  const warningLabel = isPrivateCloud
+    ? (!llmConfig.endpointUrl
+        ? '缺少端点'
+        : llmConfig.authMethod === 'api_key' && !llmConfig.apiKeyId
+          ? '缺少 API Key'
+          : '缺少模型')
+    : '缺少 API Key'
 
   return (
     <div className="flex flex-col gap-2">
@@ -47,7 +64,7 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
         {hasWarning ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] text-warning">
             <AlertTriangle className="h-3 w-3" />
-            缺少 API Key
+            {warningLabel}
           </span>
         ) : null}
       </div>
@@ -66,6 +83,18 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
           ) : null}
         </div>
       </div>
+
+      {isPrivateCloud && llmConfig.endpointUrl ? (
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <Server className="h-3 w-3 shrink-0" />
+          <span className="truncate">{extractHostname(llmConfig.endpointUrl)}</span>
+          {llmConfig.authMethod ? (
+            <span className="rounded bg-muted px-1.5 py-0.5">
+              {llmConfig.authMethod === 'api_key' ? 'Key' : llmConfig.authMethod}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 })

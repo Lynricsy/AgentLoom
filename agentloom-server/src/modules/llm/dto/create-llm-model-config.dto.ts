@@ -14,6 +14,9 @@ export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
 const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const;
 
+const PRIVATE_CLOUD_TIMEOUT_MIN = 5_000;
+const PRIVATE_CLOUD_TIMEOUT_MAX = 600_000;
+
 export type AuthMethod = (typeof AUTH_METHODS)[number];
 
 const createLlmModelConfigSchema = z
@@ -42,37 +45,53 @@ const createLlmModelConfigSchema = z
     timeoutMs: z
       .number()
       .int()
-      .min(1000, '超时时间不能小于 1000ms')
-      .max(300000, '超时时间不能超过 300000ms')
+      .min(
+        PRIVATE_CLOUD_TIMEOUT_MIN,
+        `超时时间不能小于 ${PRIVATE_CLOUD_TIMEOUT_MIN}ms`,
+      )
+      .max(
+        PRIVATE_CLOUD_TIMEOUT_MAX,
+        `超时时间不能超过 ${PRIVATE_CLOUD_TIMEOUT_MAX}ms`,
+      )
       .optional(),
   })
-  .refine(
-    (data) => {
-      if (data.provider === 'private_cloud') {
-        return !!data.endpointUrl;
-      }
-      return true;
-    },
-    {
-      message: '私有云部署必须提供端点 URL',
-      path: ['endpointUrl'],
-    },
-  )
-  .refine(
-    (data) => {
-      if (data.provider === 'private_cloud' && !data.authMethod) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: '私有云部署必须指定认证方式',
-      path: ['authMethod'],
-    },
-  );
+  .superRefine((data, ctx) => {
+    if (data.provider !== 'private_cloud') {
+      return;
+    }
+
+    if (!data.endpointUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '私有云部署必须提供端点 URL',
+        path: ['endpointUrl'],
+      });
+    }
+
+    if (!data.authMethod) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '私有云部署必须指定认证方式',
+        path: ['authMethod'],
+      });
+    }
+
+    if (data.authMethod === 'api_key' && !data.apiKeyId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '私有云 API Key 认证必须选择 API Key',
+        path: ['apiKeyId'],
+      });
+    }
+  });
 
 export class CreateLlmModelConfigDto extends createZodDto(
   createLlmModelConfigSchema,
 ) {}
 
-export { LLM_PROVIDERS, AUTH_METHODS };
+export {
+  LLM_PROVIDERS,
+  AUTH_METHODS,
+  PRIVATE_CLOUD_TIMEOUT_MIN,
+  PRIVATE_CLOUD_TIMEOUT_MAX,
+};
