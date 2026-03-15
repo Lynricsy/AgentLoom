@@ -259,4 +259,25 @@ describe('PrivateCloudConfigSection', () => {
     expect(screen.queryByTestId('api-key-auth-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mtls-auth-section')).not.toBeInTheDocument()
   })
+
+  it('获取到模型列表后自动选中第一个模型', async () => {
+    render(
+      <FormWrapper defaultValues={{ endpointUrl: 'https://my-vllm:8000/v1', modelName: '' }}>
+        <PrivateCloudConfigSection />
+      </FormWrapper>,
+    )
+
+    fireEvent.click(screen.getByTestId('test-connection-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fetch-models-btn')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('fetch-models-btn'))
+
+    await waitFor(() => {
+      const select = screen.getByTestId('remote-model-select') as HTMLSelectElement
+      expect(select.value).toBe('llama-3-70b')
+    })
+  })
 })
