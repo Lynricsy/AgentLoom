@@ -15,6 +15,7 @@ import {
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
 import { MarketplaceService } from './marketplace.service';
+import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
@@ -48,6 +49,10 @@ function createMarketplaceListing(
       '用于覆盖提交、上下架与查询状态机分支。',
     tags: ['analysis', `org-${ORG_ID.slice(-4)}`],
     coverImageUrl: `https://cdn.agentloom.dev/${ORG_ID}/cover.png`,
+    category: 'analysis',
+    useCount: 0,
+    avgRating: null,
+    reviewCount: 0,
     status: 'pending_review',
     reviewResult: null,
     submittedBy: USER_ID,
@@ -70,6 +75,7 @@ function createSubmitDto(
       '这是一个用于 marketplace 单元测试的工作流摘要，长度足够且用于验证状态机转换。',
     tags: ['analysis', 'automation'],
     coverImageUrl: `https://cdn.agentloom.dev/${ORG_ID}/submit-cover.png`,
+    category: 'analysis',
     ...overrides,
   });
 }
@@ -99,6 +105,46 @@ function createSelectChainWithPagination(result: unknown) {
   };
 }
 
+function createSelectChainWithSingleJoinPagination(result: unknown) {
+  const offset = vi.fn().mockResolvedValue(result);
+  const limit = vi.fn().mockReturnValue({ offset });
+  const orderBy = vi.fn().mockReturnValue({ limit });
+  const where = vi.fn().mockReturnValue({ orderBy });
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ leftJoin });
+  return {
+    from,
+    leftJoin,
+    where,
+    orderBy,
+    limit,
+    offset,
+  };
+}
+
+function createSelectChainWithSingleJoin(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ leftJoin });
+  return { from, leftJoin, where };
+}
+
+function createSelectChainWithInnerAndLeftJoin(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const innerJoin = vi.fn().mockReturnValue({ leftJoin });
+  const from = vi.fn().mockReturnValue({ innerJoin });
+  return { from, innerJoin, leftJoin, where };
+}
+
+function createSelectChainWithSingleJoinOrdered(result: unknown) {
+  const orderBy = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ orderBy });
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ leftJoin });
+  return { from, leftJoin, where, orderBy };
+}
+
 function createInsertChain(result: unknown) {
   const returning = vi.fn().mockResolvedValue(result);
   const values = vi.fn().mockReturnValue({ returning });
@@ -121,6 +167,7 @@ function createUpdateWhereChain(result: unknown) {
 describe('MarketplaceService', () => {
   let service: MarketplaceService;
   let reviewService: { review: ReturnType<typeof vi.fn> };
+  let workflowVersionService: { create: ReturnType<typeof vi.fn> };
   let db: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
@@ -130,6 +177,10 @@ describe('MarketplaceService', () => {
 
     reviewService = {
       review: vi.fn(),
+    };
+
+    workflowVersionService = {
+      create: vi.fn(),
     };
 
     db = {
@@ -148,6 +199,7 @@ describe('MarketplaceService', () => {
         MarketplaceService,
         { provide: DRIZZLE, useValue: db },
         { provide: MarketplaceReviewService, useValue: reviewService },
+        { provide: WorkflowVersionService, useValue: workflowVersionService },
       ],
     }).compile();
 
@@ -192,6 +244,8 @@ describe('MarketplaceService', () => {
       const result = await service.submit(TENANT_ID, USER_ID, dto);
 
       expect(db.insert).toHaveBeenCalledTimes(1);
+      const insertValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.category).toBe(dto.category);
       expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
         title: dto.title,
         summary: dto.summary,
@@ -289,6 +343,7 @@ describe('MarketplaceService', () => {
           summary: dto.summary,
           tags: dto.tags,
           coverImageUrl: dto.coverImageUrl,
+          category: dto.category,
           status: 'pending_review',
           submittedBy: USER_ID,
           submittedAt: NOW,
@@ -650,6 +705,216 @@ describe('MarketplaceService', () => {
       await expect(service.findById(TENANT_ID, LISTING_ID)).rejects.toBeInstanceOf(
         MarketplaceListingNotFoundException,
       );
+    });
+  });
+
+  describe('findPublicListings', () => {
+    it('应返回公开 listing 列表并映射作者信息', async () => {
+      const listItem = {
+        id: LISTING_ID,
+        title: '公开分析 listing',
+        summary: '这是一个面向公开市场浏览的测试摘要，用于验证分页与作者映射。',
+        tags: ['analysis', 'marketplace'],
+        coverImageUrl: 'https://cdn.agentloom.dev/public/cover.png',
+        category: 'analysis' as const,
+        useCount: 12,
+        avgRating: '4.80',
+        reviewCount: 6,
+        publishedAt: NOW,
+        authorId: USER_ID,
+        authorDisplayName: '公开作者',
+        authorAvatarUrl: 'https://cdn.agentloom.dev/public/avatar.png',
+      };
+      const selectData = createSelectChainWithSingleJoinPagination([listItem]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectData)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findPublicListings({
+        category: 'analysis',
+        search: '公开',
+        sort: 'rating',
+        page: 2,
+        pageSize: 5,
+      });
+
+      expect(selectData.limit).toHaveBeenCalledWith(5);
+      expect(selectData.offset).toHaveBeenCalledWith(5);
+      expect(selectData.where.mock.calls[0]?.[0]).toBeDefined();
+      expect(selectCount.where).toHaveBeenCalledWith(
+        selectData.where.mock.calls[0]?.[0],
+      );
+      expect(result).toEqual({
+        data: [
+          {
+            id: LISTING_ID,
+            title: listItem.title,
+            summary: listItem.summary,
+            tags: listItem.tags,
+            coverImageUrl: listItem.coverImageUrl,
+            category: 'analysis',
+            useCount: 12,
+            avgRating: '4.80',
+            reviewCount: 6,
+            publishedAt: NOW,
+            author: {
+              id: USER_ID,
+              displayName: '公开作者',
+              avatarUrl: 'https://cdn.agentloom.dev/public/avatar.png',
+            },
+          },
+        ],
+        total: 1,
+        page: 2,
+        pageSize: 5,
+      });
+    });
+  });
+
+  describe('findPublicById', () => {
+    it('应返回公开 listing 详情、规范化 viewport 与评论列表', async () => {
+      const snapshot = {
+        nodes: [
+          { id: 'public-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+        ],
+        edges: [],
+        viewport: null,
+        inputSchema: {
+          version: 1,
+          collectionMode: 'form',
+          fields: [],
+        },
+        metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 1 },
+      };
+      const listing = {
+        id: LISTING_ID,
+        workflowVersionId: VERSION_ID,
+        title: '公开详情 listing',
+        summary: '这是公开详情测试的摘要，验证 definition 与 reviews 一并返回。',
+        tags: ['analysis'],
+        coverImageUrl: null,
+        category: 'analysis' as const,
+        useCount: 20,
+        avgRating: '4.50',
+        reviewCount: 2,
+        publishedAt: NOW,
+        authorId: USER_ID,
+        authorDisplayName: '详情作者',
+        authorAvatarUrl: null,
+        snapshot,
+      };
+      const review = {
+        id: '00000000-0000-0000-0000-000000000007',
+        rating: 5,
+        content: '非常好用',
+        createdAt: NOW,
+        updatedAt: NOW,
+        authorId: '00000000-0000-0000-0000-000000000008',
+        authorDisplayName: '评论用户',
+        authorAvatarUrl: null,
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithInnerAndLeftJoin([listing]))
+        .mockReturnValueOnce(createSelectChainWithSingleJoinOrdered([review]));
+
+      const result = await service.findPublicById(LISTING_ID);
+
+      expect(result).toEqual({
+        id: LISTING_ID,
+        workflowVersionId: VERSION_ID,
+        title: listing.title,
+        summary: listing.summary,
+        tags: listing.tags,
+        coverImageUrl: null,
+        category: 'analysis',
+        useCount: 20,
+        avgRating: '4.50',
+        reviewCount: 2,
+        publishedAt: NOW,
+        author: {
+          id: USER_ID,
+          displayName: '详情作者',
+          avatarUrl: null,
+        },
+        definition: {
+          nodes: snapshot.nodes,
+          edges: snapshot.edges,
+          viewport: { x: 0, y: 0, zoom: 1 },
+          inputSchema: snapshot.inputSchema,
+        },
+        reviews: [
+          {
+            id: review.id,
+            rating: 5,
+            content: '非常好用',
+            createdAt: NOW,
+            updatedAt: NOW,
+            author: {
+              id: review.authorId,
+              displayName: '评论用户',
+              avatarUrl: null,
+            },
+          },
+        ],
+      });
+    });
+  });
+
+  describe('installListing', () => {
+    it('应创建工作流副本并原子递增 useCount', async () => {
+      const listing = {
+        id: LISTING_ID,
+        workflowVersionId: VERSION_ID,
+        title: '一键安装 listing',
+        summary: '这是用于验证一键安装逻辑的公开摘要。',
+        tags: ['automation'],
+        coverImageUrl: null,
+        category: 'automation' as const,
+        useCount: 9,
+        avgRating: '4.20',
+        reviewCount: 4,
+        publishedAt: NOW,
+        authorId: USER_ID,
+        authorDisplayName: '作者',
+        authorAvatarUrl: null,
+        snapshot: {
+          nodes: [],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+          inputSchema: null,
+          metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+        },
+      };
+      const createdWorkflow = {
+        id: WORKFLOW_ID,
+        tenantId: TENANT_ID,
+        name: listing.title,
+        slug: 'installed-workflow',
+      };
+      const updateChain = createUpdateWhereChain(undefined);
+
+      db.select.mockReturnValueOnce(createSelectChainWithInnerAndLeftJoin([listing]));
+      db.update.mockReturnValueOnce(updateChain);
+      workflowVersionService.create.mockResolvedValue(createdWorkflow);
+
+      const result = await service.installListing(TENANT_ID, USER_ID, LISTING_ID, {});
+
+      expect(workflowVersionService.create).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        {
+          name: listing.title,
+          description: listing.summary,
+          marketplace_listing_id: LISTING_ID,
+        },
+      );
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ updatedAt: NOW }),
+      );
+      expect(result).toEqual(createdWorkflow);
     });
   });
 });
