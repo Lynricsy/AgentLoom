@@ -32,6 +32,7 @@ describe('nodeTypeRegistry', () => {
       'condition',
       'loop',
       'reusable-block',
+      'smart-routing',
     ])
   })
 

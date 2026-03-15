@@ -268,5 +268,20 @@ export interface CanvasContextMenuState {
   nodeId?: string
 }
 
+export type RoutingStrategy =
+  | 'TOKEN_OPTIMIZED'
+  | 'COST_OPTIMIZED'
+  | 'QUALITY_FIRST'
+  | 'LATENCY_FIRST'
+  | 'HISTORICAL_BEST'
+  | 'FALLBACK_CHAIN'
+
+export interface SmartRoutingNodeData extends CanvasNodeData {
+  strategy: RoutingStrategy
+  tokenThreshold?: number
+  fallbackPriority?: string[]
+  modelConfigIds?: string[]
+}
+
 export type { NodeType, PortDefinition, CreatePortOptions } from './types/nodeTypeRegistry'
 export type { PortDataType, TypeSchema } from './types/typeSchema'

@@ -18,6 +18,7 @@ import {
   Database,
   FileText,
   GitBranch,
+  GitFork,
   Globe,
   MessageSquare,
   Package,
@@ -43,7 +44,7 @@ import {
   type AutonomyMode,
   type FallbackStrategy,
 } from '../autonomy.types'
-import type { CanvasNode } from '../types'
+import type { CanvasNode, SmartRoutingNodeData } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { useLevelOfDetail } from '../hooks/useLevelOfDetail'
 import {
@@ -59,6 +60,7 @@ import { LlmModelNodeBody } from './nodes/LlmModelNodeBody'
 import { McpToolNodeBody } from './nodes/McpToolNodeBody'
 import { ReusableBlockBody } from './nodes/ReusableBlockBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
+import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -74,6 +76,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   FileText,
   Braces,
   GitBranch,
+  GitFork,
   Repeat,
   Package,
 }
@@ -580,6 +583,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <SandboxNodeBody data={data} />
           ) : data.nodeType === 'reusable-block' ? (
             <ReusableBlockBody nodeId={id} data={data} />
+          ) : data.nodeType === 'smart-routing' ? (
+            <SmartRoutingNodeBody data={data as SmartRoutingNodeData} />
           ) : (
             config.description
           )}
