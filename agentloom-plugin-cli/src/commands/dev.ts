@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { Command } from 'commander';
 import express, { type Express } from 'express';
+import type { PluginManifest } from '@agentloom/plugin-sdk';
 
-import { loadManifest, type BasicPluginManifest } from '../utils/manifest';
+import { loadManifest } from '../utils/manifest';
 import { loadPlugin, serializeNodes, type RuntimeNodeDefinition } from '../utils/plugin';
 
 export interface DevCommandLogger {
@@ -22,7 +23,7 @@ export interface StartDevServerOptions {
 
 export interface StartedDevServer {
   app: Express;
-  manifest: BasicPluginManifest;
+  manifest: PluginManifest;
   port: number;
   server: Server;
   stop(): Promise<void>;

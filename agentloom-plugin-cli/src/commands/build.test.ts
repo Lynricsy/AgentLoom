@@ -29,6 +29,7 @@ function createBuildFixture(root: string, withReadme = false): void {
     author: 'AgentLoom Team',
     description: 'Fixture used in build command tests',
     license: 'MIT',
+    minPlatformVersion: '1.0.0',
     permissions: [],
   });
 
@@ -42,8 +43,8 @@ function createBuildFixture(root: string, withReadme = false): void {
   writeJson(join(root, 'tsconfig.json'), {
     compilerOptions: {
       target: 'ES2022',
-      module: 'ESNext',
-      moduleResolution: 'Bundler',
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
       outDir: 'dist',
       rootDir: 'src',
       strict: true,

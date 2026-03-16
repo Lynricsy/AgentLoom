@@ -32,7 +32,7 @@ AgentLoomAUTO/
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
 ├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output)
-├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build 命令)
+├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令)
 ├── agentloom-plugin-template/ # 示例插件模板 (text-to-uppercase)
 ├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
@@ -50,7 +50,7 @@ AgentLoomAUTO/
 | 添加后端 API 端点 | `agentloom-server/src/modules/` | NestJS 模块，每模块有 controller/service/dto |
 | 添加数据库表 | `agentloom-server/src/database/schema/` | Drizzle ORM，需 `pnpm db:generate` |
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
-| 管理服务端插件注册与状态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册、`plugins` 表、`plugin-execution` 队列 |
+| 管理服务端插件注册与状态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册 + RSA-PSS 签名验证、`plugins`/`plugin_developer_keys` 表、`PluginSandboxService`（Extism WASM 沙箱）、开发者密钥管理 API、`plugin-execution` 队列 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
@@ -88,7 +88,7 @@ server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + Mi
 - **ESLint**: flat config + typescript-eslint + prettier (singleQuote, trailingComma:all)
 - **`no-explicit-any: off`** — 项目允许 any（但应尽量避免）
 - **Server 80% 覆盖率阈值**，Studio 无阈值
-- **Plugin SDK** 使用 **Zod 3.x**（面向插件生态兼容），通过 **tsup** 输出 ESM+CJS + `.d.ts/.d.cts`
+- **Plugin SDK** 使用 **Zod 3.x**（面向插件生态兼容），通过 **tsup** 输出 ESM+CJS + `.d.ts/.d.cts`，包含 `signing/` 模块提供 RSA-PSS 签名与验证工具函数
 - **多租户**: 全局中间件链 TenantMiddleware → TenantTransactionInterceptor → AuthGuard → TenantGuard → RolesGuard
 - **vi.hoisted()** 在测试中广泛使用，mock factory 函数模式
 - **Testcontainers PostgreSQL** 用于 E2E 测试
@@ -165,7 +165,7 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 - **Trigger 系统**: 支持 `cron` / `webhook` / `api_event`(preview-only) 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 仅可查看不可创建/编辑/启用。执行创建在租户事务提交后才入队
 - **Intervention Policy**: `intervention_policies` 表驱动介入策略，支持 approve/reject/escalate timeout 动作，`MAX_ESCALATION_ATTEMPTS = 3`
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`
-- **PluginModule**: `plugins` 表保存租户插件元数据（`org_id + plugin_id` 唯一，含 `manifest`、`node_definitions`、`occ_version` 与 tenant RLS）。`/plugins` 提供 `.alp` multipart 注册、列表、详情、状态更新与删除；`NodeSchedulerService` 将 `plugin` 节点投递到 BullMQ `plugin-execution` 队列，由 `PluginExecutionWorker` 返回占位执行结果
+- **PluginModule**: `plugins` 表保存租户插件元数据（`org_id + plugin_id` 唯一，含 `manifest`、`node_definitions`、`signature`、`content_hash`、`wasm_bundle_url`、`occ_version` 与 tenant RLS）。`plugin_developer_keys` 表管理开发者 RSA 公钥（`org_id + key_fingerprint` 唯一，active/revoked 状态）。`/plugins` 提供 `.alp` multipart 注册（含 RSA-PSS 签名验证 + MinIO 归档上传 + WASM 提取）、列表、详情、状态更新与删除；`/plugins/developer-keys` 提供开发者密钥注册、列表、详情与撤销；`PluginSignatureService` 使用 `node:crypto` RSA-PSS + SHA-256 验证归档签名并计算内容哈希；`PluginSandboxService` 使用 `@extism/extism` 创建隔离 WASM 实例（`runInWorker: true`），统一合并 `timeoutMs` / `maxMemoryPages` / `allowedHosts` / `allowedPaths` / `useWasi` 沙箱配置并将 Extism 错误映射为插件域异常；`PluginExecutionWorker` 从 MinIO 下载 WASM → 构建沙箱配置 → 在 `PluginSandboxService` 中执行
 - **Marketplace**: 公共 browse/search/detail/reviews/install 链路。安装 RBAC `owner/admin/creator/operator`。发布审核基于 `workflowDefinitions.status + publishedVersionId`
 - **导出/导入**: 导出使用 `agentloom-workflow-v1` 信封 + `sanitizeDefinition()` 递归剥离敏感信息。导入含 Zod 校验 + `cloneDefinitionWithNewIds()`。创建工作流支持 `template_slug` / `share_token` / `marketplace_listing_id` 三种克隆源（互斥）
 - **Open API & SDK**: `PlatformApiTokenModule` 管理 API Key（`al_` prefix + SHA-256 hash）。`AuthGuard` 双重认证 JWT → X-Api-Key fallback。`CustomThrottlerGuard` 100 req/min 限流。支持 TS-fetch / Python SDK 生成

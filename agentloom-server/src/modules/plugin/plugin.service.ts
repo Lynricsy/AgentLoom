@@ -1,4 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  PluginManifestSchema,
+  validateManifest as validatePluginManifest,
+  type PluginPermission,
+} from '@agentloom/plugin-sdk';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -19,51 +24,9 @@ import {
   PluginVersionConflictException,
 } from './plugin.exceptions';
 
-const ReverseDomainPluginIdSchema = z.string().regex(
-  /^[a-z0-9]+(?:[.-][a-z0-9]+)*(?:\.[a-z0-9]+(?:[.-][a-z0-9]+)*)+$/i,
-  {
-    message: 'pluginId 必须为反向域名格式',
-  },
-);
-
 const PluginNodeDefinitionSchema = z.record(z.string(), z.unknown());
 
 const PluginNodeDefinitionsSchema = z.array(PluginNodeDefinitionSchema);
-
-const PluginManifestSchema = z
-  .object({
-    pluginId: z.string().trim().min(1).optional(),
-    id: z.string().trim().min(1).optional(),
-    name: z.string().trim().min(1, { message: '插件名称不能为空' }),
-    version: z.string().trim().min(1, { message: '插件版本不能为空' }),
-    author: z.string().trim().min(1, { message: '插件作者不能为空' }),
-    description: z.string().trim().max(2000).optional(),
-    license: z.string().trim().max(100).optional(),
-    permissions: z.array(z.string().trim().min(1)).optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  })
-  .passthrough()
-  .superRefine((value, ctx) => {
-    const pluginId = value.pluginId ?? value.id;
-
-    if (!pluginId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['pluginId'],
-        message: 'manifest.json 缺少 pluginId',
-      });
-      return;
-    }
-
-    const validation = ReverseDomainPluginIdSchema.safeParse(pluginId);
-    if (!validation.success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['pluginId'],
-        message: validation.error.issues[0]?.message ?? 'pluginId 格式无效',
-      });
-    }
-  });
 
 type ParsedPluginManifest = {
   raw: Record<string, unknown>;
@@ -71,11 +34,15 @@ type ParsedPluginManifest = {
   name: string;
   version: string;
   author: string;
-  description?: string;
-  license?: string;
-  permissions: string[];
+  description: string;
+  license: string;
+  permissions: PluginPermission[];
   metadata: Record<string, unknown> | null;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 type PluginListResult = {
   data: PluginRecord[];
@@ -104,6 +71,11 @@ export class PluginService {
     manifestData: Record<string, unknown>,
     nodeDefinitions: Array<Record<string, unknown>>,
     storageKey?: string,
+    options?: {
+      signature?: string;
+      contentHash?: string;
+      wasmBundleUrl?: string;
+    },
   ): Promise<PluginRecord> {
     const resolvedOrgId = orgId ?? (await this.findOrganizationIdOrThrow(tenantId));
     const manifest = this.parseManifest(manifestData);
@@ -137,6 +109,9 @@ export class PluginService {
         permissions: manifest.permissions,
         installedBy: userId,
         metadata: manifest.metadata,
+        signature: this.normalizeNullableText(options?.signature),
+        contentHash: this.normalizeNullableText(options?.contentHash),
+        wasmBundleUrl: this.normalizeNullableText(options?.wasmBundleUrl),
       })
       .returning();
 
@@ -362,31 +337,51 @@ export class PluginService {
   private parseManifest(
     manifestData: Record<string, unknown>,
   ): ParsedPluginManifest {
-    const parsedManifest = PluginManifestSchema.safeParse(manifestData);
+    const normalizedManifest = this.normalizeManifestData(manifestData);
+    const validationResult = validatePluginManifest(normalizedManifest);
 
-    if (!parsedManifest.success) {
-      throw new PluginValidationException(
-        parsedManifest.error.issues[0]?.message ?? 'manifest.json 校验失败',
-      );
+    if (!validationResult.valid) {
+      throw new PluginValidationException(validationResult.errors);
     }
 
-    const pluginId = (parsedManifest.data.pluginId ?? parsedManifest.data.id)?.trim();
-
-    if (!pluginId) {
-      throw new PluginValidationException('manifest.json 缺少 pluginId');
-    }
+    const parsedManifest = PluginManifestSchema.parse(normalizedManifest);
 
     return {
-      raw: manifestData,
-      pluginId,
-      name: parsedManifest.data.name,
-      version: parsedManifest.data.version,
-      author: parsedManifest.data.author,
-      description: parsedManifest.data.description,
-      license: parsedManifest.data.license,
-      permissions: parsedManifest.data.permissions ?? [],
-      metadata: parsedManifest.data.metadata ?? null,
+      raw: normalizedManifest,
+      pluginId: parsedManifest.id,
+      name: parsedManifest.name,
+      version: parsedManifest.version,
+      author: parsedManifest.author,
+      description: parsedManifest.description,
+      license: parsedManifest.license,
+      permissions: parsedManifest.permissions,
+      metadata: this.extractMetadata(normalizedManifest),
     };
+  }
+
+  private normalizeManifestData(
+    manifestData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const normalizedManifest = { ...manifestData };
+    const legacyPluginId =
+      typeof normalizedManifest.pluginId === 'string'
+        ? normalizedManifest.pluginId.trim()
+        : undefined;
+
+    if (normalizedManifest.id === undefined && legacyPluginId) {
+      normalizedManifest.id = legacyPluginId;
+    }
+
+    delete normalizedManifest.pluginId;
+
+    return normalizedManifest;
+  }
+
+  private extractMetadata(
+    manifestData: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const metadata = manifestData['metadata'];
+    return isRecord(metadata) ? metadata : null;
   }
 
   private parseNodeDefinitions(

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@agentloom/plugin-sdk':
+        specifier: file:../agentloom-plugin-sdk
+        version: file:../agentloom-plugin-sdk
       '@ai-sdk/anthropic':
         specifier: ^3.0.58
         version: 3.0.58(zod@4.3.6)
@@ -17,6 +20,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.41
         version: 3.0.41(zod@4.3.6)
+      '@extism/extism':
+        specifier: 2.0.0-rc13
+        version: 2.0.0-rc13
       '@fastify/multipart':
         specifier: ^9.4.0
         version: 9.4.0
@@ -224,6 +230,9 @@ importers:
         version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
 packages:
+
+  '@agentloom/plugin-sdk@file:../agentloom-plugin-sdk':
+    resolution: {directory: ../agentloom-plugin-sdk, type: directory}
 
   '@ai-sdk/anthropic@3.0.58':
     resolution: {integrity: sha512-/53SACgmVukO4bkms4dpxpRlYhW8Ct6QZRe6sj1Pi5H00hYhxIrqfiLbZBGxkdRvjsBQeP/4TVGsXgH5rQeb8Q==}
@@ -817,6 +826,9 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@extism/extism@2.0.0-rc13':
+    resolution: {integrity: sha512-iQ3mrPKOC0WMZ94fuJrKbJmMyz4LQ9Abf8gd4F5ShxKWa+cRKcVzk0EqRQsp5xXsQ2dO3zJTiA6eTc4Ihf7k+A==}
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
@@ -4834,10 +4846,18 @@ packages:
     peerDependencies:
       zod: ^3.25 || ^4
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
+
+  '@agentloom/plugin-sdk@file:../agentloom-plugin-sdk':
+    dependencies:
+      semver: 7.7.4
+      zod: 3.25.76
 
   '@ai-sdk/anthropic@3.0.58(zod@4.3.6)':
     dependencies:
@@ -5236,6 +5256,8 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@extism/extism@2.0.0-rc13': {}
 
   '@fastify/ajv-compiler@4.0.5':
     dependencies:
@@ -9551,5 +9573,7 @@ snapshots:
   zod-to-json-schema@3.25.1(zod@4.3.6):
     dependencies:
       zod: 4.3.6
+
+  zod@3.25.76: {}
 
   zod@4.3.6: {}

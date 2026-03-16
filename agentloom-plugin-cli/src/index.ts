@@ -19,10 +19,21 @@ export {
   type BuildPluginOptions,
   type BuildPluginResult,
 } from './commands/build';
-export { publishCommand } from './commands/publish';
+export {
+  keysCommand,
+  generateKeyPair,
+  type GenerateKeysOptions,
+  type GeneratedKeyPair,
+} from './commands/keys';
+export {
+  publishCommand,
+  publishPlugin,
+  type PublishPluginOptions,
+  type PublishPluginResult,
+} from './commands/publish';
 export {
   loadManifest,
   validateManifest,
-  type BasicPluginManifest,
 } from './utils/manifest';
+export type { PluginManifest } from '@agentloom/plugin-sdk';
 export { loadPlugin, serializeNodes, type RuntimeNodeDefinition } from './utils/plugin';

@@ -58,18 +58,18 @@ export class PluginInactiveException extends DomainException {
 }
 
 export class PluginValidationException extends DomainException {
-  constructor(message: string) {
+  constructor(message: string | string[]) {
+    const messages = Array.isArray(message) ? message : [message];
+
     super({
       type: `${BASE_URL}/plugin-validation-failed`,
       title: '插件校验失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: message,
-      errors: [
-        {
-          field: 'plugin',
-          message,
-        },
-      ],
+      detail: messages.join('\n'),
+      errors: messages.map((entry) => ({
+        field: entry.includes(':') ? entry.split(':', 1)[0]?.trim() || 'plugin' : 'plugin',
+        message: entry,
+      })),
     });
   }
 }
@@ -81,6 +81,96 @@ export class PluginFileTooLargeException extends DomainException {
       title: '插件文件过大',
       status: HttpStatus.PAYLOAD_TOO_LARGE,
       detail: '插件文件大小不能超过 50MB',
+    });
+  }
+}
+
+export class PluginSignatureMissingException extends DomainException {
+  constructor(pluginId: string) {
+    super({
+      type: `${BASE_URL}/plugin-signature-missing`,
+      title: 'Plugin Signature Missing',
+      status: HttpStatus.BAD_REQUEST,
+      detail: `插件 "${pluginId}" 缺少签名信息。所有插件必须进行代码签名。`,
+    });
+  }
+}
+
+export class PluginSignatureInvalidException extends DomainException {
+  constructor(pluginId: string) {
+    super({
+      type: `${BASE_URL}/plugin-signature-invalid`,
+      title: 'Plugin Signature Invalid',
+      status: HttpStatus.UNAUTHORIZED,
+      detail: `插件 "${pluginId}" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。`,
+    });
+  }
+}
+
+export class PluginDeveloperKeyInvalidException extends DomainException {
+  constructor(detail?: string) {
+    super({
+      type: `${BASE_URL}/plugin-developer-key-invalid`,
+      title: 'Plugin Developer Key Invalid',
+      status: HttpStatus.BAD_REQUEST,
+      detail:
+        detail ??
+        '提供的开发者公钥无效。需要 RSA-2048 位或更长的 PEM 格式公钥。',
+    });
+  }
+}
+
+export class PluginDeveloperKeyNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: `${BASE_URL}/plugin-developer-key-not-found`,
+      title: 'Plugin Developer Key Not Found',
+      status: HttpStatus.NOT_FOUND,
+      detail: `开发者密钥 ${id} 不存在或不属于当前组织`,
+    });
+  }
+}
+
+export class PluginExecutionTimeoutException extends DomainException {
+  constructor(pluginId: string, timeoutMs: number) {
+    super({
+      type: `${BASE_URL}/plugin-execution-timeout`,
+      title: 'Plugin Execution Timeout',
+      status: HttpStatus.GATEWAY_TIMEOUT,
+      detail: `插件 "${pluginId}" 执行超时 (${timeoutMs}ms)。请检查插件逻辑或增加超时配置。`,
+    });
+  }
+}
+
+export class PluginResourceExhaustedException extends DomainException {
+  constructor(pluginId: string, resource: string) {
+    super({
+      type: `${BASE_URL}/plugin-resource-exhausted`,
+      title: 'Plugin Resource Exhausted',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `插件 "${pluginId}" 超出 ${resource} 限制。请优化插件以减少资源消耗。`,
+    });
+  }
+}
+
+export class PluginPermissionDeniedException extends DomainException {
+  constructor(pluginId: string, detail?: string) {
+    super({
+      type: `${BASE_URL}/plugin-permission-denied`,
+      title: 'Plugin Permission Denied',
+      status: HttpStatus.FORBIDDEN,
+      detail: detail ?? `插件 "${pluginId}" 尝试访问未授权的资源。`,
+    });
+  }
+}
+
+export class PluginSandboxException extends DomainException {
+  constructor(pluginId: string, detail?: string) {
+    super({
+      type: `${BASE_URL}/plugin-sandbox-error`,
+      title: 'Plugin Sandbox Error',
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      detail: detail ?? `插件 "${pluginId}" 在沙箱中执行时发生错误。`,
     });
   }
 }

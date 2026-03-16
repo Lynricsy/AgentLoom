@@ -65,6 +65,7 @@ describe('createPluginProject', () => {
     expect(manifest.author).toBe('Wine Fox');
     expect(manifest.description).toBe('Transforms text');
     expect(manifest.license).toBe('MIT');
+    expect(manifest.minPlatformVersion).toBe('0.1.0');
     expect(manifest.permissions).toEqual([]);
   });
 

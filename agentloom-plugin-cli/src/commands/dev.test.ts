@@ -29,6 +29,7 @@ function createDevFixture(root: string): void {
         author: 'AgentLoom Team',
         description: 'Fixture used in dev command tests',
         license: 'MIT',
+        minPlatformVersion: '1.0.0',
         permissions: [],
       },
       null,

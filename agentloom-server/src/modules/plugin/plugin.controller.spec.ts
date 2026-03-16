@@ -9,8 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import type { JwtPayload } from '../../common/guards/auth.guard';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { QueryPluginsDto, UpdatePluginStatusDto } from './dto/plugin.dto';
 import { PluginController } from './plugin.controller';
+import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import { PluginSignatureService } from './plugin-signature.service';
 import { PluginService } from './plugin.service';
 
 const mocks = vi.hoisted(() => ({
@@ -20,6 +23,29 @@ const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
     updateStatus: vi.fn(),
     remove: vi.fn(),
+  }),
+  createMockStorageService: () => ({
+    upload: vi.fn().mockResolvedValue(undefined),
+    download: vi.fn(),
+    delete: vi.fn(),
+    exists: vi.fn(),
+    getPresignedUrl: vi.fn(),
+    buildStorageKey: vi.fn(),
+  }),
+  createMockSignatureService: () => ({
+    verifyArchiveSignature: vi
+      .fn()
+      .mockResolvedValue({ valid: true, contentHash: 'abc123' }),
+    computeContentHash: vi.fn().mockReturnValue('abc123'),
+    validatePublicKey: vi.fn(),
+    computeKeyFingerprint: vi.fn().mockReturnValue('fingerprint123'),
+  }),
+  createMockDeveloperKeyService: () => ({
+    registerKey: vi.fn(),
+    listKeys: vi.fn(),
+    findById: vi.fn(),
+    revokeKey: vi.fn(),
+    findActiveKeyByFingerprint: vi.fn().mockResolvedValue(null),
   }),
 }));
 
@@ -65,14 +91,21 @@ function createPluginResponse(overrides: Record<string, unknown> = {}) {
     license: 'MIT',
     status: 'registered',
     manifest: {
-      pluginId: 'com.example.review',
+      id: 'com.example.review',
       name: 'Review Analyzer',
       version: '1.0.0',
       author: '狐娘',
+      description: '分析评论的插件',
+      license: 'MIT',
+      minPlatformVersion: '1.0.0',
+      permissions: ['network:outbound'],
     },
     nodeDefinitions: [{ type: 'review-analyzer' }],
     storageKey: null,
-    permissions: ['network.read'],
+    signature: null,
+    contentHash: null,
+    wasmBundleUrl: null,
+    permissions: ['network:outbound'],
     installedBy: USER_ID,
     metadata: { category: 'analysis' },
     occVersion: 1,
@@ -92,7 +125,10 @@ async function createPluginArchiveBuffer(): Promise<Buffer> {
       name: 'Review Analyzer',
       version: '1.0.0',
       author: '狐娘',
-      permissions: ['network.read'],
+      description: '分析评论的插件',
+      license: 'MIT',
+      minPlatformVersion: '1.0.0',
+      permissions: ['network:outbound'],
     }),
   );
   zip.file('node-definitions.json', JSON.stringify([{ type: 'review-analyzer' }]));
@@ -144,10 +180,18 @@ function createRequest(): AuthenticatedRequest {
 describe('PluginController', () => {
   let controller: PluginController;
   let service: ReturnType<typeof mocks.createMockPluginService>;
+  let storageService: ReturnType<typeof mocks.createMockStorageService>;
+  let signatureService: ReturnType<typeof mocks.createMockSignatureService>;
+  let developerKeyService: ReturnType<
+    typeof mocks.createMockDeveloperKeyService
+  >;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     service = mocks.createMockPluginService();
+    storageService = mocks.createMockStorageService();
+    signatureService = mocks.createMockSignatureService();
+    developerKeyService = mocks.createMockDeveloperKeyService();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PluginController],
@@ -155,6 +199,18 @@ describe('PluginController', () => {
         {
           provide: PluginService,
           useValue: service,
+        },
+        {
+          provide: StorageService,
+          useValue: storageService,
+        },
+        {
+          provide: PluginSignatureService,
+          useValue: signatureService,
+        },
+        {
+          provide: PluginDeveloperKeyService,
+          useValue: developerKeyService,
         },
       ],
     }).compile();
@@ -181,8 +237,11 @@ describe('PluginController', () => {
           pluginId: 'com.example.review',
           name: 'Review Analyzer',
         }),
-        [{ type: 'review-analyzer' }],
+        expect.arrayContaining([expect.objectContaining({ type: 'review-analyzer' })]),
+        expect.stringContaining('tenants/'),
+        expect.objectContaining({}),
       );
+      expect(storageService.upload).toHaveBeenCalled();
       expect(service.updateStatus).toHaveBeenCalledWith(
         PLUGIN_RECORD_ID,
         TENANT_ID,

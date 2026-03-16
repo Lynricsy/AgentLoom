@@ -45,16 +45,27 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD、cron 调度、webhook 验签与触发历史 | BullMQ, ExecutionModule, crypto HMAC |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
-| plugin | `modules/plugin/` | 服务端插件注册与状态管理：`.alp` multipart 上传、manifest/node definitions 解析、`plugins` 表 CRUD、`plugin-execution` 队列 worker 占位执行 | BullMQ, JSZip |
+| plugin | `modules/plugin/` | 服务端插件注册与安全管理：`.alp` multipart 上传 + RSA-PSS 签名验证 + MinIO 归档/WASM 上传、使用 `@agentloom/plugin-sdk` 校验 manifest、`plugins` + `plugin_developer_keys` 表 CRUD、`PluginSignatureService` RSA-PSS + SHA-256 签名验证、`PluginSandboxService` 封装 `@extism/extism` WASM 沙箱执行、`PluginExecutionWorker` 从 MinIO 下载 WASM 执行 | BullMQ, JSZip, @extism/extism, node:crypto |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
-| smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 现通过 `execution_steps.execution_id` 做 execution 级查询，并支持近 30 天历史指���聚合（按 routing decision 序列 + downstream agent step 真正终态统计） | LlmModule |
+| smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 现通过 `execution_steps.execution_id` 做 execution 级查询，并支持近 30 天历史指标聚合（按 routing decision 序列 + downstream agent step 真正终态统计） | LlmModule |
 | marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
 | share | `modules/share/` | 工作流分享链接管理：租户内创建/分页/撤销分享，公开短链 `/s/:token` 只读访问，view/copy 计数原子递增 | ConfigModule, workflowVersions |
 | platform-api-token | `modules/platform-api-token/` | Platform API Token CRUD：生成 (al_ 前缀 + SHA-256)、列表 (分页+状态过滤)、撤销、验证；每租户 20 token 上限 | RbacCacheService |
 | health | `modules/health/` | 健康检查 (public) | — |
 
 ## 执行流 (核心业务)
+
+### Plugin 模块补充
+- `PluginController` 的实际注册路由为 `POST /api/v1/plugins`（类级 `@Controller('plugins')` + 方法级 `@Post()`），不要把 story 文本中的 `/plugins/register` 当成真实接口。
+- `PluginService.parseManifest()` 以 `@agentloom/plugin-sdk` 的 `validateManifest()` 与 `PluginManifestSchema` 为唯一规则源；若归档仅提供 legacy `pluginId`，service 会先 canonicalize 到 `id` 再持久化 canonical manifest。
+- `PluginValidationException` 接受单条或多条校验错误，并按 `field: message` 形式映射到 RFC7807 `ProblemDetails.errors[]`。
+- `PluginSandboxService` 使用 `@extism/extism` 在独立 worker 中执行 WASM（`runInWorker: true`，必须开启以支持 `timeoutMs` / `allowedHosts`），默认沙箱配置为 `timeoutMs=30000`、`maxMemoryPages=4096`、`allowedHosts=[]`、`allowedPaths={}`、`useWasi=false`；错误按超时 / 权限拒绝 / 资源耗尽 / 通用沙箱错误分类到插件域异常。
+- `PluginSignatureService` 使用 `node:crypto` RSA-PSS + SHA-256 验证 `.alp` 归档签名。`verifyArchiveSignature()` 返回 `{valid, contentHash}`。`validatePublicKey()` 验证 RSA ≥ 2048 位且拒绝私钥。`computeKeyFingerprint()` 计算 SPKI DER 的 SHA-256 指纹。
+- `PluginDeveloperKeyService` 管理开发者 RSA 公钥：注册时验证 + 计算指纹 + 查重；支持按 fingerprint 查找 active 密钥、按 orgId 分页列表、撤销（设置 revokedAt）。
+- `PluginDeveloperKeyController` 挂载于 `/plugins/developer-keys`，提供 POST（注册）、GET（列表）、GET :id（详情）、DELETE :id（撤销），RBAC 为 creator+。
+- `PluginController.register()` 流程：解析 .alp → 签名验证（若 manifest 含 signature/developerKeyFingerprint）→ 上传归档到 MinIO → 提取 WASM（若 manifest.wasmEntry 存在）→ 上传 WASM → 调用 `PluginService.register()` 写入 signature/contentHash/wasmBundleUrl。
+- `PluginExecutionWorker` 流程：`findActiveByPluginId()` → 检查 `wasmBundleUrl` → 从 MinIO 下载 WASM → `buildSandboxConfig()` + 合并 config overrides → `resolveFunctionName()` 四级优先级（config.functionName > manifest.wasmEntry > nodeType > 'run'）→ `PluginSandboxService.execute()` → `normalizeOutputs()`。
 
 ```
 HTTP POST /executions
@@ -68,7 +79,7 @@ HTTP POST /executions
                 ├→ AgentTaskWorker (agent-task-queue)
                 │   → AgentAdapterFactory → InProcess|Sandbox
                 └→ PluginExecutionWorker (plugin-execution)
-                    → 插件节点占位执行结果
+                    → MinIO WASM 下载 → 沙箱执行
 
 实时推送管线 (所有广播统一走此路径):
   StepStateMachineService ─┐
@@ -128,7 +139,7 @@ HTTP POST /executions
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
 | agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
-| plugin-execution | 3次 exp (2s base) | `plugin` 节点执行占位 worker |
+| plugin-execution | 3次 exp (2s base) | `plugin` 节点 WASM 沙箱执行 worker |
 | trigger-scheduler | 3次 exp (2s base) | cron trigger repeatable jobs + webhook/cron 历史记录联动 |
 | notification | 3次 exp (1s base) | 通知分发与 WebSocket 推送 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
@@ -151,7 +162,7 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。`plugins` 表保存租户插件清单：`org_id + plugin_id` 唯一，状态枚举为 `registered|active|disabled|error`，并持久化 `manifest`、`node_definitions`、`permissions`、`occ_version` 与 tenant-scoped RLS。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
+Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。`plugins` 表保存租户插件清单：`org_id + plugin_id` 唯一，状态枚举为 `registered|active|disabled|error`，并持久化 `manifest`、`node_definitions`、`permissions`、`signature`（text）、`content_hash`（varchar 64）、`wasm_bundle_url`（varchar 512）、`occ_version` 与 tenant-scoped RLS。`plugin_developer_keys` 表管理开发者 RSA 公钥：`org_id + key_fingerprint` 唯一，状态枚举 `active|revoked`，含 `public_key`（text）、`label`、`revoked_at` 与 tenant-scoped RLS。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
 - **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。

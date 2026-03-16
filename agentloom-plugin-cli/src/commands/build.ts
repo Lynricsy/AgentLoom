@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import archiver from 'archiver';
 import chalk from 'chalk';
 import { Command } from 'commander';
+import type { PluginManifest } from '@agentloom/plugin-sdk';
 
-import { loadManifest, type BasicPluginManifest } from '../utils/manifest';
+import { loadManifest } from '../utils/manifest';
 import { loadPlugin } from '../utils/plugin';
 
 export interface BuildPluginOptions {
@@ -17,7 +18,7 @@ export interface BuildPluginOptions {
 
 export interface BuildPluginResult {
   archivePath: string;
-  manifest: BasicPluginManifest;
+  manifest: PluginManifest;
   nodeCount: number;
   sizeBytes: number;
 }

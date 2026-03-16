@@ -27,7 +27,8 @@ const VALID_MANIFEST = {
   author: '狐娘',
   description: '分析评论的插件',
   license: 'MIT',
-  permissions: ['network.read'],
+  minPlatformVersion: '1.0.0',
+  permissions: ['network:outbound'],
   metadata: { category: 'analysis' },
 };
 
@@ -50,10 +51,23 @@ function createPlugin(overrides: Partial<PluginRecord> = {}): PluginRecord {
     description: '分析评论的插件',
     license: 'MIT',
     status: 'registered',
-    manifest: VALID_MANIFEST,
+    manifest: {
+      id: 'com.example.review',
+      name: 'Review Analyzer',
+      version: '1.0.0',
+      author: '狐娘',
+      description: '分析评论的插件',
+      license: 'MIT',
+      minPlatformVersion: '1.0.0',
+      permissions: ['network:outbound'],
+      metadata: { category: 'analysis' },
+    },
     nodeDefinitions: VALID_NODE_DEFINITIONS,
     storageKey: null,
-    permissions: ['network.read'],
+    signature: null,
+    contentHash: null,
+    wasmBundleUrl: null,
+    permissions: ['network:outbound'],
     installedBy: USER_ID,
     metadata: { category: 'analysis' },
     occVersion: 1,
@@ -168,6 +182,11 @@ describe('PluginService', () => {
           tenantId: TENANT_ID,
           orgId: ORG_ID,
           pluginId: 'com.example.review',
+          manifest: expect.objectContaining({
+            id: 'com.example.review',
+            minPlatformVersion: '1.0.0',
+          }),
+          permissions: ['network:outbound'],
           storageKey: 'plugins/review.alp',
           installedBy: USER_ID,
           status: 'registered',
@@ -210,6 +229,46 @@ describe('PluginService', () => {
 
       expect(db.select).not.toHaveBeenCalled();
       expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('缺少 minPlatformVersion 时应抛出 SDK 校验错误', async () => {
+      await expect(
+        service.register(
+          TENANT_ID,
+          ORG_ID,
+          USER_ID,
+          {
+            ...VALID_MANIFEST,
+            minPlatformVersion: undefined,
+          },
+          VALID_NODE_DEFINITIONS,
+        ),
+      ).rejects.toMatchObject({
+        constructor: PluginValidationException,
+        errors: expect.arrayContaining([
+          expect.objectContaining({ field: 'minPlatformVersion' }),
+        ]),
+      });
+    });
+
+    it('存在非法权限值时应抛出 SDK 校验错误', async () => {
+      await expect(
+        service.register(
+          TENANT_ID,
+          ORG_ID,
+          USER_ID,
+          {
+            ...VALID_MANIFEST,
+            permissions: ['network.read'],
+          },
+          VALID_NODE_DEFINITIONS,
+        ),
+      ).rejects.toMatchObject({
+        constructor: PluginValidationException,
+        errors: expect.arrayContaining([
+          expect.objectContaining({ field: 'permissions.0' }),
+        ]),
+      });
     });
   });
 

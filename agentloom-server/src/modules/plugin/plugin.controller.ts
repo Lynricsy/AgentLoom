@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -29,6 +30,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { JwtPayload } from '../../common/guards/auth.guard';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   QueryPluginsDto,
   QueryPluginsSchema,
@@ -40,8 +42,11 @@ import {
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
 import {
   PluginFileTooLargeException,
+  PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
+import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import { PluginSignatureService } from './plugin-signature.service';
 import { PluginService } from './plugin.service';
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -54,7 +59,14 @@ type AuthenticatedRequest = FastifyRequest & {
 @ApiSecurity('X-Api-Key')
 @Controller('plugins')
 export class PluginController {
-  constructor(private readonly pluginService: PluginService) {}
+  private readonly logger = new Logger(PluginController.name);
+
+  constructor(
+    private readonly pluginService: PluginService,
+    private readonly storageService: StorageService,
+    private readonly signatureService: PluginSignatureService,
+    private readonly developerKeyService: PluginDeveloperKeyService,
+  ) {}
 
   @Post()
   @Roles('owner', 'admin', 'creator')
@@ -80,13 +92,15 @@ export class PluginController {
     },
   })
   @ApiResponse({ status: 201, description: '插件注册成功' })
-  @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 400, description: '缺少插件签名' })
+  @ApiResponse({ status: 401, description: '认证失败或签名验证失败' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 409, description: '插件已存在' })
   @ApiResponse({ status: 413, description: '插件文件过大' })
   @ApiResponse({ status: 422, description: '插件包校验失败' })
   async register(@Req() req: AuthenticatedRequest) {
     const tenantId = this.getTenantId(req);
+    const orgId = req.user.orgId ?? req.user.org_id;
     const multipartFile = await this.readMultipartFile(req);
     this.ensureAlpFile(multipartFile);
 
@@ -94,12 +108,73 @@ export class PluginController {
     const buffer = await this.readMultipartBuffer(multipartFile);
     const { manifest, nodeDefinitions } = await this.parsePluginArchive(buffer);
 
+    const pluginId = (manifest.id as string) ?? (manifest.pluginId as string) ?? 'unknown';
+    const version = (manifest.version as string) ?? '0.0.0';
+
+    let signature: string | undefined;
+    let contentHash: string | undefined;
+
+    if (manifest.signature || manifest.contentHash || manifest.developerKeyFingerprint) {
+      const manifestSignature = manifest.signature as string | undefined;
+      const fingerprint = manifest.developerKeyFingerprint as string | undefined;
+
+      if (!manifestSignature) {
+        throw new PluginSignatureMissingException(pluginId);
+      }
+
+      if (fingerprint && orgId) {
+        const devKey = await this.developerKeyService.findActiveKeyByFingerprint(
+          orgId,
+          fingerprint,
+        );
+
+        if (devKey) {
+          const result = this.signatureService.verifyArchiveSignature(
+            buffer,
+            manifestSignature,
+            devKey.publicKey,
+            pluginId,
+          );
+          signature = manifestSignature;
+          contentHash = result.contentHash;
+        } else {
+          this.logger.warn(
+            `插件 "${pluginId}" 提供的密钥指纹 "${fingerprint}" 未找到对应的活跃开发者密钥，跳过签名验证`,
+          );
+          contentHash = this.signatureService.computeContentHash(buffer);
+        }
+      } else {
+        contentHash = this.signatureService.computeContentHash(buffer);
+        signature = manifestSignature;
+      }
+    }
+
+    const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
+    await this.storageService.upload(storageKey, buffer, buffer.length, 'application/zip');
+
+    let wasmBundleUrl: string | undefined;
+    const wasmEntry = manifest.wasmEntry as string | undefined;
+    if (wasmEntry) {
+      const wasmBuffer = await this.extractWasmFromArchive(buffer, wasmEntry);
+      if (wasmBuffer) {
+        wasmBundleUrl = `tenants/${tenantId}/plugins/${pluginId}/${version}/plugin.wasm`;
+        await this.storageService.upload(
+          wasmBundleUrl,
+          wasmBuffer,
+          wasmBuffer.length,
+          'application/wasm',
+        );
+      }
+    }
+
     const created = await this.pluginService.register(
       tenantId,
-      req.user.orgId ?? req.user.org_id,
+      orgId,
       req.user.sub,
       manifest,
       nodeDefinitions,
+      storageKey,
+      { signature, contentHash, wasmBundleUrl },
     );
 
     const data =
@@ -370,6 +445,26 @@ export class PluginController {
       return JSON.parse(raw);
     } catch {
       throw new PluginValidationException(`${sourceLabel} 不是合法 JSON`);
+    }
+  }
+
+  private async extractWasmFromArchive(
+    archiveBuffer: Buffer,
+    wasmEntry: string,
+  ): Promise<Buffer | null> {
+    try {
+      const zip = await JSZip.loadAsync(archiveBuffer);
+      const wasmFile = zip.file(wasmEntry);
+
+      if (!wasmFile) {
+        this.logger.warn(`插件包中未找到 WASM 入口文件: ${wasmEntry}`);
+        return null;
+      }
+
+      return Buffer.from(await wasmFile.async('uint8array'));
+    } catch (error) {
+      this.logger.warn(`提取 WASM 文件失败: ${wasmEntry}`, error);
+      return null;
     }
   }
 }
