@@ -96,7 +96,7 @@ function normalizeViewport(
 
 export interface MyMarketplaceListingItem {
   id: string;
-  workflowVersionId: string;
+  workflowVersionId: string | null;
   tenantId: string;
   title: string;
   summary: string;
@@ -250,6 +250,13 @@ export class MarketplaceService {
       .set({ status: 'pending_review', updatedAt: new Date() })
       .where(eq(schema.marketplaceListings.id, listingId));
 
+    if (!listing.workflowVersionId) {
+      throw new MarketplaceListingConflictException(
+        '当前 listing 未绑定工作流版本，无法重新上架',
+        listing.status,
+      );
+    }
+
     const reviewResult = await this.reviewService.review(
       tenantId,
       listing.workflowVersionId,
@@ -380,10 +387,14 @@ export class MarketplaceService {
     query: unknown,
   ): Promise<PublicMarketplaceListingsResult> {
     const parsedQuery = QueryPublicListingsSchema.parse(query);
-    const { category, search, sort, page, pageSize } = parsedQuery;
+    const { category, search, listingType, sort, page, pageSize } = parsedQuery;
     const offset = (page - 1) * pageSize;
 
     const conditions = [eq(schema.marketplaceListings.status, 'listed')];
+
+    if (listingType) {
+      conditions.push(eq(schema.marketplaceListings.listingType, listingType));
+    }
 
     if (category) {
       conditions.push(eq(schema.marketplaceListings.category, category));

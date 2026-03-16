@@ -6,8 +6,6 @@ import type { Readable } from 'node:stream';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { PLUGIN_EXECUTION_QUEUE } from './plugin.constants';
 import {
-  PluginInactiveException,
-  PluginNotFoundException,
   PluginSandboxException,
 } from './plugin.exceptions';
 import {
@@ -15,6 +13,7 @@ import {
   type PluginExecutionResult,
   type SandboxConfig,
 } from './plugin-sandbox.service';
+import { PluginUsageService } from './plugin-usage.service';
 import { PluginService } from './plugin.service';
 
 export interface PluginExecutionJobData {
@@ -43,6 +42,7 @@ export class PluginExecutionWorker extends WorkerHost {
     private readonly pluginService: PluginService,
     private readonly sandboxService: PluginSandboxService,
     private readonly storageService: StorageService,
+    private readonly pluginUsageService: PluginUsageService,
   ) {
     super();
   }
@@ -96,11 +96,40 @@ export class PluginExecutionWorker extends WorkerHost {
       `插件执行完成: ${pluginId}/${nodeType} (${result.executionTimeMs}ms)`,
     );
 
-    return {
+    const workerResult: PluginExecutionJobResult = {
       status: result.success ? 'completed' : 'failed',
       outputs: this.normalizeOutputs(result.output),
       executionTimeMs: result.executionTimeMs,
     };
+
+    this.recordUsage(job.data, plugin, workerResult).catch((err) => {
+      this.logger.warn(`Failed to record plugin usage: ${err.message}`, {
+        jobId: job.id,
+      });
+    });
+
+    return workerResult;
+  }
+
+  private async recordUsage(
+    jobData: PluginExecutionJobData,
+    plugin: { id: string; pluginId: string },
+    result: PluginExecutionJobResult,
+  ): Promise<void> {
+    await this.pluginUsageService.recordUsage({
+      tenantId: jobData.tenantId,
+      pluginDbId: plugin.id,
+      pluginId: plugin.pluginId,
+      executionId: jobData.executionId,
+      stepId: jobData.stepId,
+      executionDurationMs: result.executionTimeMs?.toString() ?? null,
+      billingAmount: null,
+      currency: 'USD',
+      executedBy: null,
+      inputTokens: null,
+      outputTokens: null,
+      metadata: null,
+    });
   }
 
   @OnWorkerEvent('failed')

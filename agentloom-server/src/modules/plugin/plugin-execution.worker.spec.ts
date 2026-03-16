@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StorageService } from '../../infrastructure/storage/storage.service';
 import type { PluginSandboxService, SandboxConfig } from './plugin-sandbox.service';
+import type { PluginUsageService } from './plugin-usage.service';
 import type { PluginService } from './plugin.service';
 import {
   PluginExecutionWorker,
@@ -29,6 +30,9 @@ const mocks = vi.hoisted(() => ({
   }),
   createMockStorageService: () => ({
     download: vi.fn(),
+  }),
+  createMockPluginUsageService: () => ({
+    recordUsage: vi.fn().mockResolvedValue({ id: 'usage-record-id' }),
   }),
 }));
 
@@ -75,16 +79,19 @@ describe('PluginExecutionWorker', () => {
   let pluginService: ReturnType<typeof mocks.createMockPluginService>;
   let sandboxService: ReturnType<typeof mocks.createMockSandboxService>;
   let storageService: ReturnType<typeof mocks.createMockStorageService>;
+  let pluginUsageService: ReturnType<typeof mocks.createMockPluginUsageService>;
 
   beforeEach(() => {
     pluginService = mocks.createMockPluginService();
     sandboxService = mocks.createMockSandboxService();
     storageService = mocks.createMockStorageService();
+    pluginUsageService = mocks.createMockPluginUsageService();
 
     worker = new PluginExecutionWorker(
       pluginService as unknown as PluginService,
       sandboxService as unknown as PluginSandboxService,
       storageService as unknown as StorageService,
+      pluginUsageService as unknown as PluginUsageService,
     );
 
     vi.restoreAllMocks();
@@ -132,6 +139,74 @@ describe('PluginExecutionWorker', () => {
         }),
         'com.example.test',
       );
+    });
+
+    it('成功执行后应记录插件使用量', async () => {
+      const plugin = createPluginRecord();
+      pluginService.findActiveByPluginId.mockResolvedValue(plugin);
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
+      sandboxService.buildSandboxConfig.mockReturnValue({});
+      sandboxService.execute.mockResolvedValue({
+        success: true,
+        output: { result: 'ok' },
+        executionTimeMs: 150,
+      });
+
+      const job = createJob();
+
+      await worker.process(job);
+
+      expect(pluginUsageService.recordUsage).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        pluginDbId: plugin.id,
+        pluginId: plugin.pluginId,
+        executionId: job.data.executionId,
+        stepId: job.data.stepId,
+        executionDurationMs: '150',
+        billingAmount: null,
+        currency: 'USD',
+        executedBy: null,
+        inputTokens: null,
+        outputTokens: null,
+        metadata: null,
+      });
+    });
+
+    it('记录使用量失败时不应影响执行成功', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+
+      pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
+      sandboxService.buildSandboxConfig.mockReturnValue({});
+      sandboxService.execute.mockResolvedValue({
+        success: true,
+        output: { result: 'ok' },
+        executionTimeMs: 150,
+      });
+      pluginUsageService.recordUsage.mockRejectedValueOnce(new Error('usage failed'));
+
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('completed');
+      expect(result.outputs).toEqual({ result: 'ok' });
+      await vi.waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          'Failed to record plugin usage: usage failed',
+          { jobId: 'job-1' },
+        );
+      });
+    });
+
+    it('执行抛错时不应记录插件使用量', async () => {
+      pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
+      sandboxService.buildSandboxConfig.mockReturnValue({});
+      sandboxService.execute.mockRejectedValue(
+        new PluginSandboxException('com.example.test', 'sandbox crashed'),
+      );
+
+      await expect(worker.process(createJob())).rejects.toThrow(PluginSandboxException);
+      expect(pluginUsageService.recordUsage).not.toHaveBeenCalled();
     });
 
     it('插件无 wasmBundleUrl 时应返回跳过结果', async () => {

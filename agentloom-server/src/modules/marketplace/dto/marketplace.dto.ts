@@ -65,6 +65,7 @@ export class QueryMyListingsDto extends createZodDto(QueryMyListingsSchema) {}
 export const QueryPublicListingsSchema = z.object({
   category: MarketplaceCategorySchema.optional(),
   search: z.string().trim().max(200).optional(),
+  listingType: z.enum(['workflow', 'plugin']).optional(),
   sort: z.enum(['popular', 'rating', 'newest']).default('popular'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),

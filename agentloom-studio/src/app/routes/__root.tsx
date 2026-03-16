@@ -15,7 +15,8 @@ import { templatesRoute } from "./templates";
 import { marketplaceRoute } from "./marketplace";
 import { marketplaceMyListingsRoute } from './marketplace.my-listings';
 import { shareTokenRoute } from './share.$token';
-import { encryptionSettingsRoute } from './settings/encryption';
+import { encryptionSettingsRoute } from './settings/encryption'
+import { developerEarningsRoute } from './developer-console/earnings';
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -52,6 +53,12 @@ function RootLayout() {
             >
               工具库
             </Link>
+            <Link
+              to="/developer-console/earnings"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              收益
+            </Link>
           </nav>
           <NotificationBell />
         </div>
@@ -82,4 +89,5 @@ export const routeTree = rootRoute.addChildren([
   marketplaceMyListingsRoute,
   shareTokenRoute,
   encryptionSettingsRoute,
+  developerEarningsRoute,
 ]);

@@ -14,6 +14,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { plugins } from './plugins.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 import { workflowVersions } from './workflow-versions.schema';
@@ -21,6 +22,16 @@ import { workflowVersions } from './workflow-versions.schema';
 export const marketplaceListingStatusEnum = pgEnum(
   'marketplace_listing_status',
   ['pending_review', 'review_failed', 'listed', 'unlisted'],
+);
+
+export const marketplaceListingTypeEnum = pgEnum('marketplace_listing_type', [
+  'workflow',
+  'plugin',
+]);
+
+export const marketplacePricingModelEnum = pgEnum(
+  'marketplace_pricing_model',
+  ['free', 'per_execution'],
 );
 
 export const marketplaceCategoryEnum = pgEnum('marketplace_category_enum', [
@@ -33,6 +44,12 @@ export const marketplaceCategoryEnum = pgEnum('marketplace_category_enum', [
 
 export type MarketplaceCategory =
   (typeof marketplaceCategoryEnum.enumValues)[number];
+
+export type MarketplaceListingType =
+  (typeof marketplaceListingTypeEnum.enumValues)[number];
+
+export type MarketplacePricingModel =
+  (typeof marketplacePricingModelEnum.enumValues)[number];
 
 export type MarketplaceReviewCode =
   | 'WORKFLOW_VERSION_NOT_PUBLISHED'
@@ -82,8 +99,23 @@ export const marketplaceListings = pgTable(
       .default(sql`uuid_generate_v7()`),
 
     workflowVersionId: uuid('workflow_version_id')
-      .notNull()
       .references(() => workflowVersions.id, { onDelete: 'cascade' }),
+
+    pluginDbId: uuid('plugin_db_id')
+      .references(() => plugins.id, { onDelete: 'cascade' }),
+
+    listingType: marketplaceListingTypeEnum('listing_type')
+      .notNull()
+      .default('workflow'),
+
+    pricingModel: marketplacePricingModelEnum('pricing_model')
+      .notNull()
+      .default('free'),
+
+    pricePerExecution: numeric('price_per_execution', {
+      precision: 18,
+      scale: 8,
+    }),
 
     tenantId: uuid('tenant_id').notNull(),
 
@@ -133,9 +165,13 @@ export const marketplaceListings = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex('uq_marketplace_listings_workflow_version_id').on(
-      table.workflowVersionId,
-    ),
+    uniqueIndex('uq_marketplace_listings_workflow_version_id')
+      .on(table.workflowVersionId)
+      .where(sql`workflow_version_id IS NOT NULL`),
+    index('idx_marketplace_listings_plugin_db_id')
+      .on(table.pluginDbId)
+      .where(sql`plugin_db_id IS NOT NULL`),
+    index('idx_marketplace_listings_listing_type').on(table.listingType),
     index('idx_marketplace_listings_tenant_status').on(
       table.tenantId,
       table.status,
@@ -162,6 +198,10 @@ export const marketplaceListings = pgTable(
     check(
       'marketplace_listings_avg_rating_range',
       sql`${table.avgRating} IS NULL OR (${table.avgRating} >= 1 AND ${table.avgRating} <= 5)`,
+    ),
+    check(
+      'marketplace_listings_price_per_execution_non_negative',
+      sql`${table.pricePerExecution} IS NULL OR ${table.pricePerExecution} >= 0`,
     ),
     ...createDirectTenantPolicies('marketplace_listings'),
   ],

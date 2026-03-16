@@ -162,9 +162,13 @@ export {
 export {
   marketplaceCategoryEnum,
   marketplaceListingStatusEnum,
+  marketplaceListingTypeEnum,
+  marketplacePricingModelEnum,
   marketplaceListings,
   MARKETPLACE_REVIEW_LIMITS,
   type MarketplaceCategory,
+  type MarketplaceListingType,
+  type MarketplacePricingModel,
   type MarketplaceListing,
   type NewMarketplaceListing,
   type MarketplaceReviewCode,
@@ -220,3 +224,9 @@ export {
   type PluginUsageRecord,
   type NewPluginUsageRecord,
 } from './plugin-usage-records.schema';
+export {
+  payoutStatusEnum,
+  pluginEarnings,
+  type PluginEarning,
+  type NewPluginEarning,
+} from './plugin-earnings.schema';
