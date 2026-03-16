@@ -32,6 +32,8 @@ AgentLoomAUTO/
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
 ├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output)
+├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build 命令)
+├── agentloom-plugin-template/ # 示例插件模板 (text-to-uppercase)
 ├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
 ├── _bmad/                    # BMAD agent 系统配置 (勿修改)
@@ -39,7 +41,7 @@ AgentLoomAUTO/
 └── package.json              # 根 package (仅 @modelcontextprotocol/sdk)
 ```
 
-**非标准 monorepo**: 无 pnpm-workspace.yaml，五个包各自独立管理依赖和 lockfile。
+**非标准 monorepo**: 无 pnpm-workspace.yaml，各包各自独立管理依赖和 lockfile。
 
 ## 在哪找什么
 
@@ -127,6 +129,18 @@ pnpm install                       # 安装依赖
 pnpm build                         # tsup 输出 ESM+CJS + 类型声明
 pnpm test                          # Vitest 测试
 pnpm typecheck                     # tsc --noEmit
+
+# Plugin CLI
+cd agentloom-plugin-cli
+pnpm install                       # 安装依赖
+pnpm build                         # tsup 构建
+pnpm test                          # Vitest 测试
+
+# Plugin Template
+cd agentloom-plugin-template
+pnpm install                       # 安装依赖
+pnpm build                         # tsup 构建
+pnpm test                          # Vitest 测试
 
 # Mobile (需 Flutter 3.41.2 via FVM)
 cd agentloom_mobile
