@@ -13,6 +13,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/` | — | 重定向到 `/workflows/draft` |
 | `/workflows/$workflowId` | WorkflowCanvasPage | ReactFlowProvider 包裹 |
 | `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图，三栏布局 |
+| `/developer-console/earnings` | DeveloperEarningsPage | 开发者收益仪表盘：汇总卡片 + 月度趋势图 + 插件使用排名 + 结算历史 |
 | `/marketplace` | MarketplaceBrowsePage | 公开市场浏览：Tabs + 搜索 + 排序 + 详情/安装/评价对话框 |
 | `/marketplace/my-listings` | MyMarketplaceListingsPage | Marketplace 发布者自助管理页 |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
@@ -36,6 +37,7 @@ src/
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   ├── evidence/    # 证据记录查询/展示 + 溯源链 + 引用面板 + 文档查看器 (types/api/hooks/stores/components/lib)
 │   ├── marketplace/ # Marketplace 发布侧 + 公共浏览侧（browse/detail/reviews/install）
+│   ├── developer-console/ # 开发者收益仪表盘（api/components/pages），recharts 月度趋势图
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   ├── plugin/      # 插件 API 层（types/api/queries/keys），供画布 NodePalette 动态加载已安装插件
 │   └── llm/          # LLM 模型配置
