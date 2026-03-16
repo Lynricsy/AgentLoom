@@ -44,6 +44,9 @@ export const plugins = pgTable(
       .$type<Array<Record<string, unknown>>>()
       .default(sql`'[]'::jsonb`),
     storageKey: varchar('storage_key', { length: 500 }),
+    signature: text('signature'),
+    contentHash: varchar('content_hash', { length: 64 }),
+    wasmBundleUrl: varchar('wasm_bundle_url', { length: 512 }),
     permissions: text('permissions').array().notNull().default(sql`'{}'::text[]`),
     installedBy: uuid('installed_by').references(() => users.id),
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),

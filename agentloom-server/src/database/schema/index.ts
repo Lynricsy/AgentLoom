@@ -209,3 +209,9 @@ export {
   type PluginRecord,
   type NewPlugin,
 } from './plugins.schema';
+export {
+  pluginDeveloperKeyStatusEnum,
+  pluginDeveloperKeys,
+  type PluginDeveloperKey,
+  type NewPluginDeveloperKey,
+} from './plugin-developer-keys.schema';
