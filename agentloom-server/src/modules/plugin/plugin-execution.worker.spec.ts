@@ -12,9 +12,11 @@ import {
 } from './plugin-execution.worker';
 import {
   PluginExecutionTimeoutException,
+  PluginInactiveException,
   PluginNotFoundException,
   PluginPermissionDeniedException,
   PluginResourceExhaustedException,
+  PluginSandboxException,
 } from './plugin.exceptions';
 
 const mocks = vi.hoisted(() => ({
@@ -40,9 +42,11 @@ const createPluginRecord = (overrides?: Record<string, unknown>) => ({
   status: 'active',
   manifest: {
     id: 'com.example.test',
-    name: 'Test Plugin',
-    version: '1.0.0',
-    wasmEntry: 'processText',
+    wasmEntry: 'dist/plugin.wasm',
+    permissions: ['network:outbound'],
+    sandbox: {
+      allowedHosts: ['api.example.com', 'cdn.example.com'],
+    },
   },
   wasmBundleUrl: 'tenants/t1/plugins/com.example.test/1.0.0/plugin.wasm',
   ...overrides,
@@ -96,6 +100,7 @@ describe('PluginExecutionWorker', () => {
       sandboxService.buildSandboxConfig.mockReturnValue({
         timeoutMs: 30_000,
         maxMemoryPages: 4096,
+        allowedHosts: ['api.example.com', 'cdn.example.com'],
       });
       sandboxService.execute.mockResolvedValue({
         success: true,
@@ -108,7 +113,6 @@ describe('PluginExecutionWorker', () => {
       expect(result.status).toBe('completed');
       expect(result.outputs).toEqual({ result: 'ok' });
       expect(result.executionTimeMs).toBe(150);
-
       expect(pluginService.findActiveByPluginId).toHaveBeenCalledWith(
         'com.example.test',
         undefined,
@@ -117,14 +121,15 @@ describe('PluginExecutionWorker', () => {
       expect(storageService.download).toHaveBeenCalledWith(
         'tenants/t1/plugins/com.example.test/1.0.0/plugin.wasm',
       );
-      expect(sandboxService.buildSandboxConfig).toHaveBeenCalledWith(
-        plugin.manifest,
-      );
       expect(sandboxService.execute).toHaveBeenCalledWith(
         expect.any(Buffer),
-        'processText',
+        'execute',
         { nodeType: 'text-processor', inputs: { text: 'hello' }, config: {} },
-        expect.objectContaining({ timeoutMs: 30_000, maxMemoryPages: 4096 }),
+        expect.objectContaining({
+          timeoutMs: 30_000,
+          maxMemoryPages: 4096,
+          allowedHosts: ['api.example.com', 'cdn.example.com'],
+        }),
         'com.example.test',
       );
     });
@@ -154,23 +159,31 @@ describe('PluginExecutionWorker', () => {
       );
     });
 
-    it('WASM 下载失败时应抛出错误', async () => {
+    it('插件未激活时应抛出 PluginInactiveException', async () => {
+      pluginService.findActiveByPluginId.mockRejectedValue(
+        new PluginInactiveException('plugin-record-id'),
+      );
+
+      await expect(worker.process(createJob())).rejects.toThrow(
+        PluginInactiveException,
+      );
+    });
+
+    it('WASM 下载失败时应抛出 PluginSandboxException', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
       storageService.download.mockRejectedValue(new Error('MinIO 连接失败'));
 
       await expect(worker.process(createJob())).rejects.toThrow(
-        '无法下载插件 "com.example.test" 的 WASM bundle',
+        PluginSandboxException,
       );
     });
 
     it('沙箱执行超时时应传播 PluginExecutionTimeoutException', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-      storageService.download.mockResolvedValue(
-        Readable.from([Buffer.from('wasm')]),
-      );
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
       sandboxService.buildSandboxConfig.mockReturnValue({});
       sandboxService.execute.mockRejectedValue(
-        new PluginExecutionTimeoutException('com.example.test'),
+        new PluginExecutionTimeoutException('com.example.test', 30_000),
       );
 
       await expect(worker.process(createJob())).rejects.toThrow(
@@ -180,12 +193,10 @@ describe('PluginExecutionWorker', () => {
 
     it('沙箱内存超限时应传播 PluginResourceExhaustedException', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-      storageService.download.mockResolvedValue(
-        Readable.from([Buffer.from('wasm')]),
-      );
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
       sandboxService.buildSandboxConfig.mockReturnValue({});
       sandboxService.execute.mockRejectedValue(
-        new PluginResourceExhaustedException('com.example.test'),
+        new PluginResourceExhaustedException('com.example.test', '内存'),
       );
 
       await expect(worker.process(createJob())).rejects.toThrow(
@@ -195,9 +206,7 @@ describe('PluginExecutionWorker', () => {
 
     it('沙箱权限拒绝时应传播 PluginPermissionDeniedException', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-      storageService.download.mockResolvedValue(
-        Readable.from([Buffer.from('wasm')]),
-      );
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
       sandboxService.buildSandboxConfig.mockReturnValue({});
       sandboxService.execute.mockRejectedValue(
         new PluginPermissionDeniedException('com.example.test', 'evil.com'),
@@ -210,9 +219,7 @@ describe('PluginExecutionWorker', () => {
 
     it('执行失败时应返回 failed 状态', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-      storageService.download.mockResolvedValue(
-        Readable.from([Buffer.from('wasm')]),
-      );
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
       sandboxService.buildSandboxConfig.mockReturnValue({});
       sandboxService.execute.mockResolvedValue({
         success: false,
@@ -228,9 +235,7 @@ describe('PluginExecutionWorker', () => {
 
     describe('函数名解析', () => {
       beforeEach(() => {
-        storageService.download.mockResolvedValue(
-          Readable.from([Buffer.from('wasm')]),
-        );
+        storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
         sandboxService.buildSandboxConfig.mockReturnValue({});
         sandboxService.execute.mockResolvedValue({
           success: true,
@@ -242,9 +247,7 @@ describe('PluginExecutionWorker', () => {
       it('config.functionName 优先级最高', async () => {
         pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
 
-        await worker.process(
-          createJob({ config: { functionName: 'customFunc' } }),
-        );
+        await worker.process(createJob({ config: { functionName: 'customFunc' } }));
 
         expect(sandboxService.execute).toHaveBeenCalledWith(
           expect.any(Buffer),
@@ -255,57 +258,14 @@ describe('PluginExecutionWorker', () => {
         );
       });
 
-      it('无 config.functionName 时使用 manifest.wasmEntry', async () => {
-        pluginService.findActiveByPluginId.mockResolvedValue(
-          createPluginRecord({
-            manifest: {
-              id: 'com.example.test',
-              wasmEntry: 'manifestEntry',
-            },
-          }),
-        );
+      it('无自定义 functionName 时回退到 execute', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
 
         await worker.process(createJob());
 
         expect(sandboxService.execute).toHaveBeenCalledWith(
           expect.any(Buffer),
-          'manifestEntry',
-          expect.anything(),
-          expect.anything(),
-          expect.anything(),
-        );
-      });
-
-      it('无 wasmEntry 时回退到 nodeType', async () => {
-        pluginService.findActiveByPluginId.mockResolvedValue(
-          createPluginRecord({
-            manifest: { id: 'com.example.test' },
-          }),
-        );
-
-        await worker.process(createJob({ nodeType: 'data-transform' }));
-
-        expect(sandboxService.execute).toHaveBeenCalledWith(
-          expect.any(Buffer),
-          'data-transform',
-          expect.anything(),
-          expect.anything(),
-          expect.anything(),
-        );
-      });
-
-      it('nodeType 为空时回退到 run', async () => {
-        pluginService.findActiveByPluginId.mockResolvedValue(
-          createPluginRecord({
-            manifest: { id: 'com.example.test' },
-          }),
-        );
-
-        await worker.process(createJob({ nodeType: '' }));
-
-        expect(sandboxService.execute).toHaveBeenCalledWith(
-          expect.any(Buffer),
-          'run',
+          'execute',
           expect.anything(),
           expect.anything(),
           expect.anything(),
@@ -313,12 +273,10 @@ describe('PluginExecutionWorker', () => {
       });
     });
 
-    describe('config 覆盖', () => {
+    describe('config 收紧', () => {
       beforeEach(() => {
         pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-        storageService.download.mockResolvedValue(
-          Readable.from([Buffer.from('wasm')]),
-        );
+        storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
         sandboxService.execute.mockResolvedValue({
           success: true,
           output: {},
@@ -326,7 +284,7 @@ describe('PluginExecutionWorker', () => {
         });
       });
 
-      it('应从 config 提取 timeoutMs 覆盖', async () => {
+      it('应允许 runtime config 收紧 timeoutMs', async () => {
         sandboxService.buildSandboxConfig.mockReturnValue({
           timeoutMs: 30_000,
           maxMemoryPages: 4096,
@@ -343,68 +301,87 @@ describe('PluginExecutionWorker', () => {
         );
       });
 
-      it('应从 config 提取 maxMemoryPages 覆盖', async () => {
+      it('不应允许 runtime config 放宽 timeoutMs', async () => {
+        sandboxService.buildSandboxConfig.mockReturnValue({ timeoutMs: 5000 });
+
+        await worker.process(createJob({ config: { timeoutMs: 30_000 } }));
+
+        const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
+        expect(mergedConfig.timeoutMs).toBe(5000);
+      });
+
+      it('应允许 runtime config 收紧 maxMemoryPages', async () => {
+        sandboxService.buildSandboxConfig.mockReturnValue({ maxMemoryPages: 4096 });
+
+        await worker.process(createJob({ config: { maxMemoryPages: 2048 } }));
+
+        const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
+        expect(mergedConfig.maxMemoryPages).toBe(2048);
+      });
+
+      it('不应允许 runtime config 放宽 maxMemoryPages', async () => {
+        sandboxService.buildSandboxConfig.mockReturnValue({ maxMemoryPages: 1024 });
+
+        await worker.process(createJob({ config: { maxMemoryPages: 4096 } }));
+
+        const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
+        expect(mergedConfig.maxMemoryPages).toBe(1024);
+      });
+
+      it('runtime allowedHosts 只能收紧 manifest 白名单', async () => {
+        sandboxService.buildSandboxConfig.mockReturnValue({
+          allowedHosts: ['api.example.com', 'cdn.example.com'],
+        });
+
+        await worker.process(
+          createJob({
+            config: { allowedHosts: ['api.example.com', 'evil.example.com'] },
+          }),
+        );
+
+        const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
+        expect(mergedConfig.allowedHosts).toEqual(['api.example.com']);
+      });
+
+      it('manifest 未开放网络时 runtime 也不能扩张 allowedHosts', async () => {
+        sandboxService.buildSandboxConfig.mockReturnValue({ allowedHosts: [] });
+
+        await worker.process(
+          createJob({ config: { allowedHosts: ['api.example.com'] } }),
+        );
+
+        const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
+        expect(mergedConfig.allowedHosts).toEqual([]);
+      });
+
+      it('应忽略非法类型的 runtime 覆盖值', async () => {
         sandboxService.buildSandboxConfig.mockReturnValue({
           timeoutMs: 30_000,
           maxMemoryPages: 4096,
-        });
-
-        await worker.process(
-          createJob({ config: { maxMemoryPages: 2048 } }),
-        );
-
-        expect(sandboxService.execute).toHaveBeenCalledWith(
-          expect.any(Buffer),
-          expect.anything(),
-          expect.anything(),
-          expect.objectContaining({ maxMemoryPages: 2048 }),
-          expect.anything(),
-        );
-      });
-
-      it('应从 config 提取 allowedHosts 覆盖', async () => {
-        sandboxService.buildSandboxConfig.mockReturnValue({});
-
-        await worker.process(
-          createJob({
-            config: { allowedHosts: ['api.example.com', 'cdn.example.com'] },
-          }),
-        );
-
-        expect(sandboxService.execute).toHaveBeenCalledWith(
-          expect.any(Buffer),
-          expect.anything(),
-          expect.anything(),
-          expect.objectContaining({
-            allowedHosts: ['api.example.com', 'cdn.example.com'],
-          }),
-          expect.anything(),
-        );
-      });
-
-      it('应忽略非法类型的 config 覆盖值', async () => {
-        sandboxService.buildSandboxConfig.mockReturnValue({
-          timeoutMs: 30_000,
+          allowedHosts: ['api.example.com'],
         });
 
         await worker.process(
           createJob({
-            config: { timeoutMs: 'not-a-number', maxMemoryPages: null },
+            config: {
+              timeoutMs: 'not-a-number',
+              maxMemoryPages: null,
+              allowedHosts: [1, 'api.example.com'],
+            } as unknown as Record<string, unknown>,
           }),
         );
 
         const mergedConfig = sandboxService.execute.mock.calls[0][3] as SandboxConfig;
         expect(mergedConfig.timeoutMs).toBe(30_000);
-        expect(mergedConfig.maxMemoryPages).toBeUndefined();
+        expect(mergedConfig.maxMemoryPages).toBe(4096);
+        expect(mergedConfig.allowedHosts).toEqual(['api.example.com']);
       });
     });
 
     describe('输出标准化', () => {
       beforeEach(() => {
         pluginService.findActiveByPluginId.mockResolvedValue(createPluginRecord());
-        storageService.download.mockResolvedValue(
-          Readable.from([Buffer.from('wasm')]),
-        );
+        storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
         sandboxService.buildSandboxConfig.mockReturnValue({});
       });
 
@@ -441,17 +418,6 @@ describe('PluginExecutionWorker', () => {
         expect(result.outputs).toEqual({});
       });
 
-      it('undefined 输出应返回空对象', async () => {
-        sandboxService.execute.mockResolvedValue({
-          success: true,
-          output: undefined,
-          executionTimeMs: 10,
-        });
-
-        const result = await worker.process(createJob());
-        expect(result.outputs).toEqual({});
-      });
-
       it('数组输出应包装为 { result }', async () => {
         sandboxService.execute.mockResolvedValue({
           success: true,
@@ -467,9 +433,7 @@ describe('PluginExecutionWorker', () => {
 
   describe('onFailed', () => {
     it('应记录结构化错误信息但不抛出异常', () => {
-      const errorSpy = vi
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation(() => {});
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
       const job = createJob();
       const error = new Error('test failure');

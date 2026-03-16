@@ -48,7 +48,7 @@ describe('PluginSandboxService', () => {
     it('应执行 WASM 函数并返回 JSON 结果', async () => {
       const result = await service.execute(
         testWasm,
-        'transform',
+        'execute',
         { input: 'test' },
         undefined,
         pluginId,
@@ -58,7 +58,7 @@ describe('PluginSandboxService', () => {
       expect(result.output).toEqual({ result: 'ok' });
       expect(result.executionTimeMs).toBeGreaterThanOrEqual(0);
       expect(mocks.plugin.call).toHaveBeenCalledWith(
-        'transform',
+        'execute',
         JSON.stringify({ input: 'test' }),
       );
     });
@@ -68,7 +68,7 @@ describe('PluginSandboxService', () => {
 
       const result = await service.execute(
         testWasm,
-        'transform',
+        'execute',
         'input',
         undefined,
         pluginId,
@@ -79,23 +79,17 @@ describe('PluginSandboxService', () => {
     });
 
     it('应透传字符串输入', async () => {
-      await service.execute(
-        testWasm,
-        'transform',
-        'plain string',
-        undefined,
-        pluginId,
-      );
+      await service.execute(testWasm, 'execute', 'plain string', undefined, pluginId);
 
-      expect(mocks.plugin.call).toHaveBeenCalledWith('transform', 'plain string');
+      expect(mocks.plugin.call).toHaveBeenCalledWith('execute', 'plain string');
     });
 
     it('应透传 Uint8Array 输入', async () => {
       const bytes = new Uint8Array([1, 2, 3]);
 
-      await service.execute(testWasm, 'transform', bytes, undefined, pluginId);
+      await service.execute(testWasm, 'execute', bytes, undefined, pluginId);
 
-      expect(mocks.plugin.call).toHaveBeenCalledWith('transform', bytes);
+      expect(mocks.plugin.call).toHaveBeenCalledWith('execute', bytes);
     });
 
     it('JSON 解析失败时应回退到文本输出', async () => {
@@ -108,7 +102,7 @@ describe('PluginSandboxService', () => {
 
       const result = await service.execute(
         testWasm,
-        'transform',
+        'execute',
         'input',
         undefined,
         pluginId,
@@ -118,7 +112,7 @@ describe('PluginSandboxService', () => {
     });
 
     it('成功执行后也应关闭插件实例', async () => {
-      await service.execute(testWasm, 'transform', 'input', undefined, pluginId);
+      await service.execute(testWasm, 'execute', 'input', undefined, pluginId);
 
       expect(mocks.plugin.close).toHaveBeenCalledTimes(1);
     });
@@ -127,7 +121,7 @@ describe('PluginSandboxService', () => {
       mocks.plugin.call.mockRejectedValue(new Error('some error'));
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginSandboxException);
 
       expect(mocks.plugin.close).toHaveBeenCalledTimes(1);
@@ -139,7 +133,7 @@ describe('PluginSandboxService', () => {
 
       const result = await service.execute(
         testWasm,
-        'transform',
+        'execute',
         'input',
         undefined,
         pluginId,
@@ -157,7 +151,7 @@ describe('PluginSandboxService', () => {
       );
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginExecutionTimeoutException);
     });
 
@@ -167,7 +161,7 @@ describe('PluginSandboxService', () => {
       );
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginExecutionTimeoutException);
 
       expect(mocks.plugin.close).not.toHaveBeenCalled();
@@ -181,7 +175,17 @@ describe('PluginSandboxService', () => {
       );
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
+      ).rejects.toThrow(PluginPermissionDeniedException);
+    });
+
+    it('访问未授权路径时应抛出 PluginPermissionDeniedException', async () => {
+      mocks.plugin.call.mockRejectedValue(
+        new Error('Path "/tmp/secret" is not allowed (no allowedPaths match "/tmp/secret")'),
+      );
+
+      await expect(
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginPermissionDeniedException);
     });
 
@@ -189,7 +193,7 @@ describe('PluginSandboxService', () => {
       mocks.plugin.call.mockRejectedValue(new Error('var memory limit exceeded'));
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginResourceExhaustedException);
     });
 
@@ -199,7 +203,7 @@ describe('PluginSandboxService', () => {
       );
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginSandboxException);
     });
 
@@ -209,7 +213,7 @@ describe('PluginSandboxService', () => {
       );
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginSandboxException);
     });
 
@@ -217,20 +221,20 @@ describe('PluginSandboxService', () => {
       mocks.plugin.call.mockRejectedValue(new Error('unexpected failure'));
 
       await expect(
-        service.execute(testWasm, 'transform', 'input', undefined, pluginId),
+        service.execute(testWasm, 'execute', 'input', undefined, pluginId),
       ).rejects.toThrow(PluginSandboxException);
     });
 
-    it('应应用自定义沙箱配置', async () => {
+    it('应应用自定义沙箱配置并对数值上限做 clamp', async () => {
       await service.execute(
         testWasm,
-        'transform',
+        'execute',
         'input',
         {
           allowedHosts: ['api.example.com'],
           allowedPaths: { '/tmp': '/sandbox/tmp' },
-          maxMemoryPages: 2048,
-          timeoutMs: 10_000,
+          maxMemoryPages: 999_999,
+          timeoutMs: 60_000,
           useWasi: true,
           config: { ENV: 'production' },
         },
@@ -241,31 +245,71 @@ describe('PluginSandboxService', () => {
         expect.objectContaining({
           allowedHosts: ['api.example.com'],
           allowedPaths: { '/tmp': '/sandbox/tmp' },
-          memory: { maxPages: 2048 },
+          memory: { maxPages: 4096 },
           config: { ENV: 'production' },
         }),
         expect.objectContaining({
-          timeoutMs: 10_000,
+          timeoutMs: 30_000,
           runInWorker: true,
           useWasi: true,
         }),
       );
     });
+
+    it('应保留比平台上限更严格的自定义数值配置', async () => {
+      await service.execute(
+        testWasm,
+        'execute',
+        'input',
+        {
+          maxMemoryPages: 2048,
+          timeoutMs: 10_000,
+        },
+        pluginId,
+      );
+
+      expect(mocks.createPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({ memory: { maxPages: 2048 } }),
+        expect.objectContaining({ timeoutMs: 10_000 }),
+      );
+    });
   });
 
   describe('buildSandboxConfig', () => {
-    it('manifest 不包含 sandbox 时应返回空配置', () => {
-      expect(service.buildSandboxConfig({})).toEqual({});
+    it('manifest 不包含 sandbox 时应返回平台默认限制', () => {
+      expect(service.buildSandboxConfig({})).toEqual({
+        allowedHosts: [],
+        allowedPaths: {},
+        maxMemoryPages: 4096,
+        timeoutMs: 30_000,
+        useWasi: false,
+      });
     });
 
-    it('sandbox 非对象时应返回空配置', () => {
-      expect(service.buildSandboxConfig({ sandbox: 'invalid' })).toEqual({});
-    });
-
-    it('应从 manifest 提取完整沙箱配置', () => {
+    it('未声明 network:outbound 时应保持默认 deny-all', () => {
       const config = service.buildSandboxConfig({
+        permissions: [],
         sandbox: {
           allowedHosts: ['api.example.com'],
+          maxMemoryPages: 2048,
+          timeoutMs: 10_000,
+        },
+      });
+
+      expect(config).toEqual({
+        allowedHosts: [],
+        allowedPaths: {},
+        maxMemoryPages: 4096,
+        timeoutMs: 30_000,
+        useWasi: false,
+      });
+    });
+
+    it('声明 network:outbound 时应允许 manifest 白名单域名', () => {
+      const config = service.buildSandboxConfig({
+        permissions: ['network:outbound'],
+        sandbox: {
+          allowedHosts: ['api.example.com', 'cdn.example.com'],
           allowedPaths: { '/data': '/sandbox/data' },
           maxMemoryPages: 2048,
           timeoutMs: 10_000,
@@ -275,17 +319,17 @@ describe('PluginSandboxService', () => {
       });
 
       expect(config).toEqual({
-        allowedHosts: ['api.example.com'],
-        allowedPaths: { '/data': '/sandbox/data' },
-        maxMemoryPages: 2048,
-        timeoutMs: 10_000,
-        useWasi: true,
-        config: { REGION: 'cn' },
+        allowedHosts: ['api.example.com', 'cdn.example.com'],
+        allowedPaths: {},
+        maxMemoryPages: 4096,
+        timeoutMs: 30_000,
+        useWasi: false,
       });
     });
 
-    it('应忽略非法字段并保留合法字段', () => {
+    it('应忽略非法字段并保留平台默认限制', () => {
       const config = service.buildSandboxConfig({
+        permissions: ['network:outbound'],
         sandbox: {
           allowedHosts: ['api.example.com'],
           allowedPaths: { '/data': '/sandbox/data', broken: 123 },
@@ -298,11 +342,10 @@ describe('PluginSandboxService', () => {
 
       expect(config).toEqual({
         allowedHosts: ['api.example.com'],
-        allowedPaths: undefined,
-        maxMemoryPages: undefined,
-        timeoutMs: 10_000,
-        useWasi: undefined,
-        config: undefined,
+        allowedPaths: {},
+        maxMemoryPages: 4096,
+        timeoutMs: 30_000,
+        useWasi: false,
       });
     });
   });

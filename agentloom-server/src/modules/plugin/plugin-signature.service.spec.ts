@@ -1,10 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { generateKeyPairSync, type KeyPairKeyObjectResult } from 'node:crypto';
+
+import JSZip from 'jszip';
 import {
-  constants,
-  createSign,
-  generateKeyPairSync,
-  type KeyPairKeyObjectResult,
-} from 'node:crypto';
+  computeContentHash,
+  signArchive,
+  updateArchiveManifest,
+} from '@agentloom/plugin-sdk';
 
 import {
   PluginDeveloperKeyInvalidException,
@@ -12,6 +14,17 @@ import {
   PluginSignatureMissingException,
 } from './plugin.exceptions';
 import { PluginSignatureService } from './plugin-signature.service';
+
+const baseManifest = {
+  id: 'com.agentloom.server-signature-fixture',
+  name: 'Server Signature Fixture',
+  version: '1.0.0',
+  author: 'AgentLoom',
+  description: 'Server signature test fixture',
+  license: 'MIT',
+  minPlatformVersion: '1.0.0',
+  permissions: ['network:outbound'],
+};
 
 function createRsaKeyPair(modulusLength: number): KeyPairKeyObjectResult {
   return generateKeyPairSync('rsa', {
@@ -27,26 +40,58 @@ function exportPrivateKeyPem(keyPair: KeyPairKeyObjectResult): string {
   return keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 }
 
-function signData(data: Buffer, privateKeyPem: string): string {
-  const sign = createSign('SHA256');
-  sign.update(data);
-  sign.end();
-
-  return sign.sign(
-    {
-      key: privateKeyPem,
-      padding: constants.RSA_PKCS1_PSS_PADDING,
-      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
-    },
-    'base64',
+async function createUnsignedArchive(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file('manifest.json', `${JSON.stringify(baseManifest, null, 2)}\n`);
+  zip.file('dist/index.js', 'export default { nodes: [] };\n');
+  zip.file(
+    'package.json',
+    JSON.stringify({ name: 'server-signature-fixture', version: '1.0.0', type: 'module' }),
   );
+
+  return zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 },
+  });
+}
+
+async function createSignedArchive(
+  privateKeyPem: string,
+): Promise<{ archiveBuffer: Buffer; signature: string; contentHash: string }> {
+  const unsignedArchive = await createUnsignedArchive();
+  const signature = await signArchive(unsignedArchive, privateKeyPem);
+  const contentHash = await computeContentHash(unsignedArchive);
+  const archiveBuffer = await updateArchiveManifest(unsignedArchive, {
+    ...baseManifest,
+    signature,
+    contentHash,
+    developerKeyFingerprint: 'a'.repeat(64),
+  });
+
+  expect(await computeContentHash(archiveBuffer)).toBe(contentHash);
+
+  return { archiveBuffer, signature, contentHash };
+}
+
+async function tamperArchive(
+  archiveBuffer: Buffer,
+  path: string,
+  contents: string,
+): Promise<Buffer> {
+  const archive = await JSZip.loadAsync(archiveBuffer);
+  archive.file(path, contents);
+  return archive.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 },
+  });
 }
 
 describe('PluginSignatureService', () => {
   let service: PluginSignatureService;
   let publicKeyPem: string;
   let privateKeyPem: string;
-  let testData: Buffer;
 
   beforeAll(() => {
     service = new PluginSignatureService();
@@ -54,117 +99,119 @@ describe('PluginSignatureService', () => {
     const keyPair = createRsaKeyPair(2048);
     publicKeyPem = exportPublicKeyPem(keyPair);
     privateKeyPem = exportPrivateKeyPem(keyPair);
-    testData = Buffer.from('test plugin archive content');
   });
 
   describe('verifyArchiveSignature', () => {
-    it('应返回有效签名结果', () => {
-      const signature = signData(testData, privateKeyPem);
+    it('应验证最终归档中的 canonical 签名', async () => {
+      const { archiveBuffer, signature, contentHash } = await createSignedArchive(
+        privateKeyPem,
+      );
 
-      const result = service.verifyArchiveSignature(
-        testData,
+      const result = await service.verifyArchiveSignature(
+        archiveBuffer,
         signature,
         publicKeyPem,
         'test-plugin',
       );
 
-      expect(result).toEqual({
-        valid: true,
-        contentHash: service.computeContentHash(testData),
-      });
+      expect(result).toEqual({ valid: true, contentHash });
     });
 
-    it('缺少签名时应抛出 PluginSignatureMissingException', () => {
-      expect(() =>
+    it('缺少签名时应抛出 PluginSignatureMissingException', async () => {
+      await expect(
         service.verifyArchiveSignature(
-          testData,
+          await createUnsignedArchive(),
           undefined,
           publicKeyPem,
           'test-plugin',
         ),
-      ).toThrow(PluginSignatureMissingException);
+      ).rejects.toThrow(PluginSignatureMissingException);
     });
 
-    it('空字符串签名应视为缺失', () => {
-      expect(() =>
-        service.verifyArchiveSignature(testData, '', publicKeyPem, 'test-plugin'),
-      ).toThrow(PluginSignatureMissingException);
-    });
-
-    it('篡改归档内容时应抛出 PluginSignatureInvalidException', () => {
-      const signature = signData(testData, privateKeyPem);
-      const tamperedData = Buffer.from('tampered content');
-
-      expect(() =>
+    it('空字符串签名应视为缺失', async () => {
+      await expect(
         service.verifyArchiveSignature(
-          tamperedData,
+          await createUnsignedArchive(),
+          '',
+          publicKeyPem,
+          'test-plugin',
+        ),
+      ).rejects.toThrow(PluginSignatureMissingException);
+    });
+
+    it('篡改归档内容时应抛出 PluginSignatureInvalidException', async () => {
+      const { archiveBuffer, signature } = await createSignedArchive(privateKeyPem);
+      const tamperedArchive = await tamperArchive(
+        archiveBuffer,
+        'dist/index.js',
+        'export default { nodes: ["tampered"] };\n',
+      );
+
+      await expect(
+        service.verifyArchiveSignature(
+          tamperedArchive,
           signature,
           publicKeyPem,
           'test-plugin',
         ),
-      ).toThrow(PluginSignatureInvalidException);
+      ).rejects.toThrow(PluginSignatureInvalidException);
     });
 
-    it('使用错误私钥签名时应抛出 PluginSignatureInvalidException', () => {
+    it('使用错误私钥签名时应抛出 PluginSignatureInvalidException', async () => {
       const otherKeyPair = createRsaKeyPair(2048);
-      const otherPrivateKeyPem = exportPrivateKeyPem(otherKeyPair);
-      const signature = signData(testData, otherPrivateKeyPem);
+      const { archiveBuffer, signature } = await createSignedArchive(
+        exportPrivateKeyPem(otherKeyPair),
+      );
 
-      expect(() =>
+      await expect(
         service.verifyArchiveSignature(
-          testData,
+          archiveBuffer,
           signature,
           publicKeyPem,
           'test-plugin',
         ),
-      ).toThrow(PluginSignatureInvalidException);
+      ).rejects.toThrow(PluginSignatureInvalidException);
     });
 
-    it('垃圾签名应抛出 PluginSignatureInvalidException', () => {
-      expect(() =>
+    it('垃圾签名应抛出 PluginSignatureInvalidException', async () => {
+      await expect(
         service.verifyArchiveSignature(
-          testData,
+          await createUnsignedArchive(),
           Buffer.from('not-a-signature').toString('base64'),
           publicKeyPem,
           'test-plugin',
         ),
-      ).toThrow(PluginSignatureInvalidException);
+      ).rejects.toThrow(PluginSignatureInvalidException);
     });
 
-    it('开发者公钥无效时应抛出 PluginDeveloperKeyInvalidException', () => {
+    it('开发者公钥无效时应抛出 PluginDeveloperKeyInvalidException', async () => {
       const ecKeyPair = generateKeyPairSync('ec', {
         namedCurve: 'P-256',
       });
       const ecPublicKeyPem = ecKeyPair.publicKey
         .export({ type: 'spki', format: 'pem' })
         .toString();
-      const signature = signData(testData, privateKeyPem);
+      const { archiveBuffer, signature } = await createSignedArchive(privateKeyPem);
 
-      expect(() =>
+      await expect(
         service.verifyArchiveSignature(
-          testData,
+          archiveBuffer,
           signature,
           ecPublicKeyPem,
           'test-plugin',
         ),
-      ).toThrow(PluginDeveloperKeyInvalidException);
+      ).rejects.toThrow(PluginDeveloperKeyInvalidException);
     });
   });
 
   describe('computeContentHash', () => {
-    it('应返回稳定的 SHA-256 十六进制哈希', () => {
-      const hash1 = service.computeContentHash(testData);
-      const hash2 = service.computeContentHash(testData);
+    it('应返回稳定的 canonical SHA-256 十六进制哈希', async () => {
+      const archive = await createUnsignedArchive();
+      const hash1 = await service.computeContentHash(archive);
+      const hash2 = await service.computeContentHash(archive);
 
       expect(hash1).toBe(hash2);
       expect(hash1).toMatch(/^[a-f0-9]{64}$/);
-    });
-
-    it('不同数据应返回不同哈希', () => {
-      const hash1 = service.computeContentHash(testData);
-      const hash2 = service.computeContentHash(Buffer.from('other'));
-
-      expect(hash1).not.toBe(hash2);
     });
   });
 

@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
-  constants,
   createHash,
   createPublicKey,
-  createVerify,
   type KeyObject,
 } from 'node:crypto';
+
+import {
+  computeContentHash as computeArchiveContentHash,
+  verifyArchiveSignature as verifyPluginArchiveSignature,
+} from '@agentloom/plugin-sdk';
 
 import {
   PluginDeveloperKeyInvalidException,
@@ -24,20 +27,20 @@ function isPrivateKeyPem(pem: string): boolean {
 
 @Injectable()
 export class PluginSignatureService {
-  verifyArchiveSignature(
+  async verifyArchiveSignature(
     archiveBuffer: Buffer,
     signatureBase64: string | undefined,
     publicKeyPem: string,
     pluginId: string,
-  ): SignatureVerificationResult {
+  ): Promise<SignatureVerificationResult> {
     if (!signatureBase64) {
       throw new PluginSignatureMissingException(pluginId);
     }
 
     this.validatePublicKey(publicKeyPem);
 
-    const contentHash = this.computeContentHash(archiveBuffer);
-    const valid = this.verifyRsaPssSignature(
+    const contentHash = await this.computeContentHash(archiveBuffer);
+    const valid = await verifyPluginArchiveSignature(
       archiveBuffer,
       signatureBase64,
       publicKeyPem,
@@ -50,8 +53,8 @@ export class PluginSignatureService {
     return { valid: true, contentHash };
   }
 
-  computeContentHash(data: Buffer | Uint8Array): string {
-    return createHash('sha256').update(data).digest('hex');
+  async computeContentHash(data: Buffer | Uint8Array): Promise<string> {
+    return computeArchiveContentHash(data);
   }
 
   validatePublicKey(pem: string): KeyObject {
@@ -93,32 +96,9 @@ export class PluginSignatureService {
   }
 
   computeKeyFingerprint(pem: string): string {
-    const publicKey = createPublicKey(pem);
+    const publicKey = this.validatePublicKey(pem);
     const der = publicKey.export({ type: 'spki', format: 'der' });
 
     return createHash('sha256').update(der).digest('hex');
-  }
-
-  private verifyRsaPssSignature(
-    data: Buffer | Uint8Array,
-    signatureBase64: string,
-    publicKeyPem: string,
-  ): boolean {
-    try {
-      const verify = createVerify('SHA256');
-      verify.update(data);
-      verify.end();
-
-      return verify.verify(
-        {
-          key: publicKeyPem,
-          padding: constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
-        },
-        Buffer.from(signatureBase64, 'base64'),
-      );
-    } catch {
-      return false;
-    }
   }
 }

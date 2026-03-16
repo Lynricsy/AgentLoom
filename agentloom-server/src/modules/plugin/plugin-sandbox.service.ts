@@ -108,45 +108,44 @@ export class PluginSandboxService {
   }
 
   buildSandboxConfig(manifest: Record<string, unknown>): SandboxConfig {
-    const sandbox = manifest.sandbox;
-    if (!this.isRecord(sandbox)) {
-      return {};
-    }
+    const sandbox = this.isRecord(manifest.sandbox) ? manifest.sandbox : {};
+    const permissions = this.isStringArray(manifest.permissions)
+      ? manifest.permissions
+      : [];
+    const allowedHosts =
+      permissions.includes('network:outbound') && this.isStringArray(sandbox.allowedHosts)
+        ? [...new Set(sandbox.allowedHosts)]
+        : [];
 
     return {
-      allowedHosts: this.isStringArray(sandbox.allowedHosts)
-        ? [...sandbox.allowedHosts]
-        : undefined,
-      allowedPaths: this.isStringRecord(sandbox.allowedPaths)
-        ? { ...sandbox.allowedPaths }
-        : undefined,
-      maxMemoryPages:
-        typeof sandbox.maxMemoryPages === 'number'
-          ? sandbox.maxMemoryPages
-          : undefined,
-      timeoutMs:
-        typeof sandbox.timeoutMs === 'number' ? sandbox.timeoutMs : undefined,
-      useWasi:
-        typeof sandbox.useWasi === 'boolean' ? sandbox.useWasi : undefined,
-      config: this.isStringRecord(sandbox.config)
-        ? { ...sandbox.config }
-        : undefined,
+      allowedHosts,
+      allowedPaths: {},
+      maxMemoryPages: DEFAULT_SANDBOX_CONFIG.maxMemoryPages,
+      timeoutMs: DEFAULT_SANDBOX_CONFIG.timeoutMs,
+      useWasi: DEFAULT_SANDBOX_CONFIG.useWasi,
     };
   }
 
   private mergeSandboxConfig(config?: SandboxConfig): ResolvedSandboxConfig {
     return {
-      maxMemoryPages:
-        config?.maxMemoryPages ?? DEFAULT_SANDBOX_CONFIG.maxMemoryPages,
-      timeoutMs: config?.timeoutMs ?? DEFAULT_SANDBOX_CONFIG.timeoutMs,
-      allowedHosts: config?.allowedHosts
-        ? [...config.allowedHosts]
+      maxMemoryPages: this.resolveNumericLimit(
+        config?.maxMemoryPages,
+        DEFAULT_SANDBOX_CONFIG.maxMemoryPages,
+      ),
+      timeoutMs: this.resolveNumericLimit(
+        config?.timeoutMs,
+        DEFAULT_SANDBOX_CONFIG.timeoutMs,
+      ),
+      allowedHosts: this.isStringArray(config?.allowedHosts)
+        ? [...new Set(config.allowedHosts)]
         : [...DEFAULT_SANDBOX_CONFIG.allowedHosts],
-      allowedPaths: config?.allowedPaths
+      allowedPaths: this.isStringRecord(config?.allowedPaths)
         ? { ...config.allowedPaths }
         : { ...DEFAULT_SANDBOX_CONFIG.allowedPaths },
       useWasi: config?.useWasi ?? DEFAULT_SANDBOX_CONFIG.useWasi,
-      config: config?.config ? { ...config.config } : undefined,
+      config: this.isStringRecord(config?.config)
+        ? { ...config.config }
+        : undefined,
     };
   }
 
@@ -181,13 +180,14 @@ export class PluginSandboxService {
       return new PluginExecutionTimeoutException(pluginId, config.timeoutMs);
     }
 
-    if (
-      message.includes('is not allowed') &&
-      message.includes('no allowedHosts match')
-    ) {
+    if (message.includes('is not allowed') && this.isPermissionDeniedMessage(message)) {
+      const detail = message.includes('allowedPaths')
+        ? `插件 "${pluginId}" 尝试访问未授权的文件路径。V1 默认禁止文件系统访问。`
+        : `插件 "${pluginId}" 尝试访问未授权的主机。请在 manifest 的 sandbox.allowedHosts 中配置允许的主机。`;
+
       return new PluginPermissionDeniedException(
         pluginId,
-        `插件 "${pluginId}" 尝试访问未授权的主机。请在 manifest 的 sandbox.allowedHosts 中配置允许的主机。`,
+        detail,
       );
     }
 
@@ -230,5 +230,22 @@ export class PluginSandboxService {
     }
 
     return Object.values(value).every((item) => typeof item === 'string');
+  }
+
+  private resolveNumericLimit(value: unknown, defaultValue: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return defaultValue;
+    }
+
+    return Math.min(Math.trunc(value), defaultValue);
+  }
+
+  private isPermissionDeniedMessage(message: string): boolean {
+    return (
+      message.includes('no allowedHosts match') ||
+      message.includes('no allowedPaths match') ||
+      message.includes('allowedHosts') ||
+      message.includes('allowedPaths')
+    );
   }
 }

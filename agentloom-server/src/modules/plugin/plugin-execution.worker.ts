@@ -8,6 +8,7 @@ import { PLUGIN_EXECUTION_QUEUE } from './plugin.constants';
 import {
   PluginInactiveException,
   PluginNotFoundException,
+  PluginSandboxException,
 } from './plugin.exceptions';
 import {
   PluginSandboxService,
@@ -75,12 +76,12 @@ export class PluginExecutionWorker extends WorkerHost {
 
     const manifest = (plugin.manifest ?? {}) as Record<string, unknown>;
     const manifestSandboxConfig = this.sandboxService.buildSandboxConfig(manifest);
-    const mergedConfig: SandboxConfig = {
-      ...manifestSandboxConfig,
-      ...this.extractConfigOverrides(config),
-    };
+    const mergedConfig = this.applyRuntimeConfigRestrictions(
+      manifestSandboxConfig,
+      config,
+    );
 
-    const functionName = this.resolveFunctionName(manifest, nodeType, config);
+    const functionName = this.resolveFunctionName(config);
 
     const executionInput = { nodeType, inputs, config };
     const result: PluginExecutionResult = await this.sandboxService.execute(
@@ -129,7 +130,8 @@ export class PluginExecutionWorker extends WorkerHost {
       this.logger.error(
         `下载插件 "${pluginId}" 的 WASM bundle 失败: ${message}`,
       );
-      throw new Error(
+      throw new PluginSandboxException(
+        pluginId,
         `无法下载插件 "${pluginId}" 的 WASM bundle: ${message}`,
       );
     }
@@ -143,40 +145,74 @@ export class PluginExecutionWorker extends WorkerHost {
     return Buffer.concat(chunks);
   }
 
-  private resolveFunctionName(
-    manifest: Record<string, unknown>,
-    nodeType: string,
-    config: Record<string, unknown>,
-  ): string {
-    if (typeof config.functionName === 'string' && config.functionName.length > 0) {
-      return config.functionName;
+  private resolveFunctionName(config: Record<string, unknown>): string {
+    if (typeof config.functionName === 'string' && config.functionName.trim().length > 0) {
+      return config.functionName.trim();
     }
 
-    if (typeof manifest.wasmEntry === 'string' && manifest.wasmEntry.length > 0) {
-      return manifest.wasmEntry;
-    }
-
-    return nodeType || 'run';
+    return 'execute';
   }
 
-  private extractConfigOverrides(config: Record<string, unknown>): Partial<SandboxConfig> {
-    const overrides: Partial<SandboxConfig> = {};
+  private applyRuntimeConfigRestrictions(
+    baseConfig: SandboxConfig,
+    config: Record<string, unknown>,
+  ): SandboxConfig {
+    const restrictedConfig: SandboxConfig = { ...baseConfig };
 
-    if (typeof config.timeoutMs === 'number') {
-      overrides.timeoutMs = config.timeoutMs;
-    }
-
-    if (typeof config.maxMemoryPages === 'number') {
-      overrides.maxMemoryPages = config.maxMemoryPages;
-    }
-
-    if (Array.isArray(config.allowedHosts)) {
-      overrides.allowedHosts = config.allowedHosts.filter(
-        (h): h is string => typeof h === 'string',
+    const timeoutMs = this.readPositiveInteger(config.timeoutMs);
+    if (timeoutMs !== undefined) {
+      restrictedConfig.timeoutMs = this.tightenNumericLimit(
+        baseConfig.timeoutMs,
+        timeoutMs,
       );
     }
 
-    return overrides;
+    const maxMemoryPages = this.readPositiveInteger(config.maxMemoryPages);
+    if (maxMemoryPages !== undefined) {
+      restrictedConfig.maxMemoryPages = this.tightenNumericLimit(
+        baseConfig.maxMemoryPages,
+        maxMemoryPages,
+      );
+    }
+
+    const allowedHosts = this.readStringArray(config.allowedHosts);
+    if (allowedHosts !== undefined) {
+      restrictedConfig.allowedHosts = this.intersectAllowedHosts(
+        baseConfig.allowedHosts ?? [],
+        allowedHosts,
+      );
+    }
+
+    return restrictedConfig;
+  }
+
+  private tightenNumericLimit(current: number | undefined, requested: number): number {
+    return current === undefined ? requested : Math.min(current, requested);
+  }
+
+  private intersectAllowedHosts(current: string[], requested: string[]): string[] {
+    if (current.length === 0) {
+      return [];
+    }
+
+    const requestedSet = new Set(requested);
+    return current.filter((host) => requestedSet.has(host));
+  }
+
+  private readPositiveInteger(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return undefined;
+    }
+
+    return Math.trunc(value);
+  }
+
+  private readStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    return [...new Set(value.filter((item): item is string => typeof item === 'string'))];
   }
 
   private normalizeOutputs(output: unknown): Record<string, unknown> {

@@ -42,6 +42,7 @@ import {
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
 import {
   PluginFileTooLargeException,
+  PluginSignatureInvalidException,
   PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
@@ -111,43 +112,34 @@ export class PluginController {
     const pluginId = (manifest.id as string) ?? (manifest.pluginId as string) ?? 'unknown';
     const version = (manifest.version as string) ?? '0.0.0';
 
-    let signature: string | undefined;
-    let contentHash: string | undefined;
+    const signingMetadata = this.requireSigningMetadata(manifest, pluginId);
 
-    if (manifest.signature || manifest.contentHash || manifest.developerKeyFingerprint) {
-      const manifestSignature = manifest.signature as string | undefined;
-      const fingerprint = manifest.developerKeyFingerprint as string | undefined;
-
-      if (!manifestSignature) {
-        throw new PluginSignatureMissingException(pluginId);
-      }
-
-      if (fingerprint && orgId) {
-        const devKey = await this.developerKeyService.findActiveKeyByFingerprint(
-          orgId,
-          fingerprint,
-        );
-
-        if (devKey) {
-          const result = this.signatureService.verifyArchiveSignature(
-            buffer,
-            manifestSignature,
-            devKey.publicKey,
-            pluginId,
-          );
-          signature = manifestSignature;
-          contentHash = result.contentHash;
-        } else {
-          this.logger.warn(
-            `插件 "${pluginId}" 提供的密钥指纹 "${fingerprint}" 未找到对应的活跃开发者密钥，跳过签名验证`,
-          );
-          contentHash = this.signatureService.computeContentHash(buffer);
-        }
-      } else {
-        contentHash = this.signatureService.computeContentHash(buffer);
-        signature = manifestSignature;
-      }
+    if (!orgId) {
+      throw new PluginSignatureInvalidException(pluginId);
     }
+
+    const developerKey = await this.developerKeyService.findActiveKeyByFingerprint(
+      orgId,
+      signingMetadata.developerKeyFingerprint,
+    );
+
+    if (!developerKey) {
+      throw new PluginSignatureInvalidException(pluginId);
+    }
+
+    const verificationResult = await this.signatureService.verifyArchiveSignature(
+      buffer,
+      signingMetadata.signature,
+      developerKey.publicKey,
+      pluginId,
+    );
+
+    if (verificationResult.contentHash !== signingMetadata.contentHash) {
+      throw new PluginSignatureInvalidException(pluginId);
+    }
+
+    const signature = signingMetadata.signature;
+    const contentHash = verificationResult.contentHash;
 
     const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
     await this.storageService.upload(storageKey, buffer, buffer.length, 'application/zip');
@@ -199,6 +191,40 @@ export class PluginController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.pluginService.findAll(this.getTenantId(req), query);
+  }
+
+  private requireSigningMetadata(
+    manifest: Record<string, unknown>,
+    pluginId: string,
+  ): {
+    signature: string;
+    contentHash: string;
+    developerKeyFingerprint: string;
+  } {
+    const signature = this.getNonEmptyString(manifest.signature);
+    const contentHash = this.getNonEmptyString(manifest.contentHash);
+    const developerKeyFingerprint = this.getNonEmptyString(
+      manifest.developerKeyFingerprint,
+    );
+
+    if (!signature || !contentHash || !developerKeyFingerprint) {
+      throw new PluginSignatureMissingException(pluginId);
+    }
+
+    return {
+      signature,
+      contentHash,
+      developerKeyFingerprint,
+    };
+  }
+
+  private getNonEmptyString(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   @Get(':id')

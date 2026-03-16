@@ -60,12 +60,12 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - `PluginController` 的实际注册路由为 `POST /api/v1/plugins`（类级 `@Controller('plugins')` + 方法级 `@Post()`），不要把 story 文本中的 `/plugins/register` 当成真实接口。
 - `PluginService.parseManifest()` 以 `@agentloom/plugin-sdk` 的 `validateManifest()` 与 `PluginManifestSchema` 为唯一规则源；若归档仅提供 legacy `pluginId`，service 会先 canonicalize 到 `id` 再持久化 canonical manifest。
 - `PluginValidationException` 接受单条或多条校验错误，并按 `field: message` 形式映射到 RFC7807 `ProblemDetails.errors[]`。
-- `PluginSandboxService` 使用 `@extism/extism` 在独立 worker 中执行 WASM（`runInWorker: true`，必须开启以支持 `timeoutMs` / `allowedHosts`），默认沙箱配置为 `timeoutMs=30000`、`maxMemoryPages=4096`、`allowedHosts=[]`、`allowedPaths={}`、`useWasi=false`；错误按超时 / 权限拒绝 / 资源耗尽 / 通用沙箱错误分类到插件域异常。
-- `PluginSignatureService` 使用 `node:crypto` RSA-PSS + SHA-256 验证 `.alp` 归档签名。`verifyArchiveSignature()` 返回 `{valid, contentHash}`。`validatePublicKey()` 验证 RSA ≥ 2048 位且拒绝私钥。`computeKeyFingerprint()` 计算 SPKI DER 的 SHA-256 指纹。
+- `PluginSandboxService` 使用 `@extism/extism` 在独立 worker 中执行 WASM（`runInWorker: true`，必须开启以支持 `timeoutMs` / `allowedHosts`）。平台硬限制保持 `timeoutMs=30000`、`maxMemoryPages=4096`、`allowedPaths={}`、`useWasi=false`；`buildSandboxConfig()` 仅在 manifest 同时声明 `permissions` 包含 `network:outbound` 且 `sandbox.allowedHosts` 为字符串数组时开放 host 白名单，文件系统仍保持关闭；错误按超时 / 权限拒绝 / 资源耗尽 / 通用沙箱错误分类到插件域异常。
+- `PluginSignatureService` 复用 `@agentloom/plugin-sdk` 的 canonical archive helper 进行验签：先重建剥离 `signature` / `contentHash` / `developerKeyFingerprint` 的 canonical unsigned archive payload，再计算 SHA-256 / RSA-PSS 验证。`verifyArchiveSignature()` 返回 `{valid, contentHash}`；`validatePublicKey()` 验证 RSA ≥ 2048 位且拒绝私钥；`computeKeyFingerprint()` 计算 SPKI DER 的 SHA-256 指纹。
 - `PluginDeveloperKeyService` 管理开发者 RSA 公钥：注册时验证 + 计算指纹 + 查重；支持按 fingerprint 查找 active 密钥、按 orgId 分页列表、撤销（设置 revokedAt）。
 - `PluginDeveloperKeyController` 挂载于 `/plugins/developer-keys`，提供 POST（注册）、GET（列表）、GET :id（详情）、DELETE :id（撤销），RBAC 为 creator+。
-- `PluginController.register()` 流程：解析 .alp → 签名验证（若 manifest 含 signature/developerKeyFingerprint）→ 上传归档到 MinIO → 提取 WASM（若 manifest.wasmEntry 存在）→ 上传 WASM → 调用 `PluginService.register()` 写入 signature/contentHash/wasmBundleUrl。
-- `PluginExecutionWorker` 流程：`findActiveByPluginId()` → 检查 `wasmBundleUrl` → 从 MinIO 下载 WASM → `buildSandboxConfig()` + 合并 config overrides → `resolveFunctionName()` 四级优先级（config.functionName > manifest.wasmEntry > nodeType > 'run'）→ `PluginSandboxService.execute()` → `normalizeOutputs()`。
+- `PluginController.register()` 流程：解析 .alp → 强制要求 manifest 同时包含 `signature` / `contentHash` / `developerKeyFingerprint` → 按 fingerprint 查找活跃开发者公钥 → canonical payload 验签并比对 `contentHash` → 通过后才上传归档到 MinIO / 提取 WASM / 调用 `PluginService.register()` 写入 signature/contentHash/wasmBundleUrl。缺失 metadata、找不到 active key、验签失败或 hash 不一致都会在存储/入库前 fail-closed。
+- `PluginExecutionWorker` 流程：`findActiveByPluginId()` → 检查 `wasmBundleUrl` → 从 MinIO 下载 WASM → `buildSandboxConfig()` → runtime config 仅允许进一步收紧 `timeoutMs` / `maxMemoryPages` / `allowedHosts`，不可放宽 → `resolveFunctionName()` 取 `config.functionName`，默认回落到 `'execute'` → `PluginSandboxService.execute()` → `normalizeOutputs()`。
 
 ```
 HTTP POST /executions

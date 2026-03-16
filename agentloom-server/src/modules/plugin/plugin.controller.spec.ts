@@ -13,6 +13,10 @@ import { StorageService } from '../../infrastructure/storage/storage.service';
 import { QueryPluginsDto, UpdatePluginStatusDto } from './dto/plugin.dto';
 import { PluginController } from './plugin.controller';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import {
+  PluginSignatureInvalidException,
+  PluginSignatureMissingException,
+} from './plugin.exceptions';
 import { PluginSignatureService } from './plugin-signature.service';
 import { PluginService } from './plugin.service';
 
@@ -53,6 +57,9 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const ORG_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const PLUGIN_RECORD_ID = '44444444-4444-4444-8444-444444444444';
+const SIGNATURE = Buffer.from('signed-plugin').toString('base64');
+const CONTENT_HASH = 'a'.repeat(64);
+const KEY_FINGERPRINT = 'b'.repeat(64);
 
 type AuthenticatedRequest = FastifyRequest & {
   tenantId?: string;
@@ -115,7 +122,9 @@ function createPluginResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function createPluginArchiveBuffer(): Promise<Buffer> {
+async function createPluginArchiveBuffer(
+  manifestOverrides: Record<string, unknown> = {},
+): Promise<Buffer> {
   const zip = new JSZip();
 
   zip.file(
@@ -129,6 +138,7 @@ async function createPluginArchiveBuffer(): Promise<Buffer> {
       license: 'MIT',
       minPlatformVersion: '1.0.0',
       permissions: ['network:outbound'],
+      ...manifestOverrides,
     }),
   );
   zip.file('node-definitions.json', JSON.stringify([{ type: 'review-analyzer' }]));
@@ -136,8 +146,11 @@ async function createPluginArchiveBuffer(): Promise<Buffer> {
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
-async function createRegisterRequest(status = 'active'): Promise<AuthenticatedRequest> {
-  const buffer = await createPluginArchiveBuffer();
+async function createRegisterRequest(options?: {
+  status?: string;
+  manifestOverrides?: Record<string, unknown>;
+}): Promise<AuthenticatedRequest> {
+  const buffer = await createPluginArchiveBuffer(options?.manifestOverrides);
 
   return {
     tenantId: TENANT_ID,
@@ -153,7 +166,7 @@ async function createRegisterRequest(status = 'active'): Promise<AuthenticatedRe
     file: vi.fn().mockResolvedValue({
       filename: 'review-plugin.alp',
       fields: {
-        status: { value: status },
+        status: { value: options?.status ?? 'active' },
       },
       file: { truncated: false },
       toBuffer: vi.fn().mockResolvedValue(buffer),
@@ -222,10 +235,26 @@ describe('PluginController', () => {
     it('应上传 .alp 包、注册插件并按需切换状态', async () => {
       const createdPlugin = createPluginResponse();
       const activePlugin = createPluginResponse({ status: 'active', occVersion: 2 });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        id: 'key-1',
+        publicKey: 'public-key-pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
       service.register.mockResolvedValue(createdPlugin);
       service.updateStatus.mockResolvedValue(activePlugin);
 
-      const result = await controller.register(await createRegisterRequest());
+      const result = await controller.register(
+        await createRegisterRequest({
+          manifestOverrides: {
+            signature: SIGNATURE,
+            contentHash: CONTENT_HASH,
+            developerKeyFingerprint: KEY_FINGERPRINT,
+          },
+        }),
+      );
 
       expect(getRoles(controller, 'register')).toEqual(['owner', 'admin', 'creator']);
       expect(getHttpCode(controller, 'register')).toBe(HttpStatus.CREATED);
@@ -239,7 +268,20 @@ describe('PluginController', () => {
         }),
         expect.arrayContaining([expect.objectContaining({ type: 'review-analyzer' })]),
         expect.stringContaining('tenants/'),
-        expect.objectContaining({}),
+        expect.objectContaining({
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+        }),
+      );
+      expect(developerKeyService.findActiveKeyByFingerprint).toHaveBeenCalledWith(
+        ORG_ID,
+        KEY_FINGERPRINT,
+      );
+      expect(signatureService.verifyArchiveSignature).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        SIGNATURE,
+        'public-key-pem',
+        'com.example.review',
       );
       expect(storageService.upload).toHaveBeenCalled();
       expect(service.updateStatus).toHaveBeenCalledWith(
@@ -249,6 +291,74 @@ describe('PluginController', () => {
         1,
       );
       expect(result).toEqual({ data: activePlugin });
+    });
+
+    it('未签名插件应抛出 PluginSignatureMissingException 并拒绝注册', async () => {
+      await expect(controller.register(await createRegisterRequest())).rejects.toThrow(
+        PluginSignatureMissingException,
+      );
+
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('签名元数据不完整时应抛出 PluginSignatureMissingException', async () => {
+      await expect(
+        controller.register(
+          await createRegisterRequest({
+            manifestOverrides: {
+              signature: SIGNATURE,
+              developerKeyFingerprint: KEY_FINGERPRINT,
+            },
+          }),
+        ),
+      ).rejects.toThrow(PluginSignatureMissingException);
+
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('找不到活跃开发者密钥时应抛出 PluginSignatureInvalidException', async () => {
+      await expect(
+        controller.register(
+          await createRegisterRequest({
+            manifestOverrides: {
+              signature: SIGNATURE,
+              contentHash: CONTENT_HASH,
+              developerKeyFingerprint: KEY_FINGERPRINT,
+            },
+          }),
+        ),
+      ).rejects.toThrow(PluginSignatureInvalidException);
+
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('contentHash 与验签结果不一致时应抛出 PluginSignatureInvalidException', async () => {
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        id: 'key-1',
+        publicKey: 'public-key-pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: 'c'.repeat(64),
+      });
+
+      await expect(
+        controller.register(
+          await createRegisterRequest({
+            manifestOverrides: {
+              signature: SIGNATURE,
+              contentHash: CONTENT_HASH,
+              developerKeyFingerprint: KEY_FINGERPRINT,
+            },
+          }),
+        ),
+      ).rejects.toThrow(PluginSignatureInvalidException);
+
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
     });
   });
 
