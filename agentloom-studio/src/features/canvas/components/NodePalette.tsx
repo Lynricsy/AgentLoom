@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
 import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibraryPanel'
+import { useActivePlugins } from '@/features/plugin'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
 import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
@@ -22,6 +23,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const { data: mcpTools = [] } = useMcpTools('mcp')
+  const { data: pluginsResponse } = useActivePlugins()
 
   const mcpGroup = useMemo<PaletteGroup | null>(() => {
     const activeTools = mcpTools.filter((t) => t.isActive)
@@ -49,9 +51,39 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     }
   }, [mcpTools])
 
+  const pluginGroup = useMemo<PaletteGroup | null>(() => {
+    const plugins = pluginsResponse?.data ?? []
+    const pluginItems: PaletteNodeItem[] = []
+
+    for (const plugin of plugins) {
+      for (const nodeDef of plugin.nodeDefinitions) {
+        pluginItems.push({
+          type: 'plugin',
+          label: nodeDef.label,
+          category: 'plugin',
+          icon: 'Puzzle',
+          description: nodeDef.description,
+          searchText: [plugin.name, nodeDef.label, nodeDef.description].filter(Boolean).join(' '),
+          pluginId: `${plugin.id}:${nodeDef.type}`,
+        })
+      }
+    }
+
+    if (pluginItems.length === 0) return null
+    return {
+      category: 'plugin' as const,
+      label: 'Plugins',
+      icon: NODE_CATEGORIES.plugin.icon,
+      color: NODE_CATEGORIES.plugin.color,
+      items: pluginItems,
+    }
+  }, [pluginsResponse])
+
   const allGroups = useMemo(() => {
-    return mcpGroup ? [...PALETTE_GROUPS, mcpGroup] : PALETTE_GROUPS
-  }, [mcpGroup])
+    const groups = mcpGroup ? [...PALETTE_GROUPS, mcpGroup] : [...PALETTE_GROUPS]
+    if (pluginGroup) groups.push(pluginGroup)
+    return groups
+  }, [mcpGroup, pluginGroup])
 
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
@@ -179,7 +211,7 @@ const PaletteGroupSection = memo(function PaletteGroupSection({
           {group.items.map((item) => (
             <button
               type="button"
-              key={item.mcpToolDefinitionId ?? item.type}
+              key={item.pluginId ?? item.mcpToolDefinitionId ?? item.type}
               draggable
               onDragStart={(e) => onDragStart(e, item)}
               className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"

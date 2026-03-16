@@ -19,6 +19,10 @@ vi.mock("@/features/block-library/components/BlockLibraryPanel", () => ({
   BlockLibraryPanel: () => null,
 }));
 
+vi.mock("@/features/plugin", () => ({
+  useActivePlugins: vi.fn(() => ({ data: undefined })),
+}));
+
 function createQueryClient() {
   return new QueryClient({
     defaultOptions: {

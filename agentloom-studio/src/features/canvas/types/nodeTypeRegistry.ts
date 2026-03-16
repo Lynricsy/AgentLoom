@@ -24,9 +24,10 @@ export const NODE_TYPES = [
   'loop',
   'reusable-block',
   'smart-routing',
+  'plugin',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -106,6 +107,7 @@ const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
   knowledge: 'var(--color-type-knowledge)',
   output: 'var(--color-type-text)',
   control: 'var(--color-muted)',
+  plugin: 'var(--color-type-tool)',
 }
 
 type NonJsonPortDataType = Exclude<PortDataType, 'json'>
@@ -524,6 +526,17 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       },
       required: ['strategy'],
     },
+  },
+  'plugin': {
+    type: 'plugin',
+    category: 'plugin',
+    label: '插件节点',
+    icon: 'Puzzle',
+    description: '通过插件扩展的自定义节点',
+    colorToken: CATEGORY_COLOR_TOKENS.plugin,
+    inputPorts: [],
+    outputPorts: [],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
 }
 

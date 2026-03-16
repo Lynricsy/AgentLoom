@@ -8,9 +8,10 @@ export const NODE_CATEGORIES: Record<NodeCategory, { label: string; icon: string
   knowledge: { label: 'Knowledge', icon: 'BookOpen', color: 'var(--color-type-knowledge)' },
   output: { label: 'Output', icon: 'ArrowRightFromLine', color: 'var(--color-type-text)' },
   control: { label: 'Control', icon: 'GitBranch', color: 'var(--color-muted)' },
+  plugin: { label: 'Plugin', icon: 'Puzzle', color: 'var(--color-type-tool)' },
 }
 
-const CATEGORY_ORDER: NodeCategory[] = ['agent', 'tool', 'trigger', 'knowledge', 'output', 'control']
+const CATEGORY_ORDER: NodeCategory[] = ['agent', 'tool', 'trigger', 'knowledge', 'output', 'control', 'plugin']
 
 export function buildPaletteGroups(
   registry: Record<string, NodeTypeConfig> = NODE_TYPE_REGISTRY,

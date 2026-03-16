@@ -4,7 +4,7 @@ import type { AutonomyConfig, OutputFormatStrategy } from './autonomy.types'
 import type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
 import type { PortDataType, TypeSchema } from './types/typeSchema'
 
-export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control'
+export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control' | 'plugin'
 
 export interface NodeCategoryMeta {
   category: NodeCategory
@@ -243,6 +243,7 @@ export interface PaletteNodeItem {
   description: string
   searchText?: string
   mcpToolDefinitionId?: string
+  pluginId?: string
   inputPorts?: PortDefinition[]
   outputPorts?: PortDefinition[]
   inputSchema?: Record<string, unknown>
@@ -281,6 +282,16 @@ export interface SmartRoutingNodeData extends CanvasNodeData {
   tokenThreshold?: number
   fallbackPriority?: string[]
   modelConfigIds?: string[]
+}
+
+export interface PluginNodeData extends CanvasNodeData {
+  nodeType: 'plugin'
+  pluginId: string
+  pluginName: string
+  pluginVersion: string
+  pluginNodeType: string
+  pluginConfigSchema?: Record<string, unknown>
+  pluginConfig?: Record<string, unknown>
 }
 
 export type { NodeType, PortDefinition, CreatePortOptions } from './types/nodeTypeRegistry'

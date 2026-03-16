@@ -31,6 +31,7 @@ AgentLoomAUTO/
 ├── agentloom-server/         # NestJS v11 + Fastify v5 后端 (见子 AGENTS.md)
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
+├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output)
 ├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
 ├── _bmad/                    # BMAD agent 系统配置 (勿修改)
@@ -38,7 +39,7 @@ AgentLoomAUTO/
 └── package.json              # 根 package (仅 @modelcontextprotocol/sdk)
 ```
 
-**非标准 monorepo**: 无 pnpm-workspace.yaml，四个包各自独立管理依赖和 lockfile。
+**非标准 monorepo**: 无 pnpm-workspace.yaml，五个包各自独立管理依赖和 lockfile。
 
 ## 在哪找什么
 
@@ -52,6 +53,7 @@ AgentLoomAUTO/
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
 | 添加画布节点类型 | `agentloom-studio/src/features/canvas/` | 见 canvas 子 AGENTS.md |
 | 修改端口类型兼容性 | `agentloom-type-engine/src/checker/` | Rust，需 `wasm-pack build` |
+| 添加插件 SDK 类型/校验/辅助函数 | `agentloom-plugin-sdk/src/` | standalone TS 包，输出 ESM+CJS |
 | 共享 UI 组件 | `agentloom-studio/src/shared/ui/` | CVA + Radix + Tailwind |
 | 添加移动端 feature | `agentloom_mobile/lib/features/` | Feature 目录，每 feature 含 screens/ |
 | 修改移动端路由 | `agentloom_mobile/lib/routes/` | GoRouter + StatefulShellRoute |
@@ -83,6 +85,7 @@ server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + Mi
 - **ESLint**: flat config + typescript-eslint + prettier (singleQuote, trailingComma:all)
 - **`no-explicit-any: off`** — 项目允许 any（但应尽量避免）
 - **Server 80% 覆盖率阈值**，Studio 无阈值
+- **Plugin SDK** 使用 **Zod 3.x**（面向插件生态兼容），通过 **tsup** 输出 ESM+CJS + `.d.ts/.d.cts`
 - **多租户**: 全局中间件链 TenantMiddleware → TenantTransactionInterceptor → AuthGuard → TenantGuard → RolesGuard
 - **vi.hoisted()** 在测试中广泛使用，mock factory 函数模式
 - **Testcontainers PostgreSQL** 用于 E2E 测试
@@ -116,6 +119,13 @@ cd agentloom-type-engine
 cargo test                         # 测试
 cargo bench                       # 基准测试
 wasm-pack build --target bundler --release  # 构建 WASM
+
+# Plugin SDK
+cd agentloom-plugin-sdk
+pnpm install                       # 安装依赖
+pnpm build                         # tsup 输出 ESM+CJS + 类型声明
+pnpm test                          # Vitest 测试
+pnpm typecheck                     # tsc --noEmit
 
 # Mobile (需 Flutter 3.41.2 via FVM)
 cd agentloom_mobile

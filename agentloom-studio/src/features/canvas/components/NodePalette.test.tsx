@@ -56,6 +56,10 @@ vi.mock('@/features/block-library/components/BlockLibraryPanel', () => ({
   BlockLibraryPanel: () => <div data-testid="block-library-panel">块库面板</div>,
 }))
 
+vi.mock('@/features/plugin', () => ({
+  useActivePlugins: vi.fn(() => ({ data: undefined })),
+}))
+
 const mockMcpTools = [
   {
     id: 'tool-1',

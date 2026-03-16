@@ -24,6 +24,7 @@ import {
   Package,
   Play,
   Plug,
+  Puzzle,
   Repeat,
   type LucideIcon,
 } from 'lucide-react'
@@ -44,7 +45,7 @@ import {
   type AutonomyMode,
   type FallbackStrategy,
 } from '../autonomy.types'
-import type { CanvasNode, SmartRoutingNodeData } from '../types'
+import type { CanvasNode, PluginNodeData, SmartRoutingNodeData } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { useLevelOfDetail } from '../hooks/useLevelOfDetail'
 import {
@@ -61,6 +62,7 @@ import { McpToolNodeBody } from './nodes/McpToolNodeBody'
 import { ReusableBlockBody } from './nodes/ReusableBlockBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
+import { PluginNodeBody } from './nodes/PluginNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -79,6 +81,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   GitFork,
   Repeat,
   Package,
+  Puzzle,
 }
 
 type NodeShellStatus =
@@ -602,6 +605,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
               data={data as SmartRoutingNodeData}
               connectedModelCount={connectedSmartRoutingModelCount}
             />
+          ) : data.nodeType === 'plugin' ? (
+            <PluginNodeBody data={data as PluginNodeData} />
           ) : (
             config.description
           )}

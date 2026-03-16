@@ -24,6 +24,7 @@ import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
 import { HttpToolConfigPanel } from './HttpToolConfigPanel'
 import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
+import { PluginConfigPanel } from './PluginConfigPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -281,6 +282,12 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
   'smart-routing': {
     render: ({ node, onConfigChange }) => (
       <SmartRoutingConfigPanel node={node} onConfigChange={onConfigChange} />
+    ),
+  },
+  'plugin': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange }) => (
+      <PluginConfigPanel node={node} onConfigChange={onConfigChange} />
     ),
   },
 }
