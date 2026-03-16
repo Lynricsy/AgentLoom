@@ -17,7 +17,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
           → RolesGuard (Redis-cached RBAC: owner>admin>creator>operator>viewer)
 ```
 
-### 双重认证 (Story 9-4)
+### 双重认证
 - AuthGuard 优先检查 Bearer JWT，无 JWT 时回退 X-Api-Key 头
 - API Key 认证链路: `extractApiKeyFromHeader()` → `PlatformApiTokenService.validateToken()` (SHA-256 hash lookup + revoked/expired check) → `RbacCacheService.getUserRole()` → `setRequestAuth(request, payload, 'api_key')`
 - `req.authMethod: 'jwt' | 'api_key'` 标识当前认证方式
@@ -47,7 +47,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
-| smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 查询 | LlmModule |
+| smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 现通过 `execution_steps.execution_id` 做 execution 级查询，并支持近 30 天历史指���聚合（按 routing decision 序列 + downstream agent step 真正终态统计） | LlmModule |
 | marketplace | `modules/marketplace/` | 工作流 Marketplace：上架/下架/复审、我的上架列表、public browse (`/marketplace/browse`)、详情/评论、一键安装复用到当前租户、用户评分聚合 (`use_count/avg_rating/review_count`) | WorkflowDefinitionModule, users, workflowVersions |
 | share | `modules/share/` | 工作流分享链接管理：租户内创建/分页/撤销分享，公开短链 `/s/:token` 只读访问，view/copy 计数原子递增 | ConfigModule, workflowVersions |
 | platform-api-token | `modules/platform-api-token/` | Platform API Token CRUD：生成 (al_ 前缀 + SHA-256)、列表 (分页+状态过滤)、撤销、验证；每租户 20 token 上限 | RbacCacheService |
@@ -88,7 +88,7 @@ HTTP POST /executions
                                          (500 cap, 100ms interval)
 ```
 
-## 断点恢复与检查点 (Story 5-5) ✅
+## 断点恢复与检查点
 
 - `CheckpointService` (`checkpoint.service.ts`) 在节点完成后保存 dagState 快照 (`saveCheckpoint`)，支持恢复失败执行 (`resumeExecution`)
 - 检查点数据存储在 `execution_steps.checkpoint_data` (JSONB): `{ output, completedAt, dagState: { completedNodes[], pendingNodes[] }, attempts[] }`
@@ -98,7 +98,7 @@ HTTP POST /executions
 - `STEP_TRANSITIONS` 已新增 `failed→pending`、`cancelled→pending`，`NodeSchedulerService.resumeScheduling()` 会跳过 `completed` 节点并继续调度 `pending` 节点
 - Agent 重试追踪已写入 `checkpointData.attempts[]`，记录每次重试的 `{ attempt, error, timestamp }`
 
-## 人工介入系统 (Story 5-6) ✅
+## 人工介入系统
 
 - **事件**: `EventBridgeService` 新增 `emitInterventionRequired()` + `emitInterventionResolved()`，走统一信封 + broadcast 管线
 - **触发**: `AgentTaskWorker` 处理 `intervention_required` stopReason → `updateStepStatus('waiting_intervention')` → 写入 `checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` → `emitInterventionRequired()` → `enqueueInterventionTimeout()`
@@ -108,14 +108,14 @@ HTTP POST /executions
 - **事件载荷**: `InterventionRequiredPayload { stepId, nodeId, nodeName, decision?, partialContent?, requestedAt }`、`InterventionResolvedPayload { stepId, nodeId, action, feedback?, modifiedContent?, resolvedBy, resolvedAt, timeout? }`
 - **结构化内容**: `decision.suggestedContent`、`modifiedContent` 和审计 `instruction` 均允许 `unknown`，worker 会保留结构化内容并在 snapshot/output 恢复时继续透传
 - **快照恢复**: `StateReplayService.getExecutionSnapshot()` 现包含 `step.checkpointData`，所以订阅 ACK / 重连快照即可恢复 `waiting_intervention` 面板，无需只依赖 event replay
-- **Story 6-1 / Evidence**: `EventBridgeService.emitStepAgentEvent()`、`emitToolCallStatus()`、`emitInterventionResolved()` 现都会同步转发到 `EventEmitter2`，`EvidenceService` 监听这些内部事件以及 `knowledge.rag.retrieved` 自动创建 evidence records。`RagService.search()` 支持可选 `evidenceContext { executionId, stepId, parentEvidenceId? }`，当提供时会 emit `knowledge.rag.retrieved`。`EvidenceService.verifyContentHash()` 基于 source payload 重算 SHA-256 并返回 `{ evidenceId, valid, integrityWarning, currentHash }`。
-- **Story 6-2 / Provenance Chain**: `EvidenceService.buildChain(tenantId, executionId, nodeId?)` 使用递归 CTE 沿 `parent_evidence_id` 向上追溯（`CHAIN_MAX_DEPTH=50` + `path` 防循环）；未传 `nodeId` 时从 execution 的叶子 evidence 锚定全量 ancestry，传入 `nodeId` 时通过 plain-text `execution_steps.node_id` 过滤特定 workflow node 的 ancestry，最终 flat→tree 为 ancestor-first roots。对 `rag_retrieval` 节点批量查询 `document_chunks`：缺失 chunk → `sourceUnavailable`，live `document_chunks.content` 的 SHA-256 与捕获时 `retrievedContent` 快照哈希不一致 → `sourceModified`，并保留 `packet.semanticLocation.context` 为 `originalSnapshot`；每节点继续执行 packet SHA-256 校验。响应为 `{ roots, chainCompleteness, totalNodes, integrityStatus, cachedAt? }`，其中 `integrityStatus` 含 `nodesWithPhysicalLocation`、`completenessLabel`、`integrityIssues`。Redis 缓存 key `evidence:chain:{executionId}:{nodeId||'all'}`，TTL 300s，evidence 写入时按 executionId pattern 自动失效；`GET /executions/:id/evidence/chain?nodeId=xxx` 响应含 `X-Cache-Hit` header。`verifyChainIntegrity()` 通过 `buildChain(..., { bypassCache: true })` 执行实时校验，不复用缓存。
+- **Evidence 自动创建**: `EventBridgeService.emitStepAgentEvent()`、`emitToolCallStatus()`、`emitInterventionResolved()` 现都会同步转发到 `EventEmitter2`，`EvidenceService` 监听这些内部事件以及 `knowledge.rag.retrieved` 自动创建 evidence records。`RagService.search()` 支持可选 `evidenceContext { executionId, stepId, parentEvidenceId? }`，当提供时会 emit `knowledge.rag.retrieved`。`EvidenceService.verifyContentHash()` 基于 source payload 重算 SHA-256 并返回 `{ evidenceId, valid, integrityWarning, currentHash }`。
+- **溯源链构建**: `EvidenceService.buildChain(tenantId, executionId, nodeId?)` 使用递归 CTE 沿 `parent_evidence_id` 向上追溯（`CHAIN_MAX_DEPTH=50` + `path` 防循环）；未传 `nodeId` 时从 execution 的叶子 evidence 锚定全量 ancestry，传入 `nodeId` 时通过 plain-text `execution_steps.node_id` 过滤特定 workflow node 的 ancestry，最终 flat→tree 为 ancestor-first roots。对 `rag_retrieval` 节点批量查询 `document_chunks`：缺失 chunk → `sourceUnavailable`，live `document_chunks.content` 的 SHA-256 与捕获时 `retrievedContent` 快照哈希不一致 → `sourceModified`，并保留 `packet.semanticLocation.context` 为 `originalSnapshot`；每节点继续执行 packet SHA-256 校验。响应为 `{ roots, chainCompleteness, totalNodes, integrityStatus, cachedAt? }`，其中 `integrityStatus` 含 `nodesWithPhysicalLocation`、`completenessLabel`、`integrityIssues`。Redis 缓存 key `evidence:chain:{executionId}:{nodeId||'all'}`，TTL 300s，evidence 写入时按 executionId pattern 自动失效；`GET /executions/:id/evidence/chain?nodeId=xxx` 响应含 `X-Cache-Hit` header。`verifyChainIntegrity()` 通过 `buildChain(..., { bypassCache: true })` 执行实时校验，不复用缓存。
 
-- **Story 6-3 / Evidence Query Filters**: `QueryEvidenceSchema` 新增 `sourceType` (EvidenceSourceType enum)、`stepId` (string, min 1) 和 `nodeId` (string, min 1) 可选过滤参数。`findByExecution()` 支持按 `sourceType` 直接 `eq()` 过滤、按 `stepId` 过滤单步证据、按 `nodeId` 先查 `execution_steps` 获取匹配的 step IDs 再 `inArray()` 过滤。实现中 `sourceType` 查询类型已收紧为 `EvidenceSourceType`，避免与 Drizzle enum 列类型漂移。Controller 直接透传 query 参数。
+- **Evidence 查询过滤**: `QueryEvidenceSchema` 新增 `sourceType` (EvidenceSourceType enum)、`stepId` (string, min 1) 和 `nodeId` (string, min 1) 可选过滤参数。`findByExecution()` 支持按 `sourceType` 直接 `eq()` 过滤、按 `stepId` 过滤单步证据、按 `nodeId` 先查 `execution_steps` 获取匹配的 step IDs 再 `inArray()` 过滤。实现中 `sourceType` 查询类型已收紧为 `EvidenceSourceType`，避免与 Drizzle enum 列类型漂移。Controller 直接透传 query 参数。
 
-- **Story 6-4 / Evidence UI Infrastructure**: `StorageService.getPresignedUrl(key, expirySeconds=3600)` 现会先 `statObject()` 校验对象是否存在，并将空 key / 缺失对象 / MinIO 不可用分别映射为 `StorageKeyInvalidException` / `StorageObjectNotFoundException` / `StorageUnavailableException`。`DocumentService.getDocumentContentUrl(kbId, docId, expirySeconds?)` 返回 `{url, fileName, mimeType, expiresIn}`，并把空 `storageKey` / 删除对象 / 存储不可用映射为 `DocumentContentNotFoundException` / `DocumentContentUnavailableException`。`KnowledgeBaseController GET :id/documents/:documentId/content`（VIEWER+）返回预签名 URL。`QueryEvidenceSchema.includeChunkContent` 布尔参数继续驱动 `EvidenceService.enrichWithChunkContent()` 批量查询 `documentChunks.content` 并注入到 `rag_retrieval` 记录的 `packet.physicalLocation.chunkContent`。同时 `PhysicalLocationSchema` 与 RAG packet summary metadata 现已包含 `knowledgeBaseId`，供 Studio 直接打开文档内容端点。
+- **Storage 与 Evidence UI 基础设施**: `StorageService.getPresignedUrl(key, expirySeconds=3600)` 现会先 `statObject()` 校验对象是否存在，并将空 key / 缺失对象 / MinIO 不可用分别映射为 `StorageKeyInvalidException` / `StorageObjectNotFoundException` / `StorageUnavailableException`。`DocumentService.getDocumentContentUrl(kbId, docId, expirySeconds?)` 返回 `{url, fileName, mimeType, expiresIn}`，并把空 `storageKey` / 删除对象 / 存储不可用映射为 `DocumentContentNotFoundException` / `DocumentContentUnavailableException`。`KnowledgeBaseController GET :id/documents/:documentId/content`（VIEWER+）返回预签名 URL。`QueryEvidenceSchema.includeChunkContent` 布尔参数继续驱动 `EvidenceService.enrichWithChunkContent()` 批量查询 `documentChunks.content` 并注入到 `rag_retrieval` 记录的 `packet.physicalLocation.chunkContent`。同时 `PhysicalLocationSchema` 与 RAG packet summary metadata 现已包含 `knowledgeBaseId`，供 Studio 直接打开文档内容端点。
 
-- **Story 6-5 / Node Error Diagnosis**: `isPortTypeCompatible(source, target)` 判断端口类型兼容性（同类型或目标为 `json` 即兼容）。`NodeTypeMismatchException` 含 `TypeMismatchDetail { sourcePortId, targetPortId, sourceType, targetType, sourceNodeId, targetNodeId, edgeId? }`。`NodeSchedulerService.checkEdgePortTypeCompatibility()` 在运行时校验边的端口类型。`scheduleNode()` 通过 try-catch 捕获 `resolveNodeInput()` 抛出的 `NodeTypeMismatchException`，写入结构化 `errorMessage`（含 `type/title/detail/typeMismatch/nodeId`）后调用 `onNodeFailed()`。`WorkflowVersionService.publish()` 返回 `PublishResult { data, warnings }`，其中 `validateEdgeTypeCompatibility()` 生成不兼容边的 `PublishWarning[]`。`EventBridgeService.emitStepStatusChanged()` 当步骤失败时额外通过 NestJS EventEmitter 发射事件，`EvidenceService.handleStepFailed()` 监听该事件创建 `node_error` 类型证据（含 errorMessage/errorType/errorTitle/typeMismatch/stack）。
+- **节点错误诊断与端口类型校验**: `isPortTypeCompatible(source, target)` 判断端口类型兼容性（同类型或目标为 `json` 即兼容）。`NodeTypeMismatchException` 含 `TypeMismatchDetail { sourcePortId, targetPortId, sourceType, targetType, sourceNodeId, targetNodeId, edgeId? }`。`NodeSchedulerService.checkEdgePortTypeCompatibility()` 在运行时校验边的端口类型。`scheduleNode()` 通过 try-catch 捕获 `resolveNodeInput()` 抛出的 `NodeTypeMismatchException`，写入结构化 `errorMessage`（含 `type/title/detail/typeMismatch/nodeId`）后调用 `onNodeFailed()`。`WorkflowVersionService.publish()` 返回 `PublishResult { data, warnings }`，其中 `validateEdgeTypeCompatibility()` 生成不兼容边的 `PublishWarning[]`。`EventBridgeService.emitStepStatusChanged()` 当步骤失败时额外通过 NestJS EventEmitter 发射事件，`EvidenceService.handleStepFailed()` 监听该事件创建 `node_error` 类型证据（含 errorMessage/errorType/errorTitle/typeMismatch/stack）。
 
 - DLQ 管理 API: `GET /api/v1/dlq` (分页查询当前租户死信队列)、`POST /api/v1/dlq/:jobId/retry` (重试)、`POST /api/v1/dlq/:jobId/discard` (丢弃)，基于 BullMQ 原生 `getFailed()`/`job.retry()`/`job.remove()`，并校验 `job.data.tenantId` 防止跨租户访问
 
@@ -131,7 +131,7 @@ HTTP POST /executions
 | document-processing-queue | — | 文档解析 |
 | document-indexing-queue | — | Qdrant 向量索引 |
 
-## Trigger 系统 (Story 8-3) ✅
+## Trigger 系统
 
 - 数据表：`workflow_triggers` + `workflow_trigger_history`，schema 位于 `src/database/schema/workflow-triggers.schema.ts`
 - 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位，且 `TriggerService.create/update/toggle` 会对 `api_event` 抛出 preview-only 409，禁止创建、编辑或启用
@@ -149,20 +149,19 @@ HTTP POST /executions
 
 Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
-补充：Story 7-5 服务端已完成，`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
-- **Story 8-6 / 8-6a 已完成自动化收口**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 8-6a 新增的 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
+补充：`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
+- **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
 模板 `definition` 现与 `workflowDefinitions.definition` 保持同构，`nodes/edges/viewport` 均为必填；公共模板路由在 `AppModule.configure()` 里通过 `TenantMiddleware.exclude({ path: 'templates', method: RequestMethod.ALL }, { path: 'templates/{*splat}', method: RequestMethod.ALL })` 绕过租户中间件。
 
-## Marketplace（Story 9-2）
+## Marketplace
 
 - public browse 路由：`GET /marketplace/browse`、`GET /marketplace/browse/:id`、`GET /marketplace/browse/:id/reviews`，已在 `AppModule.configure()` 中显式从 `TenantMiddleware` 排除。
 - `MarketplaceService.findPublicListings()` 支持 `category/search/sort(popular|rating|newest)`，并用 `array_to_string(tags, ' ') ILIKE` 补齐 tags 搜索；public browse 现返回 `{ data, meta }`，作者仅暴露 `displayName`。
 - `MarketplaceService.findPublicById()` 只返回 `definition { nodes, edges, viewport }` 与 latest 20 reviews，不再暴露 `workflowVersionId`、`definition.inputSchema`、author id/avatar 等内部字段。
 - `GET /marketplace/browse/:id/reviews` 现使用 `QueryPublicReviewsDto`（`pageSize.max(50)`）并返回 `{ data, meta }`；`MarketplaceReviewUserService.submitReview()` 返回精简 `{ id, rating, content, createdAt }`，重复评论继续映射 409。
 - `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部仍通过 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆 snapshot + inputSchema、写入 `metadata.cloned_from_marketplace`，并原子递增 `use_count`，但公开响应已收敛为 `{ workflowDefinitionId, name, message }`。
-- marketplace 相关 code-review 复验已通过：定向单测 34、定向 E2E 22、`pnpm build`。
 
 ## WebSocket
 
@@ -207,7 +206,7 @@ Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)�
 - **覆盖率**: 80% 阈值 (V8)，Vitest + SWC
 - `test/workflow-version.e2e-spec.ts` 初始化链路较重；为避免全量 E2E 下的冷启动 hook timeout，suite 的 `beforeAll` 明确使用 `30_000ms` timeout，`afterAll` 使用可选关闭保证初始化失败时也能安全清理。
 
-## OpenAPI & SDK (Story 9-4)
+## OpenAPI & SDK
 
 - Swagger 注解已覆盖所有公开控制器（MCP 8、Health 1、Evidence 5、Notification 6、DeviceToken 2、InterventionPolicy 6、KnowledgeBase 9、Template 2、PlatformApiToken 3）
 - `src/openapi/swagger-document.ts`: 统一 `DocumentBuilder`、稳定 `operationIdFactory`，并在导出前做 OpenAPI 3.0 正规化（`const -> enum`、删除 `propertyNames`、折叠 snake_case alias、移除空 `license.url`）
@@ -225,14 +224,16 @@ Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)�
 
 ## 复杂度热点
 
+- **Smart Routing 执行细节**: `NodeSchedulerService.executeSmartRouting()` 现默认使用 `FALLBACK_CHAIN`，会用 `estimateTokenCount()` 估算输入 tokens，并在 `HISTORICAL_BEST` 下调用 `SmartRoutingService.getHistoricalMetrics()` 注入近 30 天 `successRate/lastUsedAt/avgLatencyMs`；该历史统计不再看 workflow 终态，而是按同一 `routingStepId` 的 routing decision 序列与下游 agent step 的 `checkpointData.smartRouting` / `input` 匹配真实 terminal 状态。smart-routing step result 现会带 `routingStepId/routingNodeId/candidateModelIds/currentModelIndex/llmModelConfigId/tokenThreshold/evaluatedModels` 等 runtime metadata。`scheduleNode()` 通过 `buildAgentTaskJobData()` 从上游 smart-routing 输出中提取该 metadata，把 `llmModelConfigId` 注入下游 agent job，并在 `FALLBACK_CHAIN` 下强制 queue `attempts: 1`。`AgentTaskWorker` 则在最终 failed 之前处理跨模型 fallback：非 `authenticationFailed` 的 provider 错误会切换到下一个候选模型重新派队，同时补写新的 `routing_decisions` 记录并把前序失败摘要写入 `decision_reasoning`，再通过 `broadcastAgentEvent()` 发 `message_chunk` 说明；认证失败禁止 fallback；且只有 `FALLBACK_CHAIN` 的候选真正耗尽时才使用 `AllModelsFallbackExhaustedException`，其他 smart-routing 策略保留原始错误。另：`routing_decisions.selected_model_id` 通过 `0041_routing_decision_selected_model_nullable.sql` 改为 nullable，对齐 `ON DELETE SET NULL`。
+
 - `node-scheduler.service.ts` (1400L+) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理/智能路由，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
 - `workflow-version.service.ts` — 版本管理逻辑 + PATCH 更新/OCC 并发控制 + 发布时端口类型兼容性警告 + 列表排序（camelCase + snake_case alias）
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建
-- `execution-response.dto.ts` / `workflow-version.e2e-spec.ts` — Story 6.5 收口补充：执行详情 DTO 已对齐 `errors/typeMismatch` 契约，工作流发布 E2E 已覆盖 `warnings[]` HTTP 路径
+- `execution-response.dto.ts` / `workflow-version.e2e-spec.ts` — 执行详情 DTO 已对齐 `errors/typeMismatch` 契约，工作流发布 E2E 已覆盖 `warnings[]` HTTP 路径
 - `auth.service.ts` (508L) — 认证全流程
 
-## Story 10-1 审查修复补充
+## E2EE 证据加密架构细节
 
 - `EvidenceService` 现对 `agent_decision` / `tool_output` 使用 canonical `packet.encryptedPacket` envelope 持久化密文，并在 `findByExecution()` / `findById()` / `verifyContentHash()` / `buildChain()` 中兼容 legacy `encryptionMetadata.encryptedPayload + ciphertext-only hash` 记录，避免历史加密证据被误判为 `hash_mismatch`
 - `buildPacketSummary()` 对加密证据使用 redacted summary，避免在 provenance chain / UI 中泄露明文 reasoning 或 tool output

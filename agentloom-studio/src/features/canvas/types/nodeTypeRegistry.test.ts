@@ -147,13 +147,44 @@ describe('nodeTypeRegistry', () => {
     })
   })
 
+  it('defines smart-routing as a palette-visible model selector with canonical ports', () => {
+    const smartRoutingNode = getNodeTypeConfig('smart-routing')
+
+    expect(DYNAMIC_ONLY_NODE_TYPES.has('smart-routing')).toBe(false)
+    expect(smartRoutingNode.category).toBe('agent')
+    expect(smartRoutingNode.inputPorts.map((port) => port.id)).toEqual([
+      'model-in-0',
+      'model-in-1',
+    ])
+    expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual([
+      'model-out',
+    ])
+    expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('FALLBACK_CHAIN')
+  })
+
   it('exposes every registry entry through ordered helpers and palette groups', () => {
     const orderedTypes = getAllNodeTypes().map((config) => config.type)
     const groupedTypes = buildPaletteGroups().flatMap((group) => group.items.map((item) => item.type))
     const staticTypes = NODE_TYPES.filter((t) => !DYNAMIC_ONLY_NODE_TYPES.has(t))
 
     expect(orderedTypes).toEqual([...NODE_TYPES])
-    expect(groupedTypes).toEqual(staticTypes)
+    expect(groupedTypes).toEqual([
+      'llm-agent',
+      'chat-agent',
+      'llm-model',
+      'smart-routing',
+      'http-tool',
+      'code-tool',
+      'sandbox',
+      'manual-trigger',
+      'schedule-trigger',
+      'knowledge-base',
+      'text-output',
+      'json-output',
+      'condition',
+      'loop',
+    ])
+    expect(new Set(groupedTypes)).toEqual(new Set(staticTypes))
     expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual([...NODE_TYPES].sort())
   })
 

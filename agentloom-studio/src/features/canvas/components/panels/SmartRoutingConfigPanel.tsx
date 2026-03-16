@@ -23,8 +23,21 @@ const STRATEGY_DESCRIPTIONS: Record<string, string> = {
   FALLBACK_CHAIN: '按优先级依次尝试，失败时切换到下一个模型',
 }
 
+function isRoutingStrategy(value: unknown): value is RoutingStrategy {
+  return STRATEGY_OPTIONS.some((option) => option.value === value)
+}
+
 const MIN_MODEL_PORTS = 2
 const MAX_MODEL_PORTS = 10
+
+function getNextModelPortIndex(portIds: string[]): number {
+  const currentMax = portIds.reduce((max, portId) => {
+    const match = /^model-in-(\d+)$/.exec(portId)
+    return match ? Math.max(max, Number(match[1])) : max
+  }, -1)
+
+  return currentMax + 1
+}
 
 interface SmartRoutingConfigPanelProps {
   node: CanvasNode
@@ -36,20 +49,47 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
   onConfigChange,
 }: SmartRoutingConfigPanelProps) {
   const { updateNodeData } = useCanvasActions()
-  const strategy = (node.data.config?.strategy as RoutingStrategy) ?? 'QUALITY_FIRST'
-  const tokenThreshold = (node.data.config?.tokenThreshold as number) ?? 4096
-  const fallbackPriority = (node.data.config?.fallbackPriority as string[]) ?? []
 
   const modelInputPorts = useMemo(
-    () => (node.data.inputPorts ?? []).filter((p) => p.schema.kind === 'model'),
+    () => (node.data.inputPorts ?? []).filter((p) => p.dataType === 'model'),
     [node.data.inputPorts],
+  )
+
+  const strategy: RoutingStrategy = isRoutingStrategy(node.data.strategy)
+    ? node.data.strategy
+    : 'FALLBACK_CHAIN'
+  const tokenThreshold =
+    typeof node.data.tokenThreshold === 'number' && node.data.tokenThreshold > 0
+      ? node.data.tokenThreshold
+      : 4096
+  const fallbackPriority = useMemo(() => {
+    const validPortIds = new Set(modelInputPorts.map((port) => port.id))
+    const explicitPriority = Array.isArray(node.data.fallbackPriority)
+      ? node.data.fallbackPriority.filter(
+          (portId): portId is string => typeof portId === 'string' && validPortIds.has(portId),
+        )
+      : []
+    const remainingPortIds = modelInputPorts
+      .map((port) => port.id)
+      .filter((portId) => !explicitPriority.includes(portId))
+
+    return [...explicitPriority, ...remainingPortIds]
+  }, [modelInputPorts, node.data.fallbackPriority])
+  const portLabelById = useMemo(
+    () => new Map(modelInputPorts.map((port) => [port.id, port.label])),
+    [modelInputPorts],
   )
 
   const handleStrategyChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      onConfigChange({ strategy: e.target.value })
+      const nextStrategy = e.target.value as RoutingStrategy
+      onConfigChange(
+        nextStrategy === 'FALLBACK_CHAIN'
+          ? { strategy: nextStrategy, fallbackPriority }
+          : { strategy: nextStrategy },
+      )
     },
-    [onConfigChange],
+    [fallbackPriority, onConfigChange],
   )
 
   const handleTokenThresholdChange = useCallback(
@@ -64,31 +104,37 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
   const handleAddPort = useCallback(() => {
     const currentPorts = node.data.inputPorts ?? []
-    const modelPorts = currentPorts.filter((p) => p.schema.kind === 'model')
+    const modelPorts = currentPorts.filter((p) => p.dataType === 'model')
     if (modelPorts.length >= MAX_MODEL_PORTS) return
-    const nextIndex = modelPorts.length + 1
+    const nextIndex = getNextModelPortIndex(modelPorts.map((port) => port.id))
     const newPort = createPort(
-      `model-input-${nextIndex}`,
-      `模型 ${nextIndex}`,
+      `model-in-${nextIndex}`,
+      `模型 ${nextIndex + 1}`,
       'input',
       'model',
       { required: false },
     )
+    const nextInputPorts = [...currentPorts, newPort]
     updateNodeData(node.id, {
-      inputPorts: [...currentPorts, newPort],
+      inputPorts: nextInputPorts,
+      fallbackPriority: nextInputPorts
+        .filter((port) => port.dataType === 'model')
+        .map((port) => port.id),
     })
   }, [node.id, node.data.inputPorts, updateNodeData])
 
   const handleRemovePort = useCallback(
     (portId: string) => {
       const currentPorts = node.data.inputPorts ?? []
-      const modelPorts = currentPorts.filter((p) => p.schema.kind === 'model')
+      const modelPorts = currentPorts.filter((p) => p.dataType === 'model')
       if (modelPorts.length <= MIN_MODEL_PORTS) return
+      const nextInputPorts = currentPorts.filter((p) => p.id !== portId)
       updateNodeData(node.id, {
-        inputPorts: currentPorts.filter((p) => p.id !== portId),
+        inputPorts: nextInputPorts,
+        fallbackPriority: fallbackPriority.filter((id) => id !== portId),
       })
     },
-    [node.id, node.data.inputPorts, updateNodeData],
+    [fallbackPriority, node.id, node.data.inputPorts, updateNodeData],
   )
 
   const handleMovePriority = useCallback(
@@ -148,17 +194,17 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
         </div>
       ) : null}
 
-      {strategy === 'FALLBACK_CHAIN' && fallbackPriority.length > 0 ? (
+      {strategy === 'FALLBACK_CHAIN' ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">回退优先级</span>
           <ul className="flex flex-col gap-1" data-testid="fallback-priority-list">
-            {fallbackPriority.map((modelId, index) => (
+            {fallbackPriority.map((portId, index) => (
               <li
-                key={modelId}
+                key={portId}
                 className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs"
               >
                 <span className="font-mono text-muted-foreground">{index + 1}</span>
-                <span className="flex-1 truncate">{modelId}</span>
+                <span className="flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
                 <button
                   type="button"
                   disabled={index === 0}

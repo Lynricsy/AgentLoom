@@ -3,6 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
+import { executionSteps } from '../../../database/schema/execution-steps.schema';
 import { routingDecisions } from '../../../database/schema/routing-decisions.schema';
 import { LlmService } from '../../llm/llm.service';
 import type { QueryRoutingDecisionsDto } from '../dto/query-routing-decisions.dto';
@@ -28,6 +29,7 @@ const {
   type SelectChain<T> = {
     select: ReturnType<typeof vi.fn>;
     from: ReturnType<typeof vi.fn>;
+    innerJoin: ReturnType<typeof vi.fn>;
     where: ReturnType<typeof vi.fn>;
     orderBy: ReturnType<typeof vi.fn>;
     limit: ReturnType<typeof vi.fn>;
@@ -38,6 +40,7 @@ const {
     const chain = Promise.resolve(data) as SelectChain<T>;
     chain.select = vi.fn().mockReturnValue(chain);
     chain.from = vi.fn().mockReturnValue(chain);
+    chain.innerJoin = vi.fn().mockReturnValue(chain);
     chain.where = vi.fn().mockReturnValue(chain);
     chain.orderBy = vi.fn().mockReturnValue(chain);
     chain.limit = vi.fn().mockReturnValue(chain);
@@ -216,16 +219,19 @@ describe('SmartRoutingService', () => {
               successRate: 0.85,
               avgLatencyMs: 700,
               avgTokenUsage: 3_000,
+              lastUsedAt: '2024-12-30T00:00:00.000Z',
             },
             'model-2': {
               successRate: 0.9,
               avgLatencyMs: 900,
               avgTokenUsage: 4_000,
+              lastUsedAt: '2024-12-31T00:00:00.000Z',
             },
             'model-3': {
               successRate: 0.99,
               avgLatencyMs: 600,
               avgTokenUsage: 2_000,
+              lastUsedAt: '2024-12-29T00:00:00.000Z',
             },
           },
         },
@@ -269,6 +275,125 @@ describe('SmartRoutingService', () => {
       expect(result.strategy).toBe(strategy);
       expect(result.reasoning).toContain(strategy);
       expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('应保留传入的候选模型顺序，供 FALLBACK_CHAIN 直接使用', async () => {
+      mockLlmService.findByIds.mockResolvedValue([
+        mockModelConfigs[2],
+        mockModelConfigs[0],
+        mockModelConfigs[1],
+      ]);
+
+      const result = await service.evaluate(
+        ['model-2', 'model-1', 'model-3'],
+        { inputTokenCount: 1_000 },
+        'FALLBACK_CHAIN',
+        TENANT_ID,
+      );
+
+      expect(result.selectedModelId).toBe('model-2');
+      expect(result.evaluatedModels.map((model) => model.modelId)).toEqual([
+        'model-2',
+        'model-1',
+        'model-3',
+      ]);
+    });
+  });
+
+  describe('getHistoricalMetrics', () => {
+    it('应按路由决策序列与实际下游 agent 步骤结果聚合成功率、平均延迟与最近使用时间', async () => {
+      const routingChain = createSelectChain([
+        {
+          routingStepId: 'routing-step-1',
+          executionId: 'execution-1',
+          selectedModelId: 'model-1',
+          routingLatencyMs: 100,
+          createdAt: new Date('2024-12-31T00:00:00.000Z'),
+        },
+        {
+          routingStepId: 'routing-step-1',
+          executionId: 'execution-1',
+          selectedModelId: 'model-2',
+          routingLatencyMs: 300,
+          createdAt: new Date('2024-12-31T00:01:00.000Z'),
+        },
+        {
+          routingStepId: 'routing-step-2',
+          executionId: 'execution-2',
+          selectedModelId: 'model-2',
+          routingLatencyMs: 50,
+          createdAt: new Date('2024-12-29T00:00:00.000Z'),
+        },
+        {
+          routingStepId: 'routing-step-3',
+          executionId: 'execution-3',
+          selectedModelId: null,
+          routingLatencyMs: 999,
+          createdAt: new Date('2024-12-28T00:00:00.000Z'),
+        },
+      ]);
+      const stepChain = createSelectChain([
+        {
+          id: 'agent-step-1',
+          executionId: 'execution-1',
+          nodeType: 'agent',
+          status: 'completed',
+          input: {
+            'routing-node-1': {
+              routingStepId: 'routing-step-1',
+              selectedModelId: 'model-1',
+            },
+          },
+          checkpointData: {
+            smartRouting: {
+              routingStepId: 'routing-step-1',
+              selectedModelId: 'model-2',
+            },
+          },
+        },
+        {
+          id: 'agent-step-2',
+          executionId: 'execution-2',
+          nodeType: 'agent',
+          status: 'failed',
+          input: {
+            'routing-node-1': {
+              routingStepId: 'routing-step-2',
+              selectedModelId: 'model-2',
+            },
+          },
+          checkpointData: null,
+        },
+      ]);
+      db.select.mockReturnValueOnce(routingChain).mockReturnValueOnce(stepChain);
+
+      const result = await service.getHistoricalMetrics(
+        TENANT_ID,
+        'routing-node-1',
+      );
+
+      expect(result).toEqual({
+        'model-1': {
+          successRate: 0,
+          avgLatencyMs: 100,
+          avgTokenUsage: 0,
+          lastUsedAt: '2024-12-31T00:00:00.000Z',
+        },
+        'model-2': {
+          successRate: 0.5,
+          avgLatencyMs: 175,
+          avgTokenUsage: 0,
+          lastUsedAt: '2024-12-31T00:01:00.000Z',
+        },
+      });
+      expect(routingChain.from).toHaveBeenCalledWith(routingDecisions);
+      expect(routingChain.innerJoin).toHaveBeenCalledWith(
+        executionSteps,
+        expect.anything(),
+      );
+      expect(routingChain.where).toHaveBeenCalledTimes(1);
+      expect(stepChain.from).toHaveBeenCalledWith(executionSteps);
+      expect(stepChain.where).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -388,10 +513,19 @@ describe('SmartRoutingService', () => {
         },
       });
       expect(countChain.from).toHaveBeenCalledWith(routingDecisions);
+      expect(countChain.innerJoin).toHaveBeenCalledWith(
+        executionSteps,
+        expect.anything(),
+      );
       expect(dataChain.from).toHaveBeenCalledWith(routingDecisions);
+      expect(dataChain.innerJoin).toHaveBeenCalledWith(
+        executionSteps,
+        expect.anything(),
+      );
+      expect(dataChain.orderBy).toHaveBeenCalledTimes(1);
       expect(dataChain.limit).toHaveBeenCalledWith(1);
       expect(dataChain.offset).toHaveBeenCalledWith(1);
-      expect(dataChain.where).not.toHaveBeenCalled();
+      expect(dataChain.where).toHaveBeenCalledTimes(1);
     });
 
     it('在提供 executionId 时应当应用 executionId 过滤条件', async () => {
@@ -403,6 +537,22 @@ describe('SmartRoutingService', () => {
         page: 1,
         pageSize: 20,
         executionId: EXECUTION_ID,
+      });
+
+      expect(countChain.where).toHaveBeenCalledTimes(1);
+      expect(dataChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it('在同时提供 executionId 与 routingNodeId 时应组合为单个 where 条件', async () => {
+      const countChain = createSelectChain([{ total: 1 }]);
+      const dataChain = createSelectChain([createRoutingDecisionRecord()]);
+      db.select.mockReturnValueOnce(countChain).mockReturnValueOnce(dataChain);
+
+      await service.findByExecution(TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        executionId: EXECUTION_ID,
+        routingNodeId: 'routing-node-1',
       });
 
       expect(countChain.where).toHaveBeenCalledTimes(1);

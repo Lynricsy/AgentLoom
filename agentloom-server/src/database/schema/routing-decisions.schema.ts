@@ -35,9 +35,10 @@ export const routingDecisions = pgTable(
       .notNull()
       .$type<ModelEvaluation[]>(),
 
-    selectedModelId: uuid('selected_model_id')
-      .notNull()
-      .references(() => llmModelConfigs.id, { onDelete: 'set null' }),
+    selectedModelId: uuid('selected_model_id').references(
+      () => llmModelConfigs.id,
+      { onDelete: 'set null' },
+    ),
 
     decisionReasoning: text('decision_reasoning').notNull(),
 

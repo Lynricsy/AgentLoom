@@ -120,7 +120,23 @@ describe('NodePalette', () => {
       .filter((config) => !DYNAMIC_ONLY_NODE_TYPES.has(config.type))
       .map((config) => config.type)
 
-    expect(paletteTypes).toEqual(registryTypes)
+    expect(paletteTypes).toEqual([
+      'llm-agent',
+      'chat-agent',
+      'llm-model',
+      'smart-routing',
+      'http-tool',
+      'code-tool',
+      'sandbox',
+      'manual-trigger',
+      'schedule-trigger',
+      'knowledge-base',
+      'text-output',
+      'json-output',
+      'condition',
+      'loop',
+    ])
+    expect(new Set(paletteTypes)).toEqual(new Set(registryTypes))
   })
 
   it('filters items by search query', async () => {

@@ -13,13 +13,15 @@ const STRATEGY_LABELS: Record<string, string> = {
 
 interface SmartRoutingNodeBodyProps {
   data: SmartRoutingNodeData
+  connectedModelCount?: number
 }
 
 export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
   data,
+  connectedModelCount,
 }: SmartRoutingNodeBodyProps) {
   const strategyLabel = STRATEGY_LABELS[data.strategy] ?? data.strategy ?? '未配置'
-  const modelCount = data.modelConfigIds?.length ?? data.inputPorts?.length ?? 0
+  const modelCount = connectedModelCount ?? data.modelConfigIds?.length ?? 0
 
   return (
     <div className="flex flex-col gap-2">

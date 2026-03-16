@@ -72,6 +72,5 @@ wasm-pack build --target bundler --release
 ## 与 Studio 的关系
 
 Studio 在 `features/canvas/types/typeSchema.ts` 中手动镜像了 Rust 类型。
-当前 Studio 使用 JS fallback (`connectionCompatibility.ts`) 而非 WASM。
-**TODO Story-2.4a**: 将 WASM 集成到 Studio，替换 JS fallback。
+Studio 通过 `TypeEngineService → TypeEngineRuntime → runtime.worker.ts` 接入 WASM，主线程保留同步 guard/cache 读取，慢检查走单例 worker + cache + 受控 fallback（`connectionCompatibility.ts`）。
 修改 Rust 类型后需同步更新 Studio 的 TypeScript 镜像。

@@ -1,9 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, inArray, sql } from 'drizzle-orm';
 
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { executionSteps } from '../../database/schema/execution-steps.schema';
 import { routingDecisions } from '../../database/schema/routing-decisions.schema';
 import { LlmService } from '../llm/llm.service';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
@@ -50,6 +51,245 @@ export class SmartRoutingService {
     return getTenantDb(this.db);
   }
 
+  private buildWhereClause(conditions: Array<ReturnType<typeof eq>>) {
+    if (conditions.length === 0) {
+      return undefined;
+    }
+
+    if (conditions.length === 1) {
+      return conditions[0];
+    }
+
+    return and(...conditions);
+  }
+
+  private isTerminalStepStatus(status: string): boolean {
+    return ['completed', 'failed', 'cancelled', 'skipped'].includes(status);
+  }
+
+  private extractRoutingMarker(
+    value: unknown,
+  ): { routingStepId: string; selectedModelId: string } | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const match = this.extractRoutingMarker(item);
+        if (match) {
+          return match;
+        }
+      }
+
+      return undefined;
+    }
+
+    if (typeof value !== 'object') {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.routingStepId === 'string' &&
+      typeof record.selectedModelId === 'string'
+    ) {
+      return {
+        routingStepId: record.routingStepId,
+        selectedModelId: record.selectedModelId,
+      };
+    }
+
+    for (const nestedValue of Object.values(record)) {
+      const match = this.extractRoutingMarker(nestedValue);
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveHistoricalDecisionOutcome(
+    steps: Array<{
+      id: string;
+      nodeType: typeof executionSteps.$inferSelect.nodeType;
+      status: typeof executionSteps.$inferSelect.status;
+      input: typeof executionSteps.$inferSelect.input;
+      checkpointData: typeof executionSteps.$inferSelect.checkpointData;
+    }>,
+    routingStepId: string,
+    selectedModelId: string,
+  ): boolean | undefined {
+    const matchedSteps = steps.filter((step) => {
+      if (step.id === routingStepId || step.nodeType !== 'agent') {
+        return false;
+      }
+
+      const checkpointMarker = this.extractRoutingMarker(step.checkpointData);
+      if (checkpointMarker) {
+        return (
+          checkpointMarker.routingStepId === routingStepId &&
+          checkpointMarker.selectedModelId === selectedModelId
+        );
+      }
+
+      const inputMarker = this.extractRoutingMarker(step.input);
+      return (
+        inputMarker?.routingStepId === routingStepId &&
+        inputMarker.selectedModelId === selectedModelId
+      );
+    });
+
+    if (matchedSteps.length === 0) {
+      return undefined;
+    }
+
+    if (matchedSteps.some((step) => !this.isTerminalStepStatus(step.status))) {
+      return undefined;
+    }
+
+    return matchedSteps.every((step) => step.status === 'completed');
+  }
+
+  async getHistoricalMetrics(
+    tenantId: string,
+    routingNodeId: string,
+  ): Promise<NonNullable<RoutingContext['historicalMetrics']>> {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const routingRows = await this.tenantDb
+      .select({
+        routingStepId: routingDecisions.executionStepId,
+        executionId: executionSteps.executionId,
+        selectedModelId: routingDecisions.selectedModelId,
+        routingLatencyMs: routingDecisions.routingLatencyMs,
+        createdAt: routingDecisions.createdAt,
+      })
+      .from(routingDecisions)
+      .innerJoin(
+        executionSteps,
+        eq(executionSteps.id, routingDecisions.executionStepId),
+      )
+      .where(
+        and(
+          eq(routingDecisions.tenantId, tenantId),
+          eq(routingDecisions.routingNodeId, routingNodeId),
+          gte(routingDecisions.createdAt, since),
+        ),
+      );
+
+    if (routingRows.length === 0) {
+      return {};
+    }
+
+    const executionIds = Array.from(
+      new Set(routingRows.map((row) => row.executionId)),
+    );
+    const stepRows = await this.tenantDb
+      .select({
+        id: executionSteps.id,
+        executionId: executionSteps.executionId,
+        nodeType: executionSteps.nodeType,
+        status: executionSteps.status,
+        input: executionSteps.input,
+        checkpointData: executionSteps.checkpointData,
+      })
+      .from(executionSteps)
+      .where(inArray(executionSteps.executionId, executionIds));
+
+    const stepsByExecutionId = new Map<
+      string,
+      Array<{
+        id: string;
+        executionId: string;
+        nodeType: typeof executionSteps.$inferSelect.nodeType;
+        status: typeof executionSteps.$inferSelect.status;
+        input: typeof executionSteps.$inferSelect.input;
+        checkpointData: typeof executionSteps.$inferSelect.checkpointData;
+      }>
+    >();
+    for (const step of stepRows) {
+      const current = stepsByExecutionId.get(step.executionId) ?? [];
+      current.push(step);
+      stepsByExecutionId.set(step.executionId, current);
+    }
+
+    const routingRowsByStep = new Map<string, typeof routingRows>();
+    for (const row of routingRows) {
+      const current = routingRowsByStep.get(row.routingStepId) ?? [];
+      current.push(row);
+      routingRowsByStep.set(row.routingStepId, current);
+    }
+
+    const metrics = new Map<
+      string,
+      {
+        total: number;
+        success: number;
+        latencySum: number;
+        lastUsedAt: Date | null;
+      }
+    >();
+
+    for (const rowsForRoutingStep of routingRowsByStep.values()) {
+      const orderedRows = [...rowsForRoutingStep].sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      );
+
+      orderedRows.forEach((row, index) => {
+        if (!row.selectedModelId) {
+          return;
+        }
+
+        const laterDecisionExists = index < orderedRows.length - 1;
+        const outcome = laterDecisionExists
+          ? false
+          : this.resolveHistoricalDecisionOutcome(
+              stepsByExecutionId.get(row.executionId) ?? [],
+              row.routingStepId,
+              row.selectedModelId,
+            );
+
+        if (outcome === undefined) {
+          return;
+        }
+
+        const current = metrics.get(row.selectedModelId) ?? {
+          total: 0,
+          success: 0,
+          latencySum: 0,
+          lastUsedAt: null,
+        };
+
+        current.total += 1;
+        current.latencySum += row.routingLatencyMs;
+        if (outcome) {
+          current.success += 1;
+        }
+        if (!current.lastUsedAt || row.createdAt > current.lastUsedAt) {
+          current.lastUsedAt = row.createdAt;
+        }
+
+        metrics.set(row.selectedModelId, current);
+      });
+    }
+
+    return Object.fromEntries(
+      Array.from(metrics.entries()).map(([modelId, metric]) => [
+        modelId,
+        {
+          successRate: metric.total > 0 ? metric.success / metric.total : 0,
+          avgLatencyMs:
+            metric.total > 0 ? metric.latencySum / metric.total : 0,
+          avgTokenUsage: 0,
+          ...(metric.lastUsedAt
+            ? { lastUsedAt: metric.lastUsedAt.toISOString() }
+            : {}),
+        },
+      ]),
+    );
+  }
+
   async evaluate(
     modelConfigIds: string[],
     context: RoutingContext,
@@ -71,7 +311,12 @@ export class SmartRoutingService {
       tenantId,
     );
 
-    const candidates: ModelCandidate[] = modelConfigs.map((config) => ({
+    const configsById = new Map(modelConfigs.map((config) => [config.id, config]));
+    const orderedModelConfigs = modelConfigIds
+      .map((id) => configsById.get(id))
+      .filter((config): config is NonNullable<typeof config> => Boolean(config));
+
+    const candidates: ModelCandidate[] = orderedModelConfigs.map((config) => ({
       id: config.id,
       name: config.modelName,
       provider: config.provider,
@@ -84,9 +329,7 @@ export class SmartRoutingService {
 
     const strategyFn = STRATEGY_REGISTRY[strategy];
     const evaluatedModels = strategyFn(candidates, context);
-
-    const sorted = [...evaluatedModels].sort((a, b) => b.score - a.score);
-    const selected = sorted[0];
+    const selected = evaluatedModels[0];
 
     const latencyMs = Math.round(performance.now() - startTime);
 
@@ -98,7 +341,7 @@ export class SmartRoutingService {
       selectedModelId: selected.modelId,
       strategy,
       reasoning: `策略 ${strategy} 选择了 ${selected.modelName} (${selected.provider})，得分 ${selected.score}/100。${selected.reasoning}`,
-      evaluatedModels: sorted,
+      evaluatedModels,
       latencyMs,
     };
   }
@@ -136,33 +379,43 @@ export class SmartRoutingService {
   }> {
     const { page, pageSize, executionId, routingNodeId } = query;
 
-    const conditions = [];
-    if (executionId) {
-      conditions.push(eq(routingDecisions.executionStepId, executionId));
-    }
+    const conditions = [eq(routingDecisions.tenantId, tenantId)];
     if (routingNodeId) {
       conditions.push(eq(routingDecisions.routingNodeId, routingNodeId));
     }
+    if (executionId) {
+      conditions.push(eq(executionSteps.executionId, executionId));
+    }
+
+    const whereClause = this.buildWhereClause(conditions);
 
     const baseQuery = this.tenantDb
       .select({ total: sql<number>`count(*)::int` })
-      .from(routingDecisions);
+      .from(routingDecisions)
+      .innerJoin(
+        executionSteps,
+        eq(executionSteps.id, routingDecisions.executionStepId),
+      );
 
-    for (const condition of conditions) {
-      baseQuery.where(condition);
+    if (whereClause) {
+      baseQuery.where(whereClause);
     }
 
     const [{ total }] = await baseQuery;
 
     const dataQuery = this.tenantDb
-      .select()
+      .select(getTableColumns(routingDecisions))
       .from(routingDecisions)
+      .innerJoin(
+        executionSteps,
+        eq(executionSteps.id, routingDecisions.executionStepId),
+      )
       .orderBy(desc(routingDecisions.createdAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    for (const condition of conditions) {
-      dataQuery.where(condition);
+    if (whereClause) {
+      dataQuery.where(whereClause);
     }
 
     const data = await dataQuery;

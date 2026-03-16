@@ -12,7 +12,7 @@ export interface RoutingDecisionRecord {
     score: number
     reasoning: string
   }>
-  selectedModelId: string
+  selectedModelId: string | null
   decisionReasoning: string
   routingLatencyMs: number
   createdAt: string

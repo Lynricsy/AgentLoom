@@ -2,7 +2,7 @@
 
 ## 概览
 
-AgentLoom Flutter 移动端应用，当前实现 Story 7.3 + 7.3a + 7.4 + 7.4a + 7.5 + 7.6：
+AgentLoom Flutter 移动端应用：
 
 - Riverpod ProviderScope 启动入口
 - GoRouter + `StatefulShellRoute.indexedStack` 三标签导航 (Dashboard / Workflows / Settings)
@@ -78,7 +78,9 @@ fvm flutter test --coverage
 
 - **Freezed 3.x**: 模型使用 `abstract class` + `@freezed` + `@JsonKey(name: 'snake_case')` 进行 JSON 序列化
 - **PaginatedResponse<T>**: 泛型分页封装，`@JsonSerializable(genericArgumentFactories: true)`
-- **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应；`getExecution()` 消费完整 execution detail `steps[]`，`getInputSchema()` 会对 `collectionMode`/`minLength`/`maxLength` 做 camelCase/snake_case 兼容归一化，`runWorkflow()` 发送 canonical camelCase `inputParams` / `launchSource`
+- **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应；`getExecution()` 消费完整 execution detail `steps[]`，`getInputSchema()` 会对 `collectionMode`/`minLength`/`maxLength`/`visibility`/`collectionHint` 做 camelCase/snake_case 兼容归一化，`runWorkflow()` 发送 canonical camelCase `inputParams` / `launchSource`
+- **InputFieldDefinition**: 含可选 `visibility: InputFieldVisibility { fieldId, equals }`（`fromJson()` 兼容 `fieldId/field_id`）与可选 `collectionHint`；`ParameterInputScreen` 基于 visibility 递归求值决定字段显示，提交时仅收集可见字段
+- **WorkflowInputSchema**: 含可选 `conversationPlan: ConversationPlan { systemPrompt, maxTurns }`，`collectionMode != 'form'` 时统一走 `ConversationModePrompt` Web-first fallback
 - **Riverpod 3.x**: 手写 Provider（无 riverpod_generator），AsyncNotifier/FutureProvider 用于状态管理
 - **execution monitor**: REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
 
@@ -100,8 +102,4 @@ fvm flutter test --coverage
 - `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 access/refresh/expires_in 三项完整
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
-- **Story 7-4a 已完成**: 执行监控与实时状态更新。`ExecutionSocketService` 通过 `resolveExecutionSocketUrl()` 去掉 `/api`/`/api/v1` 后连接 `/execution`；`ExecutionMonitorNotifier` 使用 `AsyncNotifierProvider.autoDispose.family`，支持 execution detail `steps[]` → snapshot 映射、graph metadata 提取、ACK/WS snapshot metadata merge（含 reconnect ACK）、5s polling fallback、`lastEventId` 重新订阅与 terminal cleanup；`ConnectionMode` 现支持 `disconnected`，failed banner 显示失败节点名 + 错误摘要，timeline item 显示 `nodeName/nodeType` 并保留 `nodeId`；Dashboard 已新增 `recentExecutionsProvider`，7-4a 收尾时移动端全量测试为 307 passed。
-- **Story 7-5 已完成**: `WorkflowDetailScreen` FAB 现先导航到 `ParameterInputScreen`；`WorkflowLaunchNotifier` 使用 `AsyncNotifierProvider.autoDispose.family` 拉取 schema 并在 submit 成功/失败路径使用 `ref.mounted` 防止 dispose 后写状态；参数页支持 text / number / single_select / multi_select 动态字段、客户端 required/min/max/minLength/maxLength 校验、空参数确认页与 conversation 模式 Web 引导；成功后通过 `context.goNamed(RouteNames.executionMonitor, ...)` 收口到执行监控页，避免回退到已提交表单；`WorkflowApi.getInputSchema()` 已兼容服务端 camelCase 与 legacy snake_case schema，移动端全量测试现为 370 passed。
-- **Story 8-6 已完成自动化收口**: `InputFieldDefinition` 现支持 canonical `InputFieldVisibility { fieldId, equals }`（`fromJson()` 同时兼容 `fieldId/field_id`）；`WorkflowApi.getInputSchema()` 会归一化 field-level visibility，`runWorkflow()` 新增 `schemaVersion`，`WorkflowLaunchNotifier.submit()` 会透传 `schema.version` 并继续固定 `launchSource: 'mobile'`。`ParameterInputScreen` 现只渲染当前可见字段，显隐判断基于 `visibility.fieldId/equals` 递归求值，提交时仅收集可见字段，因此隐藏字段不会进入 payload；默认值会与用户输入协同，字段重新显示时继续保留本地输入，`collectionMode != 'form'` 则统一走现有 `ConversationModePrompt` fallback，避免吸收 8-6a 的 conversation/hybrid 范围。移动端定向测试、`fvm flutter analyze` 与全量 `fvm flutter test` 已通过。
-- **Story 8-6a Mobile M1/M2 已完成**: `WorkflowInputSchema` 新增可选 `conversationPlan`（`ConversationPlan { systemPrompt, maxTurns }`，snake_case JSON），`InputFieldDefinition` 新增可选 `collectionHint`，其 `fromJson()` 同时兼容 `collectionHint/collection_hint`，`toJson()` 输出 canonical `collection_hint`。`ConversationModePrompt` 现接收可选 `schema`，对 `conversation`/`hybrid` 分别展示模式文案，并统一提示“请在 Web 端使用完整功能”；当 `conversationPlan.systemPrompt` 存在时，会额外展示系统提示词预览与最大轮次说明。`ParameterInputScreen` 仅在非 `form` 分支向提示组件透传 schema，继续保持 Web-first fallback，不实现原生对话式参数收集 UI；后续 Web Studio 可以增强 staged collection 细节，但移动端边界保持 fallback-only，不吸收 Web 侧对话壳、`maxTurns` 状态机或 select prompt 交互逻辑。新增模型/组件/helper 测试后，移动端全量验证结果为 `fvm dart run build_runner build --delete-conflicting-outputs`、`fvm flutter analyze`、`fvm flutter test` 全通过（429 passed）。
-- **Story 7-6 已完成**: 推送通知与设备注册。Flutter: `features/notifications/` 新增 `PushNotificationPayload`(Freezed, fromFcmData camelCase)、`DeviceApi`(register/unregister)、`NotificationService`(firebase_messaging 初始化/权限/token 生命周期/前台 flutter_local_notifications 显示/后台+终止态通知点击 StreamController + `getNotificationAppLaunchDetails()` 本地通知冷启动恢复)、`PushNotificationNotifier`(AsyncNotifier, initializeAfterAuth/cleanupOnLogout/token 刷新去重)。`main.dart` 添加 `Firebase.initializeApp()` + `onBackgroundMessage` 顶级函数。推送初始化由 `app.dart` 中 `ref.listen(authProvider, ...)` 监听认证状态边沿统一触发，避免登录双重初始化；`AuthNotifier` 仅在 logout/forceLogout 时调用 `cleanupOnLogout()`。`_AgentLoomAppState.initState()` 继续订阅 `onNotificationTap` 流实现深链 `GoRouter.go('/executions/$executionId')`。Android 配置: google-services 插件 + POST_NOTIFICATIONS 权限 + notification channel。iOS: FirebaseCore/FirebaseMessaging import + registerForRemoteNotifications。依赖: firebase_core ^3.13.0, firebase_messaging ^15.2.5, flutter_local_notifications ^19.2.1。新增测试覆盖 payload/api/service/provider/navigation/auth hooks，全量 416 passed，0 analyze issues。
+- `WorkflowLaunchNotifier.submit()` 在异步成功/失败路径均使用 `ref.mounted` 守卫，防止 dispose 后写入状态

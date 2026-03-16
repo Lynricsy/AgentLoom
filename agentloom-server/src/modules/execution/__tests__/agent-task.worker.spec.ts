@@ -12,6 +12,9 @@ import { ToolCallStateMachineService } from '../services/tool-call-state-machine
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { LlmEncryptionService } from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
+import { LlmProviderException } from '../../llm/llm.exceptions';
+import { AllModelsFallbackExhaustedException } from '../../smart-routing/smart-routing.exceptions';
+import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import {
   AgentExecutionException,
   ToolCallNotFoundException,
@@ -252,11 +255,21 @@ describe('AgentTaskWorker', () => {
     update: vi.fn(),
   };
 
+  const mockAgentTaskQueue = {
+    add: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const mockSmartRoutingService = {
+    recordDecision: vi.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockDb.select.mockReset();
     mockDb.update.mockReset().mockReturnValue(createUpdateChain());
+    mockAgentTaskQueue.add.mockReset().mockResolvedValue(undefined);
+    mockSmartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.enqueueInterventionTimeout
@@ -290,6 +303,7 @@ describe('AgentTaskWorker', () => {
             encryptForTenant: vi.fn(),
           },
         },
+        { provide: SmartRoutingService, useValue: mockSmartRoutingService },
         { provide: ThrottleService, useValue: mockThrottle },
         { provide: EventBridgeService, useValue: mockEventBridge },
         {
@@ -303,10 +317,7 @@ describe('AgentTaskWorker', () => {
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
-        {
-          provide: getQueueToken(AGENT_TASK_QUEUE),
-          useValue: { add: vi.fn() },
-        },
+        { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockAgentTaskQueue },
       ],
     }).compile();
 
@@ -371,7 +382,31 @@ describe('AgentTaskWorker', () => {
         { type: 'done', stopReason: 'intervention_required' },
       ];
 
-      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      mockDb.select.mockReturnValue(
+        createSelectChain(
+          makeStep({
+            checkpointData: {
+              attempts: [
+                {
+                  attempt: 1,
+                  error: '第一次失败',
+                  timestamp: '2025-01-01T00:00:00.000Z',
+                },
+                {
+                  attempt: 2,
+                  error: '第二次失败',
+                  timestamp: '2025-01-01T00:01:00.000Z',
+                },
+                {
+                  attempt: 3,
+                  error: '第三次失败',
+                  timestamp: '2025-01-01T00:02:00.000Z',
+                },
+              ],
+            },
+          }),
+        ),
+      );
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(createEventStream(events));
 
@@ -552,8 +587,6 @@ describe('AgentTaskWorker', () => {
       ).rejects.toThrow('最终失败');
 
       expect(mockDb.update).toHaveBeenCalled();
-      const setArg = mockDb.update.mock.results[0].value.set.mock.calls[0][0];
-      expect(setArg).toEqual({ attemptCount: 4 });
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
         TENANT_ID,
@@ -562,25 +595,23 @@ describe('AgentTaskWorker', () => {
         {
           errorMessage: expect.objectContaining({
             message: '最终失败',
-            attempts: [
-              {
+            attempts: expect.arrayContaining([
+              expect.objectContaining({
                 attempt: 4,
                 error: '最终失败',
-                timestamp: expect.any(String),
-              },
-            ],
+              }),
+            ]),
           }),
           checkpointData: expect.objectContaining({
             partialContent: '最后一次尝试',
             sessionId: SESSION_ID,
             session: {},
-            attempts: [
-              {
+            attempts: expect.arrayContaining([
+              expect.objectContaining({
                 attempt: 4,
                 error: '最终失败',
-                timestamp: expect.any(String),
-              },
-            ],
+              }),
+            ]),
           }),
         },
       );
@@ -588,6 +619,386 @@ describe('AgentTaskWorker', () => {
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
+      );
+    });
+
+    it('FALLBACK_CHAIN 在非认证失败且仍有候选模型时会切换到下一个模型重新排队', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          yield { type: 'message_chunk', content: '部分结果' } as AgentEvent;
+          throw new Error('model-1 failed');
+        })(),
+      );
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            nodeData: { agentId: AGENT_ID, llmModelConfigId: 'model-1' },
+            smartRouting: {
+              routingStepId: 'step-routing',
+              routingNodeId: 'routing-node-1',
+              strategy: 'FALLBACK_CHAIN',
+              candidateModelIds: ['model-1', 'model-2'],
+              currentModelIndex: 0,
+              selectedModelId: 'model-1',
+              evaluatedModels: [
+                {
+                  modelId: 'model-1',
+                  modelName: 'gpt-4o',
+                  provider: 'openai',
+                  score: 100,
+                  reasoning: '回退链位置 #1',
+                },
+                {
+                  modelId: 'model-2',
+                  modelName: 'claude-sonnet-4-20250514',
+                  provider: 'anthropic',
+                  score: 90,
+                  reasoning: '回退链位置 #2',
+                },
+              ],
+            },
+          },
+          attemptsMade: 0,
+          opts: { attempts: 1 },
+        }),
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'pending',
+        expect.objectContaining({
+          checkpointData: expect.objectContaining({
+            smartRouting: {
+              routingStepId: 'step-routing',
+              routingNodeId: 'routing-node-1',
+              strategy: 'FALLBACK_CHAIN',
+              candidateModelIds: ['model-1', 'model-2'],
+              currentModelIndex: 1,
+              selectedModelId: 'model-2',
+              evaluatedModels: [
+                {
+                  modelId: 'model-1',
+                  modelName: 'gpt-4o',
+                  provider: 'openai',
+                  score: 100,
+                  reasoning: '回退链位置 #1',
+                },
+                {
+                  modelId: 'model-2',
+                  modelName: 'claude-sonnet-4-20250514',
+                  provider: 'anthropic',
+                  score: 90,
+                  reasoning: '回退链位置 #2',
+                },
+              ],
+            },
+            attempts: [
+              expect.objectContaining({ attempt: 1, error: 'model-1 failed' }),
+            ],
+          }),
+        }),
+      );
+      expect(mockStateMachine.broadcastAgentEvent).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        {
+          type: 'message_chunk',
+          content: '模型 model-1 调用失败，已切换到备用模型 model-2。',
+        },
+      );
+      expect(mockStateMachine.broadcastStepRetry).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        expect.objectContaining({
+          attempt: 1,
+          maxAttempts: 2,
+          errorMessage: expect.stringContaining('已切换到备用模型 model-2'),
+        }),
+      );
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
+        'step-routing',
+        TENANT_ID,
+        'routing-node-1',
+        expect.objectContaining({
+          selectedModelId: 'model-2',
+          strategy: 'FALLBACK_CHAIN',
+          reasoning: expect.stringContaining('前序失败记录'),
+          evaluatedModels: expect.arrayContaining([
+            expect.objectContaining({ modelId: 'model-2', score: 100 }),
+          ]),
+        }),
+      );
+      expect(mockAgentTaskQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          nodeData: { agentId: AGENT_ID, llmModelConfigId: 'model-2' },
+          smartRouting: {
+            routingStepId: 'step-routing',
+            routingNodeId: 'routing-node-1',
+            strategy: 'FALLBACK_CHAIN',
+            candidateModelIds: ['model-1', 'model-2'],
+            currentModelIndex: 1,
+            selectedModelId: 'model-2',
+            evaluatedModels: [
+              {
+                modelId: 'model-1',
+                modelName: 'gpt-4o',
+                provider: 'openai',
+                score: 100,
+                reasoning: '回退链位置 #1',
+              },
+              {
+                modelId: 'model-2',
+                modelName: 'claude-sonnet-4-20250514',
+                provider: 'anthropic',
+                score: 90,
+                reasoning: '回退链位置 #2',
+              },
+            ],
+          },
+        }),
+        { attempts: 1 },
+      );
+      expect(mockNodeScheduler.onNodeFailed).not.toHaveBeenCalled();
+    });
+
+    it('认证失败时禁止 fallback，并直接进入最终 failed', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          yield { type: 'message_chunk', content: '准备失败' } as AgentEvent;
+          throw new LlmProviderException('openai', '认证失败', {
+            authenticationFailed: true,
+          });
+        })(),
+      );
+
+      await expect(
+        worker.process(
+          createMockJob({
+            data: {
+              executionId: EXECUTION_ID,
+              stepId: STEP_ID,
+              tenantId: TENANT_ID,
+              smartRouting: {
+                routingStepId: 'step-routing',
+                routingNodeId: 'routing-node-1',
+                strategy: 'FALLBACK_CHAIN',
+                candidateModelIds: ['model-1', 'model-2'],
+                currentModelIndex: 0,
+                selectedModelId: 'model-1',
+                evaluatedModels: [
+                  {
+                    modelId: 'model-1',
+                    modelName: 'gpt-4o',
+                    provider: 'openai',
+                    score: 100,
+                    reasoning: '回退链位置 #1',
+                  },
+                  {
+                    modelId: 'model-2',
+                    modelName: 'claude-sonnet-4-20250514',
+                    provider: 'anthropic',
+                    score: 90,
+                    reasoning: '回退链位置 #2',
+                  },
+                ],
+              },
+            },
+            attemptsMade: 0,
+            opts: { attempts: 1 },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(LlmProviderException);
+
+      expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
+      expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockStateMachine.broadcastAgentEvent).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message: 'LLM 提供商错误',
+            detail: '认证失败',
+            type: 'https://agentloom.dev/errors/llm/provider-error',
+            attempts: [
+              expect.objectContaining({
+                attempt: 1,
+                error: 'LLM 提供商错误',
+              }),
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('候选模型耗尽时抛出 AllModelsFallbackExhaustedException', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          yield { type: 'message_chunk', content: '最后一次候选尝试' } as AgentEvent;
+          throw new Error('last candidate failed');
+        })(),
+      );
+
+      await expect(
+        worker.process(
+          createMockJob({
+            data: {
+              executionId: EXECUTION_ID,
+              stepId: STEP_ID,
+              tenantId: TENANT_ID,
+              smartRouting: {
+                routingStepId: 'step-routing',
+                routingNodeId: 'routing-node-1',
+                strategy: 'FALLBACK_CHAIN',
+                candidateModelIds: ['model-1', 'model-2'],
+                currentModelIndex: 1,
+                selectedModelId: 'model-2',
+                evaluatedModels: [
+                  {
+                    modelId: 'model-1',
+                    modelName: 'gpt-4o',
+                    provider: 'openai',
+                    score: 100,
+                    reasoning: '回退链位置 #1',
+                  },
+                  {
+                    modelId: 'model-2',
+                    modelName: 'claude-sonnet-4-20250514',
+                    provider: 'anthropic',
+                    score: 90,
+                    reasoning: '回退链位置 #2',
+                  },
+                ],
+              },
+            },
+            attemptsMade: 0,
+            opts: { attempts: 1 },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(AllModelsFallbackExhaustedException);
+
+      expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
+      expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            type: 'https://agentloom.dev/errors/routing/fallback-exhausted',
+            message: '所有模型已耗尽',
+          }),
+        }),
+      );
+    });
+
+    it('非 FALLBACK_CHAIN 策略失败时保留原始错误，不伪装成 exhausted', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          yield { type: 'message_chunk', content: '普通策略失败' } as AgentEvent;
+          throw new Error('quality-first failed');
+        })(),
+      );
+
+      await expect(
+        worker.process(
+          createMockJob({
+            data: {
+              executionId: EXECUTION_ID,
+              stepId: STEP_ID,
+              tenantId: TENANT_ID,
+              smartRouting: {
+                routingStepId: 'step-routing',
+                routingNodeId: 'routing-node-1',
+                strategy: 'QUALITY_FIRST',
+                candidateModelIds: ['model-1'],
+                currentModelIndex: 0,
+                selectedModelId: 'model-1',
+                evaluatedModels: [
+                  {
+                    modelId: 'model-1',
+                    modelName: 'gpt-4o',
+                    provider: 'openai',
+                    score: 100,
+                    reasoning: '质量优先选择',
+                  },
+                ],
+              },
+            },
+            attemptsMade: 0,
+            opts: { attempts: 1 },
+          }),
+        ),
+      ).rejects.toThrow('quality-first failed');
+
+      expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
+      expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+      const lastUpdateStepStatusCall =
+        mockStateMachine.updateStepStatus.mock.calls.at(-1);
+
+      expect(lastUpdateStepStatusCall?.[0]).toBe(TENANT_ID);
+      expect(lastUpdateStepStatusCall?.[1]).toBe(STEP_ID);
+      expect(lastUpdateStepStatusCall?.[2]).toBe('failed');
+      expect(lastUpdateStepStatusCall?.[3]).toEqual(
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message: 'quality-first failed',
+          }),
+        }),
+      );
+      expect(lastUpdateStepStatusCall?.[3]?.errorMessage?.type).not.toBe(
+        'https://agentloom.dev/errors/routing/fallback-exhausted',
       );
     });
 

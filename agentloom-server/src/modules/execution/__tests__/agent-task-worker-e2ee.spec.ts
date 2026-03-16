@@ -16,6 +16,7 @@ import type { AgentEvent } from '../../agent/types/agent-event.types';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { LlmEncryptionService, type EncryptedPayload } from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
+import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { DRIZZLE } from '../../../database/database.module';
 import {
   AGENT_TASK_QUEUE,
@@ -80,6 +81,9 @@ const mocks = vi.hoisted(() => ({
   llmEncryptionService: {
     isE2EEEnabled: vi.fn(),
     encryptForTenant: vi.fn(),
+  },
+  smartRoutingService: {
+    recordDecision: vi.fn(),
   },
   agentRuntime: {
     createSession: vi.fn(),
@@ -281,6 +285,7 @@ describe('AgentTaskWorker E2EE integration', () => {
     });
     mocks.notificationService.create.mockResolvedValue(undefined);
     mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(false);
+    mocks.smartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
     mocks.agentRuntime.createSession.mockResolvedValue(makeSession());
     mocks.agentRuntime.loadSession.mockResolvedValue(makeSession());
 
@@ -310,6 +315,10 @@ describe('AgentTaskWorker E2EE integration', () => {
         {
           provide: LlmEncryptionService,
           useValue: mocks.llmEncryptionService,
+        },
+        {
+          provide: SmartRoutingService,
+          useValue: mocks.smartRoutingService,
         },
         {
           provide: getQueueToken(AGENT_TASK_QUEUE),

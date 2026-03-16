@@ -68,13 +68,32 @@ describe('smart-routing strategies', () => {
   });
 
   describe('tokenOptimized', () => {
-    it('在上下文窗口不足时得分为 0', () => {
+    it('当所有模型都无法容纳输入时回退选择最大上下文窗口并给出警告', () => {
       const results = tokenOptimized(candidates, { inputTokenCount: 250000 });
 
-      expect(results.map((result) => result.score)).toEqual([0, 0, 0]);
+      expect(results[0]?.modelId).toBe('model-2');
+      expect(getResultById(results, 'model-2').score).toBe(100);
+      expect(getResultById(results, 'model-2').reasoning).toContain(
+        '警告：所有模型的上下文窗口都不足以容纳 250000 tokens 输入',
+      );
     });
 
-    it('为剩余 headroom 更大的模型给出更高分', () => {
+    it('短文本会优先选择更贴合的上下文窗口', () => {
+      const results = tokenOptimized(candidates, {
+        inputTokenCount: 2000,
+        tokenThreshold: 4096,
+      });
+
+      expect(results[0]?.modelId).toBe('model-3');
+      expect(getResultById(results, 'model-3').score).toBeGreaterThan(
+        getResultById(results, 'model-1').score,
+      );
+      expect(getResultById(results, 'model-3').reasoning).toContain(
+        '短文本路由：输入 2000 tokens 未超过阈值 4096',
+      );
+    });
+
+    it('长文本会优先选择更大的上下文余量', () => {
       const results = tokenOptimized(candidates, { inputTokenCount: 100000 });
 
       expect(getResultById(results, 'model-2').score).toBeGreaterThan(
@@ -82,6 +101,9 @@ describe('smart-routing strategies', () => {
       );
       expect(getResultById(results, 'model-3').score).toBe(0);
       expect(results[0]?.modelId).toBe('model-2');
+      expect(getResultById(results, 'model-2').reasoning).toContain(
+        '长文本路由：输入 100000 tokens 超过阈值 4096',
+      );
     });
   });
 
@@ -151,7 +173,7 @@ describe('smart-routing strategies', () => {
   });
 
   describe('historicalBest', () => {
-    it('使用历史数据进行复合评分', () => {
+    it('成功率相同时按最近使用时间排序', () => {
       const results = historicalBest(candidates, {
         inputTokenCount: 1000,
         historicalMetrics: {
@@ -159,18 +181,29 @@ describe('smart-routing strategies', () => {
             successRate: 0.95,
             avgLatencyMs: 400,
             avgTokenUsage: 2000,
+            lastUsedAt: '2024-12-30T00:00:00.000Z',
           },
           'model-2': {
-            successRate: 0.96,
+            successRate: 0.95,
             avgLatencyMs: 200,
             avgTokenUsage: 500,
+            lastUsedAt: '2024-12-31T00:00:00.000Z',
+          },
+          'model-3': {
+            successRate: 0.9,
+            avgLatencyMs: 500,
+            avgTokenUsage: 1500,
+            lastUsedAt: '2024-12-29T00:00:00.000Z',
           },
         },
       });
 
       expect(results[0]?.modelId).toBe('model-2');
       expect(getResultById(results, 'model-2').score).toBeGreaterThan(
-        getResultById(results, 'model-1').score,
+        getResultById(results, 'model-3').score,
+      );
+      expect(getResultById(results, 'model-2').reasoning).toContain(
+        '最近一次使用 2024-12-31T00:00:00.000Z',
       );
     });
 

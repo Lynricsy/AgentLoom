@@ -343,6 +343,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     ? llmConfig?.modelName ?? data.label
     : data.label
   const compactStatusMeta = COMPACT_STATUS_META[nodeExecutionState?.status ?? 'idle']
+  const canvasEdges = useCanvasStore((s) => s.edges)
   const [showCompletedAccent, setShowCompletedAccent] = useState(
     nodeExecutionState?.status === 'completed',
   )
@@ -357,6 +358,19 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     () => getMinimalHandleOffsets(outputPorts.length),
     [outputPorts.length],
   )
+  const connectedSmartRoutingModelCount = useMemo(() => {
+    if (data.nodeType !== 'smart-routing') {
+      return undefined
+    }
+
+    const modelInputIds = new Set(
+      inputPorts.filter((port) => port.dataType === 'model').map((port) => port.id),
+    )
+
+    return canvasEdges.filter(
+      (edge) => edge.target === id && (!edge.targetHandle || modelInputIds.has(edge.targetHandle)),
+    ).length
+  }, [canvasEdges, data.nodeType, id, inputPorts])
 
   const { setHoveredNodeId } = useCanvasActions()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -584,7 +598,10 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           ) : data.nodeType === 'reusable-block' ? (
             <ReusableBlockBody nodeId={id} data={data} />
           ) : data.nodeType === 'smart-routing' ? (
-            <SmartRoutingNodeBody data={data as SmartRoutingNodeData} />
+            <SmartRoutingNodeBody
+              data={data as SmartRoutingNodeData}
+              connectedModelCount={connectedSmartRoutingModelCount}
+            />
           ) : (
             config.description
           )}

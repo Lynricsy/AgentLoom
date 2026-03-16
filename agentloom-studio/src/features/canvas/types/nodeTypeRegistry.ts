@@ -26,7 +26,7 @@ export const NODE_TYPES = [
   'smart-routing',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'smart-routing'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -496,11 +496,11 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '根据策略从多个 LLM 模型中选择最优模型',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
-      createPort('model-input-1', '模型 1', 'input', 'model', { required: true }),
-      createPort('model-input-2', '模型 2', 'input', 'model', { required: true }),
+      createPort('model-in-0', '模型 1', 'input', 'model', { required: true }),
+      createPort('model-in-1', '模型 2', 'input', 'model', { required: true }),
     ],
     outputPorts: [
-      createPort('model-output', '选定模型', 'output', 'model', {
+      createPort('model-out', '选定模型', 'output', 'model', {
         multiple: true,
         maxConnections: 5,
       }),
@@ -519,7 +519,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
             'HISTORICAL_BEST',
             'FALLBACK_CHAIN',
           ],
-          default: 'QUALITY_FIRST',
+          default: 'FALLBACK_CHAIN',
         },
       },
       required: ['strategy'],

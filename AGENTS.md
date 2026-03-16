@@ -9,7 +9,7 @@
 1. 进行开发时,请及时进行原子化提交.不要问"要不要提交",直接提交.如果工作开始时发现工作区不干净,那先把未提交的文件提交或者需要ignore的文件ignore再开始工作.任务完成后,**必须**进行提交
 2. 不能停止工作并等待pty或后台agent,必须持续轮询.如果认为还需要很长时间才能完成,可以设置较长的阻塞时间.你一旦停止,系统将认为你的工作已经完成并直接交接给下一步,你将等不到后台工作完成提醒.
 3. 不能遗留任何没通过的测试。即使一个未能通过的测试你认为是之前就存在的问题，那也要去找到导致未通过的根本原因并进行修复。又因为之前开发轮次也会执行这条要求，所以理应不会有之前的"遗留问题"导致的未通过的测试，未通过的测试应该都是本次开发导致的回归。
-4. 开发时及时更新各个 AGENTS.md，确保知识库与代码保持同步。
+4. 开发时及时使用init-deep更新各个 AGENTS.md，确保知识库与代码保持同步。
 5. 如果你是作为code reviewer,同时你发现当前story的部分内容确实依赖于后面的story才能完成,那如果当前story除了这个被阻塞的部分之外其他部分都已经完成的话,可以提前标记为done,但是必须在它所依赖的那个story加上完成这部分被阻塞的任务的任务,确保那个被依赖的story完成后,当前这个未完成的任务会被完成.
 6. 为了提高工作效率，请在确保不冲突的情况下尽量并行使用多个subagent来完成任务
 ## 概览
@@ -54,7 +54,7 @@ AgentLoomAUTO/
 
 ```
 type-engine (Rust/WASM)
-  └── studio（Story 2-4a 已接通：TypeEngineService + Web Worker/WASM runtime + 受控 fallback）
+  └── studio（TypeEngineService + Web Worker/WASM runtime + 受控 fallback）
 
 studio (React) ──HTTP REST──→ server (/api/v1)
               ──Socket.IO──→ server (/execution, /knowledge, /notification)
@@ -119,6 +119,8 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 ```
 
 ## 注意事项
+
+- **Story 10-3 code-review remediation 已收口**: Server `SmartRoutingService.findByExecution()` 现通过 `routing_decisions innerJoin execution_steps` 按 `execution_id` 做真正的 execution 级查询；`getHistoricalMetrics()` 会聚合近 30 天 `successRate/lastUsedAt/avgLatencyMs`，并按“同一 `routingStepId` 下较早 decision 直接记为 failure、最后一条 decision 再结合下游 agent `execution_steps` 的 `checkpointData.smartRouting`/`input` 与真实 terminal 状态判 success/failure”统计 `HISTORICAL_BEST` 指标。`TOKEN_OPTIMIZED` 现支持 `tokenThreshold` 短/长文本分流，并在全部模型都装不下时回退最大上下文窗口且写出 warning。`NodeSchedulerService` 会输出 smart-routing runtime metadata，并在下游 agent 入队时注入 `llmModelConfigId`；`AgentTaskWorker` 对 `FALLBACK_CHAIN` 现支持非认���失败时自动切换到下一个模型重新派队，切模时还会补写新的 `routing_decisions` 记录并把前序失败摘要写入 `decision_reasoning`，401/403 类 `authenticationFailed` 错误禁止 fallback，且**只有 `FALLBACK_CHAIN` 的候选真正耗尽时**才抛 `AllModelsFallbackExhaustedException`，其他策略保留原始错误。`routing_decisions.selected_model_id` 通过 `0041_routing_decision_selected_model_nullable.sql` 改为 nullable。Studio 端 `smart-routing` 不再是 dynamic-only 节点，canonical 端口改为 `model-in-0` / `model-in-1` / `model-out`，默认策略改为 `FALLBACK_CHAIN`；`SmartRoutingConfigPanel` 改为直接读写 `node.data` 根层并以端口 id 维护 `fallbackPriority`，`CanvasNode` 现按真实已连接模型数驱动 `SmartRoutingNodeBody`，`routingApi.ts` 的 `selectedModelId` 允许 `null`，`routingKeys.list()` 也已纳入分页参数。
 
 - **Story 10-1 code-review remediation 已收口**: `EvidenceService` 现对 `agent_decision/tool_output` 使用 canonical `packet.encryptedPacket` envelope 持久化密文，server 读路径不再向 API 暴露明文 packet，`verifyContentHash()` / `buildChain()` 可同时兼容 legacy `encryptionMetadata.encryptedPayload + ciphertext-only hash` 历史记录；`EvidenceCard` 优先解 canonical packet 并保留 legacy fallback，且卡片 DOM 已移除嵌套 button。`tenant_encryption_keys` 现通过 `0038_tenant_key_rotation_history.sql` 变为 append-only 历史模型：移除 `org_id` 单行 UNIQUE，改为 `organization_id + key_fingerprint` 唯一 + 单 active partial unique index，`rotateKey()` 先将旧 key 置为 `rotating` 再插入新 `active` key。Studio 私钥持久化不再写入 IndexedDB PEM 明文字符串，而是保存 PKCS8 二进制材料，解密时按需导入 non-extractable `CryptoKey`，同时 tenant-key 文案已收窄为“私钥不上传服务器，但本地密钥材料仍受浏览器扩展、同源脚本与本机受损影响”。
 

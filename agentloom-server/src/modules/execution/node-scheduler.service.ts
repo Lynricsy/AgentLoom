@@ -23,6 +23,7 @@ import {
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
+  type SmartRoutingRuntimeContext,
   type ToolPermissionResolution,
 } from './execution.constants';
 import type { InterventionCheckpointRecord } from './types/execution-event.types';
@@ -240,14 +241,16 @@ export class NodeSchedulerService {
           step.id,
           'queued',
         );
-        await this.agentTaskQueue.add('agent-task', {
-          executionId,
-          stepId: step.id,
-          tenantId,
-          input,
-          nodeData: step.nodeData ?? {},
-          hasSandbox: this.hasSandboxUpstream(nodeId, snapshot.edges, steps),
-        } satisfies AgentTaskJobData);
+        {
+          const { data, options } = this.buildAgentTaskJobData({
+            executionId,
+            tenantId,
+            step,
+            input,
+            hasSandbox: this.hasSandboxUpstream(nodeId, snapshot.edges, steps),
+          });
+          await this.agentTaskQueue.add('agent-task', data, options);
+        }
         break;
 
       case 'sandbox':
@@ -273,13 +276,15 @@ export class NodeSchedulerService {
           step.id,
           'queued',
         );
-        await this.agentTaskQueue.add('agent-task', {
-          executionId,
-          stepId: step.id,
-          tenantId,
-          input,
-          nodeData: step.nodeData ?? {},
-        } satisfies AgentTaskJobData);
+        {
+          const { data, options } = this.buildAgentTaskJobData({
+            executionId,
+            tenantId,
+            step,
+            input,
+          });
+          await this.agentTaskQueue.add('agent-task', data, options);
+        }
     }
   }
 
@@ -972,15 +977,25 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = step.nodeData ?? {};
-      const strategy = (nodeData.strategy as RoutingStrategy) ?? 'QUALITY_FIRST';
+      const strategy =
+        (nodeData.strategy as RoutingStrategy | undefined) ?? 'FALLBACK_CHAIN';
 
       const modelConfigIds = this.collectModelConfigIds(nodeData, input);
+      const tokenThreshold =
+        typeof nodeData.tokenThreshold === 'number' && nodeData.tokenThreshold > 0
+          ? nodeData.tokenThreshold
+          : 4096;
+      const historicalMetrics =
+        strategy === 'HISTORICAL_BEST'
+          ? await this.smartRoutingService.getHistoricalMetrics(tenantId, step.nodeId)
+          : undefined;
 
       const context: RoutingContext = {
-        inputTokenCount:
-          typeof nodeData.tokenThreshold === 'number'
-            ? nodeData.tokenThreshold
-            : 0,
+        inputTokenCount: this.estimateTokenCount(input),
+        tokenThreshold,
+        ...(historicalMetrics && Object.keys(historicalMetrics).length > 0
+          ? { historicalMetrics }
+          : {}),
       };
 
       const decision = await this.smartRoutingService.evaluate(
@@ -997,12 +1012,27 @@ export class NodeSchedulerService {
         decision,
       );
 
+      const candidateModelIds = decision.evaluatedModels.map(
+        (model) => model.modelId,
+      );
+      const currentModelIndex = Math.max(
+        candidateModelIds.indexOf(decision.selectedModelId),
+        0,
+      );
+
       const result = {
         selectedModelId: decision.selectedModelId,
+        llmModelConfigId: decision.selectedModelId,
         strategy: decision.strategy,
         reasoning: decision.reasoning,
         evaluatedModels: decision.evaluatedModels,
         latencyMs: decision.latencyMs,
+        routingStepId: step.id,
+        routingNodeId: step.nodeId,
+        candidateModelIds,
+        currentModelIndex,
+        inputTokenCount: context.inputTokenCount,
+        tokenThreshold,
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -1050,27 +1080,167 @@ export class NodeSchedulerService {
     input: Record<string, unknown>,
   ): string[] {
     const ids: string[] = [];
+    const seen = new Set<string>();
 
-    if (Array.isArray(nodeData.modelConfigIds)) {
-      for (const id of nodeData.modelConfigIds) {
-        if (typeof id === 'string' && id.length > 0) ids.push(id);
+    const appendIds = (value: unknown): void => {
+      for (const modelId of this.extractModelConfigIds(value)) {
+        if (!seen.has(modelId)) {
+          seen.add(modelId);
+          ids.push(modelId);
+        }
       }
+    };
+
+    const fallbackPriority = Array.isArray(nodeData.fallbackPriority)
+      ? nodeData.fallbackPriority.filter(
+          (path): path is string => typeof path === 'string' && path.length > 0,
+        )
+      : [];
+
+    for (const path of fallbackPriority) {
+      appendIds(this.resolveJsonPath(input, path));
     }
 
     for (const value of Object.values(input)) {
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const obj = value as Record<string, unknown>;
-        if (typeof obj.selectedModelId === 'string') {
-          ids.push(obj.selectedModelId);
-        } else if (typeof obj.llmModelConfigId === 'string') {
-          ids.push(obj.llmModelConfigId);
-        } else if (typeof obj.modelConfigId === 'string') {
-          ids.push(obj.modelConfigId);
-        }
+      appendIds(value);
+    }
+
+    if (Array.isArray(nodeData.modelConfigIds)) {
+      for (const id of nodeData.modelConfigIds) {
+        appendIds(id);
       }
     }
 
-    return [...new Set(ids)];
+    return ids;
+  }
+
+  private buildAgentTaskJobData(params: {
+    executionId: string;
+    tenantId: string;
+    step: ExecutionStep;
+    input: Record<string, unknown>;
+    hasSandbox?: boolean;
+  }): {
+    data: AgentTaskJobData;
+    options?: { attempts: number };
+  } {
+    const { executionId, tenantId, step, input, hasSandbox } = params;
+    const smartRouting = this.extractSmartRoutingContext(input);
+    const nodeData = { ...(step.nodeData ?? {}) };
+
+    if (smartRouting) {
+      nodeData.llmModelConfigId = smartRouting.selectedModelId;
+    }
+
+    return {
+      data: {
+        executionId,
+        stepId: step.id,
+        tenantId,
+        input,
+        nodeData,
+        ...(smartRouting ? { smartRouting } : {}),
+        ...(hasSandbox ? { hasSandbox } : {}),
+      },
+      ...(smartRouting?.strategy === 'FALLBACK_CHAIN'
+        ? { options: { attempts: 1 } }
+        : {}),
+    };
+  }
+
+  private extractSmartRoutingContext(
+    input: Record<string, unknown>,
+  ): SmartRoutingRuntimeContext | undefined {
+    return this.findSmartRoutingContext(input, new Set<object>());
+  }
+
+  private findSmartRoutingContext(
+    value: unknown,
+    seen: Set<object>,
+  ): SmartRoutingRuntimeContext | undefined {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    if (this.isSmartRoutingRuntimeContext(value)) {
+      return value;
+    }
+
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+
+    const children = Array.isArray(value) ? value : Object.values(value);
+    for (const child of children) {
+      const found = this.findSmartRoutingContext(child, seen);
+      if (found) {
+        return found;
+      }
+    }
+
+    return undefined;
+  }
+
+  private isSmartRoutingRuntimeContext(
+    value: unknown,
+  ): value is SmartRoutingRuntimeContext {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+
+    return (
+      typeof value.routingStepId === 'string' &&
+      typeof value.routingNodeId === 'string' &&
+      typeof value.strategy === 'string' &&
+      typeof value.selectedModelId === 'string' &&
+      typeof value.currentModelIndex === 'number' &&
+      Array.isArray(value.candidateModelIds) &&
+      value.candidateModelIds.every((id) => typeof id === 'string')
+    );
+  }
+
+  private extractModelConfigIds(value: unknown): string[] {
+    if (typeof value === 'string' && value.length > 0) {
+      return [value];
+    }
+
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => this.extractModelConfigIds(item));
+    }
+
+    if (!this.isRecord(value)) {
+      return [];
+    }
+
+    if (Array.isArray(value.candidateModelIds)) {
+      return value.candidateModelIds.filter(
+        (modelId): modelId is string =>
+          typeof modelId === 'string' && modelId.length > 0,
+      );
+    }
+
+    const directId =
+      typeof value.selectedModelId === 'string'
+        ? value.selectedModelId
+        : typeof value.llmModelConfigId === 'string'
+          ? value.llmModelConfigId
+          : typeof value.modelConfigId === 'string'
+            ? value.modelConfigId
+            : undefined;
+
+    if (directId) {
+      return [directId];
+    }
+
+    return Object.values(value).flatMap((item) => this.extractModelConfigIds(item));
+  }
+
+  private estimateTokenCount(value: unknown): number {
+    const serialized =
+      typeof value === 'string' ? value : JSON.stringify(value ?? {});
+
+    return Math.max(0, Math.ceil(serialized.length / 4));
   }
 
   // ── 私有辅助 ───────────────────────────────────────────────

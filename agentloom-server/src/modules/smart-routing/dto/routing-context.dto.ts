@@ -13,6 +13,7 @@ export type RoutingStrategy = (typeof ROUTING_STRATEGIES)[number];
 
 export const RoutingContextSchema = z.object({
   inputTokenCount: z.number().int().min(0),
+  tokenThreshold: z.number().int().positive().optional(),
   outputSchemaComplexity: z.number().int().min(0).optional(),
   taskType: z.string().max(50).optional(),
   historicalMetrics: z
@@ -22,6 +23,7 @@ export const RoutingContextSchema = z.object({
         successRate: z.number().min(0).max(1),
         avgLatencyMs: z.number().min(0),
         avgTokenUsage: z.number().min(0),
+        lastUsedAt: z.string().datetime().optional(),
       }),
     )
     .optional(),

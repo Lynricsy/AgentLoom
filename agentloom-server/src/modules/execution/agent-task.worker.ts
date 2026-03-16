@@ -1,6 +1,6 @@
 import { Inject, Logger } from '@nestjs/common';
-import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import * as schema from '../../database/schema';
 import type { TypeMismatchInfo } from '../../database/schema/execution-steps.schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -50,8 +50,12 @@ import {
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
+  type SmartRoutingRuntimeContext,
   type ToolPermissionResolution,
 } from './execution.constants';
+import { AllModelsFallbackExhaustedException } from '../smart-routing/smart-routing.exceptions';
+import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import { LlmProviderException } from '../llm/llm.exceptions';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -85,6 +89,9 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly notificationService: NotificationService,
     private readonly llmEncryptionService: LlmEncryptionService,
+    private readonly smartRoutingService: SmartRoutingService,
+    @InjectQueue(AGENT_TASK_QUEUE)
+    private readonly agentTaskQueue: Queue,
   ) {
     super();
   }
@@ -413,8 +420,15 @@ export class AgentTaskWorker extends WorkerHost {
         ...(decision ? { decision } : {}),
         attempts: allAttempts,
       };
+      const shouldRetry = this.shouldRetry(job);
+      const smartRouting = job.data.smartRouting;
+      const authenticationFailed = this.isAuthenticationFailure(err);
+      const nextSmartRouting =
+        !shouldRetry && !authenticationFailed
+          ? this.getNextSmartRoutingContext(smartRouting)
+          : undefined;
 
-      if (this.shouldRetry(job)) {
+      if (shouldRetry) {
         await this.withTenantContext(tenantId, async () => {
           await this.tenantDb
             .update(schema.executionSteps)
@@ -456,10 +470,105 @@ export class AgentTaskWorker extends WorkerHost {
         throw err;
       }
 
+      if (nextSmartRouting && smartRouting) {
+        const nextAttempt = allAttempts.length;
+        const fallbackMessage = `模型 ${smartRouting.selectedModelId} 调用失败，已切换到备用模型 ${nextSmartRouting.selectedModelId}。`;
+        const fallbackDecision = this.buildFallbackRoutingDecision(
+          smartRouting,
+          nextSmartRouting,
+          allAttempts,
+          err,
+        );
+
+        await this.withTenantContext(tenantId, async () => {
+          await this.tenantDb
+            .update(schema.executionSteps)
+            .set({ attemptCount: nextAttempt })
+            .where(eq(schema.executionSteps.id, stepId));
+
+          await this.stepStateMachine.updateStepStatus(
+            tenantId,
+            stepId,
+            'pending',
+            {
+              errorMessage: {
+                message: err.message,
+                stack: err.stack,
+                ...(err instanceof DomainException
+                  ? {
+                      type: err.type,
+                      title: err.message,
+                      detail: err.detail,
+                      errors: err.errors,
+                    }
+                  : {}),
+                nodeId: step.nodeId,
+              },
+              checkpointData: {
+                ...checkpointData,
+                smartRouting: nextSmartRouting,
+              },
+            },
+          );
+
+          await this.smartRoutingService.recordDecision(
+            smartRouting.routingStepId,
+            tenantId,
+            smartRouting.routingNodeId,
+            fallbackDecision,
+          );
+        });
+
+        this.stepStateMachine.broadcastAgentEvent(
+          tenantId,
+          executionId,
+          stepId,
+          {
+            type: 'message_chunk',
+            content: fallbackMessage,
+          },
+        );
+        this.stepStateMachine.broadcastStepRetry(
+          tenantId,
+          executionId,
+          stepId,
+          {
+            attempt: nextAttempt,
+            maxAttempts: smartRouting?.candidateModelIds.length ?? nextAttempt,
+            errorMessage: `${err.message}；${fallbackMessage}`,
+          },
+        );
+
+        await this.agentTaskQueue.add(
+          'agent-task',
+          {
+            executionId,
+            stepId,
+            tenantId,
+            input,
+            nodeData: {
+              ...nodeData,
+              llmModelConfigId: nextSmartRouting.selectedModelId,
+            },
+            workflowContext: job.data.workflowContext,
+            ...(hasSandbox ? { hasSandbox: true } : {}),
+            smartRouting: nextSmartRouting,
+          },
+          { attempts: 1 },
+        );
+
+        return;
+      }
+
+      const finalError =
+        smartRouting?.strategy === 'FALLBACK_CHAIN' && !authenticationFailed
+          ? new AllModelsFallbackExhaustedException(smartRouting.routingNodeId)
+          : err;
+
       await this.withTenantContext(tenantId, async () => {
         await this.tenantDb
           .update(schema.executionSteps)
-          .set({ attemptCount: job.attemptsMade + 1 })
+          .set({ attemptCount: allAttempts.length })
           .where(eq(schema.executionSteps.id, stepId));
 
         await this.stepStateMachine.updateStepStatus(
@@ -468,15 +577,15 @@ export class AgentTaskWorker extends WorkerHost {
           'failed',
           {
             errorMessage: {
-              message: err.message,
-              stack: err.stack,
+              message: finalError.message,
+              stack: finalError.stack,
               attempts: allAttempts,
-              ...(err instanceof DomainException
+              ...(finalError instanceof DomainException
                 ? {
-                    type: err.type,
-                    title: err.message,
-                    detail: err.detail,
-                    errors: err.errors,
+                    type: finalError.type,
+                    title: finalError.message,
+                    detail: finalError.detail,
+                    errors: finalError.errors,
                   }
                 : {}),
               nodeId: step.nodeId,
@@ -492,7 +601,7 @@ export class AgentTaskWorker extends WorkerHost {
         );
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
-      throw err;
+      throw finalError;
     }
   }
 
@@ -1444,6 +1553,82 @@ export class AgentTaskWorker extends WorkerHost {
 
   private isOrgRole(value: string): value is OrgRole {
     return ['owner', 'admin', 'creator', 'operator', 'viewer'].includes(value);
+  }
+
+  private isAuthenticationFailure(error: unknown): boolean {
+    return (
+      error instanceof LlmProviderException &&
+      error.extensions?.authenticationFailed === true
+    );
+  }
+
+  private getNextSmartRoutingContext(
+    smartRouting?: SmartRoutingRuntimeContext,
+  ): SmartRoutingRuntimeContext | undefined {
+    if (!smartRouting || smartRouting.strategy !== 'FALLBACK_CHAIN') {
+      return undefined;
+    }
+
+    const nextIndex = smartRouting.currentModelIndex + 1;
+    const nextModelId = smartRouting.candidateModelIds[nextIndex];
+    if (!nextModelId) {
+      return undefined;
+    }
+
+    return {
+      ...smartRouting,
+      currentModelIndex: nextIndex,
+      selectedModelId: nextModelId,
+    };
+  }
+
+  private buildFallbackRoutingDecision(
+    currentSmartRouting: SmartRoutingRuntimeContext | undefined,
+    nextSmartRouting: SmartRoutingRuntimeContext,
+    attempts: schema.ExecutionStepAttemptError[],
+    error: Error,
+  ) {
+    const orderedCandidateIds = [
+      ...nextSmartRouting.candidateModelIds.slice(nextSmartRouting.currentModelIndex),
+      ...nextSmartRouting.candidateModelIds.slice(0, nextSmartRouting.currentModelIndex),
+    ];
+    const evaluatedModelsById = new Map(
+      (nextSmartRouting.evaluatedModels ?? []).map((model) => [model.modelId, model]),
+    );
+    const attemptsSummary = attempts
+      .map((attempt) => `第 ${attempt.attempt} 次：${attempt.error}`)
+      .join('；');
+
+    return {
+      selectedModelId: nextSmartRouting.selectedModelId,
+      strategy: 'FALLBACK_CHAIN' as const,
+      reasoning: `FALLBACK_CHAIN：模型 ${currentSmartRouting?.selectedModelId ?? nextSmartRouting.selectedModelId} 调用失败（${error.message}），已切换到备用模型 ${nextSmartRouting.selectedModelId}。前序失败记录：${attemptsSummary}`,
+      evaluatedModels: orderedCandidateIds.map((modelId, index) => {
+        const existing = evaluatedModelsById.get(modelId);
+        if (existing) {
+          return {
+            ...existing,
+            score: Math.max(100 - index * 10, 0),
+            reasoning:
+              modelId === nextSmartRouting.selectedModelId
+                ? '上一候选失败后切换到当前模型'
+                : existing.reasoning,
+          };
+        }
+
+        return {
+          modelId,
+          modelName: modelId,
+          provider: 'fallback',
+          score: Math.max(100 - index * 10, 0),
+          reasoning:
+            modelId === nextSmartRouting.selectedModelId
+              ? '上一候选失败后切换到当前模型'
+              : '回退链候选模型',
+        };
+      }),
+      latencyMs: 0,
+    };
   }
 
   private shouldRetry(job: Job<AgentTaskJobData>): boolean {

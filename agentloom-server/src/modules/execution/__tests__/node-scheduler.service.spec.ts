@@ -181,6 +181,7 @@ describe('NodeSchedulerService', () => {
   let mockSmartRoutingService: {
     evaluate: ReturnType<typeof vi.fn>;
     recordDecision: ReturnType<typeof vi.fn>;
+    getHistoricalMetrics: ReturnType<typeof vi.fn>;
   };
   let mockRbacCacheService: {
     getUserRole: ReturnType<typeof vi.fn>;
@@ -247,12 +248,13 @@ describe('NodeSchedulerService', () => {
     mockSmartRoutingService = {
       evaluate: vi.fn().mockResolvedValue({
         selectedModelId: 'model-1',
-        strategy: 'fallback_chain',
+        strategy: 'FALLBACK_CHAIN',
         reasoning: 'mock smart routing decision',
         evaluatedModels: [],
         latencyMs: 0,
       }),
       recordDecision: vi.fn().mockResolvedValue(undefined),
+      getHistoricalMetrics: vi.fn().mockResolvedValue({}),
     };
     mockRbacCacheService = {
       getUserRole: vi.fn().mockResolvedValue('owner'),
@@ -394,16 +396,14 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: {},
         nodeData: { agentId: 'agent-a' },
-        hasSandbox: false,
-      });
+      }, undefined);
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
         stepId: 'step-b',
         tenantId: TENANT_ID,
         input: {},
         nodeData: { agentId: 'agent-b' },
-        hasSandbox: false,
-      });
+      }, undefined);
     });
 
     it('空图时直接更新 execution 状态', async () => {
@@ -463,8 +463,7 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: { A: { answer: 'hello' } },
         nodeData: { agentId: 'agent-b' },
-        hasSandbox: false,
-      });
+      }, undefined);
     });
 
     it('data_transform 节点会直接内联执行，不进入 queued', async () => {
@@ -643,7 +642,7 @@ describe('NodeSchedulerService', () => {
         input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
         nodeData: { agentId: 'agent-1' },
         hasSandbox: true,
-      });
+      }, undefined);
     });
 
     it('agent 节点无 sandbox 上游时 hasSandbox 应为 false', async () => {
@@ -677,8 +676,234 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
         input: { A: { answer: 'hello' } },
         nodeData: { agentId: 'agent-b' },
-        hasSandbox: false,
+      }, undefined);
+    });
+
+    it('smart-routing 节点会默认使用 FALLBACK_CHAIN，并产出完整运行时 metadata', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('A', 'llm-model'),
+          makeNode('B', 'llm-model'),
+          makeNode('R', 'smart-routing'),
+        ],
+        [makeEdge('A', 'R', undefined, 'primary'), makeEdge('B', 'R', undefined, 'secondary')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { llmModelConfigId: 'model-1' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          status: 'completed',
+          result: { llmModelConfigId: 'model-2' },
+        }),
+        makeStep({
+          id: 'step-r',
+          nodeId: 'R',
+          status: 'pending',
+          nodeType: 'smart-routing',
+          nodeData: {},
+        }),
+      ];
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockSmartRoutingService.evaluate.mockResolvedValueOnce({
+        selectedModelId: 'model-2',
+        strategy: 'FALLBACK_CHAIN',
+        reasoning: 'mock smart routing decision',
+        evaluatedModels: [
+          {
+            modelId: 'model-2',
+            modelName: 'claude-sonnet-4-20250514',
+            provider: 'anthropic',
+            score: 100,
+            reasoning: 'fallback #1',
+          },
+          {
+            modelId: 'model-1',
+            modelName: 'gpt-4o',
+            provider: 'openai',
+            score: 90,
+            reasoning: 'fallback #2',
+          },
+        ],
+        latencyMs: 7,
       });
+
+      await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
+
+      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
+        ['model-1', 'model-2'],
+        expect.objectContaining({
+          inputTokenCount: expect.any(Number),
+          tokenThreshold: 4096,
+        }),
+        'FALLBACK_CHAIN',
+        TENANT_ID,
+      );
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
+        'step-r',
+        TENANT_ID,
+        'R',
+        expect.objectContaining({ selectedModelId: 'model-2' }),
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-r',
+        'completed',
+        {
+          result: expect.objectContaining({
+            selectedModelId: 'model-2',
+            llmModelConfigId: 'model-2',
+            routingStepId: 'step-r',
+            routingNodeId: 'R',
+            candidateModelIds: ['model-2', 'model-1'],
+            currentModelIndex: 0,
+            tokenThreshold: 4096,
+            inputTokenCount: expect.any(Number),
+          }),
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-r',
+        TENANT_ID,
+      );
+    });
+
+    it('HISTORICAL_BEST 会在调度前注入近 30 天历史指标', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A', 'llm-model'), makeNode('R', 'smart-routing')],
+        [makeEdge('A', 'R', undefined, 'primary')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { llmModelConfigId: 'model-1' },
+        }),
+        makeStep({
+          id: 'step-r',
+          nodeId: 'R',
+          status: 'pending',
+          nodeType: 'smart-routing',
+          nodeData: {
+            strategy: 'HISTORICAL_BEST',
+            modelConfigIds: ['model-1', 'model-2'],
+            tokenThreshold: 8192,
+          },
+        }),
+      ];
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+      mockSmartRoutingService.getHistoricalMetrics.mockResolvedValueOnce({
+        'model-1': {
+          successRate: 0.9,
+          avgLatencyMs: 120,
+          avgTokenUsage: 0,
+          lastUsedAt: '2024-12-31T00:00:00.000Z',
+        },
+      });
+
+      await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
+
+      expect(mockSmartRoutingService.getHistoricalMetrics).toHaveBeenCalledWith(
+        TENANT_ID,
+        'R',
+      );
+      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
+        ['model-1', 'model-2'],
+        expect.objectContaining({
+          tokenThreshold: 8192,
+          historicalMetrics: {
+            'model-1': {
+              successRate: 0.9,
+              avgLatencyMs: 120,
+              avgTokenUsage: 0,
+              lastUsedAt: '2024-12-31T00:00:00.000Z',
+            },
+          },
+        }),
+        'HISTORICAL_BEST',
+        TENANT_ID,
+      );
+    });
+
+    it('agent 节点会继承 smart-routing 输出的 llmModelConfigId，并在 FALLBACK_CHAIN 下强制 attempts=1', async () => {
+      const routingResult = {
+        selectedModelId: 'model-2',
+        llmModelConfigId: 'model-2',
+        strategy: 'FALLBACK_CHAIN',
+        reasoning: 'mock smart routing decision',
+        evaluatedModels: [],
+        latencyMs: 7,
+        routingStepId: 'step-r',
+        routingNodeId: 'R',
+        candidateModelIds: ['model-2', 'model-1'],
+        currentModelIndex: 0,
+        inputTokenCount: 42,
+        tokenThreshold: 4096,
+      };
+      const snapshot = makeSnapshot(
+        [makeNode('R', 'smart-routing'), makeNode('A', 'agent')],
+        [makeEdge('R', 'A')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-r',
+          nodeId: 'R',
+          status: 'completed',
+          nodeType: 'smart-routing',
+          result: routingResult,
+        }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-a' },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: 'step-a',
+          tenantId: TENANT_ID,
+          input: {
+            R: expect.objectContaining({
+              selectedModelId: 'model-2',
+              routingStepId: 'step-r',
+              routingNodeId: 'R',
+              candidateModelIds: ['model-2', 'model-1'],
+              currentModelIndex: 0,
+              strategy: 'FALLBACK_CHAIN',
+            }),
+          },
+          nodeData: { agentId: 'agent-a', llmModelConfigId: 'model-2' },
+          smartRouting: expect.objectContaining({
+            routingStepId: 'step-r',
+            routingNodeId: 'R',
+            strategy: 'FALLBACK_CHAIN',
+            candidateModelIds: ['model-2', 'model-1'],
+            currentModelIndex: 0,
+            selectedModelId: 'model-2',
+          }),
+        }),
+        { attempts: 1 },
+      );
     });
 
     it('should mark step as failed with typeMismatch when port types are incompatible', async () => {

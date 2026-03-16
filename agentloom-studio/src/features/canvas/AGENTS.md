@@ -80,7 +80,7 @@ WorkflowCanvasPage.tsx
 
 ## 注意事项
 
-- `connectionCompatibility.ts` 已完成 Story 2-4a 接线：`isValidConnection()` 只读同步 guard/cache，不发起慢检查
+- `connectionCompatibility.ts`：`isValidConnection()` 只读同步 guard/cache，不发起慢检查
 - `WorkflowCanvas` 在 `onConnectStart` / hover 采用 cache-first + async evaluate，必要时展示 `checking`
 - `onConnect` 必须先 await 最终兼容性再落边，`checking` 不得持久化进 `edge.data`；若 cache miss 后最终结果为 `INCOMPATIBLE`，仍需通过持久化错误反馈（当前为 toast）展示 canonical reason，不能只依赖瞬时 preview
 - `canvasStore.updateNodeData()` 仅在 `inputPorts/outputPorts` 契约签名变化时触发相邻边重算；`refreshEdgeCompatibility()` 会更新 `edge.data` 并标脏供 autosave 保存
@@ -89,7 +89,7 @@ WorkflowCanvasPage.tsx
 - `FieldMappingPanel` 的摘要与“必填未映射”统计必须直接消费 canonical `edge.data.missingFields` / `mappingSummary`，不要从 target schema 重新推导兼容性差异
 - `FieldMappingPanel.acceptAllCandidates()` 需要先按 `targetPath` 择优去重（优先 `autoRecommended`，其次更高 `confidence`），保证同一 target 最多接受一条推荐映射
 - `FieldMappingPanel` 已升级为 L2：使用 `NestedFieldTree` 树形展示（取代 flat list），集成 `generateSuggestions()` 智能建议（Top-3、≥0.70 可自动应用）+ `MappingSuggestionCard` + `CoercionConfigPopover`（text↔json 类型不匹配时展示）+ Ctrl/Cmd 批量多选拖拽 + undo 支持（`canvasStore.saveMappingSnapshot/undoFieldMapping`）
-- Story 8.1 收口要求：`fieldSuggestionEngine.ts` 的 Levenshtein / token overlap 需支持 Unicode，类型兼容性需区分 `json:object` 与 `json:array`；`FieldMappingPanel` 对 coercible 映射必须先进入确认流、取消时回滚快照，不兼容目标需显示禁止态并 toast 拒绝；批量拖拽匹配顺序为“精确名称 → 归一化名称 → 顺序兜底”，apply-all 需过滤 incompatible 并展示确认摘要与撤销提示
+- `fieldSuggestionEngine.ts` 的 Levenshtein / token overlap 需支持 Unicode，类型兼容性需区分 `json:object` 与 `json:array`；`FieldMappingPanel` 对 coercible 映射必须先进入确认流、取消时回滚快照，不兼容目标需显示禁止态并 toast 拒绝；批量拖拽匹配顺序为“精确名称 → 归一化名称 → 顺序兜底”，apply-all 需过滤 incompatible 并展示确认摘要与撤销提示
 - `NestedFieldTree` 组件支持 `suggestedPaths`/`onFieldDragOver`/`onFieldDrop`/`renderFieldSuffix`/`disableLeafInteraction` 5 个可选 backward-compat props
 - `agentloom-studio/vite.config.ts` 通过 `server.fs.allow = [path.resolve(__dirname, '..')]` 放行 sibling `agentloom-type-engine/pkg` wasm，避免 Vite dev 下 `@fs/...agentloom_type_engine_bg.wasm` 被 403 拒绝
 - `canvasStore` 自动清理：删除 edge 时同步清理 binding mapping

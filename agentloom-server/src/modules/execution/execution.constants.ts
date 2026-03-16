@@ -1,3 +1,8 @@
+import type {
+  RoutingDecisionResult,
+  RoutingStrategy,
+} from '../smart-routing/dto/routing-context.dto';
+
 export const EXECUTION_QUEUE = 'workflow-execution';
 export const AGENT_TASK_QUEUE = 'agent-task';
 
@@ -41,6 +46,16 @@ export interface ToolPermissionResolution {
   action: ToolPermissionAction;
 }
 
+export interface SmartRoutingRuntimeContext {
+  routingStepId: string;
+  routingNodeId: string;
+  strategy: RoutingStrategy;
+  candidateModelIds: string[];
+  currentModelIndex: number;
+  selectedModelId: string;
+  evaluatedModels?: RoutingDecisionResult['evaluatedModels'];
+}
+
 /**
  * AgentTaskWorker 消费的任务数据结构。
  */
@@ -50,6 +65,7 @@ export interface AgentTaskJobData {
   tenantId: string;
   input?: Record<string, unknown>;
   nodeData?: Record<string, unknown>;
+  smartRouting?: SmartRoutingRuntimeContext;
   workflowContext?: Record<string, unknown>;
   /** 干预恢复时传入已有会话 ID */
   resumeSessionId?: string;
