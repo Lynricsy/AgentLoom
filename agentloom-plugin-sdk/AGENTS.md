@@ -26,8 +26,9 @@ src/
 │   ├── *.test.ts             # helper 与 type guard Vitest 单测
 │   └── index.ts              # helpers barrel
 └── signing/
-    ├── sign.ts               # computeContentHash (SHA-256 hex) + signArchive (RSA-PSS+SHA-256)
-    ├── verify.ts             # verifyArchiveSignature (失败时返回 false 而非抛异常)
+    ├── archive.ts            # canonical archive payload / manifest 读写 / key fingerprint
+    ├── sign.ts               # 基于 canonical archive payload 计算 contentHash + RSA-PSS 签名
+    ├── verify.ts             # 基于 canonical archive payload 验签 (失败时返回 false 而非抛异常)
     ├── signing.test.ts       # sign/verify Vitest 单测
     └── index.ts              # signing barrel
 ```
@@ -51,7 +52,7 @@ src/
 | 扩展校验返回结构 | `src/validation/validate-manifest.ts` + `src/validation/validate-manifest.test.ts` | `validateManifest()` 输出 `ValidationResult`，direct test 验证 safeParse 包装 |
 | 添加开发者辅助函数 | `src/helpers/` | 同步补 Vitest 覆盖 |
 | 补充 SDK 单测 | `src/validation/*.test.ts` + `src/helpers/*.test.ts` | 使用 Vitest，覆盖 schema / helper / type guard |
-| 签名/验证插件归档 | `src/signing/sign.ts` + `src/signing/verify.ts` | RSA-PSS SHA-256，node:crypto 内置，无额外依赖 |
+| 签名/验证插件归档 | `src/signing/archive.ts` + `src/signing/sign.ts` + `src/signing/verify.ts` | 基于 canonical unsigned archive payload 的 SHA-256 / RSA-PSS；使用 `jszip` 读取/改写 `manifest.json` |
 
 ## 约定
 
@@ -59,7 +60,8 @@ src/
 - `PluginManifest.id` 使用 reverse-domain 格式，如 `com.example.my-plugin`
 - `version` 与 `minPlatformVersion` 通过 `semver.valid()` 校验
 - `permissions` 默认空数组；未知 manifest 字段由 Zod object 默认 strip
-- `PluginManifest` 可选签名字段：`signature`（RSA-PSS base64）、`contentHash`（SHA-256 hex 64字符）、`developerKeyFingerprint`（SHA-256 hex 64字符）、`wasmEntry`、`sandbox`
+- `PluginManifest` 可选签名字段：`signature`（RSA-PSS base64）、`contentHash`（canonical unsigned archive payload 的 SHA-256 hex 64字符）、`developerKeyFingerprint`（SHA-256 hex 64字符）、`wasmEntry`、`sandbox`
+- `wasmEntry` 必须匹配 `.wasm` 后缀；SDK 签名 helper 会在 canonical payload 中剥离 `signature` / `contentHash` / `developerKeyFingerprint` 后再计算哈希与签名
 - `defineNode()` 只做 identity + `Object.freeze()`，不做深冻结
 - 公开接口与类型守卫避免暴露 `any`
 

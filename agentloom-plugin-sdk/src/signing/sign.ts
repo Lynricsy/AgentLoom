@@ -1,12 +1,19 @@
-import { constants, createHash, createSign } from 'node:crypto';
+import { constants, createSign } from 'node:crypto';
 
-export function computeContentHash(data: Buffer | Uint8Array): string {
-  return createHash('sha256').update(data).digest('hex');
+import { computeSha256Hex, createCanonicalArchivePayload } from './archive';
+
+export async function computeContentHash(data: Buffer | Uint8Array): Promise<string> {
+  const canonicalPayload = await createCanonicalArchivePayload(data);
+  return computeSha256Hex(canonicalPayload);
 }
 
-export function signArchive(data: Buffer | Uint8Array, privateKeyPem: string): string {
+export async function signArchive(
+  data: Buffer | Uint8Array,
+  privateKeyPem: string,
+): Promise<string> {
+  const canonicalPayload = await createCanonicalArchivePayload(data);
   const sign = createSign('SHA256');
-  sign.update(data);
+  sign.update(canonicalPayload);
   sign.end();
 
   return sign.sign(

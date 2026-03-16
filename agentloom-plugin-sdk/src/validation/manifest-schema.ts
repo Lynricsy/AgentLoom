@@ -52,7 +52,9 @@ export const PluginManifestSchema = z
       .string()
       .regex(/^[a-f0-9]{64}$/, { message: '必须是 64 字符的 SHA-256 hex 字符串。' })
       .optional(),
-    wasmEntry: NonEmptyStringSchema.optional(),
+    wasmEntry: NonEmptyStringSchema.regex(/\.wasm$/i, {
+      message: '必须指向 .wasm 文件路径。',
+    }).optional(),
     sandbox: z
       .object({
         allowedHosts: z.array(z.string()).optional(),

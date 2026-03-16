@@ -1,20 +1,23 @@
 import { constants, createVerify } from 'node:crypto';
 
-export function verifyArchiveSignature(
+import { createCanonicalArchivePayload } from './archive';
+
+export async function verifyArchiveSignature(
   data: Buffer | Uint8Array,
   signatureBase64: string,
   publicKeyPem: string,
-): boolean {
+): Promise<boolean> {
   try {
+    const canonicalPayload = await createCanonicalArchivePayload(data);
     const verify = createVerify('SHA256');
-    verify.update(data);
+    verify.update(canonicalPayload);
     verify.end();
 
     return verify.verify(
       {
         key: publicKeyPem,
         padding: constants.RSA_PKCS1_PSS_PADDING,
-        saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+        saltLength: constants.RSA_PSS_SALTLEN_AUTO,
       },
       Buffer.from(signatureBase64, 'base64'),
     );

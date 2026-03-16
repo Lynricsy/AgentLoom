@@ -36,4 +36,19 @@ describe('validateManifest', () => {
       );
     }
   });
+
+  it('rejects invalid wasmEntry suffixes', () => {
+    const result = validateManifest({
+      ...validManifest,
+      wasmEntry: 'dist/plugin.js',
+    });
+
+    expect(result.valid).toBe(false);
+
+    if (!result.valid) {
+      expect(result.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining('wasmEntry')]),
+      );
+    }
+  });
 });
