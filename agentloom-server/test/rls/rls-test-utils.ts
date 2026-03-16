@@ -2,14 +2,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
-import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import * as schema from '../../src/database/schema/index';
 
-export type DrizzleDB = PostgresJsDatabase<typeof schema>;
+import type { DrizzleDB } from '../../src/database/database.module';
+export type { DrizzleDB };
 export type TestSql = ReturnType<typeof postgres>;
 export type OrganizationRole = (typeof schema.orgRoleEnum.enumValues)[number];
 
