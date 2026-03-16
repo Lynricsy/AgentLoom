@@ -27,6 +27,7 @@ describe('RedisPubSubService', () => {
   let mockCacheService: Record<string, ReturnType<typeof vi.fn>>;
 
   async function getSubscriberMock(): Promise<{
+    status: string;
     subscribe: ReturnType<typeof vi.fn>;
     unsubscribe: ReturnType<typeof vi.fn>;
     quit: ReturnType<typeof vi.fn>;
@@ -40,6 +41,7 @@ describe('RedisPubSubService', () => {
     expect(latestResult?.value).toBeDefined();
 
     return latestResult.value as {
+      status: string;
       subscribe: ReturnType<typeof vi.fn>;
       unsubscribe: ReturnType<typeof vi.fn>;
       quit: ReturnType<typeof vi.fn>;

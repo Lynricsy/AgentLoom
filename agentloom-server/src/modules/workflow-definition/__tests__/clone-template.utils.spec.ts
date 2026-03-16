@@ -4,7 +4,7 @@ import type {
   ReactFlowEdge,
   ReactFlowNode,
   ReactFlowViewport,
-} from '../../../../database/schema/workflow-definitions.schema';
+} from '../../../database/schema/workflow-definitions.schema';
 import {
   cloneDefinitionWithNewIds,
   type CloneableDefinition,

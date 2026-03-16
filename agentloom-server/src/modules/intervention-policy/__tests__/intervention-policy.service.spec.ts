@@ -66,7 +66,7 @@ describe('InterventionPolicyService', () => {
     };
 
     service = new InterventionPolicyService(
-      db as ConstructorParameters<typeof InterventionPolicyService>[0],
+      db as unknown as ConstructorParameters<typeof InterventionPolicyService>[0],
     );
   });
 

@@ -5,7 +5,14 @@ import { REDIS_CLIENT } from '../redis.constants';
 
 describe('RedisCacheService', () => {
   let service: RedisCacheService;
-  let mockRedis: Record<string, ReturnType<typeof vi.fn>>;
+  let mockRedis: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
+    keys: ReturnType<typeof vi.fn>;
+    quit: ReturnType<typeof vi.fn>;
+    status: string;
+  };
 
   beforeEach(async () => {
     mockRedis = {

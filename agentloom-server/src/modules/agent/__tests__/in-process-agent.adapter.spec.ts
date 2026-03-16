@@ -157,7 +157,7 @@ describe('InProcessAgentAdapter', () => {
     it('会保留 workflow 上下文和 runtime 元信息', async () => {
       const mcpServers = {
         filesystem: {
-          transport: 'stdio',
+          transportType: 'stdio' as const,
           command: 'npx',
           args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
         },

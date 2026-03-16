@@ -21,7 +21,7 @@ function createSocket(overrides: Record<string, unknown> = {}) {
   return {
     id: 'socket-1',
     handshake: { auth: {}, headers: {} },
-    data: {},
+    data: {} as Record<string, unknown>,
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     ...overrides,

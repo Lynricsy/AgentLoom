@@ -35,7 +35,7 @@ function createToken(payload: Record<string, unknown>): string {
 function createClient(overrides: Record<string, unknown> = {}) {
   return {
     handshake: { auth: {}, headers: {} },
-    data: {},
+    data: {} as Record<string, unknown>,
     ...overrides,
   };
 }
