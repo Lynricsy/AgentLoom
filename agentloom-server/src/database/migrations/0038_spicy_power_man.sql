@@ -167,10 +167,30 @@ CREATE UNIQUE INDEX "uq_tenant_encryption_keys_org_fingerprint" ON "tenant_encry
 CREATE UNIQUE INDEX "uq_tenant_encryption_keys_org_active" ON "tenant_encryption_keys" USING btree ("organization_id") WHERE "tenant_encryption_keys"."status" = 'active';--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_marketplace_listings_workflow_version_id" ON "marketplace_listings" USING btree ("workflow_version_id") WHERE workflow_version_id IS NOT NULL;--> statement-breakpoint
 ALTER TABLE "marketplace_listings" ADD CONSTRAINT "marketplace_listings_price_per_execution_non_negative" CHECK ("marketplace_listings"."price_per_execution" IS NULL OR "marketplace_listings"."price_per_execution" >= 0);--> statement-breakpoint
-CREATE POLICY "agent_execution_records_select_policy" ON "agent_execution_records" AS PERMISSIVE FOR SELECT TO "authenticated" USING (tenant_id = get_tenant_id());--> statement-breakpoint
-CREATE POLICY "agent_execution_records_insert_policy" ON "agent_execution_records" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
-CREATE POLICY "agent_execution_records_update_policy" ON "agent_execution_records" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (tenant_id = get_tenant_id()) WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
-CREATE POLICY "agent_execution_records_delete_policy" ON "agent_execution_records" AS PERMISSIVE FOR DELETE TO "authenticated" USING (tenant_id = get_tenant_id());--> statement-breakpoint
+CREATE POLICY "agent_execution_records_select_policy" ON "agent_execution_records" AS PERMISSIVE FOR SELECT TO "authenticated" USING (EXISTS (
+    SELECT 1 FROM "workflow_executions"
+    WHERE "workflow_executions"."id" = "agent_execution_records"."execution_id"
+    AND "workflow_executions".tenant_id = get_tenant_id()
+  ));--> statement-breakpoint
+CREATE POLICY "agent_execution_records_insert_policy" ON "agent_execution_records" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (EXISTS (
+    SELECT 1 FROM "workflow_executions"
+    WHERE "workflow_executions"."id" = "agent_execution_records"."execution_id"
+    AND "workflow_executions".tenant_id = get_tenant_id()
+  ));--> statement-breakpoint
+CREATE POLICY "agent_execution_records_update_policy" ON "agent_execution_records" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (EXISTS (
+    SELECT 1 FROM "workflow_executions"
+    WHERE "workflow_executions"."id" = "agent_execution_records"."execution_id"
+    AND "workflow_executions".tenant_id = get_tenant_id()
+  )) WITH CHECK (EXISTS (
+    SELECT 1 FROM "workflow_executions"
+    WHERE "workflow_executions"."id" = "agent_execution_records"."execution_id"
+    AND "workflow_executions".tenant_id = get_tenant_id()
+  ));--> statement-breakpoint
+CREATE POLICY "agent_execution_records_delete_policy" ON "agent_execution_records" AS PERMISSIVE FOR DELETE TO "authenticated" USING (EXISTS (
+    SELECT 1 FROM "workflow_executions"
+    WHERE "workflow_executions"."id" = "agent_execution_records"."execution_id"
+    AND "workflow_executions".tenant_id = get_tenant_id()
+  ));--> statement-breakpoint
 CREATE POLICY "plugin_developer_keys_select_policy" ON "plugin_developer_keys" AS PERMISSIVE FOR SELECT TO "authenticated" USING (tenant_id = get_tenant_id());--> statement-breakpoint
 CREATE POLICY "plugin_developer_keys_insert_policy" ON "plugin_developer_keys" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
 CREATE POLICY "plugin_developer_keys_update_policy" ON "plugin_developer_keys" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (tenant_id = get_tenant_id()) WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
@@ -190,4 +210,10 @@ CREATE POLICY "plugins_delete_policy" ON "plugins" AS PERMISSIVE FOR DELETE TO "
 CREATE POLICY "routing_decisions_select_policy" ON "routing_decisions" AS PERMISSIVE FOR SELECT TO "authenticated" USING (tenant_id = get_tenant_id());--> statement-breakpoint
 CREATE POLICY "routing_decisions_insert_policy" ON "routing_decisions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
 CREATE POLICY "routing_decisions_update_policy" ON "routing_decisions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (tenant_id = get_tenant_id()) WITH CHECK (tenant_id = get_tenant_id());--> statement-breakpoint
-CREATE POLICY "routing_decisions_delete_policy" ON "routing_decisions" AS PERMISSIVE FOR DELETE TO "authenticated" USING (tenant_id = get_tenant_id());
+CREATE POLICY "routing_decisions_delete_policy" ON "routing_decisions" AS PERMISSIVE FOR DELETE TO "authenticated" USING (tenant_id = get_tenant_id());--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "agent_execution_records" TO "authenticated";--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "plugin_developer_keys" TO "authenticated";--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "plugin_earnings" TO "authenticated";--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "plugin_usage_records" TO "authenticated";--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "plugins" TO "authenticated";--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON "routing_decisions" TO "authenticated";

@@ -7,6 +7,8 @@ import { runInTenantTransaction } from '../../common/interceptors/tenant-transac
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
+import { PluginEarningsService } from './plugin-earnings.service';
+import { PluginUsageService } from './plugin-usage.service';
 import { EARNINGS_SETTLEMENT_QUEUE } from './plugin.constants';
 
 export interface EarningsSettlementJobData {
@@ -37,24 +39,6 @@ interface CreateEarningsRecordData {
   listingCommission: string;
   currency: string;
   metadata?: Record<string, unknown>;
-}
-
-interface PluginUsageService {
-  getUsageByPluginForPeriod(
-    orgId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<UsageByPluginForPeriod[]>;
-}
-
-interface PluginEarningsService {
-  findExistingEarning(
-    pluginDbId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<schema.PluginEarning | null>;
-
-  createEarningsRecord(data: CreateEarningsRecordData): Promise<unknown>;
 }
 
 const REVENUE_SPLIT = {
@@ -119,7 +103,6 @@ export class EarningsSettlementWorker extends WorkerHost {
         );
 
         await this.pluginEarningsService.createEarningsRecord({
-          tenantId,
           pluginDbId: usage.pluginDbId,
           pluginId: usage.pluginId,
           orgId,
@@ -131,6 +114,7 @@ export class EarningsSettlementWorker extends WorkerHost {
           platformShare: amounts.platformShare,
           listingCommission: amounts.listingCommission,
           currency: 'USD',
+          payoutStatus: 'pending',
           metadata: {
             pricingModel: listing.pricingModel,
             pricePerExecution: listing.pricePerExecution ?? '0',

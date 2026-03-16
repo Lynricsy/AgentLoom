@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { createDirectTenantPolicies } from './rls-policies';
+import { createJoinTenantPolicies } from './rls-policies';
 import { workflowExecutions } from './workflow-executions.schema';
 import { executionSteps } from './execution-steps.schema';
 
@@ -93,7 +93,11 @@ export const agentExecutionRecords = pgTable(
     index('idx_execution_records_step_id').on(table.stepId),
     index('idx_execution_records_record_type').on(table.recordType),
     index('idx_execution_records_created_at').on(table.createdAt),
-    ...createDirectTenantPolicies('agent_execution_records'),
+    ...createJoinTenantPolicies(
+      'agent_execution_records',
+      'execution_id',
+      'workflow_executions',
+    ),
   ],
 );
 

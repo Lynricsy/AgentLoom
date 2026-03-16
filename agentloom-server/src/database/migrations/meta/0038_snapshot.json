@@ -1,5 +1,5 @@
 {
-  "id": "f3b6ec69-4720-427b-b485-a6f148101eae",
+  "id": "fcf06305-3c04-45d1-a9c7-90efdf681c20",
   "prevId": "ec862185-fb9e-4b99-bb1d-b40217769438",
   "version": "7",
   "dialect": "postgresql",
@@ -154,7 +154,7 @@
           "to": [
             "authenticated"
           ],
-          "using": "tenant_id = get_tenant_id()"
+          "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"agent_execution_records\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
         "agent_execution_records_insert_policy": {
           "name": "agent_execution_records_insert_policy",
@@ -163,7 +163,7 @@
           "to": [
             "authenticated"
           ],
-          "withCheck": "tenant_id = get_tenant_id()"
+          "withCheck": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"agent_execution_records\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
         "agent_execution_records_update_policy": {
           "name": "agent_execution_records_update_policy",
@@ -172,8 +172,8 @@
           "to": [
             "authenticated"
           ],
-          "using": "tenant_id = get_tenant_id()",
-          "withCheck": "tenant_id = get_tenant_id()"
+          "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"agent_execution_records\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )",
+          "withCheck": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"agent_execution_records\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
         "agent_execution_records_delete_policy": {
           "name": "agent_execution_records_delete_policy",
@@ -182,7 +182,7 @@
           "to": [
             "authenticated"
           ],
-          "using": "tenant_id = get_tenant_id()"
+          "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"agent_execution_records\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         }
       },
       "checkConstraints": {},

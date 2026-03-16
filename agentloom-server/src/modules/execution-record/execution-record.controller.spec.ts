@@ -6,7 +6,6 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
-import { DomainException } from '../../common/exceptions/domain.exception';
 import { ExecutionRecordController } from './execution-record.controller';
 import { ExecutionRecordService } from './execution-record.service';
 
@@ -67,7 +66,7 @@ describe('ExecutionRecordController', () => {
     await moduleRef.close();
   });
 
-  it('should validate and delegate queries with all supported params', async () => {
+  it('should delegate queries with all supported params to service', async () => {
     const response = {
       data: [
         {
@@ -94,8 +93,8 @@ describe('ExecutionRecordController', () => {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
         recordType: 'step_telemetry',
-        limit: '10',
-        offset: '20',
+        limit: 10,
+        offset: 20,
       }),
     ).resolves.toEqual(response);
 
@@ -108,7 +107,7 @@ describe('ExecutionRecordController', () => {
     });
   });
 
-  it('should apply default pagination when only executionId is provided', async () => {
+  it('should delegate with minimal params when only executionId is provided', async () => {
     const response = {
       data: [],
       meta: {
@@ -128,51 +127,7 @@ describe('ExecutionRecordController', () => {
 
     expect(mockService.findByExecution).toHaveBeenCalledWith(TENANT_ID, {
       executionId: EXECUTION_ID,
-      limit: 50,
-      offset: 0,
     });
-  });
-
-  it('should throw DomainException when executionId is not a UUID', async () => {
-    await expect(
-      invokeFindByExecution(controller, TENANT_ID, {
-        executionId: 'not-a-uuid',
-        limit: '5',
-        offset: '0',
-      }),
-    ).rejects.toMatchObject({
-      constructor: DomainException,
-      type: 'validation-error',
-      detail: 'The query parameters provided are invalid',
-      errors: expect.arrayContaining([
-        expect.objectContaining({
-          field: 'executionId',
-        }),
-      ]),
-    });
-
-    expect(mockService.findByExecution).not.toHaveBeenCalled();
-  });
-
-  it('should throw DomainException when limit is negative', async () => {
-    await expect(
-      invokeFindByExecution(controller, TENANT_ID, {
-        executionId: EXECUTION_ID,
-        limit: '-1',
-        offset: '0',
-      }),
-    ).rejects.toMatchObject({
-      constructor: DomainException,
-      type: 'validation-error',
-      detail: 'The query parameters provided are invalid',
-      errors: expect.arrayContaining([
-        expect.objectContaining({
-          field: 'limit',
-        }),
-      ]),
-    });
-
-    expect(mockService.findByExecution).not.toHaveBeenCalled();
   });
 
   it('should declare the expected roles metadata', () => {
