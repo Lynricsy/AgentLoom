@@ -230,3 +230,11 @@ export {
   type PluginEarning,
   type NewPluginEarning,
 } from './plugin-earnings.schema';
+export {
+  recordTypeEnum,
+  agentExecutionRecords,
+  type AgentExecutionRecord,
+  type NewAgentExecutionRecord,
+  type StepTelemetryData,
+  type ExecutionSummaryData,
+} from './execution-records.schema';
