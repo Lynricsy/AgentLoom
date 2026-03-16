@@ -43,5 +43,22 @@ export const PluginManifestSchema = z
     icon: NonEmptyStringSchema.optional(),
     homepage: NonEmptyStringSchema.optional(),
     repository: NonEmptyStringSchema.optional(),
+    signature: z.string().optional(),
+    contentHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/, { message: '必须是 64 字符的 SHA-256 hex 字符串。' })
+      .optional(),
+    developerKeyFingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/, { message: '必须是 64 字符的 SHA-256 hex 字符串。' })
+      .optional(),
+    wasmEntry: NonEmptyStringSchema.optional(),
+    sandbox: z
+      .object({
+        allowedHosts: z.array(z.string()).optional(),
+        maxMemoryPages: z.number().int().positive().optional(),
+        timeoutMs: z.number().int().positive().optional(),
+      })
+      .optional(),
   })
   .strip();

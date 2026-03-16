@@ -63,4 +63,21 @@ export interface PluginManifest {
   homepage?: string;
   /** 仓库地址。 */
   repository?: string;
+  /** RSA-PSS 签名 (base64)。 */
+  signature?: string;
+  /** 归档文件内容哈希 (SHA-256 hex)。 */
+  contentHash?: string;
+  /** 开发者密钥指纹 (SHA-256 hex)。 */
+  developerKeyFingerprint?: string;
+  /** WASM 入口文件路径 (相对于归档根目录)。 */
+  wasmEntry?: string;
+  /** WASM 沙箱配置。 */
+  sandbox?: {
+    /** 允许的 HTTP 主机白名单。 */
+    allowedHosts?: string[];
+    /** 最大内存页数 (1页=64KB, 默认 4096=256MB)。 */
+    maxMemoryPages?: number;
+    /** 执行超时毫秒 (默认 30000)。 */
+    timeoutMs?: number;
+  };
 }

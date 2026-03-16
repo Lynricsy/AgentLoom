@@ -34,7 +34,7 @@ src/
 - `dist/index.d.ts` — ESM 类型声明
 - `dist/index.d.cts` — CJS 类型声明
 
-`package.json` 仅发布 `dist/`，由 `tsup` 从 `src/index.ts` 统一构建。
+`package.json` 仅发布 `dist/`，由 `tsup` 从 `src/index.ts` 统一构建。本地 `file:` 依赖通过 `prepare` / `prepack` 自动生成 `dist/`，供 sibling packages 直接解析包入口。
 
 ## 在哪找什么
 
@@ -43,7 +43,7 @@ src/
 | 调整插件 manifest 字段或权限 | `src/types/manifest.ts` + `src/validation/manifest-schema.ts` | 权限枚举与 Zod 规则需同步 |
 | 修改端口 canonical 类型 | `src/types/port.ts` | 必须保持 `model|text|json|image|audio|tool|sandbox|knowledge` |
 | 增加节点接口或执行上下文 | `src/types/node.ts` / `src/types/execution.ts` | public API 只暴露 `unknown`，不暴露 `any` |
-| 扩展校验返回结构 | `src/validation/validate-manifest.ts` | `validateManifest()` 输出 `ValidationResult` |
+| 扩展校验返回结构 | `src/validation/validate-manifest.ts` + `src/validation/validate-manifest.test.ts` | `validateManifest()` 输出 `ValidationResult`，direct test 验证 safeParse 包装 |
 | 添加开发者辅助函数 | `src/helpers/` | 同步补 Vitest 覆盖 |
 | 补充 SDK 单测 | `src/validation/*.test.ts` + `src/helpers/*.test.ts` | 使用 Vitest，覆盖 schema / helper / type guard |
 
@@ -65,7 +65,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Vitest 测试位于 `src/**/*.test.ts`。`tsconfig.json` 开启 `strict`、`noUncheckedIndexedAccess`、`noUnusedLocals`、`noUnusedParameters`。
+Vitest 测试位于 `src/**/*.test.ts`。`tsconfig.json` 开启 `strict`，`moduleResolution` 为 `Bundler`，运行时产物由 `tsup` 负责输出到 `dist/`。
 
 ## 对齐约束
 
