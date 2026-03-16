@@ -36,6 +36,8 @@ import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { RbacCacheService } from '../../../common/services/rbac-cache.service';
+import { PluginService } from '../../plugin/plugin.service';
+import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -163,6 +165,10 @@ describe('NodeSchedulerService', () => {
     add: ReturnType<typeof vi.fn>;
     getJob: ReturnType<typeof vi.fn>;
   };
+  let mockPluginQueue: {
+    add: ReturnType<typeof vi.fn>;
+    getJob: ReturnType<typeof vi.fn>;
+  };
   let mockSandboxService: {
     createSandboxSession: ReturnType<typeof vi.fn>;
     getSandboxSession: ReturnType<typeof vi.fn>;
@@ -185,6 +191,9 @@ describe('NodeSchedulerService', () => {
   };
   let mockRbacCacheService: {
     getUserRole: ReturnType<typeof vi.fn>;
+  };
+  let mockPluginService: {
+    findActiveByPluginId: ReturnType<typeof vi.fn>;
   };
 
   beforeAll(() => {
@@ -217,6 +226,10 @@ describe('NodeSchedulerService', () => {
       markExecutionFailed: vi.fn().mockResolvedValue(undefined),
     };
     mockQueue = {
+      add: vi.fn().mockResolvedValue(undefined),
+      getJob: vi.fn().mockResolvedValue(null),
+    };
+    mockPluginQueue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(null),
     };
@@ -259,6 +272,13 @@ describe('NodeSchedulerService', () => {
     mockRbacCacheService = {
       getUserRole: vi.fn().mockResolvedValue('owner'),
     };
+    mockPluginService = {
+      findActiveByPluginId: vi.fn().mockResolvedValue({
+        id: 'plugin-record-001',
+        pluginId: 'com.example.review',
+        status: 'active',
+      }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -267,6 +287,10 @@ describe('NodeSchedulerService', () => {
         { provide: DagResolverService, useValue: mockDagResolver },
         { provide: StepStateMachineService, useValue: mockStateMachine },
         { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockQueue },
+        {
+          provide: getQueueToken(PLUGIN_EXECUTION_QUEUE),
+          useValue: mockPluginQueue,
+        },
         { provide: SandboxService, useValue: mockSandboxService },
         { provide: CheckpointService, useValue: mockCheckpointService },
         { provide: EventBridgeService, useValue: mockEventBridge },
@@ -276,6 +300,7 @@ describe('NodeSchedulerService', () => {
         },
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
         { provide: RbacCacheService, useValue: mockRbacCacheService },
+        { provide: PluginService, useValue: mockPluginService },
       ],
     }).compile();
 
@@ -643,6 +668,49 @@ describe('NodeSchedulerService', () => {
         nodeData: { agentId: 'agent-1' },
         hasSandbox: true,
       }, undefined);
+    });
+
+    it('plugin 节点会校验插件激活态��投递到 plugin queue', async () => {
+      const snapshot = makeSnapshot([makeNode('P', 'plugin')], []);
+      const steps = [
+        makeStep({
+          id: 'step-p',
+          nodeId: 'P',
+          status: 'pending',
+          nodeType: 'plugin',
+          nodeData: {
+            pluginId: 'com.example.review',
+            pluginNodeType: 'review-analyzer',
+            orgId: 'org-001',
+            pluginConfig: { mode: 'safe' },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'P', TENANT_ID, snapshot, steps);
+
+      expect(mockPluginService.findActiveByPluginId).toHaveBeenCalledWith(
+        'com.example.review',
+        'org-001',
+        TENANT_ID,
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-p',
+        'queued',
+      );
+      expect(mockPluginQueue.add).toHaveBeenCalledWith('execute-plugin-node', {
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: 'step-p',
+        pluginId: 'com.example.review',
+        nodeType: 'review-analyzer',
+        inputs: {},
+        config: { mode: 'safe' },
+      });
+      expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
     it('agent 节点无 sandbox 上游时 hasSandbox 应为 false', async () => {

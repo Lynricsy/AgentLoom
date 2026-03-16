@@ -48,6 +48,7 @@ AgentLoomAUTO/
 | 添加后端 API 端点 | `agentloom-server/src/modules/` | NestJS 模块，每模块有 controller/service/dto |
 | 添加数据库表 | `agentloom-server/src/database/schema/` | Drizzle ORM，需 `pnpm db:generate` |
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
+| 管理服务端插件注册与状态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册、`plugins` 表、`plugin-execution` 队列 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
@@ -150,6 +151,7 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 - **Trigger 系统**: 支持 `cron` / `webhook` / `api_event`(preview-only) 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 仅可查看不可创建/编辑/启用。执行创建在租户事务提交后才入队
 - **Intervention Policy**: `intervention_policies` 表驱动介入策略，支持 approve/reject/escalate timeout 动作，`MAX_ESCALATION_ATTEMPTS = 3`
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`
+- **PluginModule**: `plugins` 表保存租户插件元数据（`org_id + plugin_id` 唯一，含 `manifest`、`node_definitions`、`occ_version` 与 tenant RLS）。`/plugins` 提供 `.alp` multipart 注册、列表、详情、状态更新与删除；`NodeSchedulerService` 将 `plugin` 节点投递到 BullMQ `plugin-execution` 队列，由 `PluginExecutionWorker` 返回占位执行结果
 - **Marketplace**: 公共 browse/search/detail/reviews/install 链路。安装 RBAC `owner/admin/creator/operator`。发布审核基于 `workflowDefinitions.status + publishedVersionId`
 - **导出/导入**: 导出使用 `agentloom-workflow-v1` 信封 + `sanitizeDefinition()` 递归剥离敏感信息。导入含 Zod 校验 + `cloneDefinitionWithNewIds()`。创建工作流支持 `template_slug` / `share_token` / `marketplace_listing_id` 三种克隆源（互斥）
 - **Open API & SDK**: `PlatformApiTokenModule` 管理 API Key（`al_` prefix + SHA-256 hash）。`AuthGuard` 双重认证 JWT → X-Api-Key fallback。`CustomThrottlerGuard` 100 req/min 限流。支持 TS-fetch / Python SDK 生成

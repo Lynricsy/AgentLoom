@@ -45,6 +45,8 @@ import { EventBridgeService } from './services/event-bridge.service';
 import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import type { RoutingStrategy, RoutingContext } from '../smart-routing/dto/routing-context.dto';
+import { PluginService } from '../plugin/plugin.service';
+import { PLUGIN_EXECUTION_QUEUE } from '../plugin/plugin.constants';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -79,8 +81,11 @@ export class NodeSchedulerService {
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly rbacCacheService: RbacCacheService,
     private readonly smartRoutingService: SmartRoutingService,
+    private readonly pluginService: PluginService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
+    @InjectQueue(PLUGIN_EXECUTION_QUEUE)
+    private readonly pluginQueue: Queue,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -269,6 +274,10 @@ export class NodeSchedulerService {
         await this.executeSmartRouting(step, input, tenantId, executionId);
         break;
 
+      case 'plugin':
+        await this.executePlugin(step, input, tenantId, executionId);
+        break;
+
       default:
         this.logger.warn(`未知节点类型 "${step.nodeType}"，按 agent 处理`);
         await this.stepStateMachine.updateStepStatus(
@@ -286,6 +295,44 @@ export class NodeSchedulerService {
           await this.agentTaskQueue.add('agent-task', data, options);
         }
     }
+  }
+
+  private async executePlugin(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+    const pluginId =
+      typeof nodeData.pluginId === 'string' ? nodeData.pluginId : undefined;
+    const pluginNodeType =
+      typeof nodeData.pluginNodeType === 'string'
+        ? nodeData.pluginNodeType
+        : undefined;
+    const orgId = typeof nodeData.orgId === 'string' ? nodeData.orgId : undefined;
+
+    if (!pluginId || !pluginNodeType) {
+      throw new Error('Plugin node missing pluginId or pluginNodeType');
+    }
+
+    const plugin = await this.pluginService.findActiveByPluginId(
+      pluginId,
+      orgId,
+      tenantId,
+    );
+
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'queued');
+
+    await this.pluginQueue.add('execute-plugin-node', {
+      tenantId,
+      executionId,
+      stepId: step.id,
+      pluginId: plugin.pluginId,
+      nodeType: pluginNodeType,
+      inputs: input,
+      config: this.isRecord(nodeData.pluginConfig) ? nodeData.pluginConfig : {},
+    });
   }
 
   /**

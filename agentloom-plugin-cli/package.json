@@ -1,0 +1,37 @@
+{
+  "name": "@agentloom/plugin-cli",
+  "version": "0.1.0",
+  "description": "AgentLoom Plugin CLI Tool",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agentloom-plugin": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "prompts": "^2.4.2",
+    "archiver": "^7.0.0",
+    "chokidar": "^3.6.0",
+    "chalk": "^5.3.0",
+    "express": "^4.18.0",
+    "glob": "^10.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^20.0.0",
+    "@types/prompts": "^2.4.0",
+    "@types/archiver": "^6.0.0",
+    "@types/express": "^4.17.0"
+  },
+  "license": "MIT"
+}

@@ -45,6 +45,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers | AgentModule, Socket.IO |
 | trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD、cron 调度、webhook 验签与触发历史 | BullMQ, ExecutionModule, crypto HMAC |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
+| plugin | `modules/plugin/` | 服务端插件注册与状态管理：`.alp` multipart 上传、manifest/node definitions 解析、`plugins` 表 CRUD、`plugin-execution` 队列 worker 占位执行 | BullMQ, JSZip |
 | evidence | `modules/evidence/` | 证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) | EventEmitter, RedisCacheService |
 | template | `modules/template/` | 工作流模板浏览 (public, 无认证，AppModule 中显式从 TenantMiddleware 排除) | — |
 | smart-routing | `modules/smart-routing/` | 智能模型路由：6 种策略纯函数 (TOKEN_OPTIMIZED/COST_OPTIMIZED/QUALITY_FIRST/LATENCY_FIRST/HISTORICAL_BEST/FALLBACK_CHAIN)，路由决策持久化 (`routing_decisions` 表)，`GET /routing-decisions` 现通过 `execution_steps.execution_id` 做 execution 级查询，并支持近 30 天历史指���聚合（按 routing decision 序列 + downstream agent step 真正终态统计） | LlmModule |
@@ -64,8 +65,10 @@ HTTP POST /executions
           → initializeSteps()
             → NodeScheduler.startExecution()
               → DAG 解析 → 并行执行就绪节点
-                → AgentTaskWorker (agent-task-queue)
-                  → AgentAdapterFactory → InProcess|Sandbox
+                ├→ AgentTaskWorker (agent-task-queue)
+                │   → AgentAdapterFactory → InProcess|Sandbox
+                └→ PluginExecutionWorker (plugin-execution)
+                    → 插件节点占位执行结果
 
 实时推送管线 (所有广播统一走此路径):
   StepStateMachineService ─┐
@@ -125,6 +128,7 @@ HTTP POST /executions
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
 | agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
+| plugin-execution | 3次 exp (2s base) | `plugin` 节点执行占位 worker |
 | trigger-scheduler | 3次 exp (2s base) | cron trigger repeatable jobs + webhook/cron 历史记录联动 |
 | notification | 3次 exp (1s base) | 通知分发与 WebSocket 推送 |
 | sandbox-lifecycle-queue | 3次 exp | Docker 容器生命周期 |
@@ -147,7 +151,7 @@ HTTP POST /executions
 
 ## 数据库 (Drizzle + PostgreSQL)
 
-Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
+Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。`plugins` 表保存租户插件清单：`org_id + plugin_id` 唯一，状态枚举为 `registered|active|disabled|error`，并持久化 `manifest`、`node_definitions`、`permissions`、`occ_version` 与 tenant-scoped RLS。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
 - **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
@@ -226,7 +230,7 @@ Schema 在 `src/database/schema/`。25 张表，启用 RLS (`rls-policies.ts`)�
 
 - **Smart Routing 执行细节**: `NodeSchedulerService.executeSmartRouting()` 现默认使用 `FALLBACK_CHAIN`，会用 `estimateTokenCount()` 估算输入 tokens，并在 `HISTORICAL_BEST` 下调用 `SmartRoutingService.getHistoricalMetrics()` 注入近 30 天 `successRate/lastUsedAt/avgLatencyMs`；该历史统计不再看 workflow 终态，而是按同一 `routingStepId` 的 routing decision 序列与下游 agent step 的 `checkpointData.smartRouting` / `input` 匹配真实 terminal 状态。smart-routing step result 现会带 `routingStepId/routingNodeId/candidateModelIds/currentModelIndex/llmModelConfigId/tokenThreshold/evaluatedModels` 等 runtime metadata。`scheduleNode()` 通过 `buildAgentTaskJobData()` 从上游 smart-routing 输出中提取该 metadata，把 `llmModelConfigId` 注入下游 agent job，并在 `FALLBACK_CHAIN` 下强制 queue `attempts: 1`。`AgentTaskWorker` 则在最终 failed 之前处理跨模型 fallback：非 `authenticationFailed` 的 provider 错误会切换到下一个候选模型重新派队，同时补写新的 `routing_decisions` 记录并把前序失败摘要写入 `decision_reasoning`，再通过 `broadcastAgentEvent()` 发 `message_chunk` 说明；认证失败禁止 fallback；且只有 `FALLBACK_CHAIN` 的候选真正耗尽时才使用 `AllModelsFallbackExhaustedException`，其他 smart-routing 策略保留原始错误。另：`routing_decisions.selected_model_id` 通过 `0041_routing_decision_selected_model_nullable.sql` 改为 nullable，对齐 `ON DELETE SET NULL`。
 
-- `node-scheduler.service.ts` (1400L+) — DAG 调度核心，条件分支/沙箱/变换/人工介入/介入超时管理/智能路由，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
+- `node-scheduler.service.ts` (1400L+) — DAG 调度核心，条件分支/沙箱/变换/插件节点入队/人工介入/介入超时管理/智能路由，scheduleNode() 捕获 NodeTypeMismatchException 写入结构化错误
 - `workflow-version.service.ts` — 版本管理逻辑 + PATCH 更新/OCC 并发控制 + 发布时端口类型兼容性警告 + 列表排序（camelCase + snake_case alias）
 - `output-format.service.ts` (529L) — L1-L4 输出格式逐级升级
 - `evidence.service.ts` (1582L) — 证据记录 CRUD + 溯源链构建 + chunk content 嵌入 + node_error 证据自动创建

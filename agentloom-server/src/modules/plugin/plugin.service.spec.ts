@@ -1,0 +1,368 @@
+import { Logger } from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { DRIZZLE } from '../../database/database.module';
+import type { PluginRecord } from '../../database/schema';
+import { QueryPluginsDto } from './dto/plugin.dto';
+import {
+  PluginAlreadyExistsException,
+  PluginInactiveException,
+  PluginNotFoundException,
+  PluginValidationException,
+  PluginVersionConflictException,
+} from './plugin.exceptions';
+import { PluginService } from './plugin.service';
+
+const TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const USER_ID = '00000000-0000-0000-0000-000000000002';
+const ORG_ID = '00000000-0000-0000-0000-000000000003';
+const PLUGIN_ID = '00000000-0000-0000-0000-000000000004';
+const NOW = new Date('2025-01-01T00:00:00.000Z');
+
+const VALID_MANIFEST = {
+  pluginId: 'com.example.review',
+  name: 'Review Analyzer',
+  version: '1.0.0',
+  author: '狐娘',
+  description: '分析评论的插件',
+  license: 'MIT',
+  permissions: ['network.read'],
+  metadata: { category: 'analysis' },
+};
+
+const VALID_NODE_DEFINITIONS = [
+  {
+    type: 'review-analyzer',
+    title: '评论分析器',
+  },
+];
+
+function createPlugin(overrides: Partial<PluginRecord> = {}): PluginRecord {
+  return {
+    id: PLUGIN_ID,
+    tenantId: TENANT_ID,
+    orgId: ORG_ID,
+    pluginId: 'com.example.review',
+    name: 'Review Analyzer',
+    version: '1.0.0',
+    author: '狐娘',
+    description: '分析评论的插件',
+    license: 'MIT',
+    status: 'registered',
+    manifest: VALID_MANIFEST,
+    nodeDefinitions: VALID_NODE_DEFINITIONS,
+    storageKey: null,
+    permissions: ['network.read'],
+    installedBy: USER_ID,
+    metadata: { category: 'analysis' },
+    occVersion: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function createSelectChain(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where };
+}
+
+function createSelectChainWithPagination(result: unknown) {
+  const offset = vi.fn().mockResolvedValue(result);
+  const limit = vi.fn().mockReturnValue({ offset });
+  const orderBy = vi.fn().mockReturnValue({ limit });
+  const where = vi.fn().mockReturnValue({ orderBy });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where, orderBy, limit, offset };
+}
+
+function createSelectChainWithLimit(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where, limit };
+}
+
+function createInsertChain(result: unknown) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const values = vi.fn().mockReturnValue({ returning });
+  return { values, returning };
+}
+
+function createUpdateChain(result: unknown) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ returning });
+  const set = vi.fn().mockReturnValue({ where });
+  return { set, where, returning };
+}
+
+function createDeleteChain(result: unknown) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ returning });
+  return { where, returning };
+}
+
+function createQueryDto(
+  overrides: Partial<QueryPluginsDto> = {},
+): QueryPluginsDto {
+  return Object.assign(new QueryPluginsDto(), overrides);
+}
+
+describe('PluginService', () => {
+  let service: PluginService;
+  let db: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+
+    db = {
+      select: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      execute: vi.fn().mockResolvedValue(undefined),
+      transaction: vi.fn(async (callback: (tx: typeof db) => unknown) =>
+        callback(db),
+      ),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [PluginService, { provide: DRIZZLE, useValue: db }],
+    }).compile();
+
+    service = module.get(PluginService);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  describe('register', () => {
+    it('应当在缺少 orgId 时回退查询组织并创建插件记录', async () => {
+      const selectOrg = createSelectChainWithLimit([{ id: ORG_ID }]);
+      const selectExisting = createSelectChainWithLimit([]);
+      const insertPlugin = createInsertChain([createPlugin()]);
+
+      db.select
+        .mockReturnValueOnce(selectOrg)
+        .mockReturnValueOnce(selectExisting);
+      db.insert.mockReturnValue(insertPlugin);
+
+      const result = await service.register(
+        TENANT_ID,
+        undefined,
+        USER_ID,
+        VALID_MANIFEST,
+        VALID_NODE_DEFINITIONS,
+        'plugins/review.alp',
+      );
+
+      expect(selectOrg.limit).toHaveBeenCalledWith(1);
+      expect(insertPlugin.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          orgId: ORG_ID,
+          pluginId: 'com.example.review',
+          storageKey: 'plugins/review.alp',
+          installedBy: USER_ID,
+          status: 'registered',
+        }),
+      );
+      expect(result).toEqual(createPlugin());
+    });
+
+    it('插件已存在时应抛出 409', async () => {
+      const selectExisting = createSelectChainWithLimit([createPlugin()]);
+      db.select.mockReturnValue(selectExisting);
+
+      await expect(
+        service.register(
+          TENANT_ID,
+          ORG_ID,
+          USER_ID,
+          VALID_MANIFEST,
+          VALID_NODE_DEFINITIONS,
+        ),
+      ).rejects.toBeInstanceOf(PluginAlreadyExistsException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('manifest 无效时应抛出 422', async () => {
+      await expect(
+        service.register(
+          TENANT_ID,
+          ORG_ID,
+          USER_ID,
+          {
+            name: 'Broken Plugin',
+            version: '1.0.0',
+            author: '狐娘',
+          },
+          VALID_NODE_DEFINITIONS,
+        ),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findAll', () => {
+    it('应当返回分页后的插件列表', async () => {
+      const selectData = createSelectChainWithPagination([
+        createPlugin({ name: 'Review Analyzer A' }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectData)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAll(
+        TENANT_ID,
+        createQueryDto({ page: 2, pageSize: 10, search: 'Review' }),
+      );
+
+      expect(selectData.limit).toHaveBeenCalledWith(10);
+      expect(selectData.offset).toHaveBeenCalledWith(10);
+      expect(result).toEqual({
+        data: [createPlugin({ name: 'Review Analyzer A' })],
+        meta: {
+          page: 2,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        },
+      });
+    });
+  });
+
+  describe('findById', () => {
+    it('应当返回指定插件', async () => {
+      const selectPlugin = createSelectChain([createPlugin()]);
+      db.select.mockReturnValue(selectPlugin);
+
+      const result = await service.findById(PLUGIN_ID, TENANT_ID);
+
+      expect(result).toEqual(createPlugin());
+    });
+
+    it('未找到时应抛出 404', async () => {
+      const selectPlugin = createSelectChain([]);
+      db.select.mockReturnValue(selectPlugin);
+
+      await expect(service.findById(PLUGIN_ID, TENANT_ID)).rejects.toBeInstanceOf(
+        PluginNotFoundException,
+      );
+    });
+  });
+
+  describe('findByPluginId', () => {
+    it('应当在缺少 orgId 时回退按 tenant 查询组织后返回插件', async () => {
+      const selectOrg = createSelectChainWithLimit([{ id: ORG_ID }]);
+      const selectPlugin = createSelectChainWithLimit([createPlugin()]);
+
+      db.select
+        .mockReturnValueOnce(selectOrg)
+        .mockReturnValueOnce(selectPlugin);
+
+      const result = await service.findByPluginId(
+        'com.example.review',
+        undefined,
+        TENANT_ID,
+      );
+
+      expect(result).toEqual(createPlugin());
+      expect(selectPlugin.limit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('应当在 OCC 通过时更新插件状态', async () => {
+      const updatedPlugin = createPlugin({
+        status: 'active',
+        occVersion: 2,
+        updatedAt: NOW,
+      });
+      const updatePlugin = createUpdateChain([updatedPlugin]);
+      db.update.mockReturnValue(updatePlugin);
+
+      const result = await service.updateStatus(
+        PLUGIN_ID,
+        TENANT_ID,
+        'active',
+        1,
+      );
+
+      expect(updatePlugin.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'active',
+          updatedAt: NOW,
+        }),
+      );
+      expect(result).toEqual(updatedPlugin);
+    });
+
+    it('更新不存在插件时应抛出 404', async () => {
+      const updatePlugin = createUpdateChain([]);
+      const selectPlugin = createSelectChain([]);
+      db.update.mockReturnValue(updatePlugin);
+      db.select.mockReturnValue(selectPlugin);
+
+      await expect(
+        service.updateStatus(PLUGIN_ID, TENANT_ID, 'active', 1),
+      ).rejects.toBeInstanceOf(PluginNotFoundException);
+    });
+
+    it('版本冲突时应抛出 409 并携带 currentVersion', async () => {
+      const updatePlugin = createUpdateChain([]);
+      const selectPlugin = createSelectChain([createPlugin({ occVersion: 3 })]);
+      db.update.mockReturnValue(updatePlugin);
+      db.select.mockReturnValue(selectPlugin);
+
+      await expect(
+        service.updateStatus(PLUGIN_ID, TENANT_ID, 'active', 1),
+      ).rejects.toMatchObject({
+        constructor: PluginVersionConflictException,
+        extensions: { currentVersion: 3 },
+      });
+    });
+  });
+
+  describe('remove', () => {
+    it('应当删除插件', async () => {
+      const deletePlugin = createDeleteChain([{ id: PLUGIN_ID }]);
+      db.delete.mockReturnValue(deletePlugin);
+
+      await expect(service.remove(PLUGIN_ID, TENANT_ID)).resolves.toBeUndefined();
+    });
+
+    it('删除不存在插件时应抛出 404', async () => {
+      const deletePlugin = createDeleteChain([]);
+      db.delete.mockReturnValue(deletePlugin);
+
+      await expect(service.remove(PLUGIN_ID, TENANT_ID)).rejects.toBeInstanceOf(
+        PluginNotFoundException,
+      );
+    });
+  });
+
+  describe('findActiveByPluginId', () => {
+    it('插件未激活时应抛出 422', async () => {
+      const selectPlugin = createSelectChainWithLimit([
+        createPlugin({ status: 'disabled' }),
+      ]);
+      db.select.mockReturnValue(selectPlugin);
+
+      await expect(
+        service.findActiveByPluginId('com.example.review', ORG_ID, TENANT_ID),
+      ).rejects.toBeInstanceOf(PluginInactiveException);
+    });
+  });
+});

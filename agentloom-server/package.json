@@ -61,6 +61,7 @@
     "ioredis": "^5.10.0",
     "jsonrepair": "^3.13.2",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "mammoth": "^1.11.0",
     "minio": "^8.0.7",
     "nestjs-zod": "^5.1.1",

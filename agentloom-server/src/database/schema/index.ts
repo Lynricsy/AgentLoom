@@ -203,3 +203,9 @@ export {
   type NewRoutingDecision,
   type ModelEvaluation,
 } from './routing-decisions.schema';
+export {
+  pluginStatusEnum,
+  plugins,
+  type PluginRecord,
+  type NewPlugin,
+} from './plugins.schema';

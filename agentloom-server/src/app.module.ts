@@ -37,6 +37,7 @@ import { InterventionPolicyModule } from './modules/intervention-policy/interven
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { ShareModule } from './modules/share/share.module';
 import { PlatformApiTokenModule } from './modules/platform-api-token/platform-api-token.module';
+import { PluginModule } from './modules/plugin/plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
@@ -107,6 +108,7 @@ function createThrottlerOptions(configService: ConfigService) {
     MarketplaceModule,
     ShareModule,
     PlatformApiTokenModule,
+    PluginModule,
     SmartRoutingModule,
   ],
   providers: [
