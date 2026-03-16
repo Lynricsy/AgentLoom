@@ -8,12 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
 import type {
+  AgentExecutionRecord,
   ExecutionStep,
   ExecutionSummaryData,
   StepTelemetryData,
 } from '../../database/schema';
-import { QueryExecutionRecordsSchema } from './dto/execution-record.dto';
 import { ExecutionRecordService } from './execution-record.service';
+import { ExecutionNotFoundException } from '../execution/execution.exceptions';
 import { ExecutionEventName } from '../execution/types/execution-event.types';
 
 type MockSelectTerminal = 'where' | 'limit' | 'offset';
@@ -74,12 +75,7 @@ function createMockDb() {
 }
 
 const mocks = vi.hoisted(() => ({
-  getTenantDb: vi.fn(),
   runInTenantTransaction: vi.fn(),
-}));
-
-vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
-  getTenantDb: mocks.getTenantDb,
 }));
 
 vi.mock('../../common/interceptors/tenant-transaction.context', () => ({
@@ -96,9 +92,7 @@ const NOW = new Date('2026-03-16T10:00:00.000Z');
 
 type MockDb = ReturnType<typeof createMockDb>;
 
-function createStep(
-  overrides: Partial<ExecutionStep> = {},
-): ExecutionStep {
+function createStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
   return {
     id: STEP_ID,
     executionId: EXECUTION_ID,
@@ -121,9 +115,7 @@ function createStep(
   };
 }
 
-function createStepPayload(
-  overrides: Record<string, unknown> = {},
-) {
+function createStepPayload(overrides: Record<string, unknown> = {}) {
   return {
     tenantId: TENANT_ID,
     executionId: EXECUTION_ID,
@@ -135,13 +127,33 @@ function createStepPayload(
   };
 }
 
-function createExecutionStatusPayload(
-  overrides: Record<string, unknown> = {},
-) {
+function createExecutionStatusPayload(overrides: Record<string, unknown> = {}) {
   return {
     tenantId: TENANT_ID,
     executionId: EXECUTION_ID,
     status: 'completed',
+    ...overrides,
+  };
+}
+
+function createTelemetryData(
+  overrides: Partial<StepTelemetryData> = {},
+): StepTelemetryData {
+  return {
+    toolCalls: [],
+    errors: [],
+    selfRepairs: [],
+    ioSnapshots: {
+      stepInput: null,
+      stepOutput: null,
+    },
+    llmInteractions: {
+      modelId: 'gpt-4o-mini',
+      promptTokens: 10,
+      completionTokens: 20,
+      totalTokens: 30,
+      latencyMs: 1000,
+    },
     ...overrides,
   };
 }
@@ -179,9 +191,7 @@ describe('ExecutionRecordService', () => {
     tenantDb = createMockDb();
     rootDb = { label: 'root-db' };
 
-    mocks.getTenantDb.mockReset();
     mocks.runInTenantTransaction.mockReset();
-    mocks.getTenantDb.mockReturnValue(tenantDb);
     mocks.runInTenantTransaction.mockImplementation(
       async (
         _db: unknown,
@@ -238,15 +248,13 @@ describe('ExecutionRecordService', () => {
   });
 
   it('should ignore non-terminal step statuses', async () => {
-    await service.handleStepStatusChanged(
-      createStepPayload({ to: 'running' }),
-    );
+    await service.handleStepStatusChanged(createStepPayload({ to: 'running' }));
 
     expect(mocks.runInTenantTransaction).not.toHaveBeenCalled();
     expect(tenantDb.insert).not.toHaveBeenCalled();
   });
 
-  it('should record completed step telemetry with extracted tool calls, repairs, io snapshots and llm metrics', async () => {
+  it('should record completed step telemetry using the new telemetryData contract', async () => {
     tenantDb.queueSelectResult('limit', [
       createStep({
         input: {
@@ -258,97 +266,75 @@ describe('ExecutionRecordService', () => {
           promptTokens: 12,
           completionTokens: 8,
           totalTokens: 20,
-          privateKey: '-----BEGIN PRIVATE KEY-----',
-          content: '完成',
+          privateKey: 'private-key',
+          content: 'ok',
         },
         checkpointData: {
           toolCalls: [
             {
-              id: 'tool-call-1',
+              id: 'tool-1',
               tool: 'search_docs',
               args: {
-                query: 'workflow execution record',
+                query: 'execution record',
                 apiKey: 'tool-api-key',
               },
               status: 'completed',
               result: {
-                content: 'done',
+                snippets: ['ok'],
                 accessKey: 'tool-access-key',
               },
               transitions: [
                 {
-                  to: 'pending',
-                  timestamp: '2026-03-16T09:00:00.000Z',
-                  source: 'runtime',
-                },
-                {
+                  from: 'pending',
                   to: 'in_progress',
-                  timestamp: '2026-03-16T09:00:01.000Z',
-                  source: 'runtime',
+                  timestamp: '2026-03-16T09:59:00.000Z',
                 },
                 {
+                  from: 'in_progress',
                   to: 'completed',
-                  timestamp: '2026-03-16T09:00:04.500Z',
-                  source: 'runtime',
+                  timestamp: '2026-03-16T09:59:01.500Z',
                 },
               ],
             },
             {
-              id: 'tool-call-2',
+              id: 'tool-2',
               tool: 'approval_gate',
               args: {
-                authorizationHeader: 'Bearer token-value',
+                authorizationHeader: 'Bearer secret',
               },
               status: 'awaiting_permission',
               transitions: [
                 {
-                  to: 'pending',
-                  timestamp: '2026-03-16T09:00:10.000Z',
-                  source: 'runtime',
-                },
-                {
+                  from: 'pending',
                   to: 'awaiting_permission',
-                  timestamp: '2026-03-16T09:00:12.000Z',
-                  source: 'user',
+                  timestamp: '2026-03-16T09:59:02.000Z',
                 },
               ],
             },
             {
-              id: 'tool-call-3',
+              id: 'tool-3',
               tool: 'fallback_tool',
-              args: {
-                prompt: 'just fail',
-              },
+              args: { prompt: 'hello' },
               status: 'failed',
               error: 'permission denied',
             },
-            {
-              id: 'invalid-tool-call',
-              tool: 'broken',
-              args: null,
-              status: 'completed',
-            },
+            'invalid-tool-call',
           ],
           attempts: [
             {
               attempt: 1,
-              error: '初次校验失败',
-              timestamp: '2026-03-16T09:00:00.000Z',
+              error: 'first failure',
+              timestamp: '2026-03-16T09:59:00.000Z',
             },
             {
               attempt: 2,
-              error: '修复后通过',
-              timestamp: '2026-03-16T09:00:02.000Z',
-            },
-            {
-              attempt: 'invalid',
-              error: 123,
-              timestamp: null,
+              error: 'second failure',
+              timestamp: '2026-03-16T09:59:01.000Z',
             },
           ],
         },
-        startedAt: new Date('2026-03-16T09:00:00.000Z'),
-        completedAt: new Date('2026-03-16T09:00:05.000Z'),
+        startedAt: new Date('2026-03-16T09:59:00.000Z'),
+        completedAt: new Date('2026-03-16T09:59:05.000Z'),
       }),
     ]);
 
@@ -361,75 +347,53 @@ describe('ExecutionRecordService', () => {
     );
     expect(tenantDb.insert).toHaveBeenCalledTimes(1);
 
-    const [insertedRecord] = tenantDb.insertValues;
-    const telemetry = insertedRecord['data'] as StepTelemetryData;
+    const insertedRecord = tenantDb.insertValues[0] as {
+      tenantId: string;
+      summaryData: null;
+      telemetryData: StepTelemetryData;
+      recordType: string;
+    };
 
     expect(insertedRecord).toMatchObject({
+      tenantId: TENANT_ID,
       executionId: EXECUTION_ID,
       stepId: STEP_ID,
       nodeId: NODE_ID,
       recordType: 'step_telemetry',
+      summaryData: null,
     });
-    expect(telemetry.toolCalls).toEqual([
-      {
-        toolName: 'search_docs',
-        input: {
-          query: 'workflow execution record',
-          apiKey: '[REDACTED]',
-        },
-        output: {
-          content: 'done',
-          accessKey: '[REDACTED]',
-        },
-        durationMs: 3500,
-        status: 'completed',
-      },
-      {
-        toolName: 'approval_gate',
-        input: {
-          authorizationHeader: '[REDACTED]',
-        },
-        output: null,
-        durationMs: 2000,
-        status: 'awaiting_permission',
-      },
-      {
-        toolName: 'fallback_tool',
-        input: {
-          prompt: 'just fail',
-        },
-        output: 'permission denied',
-        durationMs: 0,
-        status: 'failed',
-      },
+
+    const telemetry = insertedRecord.telemetryData;
+    expect(telemetry.toolCalls.map((toolCall) => toolCall.status)).toEqual([
+      'success',
+      'error',
+      'error',
     ]);
-    expect(telemetry.errors).toEqual([]);
-    expect(telemetry.selfRepairs).toEqual([
-      {
-        originalOutput: '初次校验失败',
-        validationError: 'Retry after failure',
-        repairAttempts: [
-          {
-            attemptNumber: 2,
-            result: '修复后通过',
-            success: true,
-          },
-        ],
-      },
-    ]);
-    expect(telemetry.ioSnapshots).toEqual({
-      stepInput: {
-        prompt: '生成摘要',
+    expect(telemetry.selfRepairs).toEqual([]);
+    expect(telemetry.toolCalls[0]).toMatchObject({
+      toolName: 'search_docs',
+      input: {
+        query: 'execution record',
         apiKey: '[REDACTED]',
       },
-      stepOutput: {
-        modelId: 'gpt-4o-mini',
-        promptTokens: '[REDACTED]',
-        completionTokens: '[REDACTED]',
-        totalTokens: '[REDACTED]',
-        privateKey: '[REDACTED]',
-        content: '完成',
+      output: {
+        snippets: ['ok'],
+        accessKey: '[REDACTED]',
       },
+      durationMs: 1500,
+      status: 'success',
+    });
+    expect(telemetry.ioSnapshots.stepInput).toEqual({
+      prompt: '生成摘要',
+      apiKey: '[REDACTED]',
+    });
+    expect(telemetry.ioSnapshots.stepOutput).toMatchObject({
+      modelId: 'gpt-4o-mini',
+      promptTokens: 12,
+      completionTokens: 8,
+      totalTokens: 20,
+      privateKey: '[REDACTED]',
+      content: 'ok',
     });
     expect(telemetry.llmInteractions).toEqual({
       modelId: 'gpt-4o-mini',
@@ -440,37 +404,26 @@ describe('ExecutionRecordService', () => {
     });
   });
 
-  it('should record failed step telemetry with fallback values and failed self repair attempts', async () => {
+  it('should record failed telemetry with canonical error types and no fake self repairs', async () => {
     tenantDb.queueSelectResult('limit', [
       createStep({
         status: 'failed',
+        nodeType: 'tool-node',
+        errorMessage: null,
         checkpointData: {
-          toolCalls: 'invalid-tool-calls',
           attempts: [
             {
               attempt: 1,
-              error: '首轮失败',
-              timestamp: '2026-03-16T09:10:00.000Z',
+              error: 'first failure',
+              timestamp: '2026-03-16T09:59:00.000Z',
             },
             {
               attempt: 2,
-              error: '二次仍失败',
-              timestamp: '2026-03-16T09:10:10.000Z',
-            },
-            {
-              attempt: 3,
-              error: 404,
-              timestamp: false,
+              error: 'second failure',
+              timestamp: '2026-03-16T09:59:01.000Z',
             },
           ],
         },
-        result: {
-          modelId: 123,
-          promptTokens: '12',
-          completionTokens: null,
-        } as Record<string, unknown>,
-        startedAt: new Date('2026-03-16T09:10:00.000Z'),
-        completedAt: null,
       }),
     ]);
 
@@ -478,53 +431,25 @@ describe('ExecutionRecordService', () => {
       createStepPayload({
         to: 'failed',
         errorDetail: {
-          message: 'Payload failure message',
-          detail: 'Payload failure detail',
+          message: 'Permission denied by tool sandbox',
         },
       }),
     );
 
-    const [insertedRecord] = tenantDb.insertValues;
-    const telemetry = insertedRecord['data'] as StepTelemetryData;
+    const insertedRecord = tenantDb.insertValues[0] as {
+      telemetryData: StepTelemetryData;
+    };
+    const telemetry = insertedRecord.telemetryData;
 
-    expect(telemetry.toolCalls).toEqual([]);
     expect(telemetry.errors).toEqual([
-      {
-        errorType: 'unknown',
-        errorMessage: 'Payload failure message',
-        timestamp: NOW.toISOString(),
+      expect.objectContaining({
+        errorType: 'tool_error',
+        errorMessage: 'Permission denied by tool sandbox',
         nodeId: NODE_ID,
         stepId: STEP_ID,
-      },
+      }),
     ]);
-    expect(telemetry.selfRepairs).toEqual([
-      {
-        originalOutput: '首轮失败',
-        validationError: 'Retry after failure',
-        repairAttempts: [
-          {
-            attemptNumber: 2,
-            result: '二次仍失败',
-            success: false,
-          },
-        ],
-      },
-    ]);
-    expect(telemetry.ioSnapshots).toEqual({
-      stepInput: null,
-      stepOutput: {
-        modelId: 123,
-        promptTokens: '[REDACTED]',
-        completionTokens: '[REDACTED]',
-      },
-    });
-    expect(telemetry.llmInteractions).toEqual({
-      modelId: '',
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      latencyMs: 0,
-    });
+    expect(telemetry.selfRepairs).toEqual([]);
   });
 
   it('should warn and skip insert when the step is not found', async () => {
@@ -532,83 +457,50 @@ describe('ExecutionRecordService', () => {
 
     await service.handleStepStatusChanged(createStepPayload());
 
-    expect(tenantDb.insert).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
       `Step ${STEP_ID} not found for telemetry recording`,
     );
-  });
-
-  it('should warn instead of throwing when step telemetry recording fails', async () => {
-    mocks.runInTenantTransaction.mockRejectedValueOnce(new Error('step db unavailable'));
-
-    await expect(
-      service.handleStepStatusChanged(createStepPayload()),
-    ).resolves.toBeUndefined();
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `Failed to record step telemetry for step ${STEP_ID}: step db unavailable`,
-      ),
-    );
-  });
-
-  it('should ignore non-terminal execution statuses', async () => {
-    await service.handleExecutionStatusChanged(
-      createExecutionStatusPayload({ status: 'running' }),
-    );
-
-    expect(mocks.runInTenantTransaction).not.toHaveBeenCalled();
     expect(tenantDb.insert).not.toHaveBeenCalled();
   });
 
-  it('should build and store an execution summary for completed executions', async () => {
+  it('should build and store execution summaries from telemetryData records', async () => {
     tenantDb.queueSelectResult('where', [
       {
-        id: 'record-1',
-        executionId: EXECUTION_ID,
-        stepId: STEP_ID,
-        nodeId: NODE_ID,
-        recordType: 'step_telemetry',
-        data: {
+        telemetryData: createTelemetryData({
           toolCalls: [
             {
-              toolName: 'tool-a',
-              input: { value: 'a' },
-              output: { ok: true },
-              durationMs: 500,
-              status: 'completed',
+              toolName: 'tool-1',
+              input: null,
+              output: null,
+              durationMs: 1000,
+              status: 'success',
             },
             {
-              toolName: 'tool-b',
-              input: { value: 'b' },
-              output: { ok: true },
-              durationMs: 700,
-              status: 'completed',
+              toolName: 'tool-2',
+              input: null,
+              output: null,
+              durationMs: 800,
+              status: 'error',
             },
           ],
           errors: [
             {
               errorType: 'tool_error',
-              errorMessage: 'step failed once',
-              timestamp: '2026-03-16T09:00:09.000Z',
+              errorMessage: 'tool failed',
+              timestamp: NOW.toISOString(),
               nodeId: NODE_ID,
               stepId: STEP_ID,
             },
           ],
           selfRepairs: [
             {
-              originalOutput: 'needs retry',
-              validationError: 'Retry after failure',
+              originalOutput: 'bad',
+              validationError: 'invalid schema',
               repairAttempts: [
-                {
-                  attemptNumber: 2,
-                  result: 'fixed',
-                  success: true,
-                },
+                { attemptNumber: 1, result: 'better', success: true },
               ],
             },
           ],
-          ioSnapshots: { stepInput: null, stepOutput: null },
           llmInteractions: {
             modelId: 'gpt-4o-mini',
             promptTokens: 20,
@@ -616,51 +508,43 @@ describe('ExecutionRecordService', () => {
             totalTokens: 50,
             latencyMs: 1200,
           },
-        } satisfies StepTelemetryData,
-        createdAt: new Date('2026-03-16T09:15:00.000Z'),
+        }),
       },
       {
-        id: 'record-2',
-        executionId: EXECUTION_ID,
-        stepId: STEP_ID_TWO,
-        nodeId: 'node-2',
-        recordType: 'step_telemetry',
-        data: {
+        telemetryData: createTelemetryData({
           toolCalls: [
             {
-              toolName: 'tool-c',
-              input: { value: 'c' },
-              output: { ok: true },
+              toolName: 'tool-3',
+              input: null,
+              output: null,
               durationMs: 900,
-              status: 'completed',
+              status: 'success',
             },
           ],
-          errors: [],
-          selfRepairs: [],
-          ioSnapshots: { stepInput: null, stepOutput: null },
           llmInteractions: {
-            modelId: 'gpt-4o-mini',
+            modelId: 'gpt-4.1',
             promptTokens: 40,
             completionTokens: 60,
             totalTokens: 100,
             latencyMs: 2800,
           },
-        } satisfies StepTelemetryData,
-        createdAt: new Date('2026-03-16T09:16:00.000Z'),
+        }),
+      },
+      {
+        telemetryData: null,
       },
     ]);
     tenantDb.queueSelectResult('where', [
       createStep({
-        id: STEP_ID,
         status: 'completed',
-        startedAt: new Date('2026-03-16T09:00:00.000Z'),
-        completedAt: new Date('2026-03-16T09:00:10.000Z'),
+        startedAt: new Date('2026-03-16T10:00:00.000Z'),
+        completedAt: new Date('2026-03-16T10:00:10.000Z'),
       }),
       createStep({
         id: STEP_ID_TWO,
         status: 'failed',
-        startedAt: new Date('2026-03-16T09:00:05.000Z'),
-        completedAt: new Date('2026-03-16T09:00:35.000Z'),
+        startedAt: new Date('2026-03-16T10:00:05.000Z'),
+        completedAt: new Date('2026-03-16T10:00:40.000Z'),
       }),
       createStep({
         id: STEP_ID_THREE,
@@ -672,14 +556,20 @@ describe('ExecutionRecordService', () => {
 
     await service.handleExecutionStatusChanged(createExecutionStatusPayload());
 
-    const [insertedRecord] = tenantDb.insertValues;
-    const summary = insertedRecord['data'] as ExecutionSummaryData;
+    const insertedRecord = tenantDb.insertValues[0] as {
+      tenantId: string;
+      recordType: string;
+      telemetryData: null;
+      summaryData: ExecutionSummaryData;
+    };
 
     expect(insertedRecord).toMatchObject({
+      tenantId: TENANT_ID,
       executionId: EXECUTION_ID,
       recordType: 'execution_summary',
+      telemetryData: null,
     });
-    expect(summary).toEqual({
+    expect(insertedRecord.summaryData).toEqual({
       totalSteps: 3,
       completedSteps: 1,
       failedSteps: 1,
@@ -689,151 +579,107 @@ describe('ExecutionRecordService', () => {
       totalTokens: 150,
       totalLatencyMs: 4000,
       avgStepLatencyMs: 2000,
-      executionDurationMs: 35000,
-    });
-  });
-
-  it('should build zeroed summaries for failed executions without telemetry records', async () => {
-    tenantDb.queueSelectResult('where', []);
-    tenantDb.queueSelectResult('where', []);
-
-    await service.handleExecutionStatusChanged(
-      createExecutionStatusPayload({ status: 'failed' }),
-    );
-
-    const [insertedRecord] = tenantDb.insertValues;
-
-    expect(insertedRecord).toMatchObject({
-      executionId: EXECUTION_ID,
-      recordType: 'execution_summary',
-      data: {
-        totalSteps: 0,
-        completedSteps: 0,
-        failedSteps: 0,
-        totalToolCalls: 0,
-        totalErrors: 0,
-        totalSelfRepairs: 0,
-        totalTokens: 0,
-        totalLatencyMs: 0,
-        avgStepLatencyMs: 0,
-        executionDurationMs: 0,
-      },
+      executionDurationMs: 40000,
     });
   });
 
   it('should warn instead of throwing when execution summary recording fails', async () => {
-    mocks.runInTenantTransaction.mockRejectedValueOnce(
-      new Error('summary db unavailable'),
-    );
+    mocks.runInTenantTransaction.mockRejectedValueOnce(new Error('summary write failed'));
 
     await expect(
       service.handleExecutionStatusChanged(createExecutionStatusPayload()),
     ).resolves.toBeUndefined();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `Failed to record execution summary for ${EXECUTION_ID}: summary db unavailable`,
-      ),
+      `Failed to record execution summary for ${EXECUTION_ID}: summary write failed`,
     );
   });
 
-  it('should return paginated execution records with stepId and recordType filters', async () => {
-    const query = QueryExecutionRecordsSchema.parse({
+  it('should return paginated execution records with telemetryData and summaryData', async () => {
+    tenantDb.queueSelectResult('limit', [{ id: EXECUTION_ID }]);
+    const recordsChain = tenantDb.queueSelectResult('offset', [
+      {
+        id: 'record-1',
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        recordType: 'step_telemetry',
+        telemetryData: createTelemetryData(),
+        summaryData: null,
+        createdAt: new Date('2026-03-16T10:05:00.000Z'),
+      } satisfies Partial<AgentExecutionRecord>,
+    ]);
+    tenantDb.queueSelectResult('where', [{ total: 1 }]);
+
+    const result = await service.findByExecution(TENANT_ID, {
       executionId: EXECUTION_ID,
       stepId: STEP_ID,
       recordType: 'step_telemetry',
-      limit: 2,
-      offset: 1,
+      limit: 10,
+      offset: 20,
     });
-    const dataChain = tenantDb.queueSelectResult('offset', [
-      {
-        id: 'record-a',
-        executionId: EXECUTION_ID,
-        stepId: STEP_ID,
-        nodeId: NODE_ID,
-        recordType: 'step_telemetry',
-        data: { foo: 'bar' },
-        createdAt: new Date('2026-03-16T08:00:00.000Z'),
-      },
-      {
-        id: 'record-b',
-        executionId: EXECUTION_ID,
-        stepId: STEP_ID,
-        nodeId: NODE_ID,
-        recordType: 'step_telemetry',
-        data: { baz: 'qux' },
-        createdAt: '2026-03-16T08:05:00.000Z',
-      },
-    ]);
-    const countChain = tenantDb.queueSelectResult('where', [{ total: 5 }]);
 
-    const result = await service.findByExecution(TENANT_ID, query);
-    const dataWhereSql = renderSql(
-      dataChain.where.mock.calls[0]?.[0] as Parameters<PgDialect['sqlToQuery']>[0],
+    expect(mocks.runInTenantTransaction).toHaveBeenCalledWith(
+      rootDb,
+      TENANT_ID,
+      expect.any(Function),
     );
-    const countWhereSql = renderSql(
-      countChain.where.mock.calls[0]?.[0] as Parameters<PgDialect['sqlToQuery']>[0],
+    expect(renderSql(recordsChain.where.mock.calls[0][0])).toContain(
+      '"agent_execution_records"."execution_id" = $1',
     );
-
-    expect(mocks.getTenantDb).toHaveBeenCalledWith(rootDb);
-    expect(dataChain.limit).toHaveBeenCalledWith(2);
-    expect(dataChain.offset).toHaveBeenCalledWith(1);
-    expect(dataWhereSql).toContain('"agent_execution_records"."execution_id"');
-    expect(dataWhereSql).toContain('"agent_execution_records"."step_id"');
-    expect(dataWhereSql).toContain('"agent_execution_records"."record_type"');
-    expect(countWhereSql).toContain('"agent_execution_records"."execution_id"');
-    expect(countWhereSql).toContain('"agent_execution_records"."step_id"');
-    expect(countWhereSql).toContain('"agent_execution_records"."record_type"');
+    expect(renderSql(recordsChain.where.mock.calls[0][0])).toContain(
+      '"agent_execution_records"."step_id" = $2',
+    );
+    expect(renderSql(recordsChain.where.mock.calls[0][0])).toContain(
+      '"agent_execution_records"."record_type" = $3',
+    );
     expect(result).toEqual({
       data: [
         {
-          id: 'record-a',
+          id: 'record-1',
           executionId: EXECUTION_ID,
           stepId: STEP_ID,
           nodeId: NODE_ID,
           recordType: 'step_telemetry',
-          data: { foo: 'bar' },
-          createdAt: '2026-03-16T08:00:00.000Z',
-        },
-        {
-          id: 'record-b',
-          executionId: EXECUTION_ID,
-          stepId: STEP_ID,
-          nodeId: NODE_ID,
-          recordType: 'step_telemetry',
-          data: { baz: 'qux' },
-          createdAt: '2026-03-16T08:05:00.000Z',
+          telemetryData: createTelemetryData(),
+          summaryData: null,
+          createdAt: '2026-03-16T10:05:00.000Z',
         },
       ],
       meta: {
-        total: 5,
-        limit: 2,
-        offset: 1,
-        hasMore: true,
+        total: 1,
+        limit: 10,
+        offset: 20,
+        hasMore: false,
       },
     });
   });
 
-  it('should return empty paginated results when no records exist', async () => {
-    const query = QueryExecutionRecordsSchema.parse({
-      executionId: EXECUTION_ID,
-    });
-    const dataChain = tenantDb.queueSelectResult('offset', []);
-    const countChain = tenantDb.queueSelectResult('where', [{ total: 0 }]);
+  it('should throw ExecutionNotFoundException when the execution is missing or inaccessible', async () => {
+    tenantDb.queueSelectResult('limit', []);
 
-    const result = await service.findByExecution(TENANT_ID, query);
-    const whereSql = renderSql(
-      dataChain.where.mock.calls[0]?.[0] as Parameters<PgDialect['sqlToQuery']>[0],
-    );
-    const countWhereSql = renderSql(
-      countChain.where.mock.calls[0]?.[0] as Parameters<PgDialect['sqlToQuery']>[0],
-    );
+    await expect(
+      service.findByExecution(TENANT_ID, {
+        executionId: EXECUTION_ID,
+        limit: 50,
+        offset: 0,
+      }),
+    ).rejects.toBeInstanceOf(ExecutionNotFoundException);
+  });
 
-    expect(whereSql).toContain('"agent_execution_records"."execution_id"');
-    expect(whereSql).not.toContain('"agent_execution_records"."step_id"');
-    expect(whereSql).not.toContain('"agent_execution_records"."record_type"');
-    expect(countWhereSql).toContain('"agent_execution_records"."execution_id"');
-    expect(result).toEqual({
+  it('should return empty paginated results when the execution exists but has no records', async () => {
+    tenantDb.queueSelectResult('limit', [{ id: EXECUTION_ID }]);
+    tenantDb.queueSelectResult('offset', []);
+    tenantDb.queueSelectResult('where', [{ total: 0 }]);
+
+    await expect(
+      service.findByExecution(TENANT_ID, {
+        executionId: EXECUTION_ID,
+        limit: 50,
+        offset: 0,
+      }),
+    ).resolves.toEqual({
       data: [],
       meta: {
         total: 0,

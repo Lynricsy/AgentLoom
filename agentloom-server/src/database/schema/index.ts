@@ -231,6 +231,8 @@ export {
   type NewPluginEarning,
 } from './plugin-earnings.schema';
 export {
+  type ExecutionRecordErrorType,
+  type ToolCallRecordStatus,
   recordTypeEnum,
   agentExecutionRecords,
   type AgentExecutionRecord,

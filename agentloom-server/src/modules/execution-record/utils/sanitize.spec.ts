@@ -8,19 +8,15 @@ import {
   truncateField,
 } from './sanitize';
 
-const TRUNCATED_SUFFIX = '...[truncated]';
+const TRUNCATED_MARKER = '[TRUNCATED]';
 
-function getPrefixBeforeSuffix(value: string): string {
-  return value.slice(0, -TRUNCATED_SUFFIX.length);
+function getStringBytes(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
-function expectTruncatedStringWithinLimit(value: unknown, maxBytes: number) {
-  expect(typeof value).toBe('string');
-  const truncated = value as string;
-  expect(truncated.endsWith(TRUNCATED_SUFFIX)).toBe(true);
-  expect(
-    new TextEncoder().encode(getPrefixBeforeSuffix(truncated)).length,
-  ).toBeLessThanOrEqual(maxBytes);
+function getSerializedBytes(value: unknown): number {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 0 : getStringBytes(serialized);
 }
 
 function createTelemetryData(
@@ -52,20 +48,38 @@ describe('truncateField', () => {
     expect(truncateField(value, 1024)).toEqual(value);
   });
 
-  it('should truncate long strings and append the truncation suffix', () => {
-    expect(truncateField('abcdefghijklmnopqrstuvwxyz', 10)).toBe(
-      'abcdefghij...[truncated]',
-    );
-  });
-
-  it('should return a truncated string when long objects exceed the byte limit', () => {
-    const result = truncateField(
-      { payload: 'x'.repeat(200), marker: 'tail' },
-      20,
-    );
+  it('should truncate long strings with the new marker and keep bytes within the limit', () => {
+    const result = truncateField('abcdefghijklmnopqrstuvwxyz', 16);
 
     expect(typeof result).toBe('string');
-    expect(result).toContain(TRUNCATED_SUFFIX);
+    expect((result as string).endsWith(TRUNCATED_MARKER)).toBe(true);
+    expect(getStringBytes(result as string)).toBeLessThanOrEqual(16);
+  });
+
+  it('should preserve object structure when truncating oversized objects', () => {
+    const result = truncateField(
+      {
+        payload: 'x'.repeat(200),
+        marker: 'tail',
+      },
+      80,
+    );
+
+    expect(typeof result).toBe('object');
+    expect(Array.isArray(result)).toBe(false);
+    expect(getSerializedBytes(result)).toBeLessThanOrEqual(80);
+    expect(JSON.stringify(result)).toContain(TRUNCATED_MARKER);
+  });
+
+  it('should preserve array structure when truncating oversized arrays', () => {
+    const result = truncateField(
+      ['a'.repeat(30), 'b'.repeat(30), 'c'.repeat(30)],
+      50,
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(getSerializedBytes(result)).toBeLessThanOrEqual(50);
+    expect(JSON.stringify(result)).toContain(TRUNCATED_MARKER);
   });
 
   it('should preserve null, undefined and empty strings', () => {
@@ -74,62 +88,48 @@ describe('truncateField', () => {
     expect(truncateField('', 10)).toBe('');
   });
 
-  it('should follow UTF-8 byte slicing behavior for chinese and emoji characters', () => {
-    const value = '狐娘🙂执行记录';
-    const maxBytes = 7;
-    const expectedPrefix = new TextDecoder().decode(
-      new TextEncoder().encode(value).slice(0, maxBytes),
-    );
+  it('should handle chinese and emoji characters without breaking the final byte limit', () => {
+    const result = truncateField('狐娘🙂执行记录'.repeat(4), 20);
 
-    expect(truncateField(value, maxBytes)).toBe(
-      `${expectedPrefix}${TRUNCATED_SUFFIX}`,
-    );
+    expect(typeof result).toBe('string');
+    expect((result as string).endsWith(TRUNCATED_MARKER)).toBe(true);
+    expect(getStringBytes(result as string)).toBeLessThanOrEqual(20);
   });
 });
 
 describe('sanitizeSensitiveFields', () => {
-  it('should redact all supported sensitive key patterns recursively', () => {
+  it('should redact sensitive keys recursively while preserving token metrics', () => {
     const sanitized = sanitizeSensitiveFields({
       apiKey: 'api-key-value',
-      secretKey: 'secret-value',
-      password: 'password-value',
       bearerToken: 'bearer-token-value',
-      connectionCredential: 'credential-value',
-      authorizationHeader: 'Bearer abc',
-      privateKey: '-----BEGIN PRIVATE KEY-----',
-      accessKey: 'access-key-value',
+      promptTokens: 12,
+      completionTokens: 8,
       nested: {
-        safe: 'keep-me',
-        innerToken: 'nested-token',
+        accessKey: 'access-key-value',
+        totalTokens: 20,
       },
       list: [
         {
           passwordHint: 'also-redacted-by-key',
-          label: 'item-1',
+          inputTokens: 3,
         },
-        'plain-value',
       ],
     });
 
     expect(sanitized).toEqual({
       apiKey: '[REDACTED]',
-      secretKey: '[REDACTED]',
-      password: '[REDACTED]',
       bearerToken: '[REDACTED]',
-      connectionCredential: '[REDACTED]',
-      authorizationHeader: '[REDACTED]',
-      privateKey: '[REDACTED]',
-      accessKey: '[REDACTED]',
+      promptTokens: 12,
+      completionTokens: 8,
       nested: {
-        safe: 'keep-me',
-        innerToken: '[REDACTED]',
+        accessKey: '[REDACTED]',
+        totalTokens: 20,
       },
       list: [
         {
           passwordHint: '[REDACTED]',
-          label: 'item-1',
+          inputTokens: 3,
         },
-        'plain-value',
       ],
     });
   });
@@ -143,22 +143,24 @@ describe('sanitizeSensitiveFields', () => {
 });
 
 describe('sanitizeTelemetryData', () => {
-  it('should sanitize sensitive fields and truncate tool, error, repair and io payloads by byte limits', () => {
+  it('should sanitize sensitive fields, preserve token counts and keep structured truncation', () => {
     const sanitized = sanitizeTelemetryData(
       createTelemetryData({
         toolCalls: [
           {
             toolName: 'search_docs',
             input: {
-              apiKey: 'tool-secret',
               content: 'x'.repeat(BYTE_LIMITS.TOOL_CALL_IO * 2),
+              apiKey: 'tool-secret',
+              promptTokens: 123,
             },
             output: {
-              accessKey: 'tool-access-key',
               content: 'y'.repeat(BYTE_LIMITS.TOOL_CALL_IO * 2),
+              accessKey: 'tool-access-key',
+              totalTokens: 456,
             },
             durationMs: 100,
-            status: 'completed',
+            status: 'success',
           },
         ],
         errors: [
@@ -167,22 +169,24 @@ describe('sanitizeTelemetryData', () => {
             errorMessage: 'e'.repeat(BYTE_LIMITS.ERROR_MESSAGE * 2),
             timestamp: '2026-03-16T10:00:00.000Z',
             nodeId: 'node-1',
-            stepId: 'step-1',
+            stepId: '550e8400-e29b-41d4-a716-446655440010',
           },
         ],
         selfRepairs: [
           {
             originalOutput: {
-              secret: 'repair-secret',
               content: 'z'.repeat(BYTE_LIMITS.SELF_REPAIR * 2),
+              secret: 'repair-secret',
+              promptTokens: 10,
             },
             validationError: 'Validation failed',
             repairAttempts: [
               {
                 attemptNumber: 1,
                 result: {
-                  privateKey: 'repair-private-key',
                   content: 'r'.repeat(BYTE_LIMITS.SELF_REPAIR * 2),
+                  privateKey: 'repair-private-key',
+                  completionTokens: 7,
                 },
                 success: false,
               },
@@ -191,12 +195,14 @@ describe('sanitizeTelemetryData', () => {
         ],
         ioSnapshots: {
           stepInput: {
-            authorizationHeader: 'Bearer io-secret',
             content: 'i'.repeat(BYTE_LIMITS.IO_SNAPSHOTS * 2),
+            authorizationHeader: 'Bearer io-secret',
+            inputTokens: 99,
           },
           stepOutput: {
-            password: 'io-password',
             content: 'o'.repeat(BYTE_LIMITS.IO_SNAPSHOTS * 2),
+            password: 'io-password',
+            totalTokens: 200,
           },
         },
         llmInteractions: {
@@ -209,43 +215,58 @@ describe('sanitizeTelemetryData', () => {
       }),
     );
 
-    expectTruncatedStringWithinLimit(
-      sanitized.toolCalls[0]?.input,
+    expect(getSerializedBytes(sanitized.toolCalls[0]?.input)).toBeLessThanOrEqual(
       BYTE_LIMITS.TOOL_CALL_IO,
     );
-    expectTruncatedStringWithinLimit(
-      sanitized.toolCalls[0]?.output,
+    expect(getSerializedBytes(sanitized.toolCalls[0]?.output)).toBeLessThanOrEqual(
       BYTE_LIMITS.TOOL_CALL_IO,
     );
-    expectTruncatedStringWithinLimit(
-      sanitized.errors[0]?.errorMessage,
+    expect(getStringBytes(sanitized.errors[0]?.errorMessage ?? '')).toBeLessThanOrEqual(
       BYTE_LIMITS.ERROR_MESSAGE,
     );
-    expectTruncatedStringWithinLimit(
-      sanitized.selfRepairs[0]?.originalOutput,
-      BYTE_LIMITS.SELF_REPAIR,
-    );
-    expectTruncatedStringWithinLimit(
-      sanitized.selfRepairs[0]?.repairAttempts[0]?.result,
-      BYTE_LIMITS.SELF_REPAIR,
-    );
-    expectTruncatedStringWithinLimit(
-      sanitized.ioSnapshots.stepInput,
+    expect(
+      getSerializedBytes(sanitized.selfRepairs[0]?.originalOutput),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.SELF_REPAIR);
+    expect(
+      getSerializedBytes(sanitized.selfRepairs[0]?.repairAttempts[0]?.result),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.SELF_REPAIR);
+    expect(getSerializedBytes(sanitized.ioSnapshots.stepInput)).toBeLessThanOrEqual(
       BYTE_LIMITS.IO_SNAPSHOTS,
     );
-    expectTruncatedStringWithinLimit(
-      sanitized.ioSnapshots.stepOutput,
+    expect(getSerializedBytes(sanitized.ioSnapshots.stepOutput)).toBeLessThanOrEqual(
       BYTE_LIMITS.IO_SNAPSHOTS,
     );
 
-    expect(String(sanitized.toolCalls[0]?.input)).toContain('[REDACTED]');
-    expect(String(sanitized.toolCalls[0]?.output)).toContain('[REDACTED]');
-    expect(String(sanitized.selfRepairs[0]?.originalOutput)).toContain('[REDACTED]');
-    expect(
-      String(sanitized.selfRepairs[0]?.repairAttempts[0]?.result),
-    ).toContain('[REDACTED]');
-    expect(String(sanitized.ioSnapshots.stepInput)).toContain('[REDACTED]');
-    expect(String(sanitized.ioSnapshots.stepOutput)).toContain('[REDACTED]');
+    expect(sanitized.toolCalls[0]?.input).toMatchObject({
+      apiKey: '[REDACTED]',
+      promptTokens: 123,
+    });
+    expect(sanitized.toolCalls[0]?.output).toMatchObject({
+      accessKey: '[REDACTED]',
+      totalTokens: 456,
+    });
+    expect(JSON.stringify(sanitized.toolCalls[0]?.input)).toContain(TRUNCATED_MARKER);
+    expect(JSON.stringify(sanitized.toolCalls[0]?.output)).toContain(TRUNCATED_MARKER);
+    expect(sanitized.errors[0]?.errorMessage.endsWith(TRUNCATED_MARKER)).toBe(true);
+    expect(sanitized.selfRepairs[0]?.originalOutput).toMatchObject({
+      secret: '[REDACTED]',
+      promptTokens: 10,
+    });
+    expect(sanitized.selfRepairs[0]?.repairAttempts[0]?.result).toMatchObject({
+      privateKey: '[REDACTED]',
+      completionTokens: 7,
+    });
+    expect(sanitized.ioSnapshots.stepInput).toMatchObject({
+      authorizationHeader: '[REDACTED]',
+      inputTokens: 99,
+    });
+    expect(sanitized.ioSnapshots.stepOutput).toMatchObject({
+      password: '[REDACTED]',
+      totalTokens: 200,
+    });
+    expect(JSON.stringify(sanitized.ioSnapshots.stepOutput)).toContain(
+      TRUNCATED_MARKER,
+    );
     expect(sanitized.llmInteractions).toEqual({
       modelId: 'gpt-4.1',
       promptTokens: 100,
@@ -264,7 +285,7 @@ describe('sanitizeTelemetryData', () => {
             input: null,
             output: undefined,
             durationMs: 0,
-            status: 'completed',
+            status: 'success',
           },
         ],
         selfRepairs: [

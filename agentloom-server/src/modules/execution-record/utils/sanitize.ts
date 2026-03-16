@@ -12,6 +12,11 @@ export const BYTE_LIMITS = {
   SELF_REPAIR: SELF_REPAIR_MAX_BYTES,
 } as const;
 
+const TRUNCATED_MARKER = '[TRUNCATED]';
+const STRUCTURE_TRUNCATION_KEY = '__truncated__';
+const TOKEN_METRIC_KEY_PATTERN =
+  /^(promptTokens|completionTokens|totalTokens|inputTokens|outputTokens)$/i;
+
 const SENSITIVE_PATTERNS = [
   /api[_-]?key/i,
   /secret/i,
@@ -32,28 +37,23 @@ export function truncateField(value: unknown, maxBytes: number): unknown {
     return value;
   }
 
-  const str = typeof value === 'string' ? value : JSON.stringify(value);
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
+  if (typeof value === 'string') {
+    return truncateString(value, maxBytes);
+  }
 
-  if (bytes.length <= maxBytes) {
+  if (getSerializedBytes(value) <= maxBytes) {
     return value;
   }
 
-  // 按字节截断，确保不截断在 UTF-8 多字节字符中间
-  const truncated = new TextDecoder().decode(bytes.slice(0, maxBytes));
-
-  // 如果原始值不是字符串，尝试解析回对象
-  if (typeof value !== 'string') {
-    try {
-      return JSON.parse(truncated);
-    } catch {
-      // 截断导致 JSON 无效，返回截断的字符串
-      return truncated + '...[truncated]';
-    }
+  if (Array.isArray(value)) {
+    return truncateArray(value, maxBytes);
   }
 
-  return truncated + '...[truncated]';
+  if (typeof value === 'object') {
+    return truncateObject(value as Record<string, unknown>, maxBytes);
+  }
+
+  return value;
 }
 
 /**
@@ -74,7 +74,7 @@ export function sanitizeSensitiveFields(obj: unknown): unknown {
 
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(key))) {
+    if (isSensitiveKey(key, value)) {
       result[key] = '[REDACTED]';
     } else if (typeof value === 'object' && value !== null) {
       result[key] = sanitizeSensitiveFields(value);
@@ -125,4 +125,175 @@ export function sanitizeTelemetryData(data: StepTelemetryData): StepTelemetryDat
     },
     llmInteractions: data.llmInteractions,
   };
+}
+
+function isSensitiveKey(key: string, value: unknown): boolean {
+  if (TOKEN_METRIC_KEY_PATTERN.test(key)) {
+    return false;
+  }
+
+  if (typeof value === 'number' && /token/i.test(key)) {
+    return false;
+  }
+
+  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function truncateString(value: string, maxBytes: number): string {
+  if (getStringBytes(value) <= maxBytes) {
+    return value;
+  }
+
+  if (getStringBytes(TRUNCATED_MARKER) >= maxBytes) {
+    return new TextDecoder().decode(
+      new TextEncoder().encode(TRUNCATED_MARKER).slice(0, maxBytes),
+    );
+  }
+
+  const encoder = new TextEncoder();
+  const markerBytes = getStringBytes(TRUNCATED_MARKER);
+  let truncated = new TextDecoder().decode(
+    encoder.encode(value).slice(0, Math.max(0, maxBytes - markerBytes)),
+  );
+
+  while (truncated.length > 0 && getStringBytes(`${truncated}${TRUNCATED_MARKER}`) > maxBytes) {
+    truncated = truncated.slice(0, -1);
+  }
+
+  return `${truncated}${TRUNCATED_MARKER}`;
+}
+
+function truncateArray(value: unknown[], maxBytes: number): unknown[] {
+  if (getSerializedBytes(value) <= maxBytes) {
+    return value;
+  }
+
+  const result: unknown[] = [];
+
+  for (const item of value) {
+    const truncatedItem = truncateField(item, maxBytes);
+    const nextValue = [...result, truncatedItem];
+    if (getSerializedBytes(nextValue) <= maxBytes) {
+      result.push(truncatedItem);
+      continue;
+    }
+
+    const markedValue = [...result, TRUNCATED_MARKER];
+    if (getSerializedBytes(markedValue) <= maxBytes) {
+      return markedValue;
+    }
+
+    return result.length > 0 ? result : [TRUNCATED_MARKER];
+  }
+
+  return result;
+}
+
+function truncateObject(
+  value: Record<string, unknown>,
+  maxBytes: number,
+): Record<string, unknown> {
+  if (getSerializedBytes(value) <= maxBytes) {
+    return value;
+  }
+
+  const result: Record<string, unknown> = {};
+  const prioritizedEntries = Object.entries(value)
+    .map(([key, entryValue], index) => ({
+      key,
+      originalValue: entryValue,
+      truncatedValue: truncateField(entryValue, maxBytes),
+      index,
+    }))
+    .sort((left, right) => {
+      const priorityDifference =
+        getObjectEntryPriority(left.key, left.originalValue, left.truncatedValue) -
+        getObjectEntryPriority(right.key, right.originalValue, right.truncatedValue);
+
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
+
+      const sizeDifference =
+        getSerializedBytes(left.truncatedValue) - getSerializedBytes(right.truncatedValue);
+      if (sizeDifference !== 0) {
+        return sizeDifference;
+      }
+
+      return left.index - right.index;
+    });
+
+  for (const { key, truncatedValue } of prioritizedEntries) {
+    const nextValue = { ...result, [key]: truncatedValue };
+    if (getSerializedBytes(nextValue) <= maxBytes) {
+      result[key] = truncatedValue;
+      continue;
+    }
+
+    const keyMarkerValue = { ...result, [key]: TRUNCATED_MARKER };
+    if (getSerializedBytes(keyMarkerValue) <= maxBytes) {
+      result[key] = TRUNCATED_MARKER;
+    }
+
+    const structureMarkerValue = {
+      ...result,
+      [STRUCTURE_TRUNCATION_KEY]: TRUNCATED_MARKER,
+    };
+    if (getSerializedBytes(structureMarkerValue) <= maxBytes) {
+      return structureMarkerValue;
+    }
+
+    return Object.keys(result).length > 0
+      ? result
+      : { [STRUCTURE_TRUNCATION_KEY]: TRUNCATED_MARKER };
+  }
+
+  return result;
+}
+
+function getObjectEntryPriority(
+  key: string,
+  originalValue: unknown,
+  truncatedValue: unknown,
+): number {
+  if (TOKEN_METRIC_KEY_PATTERN.test(key)) {
+    return 0;
+  }
+
+  if (isSensitiveKey(key, originalValue)) {
+    return 1;
+  }
+
+  if (isCompactPrimitive(truncatedValue)) {
+    return 2;
+  }
+
+  if (Array.isArray(truncatedValue) || isPlainObject(truncatedValue)) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function isCompactPrimitive(value: unknown): boolean {
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'string' && !value.includes(TRUNCATED_MARKER))
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getStringBytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function getSerializedBytes(value: unknown): number {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 0 : getStringBytes(serialized);
 }

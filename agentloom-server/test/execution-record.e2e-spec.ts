@@ -29,6 +29,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import { NodeSchedulerService } from '../src/modules/execution/node-scheduler.service';
+import { ExecutionRecordService } from '../src/modules/execution-record/execution-record.service';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -39,6 +40,8 @@ import {
 } from './rls/rls-test-utils';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
+const TOOL_CALL_IO_MAX_BYTES = 5 * 1024;
+const IO_SNAPSHOTS_MAX_BYTES = 10 * 1024;
 
 type TestUser = {
   id: string;
@@ -63,6 +66,8 @@ type SeededExecutionRecord = {
   stepId: string | null;
   nodeId: string | null;
   recordType: 'step_telemetry' | 'execution_summary';
+  telemetryData: JSONValue | null;
+  summaryData: JSONValue | null;
   createdAt: string;
 };
 
@@ -70,7 +75,8 @@ type SeedRecordInput = {
   stepId: string | null;
   nodeId: string | null;
   recordType: 'step_telemetry' | 'execution_summary';
-  data: JSONValue;
+  telemetryData: JSONValue | null;
+  summaryData: JSONValue | null;
   createdAt: Date;
 };
 
@@ -247,34 +253,26 @@ function createStepTelemetryData(startedAt: Date, completedAt: Date) {
   return {
     toolCalls: [
       {
-        toolCallId: crypto.randomUUID(),
         toolName: 'web-search',
-        status: 'completed',
+        status: 'success',
         input: { query: 'execution record e2e' },
         output: { snippets: ['ok'] },
-        startedAt: startedAt.toISOString(),
-        completedAt: completedAt.toISOString(),
-        latencyMs: completedAt.getTime() - startedAt.getTime(),
+        durationMs: completedAt.getTime() - startedAt.getTime(),
       },
     ],
     errors: [],
     selfRepairs: [],
     ioSnapshots: {
-      input: { prompt: 'hello' },
-      output: { text: 'world' },
+      stepInput: { prompt: 'hello' },
+      stepOutput: { text: 'world' },
     },
-    llmInteractions: [
-      {
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        promptTokens: 12,
-        completionTokens: 24,
-        totalTokens: 36,
-        latencyMs: completedAt.getTime() - startedAt.getTime(),
-        startedAt: startedAt.toISOString(),
-        completedAt: completedAt.toISOString(),
-      },
-    ],
+    llmInteractions: {
+      modelId: 'gpt-4o-mini',
+      promptTokens: 12,
+      completionTokens: 24,
+      totalTokens: 36,
+      latencyMs: completedAt.getTime() - startedAt.getTime(),
+    },
   };
 }
 
@@ -293,10 +291,20 @@ function createExecutionSummaryData() {
   };
 }
 
+function getStringBytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function getSerializedBytes(value: unknown): number {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 0 : getStringBytes(serialized);
+}
+
 describe('ExecutionRecord E2E', () => {
   let ctx: RlsTestContext | undefined;
   let app: NestFastifyApplication | undefined;
   let drizzleDb: DrizzleDB;
+  let executionRecordService: ExecutionRecordService;
   let redisClientMock: ReturnType<typeof createMockRedisClient>;
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
@@ -338,6 +346,7 @@ describe('ExecutionRecord E2E', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    executionRecordService = app.get(ExecutionRecordService);
   }, 120_000);
 
   beforeEach(async () => {
@@ -430,14 +439,16 @@ describe('ExecutionRecord E2E', () => {
           stepId,
           nodeId: 'node-1',
           recordType: 'step_telemetry' as const,
-          data: createStepTelemetryData(startedAt, completedAt),
+          telemetryData: createStepTelemetryData(startedAt, completedAt),
+          summaryData: null,
           createdAt: new Date('2026-01-01T00:00:02.000Z'),
         },
         {
           stepId: null,
           nodeId: null,
           recordType: 'execution_summary' as const,
-          data: createExecutionSummaryData(),
+          telemetryData: null,
+          summaryData: createExecutionSummaryData(),
           createdAt: new Date('2026-01-01T00:00:03.000Z'),
         },
       ];
@@ -589,26 +600,39 @@ describe('ExecutionRecord E2E', () => {
     const records: SeededExecutionRecord[] = [];
 
     for (const record of seedRecords) {
+      const telemetryData =
+        record.telemetryData === null
+          ? null
+          : ctx.adminSql.json(record.telemetryData as JSONValue);
+      const summaryData =
+        record.summaryData === null
+          ? null
+          : ctx.adminSql.json(record.summaryData as JSONValue);
+
       const [inserted] = await ctx.adminSql`
         INSERT INTO agent_execution_records (
           id,
+          tenant_id,
           execution_id,
           step_id,
           node_id,
           record_type,
-          data,
+          telemetry_data,
+          summary_data,
           created_at
         )
         VALUES (
           uuid_generate_v7(),
+          ${options.tenantId}::uuid,
           ${executionId}::uuid,
           ${record.stepId}::uuid,
           ${record.nodeId},
           ${record.recordType}::record_type,
-          ${ctx.adminSql.json(record.data as JSONValue)},
+          ${telemetryData},
+          ${summaryData},
           ${record.createdAt}
         )
-        RETURNING id, execution_id, step_id, node_id, record_type, created_at
+        RETURNING id, execution_id, step_id, node_id, record_type, telemetry_data, summary_data, created_at
       `;
 
       records.push({
@@ -617,6 +641,8 @@ describe('ExecutionRecord E2E', () => {
         stepId: inserted.step_id,
         nodeId: inserted.node_id,
         recordType: inserted.record_type,
+        telemetryData: inserted.telemetry_data,
+        summaryData: inserted.summary_data,
         createdAt: inserted.created_at.toISOString(),
       });
     }
@@ -648,6 +674,19 @@ describe('ExecutionRecord E2E', () => {
       expect(response.body.data).toHaveLength(2);
       expect(response.body.data.map((record: { recordType: string }) => record.recordType))
         .toEqual(['execution_summary', 'step_telemetry']);
+      expect(response.body.data[0]).toMatchObject({
+        recordType: 'execution_summary',
+        telemetryData: null,
+        summaryData: createExecutionSummaryData(),
+      });
+      expect(response.body.data[1]).toMatchObject({
+        recordType: 'step_telemetry',
+        summaryData: null,
+        telemetryData: createStepTelemetryData(
+          new Date('2026-01-01T00:00:00.000Z'),
+          new Date('2026-01-01T00:00:01.000Z'),
+        ),
+      });
       expect(response.body.meta).toEqual({
         total: 2,
         limit: 50,
@@ -739,28 +778,38 @@ describe('ExecutionRecord E2E', () => {
             stepId: null,
             nodeId: 'node-1',
             recordType: 'step_telemetry',
-            data: createStepTelemetryData(recordStartedAt, recordCompletedAt),
+            telemetryData: createStepTelemetryData(
+              recordStartedAt,
+              recordCompletedAt,
+            ),
+            summaryData: null,
             createdAt: new Date('2026-01-01T00:00:01.000Z'),
           },
           {
             stepId: null,
             nodeId: null,
             recordType: 'execution_summary',
-            data: createExecutionSummaryData(),
+            telemetryData: null,
+            summaryData: createExecutionSummaryData(),
             createdAt: new Date('2026-01-01T00:00:02.000Z'),
           },
           {
             stepId: null,
             nodeId: 'node-1',
             recordType: 'step_telemetry',
-            data: createStepTelemetryData(recordStartedAt, recordCompletedAt),
+            telemetryData: createStepTelemetryData(
+              recordStartedAt,
+              recordCompletedAt,
+            ),
+            summaryData: null,
             createdAt: new Date('2026-01-01T00:00:03.000Z'),
           },
           {
             stepId: null,
             nodeId: null,
             recordType: 'execution_summary',
-            data: createExecutionSummaryData(),
+            telemetryData: null,
+            summaryData: createExecutionSummaryData(),
             createdAt: new Date('2026-01-01T00:00:04.000Z'),
           },
         ],
@@ -846,13 +895,40 @@ describe('ExecutionRecord E2E', () => {
       });
     });
 
-    it('should return empty results for non-existent executionId', async () => {
+    it('should return 404 for non-existent executionId', async () => {
       const tenant = await seedTenant('records-empty-result');
+      const missingExecutionId = crypto.randomUUID();
 
       const response = await request(app!.getHttpServer())
         .get('/api/v1/execution-records')
         .set(tenant.headers)
-        .query({ executionId: crypto.randomUUID() });
+        .query({ executionId: missingExecutionId });
+
+      expect(response.status).toBe(404);
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(response.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/execution-not-found',
+        title: '执行记录不存在',
+        status: 404,
+        detail: `执行记录 ${missingExecutionId} 不存在`,
+      });
+    });
+
+    it('should return 200 with an empty array when the execution exists but has no records', async () => {
+      const tenant = await seedTenant('records-existing-empty');
+      const seeded = await seedExecutionGraph({
+        tenantId: tenant.tenantId,
+        createdBy: tenant.user.id,
+        prefix: 'records-existing-empty',
+        records: [],
+      });
+
+      const response = await request(app!.getHttpServer())
+        .get('/api/v1/execution-records')
+        .set(tenant.headers)
+        .query({ executionId: seeded.executionId });
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
@@ -863,6 +939,142 @@ describe('ExecutionRecord E2E', () => {
           offset: 0,
           hasMore: false,
         },
+      });
+    });
+
+    it('should return structured truncated telemetry data with redacted secrets', async () => {
+      if (!ctx) {
+        throw new Error('RLS test context not initialized');
+      }
+
+      const tenant = await seedTenant('records-truncated-telemetry');
+      const seeded = await seedExecutionGraph({
+        tenantId: tenant.tenantId,
+        createdBy: tenant.user.id,
+        prefix: 'records-truncated-telemetry',
+        records: [],
+      });
+
+      await ctx.adminSql`
+        UPDATE execution_steps
+        SET
+          input = ${ctx.adminSql.json({
+            authorizationHeader: 'Bearer secret-input',
+            inputTokens: 99,
+            content: 'i'.repeat(IO_SNAPSHOTS_MAX_BYTES * 2),
+          })},
+          result = ${ctx.adminSql.json({
+            modelId: 'gpt-4.1',
+            promptTokens: 123,
+            completionTokens: 45,
+            totalTokens: 168,
+            privateKey: 'private-output-key',
+            content: 'o'.repeat(IO_SNAPSHOTS_MAX_BYTES * 2),
+          })},
+          checkpoint_data = ${ctx.adminSql.json({
+            toolCalls: [
+              {
+                id: 'tool-1',
+                tool: 'search_docs',
+                args: {
+                  apiKey: 'tool-secret-key',
+                  promptTokens: 77,
+                  content: 'x'.repeat(TOOL_CALL_IO_MAX_BYTES * 2),
+                },
+                status: 'completed',
+                result: {
+                  accessKey: 'tool-access-key',
+                  totalTokens: 88,
+                  content: 'y'.repeat(TOOL_CALL_IO_MAX_BYTES * 2),
+                },
+                transitions: [
+                  {
+                    from: 'pending',
+                    to: 'in_progress',
+                    timestamp: '2026-01-01T00:00:00.000Z',
+                  },
+                  {
+                    from: 'in_progress',
+                    to: 'completed',
+                    timestamp: '2026-01-01T00:00:01.000Z',
+                  },
+                ],
+              },
+            ],
+          })}
+        WHERE id = ${seeded.stepId}::uuid
+      `;
+
+      await executionRecordService.handleStepStatusChanged({
+        tenantId: tenant.tenantId,
+        executionId: seeded.executionId,
+        stepId: seeded.stepId,
+        nodeId: 'node-1',
+        from: 'running',
+        to: 'completed',
+      });
+
+      const response = await request(app!.getHttpServer())
+        .get('/api/v1/execution-records')
+        .set(tenant.headers)
+        .query({
+          executionId: seeded.executionId,
+          recordType: 'step_telemetry',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveLength(1);
+
+      const telemetry = response.body.data[0].telemetryData;
+      expect(telemetry.toolCalls[0]).toMatchObject({
+        toolName: 'search_docs',
+        status: 'success',
+        input: {
+          apiKey: '[REDACTED]',
+          promptTokens: 77,
+        },
+        output: {
+          accessKey: '[REDACTED]',
+          totalTokens: 88,
+        },
+      });
+      expect(getSerializedBytes(telemetry.toolCalls[0].input)).toBeLessThanOrEqual(
+        TOOL_CALL_IO_MAX_BYTES,
+      );
+      expect(getSerializedBytes(telemetry.toolCalls[0].output)).toBeLessThanOrEqual(
+        TOOL_CALL_IO_MAX_BYTES,
+      );
+      expect(JSON.stringify(telemetry.toolCalls[0].input)).toContain('[TRUNCATED]');
+      expect(JSON.stringify(telemetry.toolCalls[0].output)).toContain('[TRUNCATED]');
+
+      expect(telemetry.ioSnapshots.stepInput).toMatchObject({
+        authorizationHeader: '[REDACTED]',
+        inputTokens: 99,
+      });
+      expect(telemetry.ioSnapshots.stepOutput).toMatchObject({
+        modelId: 'gpt-4.1',
+        promptTokens: 123,
+        completionTokens: 45,
+        totalTokens: 168,
+        privateKey: '[REDACTED]',
+      });
+      expect(getSerializedBytes(telemetry.ioSnapshots.stepInput)).toBeLessThanOrEqual(
+        IO_SNAPSHOTS_MAX_BYTES,
+      );
+      expect(getSerializedBytes(telemetry.ioSnapshots.stepOutput)).toBeLessThanOrEqual(
+        IO_SNAPSHOTS_MAX_BYTES,
+      );
+      expect(JSON.stringify(telemetry.ioSnapshots.stepInput)).toContain('[TRUNCATED]');
+      expect(JSON.stringify(telemetry.ioSnapshots.stepOutput)).toContain(
+        '[TRUNCATED]',
+      );
+
+      expect(telemetry.llmInteractions).toEqual({
+        modelId: 'gpt-4.1',
+        promptTokens: 123,
+        completionTokens: 45,
+        totalTokens: 168,
+        latencyMs: 1000,
       });
     });
 
@@ -900,15 +1112,12 @@ describe('ExecutionRecord E2E', () => {
         ),
       ).toBe(true);
 
-      expect(crossTenantResponse.status).toBe(200);
-      expect(crossTenantResponse.body).toEqual({
-        data: [],
-        meta: {
-          total: 0,
-          limit: 50,
-          offset: 0,
-          hasMore: false,
-        },
+      expect(crossTenantResponse.status).toBe(404);
+      expect(crossTenantResponse.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/execution-not-found',
+        title: '执行记录不存在',
+        status: 404,
+        detail: `执行记录 ${tenantTwoSeed.executionId} 不存在`,
       });
     });
   });

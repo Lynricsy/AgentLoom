@@ -25,6 +25,7 @@ export class ExecutionRecordController {
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: '查询 Agent 执行记录' })
   @ApiResponse({ status: 200, description: '执行记录查询成功' })
+  @ApiResponse({ status: 404, description: '执行记录不存在' })
   @ApiResponse({ status: 422, description: '查询参数无效' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })

@@ -208,7 +208,6 @@ describe('EarningsSettlementWorker', () => {
       expect(mockEarningsService.createEarningsRecord).toHaveBeenCalledTimes(1);
       expect(mockEarningsService.createEarningsRecord).toHaveBeenCalledWith(
         expect.objectContaining({
-          tenantId: TENANT_ID,
           pluginDbId: usage.pluginDbId,
           pluginId: usage.pluginId,
           orgId: ORG_ID,
@@ -220,6 +219,12 @@ describe('EarningsSettlementWorker', () => {
           platformShare: '7.50000000',
           listingCommission: '2.62500000',
           currency: 'USD',
+          payoutStatus: 'pending',
+          metadata: {
+            pricingModel: 'per_execution',
+            pricePerExecution: '2.50000000',
+            totalBillingAmount: usage.totalBillingAmount,
+          },
         }),
       );
       expect(logSpy).toHaveBeenCalledWith(

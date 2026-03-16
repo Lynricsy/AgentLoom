@@ -1,19 +1,36 @@
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { createJoinTenantPolicies } from './rls-policies';
+import {
+  check,
+  index,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { createDirectTenantPolicies } from './rls-policies';
 import { workflowExecutions } from './workflow-executions.schema';
 import { executionSteps } from './execution-steps.schema';
+
+export type ToolCallRecordStatus = 'success' | 'error';
+
+export type ExecutionRecordErrorType =
+  | 'tool_error'
+  | 'llm_error'
+  | 'validation_error'
+  | 'timeout';
 
 export interface ToolCallRecord {
   toolName: string;
   input: unknown;
   output: unknown;
   durationMs: number;
-  status: string;
+  status: ToolCallRecordStatus;
 }
 
 export interface ErrorRecord {
-  errorType: string;
+  errorType: ExecutionRecordErrorType;
   errorMessage: string;
   timestamp: string;
   nodeId: string;
@@ -75,6 +92,7 @@ export const agentExecutionRecords = pgTable(
   'agent_execution_records',
   {
     id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    tenantId: uuid('tenant_id').notNull(),
     executionId: uuid('execution_id')
       .notNull()
       .references(() => workflowExecutions.id, { onDelete: 'cascade' }),
@@ -83,21 +101,31 @@ export const agentExecutionRecords = pgTable(
     }),
     nodeId: text('node_id'),
     recordType: recordTypeEnum('record_type').notNull(),
-    data: jsonb('data').$type<StepTelemetryData | ExecutionSummaryData>().notNull(),
+    telemetryData: jsonb('telemetry_data').$type<StepTelemetryData | null>(),
+    summaryData: jsonb('summary_data').$type<ExecutionSummaryData | null>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .default(sql`now()`),
   },
   (table) => [
+    index('idx_execution_records_tenant_id').on(table.tenantId),
+    index('idx_execution_records_tenant_execution_id').on(
+      table.tenantId,
+      table.executionId,
+    ),
     index('idx_execution_records_execution_id').on(table.executionId),
     index('idx_execution_records_step_id').on(table.stepId),
     index('idx_execution_records_record_type').on(table.recordType),
     index('idx_execution_records_created_at').on(table.createdAt),
-    ...createJoinTenantPolicies(
-      'agent_execution_records',
-      'execution_id',
-      'workflow_executions',
+    check(
+      'agent_execution_records_payload_check',
+      sql`(
+        (${table.recordType} = 'step_telemetry' AND ${table.telemetryData} IS NOT NULL AND ${table.summaryData} IS NULL)
+        OR
+        (${table.recordType} = 'execution_summary' AND ${table.summaryData} IS NOT NULL AND ${table.telemetryData} IS NULL)
+      )`,
     ),
+    ...createDirectTenantPolicies('agent_execution_records'),
   ],
 );
 

@@ -1,9 +1,10 @@
 import 'reflect-metadata';
 
 import { RequestMethod } from '@nestjs/common';
-import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { DECORATORS } from '@nestjs/swagger/dist/constants';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { ExecutionRecordController } from './execution-record.controller';
@@ -75,7 +76,23 @@ describe('ExecutionRecordController', () => {
           stepId: STEP_ID,
           nodeId: 'node-1',
           recordType: 'step_telemetry',
-          data: { foo: 'bar' },
+          telemetryData: {
+            toolCalls: [],
+            errors: [],
+            selfRepairs: [],
+            ioSnapshots: {
+              stepInput: null,
+              stepOutput: null,
+            },
+            llmInteractions: {
+              modelId: 'gpt-4o-mini',
+              promptTokens: 1,
+              completionTokens: 2,
+              totalTokens: 3,
+              latencyMs: 4,
+            },
+          },
+          summaryData: null,
           createdAt: '2026-03-16T10:00:00.000Z',
         },
       ],
@@ -141,5 +158,19 @@ describe('ExecutionRecordController', () => {
 
     expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.GET);
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('/');
+  });
+
+  it('should declare a 404 swagger response for missing executions', () => {
+    const handler = getHandler('findByExecution');
+    const responses = Reflect.getMetadata(DECORATORS.API_RESPONSE, handler) as
+      | Record<string, { description?: string }>
+      | undefined;
+
+    expect(responses).toBeDefined();
+    expect(
+      Object.values(responses ?? {}).some(
+        (response) => response.description === '执行记录不存在',
+      ),
+    ).toBe(true);
   });
 });

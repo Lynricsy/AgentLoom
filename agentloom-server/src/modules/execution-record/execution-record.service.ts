@@ -3,18 +3,20 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { and, count, desc, eq } from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   agentExecutionRecords,
   executionSteps,
+  type ExecutionRecordErrorType,
   type ExecutionStep,
-  type ExecutionStepAttemptError,
   type ExecutionSummaryData,
   type ExecutionStepErrorMessage,
   type StepTelemetryData,
+  type ToolCallRecordStatus,
+  workflowExecutions,
 } from '../../database/schema';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
+import { ExecutionNotFoundException } from '../execution/execution.exceptions';
 import {
   ExecutionEventName,
   type ExecutionStatusChangedPayload,
@@ -65,11 +67,13 @@ export class ExecutionRecordService {
         const sanitizedData = sanitizeTelemetryData(telemetryData);
 
         await tenantDb.insert(agentExecutionRecords).values({
+          tenantId: payload.tenantId,
           executionId: payload.executionId,
           stepId: payload.stepId,
           nodeId: payload.nodeId,
           recordType: 'step_telemetry',
-          data: sanitizedData,
+          telemetryData: sanitizedData,
+          summaryData: null,
         });
       });
     } catch (error) {
@@ -95,9 +99,11 @@ export class ExecutionRecordService {
         );
 
         await tenantDb.insert(agentExecutionRecords).values({
+          tenantId: payload.tenantId,
           executionId: payload.executionId,
           recordType: 'execution_summary',
-          data: summaryData,
+          telemetryData: null,
+          summaryData,
         });
       });
     } catch (error) {
@@ -108,49 +114,64 @@ export class ExecutionRecordService {
   }
 
   async findByExecution(tenantId: string, query: QueryExecutionRecordsInput) {
-    void tenantId;
+    return runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
+      const [execution] = await tenantDb
+        .select({ id: workflowExecutions.id })
+        .from(workflowExecutions)
+        .where(eq(workflowExecutions.id, query.executionId))
+        .limit(1);
 
-    const tenantDb = getTenantDb(this.db);
-    const conditions = [
-      eq(agentExecutionRecords.executionId, query.executionId),
-    ];
+      if (!execution) {
+        throw new ExecutionNotFoundException(query.executionId);
+      }
 
-    if (query.stepId) {
-      conditions.push(eq(agentExecutionRecords.stepId, query.stepId));
-    }
+      const conditions = [
+        eq(agentExecutionRecords.executionId, query.executionId),
+      ];
 
-    if (query.recordType) {
-      conditions.push(eq(agentExecutionRecords.recordType, query.recordType));
-    }
+      if (query.stepId) {
+        conditions.push(eq(agentExecutionRecords.stepId, query.stepId));
+      }
 
-    const whereClause = and(...conditions);
+      if (query.recordType) {
+        conditions.push(eq(agentExecutionRecords.recordType, query.recordType));
+      }
 
-    const [records, [{ total }]] = await Promise.all([
-      tenantDb
-        .select()
-        .from(agentExecutionRecords)
-        .where(whereClause)
-        .orderBy(desc(agentExecutionRecords.createdAt))
-        .limit(query.limit)
-        .offset(query.offset),
-      tenantDb
-        .select({ total: count() })
-        .from(agentExecutionRecords)
-        .where(whereClause),
-    ]);
+      const whereClause = and(...conditions);
 
-    return {
-      data: records.map((record) => ({
-        ...record,
-        createdAt: this.toIsoString(record.createdAt),
-      })),
-      meta: {
-        total,
-        limit: query.limit,
-        offset: query.offset,
-        hasMore: query.offset + query.limit < total,
-      },
-    };
+      const [records, [{ total }]] = await Promise.all([
+        tenantDb
+          .select()
+          .from(agentExecutionRecords)
+          .where(whereClause)
+          .orderBy(desc(agentExecutionRecords.createdAt))
+          .limit(query.limit)
+          .offset(query.offset),
+        tenantDb
+          .select({ total: count() })
+          .from(agentExecutionRecords)
+          .where(whereClause),
+      ]);
+
+      return {
+        data: records.map((record) => ({
+          id: record.id,
+          executionId: record.executionId,
+          stepId: record.stepId,
+          nodeId: record.nodeId,
+          recordType: record.recordType,
+          telemetryData: record.telemetryData,
+          summaryData: record.summaryData,
+          createdAt: this.toIsoString(record.createdAt),
+        })),
+        meta: {
+          total,
+          limit: query.limit,
+          offset: query.offset,
+          hasMore: query.offset + query.limit < total,
+        },
+      };
+    });
   }
 
   private extractStepTelemetry(
@@ -162,16 +183,18 @@ export class ExecutionRecordService {
   ): StepTelemetryData {
     const checkpointData = (step.checkpointData ?? {}) as {
       toolCalls?: unknown;
-      attempts?: unknown;
     };
     const result = step.result ?? null;
     const toolCalls = this.extractToolCalls(checkpointData.toolCalls);
-    const attempts = this.extractAttempts(checkpointData.attempts);
 
     const errors: StepTelemetryData['errors'] = [];
     if (payload.to === 'failed') {
       errors.push({
-        errorType: this.resolveErrorType(step.errorMessage),
+        errorType: this.resolveErrorType(
+          step.errorMessage,
+          step.nodeType,
+          payload.errorDetail,
+        ),
         errorMessage: this.resolveErrorMessage(step.errorMessage, payload.errorDetail),
         timestamp: new Date().toISOString(),
         nodeId: payload.nodeId,
@@ -179,23 +202,10 @@ export class ExecutionRecordService {
       });
     }
 
-    const selfRepairs: StepTelemetryData['selfRepairs'] = [];
-    if (attempts.length > 1) {
-      selfRepairs.push({
-        originalOutput: attempts[0]?.error ?? null,
-        validationError: 'Retry after failure',
-        repairAttempts: attempts.slice(1).map((attempt) => ({
-          attemptNumber: attempt.attempt,
-          result: attempt.error,
-          success: payload.to === 'completed' && attempt === attempts[attempts.length - 1],
-        })),
-      });
-    }
-
     return {
       toolCalls,
       errors,
-      selfRepairs,
+      selfRepairs: [],
       ioSnapshots: {
         stepInput: step.input ?? null,
         stepOutput: result,
@@ -238,14 +248,20 @@ export class ExecutionRecordService {
     let totalSelfRepairs = 0;
     let totalTokens = 0;
     let totalLatencyMs = 0;
+    let telemetryRecordCount = 0;
 
     for (const record of records) {
-      const data = record.data as StepTelemetryData;
+      const data = record.telemetryData;
+      if (!data) {
+        continue;
+      }
+
+      telemetryRecordCount += 1;
       totalToolCalls += data.toolCalls.length;
       totalErrors += data.errors.length;
       totalSelfRepairs += data.selfRepairs.length;
-      totalTokens += data.llmInteractions.totalTokens;
-      totalLatencyMs += data.llmInteractions.latencyMs;
+      totalTokens += data.llmInteractions?.totalTokens ?? 0;
+      totalLatencyMs += data.llmInteractions?.latencyMs ?? 0;
     }
 
     const completedSteps = steps.filter((step) => step.status === 'completed').length;
@@ -274,7 +290,9 @@ export class ExecutionRecordService {
       totalTokens,
       totalLatencyMs,
       avgStepLatencyMs:
-        records.length > 0 ? Math.round(totalLatencyMs / records.length) : 0,
+        telemetryRecordCount > 0
+          ? Math.round(totalLatencyMs / telemetryRecordCount)
+          : 0,
       executionDurationMs,
     };
   }
@@ -291,23 +309,8 @@ export class ExecutionRecordService {
         input: toolCall.args,
         output: toolCall.result ?? toolCall.error ?? null,
         durationMs: this.resolveToolCallDurationMs(toolCall),
-        status: toolCall.status,
+        status: this.normalizeToolCallStatus(toolCall.status),
       }));
-  }
-
-  private extractAttempts(attempts: unknown): ExecutionStepAttemptError[] {
-    if (!Array.isArray(attempts)) {
-      return [];
-    }
-
-    return attempts.filter(
-      (attempt): attempt is ExecutionStepAttemptError =>
-        typeof attempt === 'object' &&
-        attempt !== null &&
-        typeof attempt.attempt === 'number' &&
-        typeof attempt.error === 'string' &&
-        typeof attempt.timestamp === 'string',
-    );
   }
 
   private isToolCallEvent(toolCall: unknown): toolCall is ToolCallEvent {
@@ -351,10 +354,53 @@ export class ExecutionRecordService {
     return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
   }
 
+  private normalizeToolCallStatus(
+    status: ToolCallEvent['status'],
+  ): ToolCallRecordStatus {
+    return status === 'completed' ? 'success' : 'error';
+  }
+
   private resolveErrorType(
     errorMessage: ExecutionStepErrorMessage | null,
-  ): string {
-    return errorMessage?.type ?? 'unknown';
+    nodeType: string | null,
+    errorDetail?: StepStatusChangedPayload['errorDetail'],
+  ): ExecutionRecordErrorType {
+    if (errorMessage?.typeMismatch) {
+      return 'validation_error';
+    }
+
+    const signals = [
+      errorMessage?.type,
+      errorMessage?.title,
+      errorMessage?.detail,
+      errorMessage?.message,
+      errorDetail?.detail,
+      errorDetail?.message,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLowerCase();
+
+    if (
+      /validation|schema|type mismatch|type-mismatch|mismatch|invalid input|invalid output|parse error/.test(
+        signals,
+      )
+    ) {
+      return 'validation_error';
+    }
+
+    if (/timeout|timed out|deadline exceeded/.test(signals)) {
+      return 'timeout';
+    }
+
+    if (/tool|mcp|sandbox|permission denied|permission request|extism/.test(signals)) {
+      return 'tool_error';
+    }
+
+    if (/llm|model|provider|completion|prompt/.test(signals)) {
+      return 'llm_error';
+    }
+    return /llm|agent/.test(nodeType ?? '') ? 'llm_error' : 'tool_error';
   }
 
   private resolveErrorMessage(
