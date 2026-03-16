@@ -39,6 +39,7 @@ import { ShareModule } from './modules/share/share.module';
 import { PlatformApiTokenModule } from './modules/platform-api-token/platform-api-token.module';
 import { PluginModule } from './modules/plugin/plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
+import { ExecutionRecordModule } from './modules/execution-record/execution-record.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -110,6 +111,7 @@ function createThrottlerOptions(configService: ConfigService) {
     PlatformApiTokenModule,
     PluginModule,
     SmartRoutingModule,
+    ExecutionRecordModule,
   ],
   providers: [
     RbacCacheService,

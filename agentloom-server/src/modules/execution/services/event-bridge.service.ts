@@ -76,8 +76,8 @@ export class EventBridgeService implements OnModuleDestroy {
     );
     this.broadcast(tenantId, executionId, envelope);
 
-    // 将失败事件传播到 NestJS EventEmitter 供证据模块等监听
-    if (payload.to === 'failed') {
+    // 将失败和完成事件传播到 NestJS EventEmitter 供证据模块、执行记录模块等监听
+    if (payload.to === 'failed' || payload.to === 'completed') {
       this.eventEmitter?.emit(ExecutionEventName.STEP_STATUS_CHANGED, {
         tenantId,
         executionId,

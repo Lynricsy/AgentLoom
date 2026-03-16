@@ -123,12 +123,32 @@ describe('EventBridgeService', () => {
         );
       });
 
-      it('当步骤状态不是 failed 时不应向 EventEmitter 发出内部事件', () => {
+      it('当步骤转为 completed 时应向 EventEmitter 发出内部事件', () => {
         const payload: StepStatusChangedPayload = {
           stepId: 's1',
           nodeId: 'n1',
           from: 'running',
           to: 'completed',
+        };
+
+        service.emitStepStatusChanged(TENANT, EXEC, payload);
+
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          ExecutionEventName.STEP_STATUS_CHANGED,
+          {
+            tenantId: TENANT,
+            executionId: EXEC,
+            ...payload,
+          },
+        );
+      });
+
+      it('当步骤状态不是 failed 或 completed 时不应向 EventEmitter 发出内部事件', () => {
+        const payload: StepStatusChangedPayload = {
+          stepId: 's1',
+          nodeId: 'n1',
+          from: 'pending',
+          to: 'running',
         };
 
         service.emitStepStatusChanged(TENANT, EXEC, payload);
