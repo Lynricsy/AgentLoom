@@ -14,7 +14,7 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     agentId: 'agent-001',
     mode: 'workflow',
     context: {
-      history: [{ role: 'user', content: 'hello' }],
+      history: [{ type: 'text', text: 'hello' }],
       workflowState: { executionId: 'exec-1', stepId: STEP_ID, nodeId: 'n1' },
     },
     status: 'active',
@@ -76,7 +76,7 @@ describe('SessionPersistenceService', () => {
       expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z');
       expect(result.updatedAt).toBe('2025-01-01T00:00:00.000Z');
       expect(result.context.history).toEqual([
-        { role: 'user', content: 'hello' },
+        { type: 'text', text: 'hello' },
       ]);
       expect(result.context.workflowState).toEqual({
         executionId: 'exec-1',
