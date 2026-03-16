@@ -89,7 +89,7 @@ describe('ExecutionController', () => {
   describe('runWorkflow', () => {
     it('应启动工作流执行并返回 { data }', async () => {
       mockService.runWorkflow.mockResolvedValue(mockExecution);
-      const dto = { inputParams: { source: 'manual' } };
+      const dto = { inputParams: { source: 'manual' }, launchSource: undefined, schemaVersion: undefined };
 
       const result = await controller.runWorkflow(
         WORKFLOW_ID,

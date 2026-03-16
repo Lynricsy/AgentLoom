@@ -28,7 +28,7 @@ describe('TemplateController', () => {
       };
       mockService.findAll.mockResolvedValue(mockResult);
 
-      const query = { category: 'automation', page: 2, pageSize: 10 };
+      const query = { category: 'automation' as const, page: 2, pageSize: 10 };
       const result = await controller.list(query);
 
       expect(result).toEqual(mockResult);

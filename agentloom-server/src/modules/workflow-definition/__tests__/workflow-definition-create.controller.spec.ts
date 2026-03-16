@@ -117,6 +117,8 @@ describe('WorkflowDefinitionCreateController', () => {
         pageSize: 10,
         status: 'draft',
         search: '审批',
+        sort: 'updatedAt',
+        order: 'desc',
       };
       const mockResult = {
         data: [
