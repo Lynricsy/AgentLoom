@@ -215,3 +215,8 @@ export {
   type PluginDeveloperKey,
   type NewPluginDeveloperKey,
 } from './plugin-developer-keys.schema';
+export {
+  pluginUsageRecords,
+  type PluginUsageRecord,
+  type NewPluginUsageRecord,
+} from './plugin-usage-records.schema';
