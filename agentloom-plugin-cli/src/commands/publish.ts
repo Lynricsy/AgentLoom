@@ -1,17 +1,19 @@
-import { createPublicKey, createHash } from 'node:crypto';
-import { createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { createPublicKey } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import archiver from 'archiver';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import {
   computeContentHash,
+  computeKeyFingerprint,
+  readArchiveManifest,
   signArchive,
-  type PluginManifest,
+  updateArchiveManifest,
+  verifyArchiveSignature,
 } from '@agentloom/plugin-sdk';
 
-import { buildPluginArchive } from './build';
+import { loadManifest } from '../utils/manifest';
 
 export interface PublishPluginOptions {
   key?: string;
@@ -26,39 +28,6 @@ export interface PublishPluginResult {
   developerKeyFingerprint: string;
 }
 
-function computeKeyFingerprint(publicKeyPem: string): string {
-  const keyObject = createPublicKey(publicKeyPem);
-  const der = keyObject.export({ type: 'spki', format: 'der' });
-  return createHash('sha256').update(der).digest('hex');
-}
-
-async function writeArchiveWithManifest(
-  cwd: string,
-  archivePath: string,
-  manifest: PluginManifest,
-): Promise<void> {
-  await new Promise<void>((resolveArchive, rejectArchive) => {
-    const output = createWriteStream(archivePath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-
-    output.on('close', () => resolveArchive());
-    output.on('error', rejectArchive);
-    archive.on('error', rejectArchive);
-
-    archive.pipe(output);
-    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, { name: 'manifest.json' });
-    archive.directory(resolve(cwd, 'dist'), 'dist');
-    archive.file(resolve(cwd, 'package.json'), { name: 'package.json' });
-
-    const readmePath = resolve(cwd, 'README.md');
-    if (existsSync(readmePath)) {
-      archive.file(readmePath, { name: 'README.md' });
-    }
-
-    void archive.finalize();
-  });
-}
-
 export async function publishPlugin(
   options: PublishPluginOptions,
 ): Promise<PublishPluginResult> {
@@ -68,34 +37,48 @@ export async function publishPlugin(
 
   const cwd = resolve(options.cwd ?? process.cwd());
   const keyPath = resolve(options.key);
+  const outputDir = resolve(cwd, options.outputDir ?? 'build');
+  const manifest = loadManifest(cwd);
+  const archivePath = resolve(outputDir, `${manifest.id}-${manifest.version}.alp`);
+
+  if (!existsSync(archivePath)) {
+    throw new Error(
+      '未找到已构建的 .alp 归档。请先执行 `agentloom-plugin build`（WASM 插件请使用 `agentloom-plugin build --wasm`）。',
+    );
+  }
+
   const privateKeyPem = readFileSync(keyPath, 'utf8');
-
-  const buildResult = await buildPluginArchive({
-    cwd,
-    outputDir: options.outputDir,
-  });
-
-  const archiveBuffer = readFileSync(buildResult.archivePath);
-  const signatureForManifest = signArchive(archiveBuffer, privateKeyPem);
-  const contentHashForManifest = computeContentHash(archiveBuffer);
+  const archiveBuffer = readFileSync(archivePath);
+  const archiveManifest = await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
+  const signature = await signArchive(archiveBuffer, privateKeyPem);
+  const contentHash = await computeContentHash(archiveBuffer);
 
   const publicKey = createPublicKey(privateKeyPem);
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }) as string;
   const developerKeyFingerprint = computeKeyFingerprint(publicKeyPem);
 
-  await writeArchiveWithManifest(cwd, buildResult.archivePath, {
-    ...buildResult.manifest,
-    signature: signatureForManifest,
-    contentHash: contentHashForManifest,
+  const signedArchiveBuffer = await updateArchiveManifest(archiveBuffer, {
+    ...archiveManifest,
+    signature,
+    contentHash,
     developerKeyFingerprint,
   });
 
-  const signedArchiveBuffer = readFileSync(buildResult.archivePath);
-  const signature = signArchive(signedArchiveBuffer, privateKeyPem);
-  const contentHash = computeContentHash(signedArchiveBuffer);
+  const valid = await verifyArchiveSignature(
+    signedArchiveBuffer,
+    signature,
+    publicKeyPem,
+  );
+  const finalContentHash = await computeContentHash(signedArchiveBuffer);
+
+  if (!valid || finalContentHash !== contentHash) {
+    throw new Error('签名后的归档自验证失败。请检查签名元数据与归档内容是否一致。');
+  }
+
+  writeFileSync(archivePath, signedArchiveBuffer);
 
   return {
-    archivePath: buildResult.archivePath,
+    archivePath,
     signature,
     contentHash,
     developerKeyFingerprint,

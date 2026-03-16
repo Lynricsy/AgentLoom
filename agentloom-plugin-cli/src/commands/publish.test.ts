@@ -1,12 +1,29 @@
-import { execFileSync } from 'node:child_process';
+import * as childProcess from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
-import { verifyArchiveSignature } from '@agentloom/plugin-sdk';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  computeContentHash,
+  readArchiveManifest,
+  verifyArchiveSignature,
+} from '@agentloom/plugin-sdk';
 
+const mocks = vi.hoisted(() => ({
+  execSync: vi.fn(),
+}));
+
+vi.mock('node:child_process', async () => {
+  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+  return {
+    ...actual,
+    execSync: mocks.execSync,
+  };
+});
+
+import { buildPluginArchive } from './build';
 import { publishPlugin } from './publish';
 
 const tempDirs: string[] = [];
@@ -19,19 +36,6 @@ function createTempDir(): string {
 
 function writeJson(filePath: string, value: Record<string, unknown>): void {
   writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
-}
-
-function readArchiveManifest(archivePath: string): Record<string, unknown> {
-  const script = [
-    'import json, sys, zipfile',
-    'with zipfile.ZipFile(sys.argv[1]) as archive:',
-    '    print(archive.read("manifest.json").decode())',
-  ].join('\n');
-
-  return JSON.parse(execFileSync('python3', ['-c', script, archivePath], { encoding: 'utf8' })) as Record<
-    string,
-    unknown
-  >;
 }
 
 function createBuildableProject(root: string): { keyPath: string; publicKeyPem: string } {
@@ -89,43 +93,66 @@ afterEach(() => {
   }
 });
 
+beforeEach(() => {
+  mocks.execSync.mockReset();
+  mocks.execSync.mockImplementation((command, options) => {
+    const cwd = (options as { cwd?: string } | undefined)?.cwd;
+    if (!cwd) {
+      throw new Error('缺少 cwd');
+    }
+
+    if (command === 'npx tsc') {
+      mkdirSync(join(cwd, 'dist'), { recursive: true });
+      writeFileSync(join(cwd, 'dist', 'index.js'), 'export default { nodes: [] };\n', 'utf8');
+      return Buffer.alloc(0);
+    }
+
+    throw new Error(`Unexpected command: ${command}`);
+  });
+});
+
 describe('publishPlugin', () => {
   it('should throw without key option', async () => {
     await expect(publishPlugin({})).rejects.toThrow('必须提供私钥路径');
   });
 
-  it('should sign archive and return signature info', async () => {
+  it('should throw when the archive has not been built yet', async () => {
     const root = createTempDir();
     const { keyPath } = createBuildableProject(root);
 
+    await expect(publishPlugin({ key: keyPath, cwd: root })).rejects.toThrow(
+      '未找到已构建的 .alp 归档',
+    );
+  });
+
+  it('should sign an existing archive and return signature info', async () => {
+    const root = createTempDir();
+    const { keyPath } = createBuildableProject(root);
+
+    await buildPluginArchive({ cwd: root });
     const result = await publishPlugin({ key: keyPath, cwd: root });
 
     expect(result.signature).toBeTruthy();
     expect(result.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result.developerKeyFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(result.archivePath).toContain('.alp');
-  }, 30000);
+  });
 
-  it('should produce a verifiable signature', async () => {
+  it('should embed verifiable signing metadata into manifest.json', async () => {
     const root = createTempDir();
     const { keyPath, publicKeyPem } = createBuildableProject(root);
 
+    await buildPluginArchive({ cwd: root });
     const result = await publishPlugin({ key: keyPath, cwd: root });
     const archiveBuffer = readFileSync(result.archivePath);
+    const manifest = await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
 
-    const valid = verifyArchiveSignature(archiveBuffer, result.signature, publicKeyPem);
-    expect(valid).toBe(true);
-  }, 30000);
-
-  it('should embed signing metadata into manifest.json', async () => {
-    const root = createTempDir();
-    const { keyPath } = createBuildableProject(root);
-
-    const result = await publishPlugin({ key: keyPath, cwd: root });
-    const manifest = readArchiveManifest(result.archivePath);
-
-    expect(manifest.signature).toEqual(expect.any(String));
-    expect(manifest.contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(manifest.signature).toBe(result.signature);
+    expect(manifest.contentHash).toBe(result.contentHash);
     expect(manifest.developerKeyFingerprint).toBe(result.developerKeyFingerprint);
-  }, 30000);
+    expect(await computeContentHash(archiveBuffer)).toBe(result.contentHash);
+    expect(
+      await verifyArchiveSignature(archiveBuffer, result.signature, publicKeyPem),
+    ).toBe(true);
+  });
 });

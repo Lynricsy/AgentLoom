@@ -1,5 +1,13 @@
-import { execSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import * as childProcess from 'node:child_process';
+import {
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { delimiter, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +22,7 @@ import { loadPlugin } from '../utils/plugin';
 export interface BuildPluginOptions {
   cwd?: string;
   outputDir?: string;
+  wasm?: boolean;
 }
 
 export interface BuildPluginResult {
@@ -30,6 +39,7 @@ function getCliBinPath(): string {
 async function createArchive(
   cwd: string,
   outputPath: string,
+  manifest: PluginManifest,
 ): Promise<void> {
   await new Promise<void>((resolveArchive, rejectArchive) => {
     const output = createWriteStream(outputPath);
@@ -40,7 +50,7 @@ async function createArchive(
     archive.on('error', rejectArchive);
 
     archive.pipe(output);
-    archive.file(resolve(cwd, 'manifest.json'), { name: 'manifest.json' });
+    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, { name: 'manifest.json' });
     archive.directory(resolve(cwd, 'dist'), 'dist');
     archive.file(resolve(cwd, 'package.json'), { name: 'package.json' });
 
@@ -60,14 +70,11 @@ export async function buildPluginArchive(
   const outputDir = resolve(cwd, options.outputDir ?? 'build');
   const manifest = loadManifest(cwd);
 
-  execSync('npx tsc', {
-    cwd,
-    env: {
-      ...process.env,
-      PATH: [getCliBinPath(), process.env.PATH ?? ''].filter(Boolean).join(delimiter),
-    },
-    stdio: 'pipe',
-  });
+  if (options.wasm) {
+    buildWasmBundle(cwd);
+  } else {
+    buildTypeScriptBundle(cwd);
+  }
 
   const distDir = resolve(cwd, 'dist');
   if (!existsSync(distDir)) {
@@ -76,8 +83,12 @@ export async function buildPluginArchive(
 
   mkdirSync(outputDir, { recursive: true });
 
+  const archiveManifest = options.wasm
+    ? { ...manifest, wasmEntry: 'dist/plugin.wasm' }
+    : manifest;
+
   const archivePath = resolve(outputDir, `${manifest.id}-${manifest.version}.alp`);
-  await createArchive(cwd, archivePath);
+  await createArchive(cwd, archivePath, archiveManifest);
 
   const sizeBytes = statSync(archivePath).size;
 
@@ -90,17 +101,60 @@ export async function buildPluginArchive(
 
   return {
     archivePath,
-    manifest,
+    manifest: archiveManifest,
     nodeCount,
     sizeBytes,
+  };
+}
+
+function buildTypeScriptBundle(cwd: string): void {
+  childProcess.execSync('npx tsc', {
+    cwd,
+    env: buildCommandEnv(),
+    stdio: 'pipe',
+  });
+}
+
+function buildWasmBundle(cwd: string): void {
+  if (!existsSync(resolve(cwd, 'Cargo.toml'))) {
+    throw new Error('未找到 Cargo.toml。使用 --wasm 构建前，请确保当前插件项目是 Rust WASM 项目。');
+  }
+
+  childProcess.execSync('npx wasm-pack build --target bundler --release', {
+    cwd,
+    env: buildCommandEnv(),
+    stdio: 'pipe',
+  });
+
+  const pkgDir = resolve(cwd, 'pkg');
+  if (!existsSync(pkgDir)) {
+    throw new Error('WASM 构建失败：未生成 pkg/ 目录。');
+  }
+
+  const wasmFileName = readdirSync(pkgDir).find((entry) => entry.endsWith('.wasm'));
+  if (!wasmFileName) {
+    throw new Error('WASM 构建失败：pkg/ 目录中未找到 .wasm 文件。');
+  }
+
+  const distDir = resolve(cwd, 'dist');
+  rmSync(distDir, { recursive: true, force: true });
+  mkdirSync(distDir, { recursive: true });
+  copyFileSync(resolve(pkgDir, wasmFileName), resolve(distDir, 'plugin.wasm'));
+}
+
+function buildCommandEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: [getCliBinPath(), process.env.PATH ?? ''].filter(Boolean).join(delimiter),
   };
 }
 
 export const buildCommand = new Command('build')
   .description('构建 AgentLoom 插件归档')
   .option('-o, --output <dir>', 'Output directory', 'build')
-  .action(async (options: { output: string }) => {
-    const result = await buildPluginArchive({ outputDir: options.output });
+  .option('--wasm', '使用 wasm-pack 构建 WASM 产物')
+  .action(async (options: { output: string; wasm?: boolean }) => {
+    const result = await buildPluginArchive({ outputDir: options.output, wasm: options.wasm });
 
     console.info(chalk.green('📦 插件构建完成'));
     console.info(`文件: ${result.archivePath}`);
