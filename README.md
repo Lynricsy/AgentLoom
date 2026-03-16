@@ -1,0 +1,550 @@
+# 🕸️ AgentLoom
+
+**多智能体工作流编排平台** — 通过可视化画布将 AI Agent 组合为 DAG 工作流并执行。
+
+AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编排为协作工作流。支持拖拽式画布编辑、实时执行监控、端到端加密、插件生态以及跨端体验。
+
+---
+
+## ✨ 核心特性
+
+- **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，16 种节点类型，实时端口类型兼容性检查（Rust WASM）
+- **🤖 多模型智能路由** — 6 种路由策略（Token 优化 / 成本优化 / 质量优先 / 延迟优先 / 历史最优 / 容错链），支持自动 Fallback
+- **⚡ DAG 调度引擎** — 状态机驱动的工作流执行，BullMQ 分布式任务队列，支持断点续跑与人工介入
+- **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
+- **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
+- **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
+- **🧠 知识库 RAG** — 文档解析 → 分块 → Qdrant 向量化，支持知识增强的 Agent 推理
+- **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
+- **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
+- **🌐 MCP 集成** — Model Context Protocol 工具编排，沙箱化执行环境
+- **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架
+
+---
+
+## 🏗️ 项目架构
+
+```
+AgentLoom/
+├── agentloom-server/            # 🖥️  后端服务 (NestJS 11 + Fastify 5)
+├── agentloom-studio/            # 🎨  前端应用 (React 19 + Vite 7)
+├── agentloom-type-engine/       # ⚙️  类型引擎 (Rust → WASM)
+├── agentloom-plugin-sdk/        # 📦  插件开发 SDK (TypeScript)
+├── agentloom-plugin-cli/        # 🔧  插件脚手架 CLI
+├── agentloom-plugin-template/   # 📝  插件示例模板
+├── agentloom_mobile/            # 📱  移动端应用 (Flutter)
+└── docker-compose.dev.yml       # 🐳  开发环境 (Qdrant)
+```
+
+> **非标准 Monorepo**：各包独立管理依赖和 lockfile，无 `pnpm-workspace.yaml`。
+
+### 系统交互图
+
+```
+┌─────────────────┐    HTTP/REST     ┌──────────────────────────────────┐
+│  agentloom-     │──── /api/v1 ────▶│       agentloom-server           │
+│  studio (Web)   │                  │  ┌──────────┐  ┌──────────────┐  │
+│                 │◀── Socket.IO ───│  │ Execution│  │   BullMQ     │  │
+│  React 19       │  /execution      │  │  Engine  │  │   Workers    │  │
+│  + WASM Engine  │  /notification   │  └──────────┘  └──────────────┘  │
+└─────────────────┘  /knowledge      │  ┌──────────┐  ┌──────────────┐  │
+                                     │  │  Plugin  │  │  Smart       │  │
+┌─────────────────┐    HTTP/REST     │  │  Sandbox │  │  Routing     │  │
+│  agentloom_     │──── /api/v1 ────▶│  │ (Extism) │  │  (6策略)     │  │
+│  mobile         │                  │  └──────────┘  └──────────────┘  │
+│  (Flutter)      │◀── Socket.IO ───│                                  │
+│                 │  + FCM Push      └────────┬──────────┬──────┬───────┘
+└─────────────────┘                           │          │      │
+                                              ▼          ▼      ▼
+                                         PostgreSQL   Redis   Qdrant
+                                         (Supabase)  (BullMQ) (向量)
+                                              │
+                                              ▼
+                                            MinIO
+                                          (对象存储)
+```
+
+---
+
+## 📦 各包详情
+
+### agentloom-server — 后端服务
+
+| 项目 | 技术 |
+|------|------|
+| 框架 | NestJS 11 + Fastify 5 |
+| ORM | Drizzle ORM + PostgreSQL (Supabase) |
+| 队列 | BullMQ + Redis |
+| 向量库 | Qdrant |
+| 对象存储 | MinIO |
+| AI SDK | Vercel AI SDK (@ai-sdk/openai, anthropic, google) |
+| 实时通信 | Socket.IO (Redis Adapter) |
+| 推送通知 | Firebase Cloud Messaging |
+| 测试 | Vitest + SWC (80% 覆盖率阈值) |
+
+<details>
+<summary>📋 核心模块一览（15+ 模块）</summary>
+
+| 模块 | 职责 |
+|------|------|
+| `auth` | JWT 认证 + API Key 双重认证 |
+| `organization` | 组织管理与多租户 |
+| `workflow-definition` | 工作流定义 CRUD + 版本管理 |
+| `execution` | DAG 调度引擎 + 状态机 + 人工介入 |
+| `agent` | AI Agent 六边形架构 (Ports/Adapters) |
+| `llm` | 多模型集成 + Provider 管理 |
+| `smart-routing` | 6 种智能路由策略 |
+| `knowledge` | RAG 知识库（解析 → 分块 → 向量化） |
+| `mcp` | Model Context Protocol 工具管理 |
+| `sandbox` | 隔离执行环境（生命周期管理） |
+| `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
+| `trigger` | Cron / Webhook / API Event 触发器 |
+| `notification` | REST + BullMQ + Socket.IO + FCM |
+| `evidence` | 证据记录 + SHA-256 完整性 + 溯源链 |
+| `marketplace` | 工作流/插件市场 CRUD |
+| `share` | 工作流分享短链 |
+| `template` | 预置工作流模板 |
+| `tenant-key` | E2EE 公钥管理（RSA-4096） |
+| `platform-api-token` | 外部 API Token 管理 (`al_` 前缀) |
+
+</details>
+
+<details>
+<summary>🔐 认证与多租户链路</summary>
+
+```
+请求 → TenantMiddleware → TenantTransactionInterceptor → CustomThrottlerGuard (100 req/min)
+     → AuthGuard (JWT → X-Api-Key fallback) → TenantGuard → RolesGuard
+                                                              │
+                                              owner > admin > creator > operator > viewer
+```
+
+- **租户隔离**: AsyncLocalStorage + Drizzle 事务级隔离
+- **双重认证**: Supabase JWT 或 `X-Api-Key`（SHA-256 哈希存储）
+- **API 限流**: 100 请求/分钟 (Throttler Guard)
+
+</details>
+
+<details>
+<summary>📡 BullMQ 队列列表</summary>
+
+| 队列 | 用途 |
+|------|------|
+| `execution-queue` | 工作流执行调度 |
+| `agent-task-queue` | Agent 任务处理 |
+| `plugin-execution` | 插件 WASM 执行 |
+| `trigger-scheduler` | 触发器调度 |
+| `notification` | 通知推送 |
+| `sandbox-lifecycle` | 沙箱生命周期管理 |
+| `document-processing` | 文档解析处理 |
+| `document-indexing` | 文档向量索引 |
+| `earnings-settlement` | 插件收益结算 |
+
+</details>
+
+<details>
+<summary>📡 Socket.IO 命名空间</summary>
+
+| 命名空间 | 协议特性 |
+|---------|----------|
+| `/execution` | 类型化 `ExecutionEvent<T>` 信封、单调递增 eventId、`lastEventId` 断线回放、背压队列 (500 cap, 100ms drain) |
+| `/notification` | 未读计数 + 实时新通知推送 |
+| `/knowledge` | 知识库处理状态 |
+
+</details>
+
+---
+
+### agentloom-studio — 前端应用
+
+| 项目 | 技术 |
+|------|------|
+| 框架 | React 19 + TypeScript 5.9 |
+| 构建 | Vite 7 |
+| 样式 | Tailwind CSS v4 + Radix UI + CVA |
+| 路由 | TanStack Router v1 |
+| 数据 | TanStack Query + Zustand (immer) |
+| 画布 | @xyflow/react v12 |
+| HTTP | ky (自动 snake_case ↔ camelCase 转换) |
+| 编辑器 | Monaco Editor |
+| 图表 | Recharts |
+
+**架构**: Feature-Slice Design — 按功能切片组织代码，每个 Feature 包含独立的 API、Store、Components 和 Hooks。
+
+<details>
+<summary>🗺️ 路由表</summary>
+
+| 路由 | 页面 |
+|------|------|
+| `/workflows/$workflowId` | 工作流画布编辑器 |
+| `/executions/$executionId` | 执行调试视图（实时时间线） |
+| `/templates` | 工作流模板库 |
+| `/marketplace` | 工作流/插件市场 |
+| `/settings/knowledge-bases` | 知识库管理 |
+| `/settings/tool-library` | MCP 工具库 |
+| `/developer-console/earnings` | 开发者收益面板 |
+
+</details>
+
+<details>
+<summary>🎨 画布节点类型（16 种）</summary>
+
+`agent` · `llm` · `input` · `output` · `conditional` · `loop` · `parallel` · `merge` · `transform` · `api-call` · `code-executor` · `knowledge-retrieval` · `mcp-tool` · `smart-routing` · `sandbox` · `plugin` (自定义插件节点)
+
+</details>
+
+**设计**: 仅暗色模式 (Dark Mode Only)，Tailwind v4 Design Token 体系。
+
+---
+
+### agentloom-type-engine — 端口类型引擎
+
+```rust
+// Rust → WebAssembly，浏览器端运行
+// 用于画布上判断两个节点端口是否可以连接
+```
+
+**8 种端口数据类型** (canonical):
+
+`model` · `text` · `json` · `image` · `audio` · `tool` · `sandbox` · `knowledge`
+
+**4 级兼容性结果**:
+
+| 等级 | 含义 | 示例 |
+|------|------|------|
+| `EXACT` | 完全匹配 | text → text |
+| `TRANSFORM` | 可自动转换 | text ↔ json |
+| `PARTIAL` | 部分兼容（需映射） | 结构相似的 JSON Schema |
+| `INCOMPATIBLE` | 不兼容 | image → model |
+
+**WASM 导出** (3 个函数):
+- `checkCompatibility(source, target)` → 端口兼容性检查
+- `checkSchemaCompatibility(source, target)` → Schema 级兼容性
+- `validateSchema(input)` → Schema 合法性验证
+
+> WASM 产物已提交至 `pkg/`，Studio 通过 Web Worker 加载。
+
+---
+
+### agentloom-plugin-sdk — 插件开发 SDK
+
+```
+@agentloom/plugin-sdk
+```
+
+为插件生态提供类型定义、校验 Schema、辅助函数和加密签名工具。
+
+| 模块 | 内容 |
+|------|------|
+| `types` | `PluginManifest`, `AgentLoomPlugin`, `CustomNodeDefinition`, `NodeExecutionContext/Result` |
+| `validation` | Zod 3 Schema 校验（reverse-domain ID + semver 版本号） |
+| `helpers` | `defineInputPort()`, `defineOutputPort()`, `defineNode()`, 类型守卫 |
+| `signing` | RSA-PSS 签名/验签, SHA-256 内容哈希, 密钥指纹计算, canonical archive payload |
+
+**输出格式**: tsup → ESM (`index.js`) + CJS (`index.cjs`) + 类型声明 (`.d.ts` / `.d.cts`)
+
+> ⚠️ SDK 使用 **Zod 3.x**（非 Zod 4），确保插件生态的广泛兼容性。
+
+---
+
+### agentloom-plugin-cli — 插件脚手架 CLI
+
+```bash
+npx @agentloom/plugin-cli <command>
+# 或全局安装后
+agentloom-plugin <command>
+```
+
+**完整的插件开发生命周期**:
+
+```
+create → dev → build → keys generate → publish
+  │       │      │          │              │
+  ▼       ▼      ▼          ▼              ▼
+ 脚手架  本地调试  打包.alp  生成RSA密钥对  签名发布
+```
+
+| 命令 | 说明 |
+|------|------|
+| `create <name>` | 交互式创建插件项目（manifest + package.json + tsconfig + 源码 + 测试） |
+| `dev [-p port]` | 本地开发服务器（默认 :4400），chokidar 文件监听热重载 |
+| `build [-o dir] [--wasm]` | TypeScript 编译或 WASM 构建，打包为 `.alp` 归档 |
+| `keys generate [-b bits]` | 生成 RSA 密钥对（2048/3072/4096 位），输出指纹 |
+| `publish [-k keyPath]` | RSA-PSS 签名 → 注入 manifest → 自验证 → 覆写归档 |
+
+---
+
+### agentloom-plugin-template — 示例插件
+
+`com.agentloom.text-to-uppercase` — 一个完整的参考实现：
+
+```typescript
+// 定义节点：1 个 text 输入端口 → 1 个 text 输出端口
+const textToUppercaseNode: CustomNodeDefinition = {
+  type: 'text-to-uppercase',
+  category: 'transform',
+  inputPorts: [defineInputPort({ id: 'text-in', dataType: 'text' })],
+  outputPorts: [defineOutputPort({ id: 'text-out', dataType: 'text' })],
+  configSchema: { prefix: { type: 'string' }, suffix: { type: 'string' } },
+  execute: async (context) => {
+    const input = context.inputs['text-in'];
+    const result = `${config.prefix}${input.toUpperCase()}${config.suffix}`;
+    return { outputs: { 'text-out': result } };
+  },
+};
+```
+
+---
+
+### agentloom_mobile — 移动端应用
+
+| 项目 | 技术 |
+|------|------|
+| 框架 | Flutter 3.41.2 (FVM) |
+| 状态管理 | Riverpod 3.x (手写 Provider) |
+| 路由 | GoRouter 17.x |
+| HTTP | Dio + AuthInterceptor (401 自动刷新重试) |
+| 模型 | Freezed 3.x + json_serializable |
+| 推送 | Firebase Cloud Messaging + flutter_local_notifications |
+| 测试 | 429 tests (mocktail) |
+
+**功能模块**:
+
+| 模块 | 功能 |
+|------|------|
+| `auth` | 登录/登出/Token 刷新/强制登出 |
+| `dashboard` | 快速访问 + 最近执行记录 |
+| `workflows` | 列表搜索/详情/参数化启动 |
+| `execution` | Socket.IO 实时监控 + REST 5s 轮询降级 |
+| `notifications` | FCM 推送 + 本地通知 + 深链跳转 |
+
+---
+
+## 🚀 快速开始
+
+### 前置要求
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| Node.js | ≥ 18 | Server / Studio |
+| pnpm | ≥ 9 | 包管理器 |
+| Rust + wasm-pack | latest | Type Engine 构建（可选，已含预构建 WASM） |
+| Flutter (FVM) | 3.41.2 | 移动端开发 |
+| Docker | latest | Qdrant 向量数据库 |
+| PostgreSQL | 15+ | 主数据库（或使用 Supabase） |
+| Redis | 7+ | BullMQ 任务队列 |
+
+### 1. 启动基础设施
+
+```bash
+# 启动 Qdrant 向量数据库
+docker compose -f docker-compose.dev.yml up -d
+```
+
+> PostgreSQL 和 Redis 需外部部署，或使用 Supabase 托管 PostgreSQL。
+
+### 2. 启动后端
+
+```bash
+cd agentloom-server
+cp .env.example .env          # 配置环境变量
+pnpm install
+pnpm db:generate              # 生成 Drizzle 迁移
+pnpm db:migrate               # 执行迁移
+pnpm db:seed                  # 导入预置模板（可选）
+pnpm start:dev                # 启动开发服务器 (watch mode)
+```
+
+API 文档: `http://localhost:<APP_PORT>/docs` (Swagger UI)
+
+### 3. 启动前端
+
+```bash
+cd agentloom-studio
+cp .env.example .env          # 配置 API 地址
+pnpm install
+pnpm dev                      # 启动 Vite 开发服务器
+```
+
+### 4. 移动端（可选）
+
+```bash
+cd agentloom_mobile
+cp .env.dev.example .env.dev  # 配置环境变量
+fvm flutter pub get           # 安装依赖（需 FVM）
+dart run build_runner build   # 生成 Freezed 模型代码
+fvm flutter run               # 启动应用
+```
+
+---
+
+## 🔧 开发命令
+
+### Server
+
+```bash
+pnpm start:dev                # 开发模式 (watch)
+pnpm test                     # 单元测试
+pnpm test:e2e                 # E2E 测试 (需 Docker / Testcontainers)
+pnpm test:cov                 # 覆盖率报告 (80% 阈值)
+pnpm db:generate              # 生成 Drizzle 迁移文件
+pnpm db:migrate               # 执行数据库迁移
+pnpm db:seed                  # 导入种子数据
+pnpm db:studio                # 启动 Drizzle Studio UI
+pnpm openapi:export           # 导出 OpenAPI 3.0 Spec
+pnpm sdk:generate             # 生成 TypeScript + Python SDK
+```
+
+### Studio
+
+```bash
+pnpm dev                      # Vite 开发服务器
+pnpm build                    # 生产构建
+pnpm test                     # 单元测试
+pnpm typecheck                # TypeScript 类型检查
+```
+
+### Type Engine
+
+```bash
+cargo test                    # 运行测试
+cargo bench                   # 基准测试 (Criterion)
+wasm-pack build --target bundler --release  # 构建 WASM
+```
+
+### Plugin SDK / CLI / Template
+
+```bash
+# SDK
+cd agentloom-plugin-sdk && pnpm build && pnpm test
+
+# CLI
+cd agentloom-plugin-cli && pnpm build && pnpm test
+
+# Template
+cd agentloom-plugin-template && pnpm build && pnpm test
+```
+
+### Mobile
+
+```bash
+fvm flutter analyze           # 静态分析
+fvm flutter test              # 单元测试 (429 tests)
+fvm flutter test --coverage   # 覆盖率报告
+dart run build_runner build   # Freezed 代码生成
+```
+
+---
+
+## ⚙️ 环境变量
+
+### Server (`agentloom-server/.env`)
+
+| 变量 | 说明 |
+|------|------|
+| `APP_PORT` | 服务端口 |
+| `APP_DATABASE_URL` | PostgreSQL 连接字符串 |
+| `APP_SUPABASE_URL` | Supabase 项目 URL |
+| `APP_SUPABASE_ANON_KEY` | Supabase 匿名 Key |
+| `APP_SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
+| `APP_JWT_SECRET` | JWT 签名密钥 |
+| `APP_REDIS_URL` | Redis 连接地址 |
+| `APP_MASTER_ENCRYPTION_KEY` | 主加密密钥 (E2EE) |
+| `APP_MINIO_ENDPOINT` | MinIO 端点 |
+| `APP_MINIO_ACCESS_KEY` | MinIO 访问密钥 |
+| `APP_MINIO_SECRET_KEY` | MinIO 密钥 |
+| `APP_QDRANT_URL` | Qdrant 向量库地址 |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase 服务账号 JSON |
+
+### Studio (`agentloom-studio/.env`)
+
+| 变量 | 说明 |
+|------|------|
+| `VITE_API_BASE_URL` | 后端 API 地址 |
+| `VITE_AUTOSAVE_DEBOUNCE_MS` | 自动保存防抖时间 (ms) |
+
+### Mobile
+
+通过 `flutter_dotenv` 加载 `.env.dev` / `.env.staging` / `.env.prod`。
+
+---
+
+## 🔌 插件开发指南
+
+### 快速创建插件
+
+```bash
+# 1. 创建插件项目
+npx @agentloom/plugin-cli create my-plugin
+
+# 2. 开发调试
+cd my-plugin
+pnpm dev  # 启动本地开发服务器 (http://localhost:4400)
+
+# 3. 构建打包
+pnpm build  # 生成 .alp 归档
+
+# 4. 签名发布
+agentloom-plugin keys generate     # 生成 RSA 密钥对
+agentloom-plugin publish -k private.pem  # 签名 .alp 包
+```
+
+### 插件安全模型
+
+```
+.alp 上传 → RSA-PSS 签名验证 → MinIO 存储 → Extism WASM 沙箱执行
+                                                │
+                                    ┌───────────┼───────────┐
+                                    │  30s 超时  │  4096 页   │
+                                    │  限制      │  内存限制   │
+                                    └───────────┴───────────┘
+```
+
+### 收益分成
+
+| 份额 | 比例 | 说明 |
+|------|------|------|
+| 开发者毛收入 | 70% | 总收入 × 0.70 |
+| 上架佣金 | 10.5% | 毛收入 × 0.15 |
+| 开发者净收入 | ≈59.5% | 毛收入 - 佣金 |
+| 平台份额 | 30% | 总收入 × 0.30 |
+
+---
+
+## 🧪 测试
+
+| 包 | 框架 | 覆盖率要求 | 命令 |
+|----|------|-----------|------|
+| Server | Vitest + SWC + Testcontainers | **80%** | `pnpm test:cov` |
+| Studio | Vitest | 无阈值 | `pnpm test` |
+| Type Engine | Rust 内置 + Criterion | — | `cargo test` |
+| Plugin SDK | Vitest | — | `pnpm test` |
+| Plugin CLI | Vitest | — | `pnpm test` |
+| Mobile | Flutter Test + mocktail | — | `flutter test` |
+
+---
+
+## 🏛️ 技术选型
+
+| 领域 | 选择 | 备注 |
+|------|------|------|
+| HTTP 框架 | **Fastify** | 非 Express |
+| ORM | **Drizzle** | 非 TypeORM |
+| 校验 | **Zod** | Server Zod 4, SDK Zod 3 |
+| 测试 | **Vitest** | 非 Jest |
+| CSS | **Tailwind v4** | Design Token 体系 |
+| 状态管理 | **Zustand** (Web) / **Riverpod** (Mobile) | immer middleware |
+| Lint | **ESLint flat config** | + typescript-eslint + prettier |
+| 代码风格 | singleQuote, trailingComma: all | prettier 配置 |
+
+---
+
+## 📜 许可证
+
+Private — UNLICENSED
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by AgentLoom Team</sub>
+</p>
