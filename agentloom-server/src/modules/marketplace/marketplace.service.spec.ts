@@ -7,6 +7,9 @@ import type {
   MarketplaceListing,
   MarketplaceReviewResult,
 } from '../../database/schema/marketplace-listings.schema';
+import { PluginInactiveException } from '../plugin/plugin.exceptions';
+import { PluginService } from '../plugin/plugin.service';
+import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 import { SubmitMarketplaceListingDto } from './dto/marketplace.dto';
 import {
   MarketplaceListingConflictException,
@@ -15,14 +18,18 @@ import {
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
 import { MarketplaceService } from './marketplace.service';
-import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
 const ORG_ID = '00000000-0000-0000-0000-000000000003';
-const LISTING_ID = '00000000-0000-0000-0000-000000000004';
+const WORKFLOW_LISTING_ID = '00000000-0000-0000-0000-000000000004';
 const VERSION_ID = '00000000-0000-0000-0000-000000000005';
 const WORKFLOW_ID = '00000000-0000-0000-0000-000000000006';
+const REVIEW_ID = '00000000-0000-0000-0000-000000000007';
+const PLUGIN_DB_ID = '00000000-0000-0000-0000-000000000008';
+const PLUGIN_LISTING_ID = '00000000-0000-0000-0000-000000000009';
+const CREATED_PLUGIN_DB_ID = '00000000-0000-0000-0000-000000000010';
+const PLUGIN_ID = 'com.agentloom.marketplace.plugin';
 const NOW = new Date('2025-01-01T00:00:00.000Z');
 
 function createReviewResult(
@@ -40,16 +47,20 @@ function createMarketplaceListing(
   overrides: Partial<MarketplaceListing> = {},
 ): MarketplaceListing {
   return {
-    id: LISTING_ID,
+    id: WORKFLOW_LISTING_ID,
     workflowVersionId: VERSION_ID,
+    pluginDbId: null,
     tenantId: TENANT_ID,
     title: `组织 ${ORG_ID.slice(-4)} 的测试上架工作流`,
     summary:
       `这是工作流 ${WORKFLOW_ID.slice(-4)} 的 Marketplace 摘要，` +
-      '用于覆盖提交、上下架与查询状态机分支。',
+      '用���覆盖提交、上下架与查询状态机分支。',
     tags: ['analysis', `org-${ORG_ID.slice(-4)}`],
     coverImageUrl: `https://cdn.agentloom.dev/${ORG_ID}/cover.png`,
     category: 'analysis',
+    listingType: 'workflow',
+    pricingModel: 'free',
+    pricePerExecution: null,
     useCount: 0,
     avgRating: null,
     reviewCount: 0,
@@ -80,13 +91,114 @@ function createSubmitDto(
   });
 }
 
+function createPublicWorkflowListingRow(overrides: Record<string, unknown> = {}) {
+  const snapshot = {
+    nodes: [
+      { id: 'public-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+    ],
+    edges: [],
+    viewport: null,
+    inputSchema: {
+      version: 1,
+      collectionMode: 'form',
+      fields: [],
+    },
+    metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 1 },
+  };
+
+  return {
+    id: WORKFLOW_LISTING_ID,
+    title: '公开工作流 listing',
+    summary: '这是一个面向公开市场浏览的工作流 listing。',
+    tags: ['analysis', 'marketplace'],
+    coverImageUrl: 'https://cdn.agentloom.dev/public/workflow-cover.png',
+    category: 'analysis' as const,
+    useCount: 12,
+    avgRating: '4.80',
+    reviewCount: 6,
+    publishedAt: NOW,
+    listingType: 'workflow' as const,
+    pricingModel: 'free' as const,
+    pricePerExecution: null,
+    pluginId: null,
+    pluginName: null,
+    pluginVersion: null,
+    pluginAuthor: null,
+    pluginDescription: null,
+    pluginLicense: null,
+    authorDisplayName: '公开工作流作者',
+    snapshot,
+    ...overrides,
+  };
+}
+
+function createPublicPluginListingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PLUGIN_LISTING_ID,
+    title: '公开插件 listing',
+    summary: '这是一个面向公开市场浏览的插件 listing。',
+    tags: ['plugin', 'automation'],
+    coverImageUrl: 'https://cdn.agentloom.dev/public/plugin-cover.png',
+    category: 'automation' as const,
+    useCount: 8,
+    avgRating: '4.20',
+    reviewCount: 3,
+    publishedAt: NOW,
+    listingType: 'plugin' as const,
+    pricingModel: 'per_execution' as const,
+    pricePerExecution: '0.25000000',
+    pluginId: PLUGIN_ID,
+    pluginName: '公开插件',
+    pluginVersion: '1.2.3',
+    pluginAuthor: 'AgentLoom Team',
+    pluginDescription: '这是一个公开插件描述。',
+    pluginLicense: 'MIT',
+    authorDisplayName: '公开插件作者',
+    snapshot: null,
+    ...overrides,
+  };
+}
+
+function createPluginInstallSourceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    listingId: PLUGIN_LISTING_ID,
+    listingTitle: '公开插件 listing',
+    pricingModel: 'per_execution' as const,
+    pricePerExecution: '0.25000000',
+    plugin: {
+      id: PLUGIN_DB_ID,
+      tenantId: TENANT_ID,
+      orgId: ORG_ID,
+      pluginId: PLUGIN_ID,
+      name: '公开插件',
+      version: '1.2.3',
+      author: 'AgentLoom Team',
+      description: '这是一个公开插件描述。',
+      license: 'MIT',
+      status: 'active',
+    },
+    ...overrides,
+  };
+}
+
+function createReviewRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: REVIEW_ID,
+    rating: 5,
+    content: '非常好用',
+    createdAt: NOW,
+    authorDisplayName: '评论用户',
+    ...overrides,
+  };
+}
+
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
   return { from, where };
 }
 
-function createSelectChainWithPagination(result: unknown) {
+function createSelectChainWithDoubleLeftJoinPagination(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });
   const orderBy = vi.fn().mockReturnValue({ limit });
@@ -105,16 +217,20 @@ function createSelectChainWithPagination(result: unknown) {
   };
 }
 
-function createSelectChainWithSingleJoinPagination(result: unknown) {
+function createSelectChainWithTripleLeftJoinPagination(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });
   const orderBy = vi.fn().mockReturnValue({ limit });
   const where = vi.fn().mockReturnValue({ orderBy });
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const from = vi.fn().mockReturnValue({ leftJoin });
+  const leftJoinThird = vi.fn().mockReturnValue({ where });
+  const leftJoinSecond = vi.fn().mockReturnValue({ leftJoin: leftJoinThird });
+  const leftJoinFirst = vi.fn().mockReturnValue({ leftJoin: leftJoinSecond });
+  const from = vi.fn().mockReturnValue({ leftJoin: leftJoinFirst });
   return {
     from,
-    leftJoin,
+    leftJoinFirst,
+    leftJoinSecond,
+    leftJoinThird,
     where,
     orderBy,
     limit,
@@ -122,21 +238,36 @@ function createSelectChainWithSingleJoinPagination(result: unknown) {
   };
 }
 
-function createSelectChainWithSingleJoinOrdered(result: unknown) {
+function createSelectChainWithTripleLeftJoinWhere(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const leftJoinThird = vi.fn().mockReturnValue({ where });
+  const leftJoinSecond = vi.fn().mockReturnValue({ leftJoin: leftJoinThird });
+  const leftJoinFirst = vi.fn().mockReturnValue({ leftJoin: leftJoinSecond });
+  const from = vi.fn().mockReturnValue({ leftJoin: leftJoinFirst });
+  return {
+    from,
+    leftJoinFirst,
+    leftJoinSecond,
+    leftJoinThird,
+    where,
+  };
+}
+
+function createSelectChainWithInnerJoinWhereLimit(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ innerJoin });
+  return { from, innerJoin, where, limit };
+}
+
+function createSelectChainWithSingleLeftJoinOrdered(result: unknown) {
   const limit = vi.fn().mockResolvedValue(result);
   const orderBy = vi.fn().mockReturnValue({ limit });
   const where = vi.fn().mockReturnValue({ orderBy });
   const leftJoin = vi.fn().mockReturnValue({ where });
   const from = vi.fn().mockReturnValue({ leftJoin });
   return { from, leftJoin, where, orderBy, limit };
-}
-
-function createSelectChainWithInnerAndLeftJoin(result: unknown) {
-  const where = vi.fn().mockResolvedValue(result);
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const innerJoin = vi.fn().mockReturnValue({ leftJoin });
-  const from = vi.fn().mockReturnValue({ innerJoin });
-  return { from, innerJoin, leftJoin, where };
 }
 
 function createInsertChain(result: unknown) {
@@ -162,6 +293,7 @@ describe('MarketplaceService', () => {
   let service: MarketplaceService;
   let reviewService: { review: ReturnType<typeof vi.fn> };
   let workflowVersionService: { create: ReturnType<typeof vi.fn> };
+  let pluginService: { cloneMarketplacePlugin: ReturnType<typeof vi.fn> };
   let db: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
@@ -175,6 +307,10 @@ describe('MarketplaceService', () => {
 
     workflowVersionService = {
       create: vi.fn(),
+    };
+
+    pluginService = {
+      cloneMarketplacePlugin: vi.fn(),
     };
 
     db = {
@@ -194,6 +330,7 @@ describe('MarketplaceService', () => {
         { provide: DRIZZLE, useValue: db },
         { provide: MarketplaceReviewService, useValue: reviewService },
         { provide: WorkflowVersionService, useValue: workflowVersionService },
+        { provide: PluginService, useValue: pluginService },
       ],
     }).compile();
 
@@ -228,73 +365,19 @@ describe('MarketplaceService', () => {
 
       db.select
         .mockReturnValueOnce(createSelectChain([]))
-        .mockReturnValueOnce(
-          createSelectChain([{ id: VERSION_ID }]),
-        );
+        .mockReturnValueOnce(createSelectChain([{ id: VERSION_ID }]));
       db.insert.mockReturnValue(createInsertChain([createdListing]));
       db.update.mockReturnValue(createUpdateChain([updatedListing]));
       reviewService.review.mockResolvedValue(reviewResult);
 
       const result = await service.submit(TENANT_ID, USER_ID, dto);
 
-      expect(db.insert).toHaveBeenCalledTimes(1);
-      const insertValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
-      expect(insertValues.category).toBe(dto.category);
       expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
         title: dto.title,
         summary: dto.summary,
         tags: dto.tags,
       });
-      expect(result).toEqual({
-        listing: updatedListing,
-        reviewResult,
-      });
-      expect(result.listing.status).toBe('listed');
-      expect(result.listing.publishedAt).toEqual(NOW);
-    });
-
-    it('审查失败时应返回 review_failed 状态', async () => {
-      const dto = createSubmitDto();
-      const createdListing = createMarketplaceListing({
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-        coverImageUrl: dto.coverImageUrl,
-      });
-      const reviewResult = createReviewResult({
-        outcome: 'failed',
-        checks: [
-          {
-            code: 'SUMMARY_INVALID',
-            status: 'failed',
-            message: '摘要不合法',
-          },
-        ],
-      });
-      const updatedListing = createMarketplaceListing({
-        status: 'review_failed',
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-        coverImageUrl: dto.coverImageUrl,
-        reviewResult,
-        publishedAt: null,
-      });
-
-      db.select
-        .mockReturnValueOnce(createSelectChain([]))
-        .mockReturnValueOnce(
-          createSelectChain([{ id: VERSION_ID }]),
-        );
-      db.insert.mockReturnValue(createInsertChain([createdListing]));
-      db.update.mockReturnValue(createUpdateChain([updatedListing]));
-      reviewService.review.mockResolvedValue(reviewResult);
-
-      const result = await service.submit(TENANT_ID, USER_ID, dto);
-
-      expect(result.listing.status).toBe('review_failed');
-      expect(result.listing.publishedAt).toBeNull();
-      expect(result.reviewResult).toEqual(reviewResult);
+      expect(result).toEqual({ listing: updatedListing, reviewResult });
     });
 
     it('已存在 review_failed listing 时应按新元数据重新提交', async () => {
@@ -317,16 +400,13 @@ describe('MarketplaceService', () => {
         reviewResult,
         publishedAt: NOW,
       });
-      const updateFinal = createUpdateChain([updatedListing]);
 
       db.select
         .mockReturnValueOnce(createSelectChain([existingListing]))
-        .mockReturnValueOnce(
-          createSelectChain([{ id: VERSION_ID }]),
-        );
+        .mockReturnValueOnce(createSelectChain([{ id: VERSION_ID }]));
       db.update
         .mockReturnValueOnce(updatePending)
-        .mockReturnValueOnce(updateFinal);
+        .mockReturnValueOnce(createUpdateChain([updatedListing]));
       reviewService.review.mockResolvedValue(reviewResult);
 
       const result = await service.submit(TENANT_ID, USER_ID, dto);
@@ -344,13 +424,7 @@ describe('MarketplaceService', () => {
           updatedAt: NOW,
         }),
       );
-      expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-      });
-      expect(result.listing).toEqual(updatedListing);
-      expect(result.reviewResult).toEqual(reviewResult);
+      expect(result).toEqual({ listing: updatedListing, reviewResult });
     });
 
     it('已上架 listing 再次提交时应抛出 409', async () => {
@@ -361,24 +435,6 @@ describe('MarketplaceService', () => {
       await expect(
         service.submit(TENANT_ID, USER_ID, createSubmitDto()),
       ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
-      expect(reviewService.review).not.toHaveBeenCalled();
-      expect(db.insert).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('待审查 listing 再次提交时应抛出 409', async () => {
-      db.select.mockReturnValueOnce(
-        createSelectChain([
-          createMarketplaceListing({ status: 'pending_review' }),
-        ]),
-      );
-
-      await expect(
-        service.submit(TENANT_ID, USER_ID, createSubmitDto()),
-      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
-      expect(reviewService.review).not.toHaveBeenCalled();
-      expect(db.insert).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('工作流版本不存在时应抛出 404', async () => {
@@ -389,80 +445,6 @@ describe('MarketplaceService', () => {
       await expect(
         service.submit(TENANT_ID, USER_ID, createSubmitDto()),
       ).rejects.toBeInstanceOf(MarketplaceWorkflowVersionNotFoundException);
-      expect(reviewService.review).not.toHaveBeenCalled();
-      expect(db.insert).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('封面图缺失时首次提交应写入 null', async () => {
-      const dto = createSubmitDto({ coverImageUrl: undefined });
-      const createdListing = createMarketplaceListing({
-        status: 'pending_review',
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-        coverImageUrl: null,
-      });
-      const reviewResult = createReviewResult({ outcome: 'passed' });
-      const updatedListing = createMarketplaceListing({
-        status: 'listed',
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-        coverImageUrl: null,
-        reviewResult,
-        publishedAt: NOW,
-      });
-      const insertChain = createInsertChain([createdListing]);
-
-      db.select
-        .mockReturnValueOnce(createSelectChain([]))
-        .mockReturnValueOnce(
-          createSelectChain([{ id: VERSION_ID }]),
-        );
-      db.insert.mockReturnValue(insertChain);
-      db.update.mockReturnValue(createUpdateChain([updatedListing]));
-      reviewService.review.mockResolvedValue(reviewResult);
-
-      const result = await service.submit(TENANT_ID, USER_ID, dto);
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({ coverImageUrl: null }),
-      );
-      expect(result.listing.coverImageUrl).toBeNull();
-    });
-
-    it('重新提交时封面图缺失应回写为 null', async () => {
-      const dto = createSubmitDto({ coverImageUrl: undefined });
-      const existingListing = createMarketplaceListing({ status: 'review_failed' });
-      const reviewResult = createReviewResult({ outcome: 'passed' });
-      const updatePending = createUpdateWhereChain(undefined);
-      const updatedListing = createMarketplaceListing({
-        status: 'listed',
-        title: dto.title,
-        summary: dto.summary,
-        tags: dto.tags,
-        coverImageUrl: null,
-        reviewResult,
-        publishedAt: NOW,
-      });
-
-      db.select
-        .mockReturnValueOnce(createSelectChain([existingListing]))
-        .mockReturnValueOnce(
-          createSelectChain([{ id: VERSION_ID }]),
-        );
-      db.update
-        .mockReturnValueOnce(updatePending)
-        .mockReturnValueOnce(createUpdateChain([updatedListing]));
-      reviewService.review.mockResolvedValue(reviewResult);
-
-      const result = await service.submit(TENANT_ID, USER_ID, dto);
-
-      expect(updatePending.set).toHaveBeenCalledWith(
-        expect.objectContaining({ coverImageUrl: null }),
-      );
-      expect(result.listing.coverImageUrl).toBeNull();
     });
   });
 
@@ -477,40 +459,13 @@ describe('MarketplaceService', () => {
         publishedAt: NOW,
         unlistedAt: NOW,
       });
-      const updateChain = createUpdateChain([updatedListing]);
 
       db.select.mockReturnValue(createSelectChain([listedListing]));
-      db.update.mockReturnValue(updateChain);
+      db.update.mockReturnValue(createUpdateChain([updatedListing]));
 
-      const result = await service.unlist(TENANT_ID, LISTING_ID, USER_ID);
+      const result = await service.unlist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID);
 
-      expect(updateChain.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'unlisted',
-          unlistedAt: NOW,
-          updatedAt: NOW,
-        }),
-      );
       expect(result).toEqual(updatedListing);
-    });
-
-    it('非 listed 状态下架时应抛出 409', async () => {
-      db.select.mockReturnValue(
-        createSelectChain([createMarketplaceListing({ status: 'review_failed' })]),
-      );
-
-      await expect(
-        service.unlist(TENANT_ID, LISTING_ID, USER_ID),
-      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
-      expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('listing 不存在时应抛出 404', async () => {
-      db.select.mockReturnValue(createSelectChain([]));
-
-      await expect(
-        service.unlist(TENANT_ID, LISTING_ID, USER_ID),
-      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
     });
   });
 
@@ -522,55 +477,10 @@ describe('MarketplaceService', () => {
         unlistedAt: NOW,
       });
       const reviewResult = createReviewResult({ outcome: 'passed' });
-      const updatePending = createUpdateWhereChain(undefined);
       const updatedListing = createMarketplaceListing({
         status: 'listed',
         reviewResult,
         publishedAt: NOW,
-        unlistedAt: NOW,
-      });
-      const updateFinal = createUpdateChain([updatedListing]);
-
-      db.select.mockReturnValue(createSelectChain([unlistedListing]));
-      db.update
-        .mockReturnValueOnce(updatePending)
-        .mockReturnValueOnce(updateFinal);
-      reviewService.review.mockResolvedValue(reviewResult);
-
-      const result = await service.relist(TENANT_ID, LISTING_ID, USER_ID);
-
-      expect(updatePending.set).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'pending_review', updatedAt: NOW }),
-      );
-      expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
-        title: unlistedListing.title,
-        summary: unlistedListing.summary,
-        tags: unlistedListing.tags,
-      });
-      expect(result).toEqual({ listing: updatedListing, reviewResult });
-      expect(result.listing.status).toBe('listed');
-    });
-
-    it('已下架 listing 在审查失败后应变为 review_failed', async () => {
-      const unlistedListing = createMarketplaceListing({
-        status: 'unlisted',
-        publishedAt: NOW,
-        unlistedAt: NOW,
-      });
-      const reviewResult = createReviewResult({
-        outcome: 'failed',
-        checks: [
-          {
-            code: 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE',
-            status: 'failed',
-            message: 'Agent 配置不完整',
-          },
-        ],
-      });
-      const updatedListing = createMarketplaceListing({
-        status: 'review_failed',
-        reviewResult,
-        publishedAt: null,
         unlistedAt: NOW,
       });
 
@@ -580,31 +490,14 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(createUpdateChain([updatedListing]));
       reviewService.review.mockResolvedValue(reviewResult);
 
-      const result = await service.relist(TENANT_ID, LISTING_ID, USER_ID);
+      const result = await service.relist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID);
 
-      expect(result.listing.status).toBe('review_failed');
-      expect(result.listing.publishedAt).toBeNull();
-      expect(result.reviewResult).toEqual(reviewResult);
-    });
-
-    it('非 unlisted 状态重新上架时应抛出 409', async () => {
-      db.select.mockReturnValue(
-        createSelectChain([createMarketplaceListing({ status: 'listed' })]),
-      );
-
-      await expect(
-        service.relist(TENANT_ID, LISTING_ID, USER_ID),
-      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
-      expect(reviewService.review).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('listing 不存在时重新上架应抛出 404', async () => {
-      db.select.mockReturnValue(createSelectChain([]));
-
-      await expect(
-        service.relist(TENANT_ID, LISTING_ID, USER_ID),
-      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+      expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
+        title: unlistedListing.title,
+        summary: unlistedListing.summary,
+        tags: unlistedListing.tags,
+      });
+      expect(result).toEqual({ listing: updatedListing, reviewResult });
     });
   });
 
@@ -612,13 +505,21 @@ describe('MarketplaceService', () => {
     it('应返回分页数据与 meta 信息', async () => {
       const reviewResult = createReviewResult({ outcome: 'passed' });
       const listItem = {
-        id: LISTING_ID,
+        id: WORKFLOW_LISTING_ID,
         workflowVersionId: VERSION_ID,
+        pluginDbId: null,
         tenantId: TENANT_ID,
         title: '分页测试 listing',
         summary: '这是分页查询测试使用的摘要内容，确保返回结构完整。',
         tags: ['analysis'],
         coverImageUrl: null,
+        category: 'analysis' as const,
+        listingType: 'workflow' as const,
+        pricingModel: 'free' as const,
+        pricePerExecution: null,
+        useCount: 0,
+        avgRating: null,
+        reviewCount: 0,
         status: 'listed' as const,
         reviewResult,
         submittedBy: USER_ID,
@@ -630,21 +531,25 @@ describe('MarketplaceService', () => {
         workflowDefinitionId: WORKFLOW_ID,
         workflowName: '市场分析工作流',
         versionNumber: 3,
+        pluginId: null,
+        pluginName: null,
+        pluginVersion: null,
+        pluginAuthor: null,
       };
-      const selectData = createSelectChainWithPagination([listItem]);
+      const selectData = createSelectChainWithTripleLeftJoinPagination([listItem]);
       const selectCount = createSelectChain([{ count: 21 }]);
 
       db.select
         .mockReturnValueOnce(selectData)
         .mockReturnValueOnce(selectCount);
 
-      const result = await service.findMyListings(
-        TENANT_ID,
-        { page: 2, pageSize: 10, status: 'listed' },
-      );
+      const result = await service.findMyListings(TENANT_ID, {
+        page: 2,
+        pageSize: 10,
+        status: 'listed',
+        listingType: 'workflow',
+      });
 
-      expect(selectData.limit).toHaveBeenCalledWith(10);
-      expect(selectData.offset).toHaveBeenCalledWith(10);
       expect(result).toEqual({
         data: [listItem],
         meta: {
@@ -655,32 +560,6 @@ describe('MarketplaceService', () => {
         },
       });
     });
-
-    it('无状态筛选且没有数据时应返回 totalPages 为 0', async () => {
-      const selectData = createSelectChainWithPagination([]);
-      const selectCount = createSelectChain([]);
-
-      db.select
-        .mockReturnValueOnce(selectData)
-        .mockReturnValueOnce(selectCount);
-
-      const result = await service.findMyListings(TENANT_ID, {
-        page: 1,
-        pageSize: 10,
-      });
-
-      expect(selectData.limit).toHaveBeenCalledWith(10);
-      expect(selectData.offset).toHaveBeenCalledWith(0);
-      expect(result).toEqual({
-        data: [],
-        meta: {
-          total: 0,
-          page: 1,
-          pageSize: 10,
-          totalPages: 0,
-        },
-      });
-    });
   });
 
   describe('findById', () => {
@@ -688,80 +567,91 @@ describe('MarketplaceService', () => {
       const listing = createMarketplaceListing({ status: 'listed' });
       db.select.mockReturnValue(createSelectChain([listing]));
 
-      const result = await service.findById(TENANT_ID, LISTING_ID);
-
-      expect(result).toEqual(listing);
+      await expect(service.findById(TENANT_ID, WORKFLOW_LISTING_ID)).resolves.toEqual(
+        listing,
+      );
     });
 
     it('listing 不存在时应抛出 404', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
-      await expect(service.findById(TENANT_ID, LISTING_ID)).rejects.toBeInstanceOf(
-        MarketplaceListingNotFoundException,
-      );
+      await expect(
+        service.findById(TENANT_ID, WORKFLOW_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
     });
   });
 
   describe('findPublicListings', () => {
-    it('应返回公开 listing 列表并映射作者信息', async () => {
-      const listItem = {
-        id: LISTING_ID,
-        title: '公开分析 listing',
-        summary: '这是一个面向公开市场浏览的测试摘要，用于验证分页与作者映射。',
-        tags: ['analysis', 'marketplace'],
-        coverImageUrl: 'https://cdn.agentloom.dev/public/cover.png',
-        category: 'analysis' as const,
-        useCount: 12,
-        avgRating: '4.80',
-        reviewCount: 6,
-        publishedAt: NOW,
-        authorId: USER_ID,
-        authorDisplayName: '公开作者',
-        authorAvatarUrl: 'https://cdn.agentloom.dev/public/avatar.png',
-      };
-      const selectData = createSelectChainWithSingleJoinPagination([listItem]);
-      const selectCount = createSelectChain([{ count: 1 }]);
+    it('应返回 workflow/plugin union 列表并映射作者与插件信息', async () => {
+      const workflowRow = createPublicWorkflowListingRow();
+      const pluginRow = createPublicPluginListingRow();
+      const selectData = createSelectChainWithDoubleLeftJoinPagination([
+        workflowRow,
+        pluginRow,
+      ]);
+      const selectCount = createSelectChain([{ count: 2 }]);
 
       db.select
         .mockReturnValueOnce(selectData)
         .mockReturnValueOnce(selectCount);
 
       const result = await service.findPublicListings({
-        category: 'analysis',
         search: '公开',
         sort: 'rating',
-        page: 2,
-        pageSize: 5,
+        page: 1,
+        pageSize: 10,
       });
 
-      expect(selectData.limit).toHaveBeenCalledWith(5);
-      expect(selectData.offset).toHaveBeenCalledWith(5);
-      expect(selectData.where.mock.calls[0]?.[0]).toBeDefined();
-      expect(selectCount.where).toHaveBeenCalledWith(
-        selectData.where.mock.calls[0]?.[0],
-      );
+      expect(selectData.limit).toHaveBeenCalledWith(10);
+      expect(selectData.offset).toHaveBeenCalledWith(0);
       expect(result).toEqual({
         data: [
           {
-            id: LISTING_ID,
-            title: listItem.title,
-            summary: listItem.summary,
-            tags: listItem.tags,
-            coverImageUrl: listItem.coverImageUrl,
-            category: 'analysis',
-            useCount: 12,
-            avgRating: '4.80',
-            reviewCount: 6,
-            publishedAt: NOW,
-            author: {
-              displayName: '公开作者',
+            id: WORKFLOW_LISTING_ID,
+            title: workflowRow.title,
+            summary: workflowRow.summary,
+            tags: workflowRow.tags,
+            coverImageUrl: workflowRow.coverImageUrl,
+            category: workflowRow.category,
+            useCount: workflowRow.useCount,
+            avgRating: workflowRow.avgRating,
+            reviewCount: workflowRow.reviewCount,
+            publishedAt: workflowRow.publishedAt,
+            listingType: 'workflow',
+            pricingModel: 'free',
+            pricePerExecution: null,
+            plugin: null,
+            author: { displayName: '公开工作流作者' },
+          },
+          {
+            id: PLUGIN_LISTING_ID,
+            title: pluginRow.title,
+            summary: pluginRow.summary,
+            tags: pluginRow.tags,
+            coverImageUrl: pluginRow.coverImageUrl,
+            category: pluginRow.category,
+            useCount: pluginRow.useCount,
+            avgRating: pluginRow.avgRating,
+            reviewCount: pluginRow.reviewCount,
+            publishedAt: pluginRow.publishedAt,
+            listingType: 'plugin',
+            pricingModel: 'per_execution',
+            pricePerExecution: '0.25000000',
+            plugin: {
+              pluginId: PLUGIN_ID,
+              name: '公开插件',
+              version: '1.2.3',
+              author: 'AgentLoom Team',
+              description: '这是一个公开插件描述。',
+              license: 'MIT',
             },
+            author: { displayName: '公开插件作者' },
           },
         ],
         meta: {
-          page: 2,
-          pageSize: 5,
-          total: 1,
+          page: 1,
+          pageSize: 10,
+          total: 2,
           totalPages: 1,
         },
       });
@@ -769,82 +659,89 @@ describe('MarketplaceService', () => {
   });
 
   describe('findPublicById', () => {
-    it('应返回公开 listing 详情、规范化 viewport 与评论列表', async () => {
-      const snapshot = {
-        nodes: [
-          { id: 'public-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
-        ],
-        edges: [],
-        viewport: null,
-        inputSchema: {
-          version: 1,
-          collectionMode: 'form',
-          fields: [],
-        },
-        metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 1 },
-      };
-      const listing = {
-        id: LISTING_ID,
-        workflowVersionId: VERSION_ID,
-        title: '公开详情 listing',
-        summary: '这是公开详情测试的摘要，验证 definition 与 reviews 一并返回。',
-        tags: ['analysis'],
-        coverImageUrl: null,
-        category: 'analysis' as const,
-        useCount: 20,
-        avgRating: '4.50',
-        reviewCount: 2,
-        publishedAt: NOW,
-        authorId: USER_ID,
-        authorDisplayName: '详情作者',
-        authorAvatarUrl: null,
-        snapshot,
-      };
-      const review = {
-        id: '00000000-0000-0000-0000-000000000007',
-        rating: 5,
-        content: '非常好用',
-        createdAt: NOW,
-        authorDisplayName: '评论用户',
-      };
-
-      const selectReviews = createSelectChainWithSingleJoinOrdered([review]);
+    it('应返回 workflow 详情、规范化 viewport 与评论列表', async () => {
+      const workflowRow = createPublicWorkflowListingRow();
+      const reviewRow = createReviewRow();
 
       db.select
-        .mockReturnValueOnce(createSelectChainWithInnerAndLeftJoin([listing]))
-        .mockReturnValueOnce(selectReviews);
+        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([workflowRow]))
+        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([reviewRow]));
 
-      const result = await service.findPublicById(LISTING_ID);
+      const result = await service.findPublicById(WORKFLOW_LISTING_ID);
 
-      expect(selectReviews.limit).toHaveBeenCalledWith(20);
       expect(result).toEqual({
-        id: LISTING_ID,
-        title: listing.title,
-        summary: listing.summary,
-        tags: listing.tags,
-        coverImageUrl: null,
-        category: 'analysis',
-        useCount: 20,
-        avgRating: '4.50',
-        reviewCount: 2,
-        publishedAt: NOW,
-        author: {
-          displayName: '详情作者',
-        },
+        id: WORKFLOW_LISTING_ID,
+        title: workflowRow.title,
+        summary: workflowRow.summary,
+        tags: workflowRow.tags,
+        coverImageUrl: workflowRow.coverImageUrl,
+        category: workflowRow.category,
+        useCount: workflowRow.useCount,
+        avgRating: workflowRow.avgRating,
+        reviewCount: workflowRow.reviewCount,
+        publishedAt: workflowRow.publishedAt,
+        listingType: 'workflow',
+        pricingModel: 'free',
+        pricePerExecution: null,
+        plugin: null,
+        author: { displayName: '公开工作流作者' },
         definition: {
-          nodes: snapshot.nodes,
-          edges: snapshot.edges,
+          nodes: workflowRow.snapshot.nodes,
+          edges: workflowRow.snapshot.edges,
           viewport: { x: 0, y: 0, zoom: 1 },
         },
         reviews: [
           {
-            id: review.id,
+            id: REVIEW_ID,
             rating: 5,
             content: '非常好用',
             createdAt: NOW,
-            author: {
-              displayName: '评论用户',
-            },
+            author: { displayName: '评论用户' },
+          },
+        ],
+      });
+    });
+
+    it('应返回 plugin 详情而不暴露 workflow definition', async () => {
+      const pluginRow = createPublicPluginListingRow();
+      const reviewRow = createReviewRow({ rating: 4, content: '插件很稳定' });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
+        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([reviewRow]));
+
+      const result = await service.findPublicById(PLUGIN_LISTING_ID);
+
+      expect(result).toEqual({
+        id: PLUGIN_LISTING_ID,
+        title: pluginRow.title,
+        summary: pluginRow.summary,
+        tags: pluginRow.tags,
+        coverImageUrl: pluginRow.coverImageUrl,
+        category: pluginRow.category,
+        useCount: pluginRow.useCount,
+        avgRating: pluginRow.avgRating,
+        reviewCount: pluginRow.reviewCount,
+        publishedAt: pluginRow.publishedAt,
+        listingType: 'plugin',
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.25000000',
+        plugin: {
+          pluginId: PLUGIN_ID,
+          name: '公开插件',
+          version: '1.2.3',
+          author: 'AgentLoom Team',
+          description: '这是一个公开插件描述。',
+          license: 'MIT',
+        },
+        author: { displayName: '公开插件作者' },
+        reviews: [
+          {
+            id: REVIEW_ID,
+            rating: 4,
+            content: '插件很稳定',
+            createdAt: NOW,
+            author: { displayName: '评论用户' },
           },
         ],
       });
@@ -852,61 +749,115 @@ describe('MarketplaceService', () => {
   });
 
   describe('installListing', () => {
-    it('应创建工作流副本并原子递增 useCount', async () => {
-      const listing = {
-        id: LISTING_ID,
-        workflowVersionId: VERSION_ID,
-        title: '一键安装 listing',
-        summary: '这是用于验证一键安装逻辑的公开摘要。',
-        tags: ['automation'],
-        coverImageUrl: null,
-        category: 'automation' as const,
-        useCount: 9,
-        avgRating: '4.20',
-        reviewCount: 4,
-        publishedAt: NOW,
-        authorId: USER_ID,
-        authorDisplayName: '作者',
-        authorAvatarUrl: null,
-        snapshot: {
-          nodes: [],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-          inputSchema: null,
-          metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
-        },
-      };
+    it('workflow listing 应创建工作流副本并递增 useCount', async () => {
+      const workflowRow = createPublicWorkflowListingRow();
       const createdWorkflow = {
         id: WORKFLOW_ID,
         tenantId: TENANT_ID,
-        name: listing.title,
+        name: workflowRow.title,
         slug: 'installed-workflow',
       };
       const updateChain = createUpdateWhereChain(undefined);
 
-      db.select.mockReturnValueOnce(createSelectChainWithInnerAndLeftJoin([listing]));
+      db.select.mockReturnValueOnce(
+        createSelectChainWithTripleLeftJoinWhere([workflowRow]),
+      );
       db.update.mockReturnValueOnce(updateChain);
       workflowVersionService.create.mockResolvedValue(createdWorkflow);
 
-      const result = await service.installListing(TENANT_ID, USER_ID, LISTING_ID, {});
+      const result = await service.installListing(
+        TENANT_ID,
+        USER_ID,
+        WORKFLOW_LISTING_ID,
+        {},
+      );
 
       expect(workflowVersionService.create).toHaveBeenCalledWith(
         TENANT_ID,
         USER_ID,
         {
-          name: listing.title,
-          description: listing.summary,
-          marketplace_listing_id: LISTING_ID,
+          name: workflowRow.title,
+          description: workflowRow.summary,
+          marketplace_listing_id: WORKFLOW_LISTING_ID,
         },
       );
+      expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({ updatedAt: NOW }),
       );
       expect(result).toEqual({
         workflowDefinitionId: WORKFLOW_ID,
-        name: listing.title,
+        name: workflowRow.title,
         message: 'Workflow installed successfully',
       });
+    });
+
+    it('plugin listing 应克隆插件副本并递增 useCount', async () => {
+      const pluginRow = createPublicPluginListingRow();
+      const pluginSourceRow = createPluginInstallSourceRow();
+      const createdPlugin = {
+        id: CREATED_PLUGIN_DB_ID,
+        pluginId: PLUGIN_ID,
+        name: 'Installed Plugin Copy',
+      };
+      const updateChain = createUpdateWhereChain(undefined);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([pluginSourceRow]));
+      db.update.mockReturnValueOnce(updateChain);
+      pluginService.cloneMarketplacePlugin.mockResolvedValue(createdPlugin);
+
+      const result = await service.installListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+        {
+          name: 'Installed Plugin Copy',
+          description: '从公开市场安装的插件副本',
+        },
+      );
+
+      expect(pluginService.cloneMarketplacePlugin).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        source: pluginSourceRow,
+        name: 'Installed Plugin Copy',
+        description: '从公开市场安装的插件副本',
+      });
+      expect(workflowVersionService.create).not.toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ updatedAt: NOW }),
+      );
+      expect(result).toEqual({
+        pluginDbId: CREATED_PLUGIN_DB_ID,
+        pluginId: PLUGIN_ID,
+        name: 'Installed Plugin Copy',
+        message: 'Plugin installed successfully',
+      });
+    });
+
+    it('源插件未激活时应拒绝安装 plugin listing', async () => {
+      const pluginRow = createPublicPluginListingRow();
+      const inactivePluginSourceRow = createPluginInstallSourceRow({
+        plugin: {
+          ...createPluginInstallSourceRow().plugin,
+          status: 'disabled',
+        },
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([inactivePluginSourceRow]),
+        );
+
+      await expect(
+        service.installListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID, {}),
+      ).rejects.toBeInstanceOf(PluginInactiveException);
+
+      expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 });

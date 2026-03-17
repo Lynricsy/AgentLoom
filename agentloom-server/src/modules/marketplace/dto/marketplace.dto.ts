@@ -58,6 +58,7 @@ export const QueryMyListingsSchema = z.object({
   status: z
     .enum(['pending_review', 'review_failed', 'listed', 'unlisted'])
     .optional(),
+  listingType: z.enum(['workflow', 'plugin']).optional(),
 });
 
 export class QueryMyListingsDto extends createZodDto(QueryMyListingsSchema) {}

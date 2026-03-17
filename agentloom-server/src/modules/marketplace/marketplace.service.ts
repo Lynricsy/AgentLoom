@@ -1,10 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, ilike, or, sql } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { MarketplaceListing, MarketplaceReviewResult } from '../../database/schema';
+import {
+  PluginInactiveException,
+} from '../plugin/plugin.exceptions';
+import { PluginService } from '../plugin/plugin.service';
 import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 import type {
   QueryMyListingsDto,
@@ -40,6 +44,15 @@ export interface MarketplacePublicReviewItem {
   author: MarketplacePublicAuthor;
 }
 
+export interface MarketplacePublicPluginDescriptor {
+  pluginId: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string | null;
+  license: string | null;
+}
+
 export interface PublicMarketplaceListingItem {
   id: string;
   title: string;
@@ -51,6 +64,10 @@ export interface PublicMarketplaceListingItem {
   avgRating: string | null;
   reviewCount: number;
   publishedAt: Date | null;
+  listingType: MarketplaceListing['listingType'];
+  pricingModel: MarketplaceListing['pricingModel'];
+  pricePerExecution: string | null;
+  plugin: MarketplacePublicPluginDescriptor | null;
   author: MarketplacePublicAuthor;
 }
 
@@ -64,8 +81,10 @@ export interface PublicMarketplaceListingsResult {
   };
 }
 
-export interface PublicMarketplaceListingDetail
+export interface PublicMarketplaceWorkflowListingDetail
   extends PublicMarketplaceListingItem {
+  listingType: 'workflow';
+  plugin: null;
   definition: {
     nodes: schema.ReactFlowNode[];
     edges: schema.ReactFlowEdge[];
@@ -74,17 +93,61 @@ export interface PublicMarketplaceListingDetail
   reviews: MarketplacePublicReviewItem[];
 }
 
+export interface PublicMarketplacePluginListingDetail
+  extends PublicMarketplaceListingItem {
+  listingType: 'plugin';
+  plugin: MarketplacePublicPluginDescriptor;
+  reviews: MarketplacePublicReviewItem[];
+}
+
+export type PublicMarketplaceListingDetail =
+  | PublicMarketplaceWorkflowListingDetail
+  | PublicMarketplacePluginListingDetail;
+
 export interface InstalledMarketplaceWorkflowResult {
   workflowDefinitionId: string;
   name: string;
   message: 'Workflow installed successfully';
 }
 
+export interface InstalledMarketplacePluginResult {
+  pluginDbId: string;
+  pluginId: string;
+  name: string;
+  message: 'Plugin installed successfully';
+}
+
+export type InstalledMarketplaceListingResult =
+  | InstalledMarketplaceWorkflowResult
+  | InstalledMarketplacePluginResult;
+
 function buildMarketplaceAuthor(params: {
   displayName: string | null;
 }): MarketplacePublicAuthor {
   return {
     displayName: params.displayName ?? '未知用户',
+  };
+}
+
+function buildMarketplacePluginDescriptor(params: {
+  pluginId: string | null;
+  name: string | null;
+  version: string | null;
+  author: string | null;
+  description?: string | null;
+  license?: string | null;
+}): MarketplacePublicPluginDescriptor | null {
+  if (!params.pluginId) {
+    return null;
+  }
+
+  return {
+    pluginId: params.pluginId,
+    name: params.name ?? params.pluginId,
+    version: params.version ?? '',
+    author: params.author ?? '',
+    description: params.description ?? null,
+    license: params.license ?? null,
   };
 }
 
@@ -97,12 +160,16 @@ function normalizeViewport(
 export interface MyMarketplaceListingItem {
   id: string;
   workflowVersionId: string | null;
+  pluginDbId: string | null;
   tenantId: string;
   title: string;
   summary: string;
   tags: string[];
   coverImageUrl: string | null;
   category: MarketplaceListing['category'];
+  listingType: MarketplaceListing['listingType'];
+  pricingModel: MarketplaceListing['pricingModel'];
+  pricePerExecution: string | null;
   useCount: number;
   avgRating: string | null;
   reviewCount: number;
@@ -117,6 +184,10 @@ export interface MyMarketplaceListingItem {
   workflowDefinitionId: string | null;
   workflowName: string | null;
   versionNumber: number | null;
+  pluginId: string | null;
+  pluginName: string | null;
+  pluginVersion: string | null;
+  pluginAuthor: string | null;
 }
 
 export interface MyListingsResult {
@@ -137,6 +208,7 @@ export class MarketplaceService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly reviewService: MarketplaceReviewService,
     private readonly workflowVersionService: WorkflowVersionService,
+    private readonly pluginService: PluginService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -299,7 +371,7 @@ export class MarketplaceService {
     query: QueryMyListingsDto,
   ): Promise<MyListingsResult> {
     const parsedQuery = QueryMyListingsSchema.parse(query);
-    const { page, pageSize, status } = parsedQuery;
+    const { page, pageSize, status, listingType } = parsedQuery;
     const offset = (page - 1) * pageSize;
 
     const conditions = [
@@ -310,6 +382,10 @@ export class MarketplaceService {
       conditions.push(eq(schema.marketplaceListings.status, status));
     }
 
+    if (listingType) {
+      conditions.push(eq(schema.marketplaceListings.listingType, listingType));
+    }
+
     const whereClause = and(...conditions);
 
     const [data, countResult] = await Promise.all([
@@ -317,12 +393,16 @@ export class MarketplaceService {
         .select({
           id: schema.marketplaceListings.id,
           workflowVersionId: schema.marketplaceListings.workflowVersionId,
+          pluginDbId: schema.marketplaceListings.pluginDbId,
           tenantId: schema.marketplaceListings.tenantId,
           title: schema.marketplaceListings.title,
           summary: schema.marketplaceListings.summary,
           tags: schema.marketplaceListings.tags,
           coverImageUrl: schema.marketplaceListings.coverImageUrl,
           category: schema.marketplaceListings.category,
+          listingType: schema.marketplaceListings.listingType,
+          pricingModel: schema.marketplaceListings.pricingModel,
+          pricePerExecution: schema.marketplaceListings.pricePerExecution,
           useCount: schema.marketplaceListings.useCount,
           avgRating: schema.marketplaceListings.avgRating,
           reviewCount: schema.marketplaceListings.reviewCount,
@@ -337,6 +417,10 @@ export class MarketplaceService {
           workflowDefinitionId: schema.workflowVersions.workflowDefinitionId,
           workflowName: schema.workflowDefinitions.name,
           versionNumber: schema.workflowVersions.versionNumber,
+          pluginId: schema.plugins.pluginId,
+          pluginName: schema.plugins.name,
+          pluginVersion: schema.plugins.version,
+          pluginAuthor: schema.plugins.author,
         })
         .from(schema.marketplaceListings)
         .leftJoin(
@@ -352,6 +436,10 @@ export class MarketplaceService {
             schema.workflowVersions.workflowDefinitionId,
             schema.workflowDefinitions.id,
           ),
+        )
+        .leftJoin(
+          schema.plugins,
+          eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
         )
         .where(whereClause)
         .orderBy(desc(schema.marketplaceListings.createdAt))
@@ -427,10 +515,23 @@ export class MarketplaceService {
         avgRating: schema.marketplaceListings.avgRating,
         reviewCount: schema.marketplaceListings.reviewCount,
         publishedAt: schema.marketplaceListings.publishedAt,
+        listingType: schema.marketplaceListings.listingType,
+        pricingModel: schema.marketplaceListings.pricingModel,
+        pricePerExecution: schema.marketplaceListings.pricePerExecution,
+        pluginId: schema.plugins.pluginId,
+        pluginName: schema.plugins.name,
+        pluginVersion: schema.plugins.version,
+        pluginAuthor: schema.plugins.author,
+        pluginDescription: schema.plugins.description,
+        pluginLicense: schema.plugins.license,
         authorDisplayName:
           sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
       })
       .from(schema.marketplaceListings)
+      .leftJoin(
+        schema.plugins,
+        eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
+      )
       .leftJoin(
         schema.users,
         eq(schema.marketplaceListings.submittedBy, schema.users.id),
@@ -477,6 +578,17 @@ export class MarketplaceService {
         avgRating: item.avgRating,
         reviewCount: item.reviewCount,
         publishedAt: item.publishedAt,
+        listingType: item.listingType,
+        pricingModel: item.pricingModel,
+        pricePerExecution: item.pricePerExecution,
+        plugin: buildMarketplacePluginDescriptor({
+          pluginId: item.pluginId,
+          name: item.pluginName,
+          version: item.pluginVersion,
+          author: item.pluginAuthor,
+          description: item.pluginDescription,
+          license: item.pluginLicense,
+        }),
         author: buildMarketplaceAuthor({
           displayName: item.authorDisplayName,
         }),
@@ -491,8 +603,48 @@ export class MarketplaceService {
   }
 
   async findPublicById(id: string): Promise<PublicMarketplaceListingDetail> {
-    const listing = await this.findPublicListingWithSnapshotOrThrow(id);
+    const listing = await this.findPublicListingOrThrow(id);
     const reviews = await this.fetchPublicReviews(id);
+
+    if (listing.listingType === 'plugin') {
+      const plugin = buildMarketplacePluginDescriptor({
+        pluginId: listing.pluginId,
+        name: listing.pluginName,
+        version: listing.pluginVersion,
+        author: listing.pluginAuthor,
+        description: listing.pluginDescription,
+        license: listing.pluginLicense,
+      });
+
+      if (!plugin) {
+        throw new MarketplaceListingNotFoundException(id);
+      }
+
+      return {
+        id: listing.id,
+        title: listing.title,
+        summary: listing.summary,
+        tags: listing.tags,
+        coverImageUrl: listing.coverImageUrl,
+        category: listing.category,
+        useCount: listing.useCount,
+        avgRating: listing.avgRating,
+        reviewCount: listing.reviewCount,
+        publishedAt: listing.publishedAt,
+        listingType: 'plugin',
+        pricingModel: listing.pricingModel,
+        pricePerExecution: listing.pricePerExecution,
+        plugin,
+        author: buildMarketplaceAuthor({
+          displayName: listing.authorDisplayName,
+        }),
+        reviews,
+      };
+    }
+
+    if (!listing.snapshot) {
+      throw new MarketplaceListingNotFoundException(id);
+    }
 
     return {
       id: listing.id,
@@ -505,6 +657,10 @@ export class MarketplaceService {
       avgRating: listing.avgRating,
       reviewCount: listing.reviewCount,
       publishedAt: listing.publishedAt,
+      listingType: 'workflow',
+      pricingModel: listing.pricingModel,
+      pricePerExecution: listing.pricePerExecution,
+      plugin: null,
       author: buildMarketplaceAuthor({
         displayName: listing.authorDisplayName,
       }),
@@ -522,9 +678,40 @@ export class MarketplaceService {
     userId: string,
     listingId: string,
     dto: unknown,
-  ): Promise<InstalledMarketplaceWorkflowResult> {
+  ): Promise<InstalledMarketplaceListingResult> {
     const parsedDto = InstallMarketplaceListingSchema.parse(dto);
-    const listing = await this.findPublicListingWithSnapshotOrThrow(listingId);
+
+    const listing = await this.findPublicListingOrThrow(listingId);
+
+    if (listing.listingType === 'plugin') {
+      const source = await this.findPublicPluginInstallSourceOrThrow(listingId);
+      const createdPlugin = await this.pluginService.cloneMarketplacePlugin({
+        tenantId,
+        userId,
+        source,
+        name: parsedDto.name,
+        description: parsedDto.description,
+      });
+
+      await this.incrementUseCount(listingId);
+
+      this.logger.log(
+        JSON.stringify({
+          action: 'marketplace_listing_installed',
+          listingId,
+          tenantId,
+          userId,
+          pluginDbId: createdPlugin.id,
+        }),
+      );
+
+      return {
+        pluginDbId: createdPlugin.id,
+        pluginId: createdPlugin.pluginId,
+        name: createdPlugin.name,
+        message: 'Plugin installed successfully',
+      };
+    }
 
     const createdWorkflow = await this.workflowVersionService.create(
       tenantId,
@@ -536,13 +723,7 @@ export class MarketplaceService {
       },
     );
 
-    await this.db
-      .update(schema.marketplaceListings)
-      .set({
-        useCount: sql`${schema.marketplaceListings.useCount} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.marketplaceListings.id, listingId));
+    await this.incrementUseCount(listingId);
 
     this.logger.log(
       JSON.stringify({
@@ -742,7 +923,7 @@ export class MarketplaceService {
     return listing;
   }
 
-  private async findPublicListingWithSnapshotOrThrow(listingId: string) {
+  private async findPublicListingOrThrow(listingId: string) {
     const [listing] = await this.db
       .select({
         id: schema.marketplaceListings.id,
@@ -755,17 +936,30 @@ export class MarketplaceService {
         avgRating: schema.marketplaceListings.avgRating,
         reviewCount: schema.marketplaceListings.reviewCount,
         publishedAt: schema.marketplaceListings.publishedAt,
+        listingType: schema.marketplaceListings.listingType,
+        pricingModel: schema.marketplaceListings.pricingModel,
+        pricePerExecution: schema.marketplaceListings.pricePerExecution,
+        pluginId: schema.plugins.pluginId,
+        pluginName: schema.plugins.name,
+        pluginVersion: schema.plugins.version,
+        pluginAuthor: schema.plugins.author,
+        pluginDescription: schema.plugins.description,
+        pluginLicense: schema.plugins.license,
         authorDisplayName:
           sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
         snapshot: schema.workflowVersions.snapshot,
       })
       .from(schema.marketplaceListings)
-      .innerJoin(
+      .leftJoin(
         schema.workflowVersions,
         eq(
           schema.marketplaceListings.workflowVersionId,
           schema.workflowVersions.id,
         ),
+      )
+      .leftJoin(
+        schema.plugins,
+        eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
       )
       .leftJoin(
         schema.users,
@@ -783,6 +977,52 @@ export class MarketplaceService {
     }
 
     return listing;
+  }
+
+  private async findPublicPluginInstallSourceOrThrow(listingId: string) {
+    const [listing] = await this.db
+      .select({
+        listingId: schema.marketplaceListings.id,
+        listingTitle: schema.marketplaceListings.title,
+        pricingModel: schema.marketplaceListings.pricingModel,
+        pricePerExecution: schema.marketplaceListings.pricePerExecution,
+        plugin: {
+          ...getTableColumns(schema.plugins),
+        },
+      })
+      .from(schema.marketplaceListings)
+      .innerJoin(
+        schema.plugins,
+        eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
+      )
+      .where(
+        and(
+          eq(schema.marketplaceListings.id, listingId),
+          eq(schema.marketplaceListings.status, 'listed'),
+          eq(schema.marketplaceListings.listingType, 'plugin'),
+        ),
+      )
+      .limit(1);
+
+    if (!listing) {
+      throw new MarketplaceListingNotFoundException(listingId);
+    }
+
+    if (listing.plugin.status !== 'active') {
+      throw new PluginInactiveException(listing.plugin.id);
+    }
+
+    return listing;
+  }
+
+  private async incrementUseCount(listingId: string): Promise<void> {
+    await this.db
+      .update(schema.marketplaceListings)
+      .set({
+        useCount: sql`${schema.marketplaceListings.useCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.marketplaceListings.id, listingId));
   }
 
   private async fetchPublicReviews(
