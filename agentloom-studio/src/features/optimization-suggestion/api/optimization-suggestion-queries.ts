@@ -16,6 +16,7 @@ import type {
   AdoptionStats,
 } from '../types/optimization-suggestion.types'
 import type { ApiResponse } from '@/shared/types/api'
+import { workflowKeys } from '@/features/workflow/api/workflowKeys'
 
 export function useNodeSuggestions(
   workflowId: string,
@@ -58,9 +59,13 @@ export function useApplySuggestion() {
   return useMutation<ApiResponse<OptimizationSuggestion>, Error, string>({
     mutationKey: ['optimization-suggestions', 'apply'],
     mutationFn: (suggestionId) => applySuggestion(suggestionId),
-    onSuccess: () => {
+    onSuccess: (response) => {
       void queryClient.invalidateQueries({
         queryKey: optimizationSuggestionKeys.all,
+      })
+
+      void queryClient.invalidateQueries({
+        queryKey: workflowKeys.detail(response.data.workflowDefinitionId),
       })
     },
     gcTime: 0,

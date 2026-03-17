@@ -35,6 +35,7 @@ export interface OptimizationSuggestion {
 
 export interface AdoptionStatsByType {
   suggestionType: SuggestionType
+  total: number
   applied: number
   dismissed: number
   pending: number
