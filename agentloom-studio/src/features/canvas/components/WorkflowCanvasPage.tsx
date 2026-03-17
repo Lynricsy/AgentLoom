@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
 import { CelebrationEffect } from '@/features/execution/components/CelebrationEffect'
@@ -39,14 +39,18 @@ import {
   useCanvasStore,
   useMappingPanelEdgeId,
 } from '../stores/canvasStore'
+import { useToast } from '@/shared/ui/toast'
 
 export function WorkflowCanvasPage() {
   const { workflowId } = useParams({ from: '/workflows/$workflowId' })
   const currentWorkflowId = useCanvasStore((state) => state.workflowId)
   const currentCanvasVersion = useCanvasStore((state) => state.version)
+  const isCanvasDirty = useCanvasStore((state) => state.isDirty)
   const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
+  const { notify } = useToast()
   const mappingPanelEdgeId = useMappingPanelEdgeId()
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+  const skippedSnapshotRef = useRef<string | null>(null)
 
   const { data: workflow, isLoading, error } = useWorkflow(workflowId)
   const isWorkflowArchived = workflow?.status === 'archived'
@@ -154,8 +158,27 @@ export function WorkflowCanvasPage() {
       workflow.id !== currentWorkflowId || workflow.version !== currentCanvasVersion
 
     if (!shouldApplySnapshot) {
+      skippedSnapshotRef.current = null
       return
     }
+
+    const nextSnapshotKey = `${workflow.id}:${workflow.version}`
+    const isSameWorkflowVersionRefresh = workflow.id === currentWorkflowId
+
+    if (isSameWorkflowVersionRefresh && isCanvasDirty) {
+      if (skippedSnapshotRef.current !== nextSnapshotKey) {
+        skippedSnapshotRef.current = nextSnapshotKey
+        notify({
+          title: '已保留本地未保存修改',
+          description:
+            '服务端工作流已更新，但当前画布已有新的未保存编辑，本次不会自动覆盖本地状态。',
+          variant: 'warning',
+        })
+      }
+      return
+    }
+
+    skippedSnapshotRef.current = null
 
     applyServerSnapshot({
       nodes: workflow.nodes ?? [],
@@ -164,7 +187,7 @@ export function WorkflowCanvasPage() {
       workflowId: workflow.id,
       version: workflow.version,
     })
-  }, [workflow, currentWorkflowId, currentCanvasVersion, applyServerSnapshot])
+  }, [workflow, currentWorkflowId, currentCanvasVersion, applyServerSnapshot, isCanvasDirty, notify])
 
   useEffect(() => {
     return () => {

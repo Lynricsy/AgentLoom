@@ -38,6 +38,7 @@ const startExecutionMock = vi.fn()
 const submitInterventionMock = vi.fn()
 const celebrationEffectMock = vi.fn()
 const executionLaunchDialogMock = vi.fn()
+const notifyMock = vi.fn()
 const { exportWorkflowMutateMock, downloadWorkflowExportMock } = vi.hoisted(() => ({
   exportWorkflowMutateMock: vi.fn(),
   downloadWorkflowExportMock: vi.fn(),
@@ -67,6 +68,10 @@ vi.mock('@/features/execution/hooks/useAuthToken', () => ({
 
 vi.mock('@/features/execution/hooks/useExecutionMonitor', () => ({
   useExecutionMonitor: (...args: unknown[]) => useExecutionMonitorMock(...args),
+}))
+
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: notifyMock }),
 }))
 
 vi.mock('@/features/execution/hooks/useStartExecution', () => ({
@@ -136,6 +141,12 @@ vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () 
     executionLaunchDialogMock(props)
     return props.open ? <div data-testid="execution-launch-dialog" /> : null
   },
+}))
+
+vi.mock('@/features/optimization-suggestion', () => ({
+  OptimizationSuggestionsPanel: () => (
+    <div data-testid="optimization-suggestions-panel" />
+  ),
 }))
 
 vi.mock('./NodePalette', () => ({
@@ -281,6 +292,7 @@ describe('WorkflowCanvasPage', () => {
     mockIsExecutionActive = false
     mockIsStarting = false
     mockExecutionStatus = null
+    notifyMock.mockReset()
     vi.clearAllMocks()
     exportWorkflowMutateMock.mockReset()
     downloadWorkflowExportMock.mockReset()
@@ -339,6 +351,46 @@ describe('WorkflowCanvasPage', () => {
     expect(useCanvasStore.getState().nodes[0]?.id).toBe('node-rollback')
     expect(useCanvasStore.getState().viewport).toEqual({ x: 80, y: 120, zoom: 1.75 })
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
+  })
+
+  it('相同工作流版本变化且本地再次变脏时不应覆盖本地状态，并提示用户', () => {
+    const { rerender } = render(<WorkflowCanvasPage />)
+
+    act(() => {
+      useCanvasStore.getState().actions.updateNodeData('node-1', {
+        config: { prompt: 'local draft' },
+      })
+    })
+
+    workflowResult = {
+      data: {
+        ...workflowOne,
+        version: 2,
+        nodes: [
+          {
+            id: 'node-rollback',
+            type: 'tool',
+            position: { x: 420, y: 180 },
+            data: createNodeData('http-tool'),
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    }
+
+    rerender(<WorkflowCanvasPage />)
+
+    expect(useCanvasStore.getState().workflowId).toBe('wf-001')
+    expect(useCanvasStore.getState().version).toBe(1)
+    expect(useCanvasStore.getState().nodes[0]?.id).toBe('node-1')
+    expect(useCanvasStore.getState().isDirty).toBe(true)
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '已保留本地未保存修改',
+        variant: 'warning',
+      }),
+    )
   })
 
   it('切换到新的 workflowId 时应应用新的服务端快照', () => {

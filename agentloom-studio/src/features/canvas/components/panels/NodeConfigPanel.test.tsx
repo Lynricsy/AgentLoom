@@ -8,6 +8,7 @@ import { NodeConfigPanel } from './NodeConfigPanel'
 
 const mocks = vi.hoisted(() => ({
   selectedNodeId: 'node-1' as string | null,
+  workflowId: 'wf-1' as string | null,
   node: null as CanvasNode | null,
   nodeState: null as NodeExecutionState | null,
   isExecutionActive: false,
@@ -22,9 +23,14 @@ vi.mock('@/features/llm', () => ({
 }))
 
 vi.mock('../../stores/canvasStore', () => ({
-  useCanvasStore: (selector: (state: { selectedNodeId: string | null; nodes: CanvasNode[] }) => unknown) =>
+  useCanvasStore: (selector: (state: {
+    selectedNodeId: string | null
+    workflowId: string | null
+    nodes: CanvasNode[]
+  }) => unknown) =>
     selector({
       selectedNodeId: mocks.selectedNodeId,
+      workflowId: mocks.workflowId,
       nodes: mocks.node ? [mocks.node] : [],
     }),
   useCanvasActions: () => ({
@@ -97,6 +103,20 @@ vi.mock('./ReusableBlockPanel', () => ({
   ReusableBlockPanel: () => <div>Reusable Block Panel</div>,
 }))
 
+vi.mock('@/features/optimization-suggestion', () => ({
+  OptimizationSuggestionsPanel: ({
+    workflowDefinitionId,
+    nodeId,
+  }: {
+    workflowDefinitionId: string
+    nodeId: string
+  }) => (
+    <div data-testid="optimization-suggestions-panel-mock">
+      Optimization Suggestions Panel {workflowDefinitionId}:{nodeId}
+    </div>
+  ),
+}))
+
 vi.mock('./DynamicConfigForm', () => ({
   DynamicConfigForm: ({
     configSchema,
@@ -138,6 +158,7 @@ function createNode(nodeType: NodeType = 'manual-trigger', overrides: Partial<Ca
 describe('NodeConfigPanel', () => {
   beforeEach(() => {
     mocks.selectedNodeId = 'node-1'
+    mocks.workflowId = 'wf-1'
     mocks.node = createNode()
     mocks.nodeState = null
     mocks.isExecutionActive = false
@@ -229,7 +250,6 @@ describe('NodeConfigPanel', () => {
     ['mcp-tool', 'MCP Panel'],
     ['knowledge-base', 'Knowledge Panel'],
     ['sandbox', 'Sandbox Panel'],
-    ['llm-agent', 'LLM Agent Panel'],
     ['http-tool', 'HTTP Tool Panel'],
     ['reusable-block', 'Reusable Block Panel'],
   ] as const)('prefers the custom panel mapping for %s nodes', (nodeType, panelText) => {
@@ -239,6 +259,29 @@ describe('NodeConfigPanel', () => {
 
     expect(screen.getByText(panelText)).toBeInTheDocument()
     expect(screen.queryByText(/^Dynamic Form:/)).not.toBeInTheDocument()
+  })
+
+  it('integrates optimization suggestions into the llm-agent config panel using workflowId from the canvas store', () => {
+    mocks.node = createNode('llm-agent')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText('LLM Agent Panel')).toBeInTheDocument()
+    expect(screen.getByTestId('optimization-suggestions-panel-mock')).toHaveTextContent(
+      'Optimization Suggestions Panel wf-1:node-1',
+    )
+  })
+
+  it('does not render optimization suggestions for llm-agent nodes when workflowId is missing', () => {
+    mocks.workflowId = null
+    mocks.node = createNode('llm-agent')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText('LLM Agent Panel')).toBeInTheDocument()
+    expect(
+      screen.queryByTestId('optimization-suggestions-panel-mock'),
+    ).not.toBeInTheDocument()
   })
 
   it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {

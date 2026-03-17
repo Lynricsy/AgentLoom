@@ -13,6 +13,7 @@ import {
   parseLlmModelConfig,
   type LlmNodeDataPatch,
 } from '@/features/llm'
+import { OptimizationSuggestionsPanel } from '@/features/optimization-suggestion'
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
@@ -127,6 +128,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
   className,
 }: NodeConfigPanelProps) {
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+  const workflowId = useCanvasStore((s) => s.workflowId)
   const node = useCanvasStore((s) =>
     s.selectedNodeId ? s.nodes.find((n) => n.id === s.selectedNodeId) ?? null : null
   )
@@ -157,6 +159,13 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
 
   const nodeType = node.data.nodeType
   const nodeConfig = getNodeTypeConfig(nodeType)
+  const optimizationSuggestionTarget =
+    nodeType === 'llm-agent' && workflowId && selectedNodeId
+      ? {
+          workflowDefinitionId: workflowId,
+          nodeId: selectedNodeId,
+        }
+      : null
 
   return (
     <aside
@@ -189,6 +198,15 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
           onConfigChange={handleConfigChange}
           onValidationChange={handleValidationChange}
         />
+
+        {optimizationSuggestionTarget && (
+          <div className="border-t border-border/70">
+            <OptimizationSuggestionsPanel
+              workflowDefinitionId={optimizationSuggestionTarget.workflowDefinitionId}
+              nodeId={optimizationSuggestionTarget.nodeId}
+            />
+          </div>
+        )}
 
         <NodeExecutionSection nodeId={node.id} />
       </div>

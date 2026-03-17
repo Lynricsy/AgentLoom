@@ -33,6 +33,7 @@ const triggerTabMock = vi.fn()
 const workflowInputSchemaTabMock = vi.fn()
 const executionLaunchDialogMock = vi.fn()
 const marketplacePublishDialogMock = vi.fn()
+const notifyMock = vi.fn()
 
 const workflowInputSchema: WorkflowInputSchema = {
   version: 1,
@@ -93,6 +94,10 @@ vi.mock('@/features/execution/hooks/useAuthToken', () => ({
 
 vi.mock('@/features/execution/hooks/useExecutionMonitor', () => ({
   useExecutionMonitor: vi.fn(),
+}))
+
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: notifyMock }),
 }))
 
 vi.mock('@/features/execution/hooks/useStartExecution', () => ({
@@ -293,6 +298,7 @@ describe('WorkflowCanvasPage workflow settings integration', () => {
     workflow.publishedVersionId = null
     workflow.inputSchema = workflowInputSchema
     vi.clearAllMocks()
+    notifyMock.mockReset()
   })
 
   it('将共享 settings panel 的 tab 状态透传给 toolbar，并在不同入口之间切换', () => {
