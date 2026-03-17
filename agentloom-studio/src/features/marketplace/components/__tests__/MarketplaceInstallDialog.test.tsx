@@ -120,6 +120,7 @@ describe('MarketplaceInstallDialog', () => {
         listingId="listing-1"
         listingTitle="Agent Workflow"
         listingSummary="Install this workflow into your workspace."
+        listingType="workflow"
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -131,7 +132,7 @@ describe('MarketplaceInstallDialog', () => {
     )
   })
 
-  it('submits install request and navigates on success', async () => {
+  it('submits install request and navigates on success for workflow', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
     installListingMock.mutateAsync.mockResolvedValue({
@@ -145,6 +146,7 @@ describe('MarketplaceInstallDialog', () => {
         listingId="listing-1"
         listingTitle="Agent Workflow"
         listingSummary="Install this workflow into your workspace."
+        listingType="workflow"
         open={true}
         onOpenChange={onOpenChange}
       />,
@@ -175,6 +177,52 @@ describe('MarketplaceInstallDialog', () => {
     })
   })
 
+  it('submits install request for plugin without navigating to workflow', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    installListingMock.mutateAsync.mockResolvedValue({
+      pluginDbId: 'plugin-db-1',
+      pluginId: 'text-uppercase',
+      name: 'Text Uppercase 副本',
+      message: 'Plugin installed successfully',
+    })
+
+    render(
+      <MarketplaceInstallDialog
+        listingId="listing-plugin-1"
+        listingTitle="Text Uppercase"
+        listingSummary="Converts text to uppercase."
+        listingType="plugin"
+        open={true}
+        onOpenChange={onOpenChange}
+      />,
+    )
+
+    expect(screen.getByText('安装 Marketplace 插件')).toBeInTheDocument()
+    expect(screen.getByLabelText('插件名称')).toHaveValue('Text Uppercase 副本')
+
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
+
+    await waitFor(() => {
+      expect(installListingMock.mutateAsync).toHaveBeenCalledWith({
+        id: 'listing-plugin-1',
+        body: {
+          name: 'Text Uppercase 副本',
+          description: 'Converts text to uppercase.',
+        },
+      })
+    })
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '安装成功',
+        variant: 'success',
+      }),
+    )
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
   it('shows an error toast when installation fails', async () => {
     const user = userEvent.setup()
     installListingMock.mutateAsync.mockRejectedValue(new Error('install failed'))
@@ -184,6 +232,7 @@ describe('MarketplaceInstallDialog', () => {
         listingId="listing-1"
         listingTitle="Agent Workflow"
         listingSummary="Install this workflow into your workspace."
+        listingType="workflow"
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -203,6 +252,33 @@ describe('MarketplaceInstallDialog', () => {
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
+  it('shows plugin-specific error toast when plugin installation fails', async () => {
+    const user = userEvent.setup()
+    installListingMock.mutateAsync.mockRejectedValue(new Error('install failed'))
+
+    render(
+      <MarketplaceInstallDialog
+        listingId="listing-plugin-1"
+        listingTitle="Text Uppercase"
+        listingType="plugin"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '安装失败',
+          description: '无法安装这个插件，请稍后重试。',
+          variant: 'error',
+        }),
+      )
+    })
+  })
+
   it('clicking cancel closes the dialog', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
@@ -212,6 +288,7 @@ describe('MarketplaceInstallDialog', () => {
         listingId="listing-1"
         listingTitle="Agent Workflow"
         listingSummary="Install this workflow into your workspace."
+        listingType="workflow"
         open={true}
         onOpenChange={onOpenChange}
       />,

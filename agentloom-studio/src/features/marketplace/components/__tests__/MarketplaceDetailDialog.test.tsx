@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   PublicMarketplaceListingDetail,
+  PublicWorkflowListingDetail,
+  PublicPluginListingDetail,
   ReviewsResponse,
 } from '../../types'
 
@@ -134,15 +136,17 @@ vi.mock('../MarketplaceInstallDialog', () => ({
   MarketplaceInstallDialog: ({
     open,
     listingTitle,
+    listingType,
   }: {
     open: boolean
     listingTitle: string
-  }) => (open ? <div data-testid="marketplace-install-dialog">Install: {listingTitle}</div> : null),
+    listingType: string
+  }) => (open ? <div data-testid="marketplace-install-dialog" data-listing-type={listingType}>Install: {listingTitle}</div> : null),
 }))
 
 function makeListingDetail(
-  overrides: Partial<PublicMarketplaceListingDetail> = {},
-): PublicMarketplaceListingDetail {
+  overrides: Partial<PublicWorkflowListingDetail> = {},
+): PublicWorkflowListingDetail {
   return {
     id: 'listing-1',
     title: 'Agent Workflow',
@@ -151,10 +155,14 @@ function makeListingDetail(
     coverImageUrl: null,
     category: 'analysis',
     useCount: 42,
-    avgRating: 4.5,
+    avgRating: '4.5',
     reviewCount: 2,
     publishedAt: '2026-03-15T00:00:00.000Z',
     author: { displayName: '酒狐' },
+    listingType: 'workflow',
+    pricingModel: 'free',
+    pricePerExecution: null,
+    plugin: null,
     definition: {
       nodes: [
         {
@@ -175,6 +183,37 @@ function makeListingDetail(
         author: { displayName: '测试用户' },
       },
     ],
+    ...overrides,
+  }
+}
+
+function makePluginListingDetail(
+  overrides: Partial<PublicPluginListingDetail> = {},
+): PublicPluginListingDetail {
+  return {
+    id: 'listing-plugin-1',
+    title: 'Text Uppercase Plugin',
+    summary: 'Converts text to uppercase.',
+    tags: ['plugin', 'text'],
+    coverImageUrl: null,
+    category: 'content',
+    useCount: 10,
+    avgRating: '4.0',
+    reviewCount: 1,
+    publishedAt: '2026-03-15T00:00:00.000Z',
+    author: { displayName: 'Plugin Author' },
+    listingType: 'plugin',
+    pricingModel: 'per_execution',
+    pricePerExecution: '0.01',
+    plugin: {
+      pluginId: 'text-uppercase',
+      name: 'Text Uppercase',
+      version: '1.0.0',
+      author: 'Plugin Author',
+      description: 'Converts text to uppercase',
+      license: 'MIT',
+    },
+    reviews: [],
     ...overrides,
   }
 }
@@ -245,5 +284,58 @@ describe('MarketplaceDetailDialog', () => {
 
     expect(screen.getByTestId('marketplace-install-dialog')).toBeInTheDocument()
     expect(screen.getByText('Install: Agent Workflow')).toBeInTheDocument()
+    expect(screen.getByTestId('marketplace-install-dialog')).toHaveAttribute(
+      'data-listing-type',
+      'workflow',
+    )
+  })
+
+  it('renders plugin detail with plugin metadata instead of workflow preview', () => {
+    const pluginDetail = makePluginListingDetail()
+    detailQueryMock.data = pluginDetail
+    reviewsQueryMock.data = {
+      data: [],
+      meta: { total: 0, page: 1, pageSize: 20, totalPages: 0 },
+    }
+
+    render(
+      <MarketplaceDetailDialog
+        listingId="listing-plugin-1"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Text Uppercase Plugin')).toBeInTheDocument()
+    expect(screen.queryByTestId('marketplace-preview')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('reactflow-preview')).not.toBeInTheDocument()
+    expect(screen.getByText('插件信息')).toBeInTheDocument()
+    expect(screen.getByText('text-uppercase')).toBeInTheDocument()
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+    expect(screen.getByText('$0.01/次')).toBeInTheDocument()
+  })
+
+  it('passes listingType to install dialog for plugin listings', () => {
+    const pluginDetail = makePluginListingDetail()
+    detailQueryMock.data = pluginDetail
+    reviewsQueryMock.data = {
+      data: [],
+      meta: { total: 0, page: 1, pageSize: 20, totalPages: 0 },
+    }
+
+    render(
+      <MarketplaceDetailDialog
+        listingId="listing-plugin-1"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '安装到工作区' }))
+
+    expect(screen.getByTestId('marketplace-install-dialog')).toHaveAttribute(
+      'data-listing-type',
+      'plugin',
+    )
   })
 })

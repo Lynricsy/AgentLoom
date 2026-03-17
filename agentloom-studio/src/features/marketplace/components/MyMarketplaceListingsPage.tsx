@@ -14,10 +14,16 @@ import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 import {
+  useRelistPluginMarketplaceListing,
   useRelistMarketplaceListing,
+  useUnlistPluginMarketplaceListing,
   useUnlistMarketplaceListing,
 } from '../api/marketplaceMutations'
 import { useMyMarketplaceListings } from '../api/marketplaceQueries'
+import {
+  MARKETPLACE_LISTING_TYPE_TABS,
+  type MarketplaceListingTypeFilter,
+} from '../lib/display'
 import type {
   MarketplaceListingStatus,
   MarketplaceReviewCheck,
@@ -83,9 +89,11 @@ function ReviewResultView({
 }
 
 export function MyMarketplaceListingsPage() {
+  const [listingTypeFilter, setListingTypeFilter] =
+    useState<MarketplaceListingTypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
-  const [unlistTarget, setUnlistTarget] = useState<string | null>(null)
+  const [unlistTarget, setUnlistTarget] = useState<MyMarketplaceListingItem | null>(null)
   const [reviewTarget, setReviewTarget] =
     useState<MyMarketplaceListingItem | null>(null)
 
@@ -95,30 +103,42 @@ export function MyMarketplaceListingsPage() {
     page,
     pageSize: 12,
     ...(statusFilter !== 'all' && { status: statusFilter }),
+    ...(listingTypeFilter !== 'all' && { listingType: listingTypeFilter }),
   }
 
   const { data, isLoading, isError, refetch } =
     useMyMarketplaceListings(filters)
 
   const unlistMutation = useUnlistMarketplaceListing()
+  const unlistPluginMutation = useUnlistPluginMarketplaceListing()
   const relistMutation = useRelistMarketplaceListing()
+  const relistPluginMutation = useRelistPluginMarketplaceListing()
 
   const listings = data?.data ?? []
   const meta = data?.meta
+
+  const handleListingTypeChange = useCallback((listingType: MarketplaceListingTypeFilter) => {
+    setListingTypeFilter(listingType)
+    setPage(1)
+  }, [])
 
   const handleStatusChange = useCallback((status: StatusFilter) => {
     setStatusFilter(status)
     setPage(1)
   }, [])
 
-  const handleUnlist = useCallback((id: string) => {
-    setUnlistTarget(id)
+  const handleUnlist = useCallback((listing: MyMarketplaceListingItem) => {
+    setUnlistTarget(listing)
   }, [])
 
   const handleConfirmUnlist = useCallback(async () => {
     if (!unlistTarget) return
     try {
-      await unlistMutation.mutateAsync(unlistTarget)
+      if (unlistTarget.listingType === 'plugin') {
+        await unlistPluginMutation.mutateAsync(unlistTarget.id)
+      } else {
+        await unlistMutation.mutateAsync(unlistTarget.id)
+      }
       notify({
         title: '下架成功',
         description: '该发布已从市场下架',
@@ -132,14 +152,17 @@ export function MyMarketplaceListingsPage() {
         variant: 'error',
       })
     }
-  }, [unlistTarget, unlistMutation, notify])
+  }, [notify, unlistMutation, unlistPluginMutation, unlistTarget])
 
   const handleRelist = useCallback(
-    async (id: string) => {
+    async (listing: MyMarketplaceListingItem) => {
       try {
-        const result = await relistMutation.mutateAsync(id)
+        const result =
+          listing.listingType === 'plugin'
+            ? await relistPluginMutation.mutateAsync(listing.id)
+            : await relistMutation.mutateAsync(listing.id)
         if (result.reviewResult.outcome === 'failed') {
-          const failedListing = listings.find((l) => l.id === id)
+          const failedListing = listings.find((item) => item.id === listing.id)
           if (failedListing) {
             setReviewTarget({
               ...failedListing,
@@ -166,7 +189,7 @@ export function MyMarketplaceListingsPage() {
         })
       }
     },
-    [relistMutation, listings, notify],
+    [listings, notify, relistMutation, relistPluginMutation],
   )
 
   const handleViewReview = useCallback(
@@ -184,6 +207,24 @@ export function MyMarketplaceListingsPage() {
       <div className="flex items-center gap-2">
         <Store className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-lg font-semibold">我的市场发布</h1>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {MARKETPLACE_LISTING_TYPE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              listingTypeFilter === tab.value
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => handleListingTypeChange(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -256,11 +297,11 @@ export function MyMarketplaceListingsPage() {
       )}
 
       <Dialog.Root
-        open={unlistTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setUnlistTarget(null)
-        }}
-      >
+         open={unlistTarget !== null}
+         onOpenChange={(open) => {
+           if (!open) setUnlistTarget(null)
+         }}
+       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <Dialog.Content
@@ -282,7 +323,7 @@ export function MyMarketplaceListingsPage() {
                   确认下架
                 </Dialog.Title>
                 <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                  下架后该工作流将不再展示在市场中，你可以随时重新上架。
+                  下架后该发布将不再展示在市场中，你可以随时重新上架。
                 </Dialog.Description>
               </div>
             </div>
@@ -300,9 +341,11 @@ export function MyMarketplaceListingsPage() {
                 type="button"
                 className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                 onClick={handleConfirmUnlist}
-                disabled={unlistMutation.isPending}
+                disabled={
+                  unlistMutation.isPending || unlistPluginMutation.isPending
+                }
               >
-                {unlistMutation.isPending && (
+                {(unlistMutation.isPending || unlistPluginMutation.isPending) && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 确认下架

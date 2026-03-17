@@ -72,10 +72,14 @@ function makeListing(
     coverImageUrl: null,
     category: 'analysis',
     useCount: 42,
-    avgRating: 4.5,
+    avgRating: '4.5',
     reviewCount: 12,
     publishedAt: '2026-03-15T00:00:00.000Z',
     author: { displayName: '狐娘测试者' },
+    listingType: 'workflow' as const,
+    pricingModel: 'free' as const,
+    pricePerExecution: null,
+    plugin: null,
     ...overrides,
   }
 }
@@ -178,6 +182,27 @@ describe('MarketplaceBrowsePage', () => {
     })
   })
 
+  it('filters by listing type tab', () => {
+    listingsQueryMock.data = {
+      data: [makeListing()],
+      meta: {
+        total: 1,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
+    }
+
+    render(<MarketplaceBrowsePage />)
+
+    fireEvent.click(screen.getByRole('button', { name: '插件' }))
+
+    expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
+      listingType: 'plugin',
+      page: 1,
+    })
+  })
+
   it('updates sort selection', () => {
     listingsQueryMock.data = {
       data: [makeListing()],
@@ -215,7 +240,7 @@ describe('MarketplaceBrowsePage', () => {
     render(<MarketplaceBrowsePage />)
 
     expect(screen.getByTestId('marketplace-browse-empty')).toBeInTheDocument()
-    expect(screen.getByText('未找到工作流')).toBeInTheDocument()
+    expect(screen.getByText('未找到工作流或插件')).toBeInTheDocument()
   })
 
   it('shows loading state while listings are loading', () => {

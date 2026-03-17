@@ -10,23 +10,30 @@ import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 import { useInstallListing } from '../api/publicMarketplaceMutations'
+import type { MarketplaceListingType } from '../types'
 
-const installFormSchema = z.object({
+const workflowInstallFormSchema = z.object({
   name: z.string().min(1, '请输入工作流名称').max(255),
   description: z.string().max(2000).optional(),
 })
 
-type InstallFormValues = z.infer<typeof installFormSchema>
+const pluginInstallFormSchema = z.object({
+  name: z.string().min(1, '请输入名称').max(255),
+  description: z.string().max(2000).optional(),
+})
+
+type InstallFormValues = z.infer<typeof workflowInstallFormSchema>
 
 interface MarketplaceInstallDialogProps {
   listingId: string
   listingTitle: string
   listingSummary?: string
+  listingType: MarketplaceListingType
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-function getDefaultWorkflowName(listingTitle: string) {
+function getDefaultName(listingTitle: string) {
   return listingTitle ? `${listingTitle} 副本` : ''
 }
 
@@ -34,12 +41,14 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
   listingId,
   listingTitle,
   listingSummary,
+  listingType,
   open,
   onOpenChange,
 }: MarketplaceInstallDialogProps) {
   const navigate = useNavigate()
   const { notify } = useToast()
   const installListing = useInstallListing()
+  const isPlugin = listingType === 'plugin'
 
   const {
     register,
@@ -47,9 +56,9 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<InstallFormValues>({
-    resolver: zodResolver(installFormSchema),
+    resolver: zodResolver(isPlugin ? pluginInstallFormSchema : workflowInstallFormSchema),
     values: {
-      name: getDefaultWorkflowName(listingTitle),
+      name: getDefaultName(listingTitle),
       description: listingSummary ?? '',
     },
   })
@@ -67,7 +76,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
 
         onOpenChange(false)
         reset({
-          name: getDefaultWorkflowName(listingTitle),
+          name: getDefaultName(listingTitle),
           description: listingSummary ?? '',
         })
         notify({
@@ -75,22 +84,29 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           description: `"${result.name}" 已添加到你的工作区。`,
           variant: 'success',
         })
-        navigate({
-          to: '/workflows/$workflowId',
-          params: { workflowId: result.workflowDefinitionId },
-        })
+
+        if ('workflowDefinitionId' in result) {
+          navigate({
+            to: '/workflows/$workflowId',
+            params: { workflowId: result.workflowDefinitionId },
+          })
+        }
       } catch {
         notify({
           title: '安装失败',
-          description: '无法安装这个工作流，请稍后重试。',
+          description: isPlugin
+            ? '无法安装这个插件，请稍后重试。'
+            : '无法安装这个工作流，请稍后重试。',
           variant: 'error',
         })
       }
     },
-    [installListing, listingId, listingSummary, listingTitle, navigate, notify, onOpenChange, reset],
+    [installListing, isPlugin, listingId, listingSummary, listingTitle, navigate, notify, onOpenChange, reset],
   )
 
   const isPending = isSubmitting || installListing.isPending
+
+  const entityLabel = isPlugin ? '插件' : '工作流'
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -104,21 +120,25 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
             <X className="h-4 w-4" />
           </Dialog.Close>
 
-          <Dialog.Title className="text-base font-medium">安装 Marketplace 工作流</Dialog.Title>
+          <Dialog.Title className="text-base font-medium">
+            安装 Marketplace {entityLabel}
+          </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            复制 “{listingTitle}” 到你的工作区后，你可以继续编辑和运行它。
+            {isPlugin
+              ? `将 "${listingTitle}" 安装到你的工作区后，可以在工作流画布中使用该插件节点。`
+              : `复制 "${listingTitle}" 到你的工作区后，你可以继续编辑和运行它。`}
           </Dialog.Description>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
             <div>
               <label htmlFor="install-name" className="mb-1.5 block text-sm font-medium">
-                工作流名称
+                {entityLabel}名称
               </label>
               <input
                 id="install-name"
                 {...register('name')}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="输入工作流名称"
+                placeholder={`输入${entityLabel}名称`}
               />
               {errors.name ? (
                 <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>
@@ -134,7 +154,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
                 {...register('description')}
                 rows={4}
                 className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="描述这个工作流的使用场景"
+                placeholder={`描述这个${entityLabel}的使用场景`}
               />
               {errors.description ? (
                 <p className="mt-1 text-xs text-red-500">{errors.description.message}</p>

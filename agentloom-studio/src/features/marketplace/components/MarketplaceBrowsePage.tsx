@@ -17,6 +17,10 @@ import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '@/shared/lib/utils'
 import { usePublicListings } from '../api/publicMarketplaceQueries'
 import {
+  MARKETPLACE_LISTING_TYPE_TABS,
+  type MarketplaceListingTypeFilter,
+} from '../lib/display'
+import {
   MARKETPLACE_CATEGORIES,
   MARKETPLACE_SORT_OPTIONS,
   type MarketplaceCategory,
@@ -37,6 +41,7 @@ const DEFAULT_SORT: MarketplaceSortOption = 'popular'
 const PAGE_SIZE = 12
 
 export function MarketplaceBrowsePage() {
+  const [listingType, setListingType] = useState<MarketplaceListingTypeFilter>('all')
   const [category, setCategory] = useState<BrowseCategory>('all')
   const [sort, setSort] = useState<MarketplaceSortOption>(DEFAULT_SORT)
   const [page, setPage] = useState(1)
@@ -55,12 +60,13 @@ export function MarketplaceBrowsePage() {
   const filters = useMemo<PublicListingsFilters>(
     () => ({
       category: category === 'all' ? undefined : category,
+      listingType: listingType === 'all' ? undefined : listingType,
       search: debouncedSearch || undefined,
       sort,
       page,
       pageSize: PAGE_SIZE,
     }),
-    [category, debouncedSearch, page, sort],
+    [category, debouncedSearch, listingType, page, sort],
   )
 
   const { data, isLoading, isError, refetch } = usePublicListings(filters)
@@ -71,6 +77,11 @@ export function MarketplaceBrowsePage() {
 
   const handleCategoryChange = useCallback((nextCategory: string) => {
     setCategory(nextCategory as BrowseCategory)
+    setPage(1)
+  }, [])
+
+  const handleListingTypeChange = useCallback((nextListingType: string) => {
+    setListingType(nextListingType as MarketplaceListingTypeFilter)
     setPage(1)
   }, [])
 
@@ -102,10 +113,10 @@ export function MarketplaceBrowsePage() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Store className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">工作流市场</h1>
+            <h1 className="text-2xl font-bold">市场</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            浏览社区共享工作流，并一键安装到你的工作区。
+            浏览社区共享的工作流与插件，并一键安装到你的工作区。
           </p>
         </div>
 
@@ -120,19 +131,19 @@ export function MarketplaceBrowsePage() {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={handleSearchChange}
-            placeholder="搜索市场工作流"
-            className="pl-9"
-            data-testid="marketplace-search-input"
-          />
+            <Input
+              value={searchInput}
+              onChange={handleSearchChange}
+              placeholder="搜索市场工作流或插件"
+              className="pl-9"
+              data-testid="marketplace-search-input"
+            />
         </div>
 
         <Select
           value={sort}
           onValueChange={handleSortChange}
-          aria-label="排序市场工作流"
+          aria-label="排序市场内容"
           data-testid="marketplace-sort-select"
         >
           {MARKETPLACE_SORT_OPTIONS.map((option) => (
@@ -142,6 +153,20 @@ export function MarketplaceBrowsePage() {
           ))}
         </Select>
       </div>
+
+      <Tabs
+        value={listingType}
+        defaultValue="all"
+        onValueChange={handleListingTypeChange}
+      >
+        <TabsList className="flex flex-wrap gap-1">
+          {MARKETPLACE_LISTING_TYPE_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <Tabs value={category} defaultValue="all" onValueChange={handleCategoryChange}>
         <TabsList className="flex flex-wrap gap-1">
@@ -190,14 +215,14 @@ export function MarketplaceBrowsePage() {
         >
           <Store className="h-10 w-10 text-muted-foreground" />
           <div className="space-y-1">
-            <p className="text-base font-medium text-foreground">未找到工作流</p>
+            <p className="text-base font-medium text-foreground">未找到工作流或插件</p>
             <p className="text-sm text-muted-foreground">尝试调整分类、搜索词或排序方式。</p>
           </div>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>共 {total} 个工作流</span>
+            <span>共 {total} 个项目</span>
             <span>第 {page} 页</span>
           </div>
 

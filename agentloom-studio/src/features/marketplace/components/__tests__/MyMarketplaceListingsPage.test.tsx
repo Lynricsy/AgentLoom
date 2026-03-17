@@ -5,7 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { MyMarketplaceListingItem } from '../../types';
 
-const { listingsQueryMock, unlistMock, relistMock, notifyMock } = vi.hoisted(
+const {
+  listingsQueryMock,
+  unlistMock,
+  relistMock,
+  pluginUnlistMock,
+  pluginRelistMock,
+  notifyMock,
+} = vi.hoisted(
   () => ({
     listingsQueryMock: {
       data: undefined as unknown,
@@ -22,6 +29,14 @@ const { listingsQueryMock, unlistMock, relistMock, notifyMock } = vi.hoisted(
       mutateAsync: vi.fn(),
       isPending: false,
     },
+    pluginUnlistMock: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
+    pluginRelistMock: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
     notifyMock: vi.fn(),
   }),
 );
@@ -33,6 +48,8 @@ vi.mock('../../api/marketplaceQueries', () => ({
 vi.mock('../../api/marketplaceMutations', () => ({
   useUnlistMarketplaceListing: () => unlistMock,
   useRelistMarketplaceListing: () => relistMock,
+  useUnlistPluginMarketplaceListing: () => pluginUnlistMock,
+  useRelistPluginMarketplaceListing: () => pluginRelistMock,
 }));
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -73,11 +90,16 @@ function makeListing(
   return {
     id: 'listing-1',
     workflowVersionId: 'version-1',
+    pluginDbId: null,
     tenantId: 'tenant-1',
     title: 'Test Workflow Template',
     summary: 'A test workflow for automated tasks and processes.',
     tags: ['agent', 'automation'],
     coverImageUrl: null,
+    category: 'analysis',
+    listingType: 'workflow',
+    pricingModel: 'free',
+    pricePerExecution: null,
     status: 'listed' as const,
     submittedBy: 'user-1',
     submittedAt: '2026-03-01T00:00:00Z',
@@ -88,6 +110,10 @@ function makeListing(
     workflowDefinitionId: 'def-1',
     workflowName: 'My Workflow',
     versionNumber: 1,
+    pluginId: null,
+    pluginName: null,
+    pluginVersion: null,
+    pluginAuthor: null,
     reviewResult: null,
     ...overrides,
   };
@@ -109,6 +135,10 @@ describe('MyMarketplaceListingsPage', () => {
     unlistMock.isPending = false;
     relistMock.mutateAsync = vi.fn();
     relistMock.isPending = false;
+    pluginUnlistMock.mutateAsync = vi.fn();
+    pluginUnlistMock.isPending = false;
+    pluginRelistMock.mutateAsync = vi.fn();
+    pluginRelistMock.isPending = false;
   });
 
   it('renders the page wrapper with data-testid', () => {
@@ -190,6 +220,8 @@ describe('MyMarketplaceListingsPage', () => {
     expect(
       screen.getByRole('button', { name: '已下架' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '工作流' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '插件' })).toBeInTheDocument();
   });
 
   it('clicking a status filter tab changes the active tab', async () => {
@@ -296,6 +328,125 @@ describe('MyMarketplaceListingsPage', () => {
           variant: 'success',
         }),
       );
+    });
+  });
+
+  it('plugin listing 下架时应调用插件 marketplace mutation', async () => {
+    const user = userEvent.setup();
+    pluginUnlistMock.mutateAsync.mockResolvedValue({
+      data: makeListing({
+        id: 'plugin-listing-1',
+        listingType: 'plugin',
+        pluginDbId: 'plugin-db-1',
+        pluginId: 'text-uppercase',
+        pluginName: 'Text Uppercase',
+        pluginVersion: '1.0.0',
+        pluginAuthor: 'Plugin Author',
+        workflowVersionId: null,
+        workflowDefinitionId: null,
+        workflowName: null,
+        versionNumber: null,
+        status: 'unlisted',
+      }),
+    });
+
+    listingsQueryMock.data = {
+      data: [
+        makeListing({
+          id: 'plugin-listing-1',
+          title: 'Plugin Listing',
+          listingType: 'plugin',
+          pluginDbId: 'plugin-db-1',
+          pluginId: 'text-uppercase',
+          pluginName: 'Text Uppercase',
+          pluginVersion: '1.0.0',
+          pluginAuthor: 'Plugin Author',
+          workflowVersionId: null,
+          workflowDefinitionId: null,
+          workflowName: null,
+          versionNumber: null,
+          status: 'listed',
+        }),
+      ],
+      meta: { total: 1, page: 1, pageSize: 12, totalPages: 1 },
+    };
+    renderWithProviders(<MyMarketplaceListingsPage />);
+
+    await user.click(
+      within(screen.getByTestId('listing-card')).getByRole('button', {
+        name: /下架/,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('unlist-confirm-dialog')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole('button', { name: '确认下架' }));
+
+    await waitFor(() => {
+      expect(pluginUnlistMock.mutateAsync).toHaveBeenCalledWith('plugin-listing-1');
+    });
+  });
+
+  it('plugin review_failed listing 可直接重新提交', async () => {
+    const user = userEvent.setup();
+    pluginRelistMock.mutateAsync.mockResolvedValue({
+      data: makeListing({
+        id: 'plugin-listing-2',
+        listingType: 'plugin',
+        pluginDbId: 'plugin-db-2',
+        pluginId: 'text-uppercase',
+        pluginName: 'Text Uppercase',
+        pluginVersion: '1.0.0',
+        pluginAuthor: 'Plugin Author',
+        workflowVersionId: null,
+        workflowDefinitionId: null,
+        workflowName: null,
+        versionNumber: null,
+      }),
+      reviewResult: {
+        outcome: 'passed',
+        checks: [],
+        reviewedAt: '2026-03-01T00:00:00Z',
+      },
+    });
+
+    listingsQueryMock.data = {
+      data: [
+        makeListing({
+          id: 'plugin-listing-2',
+          title: 'Failed Plugin Listing',
+          listingType: 'plugin',
+          pluginDbId: 'plugin-db-2',
+          pluginId: 'text-uppercase',
+          pluginName: 'Text Uppercase',
+          pluginVersion: '1.0.0',
+          pluginAuthor: 'Plugin Author',
+          workflowVersionId: null,
+          workflowDefinitionId: null,
+          workflowName: null,
+          versionNumber: null,
+          status: 'review_failed',
+          reviewResult: {
+            outcome: 'failed',
+            checks: [
+              {
+                code: 'SUMMARY_INVALID',
+                status: 'failed',
+                message: '摘要过短',
+              },
+            ],
+            reviewedAt: '2026-03-01T00:00:00Z',
+          },
+        }),
+      ],
+      meta: { total: 1, page: 1, pageSize: 12, totalPages: 1 },
+    };
+    renderWithProviders(<MyMarketplaceListingsPage />);
+
+    await user.click(screen.getByRole('button', { name: '重新提交' }));
+
+    await waitFor(() => {
+      expect(pluginRelistMock.mutateAsync).toHaveBeenCalledWith('plugin-listing-2');
     });
   });
 

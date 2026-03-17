@@ -9,13 +9,19 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
-import { Download, Loader2, X } from 'lucide-react'
+import { Download, Loader2, Puzzle, Workflow, X } from 'lucide-react'
 
+import { cn } from '@/shared/lib/utils'
 import {
   useListingReviews,
   usePublicListingDetail,
 } from '../api/publicMarketplaceQueries'
-import { MARKETPLACE_CATEGORIES, type MarketplaceCategory } from '../types'
+import { formatMarketplacePrice } from '../lib/display'
+import {
+  MARKETPLACE_CATEGORIES,
+  type MarketplaceCategory,
+  type PublicMarketplaceListingDetail as ListingDetailType,
+} from '../types'
 import { MarketplaceInstallDialog } from './MarketplaceInstallDialog'
 import { ReviewForm } from './ReviewForm'
 import { ReviewList } from './ReviewList'
@@ -30,6 +36,12 @@ interface MarketplaceDetailDialogProps {
 const CATEGORY_LABELS = Object.fromEntries(
   MARKETPLACE_CATEGORIES.map((category) => [category.value, category.label]),
 ) as Record<MarketplaceCategory, string>
+
+function parseRating(value: string | null): number | null {
+  if (value == null) return null
+  const parsed = parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -87,6 +99,156 @@ function toPreviewEdges(edges: unknown[] | undefined): Edge[] {
     }))
 }
 
+function isWorkflowListing(
+  listing: ListingDetailType,
+): listing is ListingDetailType & { listingType: 'workflow' } {
+  return listing.listingType === 'workflow'
+}
+
+function WorkflowPreviewSection({
+  listing,
+  onInstallClick,
+}: {
+  listing: ListingDetailType & { listingType: 'workflow' }
+  onInstallClick: () => void
+}) {
+  const previewNodes = useMemo(
+    () => toPreviewNodes(listing.definition.nodes),
+    [listing.definition.nodes],
+  )
+  const previewEdges = useMemo(
+    () => toPreviewEdges(listing.definition.edges),
+    [listing.definition.edges],
+  )
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">工作流预览</h3>
+          <p className="text-xs text-muted-foreground">
+            这是一个只读预览，安装后可以在画布中继续编辑。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onInstallClick}
+          className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          安装到工作区
+        </button>
+      </div>
+
+      {previewNodes.length > 0 ? (
+        <div className="h-[320px] overflow-hidden rounded-lg border border-border" data-testid="marketplace-preview">
+          <ReactFlowProvider>
+            <ReactFlow
+              nodes={previewNodes}
+              edges={previewEdges}
+              fitView
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={false}
+              connectOnClick={false}
+              edgesReconnectable={false}
+              panOnDrag={false}
+              zoomOnScroll={false}
+              zoomOnDoubleClick={false}
+              deleteKeyCode={null}
+              proOptions={{ hideAttribution: true }}
+              colorMode="dark"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            </ReactFlow>
+          </ReactFlowProvider>
+        </div>
+      ) : (
+        <div className="flex h-[320px] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 text-sm text-muted-foreground">
+          暂无可预览的工作流结构。
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PluginDetailSection({
+  listing,
+  onInstallClick,
+}: {
+  listing: ListingDetailType & { listingType: 'plugin' }
+  onInstallClick: () => void
+}) {
+  const { plugin } = listing
+  const pricingLabel = formatMarketplacePrice(
+    listing.pricingModel,
+    listing.pricePerExecution,
+  )
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">插件信息</h3>
+          <p className="text-xs text-muted-foreground">
+            安装后可在工作流画布中使用该插件节点。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onInstallClick}
+          className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          安装到工作区
+        </button>
+      </div>
+
+      <div
+        className="space-y-3 rounded-lg border border-border bg-card/40 p-4"
+        data-testid="plugin-detail-metadata"
+      >
+        <div className="flex items-center gap-2">
+          <Puzzle className="h-5 w-5 text-violet-400" />
+          <span className="text-sm font-medium text-foreground">{plugin.name}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+            v{plugin.version}
+          </span>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">插件 ID</dt>
+          <dd className="font-mono text-xs text-foreground">{plugin.pluginId}</dd>
+
+          <dt className="text-muted-foreground">开发者</dt>
+          <dd className="text-foreground">{plugin.author}</dd>
+
+          <dt className="text-muted-foreground">许可协议</dt>
+          <dd className="text-foreground">{plugin.license ?? '未指定'}</dd>
+
+          <dt className="text-muted-foreground">计费模式</dt>
+          <dd>
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-xs font-medium',
+                listing.pricingModel === 'free'
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : 'bg-amber-500/15 text-amber-400',
+              )}
+            >
+              {pricingLabel}
+            </span>
+          </dd>
+        </dl>
+
+        {plugin.description ? (
+          <p className="border-t border-border/50 pt-3 text-sm text-muted-foreground">
+            {plugin.description}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
 export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
   listingId,
   open,
@@ -100,8 +262,6 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
   const listing = detailQuery.data
   const reviews = reviewsQuery.data?.data ?? listing?.reviews ?? []
   const reviewsTotal = reviewsQuery.data?.meta.total ?? listing?.reviewCount ?? reviews.length
-  const previewNodes = useMemo(() => toPreviewNodes(listing?.definition.nodes), [listing?.definition.nodes])
-  const previewEdges = useMemo(() => toPreviewEdges(listing?.definition.edges), [listing?.definition.edges])
 
   useEffect(() => {
     if (!open) {
@@ -112,6 +272,8 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
   const handleInstallOpenChange = useCallback((nextOpen: boolean) => {
     setInstallOpen(nextOpen)
   }, [])
+
+  const listingTypeLabel = listing?.listingType === 'plugin' ? '插件' : '工作流'
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -128,19 +290,37 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
           {detailQuery.isLoading ? (
             <div className="flex items-center justify-center gap-3 px-6 py-20" data-testid="marketplace-detail-loading">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">正在加载工作流详情…</span>
+              <span className="text-sm text-muted-foreground">正在加载详情…</span>
             </div>
           ) : detailQuery.isError || !listing ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center" data-testid="marketplace-detail-error">
-              <p className="text-base font-medium text-foreground">无法加载工作流详情</p>
+              <p className="text-base font-medium text-foreground">无法加载详情</p>
               <p className="text-sm text-muted-foreground">请稍后重试，或返回列表后重新打开。</p>
             </div>
           ) : (
             <>
               <div className="border-b border-border/60 px-6 py-5">
-                <Dialog.Title className="text-xl font-semibold text-foreground">
-                  {listing.title}
-                </Dialog.Title>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                      listing.listingType === 'plugin'
+                        ? 'bg-violet-500/15 text-violet-400'
+                        : 'bg-sky-500/15 text-sky-400',
+                    )}
+                    data-testid="detail-listing-type-badge"
+                  >
+                    {listing.listingType === 'plugin' ? (
+                      <Puzzle className="h-3 w-3" />
+                    ) : (
+                      <Workflow className="h-3 w-3" />
+                    )}
+                    {listingTypeLabel}
+                  </span>
+                  <Dialog.Title className="text-xl font-semibold text-foreground">
+                    {listing.title}
+                  </Dialog.Title>
+                </div>
                 <Dialog.Description className="mt-2 text-sm text-muted-foreground">
                   {listing.summary}
                 </Dialog.Description>
@@ -156,7 +336,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                     <Download className="h-3.5 w-3.5" />
                     <span>{listing.useCount} 次安装</span>
                   </span>
-                  <StarRating rating={listing.avgRating} count={listing.reviewCount} />
+                  <StarRating rating={parseRating(listing.avgRating)} count={listing.reviewCount} />
                 </div>
 
                 {listing.tags.length > 0 ? (
@@ -174,52 +354,17 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               </div>
 
               <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-medium text-foreground">工作流预览</h3>
-                      <p className="text-xs text-muted-foreground">
-                        这是一个只读预览，安装后可以在画布中继续编辑。
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setInstallOpen(true)}
-                      className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      安装到工作区
-                    </button>
-                  </div>
-
-                  {previewNodes.length > 0 ? (
-                    <div className="h-[320px] overflow-hidden rounded-lg border border-border" data-testid="marketplace-preview">
-                      <ReactFlowProvider>
-                        <ReactFlow
-                          nodes={previewNodes}
-                          edges={previewEdges}
-                          fitView
-                          nodesDraggable={false}
-                          nodesConnectable={false}
-                          elementsSelectable={false}
-                          connectOnClick={false}
-                          edgesReconnectable={false}
-                          panOnDrag={false}
-                          zoomOnScroll={false}
-                          zoomOnDoubleClick={false}
-                          deleteKeyCode={null}
-                          proOptions={{ hideAttribution: true }}
-                          colorMode="dark"
-                        >
-                          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-                        </ReactFlow>
-                      </ReactFlowProvider>
-                    </div>
-                  ) : (
-                    <div className="flex h-[320px] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 text-sm text-muted-foreground">
-                      暂无可预览的工作流结构。
-                    </div>
-                  )}
-                </section>
+                {isWorkflowListing(listing) ? (
+                  <WorkflowPreviewSection
+                    listing={listing}
+                    onInstallClick={() => setInstallOpen(true)}
+                  />
+                ) : (
+                  <PluginDetailSection
+                    listing={listing}
+                    onInstallClick={() => setInstallOpen(true)}
+                  />
+                )}
 
                 <section className="space-y-4">
                   <div className="space-y-1">
@@ -242,6 +387,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                 listingId={listing.id}
                 listingTitle={listing.title}
                 listingSummary={listing.summary}
+                listingType={listing.listingType}
                 open={installOpen}
                 onOpenChange={handleInstallOpenChange}
               />
