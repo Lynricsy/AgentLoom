@@ -6,10 +6,10 @@
 
 你正身处一个自动化开发循环,没有用户能回复你.
 
-1. 进行开发时,请及时进行原子化提交.不要问"要不要提交",直接提交.如果工作开始时发现工作区不干净,那先把未提交的文件提交或者需要ignore的文件ignore再开始工作.任务完成后,**必须**进行提交
+1. 进行开发时,请及时进行原子化提交和推送.不要问"要不要提交",直接提交.如果工作开始时发现工作区不干净,那先把未提交的文件提交或者需要ignore的文件ignore再开始工作.任务完成后,**必须**进行提交
 2. 不能停止工作并等待pty或后台agent,必须持续轮询.如果认为还需要很长时间才能完成,可以设置较长的阻塞时间.你一旦停止,系统将认为你的工作已经完成并直接交接给下一步,你将等不到后台工作完成提醒.
 3. 不能遗留任何没通过的测试。即使一个未能通过的测试你认为是之前就存在的问题，那也要去找到导致未通过的根本原因并进行修复。又因为之前开发轮次也会执行这条要求，所以理应不会有之前的"遗留问题"导致的未通过的测试，未通过的测试应该都是本次开发导致的回归。
-4. 开发时及时使用init-deep更新各个 AGENTS.md，确保知识库与代码保持同步。
+4. 开发时及时使用init-deep更新各个 AGENTS.md，和README.md，确保知识库与代码保持同步。
 5. 如果你是作为code reviewer,同时你发现当前story的部分内容确实依赖于后面的story才能完成,那如果当前story除了这个被阻塞的部分之外其他部分都已经完成的话,可以提前标记为done,但是必须在它所依赖的那个story加上完成这部分被阻塞的任务的任务,确保那个被依赖的story完成后,当前这个未完成的任务会被完成.
 6. 为了提高工作效率，请在确保不冲突的情况下尽量并行使用多个subagent来完成任务
 7. **AGENTS.md 内容规范**：AGENTS.md 是**持久性架构知识库**，仅记录当前系统状态的事实性描述。**严禁写入**以下内容：
@@ -51,6 +51,7 @@ AgentLoomAUTO/
 | 添加数据库表 | `agentloom-server/src/database/schema/` | Drizzle ORM，需 `pnpm db:generate` |
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
 | 管理服务端插件注册与生态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册 + canonical archive RSA-PSS 验签、`plugins`/`plugin_developer_keys`/`plugin_usage_records`/`plugin_earnings` 表、`PluginSandboxService`（Extism WASM 沙箱）、开发者密钥管理 API、`plugin-execution`/`earnings-settlement` 队列、插件市场 CRUD、使用量记录、收益结算 |
+| 管理 Agent 配置优化建议闭环 | `agentloom-server/src/modules/optimization-suggestion/` + `agentloom-studio/src/features/optimization-suggestion/` | 周期分析 `agent_execution_records`、生成/应用/忽略建议、采纳率统计、Studio live Agent Config 建议面板 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
@@ -165,6 +166,7 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 - **Trigger 系统**: 支持 `cron` / `webhook` / `api_event`(preview-only) 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 仅可查看不可创建/编辑/启用。执行创建在租户事务提交后才入队
 - **Intervention Policy**: `intervention_policies` 表驱动介入策略，支持 approve/reject/escalate timeout 动作，`MAX_ESCALATION_ATTEMPTS = 3`
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`
+- **OptimizationSuggestionModule**: `optimization_suggestions` 表保存 `model_downgrade|timeout_adjustment|tool_pruning|autonomy_upgrade` 四类建议，带 direct-tenant RLS 与 authenticated DML grant；`OptimizationAnalysisScheduler` 使用固定 scheduler ID 的 BullMQ `upsertJobScheduler()` 注册 `optimization-analysis` 周期任务（`0 2 * * 1`, UTC）；Server 提供 list/apply/dismiss/stats API，并在 apply 复用 `workflow_definitions.version` OCC、在 apply/dismiss 都使用 `pending` 状态 SQL guard；Studio 在 live `llm-agent` `NodeConfigPanel` 下挂载建议面板，以 `autonomyMode` 作为 canonical 自主性字段，并在 dirty canvas / server version refresh 时避免静默覆盖本地编辑
 - **PluginModule**: `plugins` 表保存租户插件元数据（`org_id + plugin_id` 唯一，含 `manifest`、`node_definitions`、`signature`、`content_hash`、`wasm_bundle_url`、`occ_version` 与 tenant RLS）。`plugin_developer_keys` 表管理开发者 RSA 公钥（`org_id + key_fingerprint` 唯一，active/revoked 状态）。`plugin_usage_records` 表记录每次插件执行的使用量（含 billingAmount、executionDurationMs、inputTokens、outputTokens）。`plugin_earnings` 表记录收益结算周期（含 totalRevenue、developerShare、platformShare、listingCommission，`payoutStatusEnum`: pending/processing/completed/failed）。收益分成模型：总收入 × 0.70 = 开发者毛收入，毛收入 × 0.15 = 上架佣金，开发者净收入 = 毛收入 - 佣金（≈59.5%），平台份额 = 总收入 × 0.30。`/plugins` 提供 `.alp` multipart 注册、列表、详情、状态更新与删除；`/plugins/marketplace` 提供插件上架/列表/详情/更新 CRUD；`/plugins/developer-keys` 提供开发者密钥管理。`PluginExecutionWorker` 执行成功后 fire-and-forget 调用 `PluginUsageService.recordUsage()`。`EarningsSettlementWorker`（`earnings-settlement` 队列）按周期汇总使用量并计算收益分成，含幂等性检查。`PluginSandboxService` 使用 `@extism/extism` 创建隔离 WASM 实例（`runInWorker: true`），平台硬限制固定 `timeoutMs=30000` / `maxMemoryPages=4096`
 - **Marketplace**: 公共 browse/search/detail/reviews/install 链路。安装 RBAC `owner/admin/creator/operator`。发布审核基于 `workflowDefinitions.status + publishedVersionId`。`marketplace_listings` 支持 `listingType`（workflow/plugin）和 `pricingModel`（free/per_execution），`workflowVersionId` 为 nullable 以支持插件上架
 - **导出/导入**: 导出使用 `agentloom-workflow-v1` 信封 + `sanitizeDefinition()` 递归剥离敏感信息。导入含 Zod 校验 + `cloneDefinitionWithNewIds()`。创建工作流支持 `template_slug` / `share_token` / `marketplace_listing_id` 三种克隆源（互斥）
