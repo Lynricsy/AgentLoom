@@ -83,6 +83,22 @@ describe('OptimizationSuggestionCard', () => {
     expect(onDismiss).toHaveBeenCalledWith('sug-1')
   })
 
+  it('disables action buttons while a mutation is in flight', () => {
+    const suggestion = makeSuggestion({ status: 'pending' })
+
+    render(
+      <OptimizationSuggestionCard
+        suggestion={suggestion}
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+        actionsDisabled
+      />,
+    )
+
+    expect(screen.getByText('采纳')).toBeDisabled()
+    expect(screen.getByText('忽略')).toBeDisabled()
+  })
+
   it('hides action buttons and shows status when applied', () => {
     const suggestion = makeSuggestion({
       status: 'applied',
@@ -161,5 +177,52 @@ describe('OptimizationSuggestionCard', () => {
 
     expect(screen.getByText('工具精简')).toBeInTheDocument()
     expect(screen.getByText('weather')).toBeInTheDocument()
+  })
+
+  it('renders autonomy_upgrade using autonomyMode as the canonical payload key', () => {
+    const suggestion = makeSuggestion({
+      suggestionType: 'autonomy_upgrade',
+      currentValue: {
+        autonomyMode: 'MANUAL_CONFIRM',
+        mode: 'LEGACY_CURRENT_MODE',
+      },
+      suggestedValue: {
+        autonomyMode: 'LLM_SUGGEST',
+        mode: 'LEGACY_SUGGESTED_MODE',
+      },
+    })
+
+    render(
+      <OptimizationSuggestionCard
+        suggestion={suggestion}
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('自主升级')).toBeInTheDocument()
+    expect(screen.getByText('MANUAL_CONFIRM')).toBeInTheDocument()
+    expect(screen.getByText('LLM_SUGGEST')).toBeInTheDocument()
+    expect(screen.queryByText('LEGACY_CURRENT_MODE')).not.toBeInTheDocument()
+    expect(screen.queryByText('LEGACY_SUGGESTED_MODE')).not.toBeInTheDocument()
+  })
+
+  it('falls back to legacy mode when autonomyMode is missing', () => {
+    const suggestion = makeSuggestion({
+      suggestionType: 'autonomy_upgrade',
+      currentValue: { mode: 'RULE_BASED' },
+      suggestedValue: { mode: 'LLM_SUGGEST' },
+    })
+
+    render(
+      <OptimizationSuggestionCard
+        suggestion={suggestion}
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('RULE_BASED')).toBeInTheDocument()
+    expect(screen.getByText('LLM_SUGGEST')).toBeInTheDocument()
   })
 })

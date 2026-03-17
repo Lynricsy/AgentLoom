@@ -1,14 +1,45 @@
 import { memo, useCallback } from 'react'
+import { HTTPError } from 'ky'
 import { OptimizationSuggestionCard } from './OptimizationSuggestionCard'
 import {
   useNodeSuggestions,
   useApplySuggestion,
   useDismissSuggestion,
 } from '../api/optimization-suggestion-queries'
+import { useCanvasStore } from '@/features/canvas/stores/canvasStore'
+import { useToast } from '@/shared/ui/toast'
+import type { ApiError } from '@/shared/types/api'
 
 interface OptimizationSuggestionsPanelProps {
   workflowDefinitionId: string
   nodeId: string
+}
+
+type ApiProblemDetails = ApiError & {
+  errors?: Array<{ field?: string; message?: string }>
+  extensions?: {
+    currentVersion?: number
+  }
+}
+
+async function resolveMutationErrorMessage(
+  error: unknown,
+  fallback: string,
+): Promise<string> {
+  if (!(error instanceof HTTPError)) {
+    return fallback
+  }
+
+  try {
+    const payload = await error.response.json<ApiProblemDetails>()
+    if (payload.detail && payload.extensions?.currentVersion != null) {
+      return `${payload.detail}（当前版本 ${payload.extensions.currentVersion}）`
+    }
+
+    return payload.detail ?? payload.errors?.[0]?.message ?? fallback
+  } catch {
+    return fallback
+  }
 }
 
 export const OptimizationSuggestionsPanel = memo(
@@ -16,6 +47,9 @@ export const OptimizationSuggestionsPanel = memo(
     workflowDefinitionId,
     nodeId,
   }: OptimizationSuggestionsPanelProps) {
+    const currentWorkflowId = useCanvasStore((state) => state.workflowId)
+    const isDirty = useCanvasStore((state) => state.isDirty)
+    const { notify } = useToast()
     const {
       data: suggestions,
       isLoading,
@@ -28,16 +62,62 @@ export const OptimizationSuggestionsPanel = memo(
 
     const handleApply = useCallback(
       (id: string) => {
-        applyMutation.mutate(id)
+        if (currentWorkflowId === workflowDefinitionId && isDirty) {
+          notify({
+            title: '请先保存当前画布',
+            description:
+              '当前画布有未保存修改。为避免服务端建议覆盖本地编辑，请等待自动保存完成后再采纳建议。',
+            variant: 'warning',
+          })
+          return
+        }
+
+        applyMutation.mutate(id, {
+          onSuccess: () => {
+            notify({
+              title: '优化建议已采纳',
+              description: '工作流配置已更新，建议列表和画布数据正在刷新。',
+              variant: 'success',
+            })
+          },
+          onError: async (error) => {
+            notify({
+              title: '采纳优化建议失败',
+              description: await resolveMutationErrorMessage(
+                error,
+                '采纳优化建议失败，请刷新后重试。',
+              ),
+              variant: 'error',
+            })
+          },
+        })
       },
-      [applyMutation],
+      [applyMutation, currentWorkflowId, isDirty, notify, workflowDefinitionId],
     )
 
     const handleDismiss = useCallback(
       (id: string) => {
-        dismissMutation.mutate(id)
+        dismissMutation.mutate(id, {
+          onSuccess: () => {
+            notify({
+              title: '优化建议已忽略',
+              description: '该建议已标记为忽略，统计数据会自动刷新。',
+              variant: 'success',
+            })
+          },
+          onError: async (error) => {
+            notify({
+              title: '忽略优化建议失败',
+              description: await resolveMutationErrorMessage(
+                error,
+                '忽略优化建议失败，请刷新后重试。',
+              ),
+              variant: 'error',
+            })
+          },
+        })
       },
-      [dismissMutation],
+      [dismissMutation, notify],
     )
 
     if (isLoading) {
@@ -87,6 +167,11 @@ export const OptimizationSuggestionsPanel = memo(
         className="space-y-3 px-4 py-3"
         data-testid="optimization-suggestions-panel"
       >
+        {currentWorkflowId === workflowDefinitionId && isDirty ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            画布存在未保存修改。请先等待自动保存完成，再采纳优化建议，避免覆盖本地编辑。
+          </div>
+        ) : null}
         <h3 className="text-sm font-medium text-zinc-200">
           优化建议
           <span className="ml-1.5 text-xs text-zinc-500">
@@ -99,6 +184,7 @@ export const OptimizationSuggestionsPanel = memo(
             suggestion={suggestion}
             onApply={handleApply}
             onDismiss={handleDismiss}
+            actionsDisabled={applyMutation.isPending || dismissMutation.isPending}
           />
         ))}
       </div>

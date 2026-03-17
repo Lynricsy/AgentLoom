@@ -24,6 +24,9 @@ function renderCurrentVsSuggested(
   currentValue: Record<string, unknown>,
   suggestedValue: Record<string, unknown>,
 ) {
+  const currentAutonomyMode = currentValue.autonomyMode ?? currentValue.mode
+  const suggestedAutonomyMode = suggestedValue.autonomyMode ?? suggestedValue.mode
+
   switch (suggestionType) {
     case 'model_downgrade':
       return (
@@ -57,9 +60,9 @@ function renderCurrentVsSuggested(
     case 'autonomy_upgrade':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-zinc-400">{String(currentValue.mode ?? '—')}</span>
+          <span className="text-zinc-400">{String(currentAutonomyMode ?? '—')}</span>
           <span className="text-zinc-500">→</span>
-          <span className="text-emerald-400">{String(suggestedValue.mode ?? '—')}</span>
+          <span className="text-emerald-400">{String(suggestedAutonomyMode ?? '—')}</span>
         </div>
       )
   }
@@ -69,6 +72,7 @@ interface OptimizationSuggestionCardProps {
   suggestion: OptimizationSuggestion
   onApply: (id: string) => void
   onDismiss: (id: string) => void
+  actionsDisabled?: boolean
 }
 
 export const OptimizationSuggestionCard = memo(
@@ -76,6 +80,7 @@ export const OptimizationSuggestionCard = memo(
     suggestion,
     onApply,
     onDismiss,
+    actionsDisabled = false,
   }: OptimizationSuggestionCardProps) {
     const typeConfig = SUGGESTION_TYPE_CONFIG[suggestion.suggestionType]
     const isPending = suggestion.status === 'pending'
@@ -180,15 +185,17 @@ export const OptimizationSuggestionCard = memo(
           <div className="flex items-center gap-2 pt-1">
             <button
               type="button"
-              className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
+              className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleApply}
+              disabled={actionsDisabled}
             >
               采纳
             </button>
             <button
               type="button"
-              className="rounded-md bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
+              className="rounded-md bg-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleDismiss}
+              disabled={actionsDisabled}
             >
               忽略
             </button>
