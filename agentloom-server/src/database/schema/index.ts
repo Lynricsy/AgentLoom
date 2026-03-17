@@ -240,3 +240,18 @@ export {
   type StepTelemetryData,
   type ExecutionSummaryData,
 } from './execution-records.schema';
+export {
+  suggestionTypeEnum,
+  suggestionStatusEnum,
+  optimizationSuggestions,
+  type OptimizationSuggestion,
+  type NewOptimizationSuggestion,
+  type ModelDowngradeValue,
+  type TimeoutAdjustmentValue,
+  type ToolPruningValue,
+  type AutonomyUpgradeValue,
+  type SuggestionCurrentValue,
+  type SuggestionSuggestedValue,
+  type ImpactEstimate,
+  type AnalysisMetadata,
+} from './optimization-suggestions.schema';
