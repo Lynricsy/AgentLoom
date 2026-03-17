@@ -8,6 +8,7 @@ import {
   pgEnum,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -35,6 +36,11 @@ export const pluginEarnings = pgTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id),
+    sourceTenantId: uuid('source_tenant_id'),
+    sourceOrgId: uuid('source_org_id'),
+    sourcePluginDbId: uuid('source_plugin_db_id'),
+    sourcePluginId: varchar('source_plugin_id', { length: 255 }),
+    sourceListingId: uuid('source_listing_id'),
     periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
     periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
     totalExecutions: integer('total_executions').notNull().default(0),
@@ -57,8 +63,14 @@ export const pluginEarnings = pgTable(
   (table) => [
     index('plugin_earnings_tenant_plugin_idx').on(table.tenantId, table.pluginDbId),
     index('plugin_earnings_org_idx').on(table.orgId),
+    index('plugin_earnings_source_org_idx').on(table.sourceOrgId),
     index('plugin_earnings_period_idx').on(table.periodStart, table.periodEnd),
     index('plugin_earnings_payout_status_idx').on(table.payoutStatus),
+    uniqueIndex('plugin_earnings_plugin_period_uidx').on(
+      table.pluginDbId,
+      table.periodStart,
+      table.periodEnd,
+    ),
     check(
       'plugin_earnings_total_executions_non_negative',
       sql`${table.totalExecutions} >= 0`,
@@ -74,6 +86,10 @@ export const pluginEarnings = pgTable(
     check(
       'plugin_earnings_platform_share_non_negative',
       sql`${table.platformShare} >= 0`,
+    ),
+    check(
+      'plugin_earnings_listing_commission_non_negative',
+      sql`${table.listingCommission} >= 0`,
     ),
     ...createDirectTenantPolicies('plugin_earnings'),
   ],

@@ -281,6 +281,13 @@
       "when": 1773664256920,
       "tag": "0039_execution_records_story_12_1",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1773672274065,
+      "tag": "0040_many_gamma_corps",
+      "breakpoints": true
     }
   ]
 }

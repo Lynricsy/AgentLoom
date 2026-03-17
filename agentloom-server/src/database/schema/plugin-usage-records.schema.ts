@@ -22,6 +22,11 @@ export const pluginUsageRecords = pgTable(
       .notNull()
       .references(() => plugins.id, { onDelete: 'cascade' }),
     pluginId: varchar('plugin_id', { length: 255 }).notNull(),
+    sourceTenantId: uuid('source_tenant_id'),
+    sourceOrgId: uuid('source_org_id'),
+    sourcePluginDbId: uuid('source_plugin_db_id'),
+    sourcePluginId: varchar('source_plugin_id', { length: 255 }),
+    sourceListingId: uuid('source_listing_id'),
     executionId: uuid('execution_id').notNull(),
     stepId: uuid('step_id'),
     executedBy: uuid('executed_by').references(() => users.id),
@@ -37,6 +42,14 @@ export const pluginUsageRecords = pgTable(
   },
   (table) => [
     index('plugin_usage_records_tenant_plugin_idx').on(table.tenantId, table.pluginDbId),
+    index('plugin_usage_records_source_plugin_idx').on(
+      table.sourceTenantId,
+      table.sourcePluginDbId,
+    ),
+    index('plugin_usage_records_source_org_created_at_idx').on(
+      table.sourceOrgId,
+      table.createdAt,
+    ),
     index('plugin_usage_records_execution_idx').on(table.executionId),
     index('plugin_usage_records_created_at_idx').on(table.createdAt),
     index('plugin_usage_records_plugin_id_idx').on(table.pluginId),
