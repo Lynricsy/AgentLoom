@@ -40,6 +40,7 @@ import { PlatformApiTokenModule } from './modules/platform-api-token/platform-ap
 import { PluginModule } from './modules/plugin/plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
 import { ExecutionRecordModule } from './modules/execution-record/execution-record.module';
+import { OptimizationSuggestionModule } from './modules/optimization-suggestion/optimization-suggestion.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -112,6 +113,7 @@ function createThrottlerOptions(configService: ConfigService) {
     PluginModule,
     SmartRoutingModule,
     ExecutionRecordModule,
+    OptimizationSuggestionModule,
   ],
   providers: [
     RbacCacheService,
