@@ -17,6 +17,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🧠 知识库 RAG** — 文档解析 → 分块 → Qdrant 向量化，支持知识增强的 Agent 推理
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
 - **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
+- **🛠️ 配置优化建议闭环** — 周期分析执行遥测，生成可解释的模型/超时/工具/自主性建议，应用时复用 workflow OCC 保护，并在画布存在未保存修改时避免静默覆盖本地编辑
 - **🌐 MCP 集成** — Model Context Protocol 工具编排，沙箱化执行环境
 - **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架
 
@@ -98,6 +99,7 @@ AgentLoom/
 | `mcp` | Model Context Protocol 工具管理 |
 | `sandbox` | 隔离执行环境（生命周期管理） |
 | `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
+| `optimization-suggestion` | 基于执行记录的 Agent 配置优化建议、采纳率统计与工作流节点配置更新（含 workflow OCC 与 dirty-canvas 防覆盖保护） |
 | `trigger` | Cron / Webhook / API Event 触发器 |
 | `notification` | REST + BullMQ + Socket.IO + FCM |
 | `evidence` | 证据记录 + SHA-256 完整性 + 溯源链 |
