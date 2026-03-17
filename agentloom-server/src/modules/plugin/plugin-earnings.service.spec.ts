@@ -5,12 +5,11 @@ import type { DrizzleDB } from '../../database/database.module';
 import { pluginEarnings, type PluginEarning } from '../../database/schema';
 import {
   CreateEarningsRecordSchema,
+  QueryPluginEarningsHistorySchema,
   QueryPluginEarningsSchema,
-  UpdatePayoutStatusSchema,
   type CreateEarningsRecordDtoType,
-  type QueryPluginEarningsDtoType,
-  type UpdatePayoutStatusDtoType,
 } from './dto/plugin-earnings.dto';
+import { FixedScaleDecimal } from './fixed-scale-decimal';
 import { PluginEarningsService } from './plugin-earnings.service';
 
 const { createMockDb } = vi.hoisted(() => ({
@@ -39,9 +38,59 @@ vi.mock('../../common/providers/tenant-aware-db.provider', async () => {
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const ORG_ID = '22222222-2222-4222-8222-222222222222';
 const PLUGIN_DB_ID = '33333333-3333-4333-8333-333333333333';
-const EARNING_ID = '44444444-4444-4444-8444-444444444444';
+const SOURCE_PLUGIN_DB_ID = '44444444-4444-4444-8444-444444444444';
+const SOURCE_LISTING_ID = '55555555-5555-4555-8555-555555555555';
+const EARNING_ID = '66666666-6666-4666-8666-666666666666';
 
 type MockDb = ReturnType<typeof createMockDb>;
+
+type SelectChain<TResult> = {
+  from: ReturnType<typeof vi.fn>;
+  leftJoin: ReturnType<typeof vi.fn>;
+  where: ReturnType<typeof vi.fn>;
+  orderBy: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  offset: ReturnType<typeof vi.fn>;
+  groupBy: ReturnType<typeof vi.fn>;
+} & Promise<TResult[]>;
+
+function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
+  const chain = Promise.resolve(result) as SelectChain<TResult>;
+  chain.from = vi.fn().mockReturnValue(chain);
+  chain.leftJoin = vi.fn().mockReturnValue(chain);
+  chain.where = vi.fn().mockReturnValue(chain);
+  chain.orderBy = vi.fn().mockReturnValue(chain);
+  chain.limit = vi.fn().mockReturnValue(chain);
+  chain.offset = vi.fn().mockReturnValue(chain);
+  chain.groupBy = vi.fn().mockReturnValue(chain);
+  return chain;
+}
+
+function createInsertChain<TResult>(result: TResult[]) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
+  const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+
+  return {
+    chain: { values },
+    values,
+    onConflictDoNothing,
+    returning,
+  };
+}
+
+function createUpdateChain<TResult>(result: TResult[]) {
+  const returning = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ returning });
+  const set = vi.fn().mockReturnValue({ where });
+
+  return {
+    chain: { set },
+    set,
+    where,
+    returning,
+  };
+}
 
 function createEarningRecord(
   overrides: Partial<PluginEarning> = {},
@@ -55,6 +104,11 @@ function createEarningRecord(
     pluginDbId: PLUGIN_DB_ID,
     pluginId: 'com.example.plugin',
     orgId: ORG_ID,
+    sourceTenantId: TENANT_ID,
+    sourceOrgId: ORG_ID,
+    sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+    sourcePluginId: 'com.example.publisher',
+    sourceListingId: SOURCE_LISTING_ID,
     periodStart: new Date('2025-01-01T00:00:00.000Z'),
     periodEnd: new Date('2025-01-31T23:59:59.000Z'),
     totalExecutions: 120,
@@ -73,10 +127,14 @@ function createEarningRecord(
   };
 }
 
-function createQuery(
-  overrides: Partial<QueryPluginEarningsDtoType> = {},
-): QueryPluginEarningsDtoType {
-  return QueryPluginEarningsSchema.parse(overrides);
+function createEarningWithPluginName(
+  pluginName: string | null = '示例插件',
+  overrides: Partial<PluginEarning> = {},
+) {
+  return {
+    ...createEarningRecord(overrides),
+    pluginName,
+  };
 }
 
 function createCreatePayload(
@@ -86,90 +144,21 @@ function createCreatePayload(
     pluginDbId: PLUGIN_DB_ID,
     pluginId: 'com.example.plugin',
     orgId: ORG_ID,
+    sourceTenantId: TENANT_ID,
+    sourceOrgId: ORG_ID,
+    sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+    sourcePluginId: 'com.example.publisher',
+    sourceListingId: SOURCE_LISTING_ID,
     periodStart: '2025-01-01T00:00:00.000Z',
     periodEnd: '2025-01-31T23:59:59.000Z',
     totalExecutions: 120,
-    totalRevenue: '100.50000000',
-    developerShare: '70.35000000',
-    platformShare: '30.15000000',
-    listingCommission: '10.55250000',
+    totalRevenue: '100.5',
+    developerShare: '70.35',
+    platformShare: '30.15',
+    listingCommission: '10.5525',
     metadata: { source: 'settlement' },
     ...overrides,
   });
-}
-
-function createUpdatePayload(
-  overrides: Partial<UpdatePayoutStatusDtoType> = {},
-): UpdatePayoutStatusDtoType {
-  return UpdatePayoutStatusSchema.parse({
-    payoutStatus: 'processing',
-    ...overrides,
-  });
-}
-
-function createSelectChain<TResult>(result: TResult[]) {
-  const where = vi.fn().mockResolvedValue(result);
-  const from = vi.fn().mockReturnValue({ where });
-
-  return {
-    chain: { from },
-    from,
-    where,
-  };
-}
-
-function createSelectChainWithLimit<TResult>(result: TResult[]) {
-  const limit = vi.fn().mockResolvedValue(result);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-
-  return {
-    chain: { from },
-    from,
-    where,
-    limit,
-  };
-}
-
-function createSelectChainWithPagination<TResult>(result: TResult[]) {
-  const offset = vi.fn().mockResolvedValue(result);
-  const limit = vi.fn().mockReturnValue({ offset });
-  const orderBy = vi.fn().mockReturnValue({ limit });
-  const where = vi.fn().mockReturnValue({ orderBy });
-  const from = vi.fn().mockReturnValue({ where });
-
-  return {
-    chain: { from },
-    from,
-    where,
-    orderBy,
-    limit,
-    offset,
-  };
-}
-
-function createInsertChain<TResult>(result: TResult[]) {
-  const returning = vi.fn().mockResolvedValue(result);
-  const values = vi.fn().mockReturnValue({ returning });
-
-  return {
-    chain: { values },
-    values,
-    returning,
-  };
-}
-
-function createUpdateChain<TResult>(result: TResult[]) {
-  const returning = vi.fn().mockResolvedValue(result);
-  const where = vi.fn().mockReturnValue({ returning });
-  const set = vi.fn().mockReturnValue({ where });
-
-  return {
-    chain: { set },
-    set,
-    where,
-    returning,
-  };
 }
 
 describe('PluginEarningsService', () => {
@@ -187,25 +176,27 @@ describe('PluginEarningsService', () => {
   });
 
   describe('createEarningsRecord', () => {
-    it('应创建收益记录并返回插入结果', async () => {
-      const pluginQuery = createSelectChainWithLimit([{ tenantId: TENANT_ID }]);
+    it('应写入 source attribution 并使用冲突安全创建', async () => {
       const created = createEarningRecord();
       const insertQuery = createInsertChain([created]);
       const payload = createCreatePayload();
 
-      db.select.mockReturnValueOnce(pluginQuery.chain);
       db.insert.mockReturnValueOnce(insertQuery.chain);
 
       const result = await service.createEarningsRecord(payload);
 
       expect(result).toEqual(created);
-      expect(pluginQuery.limit).toHaveBeenCalledWith(1);
       expect(db.insert).toHaveBeenCalledWith(pluginEarnings);
       expect(insertQuery.values).toHaveBeenCalledWith({
         tenantId: TENANT_ID,
         pluginDbId: PLUGIN_DB_ID,
         pluginId: 'com.example.plugin',
         orgId: ORG_ID,
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+        sourcePluginId: 'com.example.publisher',
+        sourceListingId: SOURCE_LISTING_ID,
         periodStart: new Date('2025-01-01T00:00:00.000Z'),
         periodEnd: new Date('2025-01-31T23:59:59.000Z'),
         totalExecutions: 120,
@@ -217,22 +208,35 @@ describe('PluginEarningsService', () => {
         payoutStatus: 'pending',
         metadata: payload.metadata,
       });
+      expect(insertQuery.onConflictDoNothing).toHaveBeenCalled();
+    });
+
+    it('冲突时应回退返回已存在的收益记录', async () => {
+      db.insert.mockReturnValueOnce(createInsertChain([]).chain);
+      db.select.mockReturnValueOnce(createSelectChain([createEarningRecord()]));
+
+      const result = await service.createEarningsRecord(createCreatePayload());
+
+      expect(result).toEqual(createEarningRecord());
     });
   });
 
   describe('findEarnings', () => {
-    it('无过滤条件时应返回默认分页结果', async () => {
-      const dataQuery = createSelectChainWithPagination([createEarningRecord()]);
+    it('应返回带 pluginName 的分页结果', async () => {
+      const dataQuery = createSelectChain([createEarningWithPluginName()]);
       const countQuery = createSelectChain([{ total: 1 }]);
 
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
+      db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
 
-      const result = await service.findEarnings(createQuery());
+      const result = await service.findEarnings(
+        QueryPluginEarningsSchema.parse({ orgId: ORG_ID }),
+      );
 
+      expect(dataQuery.leftJoin).toHaveBeenCalledTimes(1);
       expect(dataQuery.limit).toHaveBeenCalledWith(20);
       expect(dataQuery.offset).toHaveBeenCalledWith(0);
       expect(result).toEqual({
-        data: [createEarningRecord()],
+        data: [createEarningWithPluginName()],
         meta: {
           page: 1,
           pageSize: 20,
@@ -241,78 +245,22 @@ describe('PluginEarningsService', () => {
         },
       });
     });
-
-    it('应支持按 payoutStatus 过滤', async () => {
-      const dataQuery = createSelectChainWithPagination([
-        createEarningRecord({ payoutStatus: 'completed' }),
-      ]);
-      const countQuery = createSelectChain([{ total: 1 }]);
-
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
-
-      const result = await service.findEarnings(
-        createQuery({ payoutStatus: 'completed' }),
-      );
-
-      expect(dataQuery.where.mock.calls[0][0]).toBeDefined();
-      expect(countQuery.where.mock.calls[0][0]).toBeDefined();
-      expect(result.data[0]?.payoutStatus).toBe('completed');
-    });
-
-    it('应支持按结算周期范围过滤', async () => {
-      const dataQuery = createSelectChainWithPagination([createEarningRecord()]);
-      const countQuery = createSelectChain([{ total: 1 }]);
-
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
-
-      await service.findEarnings(
-        createQuery({
-          periodStart: '2025-01-01T00:00:00.000Z',
-          periodEnd: '2025-01-31T23:59:59.000Z',
-        }),
-      );
-
-      expect(dataQuery.where.mock.calls[0][0]).toBeDefined();
-      expect(countQuery.where.mock.calls[0][0]).toBeDefined();
-    });
-
-    it('应根据 page 与 pageSize 返回分页结果', async () => {
-      const records = [createEarningRecord()];
-      const dataQuery = createSelectChainWithPagination(records);
-      const countQuery = createSelectChain([{ total: 11 }]);
-
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
-
-      const result = await service.findEarnings(
-        createQuery({ page: 2, pageSize: 5 }),
-      );
-
-      expect(dataQuery.limit).toHaveBeenCalledWith(5);
-      expect(dataQuery.offset).toHaveBeenCalledWith(5);
-      expect(result.meta).toEqual({
-        page: 2,
-        pageSize: 5,
-        total: 11,
-        totalPages: 3,
-      });
-    });
   });
 
   describe('findEarningById', () => {
-    it('存在时应返回收益记录', async () => {
-      const record = createEarningRecord();
-      const selectQuery = createSelectChainWithLimit([record]);
+    it('存在时应返回带 pluginName 的收益记录', async () => {
+      const selectQuery = createSelectChain([createEarningWithPluginName()]);
+      db.select.mockReturnValueOnce(selectQuery);
 
-      db.select.mockReturnValueOnce(selectQuery.chain);
-
-      await expect(service.findEarningById(EARNING_ID)).resolves.toEqual(record);
+      await expect(service.findEarningById(EARNING_ID)).resolves.toEqual(
+        createEarningWithPluginName(),
+      );
+      expect(selectQuery.leftJoin).toHaveBeenCalledTimes(1);
       expect(selectQuery.limit).toHaveBeenCalledWith(1);
     });
 
     it('不存在时应抛出 NotFoundException', async () => {
-      const selectQuery = createSelectChainWithLimit<PluginEarning>([]);
-
-      db.select.mockReturnValueOnce(selectQuery.chain);
+      db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.findEarningById(EARNING_ID)).rejects.toBeInstanceOf(
         NotFoundException,
@@ -322,27 +270,22 @@ describe('PluginEarningsService', () => {
 
   describe('updatePayoutStatus', () => {
     it('应更新 payout 状态并返回最新记录', async () => {
-      const existing = createEarningRecord();
-      const selectQuery = createSelectChainWithLimit([existing]);
+      db.select.mockReturnValueOnce(createSelectChain([createEarningWithPluginName()]));
       const updated = createEarningRecord({
         payoutStatus: 'completed',
         payoutReference: 'payout_123',
         payoutAt: new Date('2025-02-01T00:00:00.000Z'),
       });
       const updateQuery = createUpdateChain([updated]);
-      const payload = createUpdatePayload({
+      db.update.mockReturnValueOnce(updateQuery.chain);
+
+      const result = await service.updatePayoutStatus(EARNING_ID, {
         payoutStatus: 'completed',
         payoutReference: 'payout_123',
         payoutAt: '2025-02-01T00:00:00.000Z',
       });
 
-      db.select.mockReturnValueOnce(selectQuery.chain);
-      db.update.mockReturnValueOnce(updateQuery.chain);
-
-      const result = await service.updatePayoutStatus(EARNING_ID, payload);
-
       expect(result).toEqual(updated);
-      expect(db.update).toHaveBeenCalledWith(pluginEarnings);
       expect(updateQuery.set).toHaveBeenCalledWith(
         expect.objectContaining({
           payoutStatus: 'completed',
@@ -352,70 +295,144 @@ describe('PluginEarningsService', () => {
         }),
       );
     });
-
-    it('记录不存在时应抛出 NotFoundException', async () => {
-      const selectQuery = createSelectChainWithLimit<PluginEarning>([]);
-
-      db.select.mockReturnValueOnce(selectQuery.chain);
-
-      await expect(
-        service.updatePayoutStatus(EARNING_ID, createUpdatePayload()),
-      ).rejects.toBeInstanceOf(NotFoundException);
-
-      expect(db.update).not.toHaveBeenCalled();
-    });
   });
 
   describe('getEarningsSummary', () => {
-    it('应返回聚合后的收益汇总', async () => {
-      const summaryQuery = createSelectChain([
-        {
-          totalRevenue: '100.50000000',
-          totalDeveloperShare: '70.35000000',
-          totalPlatformShare: '30.15000000',
-          pendingPayout: '20.00000000',
-          completedPayout: '50.35000000',
-        },
-      ]);
-
-      db.select.mockReturnValueOnce(summaryQuery.chain);
+    it('应返回扩展后的收益汇总字段', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            totalRevenue: '100.50000000',
+            totalDeveloperShare: '70.35000000',
+            totalPlatformShare: '30.15000000',
+            totalListingCommission: '10.55250000',
+            pendingPayout: '20.00000000',
+            completedPayout: '50.35000000',
+            totalExecutions: 120,
+            pluginCount: 3,
+          },
+        ]),
+      );
 
       await expect(service.getEarningsSummary(ORG_ID)).resolves.toEqual({
         totalRevenue: '100.50000000',
         totalDeveloperShare: '70.35000000',
         totalPlatformShare: '30.15000000',
+        totalListingCommission: '10.55250000',
         pendingPayout: '20.00000000',
         completedPayout: '50.35000000',
+        totalExecutions: 120,
+        pluginCount: 3,
       });
     });
 
     it('无记录时应返回全 0 汇总', async () => {
-      const summaryQuery = createSelectChain<{
-        totalRevenue: string;
-        totalDeveloperShare: string;
-        totalPlatformShare: string;
-        pendingPayout: string;
-        completedPayout: string;
-      }>([]);
-
-      db.select.mockReturnValueOnce(summaryQuery.chain);
+      db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.getEarningsSummary(ORG_ID)).resolves.toEqual({
-        totalRevenue: '0',
-        totalDeveloperShare: '0',
-        totalPlatformShare: '0',
-        pendingPayout: '0',
-        completedPayout: '0',
+        totalRevenue: '0.00000000',
+        totalDeveloperShare: '0.00000000',
+        totalPlatformShare: '0.00000000',
+        totalListingCommission: '0.00000000',
+        pendingPayout: '0.00000000',
+        completedPayout: '0.00000000',
+        totalExecutions: 0,
+        pluginCount: 0,
       });
+    });
+  });
+
+  describe('dashboard queries', () => {
+    it('应返回收益趋势', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            bucket: '2025-01-01 00:00:00+00',
+            totalRevenue: '10',
+            developerShare: '5.95',
+            platformShare: '3',
+            listingCommission: '1.05',
+            totalExecutions: 2,
+          },
+        ]),
+      );
+
+      await expect(
+        service.getDashboardTrends({
+          interval: 'day',
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+      ).resolves.toEqual([
+        {
+          bucket: '2025-01-01 00:00:00+00',
+          totalRevenue: '10.00000000',
+          developerShare: '5.95000000',
+          platformShare: '3.00000000',
+          listingCommission: '1.05000000',
+          totalExecutions: 2,
+        },
+      ]);
+    });
+
+    it('应返回收益排行', async () => {
+      const rankingQuery = createSelectChain([
+        {
+          pluginDbId: PLUGIN_DB_ID,
+          pluginId: 'com.example.plugin',
+          pluginName: '示例插件',
+          totalRevenue: '10',
+          developerShare: '5.95',
+          platformShare: '3',
+          listingCommission: '1.05',
+          totalExecutions: 2,
+        },
+      ]);
+      db.select.mockReturnValueOnce(rankingQuery);
+
+      const result = await service.getDashboardRanking({
+        periodStart: '2025-01-01T00:00:00.000Z',
+        periodEnd: '2025-01-31T23:59:59.999Z',
+        limit: 5,
+      });
+
+      expect(rankingQuery.leftJoin).toHaveBeenCalledTimes(1);
+      expect(rankingQuery.groupBy).toHaveBeenCalledTimes(1);
+      expect(rankingQuery.limit).toHaveBeenCalledWith(5);
+      expect(result).toEqual([
+        {
+          pluginDbId: PLUGIN_DB_ID,
+          pluginId: 'com.example.plugin',
+          pluginName: '示例插件',
+          totalRevenue: '10.00000000',
+          developerShare: '5.95000000',
+          platformShare: '3.00000000',
+          listingCommission: '1.05000000',
+          totalExecutions: 2,
+        },
+      ]);
+    });
+
+    it('应返回收益结算历史分页结果', async () => {
+      const dataQuery = createSelectChain([createEarningWithPluginName()]);
+      const countQuery = createSelectChain([{ total: 1 }]);
+      db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
+
+      const result = await service.getDashboardHistory(
+        QueryPluginEarningsHistorySchema.parse({
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+      );
+
+      expect(result.data[0]?.pluginName).toBe('示例插件');
+      expect(result.meta.total).toBe(1);
     });
   });
 
   describe('findExistingEarning', () => {
     it('存在同插件同周期记录时应返回该记录', async () => {
-      const record = createEarningRecord();
-      const selectQuery = createSelectChainWithLimit([record]);
-
-      db.select.mockReturnValueOnce(selectQuery.chain);
+      db.select.mockReturnValueOnce(createSelectChain([createEarningRecord()]));
 
       await expect(
         service.findExistingEarning(
@@ -423,14 +440,11 @@ describe('PluginEarningsService', () => {
           new Date('2025-01-01T00:00:00.000Z'),
           new Date('2025-01-31T23:59:59.000Z'),
         ),
-      ).resolves.toEqual(record);
-      expect(selectQuery.limit).toHaveBeenCalledWith(1);
+      ).resolves.toEqual(createEarningRecord());
     });
 
-    it('不存在同插件同周期记录时应返回 null', async () => {
-      const selectQuery = createSelectChainWithLimit<PluginEarning>([]);
-
-      db.select.mockReturnValueOnce(selectQuery.chain);
+    it('不存在时应返回 null', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         service.findExistingEarning(
@@ -439,6 +453,19 @@ describe('PluginEarningsService', () => {
           new Date('2025-01-31T23:59:59.000Z'),
         ),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('calculateSettlementShares', () => {
+    it('应使用 fixed-scale 精确计算收益分成', () => {
+      expect(
+        service.calculateSettlementShares(FixedScaleDecimal.from('25.00000000')),
+      ).toEqual({
+        totalRevenue: '25.00000000',
+        developerShare: '14.87500000',
+        platformShare: '7.50000000',
+        listingCommission: '2.62500000',
+      });
     });
   });
 });

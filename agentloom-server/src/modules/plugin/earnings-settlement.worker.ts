@@ -1,12 +1,12 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Job } from 'bullmq';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
+import { FixedScaleDecimal } from './fixed-scale-decimal';
 import { PluginEarningsService } from './plugin-earnings.service';
 import { PluginUsageService } from './plugin-usage.service';
 import { EARNINGS_SETTLEMENT_QUEUE } from './plugin.constants';
@@ -18,40 +18,19 @@ export interface EarningsSettlementJobData {
   periodEnd: string;
 }
 
-interface UsageByPluginForPeriod {
-  pluginDbId: string;
-  pluginId: string;
-  totalExecutions: number;
-  totalBillingAmount: string | number | null;
-}
+type UsageByPluginForPeriod = Awaited<
+  ReturnType<PluginUsageService['getUsageByPluginForPeriod']>
+>[number];
 
-interface CreateEarningsRecordData {
+type SettlementAggregate = {
   tenantId: string;
+  orgId: string;
   pluginDbId: string;
   pluginId: string;
-  orgId: string;
-  periodStart: string;
-  periodEnd: string;
-  totalExecutions: number;
-  totalRevenue: string;
-  developerShare: string;
-  platformShare: string;
-  listingCommission: string;
   currency: string;
-  metadata?: Record<string, unknown>;
-}
-
-const REVENUE_SPLIT = {
-  DEVELOPER_SHARE: 0.7,
-  PLATFORM_SHARE: 0.3,
-  LISTING_COMMISSION: 0.15,
-} as const;
-
-type SettlementAmounts = {
-  totalRevenue: string;
-  developerShare: string;
-  platformShare: string;
-  listingCommission: string;
+  totalExecutions: number;
+  totalBillingAmount: FixedScaleDecimal;
+  sourceListingIds: Set<string>;
 };
 
 @Processor(EARNINGS_SETTLEMENT_QUEUE)
@@ -78,9 +57,14 @@ export class EarningsSettlementWorker extends WorkerHost {
         periodEndDate,
       );
 
+      const usageAggregates = this.aggregateUsage(usageByPlugin);
       let settledCount = 0;
 
-      for (const usage of usageByPlugin) {
+      for (const usage of usageAggregates) {
+        if (usage.totalBillingAmount.isZero()) {
+          continue;
+        }
+
         const existingRecord = await this.pluginEarningsService.findExistingEarning(
           usage.pluginDbId,
           periodStartDate,
@@ -91,21 +75,27 @@ export class EarningsSettlementWorker extends WorkerHost {
           continue;
         }
 
-        const listing = await this.findListedMarketplaceEntry(usage.pluginDbId);
+        const listingIds = Array.from(usage.sourceListingIds);
+        const validSourceListingIds = await this.filterPluginListingIds(
+          listingIds,
+          usage.pluginDbId,
+        );
+        const sourceListingId =
+          validSourceListingIds.length === 1 ? validSourceListingIds[0] : undefined;
 
-        if (!listing || listing.pricingModel !== 'per_execution') {
-          continue;
-        }
-
-        const amounts = this.calculateSettlementAmounts(
-          usage.totalExecutions,
-          listing.pricePerExecution,
+        const amounts = this.pluginEarningsService.calculateSettlementShares(
+          usage.totalBillingAmount,
         );
 
         await this.pluginEarningsService.createEarningsRecord({
           pluginDbId: usage.pluginDbId,
           pluginId: usage.pluginId,
-          orgId,
+          orgId: usage.orgId,
+          sourceTenantId: usage.tenantId,
+          sourceOrgId: usage.orgId,
+          sourcePluginDbId: usage.pluginDbId,
+          sourcePluginId: usage.pluginId,
+          ...(sourceListingId ? { sourceListingId } : {}),
           periodStart,
           periodEnd,
           totalExecutions: usage.totalExecutions,
@@ -113,12 +103,13 @@ export class EarningsSettlementWorker extends WorkerHost {
           developerShare: amounts.developerShare,
           platformShare: amounts.platformShare,
           listingCommission: amounts.listingCommission,
-          currency: 'USD',
+          currency: usage.currency,
           payoutStatus: 'pending',
           metadata: {
-            pricingModel: listing.pricingModel,
-            pricePerExecution: listing.pricePerExecution ?? '0',
-            totalBillingAmount: usage.totalBillingAmount,
+            settlementSource: 'usage_ledger',
+            totalBillingAmount: usage.totalBillingAmount.toString(),
+            requestedSourceListingIds: listingIds,
+            filteredSourceListingIds: validSourceListingIds,
           },
         });
 
@@ -130,65 +121,89 @@ export class EarningsSettlementWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<EarningsSettlementJobData>, error: Error): void {
+  onFailed(job: Job<EarningsSettlementJobData> | undefined, error: Error): void {
     this.logger.error(
       `Earnings settlement failed: ${JSON.stringify({
-        jobId: job.id,
-        orgId: job.data.orgId,
-        periodStart: job.data.periodStart,
-        periodEnd: job.data.periodEnd,
-        attempt: job.attemptsMade,
+        jobId: job?.id ?? null,
+        orgId: job?.data?.orgId ?? null,
+        periodStart: job?.data?.periodStart ?? null,
+        periodEnd: job?.data?.periodEnd ?? null,
+        attempt: job?.attemptsMade ?? null,
         error: error.message,
       })}`,
     );
   }
 
-  private async findListedMarketplaceEntry(
+  private aggregateUsage(
+    usageByPlugin: UsageByPluginForPeriod[],
+  ): SettlementAggregate[] {
+    const aggregateMap = new Map<string, SettlementAggregate>();
+
+    for (const usage of usageByPlugin) {
+      if (!usage.tenantId || !usage.orgId || !usage.pluginDbId || !usage.pluginId) {
+        continue;
+      }
+
+      const aggregateKey = [
+        usage.tenantId,
+        usage.orgId,
+        usage.pluginDbId,
+        usage.pluginId,
+        usage.currency,
+      ].join(':');
+
+      const existingAggregate = aggregateMap.get(aggregateKey);
+      const totalBillingAmount = FixedScaleDecimal.from(usage.totalBillingAmount);
+
+      if (existingAggregate) {
+        existingAggregate.totalExecutions += usage.totalExecutions;
+        existingAggregate.totalBillingAmount = existingAggregate.totalBillingAmount.add(
+          totalBillingAmount,
+        );
+
+        if (usage.sourceListingId) {
+          existingAggregate.sourceListingIds.add(usage.sourceListingId);
+        }
+
+        continue;
+      }
+
+      aggregateMap.set(aggregateKey, {
+        tenantId: usage.tenantId,
+        orgId: usage.orgId,
+        pluginDbId: usage.pluginDbId,
+        pluginId: usage.pluginId,
+        currency: usage.currency || 'USD',
+        totalExecutions: usage.totalExecutions,
+        totalBillingAmount,
+        sourceListingIds: new Set(
+          usage.sourceListingId ? [usage.sourceListingId] : [],
+        ),
+      });
+    }
+
+    return Array.from(aggregateMap.values());
+  }
+
+  private async filterPluginListingIds(
+    listingIds: string[],
     pluginDbId: string,
-  ): Promise<schema.MarketplaceListing | null> {
-    const [listing] = await getTenantDb(this.db)
-      .select()
+  ): Promise<string[]> {
+    if (listingIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .select({ id: schema.marketplaceListings.id })
       .from(schema.marketplaceListings)
       .where(
         and(
+          inArray(schema.marketplaceListings.id, listingIds),
           eq(schema.marketplaceListings.pluginDbId, pluginDbId),
-          eq(schema.marketplaceListings.status, 'listed'),
+          eq(schema.marketplaceListings.listingType, 'plugin'),
         ),
-      )
-      .limit(1);
+      );
 
-    return listing ?? null;
-  }
-
-  private calculateSettlementAmounts(
-    totalExecutions: number,
-    pricePerExecutionValue: string | number | null,
-  ): SettlementAmounts {
-    const pricePerExecution = this.parseDecimal(pricePerExecutionValue);
-    const totalRevenue = (totalExecutions * pricePerExecution).toFixed(8);
-    const grossDevShare = (
-      parseFloat(totalRevenue) * REVENUE_SPLIT.DEVELOPER_SHARE
-    ).toFixed(8);
-    const listingCommission = (
-      parseFloat(grossDevShare) * REVENUE_SPLIT.LISTING_COMMISSION
-    ).toFixed(8);
-    const developerShare = (
-      parseFloat(grossDevShare) - parseFloat(listingCommission)
-    ).toFixed(8);
-    const platformShare = (
-      parseFloat(totalRevenue) * REVENUE_SPLIT.PLATFORM_SHARE
-    ).toFixed(8);
-
-    return {
-      totalRevenue,
-      developerShare,
-      platformShare,
-      listingCommission,
-    };
-  }
-
-  private parseDecimal(value: string | number | null | undefined): number {
-    const parsedValue = parseFloat(String(value ?? '0'));
-    return Number.isFinite(parsedValue) ? parsedValue : 0;
+    return rows.map((row) => row.id);
   }
 }
