@@ -6,15 +6,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import type { DrizzleDB } from '../../database/database.module';
-import type { MarketplaceListing, PluginRecord } from '../../database/schema';
-import { MarketplaceListingNotFoundException } from '../marketplace/marketplace.exceptions';
-import { PluginNotFoundException } from './plugin.exceptions';
+import type {
+  MarketplaceListing,
+  MarketplaceReviewResult,
+  PluginRecord,
+} from '../../database/schema';
+import {
+  MarketplaceListingConflictException,
+  MarketplaceListingNotFoundException,
+} from '../marketplace/marketplace.exceptions';
+import {
+  PluginInactiveException,
+  PluginNotFoundException,
+  PluginPermissionDeniedException,
+} from './plugin.exceptions';
 import { PluginMarketplaceController } from './plugin-marketplace.controller';
+import type { PluginMarketplaceReviewService } from './plugin-marketplace-review.service';
+import {
+  QueryPluginEarningsHistorySchema,
+  QueryPluginEarningsRankingSchema,
+  QueryPluginEarningsSummarySchema,
+  QueryPluginEarningsTrendSchema,
+} from './dto/plugin-earnings.dto';
 import {
   QueryPluginListingsSchema,
   SubmitPluginListingSchema,
   UpdatePluginListingSchema,
 } from './dto/plugin-marketplace.dto';
+import type { PluginEarningsService } from './plugin-earnings.service';
 import type { PluginService } from './plugin.service';
 
 const mocks = vi.hoisted(() => {
@@ -82,9 +101,26 @@ const mocks = vi.hoisted(() => {
 
   const createMockPluginService = () => ({
     findById: vi.fn(),
+    resolveOrganizationId: vi.fn(),
   });
 
-  return { createMockDb, createMockPluginService };
+  const createMockPluginMarketplaceReviewService = () => ({
+    review: vi.fn(),
+  });
+
+  const createMockPluginEarningsService = () => ({
+    getDashboardSummary: vi.fn(),
+    getDashboardTrends: vi.fn(),
+    getDashboardRanking: vi.fn(),
+    getDashboardHistory: vi.fn(),
+  });
+
+  return {
+    createMockDb,
+    createMockPluginService,
+    createMockPluginMarketplaceReviewService,
+    createMockPluginEarningsService,
+  };
 });
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -172,27 +208,60 @@ function createListing(overrides: Partial<MarketplaceListing> = {}): Marketplace
   };
 }
 
+function createReviewResult(
+  overrides: Partial<MarketplaceReviewResult> = {},
+): MarketplaceReviewResult {
+  return {
+    outcome: 'passed',
+    checks: [],
+    reviewedAt: new Date('2025-01-02T00:00:00.000Z').toISOString(),
+    ...overrides,
+  };
+}
+
 describe('PluginMarketplaceController', () => {
   let controller: PluginMarketplaceController;
   let db: ReturnType<typeof mocks.createMockDb>;
   let pluginService: ReturnType<typeof mocks.createMockPluginService>;
+  let pluginMarketplaceReviewService: ReturnType<
+    typeof mocks.createMockPluginMarketplaceReviewService
+  >;
+  let pluginEarningsService: ReturnType<
+    typeof mocks.createMockPluginEarningsService
+  >;
 
   beforeEach(() => {
     vi.clearAllMocks();
     db = mocks.createMockDb();
     pluginService = mocks.createMockPluginService();
+    pluginMarketplaceReviewService =
+      mocks.createMockPluginMarketplaceReviewService();
+    pluginEarningsService = mocks.createMockPluginEarningsService();
+    pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
     controller = new PluginMarketplaceController(
       db as unknown as DrizzleDB,
       pluginService as unknown as PluginService,
+      pluginEarningsService as unknown as PluginEarningsService,
+      pluginMarketplaceReviewService as unknown as PluginMarketplaceReviewService,
     );
   });
 
   describe('submit', () => {
-    it('应声明 owner/admin 角色与 201 状态码，并创建插件 listing', async () => {
-      const plugin = createPlugin();
+    it('应声明 owner/admin/creator 角色与 201 状态码，并在审查通过后上架插件 listing', async () => {
+      const plugin = createPlugin({ status: 'active' });
       const createdListing = createListing();
+      const reviewResult = createReviewResult();
+      const updatedListing = createListing({
+        status: 'listed',
+        reviewResult,
+        publishedAt: new Date('2025-01-02T00:00:00.000Z'),
+      });
+
       pluginService.findById.mockResolvedValue(plugin);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+      db.__selectResults.push([]);
       db.__insertResults.push([createdListing]);
+      db.__updateResults.push([updatedListing]);
 
       const result = await controller.submit(
         SubmitPluginListingSchema.parse({
@@ -208,9 +277,15 @@ describe('PluginMarketplaceController', () => {
         USER_ID,
       );
 
-      expect(getRoles(controller, 'submit')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'submit')).toEqual(['owner', 'admin', 'creator']);
       expect(getHttpCode(controller, 'submit')).toBe(HttpStatus.CREATED);
       expect(pluginService.findById).toHaveBeenCalledWith(PLUGIN_ID, TENANT_ID);
+      expect(pluginMarketplaceReviewService.review).toHaveBeenCalledWith({
+        title: '插件上架标题',
+        summary: '这是一个用于测试的插件市场上架摘要',
+        tags: ['analysis', 'automation'],
+        plugin,
+      });
       expect(db.__insertValues).toHaveLength(1);
       expect(db.__insertValues[0]).toMatchObject({
         tenantId: TENANT_ID,
@@ -225,7 +300,12 @@ describe('PluginMarketplaceController', () => {
         status: 'pending_review',
         submittedBy: USER_ID,
       });
-      expect(result).toEqual({ data: createdListing });
+      expect(db.__updateValues).toHaveLength(1);
+      expect(db.__updateValues[0]).toMatchObject({
+        status: 'listed',
+        reviewResult,
+      });
+      expect(result).toEqual({ data: updatedListing, reviewResult });
     });
 
     it('应在按次计费缺少价格时失败', async () => {
@@ -258,6 +338,105 @@ describe('PluginMarketplaceController', () => {
           USER_ID,
         ),
       ).rejects.toBeInstanceOf(PluginNotFoundException);
+    });
+
+    it('插件未激活时应抛出异常', async () => {
+      pluginService.findById.mockResolvedValue(createPlugin({ status: 'registered' }));
+
+      await expect(
+        controller.submit(
+          SubmitPluginListingSchema.parse({
+            pluginDbId: PLUGIN_ID,
+            title: '插件上架标题',
+            summary: '这是一个用于测试的插件市场上架摘要',
+            pricingModel: 'free',
+          }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(PluginInactiveException);
+    });
+
+    it('当前用户不是 installedBy 时应拒绝提交', async () => {
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active', installedBy: PLUGIN_ID_2 }),
+      );
+
+      await expect(
+        controller.submit(
+          SubmitPluginListingSchema.parse({
+            pluginDbId: PLUGIN_ID,
+            title: '插件上架标题',
+            summary: '这是一个用于测试的插件市场上架摘要',
+            pricingModel: 'free',
+          }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(PluginPermissionDeniedException);
+    });
+
+    it('已上架 listing 再次提交时应抛出冲突异常', async () => {
+      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+      db.__selectResults.push([
+        createListing({ status: 'listed', publishedAt: new Date('2025-01-02T00:00:00.000Z') }),
+      ]);
+
+      await expect(
+        controller.submit(
+          SubmitPluginListingSchema.parse({
+            pluginDbId: PLUGIN_ID,
+            title: '插件上架标题',
+            summary: '这是一个用于测试的插件市场上架摘要',
+            pricingModel: 'free',
+          }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+    });
+
+    it('已有 review_failed listing 时应按新数据重新提交并返回审查结果', async () => {
+      const plugin = createPlugin({ status: 'active' });
+      const existingListing = createListing({ status: 'review_failed' });
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const updatedListing = createListing({
+        status: 'review_failed',
+        title: '重新提交后的插件标题',
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.12500000',
+        reviewResult,
+      });
+
+      pluginService.findById.mockResolvedValue(plugin);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+      db.__selectResults.push([existingListing]);
+      db.__updateResults.push([], [updatedListing]);
+
+      const result = await controller.submit(
+        SubmitPluginListingSchema.parse({
+          pluginDbId: PLUGIN_ID,
+          title: '重新提交后的插件标题',
+          summary: '这是一个用于重新提交插件市场上架的测试摘要',
+          pricingModel: 'per_execution',
+          pricePerExecution: '0.12500000',
+          tags: ['retry'],
+        }),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(db.__updateValues[0]).toMatchObject({
+        status: 'pending_review',
+        title: '重新提交后的插件标题',
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.12500000',
+      });
+      expect(db.__updateValues[1]).toMatchObject({
+        status: 'review_failed',
+        reviewResult,
+      });
+      expect(result).toEqual({ data: updatedListing, reviewResult });
     });
   });
 
@@ -330,8 +509,189 @@ describe('PluginMarketplaceController', () => {
     });
   });
 
+  describe('earnings dashboard', () => {
+    it('应��回收益总览', async () => {
+      const summary = {
+        totalRevenue: '100.00000000',
+        totalDeveloperShare: '59.50000000',
+        totalPlatformShare: '30.00000000',
+        totalListingCommission: '10.50000000',
+        pendingPayout: '20.00000000',
+        completedPayout: '39.50000000',
+        totalExecutions: 12,
+        pluginCount: 3,
+      };
+      const currentMonthSummary = {
+        ...summary,
+        totalRevenue: '12.50000000',
+      };
+      pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
+      pluginEarningsService.getDashboardSummary
+        .mockResolvedValueOnce(summary)
+        .mockResolvedValueOnce(currentMonthSummary);
+
+      const result = await controller.getEarningsSummary(
+        QueryPluginEarningsSummarySchema.parse({
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+        TENANT_ID,
+      );
+
+      expect(getRoles(controller, 'getEarningsSummary')).toEqual(['owner', 'admin']);
+      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(TENANT_ID);
+      expect(pluginEarningsService.getDashboardSummary).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          orgId: ORG_ID,
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+      );
+      expect(pluginEarningsService.getDashboardSummary).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ orgId: ORG_ID }),
+      );
+      expect(result).toEqual({
+        totalRevenue: '100.00000000',
+        currentMonthRevenue: '12.50000000',
+        totalExecutions: 12,
+        activePlugins: 3,
+      });
+    });
+
+    it('应返回收益趋势', async () => {
+      const trends = [
+        {
+          bucket: '2025-01-01 00:00:00+00',
+          totalRevenue: '10.00000000',
+          developerShare: '5.95000000',
+          platformShare: '3.00000000',
+          listingCommission: '1.05000000',
+          totalExecutions: 2,
+        },
+      ];
+      pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
+      pluginEarningsService.getDashboardTrends.mockResolvedValue(trends);
+
+      const result = await controller.getEarningsTrends(
+        QueryPluginEarningsTrendSchema.parse({
+          interval: 'day',
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+        TENANT_ID,
+      );
+
+      expect(getRoles(controller, 'getEarningsTrends')).toEqual(['owner', 'admin']);
+      expect(result).toEqual([
+        {
+          month: '2025-01',
+          revenue: '10.00000000',
+          executions: 2,
+        },
+      ]);
+    });
+
+    it('应返回收益排行', async () => {
+      const ranking = [
+        {
+          pluginDbId: PLUGIN_ID,
+          pluginId: 'com.example.plugin',
+          pluginName: '示例插件',
+          totalRevenue: '10.00000000',
+          developerShare: '5.95000000',
+          platformShare: '3.00000000',
+          listingCommission: '1.05000000',
+          totalExecutions: 2,
+        },
+      ];
+      pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
+      pluginEarningsService.getDashboardRanking.mockResolvedValue(ranking);
+
+      const result = await controller.getEarningsRanking(
+        QueryPluginEarningsRankingSchema.parse({
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+          limit: 5,
+        }),
+        TENANT_ID,
+      );
+
+      expect(getRoles(controller, 'getEarningsRanking')).toEqual(['owner', 'admin']);
+      expect(result).toEqual([
+        {
+          pluginId: 'com.example.plugin',
+          pluginName: '示例插件',
+          executionCount: 2,
+          revenue: '10.00000000',
+          percentage: 100,
+        },
+      ]);
+    });
+
+    it('应返回收益结算历史', async () => {
+      const history = {
+        data: [
+          {
+            id: 'earning-1',
+            pluginId: 'com.example.plugin',
+            pluginName: '示例插件',
+            periodStart: new Date('2025-01-01T00:00:00.000Z'),
+            periodEnd: new Date('2025-01-31T23:59:59.999Z'),
+            totalExecutions: 2,
+            totalRevenue: '10.00000000',
+            developerShare: '5.95000000',
+            platformShare: '3.00000000',
+            listingCommission: '1.05000000',
+            payoutStatus: 'pending',
+            createdAt: new Date('2025-02-01T00:00:00.000Z'),
+          },
+        ],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      };
+      pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
+      pluginEarningsService.getDashboardHistory.mockResolvedValue(history);
+
+      const result = await controller.getEarningsHistory(
+        QueryPluginEarningsHistorySchema.parse({
+          periodStart: '2025-01-01T00:00:00.000Z',
+          periodEnd: '2025-01-31T23:59:59.999Z',
+        }),
+        TENANT_ID,
+      );
+
+      expect(getRoles(controller, 'getEarningsHistory')).toEqual(['owner', 'admin']);
+      expect(result).toEqual({
+        data: [
+          {
+            id: 'earning-1',
+            periodStart: new Date('2025-01-01T00:00:00.000Z'),
+            periodEnd: new Date('2025-01-31T23:59:59.999Z'),
+            pluginId: 'com.example.plugin',
+            pluginName: '示例插件',
+            totalExecutions: 2,
+            totalRevenue: '10.00000000',
+            developerShare: '5.95000000',
+            platformShare: '3.00000000',
+            listingCommission: '1.05000000',
+            payoutStatus: 'pending',
+            createdAt: new Date('2025-02-01T00:00:00.000Z'),
+          },
+        ],
+        meta: history.meta,
+      });
+    });
+  });
+
   describe('update', () => {
     it('应更新 listing 并在切换为免费模式时清空价格', async () => {
+      const currentPlugin = createPlugin({ status: 'active' });
       const currentListing = createListing({
         pricingModel: 'per_execution',
         pricePerExecution: '1.50000000',
@@ -345,7 +705,15 @@ describe('PluginMarketplaceController', () => {
 
       db.__selectResults.push([currentListing]);
       db.__updateResults.push([updatedListing]);
-      pluginService.findById.mockResolvedValue(createPlugin({ id: PLUGIN_ID_2 }));
+      pluginService.findById
+        .mockResolvedValueOnce(currentPlugin)
+        .mockResolvedValueOnce(
+          createPlugin({
+            id: PLUGIN_ID_2,
+            status: 'active',
+            installedBy: USER_ID,
+          }),
+        );
 
       const result = await controller.update(
         LISTING_ID,
@@ -359,9 +727,10 @@ describe('PluginMarketplaceController', () => {
         USER_ID,
       );
 
-      expect(getRoles(controller, 'update')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'update')).toEqual(['owner', 'admin', 'creator']);
       expect(getHttpCode(controller, 'update')).toBe(HttpStatus.OK);
-      expect(pluginService.findById).toHaveBeenCalledWith(PLUGIN_ID_2, TENANT_ID);
+      expect(pluginService.findById).toHaveBeenNthCalledWith(1, PLUGIN_ID, TENANT_ID);
+      expect(pluginService.findById).toHaveBeenNthCalledWith(2, PLUGIN_ID_2, TENANT_ID);
       expect(db.__updateValues).toHaveLength(1);
       expect(db.__updateValues[0]).toMatchObject({
         pluginDbId: PLUGIN_ID_2,
@@ -383,6 +752,65 @@ describe('PluginMarketplaceController', () => {
           USER_ID,
         ),
       ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+    });
+  });
+
+  describe('unlist', () => {
+    it('应下架 listed 状态的插件 listing', async () => {
+      const currentListing = createListing({
+        status: 'listed',
+        publishedAt: new Date('2025-01-02T00:00:00.000Z'),
+      });
+      const updatedListing = createListing({
+        status: 'unlisted',
+        publishedAt: currentListing.publishedAt,
+        unlistedAt: new Date('2025-01-03T00:00:00.000Z'),
+      });
+
+      db.__selectResults.push([currentListing]);
+      db.__updateResults.push([updatedListing]);
+      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+
+      const result = await controller.unlist(LISTING_ID, TENANT_ID, USER_ID);
+
+      expect(getRoles(controller, 'unlist')).toEqual(['owner', 'admin', 'creator']);
+      expect(result).toEqual({ data: updatedListing });
+      expect(db.__updateValues[0]).toMatchObject({
+        status: 'unlisted',
+      });
+    });
+  });
+
+  describe('relist', () => {
+    it('应重新审查 unlisted 状态的插件 listing', async () => {
+      const currentListing = createListing({
+        status: 'unlisted',
+        unlistedAt: new Date('2025-01-03T00:00:00.000Z'),
+      });
+      const reviewResult = createReviewResult();
+      const updatedListing = createListing({
+        status: 'listed',
+        reviewResult,
+        publishedAt: new Date('2025-01-04T00:00:00.000Z'),
+      });
+
+      db.__selectResults.push([currentListing]);
+      db.__updateResults.push([], [updatedListing]);
+      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+
+      const result = await controller.relist(LISTING_ID, TENANT_ID, USER_ID);
+
+      expect(getRoles(controller, 'relist')).toEqual(['owner', 'admin', 'creator']);
+      expect(db.__updateValues[0]).toMatchObject({
+        status: 'pending_review',
+        submittedBy: USER_ID,
+      });
+      expect(db.__updateValues[1]).toMatchObject({
+        status: 'listed',
+        reviewResult,
+      });
+      expect(result).toEqual({ data: updatedListing, reviewResult });
     });
   });
 

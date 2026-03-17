@@ -12,8 +12,10 @@ import { PluginController } from './plugin.controller';
 import { PluginDeveloperKeyController } from './plugin-developer-key.controller';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import { PluginEarningsService } from './plugin-earnings.service';
+import { PluginEarningsSettlementProducer } from './plugin-earnings-settlement.producer';
 import { PluginExecutionWorker } from './plugin-execution.worker';
 import { PluginMarketplaceController } from './plugin-marketplace.controller';
+import { PluginMarketplaceReviewService } from './plugin-marketplace-review.service';
 import { PluginSandboxService } from './plugin-sandbox.service';
 import { PluginUsageService } from './plugin-usage.service';
 import { PluginService } from './plugin.service';
@@ -38,6 +40,8 @@ import { PluginSignatureService } from './plugin-signature.service';
     PluginDeveloperKeyService,
     PluginUsageService,
     PluginEarningsService,
+    PluginMarketplaceReviewService,
+    PluginEarningsSettlementProducer,
     PluginExecutionWorker,
     EarningsSettlementWorker,
   ],
@@ -47,6 +51,7 @@ import { PluginSignatureService } from './plugin-signature.service';
     PluginSandboxService,
     PluginUsageService,
     PluginEarningsService,
+    PluginEarningsSettlementProducer,
     BullModule,
   ],
 })
