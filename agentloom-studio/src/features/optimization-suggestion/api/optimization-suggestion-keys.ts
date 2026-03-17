@@ -1,0 +1,7 @@
+export const optimizationSuggestionKeys = {
+  all: ['optimization-suggestions'] as const,
+  byNode: (workflowId: string, nodeId: string) =>
+    [...optimizationSuggestionKeys.all, 'node', workflowId, nodeId] as const,
+  stats: (workflowId?: string) =>
+    [...optimizationSuggestionKeys.all, 'stats', workflowId] as const,
+}
