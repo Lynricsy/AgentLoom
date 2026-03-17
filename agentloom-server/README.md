@@ -29,6 +29,7 @@
 
 - Notification module is available at `src/modules/notification/` and includes REST APIs, BullMQ dispatch, and `/notification` Socket.IO delivery.
 - Execution status changes now emit `execution.status.changed` through `EventBridgeService`, which drives user notifications via `@nestjs/event-emitter`.
+- Optimization suggestion flow lives in `src/modules/optimization-suggestion/`: a weekly `optimization-analysis` BullMQ job is registered via BullMQ `upsertJobScheduler(...)`, analyzes `agent_execution_records`, stores tenant-scoped suggestions in `optimization_suggestions`, exposes list/apply/dismiss/stats APIs, and applies/dismisses suggestions with workflow OCC + pending-status guards so concurrent updates do not silently overwrite state.
 
 ## Project setup
 
