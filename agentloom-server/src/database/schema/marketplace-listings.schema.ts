@@ -168,6 +168,9 @@ export const marketplaceListings = pgTable(
     uniqueIndex('uq_marketplace_listings_workflow_version_id')
       .on(table.workflowVersionId)
       .where(sql`workflow_version_id IS NOT NULL`),
+    uniqueIndex('uq_marketplace_listings_plugin_db_id')
+      .on(table.pluginDbId)
+      .where(sql`plugin_db_id IS NOT NULL`),
     index('idx_marketplace_listings_plugin_db_id')
       .on(table.pluginDbId)
       .where(sql`plugin_db_id IS NOT NULL`),
@@ -202,6 +205,18 @@ export const marketplaceListings = pgTable(
     check(
       'marketplace_listings_price_per_execution_non_negative',
       sql`${table.pricePerExecution} IS NULL OR ${table.pricePerExecution} >= 0`,
+    ),
+    check(
+      'marketplace_listings_listing_type_binding_check',
+      sql`(
+        ${table.listingType} = 'workflow'
+        AND ${table.workflowVersionId} IS NOT NULL
+        AND ${table.pluginDbId} IS NULL
+      ) OR (
+        ${table.listingType} = 'plugin'
+        AND ${table.pluginDbId} IS NOT NULL
+        AND ${table.workflowVersionId} IS NULL
+      )`,
     ),
     ...createDirectTenantPolicies('marketplace_listings'),
   ],
