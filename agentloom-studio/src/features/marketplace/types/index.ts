@@ -53,12 +53,17 @@ export const MARKETPLACE_REVIEW_LIMITS = {
 
 export interface MarketplaceListing {
   id: string;
-  workflowVersionId: string;
+  workflowVersionId: string | null;
+  pluginDbId: string | null;
   tenantId: string;
   title: string;
   summary: string;
   tags: string[];
   coverImageUrl: string | null;
+  category?: MarketplaceCategory | null;
+  listingType: MarketplaceListingType;
+  pricingModel: MarketplacePricingModel;
+  pricePerExecution: string | null;
   status: MarketplaceListingStatus;
   reviewResult: MarketplaceReviewResult | null;
   submittedBy: string;
@@ -73,6 +78,10 @@ export interface MyMarketplaceListingItem extends MarketplaceListing {
   workflowDefinitionId: string | null;
   workflowName: string | null;
   versionNumber: number | null;
+  pluginId: string | null;
+  pluginName: string | null;
+  pluginVersion: string | null;
+  pluginAuthor: string | null;
 }
 
 export interface SubmitMarketplaceListingRequest {
@@ -106,6 +115,7 @@ export interface MyListingsFilters {
   page?: number;
   pageSize?: number;
   status?: MarketplaceListingStatus;
+  listingType?: MarketplaceListingType;
 }
 
 export type MarketplaceCategory =
@@ -137,6 +147,19 @@ export const MARKETPLACE_SORT_OPTIONS: {
   { value: 'newest', label: '最新发布' },
 ];
 
+export type MarketplaceListingType = 'workflow' | 'plugin';
+
+export type MarketplacePricingModel = 'free' | 'per_execution';
+
+export interface MarketplacePublicPluginDescriptor {
+  pluginId: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string | null;
+  license: string | null;
+}
+
 export interface PublicMarketplaceListingItem {
   id: string;
   title: string;
@@ -145,9 +168,13 @@ export interface PublicMarketplaceListingItem {
   coverImageUrl: string | null;
   category: MarketplaceCategory | null;
   useCount: number;
-  avgRating: number | null;
+  avgRating: string | null;
   reviewCount: number;
   publishedAt: string;
+  listingType: MarketplaceListingType;
+  pricingModel: MarketplacePricingModel;
+  pricePerExecution: string | null;
+  plugin: MarketplacePublicPluginDescriptor | null;
   author: { displayName: string };
 }
 
@@ -159,8 +186,9 @@ export interface MarketplaceReview {
   author: { displayName: string };
 }
 
-export interface PublicMarketplaceListingDetail
+export interface PublicWorkflowListingDetail
   extends PublicMarketplaceListingItem {
+  listingType: 'workflow';
   definition: {
     nodes: unknown[];
     edges: unknown[];
@@ -169,10 +197,22 @@ export interface PublicMarketplaceListingDetail
   reviews: MarketplaceReview[];
 }
 
+export interface PublicPluginListingDetail
+  extends PublicMarketplaceListingItem {
+  listingType: 'plugin';
+  plugin: MarketplacePublicPluginDescriptor;
+  reviews: MarketplaceReview[];
+}
+
+export type PublicMarketplaceListingDetail =
+  | PublicWorkflowListingDetail
+  | PublicPluginListingDetail;
+
 export interface PublicListingsFilters {
   category?: MarketplaceCategory;
   search?: string;
   sort?: MarketplaceSortOption;
+  listingType?: MarketplaceListingType;
   page?: number;
   pageSize?: number;
 }
@@ -194,11 +234,22 @@ export interface InstallMarketplaceListingRequest {
   description?: string;
 }
 
-export interface InstallMarketplaceListingResponse {
+export interface InstallWorkflowListingResponse {
   workflowDefinitionId: string;
   name: string;
   message: string;
 }
+
+export interface InstallPluginListingResponse {
+  pluginDbId: string;
+  pluginId: string;
+  name: string;
+  message: string;
+}
+
+export type InstallMarketplaceListingResponse =
+  | InstallWorkflowListingResponse
+  | InstallPluginListingResponse;
 
 export interface SubmitReviewRequest {
   rating: number;

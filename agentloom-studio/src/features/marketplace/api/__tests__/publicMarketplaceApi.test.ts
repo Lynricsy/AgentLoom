@@ -23,8 +23,8 @@ import {
 import { useInstallListing, useSubmitReview } from '../publicMarketplaceMutations'
 import type {
   MarketplaceReview,
-  PublicMarketplaceListingDetail,
   PublicMarketplaceListingItem,
+  PublicWorkflowListingDetail,
   SubmittedMarketplaceReview,
 } from '../../types'
 
@@ -53,10 +53,14 @@ function makeListing(
     coverImageUrl: null,
     category: 'analysis',
     useCount: 42,
-    avgRating: 4.5,
+    avgRating: '4.5',
     reviewCount: 2,
     publishedAt: '2026-03-15T00:00:00.000Z',
     author: { displayName: '酒狐' },
+    listingType: 'workflow',
+    pricingModel: 'free',
+    pricePerExecution: null,
+    plugin: null,
     ...overrides,
   }
 }
@@ -85,10 +89,11 @@ function makeSubmittedReview(
 }
 
 function makeListingDetail(
-  overrides: Partial<PublicMarketplaceListingDetail> = {},
-): PublicMarketplaceListingDetail {
+  overrides: Partial<PublicWorkflowListingDetail> = {},
+): PublicWorkflowListingDetail {
   return {
     ...makeListing(),
+    listingType: 'workflow',
     definition: {
       nodes: [{ id: 'node-1', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
       edges: [],
@@ -151,6 +156,7 @@ describe('publicMarketplaceApi', () => {
 
     const result = await fetchPublicListings({
       category: 'analysis',
+      listingType: 'plugin',
       search: undefined,
       sort: 'popular',
       page: 1,
@@ -160,6 +166,7 @@ describe('publicMarketplaceApi', () => {
     expect(getMock).toHaveBeenCalledWith('marketplace/browse', {
       searchParams: {
         category: 'analysis',
+        listingType: 'plugin',
         sort: 'popular',
         page: 1,
         pageSize: 12,
@@ -223,6 +230,31 @@ describe('publicMarketplaceApi', () => {
       json: request,
     })
     expect(result).toEqual(response)
+  })
+
+  it('installs a plugin listing and returns plugin install response', async () => {
+    const request = {
+      name: 'Text Uppercase Plugin 副本',
+    }
+    const response = {
+      pluginDbId: 'plugin-db-1',
+      pluginId: 'text-uppercase',
+      name: 'Text Uppercase Plugin 副本',
+      message: 'Plugin installed successfully',
+    }
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    })
+
+    const result = await installMarketplaceListing('listing-plugin-1', request)
+
+    expect(postMock).toHaveBeenCalledWith('marketplace/listings/listing-plugin-1/install', {
+      json: request,
+    })
+    expect(result).toEqual(response)
+    expect(result).toHaveProperty('pluginDbId')
+    expect(result).toHaveProperty('pluginId')
+    expect(result).not.toHaveProperty('workflowDefinitionId')
   })
 
   it('submits a marketplace review', async () => {
