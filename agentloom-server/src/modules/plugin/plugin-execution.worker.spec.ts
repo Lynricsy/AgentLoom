@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StorageService } from '../../infrastructure/storage/storage.service';
 import type { PluginSandboxService, SandboxConfig } from './plugin-sandbox.service';
 import type { PluginUsageService } from './plugin-usage.service';
-import type { PluginService } from './plugin.service';
+import type { PluginService, PluginUsageSourceContext } from './plugin.service';
 import {
   PluginExecutionWorker,
   type PluginExecutionJobData,
@@ -23,6 +23,7 @@ import {
 const mocks = vi.hoisted(() => ({
   createMockPluginService: () => ({
     findActiveByPluginId: vi.fn(),
+    resolveUsageSourceContext: vi.fn(),
   }),
   createMockSandboxService: () => ({
     execute: vi.fn(),
@@ -37,6 +38,28 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+const SOURCE_TENANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SOURCE_ORG_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const SOURCE_PLUGIN_DB_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const SOURCE_LISTING_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+const createUsageSourceContext = (
+  overrides: Partial<PluginUsageSourceContext> = {},
+): PluginUsageSourceContext => ({
+  ...createUsageSourceContextBase(),
+  ...overrides,
+});
+
+const createUsageSourceContextBase = (): PluginUsageSourceContext => ({
+  sourceTenantId: SOURCE_TENANT_ID,
+  sourceOrgId: SOURCE_ORG_ID,
+  sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+  sourcePluginId: 'com.publisher.plugin',
+  sourceListingId: SOURCE_LISTING_ID,
+  pricingModel: 'per_execution' as const,
+  billingAmount: '0.25000000' as string | null,
+  currency: 'USD' as const,
+});
 
 const createPluginRecord = (overrides?: Record<string, unknown>) => ({
   id: '44444444-4444-4444-4444-444444444444',
@@ -94,6 +117,10 @@ describe('PluginExecutionWorker', () => {
       pluginUsageService as unknown as PluginUsageService,
     );
 
+    pluginService.resolveUsageSourceContext.mockResolvedValue(
+      createUsageSourceContext(),
+    );
+
     vi.restoreAllMocks();
   });
 
@@ -139,6 +166,7 @@ describe('PluginExecutionWorker', () => {
         }),
         'com.example.test',
       );
+      expect(pluginService.resolveUsageSourceContext).toHaveBeenCalledWith(plugin);
     });
 
     it('成功执行后应记录插件使用量', async () => {
@@ -156,6 +184,7 @@ describe('PluginExecutionWorker', () => {
 
       await worker.process(job);
 
+      expect(pluginService.resolveUsageSourceContext).toHaveBeenCalledWith(plugin);
       expect(pluginUsageService.recordUsage).toHaveBeenCalledWith({
         tenantId: TENANT_ID,
         pluginDbId: plugin.id,
@@ -163,12 +192,71 @@ describe('PluginExecutionWorker', () => {
         executionId: job.data.executionId,
         stepId: job.data.stepId,
         executionDurationMs: '150',
+        sourceTenantId: SOURCE_TENANT_ID,
+        sourceOrgId: SOURCE_ORG_ID,
+        sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+        sourcePluginId: 'com.publisher.plugin',
+        sourceListingId: SOURCE_LISTING_ID,
+        billingAmount: '0.25000000',
+        currency: 'USD',
+        executedBy: null,
+        inputTokens: null,
+        outputTokens: null,
+        metadata: {
+          nodeType: 'text-processor',
+          pricingModel: 'per_execution',
+        },
+      });
+    });
+
+    it('免费插件成功执行时应记录 null billingAmount', async () => {
+      const plugin = createPluginRecord();
+      const freeSourceContext: PluginUsageSourceContext = {
+        sourceTenantId: SOURCE_TENANT_ID,
+        sourceOrgId: SOURCE_ORG_ID,
+        sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+        sourcePluginId: 'com.publisher.plugin',
+        sourceListingId: null,
+        pricingModel: 'free',
+        billingAmount: null,
+        currency: 'USD',
+      };
+
+      pluginService.findActiveByPluginId.mockResolvedValue(plugin);
+      pluginService.resolveUsageSourceContext.mockResolvedValue(freeSourceContext);
+      storageService.download.mockResolvedValue(Readable.from([Buffer.from('wasm')]));
+      sandboxService.buildSandboxConfig.mockReturnValue({});
+      sandboxService.execute.mockResolvedValue({
+        success: true,
+        output: { result: 'ok' },
+        executionTimeMs: 80,
+      });
+
+      const job = createJob();
+
+      await worker.process(job);
+
+      expect(pluginUsageService.recordUsage).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        pluginDbId: plugin.id,
+        pluginId: plugin.pluginId,
+        executionId: job.data.executionId,
+        stepId: job.data.stepId,
+        executionDurationMs: '80',
+        sourceTenantId: SOURCE_TENANT_ID,
+        sourceOrgId: SOURCE_ORG_ID,
+        sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+        sourcePluginId: 'com.publisher.plugin',
+        sourceListingId: null,
         billingAmount: null,
         currency: 'USD',
         executedBy: null,
         inputTokens: null,
         outputTokens: null,
-        metadata: null,
+        metadata: {
+          nodeType: 'text-processor',
+          pricingModel: 'free',
+        },
       });
     });
 
@@ -189,6 +277,7 @@ describe('PluginExecutionWorker', () => {
 
       expect(result.status).toBe('completed');
       expect(result.outputs).toEqual({ result: 'ok' });
+      expect(pluginService.resolveUsageSourceContext).toHaveBeenCalledTimes(1);
       await vi.waitFor(() => {
         expect(warnSpy).toHaveBeenCalledWith(
           'Failed to record plugin usage: usage failed',
@@ -306,6 +395,8 @@ describe('PluginExecutionWorker', () => {
 
       expect(result.status).toBe('failed');
       expect(result.outputs).toEqual({ error: 'plugin returned error' });
+      expect(pluginService.resolveUsageSourceContext).not.toHaveBeenCalled();
+      expect(pluginUsageService.recordUsage).not.toHaveBeenCalled();
     });
 
     describe('函数名解析', () => {
@@ -520,6 +611,15 @@ describe('PluginExecutionWorker', () => {
       expect(logMessage).toContain('com.example.test');
       expect(logMessage).toContain('test failure');
       expect(logMessage).toContain('text-processor');
+    });
+
+    it('job 缺失时也应安全记录错误', () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+
+      expect(() => worker.onFailed(undefined, new Error('missing job'))).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const logMessage = errorSpy.mock.calls[0][0] as string;
+      expect(logMessage).toContain('missing job');
     });
   });
 });

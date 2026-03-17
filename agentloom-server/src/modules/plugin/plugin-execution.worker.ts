@@ -14,7 +14,10 @@ import {
   type SandboxConfig,
 } from './plugin-sandbox.service';
 import { PluginUsageService } from './plugin-usage.service';
-import { PluginService } from './plugin.service';
+import {
+  PluginService,
+  type PluginUsageSourceContext,
+} from './plugin.service';
 
 export interface PluginExecutionJobData {
   tenantId: string;
@@ -102,46 +105,64 @@ export class PluginExecutionWorker extends WorkerHost {
       executionTimeMs: result.executionTimeMs,
     };
 
-    this.recordUsage(job.data, plugin, workerResult).catch((err) => {
-      this.logger.warn(`Failed to record plugin usage: ${err.message}`, {
-        jobId: job.id,
-      });
-    });
+    if (result.success) {
+      const sourceContext = await this.pluginService.resolveUsageSourceContext(plugin);
+
+      this.recordUsage(job.data, plugin, workerResult, sourceContext).catch(
+        (err) => {
+          this.logger.warn(`Failed to record plugin usage: ${err.message}`, {
+            jobId: job.id,
+          });
+        },
+      );
+    }
 
     return workerResult;
   }
 
   private async recordUsage(
     jobData: PluginExecutionJobData,
-    plugin: { id: string; pluginId: string },
+    plugin: {
+      id: string;
+      pluginId: string;
+    },
     result: PluginExecutionJobResult,
+    sourceContext: PluginUsageSourceContext,
   ): Promise<void> {
     await this.pluginUsageService.recordUsage({
       tenantId: jobData.tenantId,
       pluginDbId: plugin.id,
       pluginId: plugin.pluginId,
+      sourceTenantId: sourceContext.sourceTenantId,
+      sourceOrgId: sourceContext.sourceOrgId,
+      sourcePluginDbId: sourceContext.sourcePluginDbId,
+      sourcePluginId: sourceContext.sourcePluginId,
+      sourceListingId: sourceContext.sourceListingId,
       executionId: jobData.executionId,
       stepId: jobData.stepId,
       executionDurationMs: result.executionTimeMs?.toString() ?? null,
-      billingAmount: null,
-      currency: 'USD',
+      billingAmount: sourceContext.billingAmount,
+      currency: sourceContext.currency,
       executedBy: null,
       inputTokens: null,
       outputTokens: null,
-      metadata: null,
+      metadata: {
+        nodeType: jobData.nodeType,
+        pricingModel: sourceContext.pricingModel,
+      },
     });
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<PluginExecutionJobData>, error: Error): void {
+  onFailed(job: Job<PluginExecutionJobData> | undefined, error: Error): void {
     this.logger.error(
       `插件执行失败: ${JSON.stringify({
-        jobId: job.id,
-        pluginId: job.data.pluginId,
-        nodeType: job.data.nodeType,
-        executionId: job.data.executionId,
-        stepId: job.data.stepId,
-        attempt: job.attemptsMade,
+        jobId: job?.id ?? null,
+        pluginId: job?.data?.pluginId ?? null,
+        nodeType: job?.data?.nodeType ?? null,
+        executionId: job?.data?.executionId ?? null,
+        stepId: job?.data?.stepId ?? null,
+        attempt: job?.attemptsMade ?? null,
         error: error.message,
       })}`,
     );

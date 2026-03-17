@@ -43,7 +43,6 @@ vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
 import type { DrizzleDB } from '../../database/database.module';
 import {
   pluginUsageRecords,
-  plugins,
   type NewPluginUsageRecord,
   type PluginUsageRecord,
 } from '../../database/schema';
@@ -84,6 +83,11 @@ const EXECUTION_ID = '55555555-5555-4555-8555-555555555555';
 const STEP_ID = '66666666-6666-4666-8666-666666666666';
 const USER_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2025-01-10T10:00:00.000Z');
+const SOURCE_TENANT_ID = '88888888-8888-4888-8888-888888888888';
+const SOURCE_ORG_ID = '99999999-9999-4999-8999-999999999999';
+const SOURCE_PLUGIN_DB_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SOURCE_PLUGIN_ID = 'com.example.publisher';
+const SOURCE_LISTING_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
   const chain = Promise.resolve(result) as SelectChain<TResult>;
@@ -119,6 +123,11 @@ function createUsageRecord(
     executionId: EXECUTION_ID,
     stepId: STEP_ID,
     executedBy: USER_ID,
+    sourceTenantId: SOURCE_TENANT_ID,
+    sourceOrgId: SOURCE_ORG_ID,
+    sourcePluginDbId: SOURCE_PLUGIN_DB_ID,
+    sourcePluginId: SOURCE_PLUGIN_ID,
+    sourceListingId: SOURCE_LISTING_ID,
     billingAmount: '12.50000000',
     currency: 'USD',
     executionDurationMs: '250',
@@ -142,6 +151,11 @@ function createNewUsageRecord(
     executionId: record.executionId,
     stepId: record.stepId,
     executedBy: record.executedBy,
+    sourceTenantId: record.sourceTenantId,
+    sourceOrgId: record.sourceOrgId,
+    sourcePluginDbId: record.sourcePluginDbId,
+    sourcePluginId: record.sourcePluginId,
+    sourceListingId: record.sourceListingId,
     billingAmount: record.billingAmount,
     currency: record.currency,
     executionDurationMs: record.executionDurationMs,
@@ -356,16 +370,24 @@ describe('PluginUsageService', () => {
     it('应返回按插件分组的结算统计', async () => {
       const groupedQuery = createSelectChain([
         {
-          pluginDbId: PLUGIN_DB_ID,
-          pluginId: PLUGIN_ID,
+          tenantId: SOURCE_TENANT_ID,
+          orgId: ORG_ID,
+          pluginDbId: SOURCE_PLUGIN_DB_ID,
+          pluginId: SOURCE_PLUGIN_ID,
+          sourceListingId: SOURCE_LISTING_ID,
+          currency: 'USD',
           totalExecutions: 2,
           totalBillingAmount: '19.99000000',
         },
         {
+          tenantId: SOURCE_TENANT_ID,
+          orgId: ORG_ID,
           pluginDbId: OTHER_PLUGIN_DB_ID,
           pluginId: OTHER_PLUGIN_ID,
+          sourceListingId: null,
+          currency: 'USD',
           totalExecutions: 1,
-          totalBillingAmount: null,
+          totalBillingAmount: '0.00000000',
         },
       ]);
 
@@ -379,30 +401,36 @@ describe('PluginUsageService', () => {
 
       expect(result).toEqual([
         {
-          pluginDbId: PLUGIN_DB_ID,
-          pluginId: PLUGIN_ID,
+          tenantId: SOURCE_TENANT_ID,
+          orgId: ORG_ID,
+          pluginDbId: SOURCE_PLUGIN_DB_ID,
+          pluginId: SOURCE_PLUGIN_ID,
+          sourceListingId: SOURCE_LISTING_ID,
+          currency: 'USD',
           totalExecutions: 2,
           totalBillingAmount: '19.99000000',
         },
         {
+          tenantId: SOURCE_TENANT_ID,
+          orgId: ORG_ID,
           pluginDbId: OTHER_PLUGIN_DB_ID,
           pluginId: OTHER_PLUGIN_ID,
+          sourceListingId: null,
+          currency: 'USD',
           totalExecutions: 1,
-          totalBillingAmount: null,
+          totalBillingAmount: '0.00000000',
         },
       ]);
-      expect(groupedQuery.innerJoin).toHaveBeenCalledWith(
-        plugins,
-        expect.objectContaining({ op: 'eq' }),
-      );
       expect(drizzleOperators.eq).toHaveBeenCalledWith(
-        plugins.id,
-        pluginUsageRecords.pluginDbId,
+        pluginUsageRecords.sourceOrgId,
+        ORG_ID,
       );
-      expect(drizzleOperators.eq).toHaveBeenCalledWith(plugins.orgId, ORG_ID);
       expect(groupedQuery.groupBy).toHaveBeenCalledWith(
-        pluginUsageRecords.pluginDbId,
-        pluginUsageRecords.pluginId,
+        pluginUsageRecords.sourceTenantId,
+        pluginUsageRecords.sourceOrgId,
+        pluginUsageRecords.sourcePluginDbId,
+        pluginUsageRecords.sourcePluginId,
+        pluginUsageRecords.sourceListingId,
       );
     });
 

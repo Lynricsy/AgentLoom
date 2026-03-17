@@ -424,4 +424,92 @@ describe('PluginService', () => {
       ).rejects.toBeInstanceOf(PluginInactiveException);
     });
   });
+
+  describe('resolveUsageSourceContext', () => {
+    it('非 marketplace clone 的免费插件应返回 null billingAmount', async () => {
+      const plugin = createPlugin({
+        status: 'active',
+        metadata: { category: 'analysis' },
+      });
+
+      await expect(service.resolveUsageSourceContext(plugin)).resolves.toEqual({
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: PLUGIN_ID,
+        sourcePluginId: 'com.example.review',
+        sourceListingId: null,
+        pricingModel: 'free',
+        billingAmount: null,
+        currency: 'USD',
+      });
+    });
+
+    it('marketplace clone 的已上架收费插件应返回按次计费金额', async () => {
+      const clonedPlugin = createPlugin({
+        id: 'plugin-copy-id',
+        status: 'active',
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-1',
+            listingTitle: '公开插件 listing',
+            sourceTenantId: TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+            clonedAt: NOW.toISOString(),
+          },
+        },
+      });
+      db.select.mockReturnValue(
+        createSelectChainWithLimit([
+          {
+            id: 'listing-1',
+            pricingModel: 'per_execution',
+            pricePerExecution: '0.25000000',
+          },
+        ]),
+      );
+
+      await expect(service.resolveUsageSourceContext(clonedPlugin)).resolves.toEqual({
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: PLUGIN_ID,
+        sourcePluginId: 'com.example.review',
+        sourceListingId: 'listing-1',
+        pricingModel: 'per_execution',
+        billingAmount: '0.25000000',
+        currency: 'USD',
+      });
+    });
+
+    it('marketplace clone 的源 listing 未上架时应回退为免费且 billingAmount 为 null', async () => {
+      const clonedPlugin = createPlugin({
+        id: 'plugin-copy-id',
+        status: 'active',
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-2',
+            listingTitle: '已下架插件 listing',
+            sourceTenantId: TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+            clonedAt: NOW.toISOString(),
+          },
+        },
+      });
+      db.select.mockReturnValue(createSelectChainWithLimit([]));
+
+      await expect(service.resolveUsageSourceContext(clonedPlugin)).resolves.toEqual({
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: PLUGIN_ID,
+        sourcePluginId: 'com.example.review',
+        sourceListingId: 'listing-2',
+        pricingModel: 'free',
+        billingAmount: null,
+        currency: 'USD',
+      });
+    });
+  });
 });

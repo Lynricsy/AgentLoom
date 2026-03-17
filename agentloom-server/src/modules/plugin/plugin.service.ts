@@ -11,6 +11,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { PluginRecord } from '../../database/schema/plugins.schema';
+import { normalizeFixedScaleDecimal } from './fixed-scale-decimal';
 import {
   QueryPluginsSchema,
   type PluginStatusDto,
@@ -53,6 +54,37 @@ type PluginListResult = {
     totalPages: number;
   };
 };
+
+type MarketplaceCloneMetadata = {
+  cloned_from_marketplace: {
+    listingId: string;
+    listingTitle: string;
+    sourceTenantId: string;
+    sourceOrgId: string;
+    sourcePluginDbId: string;
+    sourcePluginId: string;
+    clonedAt: string;
+  };
+};
+
+type PluginMarketplaceInstallSource = {
+  listingId: string;
+  listingTitle: string;
+  pricingModel: schema.MarketplaceListing['pricingModel'];
+  pricePerExecution: string | null;
+  plugin: PluginRecord;
+};
+
+export interface PluginUsageSourceContext {
+  sourceTenantId: string;
+  sourceOrgId: string;
+  sourcePluginDbId: string;
+  sourcePluginId: string;
+  sourceListingId: string | null;
+  pricingModel: schema.MarketplaceListing['pricingModel'];
+  billingAmount: string | null;
+  currency: 'USD';
+}
 
 @Injectable()
 export class PluginService {
@@ -303,6 +335,107 @@ export class PluginService {
     return plugin;
   }
 
+  async resolveOrganizationId(tenantId: string): Promise<string> {
+    return this.findOrganizationIdOrThrow(tenantId);
+  }
+
+  async cloneMarketplacePlugin(params: {
+    tenantId: string;
+    userId: string;
+    source: PluginMarketplaceInstallSource;
+    name?: string;
+    description?: string;
+  }): Promise<PluginRecord> {
+    const { tenantId, userId, source, name, description } = params;
+    const targetOrgId = await this.findOrganizationIdOrThrow(tenantId);
+
+    const existing = await this.findByPluginId(
+      source.plugin.pluginId,
+      targetOrgId,
+      tenantId,
+    );
+
+    if (existing) {
+      throw new PluginAlreadyExistsException(source.plugin.pluginId);
+    }
+
+    const [created] = await this.tenantDb
+      .insert(schema.plugins)
+      .values({
+        tenantId,
+        orgId: targetOrgId,
+        pluginId: source.plugin.pluginId,
+        name: this.normalizeNullableText(name) ?? source.plugin.name,
+        version: source.plugin.version,
+        author: source.plugin.author,
+        description:
+          this.normalizeNullableText(description) ??
+          this.normalizeNullableText(source.plugin.description),
+        license: this.normalizeNullableText(source.plugin.license),
+        status: 'active',
+        manifest: source.plugin.manifest,
+        nodeDefinitions: source.plugin.nodeDefinitions,
+        storageKey: this.normalizeNullableText(source.plugin.storageKey),
+        signature: this.normalizeNullableText(source.plugin.signature),
+        contentHash: this.normalizeNullableText(source.plugin.contentHash),
+        wasmBundleUrl: this.normalizeNullableText(source.plugin.wasmBundleUrl),
+        permissions: source.plugin.permissions,
+        installedBy: userId,
+        metadata: this.buildMarketplaceCloneMetadata(source),
+      })
+      .returning();
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'plugin_marketplace_installed',
+        listingId: source.listingId,
+        sourcePluginDbId: source.plugin.id,
+        installedPluginDbId: created.id,
+        tenantId,
+        userId,
+      }),
+    );
+
+    return created;
+  }
+
+  async resolveUsageSourceContext(
+    plugin: PluginRecord,
+  ): Promise<PluginUsageSourceContext> {
+    const cloneMetadata = this.readMarketplaceCloneMetadata(plugin.metadata);
+
+    if (!cloneMetadata) {
+      return {
+        sourceTenantId: plugin.tenantId,
+        sourceOrgId: plugin.orgId,
+        sourcePluginDbId: plugin.id,
+        sourcePluginId: plugin.pluginId,
+        sourceListingId: null,
+        pricingModel: 'free',
+        billingAmount: null,
+        currency: 'USD',
+      };
+    }
+
+    const listing = await this.findPluginMarketplaceListingById(
+      cloneMetadata.listingId,
+    );
+
+    return {
+      sourceTenantId: cloneMetadata.sourceTenantId,
+      sourceOrgId: cloneMetadata.sourceOrgId,
+      sourcePluginDbId: cloneMetadata.sourcePluginDbId,
+      sourcePluginId: cloneMetadata.sourcePluginId,
+      sourceListingId: cloneMetadata.listingId,
+      pricingModel: listing?.pricingModel ?? 'free',
+      billingAmount:
+        listing?.pricingModel === 'per_execution'
+          ? normalizeFixedScaleDecimal(listing.pricePerExecution)
+          : null,
+      currency: 'USD',
+    };
+  }
+
   private async findPlugin(
     tenantId: string,
     id: string,
@@ -332,6 +465,28 @@ export class PluginService {
     }
 
     return organization.id;
+  }
+
+  private async findPluginMarketplaceListingById(
+    listingId: string,
+  ): Promise<Pick<schema.MarketplaceListing, 'id' | 'pricingModel' | 'pricePerExecution'> | null> {
+    const [listing] = await this.db
+      .select({
+        id: schema.marketplaceListings.id,
+        pricingModel: schema.marketplaceListings.pricingModel,
+        pricePerExecution: schema.marketplaceListings.pricePerExecution,
+      })
+      .from(schema.marketplaceListings)
+      .where(
+        and(
+          eq(schema.marketplaceListings.id, listingId),
+          eq(schema.marketplaceListings.listingType, 'plugin'),
+          eq(schema.marketplaceListings.status, 'listed'),
+        ),
+      )
+      .limit(1);
+
+    return listing ?? null;
   }
 
   private parseManifest(
@@ -400,12 +555,76 @@ export class PluginService {
     return parsedDefinitions.data;
   }
 
-  private normalizeNullableText(value: string | undefined): string | null {
-    if (value === undefined) {
+  private normalizeNullableText(value: string | null | undefined): string | null {
+    if (value === undefined || value === null) {
       return null;
     }
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private buildMarketplaceCloneMetadata(
+    source: PluginMarketplaceInstallSource,
+  ): Record<string, unknown> {
+    const existingMetadata = isRecord(source.plugin.metadata)
+      ? source.plugin.metadata
+      : {};
+
+    const cloneMetadata: MarketplaceCloneMetadata = {
+      cloned_from_marketplace: {
+        listingId: source.listingId,
+        listingTitle: source.listingTitle,
+        sourceTenantId: source.plugin.tenantId,
+        sourceOrgId: source.plugin.orgId,
+        sourcePluginDbId: source.plugin.id,
+        sourcePluginId: source.plugin.pluginId,
+        clonedAt: new Date().toISOString(),
+      },
+    };
+
+    return {
+      ...existingMetadata,
+      ...cloneMetadata,
+    };
+  }
+
+  private readMarketplaceCloneMetadata(
+    metadata: Record<string, unknown> | null,
+  ): MarketplaceCloneMetadata['cloned_from_marketplace'] | null {
+    if (!isRecord(metadata)) {
+      return null;
+    }
+
+    const clonedFromMarketplace = metadata['cloned_from_marketplace'];
+    if (!isRecord(clonedFromMarketplace)) {
+      return null;
+    }
+
+    if (
+      typeof clonedFromMarketplace.listingId !== 'string' ||
+      typeof clonedFromMarketplace.sourceTenantId !== 'string' ||
+      typeof clonedFromMarketplace.sourceOrgId !== 'string' ||
+      typeof clonedFromMarketplace.sourcePluginDbId !== 'string' ||
+      typeof clonedFromMarketplace.sourcePluginId !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      listingId: clonedFromMarketplace.listingId,
+      listingTitle:
+        typeof clonedFromMarketplace.listingTitle === 'string'
+          ? clonedFromMarketplace.listingTitle
+          : '',
+      sourceTenantId: clonedFromMarketplace.sourceTenantId,
+      sourceOrgId: clonedFromMarketplace.sourceOrgId,
+      sourcePluginDbId: clonedFromMarketplace.sourcePluginDbId,
+      sourcePluginId: clonedFromMarketplace.sourcePluginId,
+      clonedAt:
+        typeof clonedFromMarketplace.clonedAt === 'string'
+          ? clonedFromMarketplace.clonedAt
+          : '',
+    };
   }
 }

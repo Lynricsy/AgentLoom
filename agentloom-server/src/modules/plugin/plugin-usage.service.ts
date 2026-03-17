@@ -5,7 +5,6 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   pluginUsageRecords,
-  plugins,
   type NewPluginUsageRecord,
   type PluginUsageRecord,
 } from '../../database/schema';
@@ -31,10 +30,14 @@ type PluginUsageSummary = {
 };
 
 type PluginUsageByPluginForPeriodResult = Array<{
+  tenantId: string;
+  orgId: string;
   pluginDbId: string;
   pluginId: string;
+  sourceListingId: string | null;
+  currency: string;
   totalExecutions: number;
-  totalBillingAmount: string | null;
+  totalBillingAmount: string;
 }>;
 
 @Injectable()
@@ -147,27 +150,42 @@ export class PluginUsageService {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<PluginUsageByPluginForPeriodResult> {
-    const rows = await this.tenantDb
+    const rows = await this.db
       .select({
-        pluginDbId: pluginUsageRecords.pluginDbId,
-        pluginId: pluginUsageRecords.pluginId,
+        tenantId: pluginUsageRecords.sourceTenantId,
+        orgId: pluginUsageRecords.sourceOrgId,
+        pluginDbId: pluginUsageRecords.sourcePluginDbId,
+        pluginId: pluginUsageRecords.sourcePluginId,
+        sourceListingId: pluginUsageRecords.sourceListingId,
+        currency:
+          sql<string>`coalesce(max(${pluginUsageRecords.currency}), 'USD')::text`,
         totalExecutions: count(),
-        totalBillingAmount: sum(pluginUsageRecords.billingAmount),
+        totalBillingAmount:
+          sql<string>`coalesce(sum(${pluginUsageRecords.billingAmount}), 0)::text`,
       })
       .from(pluginUsageRecords)
-      .innerJoin(plugins, eq(plugins.id, pluginUsageRecords.pluginDbId))
       .where(
         and(
-          eq(plugins.orgId, orgId),
+          eq(pluginUsageRecords.sourceOrgId, orgId),
           gte(pluginUsageRecords.createdAt, periodStart),
           lte(pluginUsageRecords.createdAt, periodEnd),
         ),
       )
-      .groupBy(pluginUsageRecords.pluginDbId, pluginUsageRecords.pluginId);
+      .groupBy(
+        pluginUsageRecords.sourceTenantId,
+        pluginUsageRecords.sourceOrgId,
+        pluginUsageRecords.sourcePluginDbId,
+        pluginUsageRecords.sourcePluginId,
+        pluginUsageRecords.sourceListingId,
+      );
 
     return rows.map((row) => ({
-      pluginDbId: row.pluginDbId,
-      pluginId: row.pluginId,
+      tenantId: row.tenantId ?? '',
+      orgId: row.orgId ?? '',
+      pluginDbId: row.pluginDbId ?? '',
+      pluginId: row.pluginId ?? '',
+      sourceListingId: row.sourceListingId,
+      currency: row.currency,
       totalExecutions: Number(row.totalExecutions),
       totalBillingAmount: row.totalBillingAmount,
     }));
