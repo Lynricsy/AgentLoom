@@ -11,12 +11,14 @@ import { knowledgeBasesRoute } from "./settings/knowledge-bases";
 import { knowledgeBaseDetailRoute } from "./settings/knowledge-bases/$knowledgeBaseId";
 import { executionDebugRoute } from "./executions/$executionId";
 import { toolLibraryRoute } from "./settings/tool-library";
+import { auditLogsRoute } from './settings/audit-logs'
 import { templatesRoute } from "./templates";
 import { marketplaceRoute } from "./marketplace";
 import { marketplaceMyListingsRoute } from './marketplace.my-listings';
 import { shareTokenRoute } from './share.$token';
 import { encryptionSettingsRoute } from './settings/encryption'
 import { developerEarningsRoute } from './developer-console/earnings';
+import { organizationAutonomyPolicyRoute } from './settings/security/autonomy-policy'
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -84,10 +86,12 @@ export const routeTree = rootRoute.addChildren([
   knowledgeBasesRoute,
   knowledgeBaseDetailRoute,
   toolLibraryRoute,
+  auditLogsRoute,
   templatesRoute,
   marketplaceRoute,
   marketplaceMyListingsRoute,
   shareTokenRoute,
   encryptionSettingsRoute,
   developerEarningsRoute,
+  organizationAutonomyPolicyRoute,
 ]);
