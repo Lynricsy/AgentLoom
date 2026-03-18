@@ -196,6 +196,70 @@ export interface EvidenceQueryParams {
   includeChunkContent?: boolean;
 }
 
+export type EvidenceExportActorType = 'user' | 'system' | 'service';
+
+export interface EvidenceExportRequest {
+  workflowId?: string;
+  executionId?: string;
+  executionIds?: string[];
+  eventType?: string;
+  resourceType?: string;
+  resourceId?: string;
+  actorType?: EvidenceExportActorType;
+  actorId?: string;
+  includeAuditMetadata?: boolean;
+  from?: string;
+  to?: string;
+}
+
+export interface EvidenceExportFilters {
+  workflowId?: string;
+  executionIds?: string[];
+  eventType?: string;
+  resourceType?: string;
+  resourceId?: string;
+  actorType?: EvidenceExportActorType;
+  actorId?: string;
+  includeAuditMetadata?: boolean;
+  from?: string;
+  to?: string;
+}
+
+export type EvidenceExportStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'expired';
+
+export interface EvidenceExportJob {
+  id: string;
+  tenantId: string;
+  requestedBy: string;
+  status: EvidenceExportStatus;
+  filters: EvidenceExportFilters;
+  storageKey: string | null;
+  artifactFormat: string;
+  fileName: string | null;
+  mimeType: string | null;
+  matchedExecutionCount: number;
+  expiresAt: string;
+  requestedAt: string;
+  completedAt: string | null;
+  failedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvidenceExportDownloadDetail {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  expiresAt: string;
+  expiresIn: number;
+}
+
 export interface IntegrityIssue {
   evidenceId: string;
   issueType: 'source_unavailable' | 'source_modified' | 'hash_mismatch';

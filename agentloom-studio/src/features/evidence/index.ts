@@ -3,6 +3,12 @@ export type {
   AgentGraphEdge,
   AgentGraphNode,
   ChainIntegrityStatus,
+  EvidenceExportActorType,
+  EvidenceExportDownloadDetail,
+  EvidenceExportFilters,
+  EvidenceExportJob,
+  EvidenceExportRequest,
+  EvidenceExportStatus,
   EvidenceChainNode,
   EvidenceChainResponse,
   EvidenceGraphResponse,
@@ -22,11 +28,15 @@ export type {
 } from './types';
 
 export {
+  createEvidenceExport,
   fetchAllEvidenceByExecution,
+  fetchEvidenceExportDownloadDetail,
+  fetchEvidenceExportJob,
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
   fetchEvidenceGraph,
+  refreshEvidenceExportDownloadDetail,
   verifyEvidenceHash,
 } from './api/evidenceApi';
 
@@ -37,11 +47,15 @@ export { evidenceKeys } from './api/evidenceKeys';
 
 export {
   useAllEvidenceRecords,
+  useCreateEvidenceExport,
   useDocumentContent,
   useEvidenceChain,
   useEvidenceDetail,
+  useEvidenceExportDownloadDetail,
+  useEvidenceExportJob,
   useEvidenceGraph,
   useEvidenceList,
+  useRefreshEvidenceExportDownloadDetail,
   useEvidenceVerify,
 } from './api/evidenceQueries';
 

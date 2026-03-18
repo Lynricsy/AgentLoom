@@ -1,19 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  createEvidenceExport,
   fetchAllEvidenceByExecution,
+  fetchEvidenceExportDownloadDetail,
+  fetchEvidenceExportJob,
   fetchEvidenceById,
   fetchEvidenceByExecution,
   fetchEvidenceChain,
+  refreshEvidenceExportDownloadDetail,
   verifyEvidenceHash,
 } from './evidenceApi';
 
-const { getMock } = vi.hoisted(() => ({
+const { getMock, postMock, toSnakeBodyMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
+  postMock: vi.fn(),
+  toSnakeBodyMock: vi.fn((value) => value),
 }));
 
 vi.mock('@/shared/api/client', () => ({
-  apiClient: { get: getMock },
+  apiClient: { get: getMock, post: postMock },
+  toSnakeBody: toSnakeBodyMock,
 }));
 
 const EXECUTION_ID = 'exec-001';
@@ -279,6 +286,103 @@ describe('evidenceApi', () => {
       const result = await fetchEvidenceChain(EXECUTION_ID);
 
       expect(result).toEqual(responseWithIssues);
+    });
+  });
+
+  describe('evidence exports', () => {
+    const EXPORT_ID = 'export-1';
+    const exportFilters = {
+      from: '2026-03-17T08:00:00.000Z',
+      to: '2026-03-17T09:00:00.000Z',
+      eventType: 'workflow.updated',
+      resourceType: 'workflow_definition',
+      resourceId: 'wf-1',
+      executionId: 'exec-1',
+      actorType: 'user' as const,
+      actorId: 'user-1',
+    };
+
+    it('should create an evidence export job with snake-cased filters', async () => {
+      const response = {
+        data: {
+          id: EXPORT_ID,
+          status: 'queued',
+          matchedExecutionCount: 1,
+        },
+      };
+      postMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(response),
+      });
+
+      const result = await createEvidenceExport(exportFilters);
+
+      expect(toSnakeBodyMock).toHaveBeenCalledWith(exportFilters);
+      expect(postMock).toHaveBeenCalledWith('evidence-exports', {
+        json: exportFilters,
+      });
+      expect(result).toEqual(response);
+    });
+
+    it('should fetch a single evidence export job', async () => {
+      const response = {
+        data: {
+          id: EXPORT_ID,
+          status: 'completed',
+          matchedExecutionCount: 2,
+        },
+      };
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(response),
+      });
+
+      const result = await fetchEvidenceExportJob(EXPORT_ID);
+
+      expect(getMock).toHaveBeenCalledWith(`evidence-exports/${EXPORT_ID}`);
+      expect(result).toEqual(response);
+    });
+
+    it('should fetch download detail for a completed evidence export job', async () => {
+      const response = {
+        data: {
+          url: 'https://download.example/export-1',
+          fileName: 'evidence-export-1.zip',
+          mimeType: 'application/zip',
+          expiresAt: '2026-03-17T12:30:00.000Z',
+          expiresIn: 600,
+        },
+      };
+      getMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(response),
+      });
+
+      const result = await fetchEvidenceExportDownloadDetail(EXPORT_ID);
+
+      expect(getMock).toHaveBeenCalledWith(
+        `evidence-exports/${EXPORT_ID}/download`,
+      );
+      expect(result).toEqual(response);
+    });
+
+    it('should refresh download detail for a completed evidence export job', async () => {
+      const response = {
+        data: {
+          url: 'https://download.example/export-1?refresh=1',
+          fileName: 'evidence-export-1.zip',
+          mimeType: 'application/zip',
+          expiresAt: '2026-03-17T12:40:00.000Z',
+          expiresIn: 600,
+        },
+      };
+      postMock.mockReturnValue({
+        json: vi.fn().mockResolvedValue(response),
+      });
+
+      const result = await refreshEvidenceExportDownloadDetail(EXPORT_ID);
+
+      expect(postMock).toHaveBeenCalledWith(
+        `evidence-exports/${EXPORT_ID}/download/refresh`,
+      );
+      expect(result).toEqual(response);
     });
   });
 });

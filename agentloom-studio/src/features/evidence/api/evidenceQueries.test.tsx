@@ -1,51 +1,72 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  createEvidenceExport,
   fetchAllEvidenceByExecution,
+  fetchEvidenceExportDownloadDetail,
+  fetchEvidenceExportJob,
   fetchEvidenceByExecution,
   fetchEvidenceById,
   fetchEvidenceChain,
+  refreshEvidenceExportDownloadDetail,
   verifyEvidenceHash,
 } from './evidenceApi';
+import { evidenceKeys } from './evidenceKeys';
 import {
   useAllEvidenceRecords,
+  useCreateEvidenceExport,
   useEvidenceChain,
   useEvidenceDetail,
+  useEvidenceExportDownloadDetail,
+  useEvidenceExportJob,
   useEvidenceList,
+  useRefreshEvidenceExportDownloadDetail,
   useEvidenceVerify,
 } from './evidenceQueries';
 
 vi.mock('./evidenceApi', () => ({
+  createEvidenceExport: vi.fn(),
   fetchAllEvidenceByExecution: vi.fn(),
+  fetchEvidenceExportDownloadDetail: vi.fn(),
+  fetchEvidenceExportJob: vi.fn(),
   fetchEvidenceByExecution: vi.fn(),
   fetchEvidenceById: vi.fn(),
   fetchEvidenceChain: vi.fn(),
+  refreshEvidenceExportDownloadDetail: vi.fn(),
   verifyEvidenceHash: vi.fn(),
 }));
 
 const EXECUTION_ID = 'exec-001';
 const EVIDENCE_ID = 'ev-001';
+const EXPORT_ID = 'export-1';
 
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
 
-  return function Wrapper({ children }: PropsWithChildren) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+  return {
+    queryClient,
+    wrapper({ children }: PropsWithChildren) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    },
   };
 }
 
 describe('evidence queries', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('useEvidenceList', () => {
@@ -55,10 +76,11 @@ describe('evidence queries', () => {
         meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
       };
       vi.mocked(fetchEvidenceByExecution).mockResolvedValue(response as never);
+      const { wrapper } = createWrapper();
 
       const { result } = renderHook(
         () => useEvidenceList(EXECUTION_ID),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -71,9 +93,11 @@ describe('evidence queries', () => {
     });
 
     it('should not fetch when executionId is empty', () => {
+      const { wrapper } = createWrapper();
+
       const { result } = renderHook(
         () => useEvidenceList(''),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       expect(result.current.fetchStatus).toBe('idle');
@@ -85,10 +109,11 @@ describe('evidence queries', () => {
     it('should fetch all evidence records when executionId is provided', async () => {
       const response = [{ id: 'ev-1', sourceType: 'rag_retrieval' }];
       vi.mocked(fetchAllEvidenceByExecution).mockResolvedValue(response as never);
+      const { wrapper } = createWrapper();
 
       const { result } = renderHook(
         () => useAllEvidenceRecords(EXECUTION_ID, { nodeId: 'node-1' }),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -101,9 +126,11 @@ describe('evidence queries', () => {
     });
 
     it('should not fetch all evidence records when executionId is empty', () => {
+      const { wrapper } = createWrapper();
+
       const { result } = renderHook(
         () => useAllEvidenceRecords(''),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       expect(result.current.fetchStatus).toBe('idle');
@@ -115,10 +142,11 @@ describe('evidence queries', () => {
     it('should fetch evidence detail when both IDs are provided', async () => {
       const response = { data: { id: EVIDENCE_ID, sourceType: 'rag_retrieval' } };
       vi.mocked(fetchEvidenceById).mockResolvedValue(response as never);
+      const { wrapper } = createWrapper();
 
       const { result } = renderHook(
         () => useEvidenceDetail(EXECUTION_ID, EVIDENCE_ID),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -128,9 +156,11 @@ describe('evidence queries', () => {
     });
 
     it('should not fetch when evidenceId is undefined', () => {
+      const { wrapper } = createWrapper();
+
       const { result } = renderHook(
         () => useEvidenceDetail(EXECUTION_ID, undefined),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       expect(result.current.fetchStatus).toBe('idle');
@@ -140,9 +170,11 @@ describe('evidence queries', () => {
 
   describe('useEvidenceVerify', () => {
     it('should stay idle until refetch is called', () => {
+      const { wrapper } = createWrapper();
+
       const { result } = renderHook(
         () => useEvidenceVerify(EXECUTION_ID, EVIDENCE_ID),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       expect(result.current.fetchStatus).toBe('idle');
@@ -158,10 +190,11 @@ describe('evidence queries', () => {
         },
       };
       vi.mocked(verifyEvidenceHash).mockResolvedValue(response as never);
+      const { wrapper } = createWrapper();
 
       const { result } = renderHook(
         () => useEvidenceVerify(EXECUTION_ID, EVIDENCE_ID),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       const queryResult = await result.current.refetch();
@@ -214,10 +247,11 @@ describe('evidence queries', () => {
 
     it('should fetch evidence chain when executionId is provided', async () => {
       vi.mocked(fetchEvidenceChain).mockResolvedValue(chainResponse as never);
+      const { wrapper } = createWrapper();
 
       const { result } = renderHook(
         () => useEvidenceChain(EXECUTION_ID),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -227,9 +261,11 @@ describe('evidence queries', () => {
     });
 
     it('should not fetch when executionId is empty', () => {
+      const { wrapper } = createWrapper();
+
       const { result } = renderHook(
         () => useEvidenceChain(''),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       expect(result.current.fetchStatus).toBe('idle');
@@ -238,16 +274,164 @@ describe('evidence queries', () => {
 
     it('should pass nodeId to API function', async () => {
       vi.mocked(fetchEvidenceChain).mockResolvedValue(chainResponse as never);
+      const { wrapper } = createWrapper();
 
       const nodeId = 'node-abc';
       const { result } = renderHook(
         () => useEvidenceChain(EXECUTION_ID, nodeId),
-        { wrapper: createWrapper() },
+        { wrapper },
       );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       expect(fetchEvidenceChain).toHaveBeenCalledWith(EXECUTION_ID, nodeId);
+    });
+  });
+
+  describe('evidence export queries', () => {
+    const exportJobResponse = {
+      data: {
+        id: EXPORT_ID,
+        status: 'completed',
+        matchedExecutionCount: 2,
+      },
+    };
+
+    const downloadDetailResponse = {
+      data: {
+        url: 'https://download.example/export-1',
+        fileName: 'evidence-export-1.zip',
+        mimeType: 'application/zip',
+        expiresAt: '2026-03-17T12:30:00.000Z',
+        expiresIn: 600,
+      },
+    };
+
+    it('should create an export job and seed the job cache', async () => {
+      const { queryClient, wrapper } = createWrapper();
+      const filters = { eventType: 'workflow.updated', executionId: 'exec-1' };
+      vi.mocked(createEvidenceExport).mockResolvedValue(exportJobResponse as never);
+
+      const { result } = renderHook(() => useCreateEvidenceExport(), { wrapper });
+
+      await act(async () => {
+        await result.current.mutateAsync(filters);
+      });
+
+      expect(createEvidenceExport).toHaveBeenCalledWith(filters);
+      expect(queryClient.getQueryData(evidenceKeys.exportJob(EXPORT_ID))).toEqual(
+        exportJobResponse,
+      );
+    });
+
+    it('should fetch export job detail when exportId is provided', async () => {
+      vi.mocked(fetchEvidenceExportJob).mockResolvedValue(exportJobResponse as never);
+      const { wrapper } = createWrapper();
+
+      const { result } = renderHook(() => useEvidenceExportJob(EXPORT_ID), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(fetchEvidenceExportJob).toHaveBeenCalledWith(EXPORT_ID);
+      expect(result.current.data).toEqual(exportJobResponse);
+    });
+
+    it('should poll queued export jobs until they reach a terminal state', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetchEvidenceExportJob).mockResolvedValue({
+        data: {
+          id: EXPORT_ID,
+          status: 'queued',
+          matchedExecutionCount: 2,
+        },
+      } as never);
+      const { wrapper } = createWrapper();
+
+      renderHook(() => useEvidenceExportJob(EXPORT_ID), {
+        wrapper,
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(fetchEvidenceExportJob).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+
+      expect(fetchEvidenceExportJob).toHaveBeenCalledTimes(2);
+    });
+
+    it('should stop polling once an export job is completed', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetchEvidenceExportJob).mockResolvedValue(exportJobResponse as never);
+      const { wrapper } = createWrapper();
+
+      renderHook(() => useEvidenceExportJob(EXPORT_ID), {
+        wrapper,
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(fetchEvidenceExportJob).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+
+      expect(fetchEvidenceExportJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reuse cached download detail until it becomes stale', () => {
+      const { queryClient, wrapper } = createWrapper();
+      queryClient.setQueryData(
+        evidenceKeys.exportDownloadDetail(EXPORT_ID),
+        downloadDetailResponse,
+      );
+
+      const { result } = renderHook(
+        () => useEvidenceExportDownloadDetail(EXPORT_ID),
+        { wrapper },
+      );
+
+      expect(result.current.data).toEqual(downloadDetailResponse);
+      expect(fetchEvidenceExportDownloadDetail).not.toHaveBeenCalled();
+    });
+
+    it('should refresh download detail and update the download cache', async () => {
+      const refreshedResponse = {
+        data: {
+          ...downloadDetailResponse.data,
+          url: 'https://download.example/export-1?refresh=1',
+          expiresAt: '2026-03-17T12:40:00.000Z',
+        },
+      };
+      const { queryClient, wrapper } = createWrapper();
+      vi.mocked(refreshEvidenceExportDownloadDetail).mockResolvedValue(
+        refreshedResponse as never,
+      );
+
+      const { result } = renderHook(
+        () => useRefreshEvidenceExportDownloadDetail(EXPORT_ID),
+        { wrapper },
+      );
+
+      await act(async () => {
+        await result.current.mutateAsync();
+      });
+
+      expect(refreshEvidenceExportDownloadDetail).toHaveBeenCalledWith(EXPORT_ID);
+      expect(
+        queryClient.getQueryData(evidenceKeys.exportDownloadDetail(EXPORT_ID)),
+      ).toEqual(refreshedResponse);
     });
   });
 });

@@ -1,8 +1,11 @@
-import { apiClient } from '@/shared/api/client';
+import { apiClient, toSnakeBody } from '@/shared/api/client';
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 
 import type {
   EvidenceChainResponse,
+  EvidenceExportDownloadDetail,
+  EvidenceExportJob,
+  EvidenceExportRequest,
   EvidenceGraphResponse,
   EvidenceQueryParams,
   EvidenceRecord,
@@ -90,4 +93,36 @@ export function fetchEvidenceGraph(
   return apiClient
     .get(`executions/${executionId}/evidence/graph`)
     .json<ApiResponse<EvidenceGraphResponse>>();
+}
+
+export function createEvidenceExport(
+  request: EvidenceExportRequest,
+): Promise<ApiResponse<EvidenceExportJob>> {
+  return apiClient
+    .post('evidence-exports', { json: toSnakeBody(request) })
+    .json<ApiResponse<EvidenceExportJob>>();
+}
+
+export function fetchEvidenceExportJob(
+  exportId: string,
+): Promise<ApiResponse<EvidenceExportJob>> {
+  return apiClient
+    .get(`evidence-exports/${exportId}`)
+    .json<ApiResponse<EvidenceExportJob>>();
+}
+
+export function fetchEvidenceExportDownloadDetail(
+  exportId: string,
+): Promise<ApiResponse<EvidenceExportDownloadDetail>> {
+  return apiClient
+    .get(`evidence-exports/${exportId}/download`)
+    .json<ApiResponse<EvidenceExportDownloadDetail>>();
+}
+
+export function refreshEvidenceExportDownloadDetail(
+  exportId: string,
+): Promise<ApiResponse<EvidenceExportDownloadDetail>> {
+  return apiClient
+    .post(`evidence-exports/${exportId}/download/refresh`)
+    .json<ApiResponse<EvidenceExportDownloadDetail>>();
 }

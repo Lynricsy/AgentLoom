@@ -13,6 +13,12 @@ export const evidenceKeys = {
     [...evidenceKeys.chains(), executionId, nodeId] as const,
   documentContent: (knowledgeBaseId: string, documentId: string) =>
     [...evidenceKeys.all, 'document-content', knowledgeBaseId, documentId] as const,
+  exportJobs: () => [...evidenceKeys.all, 'export-job'] as const,
+  exportJob: (exportId: string) =>
+    [...evidenceKeys.exportJobs(), exportId] as const,
+  exportDownloadDetails: () => [...evidenceKeys.all, 'export-download-detail'] as const,
+  exportDownloadDetail: (exportId: string) =>
+    [...evidenceKeys.exportDownloadDetails(), exportId] as const,
   graphs: () => [...evidenceKeys.all, 'graph'] as const,
   graph: (executionId: string) =>
     [...evidenceKeys.graphs(), executionId] as const,
