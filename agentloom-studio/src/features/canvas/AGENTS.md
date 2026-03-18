@@ -104,5 +104,5 @@ WorkflowCanvasPage.tsx
 - `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动
 - `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”
 - `DynamicConfigForm` 使用 react-hook-form + Zod；任一字段 blur 后会触发整表校验，以满足多必填字段同时报错
-- `LlmAgentConfigPanel` 使用 `@monaco-editor/react` lazy import，编辑器内容必须能在 mount 后响应外部 config 更新
+- `LlmAgentConfigPanel` 使用 `@monaco-editor/react` lazy import，编辑器内容必须能在 mount 后响应外部 config 更新；面板会通过 auth token 的组织 claim 查询 organization autonomy policy，显示自治上限、禁用超 cap 的新选项、阻止保存 stale over-cap 模式，并对 legacy raw mode 给出显式迁移提示，同时保持现有 react-hook-form + zodResolver + 300ms debounce + hidden drafts 架构；当前 autonomy mode 读取优先级为 `node.data.autonomyMode -> node.data.autonomyConfig.mode -> node.data.settings.autonomyMode -> node.data.config.autonomyMode`，autosave 必须同步写回这四个 mirror 并保留 `config/settings/autonomyConfig` 里的无关字段
 - 端口兼容性检查在拖拽连线时实时触发
