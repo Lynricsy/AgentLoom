@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
+import type { AnalysisMetadata } from '../../database/schema/optimization-suggestions.schema';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -15,6 +16,13 @@ import {
   type ToolPruningValue,
   type WorkflowDefinition,
 } from '../../database/schema';
+import type { AutonomyMode } from '../agent/dto/autonomy.dto';
+import {
+  explainAutonomyViolation,
+  normalizeAutonomyMode,
+} from '../agent/autonomy-mode-compat';
+import { syncAutonomyModeMirrors } from '../agent/autonomy-mode-mirrors';
+import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { WorkflowVersionConflictException } from '../workflow-definition/workflow-version.exceptions';
 
 type FindByTenantQuery = {
@@ -31,6 +39,7 @@ type AdoptionStats = {
   applied: number;
   dismissed: number;
   pending: number;
+  blocked: number;
   adoptionRate: number;
   targetRate: 0.5;
   byType: Array<{
@@ -39,6 +48,7 @@ type AdoptionStats = {
     applied: number;
     dismissed: number;
     pending: number;
+    blocked: number;
     adoptionRate: number;
   }>;
 };
@@ -51,7 +61,10 @@ export class OptimizationSuggestionService {
     return getTenantDb(this.db);
   }
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
+  ) {}
 
   async findByWorkflowAndNode(
     workflowDefinitionId: string,
@@ -132,6 +145,7 @@ export class OptimizationSuggestionService {
     userId: string,
   ): Promise<OptimizationSuggestion> {
     const suggestion = await this.findById(id);
+    this.assertSuggestionNotBlocked(suggestion);
     this.assertPendingSuggestion(suggestion);
 
     const [workflowDefinition] = await this.tenantDb
@@ -147,6 +161,8 @@ export class OptimizationSuggestionService {
         detail: `Workflow definition ${suggestion.workflowDefinitionId} not found`,
       });
     }
+
+    await this.assertAutonomySuggestionAllowed(suggestion);
 
     const nodes = this.applySuggestionToWorkflowNode(workflowDefinition, suggestion);
     const now = new Date();
@@ -286,10 +302,17 @@ export class OptimizationSuggestionService {
       applied: 0,
       dismissed: 0,
       pending: 0,
+      blocked: 0,
     };
     const byType = new Map<
       string,
-      { total: number; applied: number; dismissed: number; pending: number }
+      {
+        total: number;
+        applied: number;
+        dismissed: number;
+        pending: number;
+        blocked: number;
+      }
     >();
 
     for (const row of rows) {
@@ -299,6 +322,7 @@ export class OptimizationSuggestionService {
         applied: 0,
         dismissed: 0,
         pending: 0,
+        blocked: 0,
       };
       current.total += 1;
       current[row.status] += 1;
@@ -310,6 +334,7 @@ export class OptimizationSuggestionService {
       applied: summary.applied,
       dismissed: summary.dismissed,
       pending: summary.pending,
+      blocked: summary.blocked,
       adoptionRate: this.calculateAdoptionRate(
         summary.applied,
         summary.dismissed,
@@ -323,6 +348,7 @@ export class OptimizationSuggestionService {
           applied: counts.applied,
           dismissed: counts.dismissed,
           pending: counts.pending,
+          blocked: counts.blocked,
           adoptionRate: this.calculateAdoptionRate(
             counts.applied,
             counts.dismissed,
@@ -382,20 +408,24 @@ export class OptimizationSuggestionService {
       matched = true;
       const nodeData = this.asRecord(node.data);
       const config = this.asRecord(nodeData.config);
-      const autonomyConfig = this.asRecord(nodeData.autonomyConfig);
-      const updatedConfig = this.applyConfigUpdate(config, suggestion);
-
-      const updatedNodeData: Record<string, unknown> = {
-        ...nodeData,
-        config: updatedConfig,
-      };
+      let updatedNodeData: Record<string, unknown>;
 
       if (suggestion.suggestionType === 'autonomy_upgrade') {
         const suggestedValue = suggestion.suggestedValue as AutonomyUpgradeValue;
-        updatedNodeData.autonomyMode = suggestedValue.autonomyMode;
-        updatedNodeData.autonomyConfig = {
-          ...autonomyConfig,
-          mode: suggestedValue.autonomyMode,
+        const nextAutonomyMode: AutonomyMode = normalizeAutonomyMode(
+          suggestedValue.autonomyMode,
+        ).canonicalMode;
+        updatedNodeData = syncAutonomyModeMirrors(
+          {
+            ...nodeData,
+            config,
+          },
+          nextAutonomyMode,
+        );
+      } else {
+        updatedNodeData = {
+          ...nodeData,
+          config: this.applyConfigUpdate(config, suggestion),
         };
       }
 
@@ -447,13 +477,6 @@ export class OptimizationSuggestionService {
           tools: suggestedValue.tools,
         };
       }
-      case 'autonomy_upgrade': {
-        const suggestedValue = suggestion.suggestedValue as AutonomyUpgradeValue;
-        return {
-          ...config,
-          autonomyMode: suggestedValue.autonomyMode,
-        };
-      }
       default:
         return config;
     }
@@ -470,6 +493,137 @@ export class OptimizationSuggestionService {
       status: 409,
       detail: `Optimization suggestion ${suggestion.id} is already ${suggestion.status}`,
     });
+  }
+
+  private assertSuggestionNotBlocked(suggestion: OptimizationSuggestion): void {
+    if (suggestion.status !== 'blocked') {
+      return;
+    }
+
+    throw this.createPolicyBlockedException(suggestion);
+  }
+
+  private async assertAutonomySuggestionAllowed(
+    suggestion: OptimizationSuggestion,
+  ): Promise<void> {
+    if (suggestion.suggestionType !== 'autonomy_upgrade') {
+      return;
+    }
+
+    const suggestedValue = this.asRecord(suggestion.suggestedValue);
+    const autonomyMode = this.readString(
+      suggestedValue.autonomyMode,
+      suggestedValue.mode,
+    );
+
+    if (!autonomyMode) {
+      return;
+    }
+
+    const autonomyCap =
+      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(
+        suggestion.tenantId,
+      );
+    const explanation = explainAutonomyViolation(autonomyMode, autonomyCap);
+
+    if (!explanation.exceedsCap) {
+      return;
+    }
+
+    const blockedSuggestion = await this.blockSuggestionByPolicy(
+      suggestion,
+      autonomyCap,
+      explanation,
+    );
+
+    throw this.createPolicyBlockedException(blockedSuggestion);
+  }
+
+  private async blockSuggestionByPolicy(
+    suggestion: OptimizationSuggestion,
+    autonomyCap: string,
+    explanation: ReturnType<typeof explainAutonomyViolation>,
+  ): Promise<OptimizationSuggestion> {
+    const now = new Date();
+    const analysisMetadata = this.asRecord(suggestion.analysisMetadata);
+    const [blockedSuggestion] = await this.tenantDb
+      .update(optimizationSuggestions)
+      .set({
+        status: 'blocked',
+        analysisMetadata: this.buildBlockedAnalysisMetadata(
+          analysisMetadata,
+          autonomyCap,
+          explanation,
+          now,
+        ),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(optimizationSuggestions.id, suggestion.id),
+          eq(optimizationSuggestions.status, 'pending'),
+        ),
+      )
+      .returning();
+
+    if (blockedSuggestion) {
+      return blockedSuggestion;
+    }
+
+    return this.findById(suggestion.id);
+  }
+
+  private createPolicyBlockedException(
+    suggestion: OptimizationSuggestion,
+  ): DomainException {
+    const analysisMetadata = this.asRecord(suggestion.analysisMetadata);
+    const policyBlock = this.asRecord(analysisMetadata.policyBlock);
+    const detail =
+      this.readString(policyBlock.message) ??
+      `Optimization suggestion ${suggestion.id} is blocked by the current organization autonomy policy`;
+
+    return new DomainException({
+      type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+      title: 'Suggestion Blocked By Organization Policy',
+      status: 422,
+      detail,
+      errors: [
+        {
+          field: 'suggestedValue.autonomyMode',
+          message: detail,
+        },
+      ],
+      extensions: {
+        autonomyCap: this.readString(policyBlock.autonomyCap) ?? null,
+        reasonCode: this.readString(policyBlock.reasonCode) ?? null,
+        replacementMode: this.readString(policyBlock.replacementMode) ?? null,
+      },
+    });
+  }
+
+  private buildBlockedAnalysisMetadata(
+    analysisMetadata: Record<string, unknown>,
+    autonomyCap: string,
+    explanation: ReturnType<typeof explainAutonomyViolation>,
+    blockedAt: Date,
+  ): AnalysisMetadata {
+    return {
+      ...analysisMetadata,
+      totalRecords: this.readNumber(analysisMetadata.totalRecords) ?? 0,
+      analyzerVersion:
+        this.readString(analysisMetadata.analyzerVersion) ??
+        'optimization-analysis-v1',
+      policyBlock: {
+        autonomyCap,
+        rawMode: explanation.rawMode,
+        canonicalMode: explanation.canonicalMode,
+        replacementMode: explanation.replacementMode,
+        source: explanation.source,
+        reasonCode: explanation.reasonCode,
+        message: explanation.message,
+        blockedAt: blockedAt.toISOString(),
+      },
+    };
   }
 
   private calculateAdoptionRate(applied: number, dismissed: number): number {
@@ -497,5 +651,21 @@ export class OptimizationSuggestionService {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private readString(...values: unknown[]): string | null {
+    const resolved = values.find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+
+    return resolved ?? null;
+  }
+
+  private readNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    return null;
   }
 }

@@ -8,12 +8,46 @@ import {
   vi,
 } from 'vitest';
 
+const { MockRedis } = vi.hoisted(() => {
+  class MockRedis {
+    status = 'ready';
+    options = {};
+    call = vi.fn().mockResolvedValue([1, 60_000, 0, 0]);
+    connect = vi.fn().mockResolvedValue(undefined);
+    disconnect = vi.fn().mockResolvedValue(undefined);
+    quit = vi.fn().mockResolvedValue('OK');
+    on = vi.fn().mockImplementation(() => this);
+    once = vi.fn().mockImplementation(() => this);
+    off = vi.fn().mockImplementation(() => this);
+    removeListener = vi.fn().mockImplementation(() => this);
+    setMaxListeners = vi.fn().mockImplementation(() => this);
+    defineCommand = vi.fn();
+    get = vi.fn().mockResolvedValue(null);
+    set = vi.fn().mockResolvedValue('OK');
+    del = vi.fn().mockResolvedValue(0);
+    keys = vi.fn().mockResolvedValue([]);
+    publish = vi.fn().mockResolvedValue(1);
+    subscribe = vi.fn().mockResolvedValue(undefined);
+    unsubscribe = vi.fn().mockResolvedValue(undefined);
+    ping = vi.fn().mockResolvedValue('PONG');
+    duplicate = vi.fn().mockImplementation(() => new MockRedis());
+  }
+
+  return { MockRedis };
+});
+
+vi.mock('ioredis', () => ({
+  default: MockRedis,
+  Cluster: MockRedis,
+}));
+
 vi.mock('@anatine/zod-nestjs', async () => {
   const { createZodDto } = await import('nestjs-zod');
   return { createZodDto };
 });
 
 import { BullRegistrar, getQueueToken } from '@nestjs/bullmq';
+import { getOptionsToken } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -47,6 +81,22 @@ import {
 } from './rls/rls-test-utils';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
+
+const APP_QUEUE_NAMES = [
+  'workflow-execution',
+  'agent-task',
+  'plugin-execution',
+  'earnings-settlement',
+  'notification',
+  'trigger-scheduler',
+  'sandbox-lifecycle',
+  'optimization-analysis',
+  'audit-log-retention',
+  'evidence-export',
+  'evidence-export-cleanup',
+  'document-processing',
+  'document-indexing',
+] as const;
 
 type TestUser = {
   id: string;
@@ -237,16 +287,40 @@ function createMockNodeSchedulerService() {
   };
 }
 
-function createMockOptimizationAnalysisQueue() {
+function createMockQueue() {
   return {
+    add: vi.fn().mockResolvedValue(undefined),
     upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
+    removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
+    getRepeatableJobs: vi.fn().mockResolvedValue([]),
+    close: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn().mockImplementation(() => undefined),
+    off: vi.fn().mockImplementation(() => undefined),
   };
+}
+
+function createMockOptimizationAnalysisQueue() {
+  return createMockQueue();
 }
 
 function createMockBullRegistrar() {
   return {
     onModuleInit: vi.fn(),
     register: vi.fn(),
+  };
+}
+
+function createMockThrottlerOptions() {
+  return {
+    throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
+    storage: {
+      increment: vi.fn().mockResolvedValue({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      }),
+    },
   };
 }
 
@@ -258,6 +332,7 @@ describe('OptimizationSuggestion E2E', () => {
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
   let nodeSchedulerMock: ReturnType<typeof createMockNodeSchedulerService>;
+  let queueMock: ReturnType<typeof createMockQueue>;
   let optimizationAnalysisQueueMock: ReturnType<
     typeof createMockOptimizationAnalysisQueue
   >;
@@ -272,10 +347,12 @@ describe('OptimizationSuggestion E2E', () => {
     redisCacheMock = createMockRedisCacheService();
     redisPubSubMock = createMockRedisPubSubService();
     nodeSchedulerMock = createMockNodeSchedulerService();
+    queueMock = createMockQueue();
     optimizationAnalysisQueueMock = createMockOptimizationAnalysisQueue();
     bullRegistrarMock = createMockBullRegistrar();
+    const throttlerOptions = createMockThrottlerOptions();
 
-    const moduleRef = await Test.createTestingModule({
+    let moduleBuilder = Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(SupabaseService)
@@ -292,9 +369,22 @@ describe('OptimizationSuggestion E2E', () => {
       .useValue(nodeSchedulerMock)
       .overrideProvider(BullRegistrar)
       .useValue(bullRegistrarMock)
-      .overrideProvider(getQueueToken(OPTIMIZATION_ANALYSIS_QUEUE))
-      .useValue(optimizationAnalysisQueueMock)
-      .compile();
+
+    moduleBuilder = moduleBuilder
+      .overrideProvider(getOptionsToken())
+      .useValue(throttlerOptions);
+
+    for (const queueName of APP_QUEUE_NAMES) {
+      moduleBuilder = moduleBuilder
+        .overrideProvider(getQueueToken(queueName))
+        .useValue(
+          queueName === OPTIMIZATION_ANALYSIS_QUEUE
+            ? optimizationAnalysisQueueMock
+            : queueMock,
+        );
+    }
+
+    const moduleRef = await moduleBuilder.compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -404,6 +494,15 @@ describe('OptimizationSuggestion E2E', () => {
           position: { x: 0, y: 0 },
           data: {
             label: 'Target Agent',
+            autonomyMode: 'MANUAL_CONFIRM',
+            autonomyConfig: {
+              mode: 'RULE_BASED',
+              confirmationThreshold: 0.75,
+            },
+            settings: {
+              autonomyMode: 'RULE_BASED',
+              section: 'advanced',
+            },
             config: {
               modelId: 'gpt-4o',
               modelName: 'GPT-4o',
@@ -674,7 +773,12 @@ describe('OptimizationSuggestion E2E', () => {
       `;
       const nodes = updatedWorkflow.nodes as Array<{
         id: string;
-        data?: { config?: Record<string, unknown> };
+        data?: {
+          autonomyMode?: string;
+          autonomyConfig?: Record<string, unknown>;
+          settings?: Record<string, unknown>;
+          config?: Record<string, unknown>;
+        };
       }>;
       const targetNode = nodes.find((node) => node.id === workflow.targetNodeId);
       const siblingNode = nodes.find((node) => node.id === workflow.siblingNodeId);
@@ -690,6 +794,10 @@ describe('OptimizationSuggestion E2E', () => {
         autonomyMode: 'LLM_SUGGEST',
         autonomyConfig: {
           mode: 'LLM_SUGGEST',
+        },
+        settings: {
+          autonomyMode: 'LLM_SUGGEST',
+          section: 'advanced',
         },
       });
       expect(siblingNode?.data?.config).toMatchObject({
@@ -865,6 +973,7 @@ describe('OptimizationSuggestion E2E', () => {
       expect(response.body.data).toEqual({
         total: 3,
         applied: 1,
+        blocked: 0,
         dismissed: 1,
         pending: 1,
         adoptionRate: 0.5,
@@ -874,6 +983,7 @@ describe('OptimizationSuggestion E2E', () => {
             suggestionType: 'model_downgrade',
             total: 2,
             applied: 1,
+            blocked: 0,
             dismissed: 1,
             pending: 0,
             adoptionRate: 0.5,
@@ -882,6 +992,7 @@ describe('OptimizationSuggestion E2E', () => {
             suggestionType: 'tool_pruning',
             total: 1,
             applied: 0,
+            blocked: 0,
             dismissed: 0,
             pending: 1,
             adoptionRate: 0,

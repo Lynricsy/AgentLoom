@@ -1,6 +1,15 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
 
+interface WorkflowPublishAutonomyViolation {
+  nodeId: string;
+  nodeName: string;
+  rawMode: string | null;
+  canonicalMode: string;
+  replacementMode: string;
+  message: string;
+}
+
 export class WorkflowArchivedException extends DomainException {
   constructor(workflowId: string) {
     super({
@@ -25,6 +34,29 @@ export class WorkflowPublishValidationException extends DomainException {
         field: 'workflow',
         message,
       })),
+    });
+  }
+}
+
+export class WorkflowPublishAutonomyCapException extends DomainException {
+  constructor(
+    autonomyCap: string,
+    violations: WorkflowPublishAutonomyViolation[],
+  ) {
+    super({
+      type: 'https://agentloom.dev/errors/workflow-publish-autonomy-cap',
+      title: '工作流自治上限校验失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail:
+        violations[0]?.message ?? '工作流存在超出组织自治上限的节点配置',
+      errors: violations.map((violation) => ({
+        field: `nodes.${violation.nodeId}.autonomyMode`,
+        message: `节点 ${violation.nodeName}（${violation.nodeId}）的自治模式 ${violation.rawMode ?? '未设置'} 超出组织上限 ${autonomyCap}，应降级为 ${violation.replacementMode}`,
+      })),
+      extensions: {
+        autonomyCap,
+        violations,
+      },
     });
   }
 }

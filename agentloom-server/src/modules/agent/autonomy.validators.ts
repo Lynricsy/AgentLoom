@@ -3,8 +3,11 @@ import type {
   AutonomyResolutionResult,
   InferenceAnnotation,
 } from './dto/autonomy.dto';
+import {
+  CANONICAL_AUTONOMY_MODE_ORDER,
+  isCanonicalAutonomyMode,
+} from './autonomy-mode-compat';
 
-const VALID_MODES = ['MANUAL_CONFIRM', 'RULE_BASED', 'LLM_SUGGEST'] as const;
 const VALID_FALLBACK_STRATEGIES = [
   'REQUIRE_CONFIRMATION',
   'USE_DEFAULT',
@@ -23,9 +26,9 @@ export function validateAutonomyConfig(config: unknown): string[] {
 
   const c = config as Record<string, unknown>;
 
-  if (!VALID_MODES.includes(c.mode as (typeof VALID_MODES)[number])) {
+  if (!isCanonicalAutonomyMode(c.mode)) {
     errors.push(
-      `mode 必须是 ${VALID_MODES.join(' | ')}，收到: ${String(c.mode)}`,
+      `mode 必须是 ${CANONICAL_AUTONOMY_MODE_ORDER.join(' | ')}，收到: ${String(c.mode)}`,
     );
   }
 

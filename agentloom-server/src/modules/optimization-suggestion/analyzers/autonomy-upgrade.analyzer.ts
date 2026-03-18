@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
-import { AutonomyModeSchema } from '../../agent/dto/autonomy.dto';
+import {
+  isAutonomyModeAllowed,
+  normalizeAutonomyMode,
+} from '../../agent/autonomy-mode-compat';
 import type {
   AnalysisContext,
   SuggestionAnalyzer,
@@ -51,11 +54,17 @@ export class AutonomyUpgradeAnalyzer implements SuggestionAnalyzer {
       return null;
     }
 
+    const nextMode = UPGRADE_PATH[currentIndex + 1];
+
+    if (!isAutonomyModeAllowed(nextMode, context.autonomyCap)) {
+      return null;
+    }
+
     return {
       suggestionType: 'autonomy_upgrade',
       confidence: executionCount >= 50 ? 0.9 : 0.7,
       currentValue: { autonomyMode: currentMode },
-      suggestedValue: { autonomyMode: UPGRADE_PATH[currentIndex + 1] },
+      suggestedValue: { autonomyMode: nextMode },
       rationale: `该节点近 28 天共执行 ${executionCount} 次，self-repair 率为 0%，错误率为 ${(errorRate * 100).toFixed(1)}%，满足升级自主性模式的稳定性条件。`,
       impactEstimate: {
         latencyImpactPct: -10,
@@ -72,9 +81,14 @@ export class AutonomyUpgradeAnalyzer implements SuggestionAnalyzer {
     ];
 
     for (const candidate of candidates) {
-      const parsed = AutonomyModeSchema.safeParse(candidate);
-      if (parsed.success) {
-        return parsed.data;
+      if (candidate === undefined || candidate === null || candidate === '') {
+        continue;
+      }
+
+      const normalized = normalizeAutonomyMode(candidate).canonicalMode;
+
+      if (UPGRADE_PATH.includes(normalized)) {
+        return normalized;
       }
     }
 

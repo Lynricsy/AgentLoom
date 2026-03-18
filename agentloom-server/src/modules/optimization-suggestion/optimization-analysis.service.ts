@@ -18,6 +18,7 @@ import {
   type SuggestionAnalyzer,
   type SuggestionCandidate,
 } from './analyzers';
+import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 
 type AnalysisResult = {
   analyzed: number;
@@ -36,6 +37,7 @@ type WorkflowRow = Pick<
   TimeoutAdjustmentAnalyzer,
   ToolPruningAnalyzer,
   AutonomyUpgradeAnalyzer,
+  OrganizationAutonomyPolicyService,
 )
 export class OptimizationAnalysisService {
   private readonly logger = new Logger(OptimizationAnalysisService.name);
@@ -46,6 +48,7 @@ export class OptimizationAnalysisService {
     private readonly timeoutAdjustmentAnalyzer: TimeoutAdjustmentAnalyzer,
     private readonly toolPruningAnalyzer: ToolPruningAnalyzer,
     private readonly autonomyUpgradeAnalyzer: AutonomyUpgradeAnalyzer,
+    private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
   ) {}
 
   async runAnalysis(tenantId?: string): Promise<AnalysisResult> {
@@ -93,6 +96,8 @@ export class OptimizationAnalysisService {
     const analysisWindow = this.createAnalysisWindow();
     const suggestionsToInsert: typeof schema.optimizationSuggestions.$inferInsert[] = [];
     let analyzed = 0;
+    const autonomyCap =
+      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(tenantId);
 
     for (const workflow of workflows) {
       const agentNodes = workflow.nodes.filter((node) => this.isAgentNode(node));
@@ -129,6 +134,7 @@ export class OptimizationAnalysisService {
             tenantId,
             workflowDefinitionId: workflow.id,
             nodeId: node.id,
+            autonomyCap,
             nodeConfig: this.normalizeNodeConfig(workflow, node),
             stepTelemetries: telemetryRecords,
             executionSummaries,

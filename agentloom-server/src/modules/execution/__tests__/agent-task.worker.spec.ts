@@ -15,6 +15,7 @@ import { NotificationService } from '../../notification/notification.service';
 import { LlmProviderException } from '../../llm/llm.exceptions';
 import { AllModelsFallbackExhaustedException } from '../../smart-routing/smart-routing.exceptions';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import {
   AgentExecutionException,
   ToolCallNotFoundException,
@@ -263,6 +264,13 @@ describe('AgentTaskWorker', () => {
     recordDecision: vi.fn().mockResolvedValue(undefined),
   };
 
+  const mockOrganizationAutonomyPolicyService: Record<
+    string,
+    ReturnType<typeof vi.fn>
+  > = {
+    resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -270,6 +278,9 @@ describe('AgentTaskWorker', () => {
     mockDb.update.mockReset().mockReturnValue(createUpdateChain());
     mockAgentTaskQueue.add.mockReset().mockResolvedValue(undefined);
     mockSmartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
+    mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant
+      .mockReset()
+      .mockResolvedValue('LLM_SUGGEST');
     mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.enqueueInterventionTimeout
@@ -304,6 +315,10 @@ describe('AgentTaskWorker', () => {
           },
         },
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
+        {
+          provide: OrganizationAutonomyPolicyService,
+          useValue: mockOrganizationAutonomyPolicyService,
+        },
         { provide: ThrottleService, useValue: mockThrottle },
         { provide: EventBridgeService, useValue: mockEventBridge },
         {
@@ -2133,6 +2148,88 @@ describe('AgentTaskWorker', () => {
           'waiting_intervention',
           expect.anything(),
         );
+      });
+
+      it('legacy FULL_AUTO 在低于自动档的组织上限下会被 clamp 为 awaiting_permission', async () => {
+        const step = makeStep({
+          nodeData: {
+            agentId: AGENT_ID,
+            systemPrompt: '你是一个助手',
+            autonomyMode: 'FULL_AUTO',
+          },
+        });
+        const updateChain = createUpdateChain();
+        mockDb.select.mockReturnValue(createSelectChain(step));
+        mockDb.update.mockReturnValue(updateChain);
+        mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+        mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
+          'RULE_BASED',
+        );
+        mockAgentRuntime.prompt.mockReturnValue(
+          createEventStream([
+            {
+              type: 'tool_call',
+              call: {
+                id: 'tc-legacy-1',
+                tool: 'search',
+                args: { q: 'legacy' },
+                status: 'pending',
+              },
+            },
+            { type: 'done', stopReason: 'tool_use' },
+          ]),
+        );
+
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(REQUESTED_AT));
+
+        await worker.process(createMockJob());
+
+        vi.useRealTimers();
+
+        expect(
+          mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant,
+        ).toHaveBeenCalledWith(TENANT_ID);
+        expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            autonomyMode: 'RULE_BASED',
+          }),
+        );
+        expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(1);
+        expect(mockToolCallStateMachine.transition).toHaveBeenCalledWith(
+          'pending',
+          'awaiting_permission',
+        );
+        expect(mockToolCallStateMachine.transition).not.toHaveBeenCalledWith(
+          'pending',
+          'in_progress',
+        );
+        expect(mockEventBridge.emitToolPermissionRequired).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          {
+            stepId: STEP_ID,
+            nodeId: 'node-1',
+            toolCallId: 'tc-legacy-1',
+            tool: 'search',
+            args: { q: 'legacy' },
+            requestedAt: REQUESTED_AT,
+          },
+        );
+        expect(updateChain.set).toHaveBeenLastCalledWith({
+          checkpointData: expect.objectContaining({
+            session: {},
+            sessionId: SESSION_ID,
+            round: 1,
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-legacy-1',
+                status: 'awaiting_permission',
+              }),
+            ],
+          }),
+        });
+        expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
       });
 
       it('单轮多个 tool_call: 会逐个 transition 并广播状态', async () => {

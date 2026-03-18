@@ -5,6 +5,7 @@ import type {
   SuggestionCurrentValue,
   SuggestionSuggestedValue,
 } from '../../../database/schema/optimization-suggestions.schema';
+import type { AutonomyMode } from '../../agent/dto/autonomy.dto';
 
 export interface AnalysisPeriod {
   start: Date;
@@ -15,6 +16,7 @@ export interface AnalysisContext {
   tenantId: string;
   workflowDefinitionId: string;
   nodeId: string;
+  autonomyCap: AutonomyMode;
   nodeConfig: Record<string, unknown>;
   stepTelemetries: StepTelemetryRecord[];
   executionSummaries: ExecutionSummaryRecord[];

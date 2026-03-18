@@ -10,6 +10,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { DRIZZLE } from '../../../database/database.module';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { TemplateService } from '../../template/template.service';
 import { ShareService } from '../../share/share.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
@@ -19,6 +20,7 @@ import { WorkflowVersionService } from '../workflow-version.service';
 import {
   InvalidStatusTransitionException,
   WorkflowArchivedException,
+  WorkflowPublishAutonomyCapException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
@@ -158,6 +160,32 @@ function createPortMappedWorkflow(sourceType: string, targetType: string) {
   });
 }
 
+function createAutonomyWorkflow(
+  autonomyMode: 'MANUAL_CONFIRM' | 'RULE_BASED' | 'LLM_SUGGEST' | 'FULL_AUTO',
+  source: 'canonical' | 'legacy',
+) {
+  return createDraftWorkflow({
+    nodes: [
+      {
+        id: 'agent-1',
+        type: 'llm-agent',
+        position: { x: 0, y: 0 },
+        data:
+          source === 'legacy'
+            ? {
+                label: 'Planner',
+                autonomyMode,
+              }
+            : {
+                label: 'Planner',
+                autonomyConfig: { mode: autonomyMode },
+              },
+      },
+    ],
+    edges: [],
+  });
+}
+
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
@@ -217,6 +245,9 @@ describe('WorkflowVersionService', () => {
   let redis: Record<string, ReturnType<typeof vi.fn>>;
   let templateService: Record<string, ReturnType<typeof vi.fn>>;
   let shareService: Record<string, ReturnType<typeof vi.fn>>;
+  let organizationAutonomyPolicyService: {
+    inspectWorkflowNodesAgainstPolicy: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -250,6 +281,13 @@ describe('WorkflowVersionService', () => {
       incrementCopyCount: vi.fn(),
     };
 
+    organizationAutonomyPolicyService = {
+      inspectWorkflowNodesAgainstPolicy: vi.fn().mockResolvedValue({
+        autonomyCap: 'LLM_SUGGEST',
+        violations: [],
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkflowVersionService,
@@ -257,6 +295,10 @@ describe('WorkflowVersionService', () => {
         { provide: RedisCacheService, useValue: redis },
         { provide: TemplateService, useValue: templateService },
         { provide: ShareService, useValue: shareService },
+        {
+          provide: OrganizationAutonomyPolicyService,
+          useValue: organizationAutonomyPolicyService,
+        },
       ],
     }).compile();
 
@@ -1186,6 +1228,115 @@ describe('WorkflowVersionService', () => {
       const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
 
       expect(result.warnings).toEqual([]);
+    });
+
+    it('存在 canonical 超限自治节点时应阻止发布并返回节点级错误', async () => {
+      const workflow = createAutonomyWorkflow('LLM_SUGGEST', 'canonical');
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy.mockResolvedValueOnce(
+        {
+          autonomyCap: 'RULE_BASED',
+          violations: [
+            {
+              workflowId: WORKFLOW_ID,
+              workflowName: workflow.name,
+              nodeId: 'agent-1',
+              nodeName: 'Planner',
+              rawMode: 'LLM_SUGGEST',
+              canonicalMode: 'LLM_SUGGEST',
+              replacementMode: 'RULE_BASED',
+              source: 'canonical',
+              reasonCode: 'mode_exceeds_cap',
+              message:
+                '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+            },
+          ],
+        },
+      );
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-publish-autonomy-cap',
+        errors: [
+          {
+            field: 'nodes.agent-1.autonomyMode',
+            message: expect.stringContaining('Planner'),
+          },
+        ],
+        extensions: {
+          autonomyCap: 'RULE_BASED',
+          violations: [
+            expect.objectContaining({
+              nodeId: 'agent-1',
+              rawMode: 'LLM_SUGGEST',
+              replacementMode: 'RULE_BASED',
+            }),
+          ],
+        },
+      });
+
+      await expect(publishPromise).rejects.toBeInstanceOf(
+        WorkflowPublishAutonomyCapException,
+      );
+
+      expect(
+        organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy,
+      ).toHaveBeenCalledWith({
+        tenantId: workflow.tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        nodes: workflow.nodes,
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('存在 legacy 超限自治节点时应阻止发布并保留 legacy explain 信息', async () => {
+      const workflow = createAutonomyWorkflow('FULL_AUTO', 'legacy');
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy.mockResolvedValueOnce(
+        {
+          autonomyCap: 'RULE_BASED',
+          violations: [
+            {
+              workflowId: WORKFLOW_ID,
+              workflowName: workflow.name,
+              nodeId: 'agent-1',
+              nodeName: 'Planner',
+              rawMode: 'FULL_AUTO',
+              canonicalMode: 'LLM_SUGGEST',
+              replacementMode: 'RULE_BASED',
+              source: 'legacy',
+              reasonCode: 'mode_exceeds_cap',
+              message:
+                '自治模式 FULL_AUTO 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+            },
+          ],
+        },
+      );
+
+      await expect(service.publish(WORKFLOW_ID, {}, USER_ID)).rejects.toMatchObject({
+        errors: [
+          {
+            field: 'nodes.agent-1.autonomyMode',
+            message: expect.stringContaining('FULL_AUTO'),
+          },
+        ],
+        extensions: {
+          autonomyCap: 'RULE_BASED',
+          violations: [
+            expect.objectContaining({
+              rawMode: 'FULL_AUTO',
+              canonicalMode: 'LLM_SUGGEST',
+              source: 'legacy',
+            }),
+          ],
+        },
+      });
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 

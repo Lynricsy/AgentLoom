@@ -17,6 +17,7 @@ import { InterventionPolicyService } from '../../intervention-policy/interventio
 import { LlmEncryptionService, type EncryptedPayload } from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { DRIZZLE } from '../../../database/database.module';
 import {
   AGENT_TASK_QUEUE,
@@ -84,6 +85,9 @@ const mocks = vi.hoisted(() => ({
   },
   smartRoutingService: {
     recordDecision: vi.fn(),
+  },
+  organizationAutonomyPolicyService: {
+    resolveAutonomyCapForTenant: vi.fn(),
   },
   agentRuntime: {
     createSession: vi.fn(),
@@ -286,6 +290,9 @@ describe('AgentTaskWorker E2EE integration', () => {
     mocks.notificationService.create.mockResolvedValue(undefined);
     mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(false);
     mocks.smartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
+    mocks.organizationAutonomyPolicyService.resolveAutonomyCapForTenant
+      .mockReset()
+      .mockResolvedValue('LLM_SUGGEST');
     mocks.agentRuntime.createSession.mockResolvedValue(makeSession());
     mocks.agentRuntime.loadSession.mockResolvedValue(makeSession());
 
@@ -319,6 +326,10 @@ describe('AgentTaskWorker E2EE integration', () => {
         {
           provide: SmartRoutingService,
           useValue: mocks.smartRoutingService,
+        },
+        {
+          provide: OrganizationAutonomyPolicyService,
+          useValue: mocks.organizationAutonomyPolicyService,
         },
         {
           provide: getQueueToken(AGENT_TASK_QUEUE),

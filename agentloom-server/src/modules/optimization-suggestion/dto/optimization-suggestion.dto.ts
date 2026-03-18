@@ -5,6 +5,7 @@ export const SuggestionStatusSchema = z.enum([
   'pending',
   'applied',
   'dismissed',
+  'blocked',
 ]);
 
 export const SuggestionTypeSchema = z.enum([

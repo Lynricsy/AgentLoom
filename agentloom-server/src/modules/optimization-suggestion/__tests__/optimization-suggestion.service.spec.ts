@@ -10,6 +10,7 @@ import type {
   ToolPruningValue,
   WorkflowDefinition,
 } from '../../../database/schema';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { WorkflowVersionConflictException } from '../../workflow-definition/workflow-version.exceptions';
 import { OptimizationSuggestionService } from '../optimization-suggestion.service';
 
@@ -78,6 +79,7 @@ function createUpdateReturning(result: unknown) {
 function createWorkflowNode(
   config: Record<string, unknown>,
   id = NODE_ID,
+  dataOverrides: Record<string, unknown> = {},
 ): ReactFlowNode {
   return {
     id,
@@ -86,6 +88,7 @@ function createWorkflowNode(
     data: {
       label: 'Agent',
       config,
+      ...dataOverrides,
     },
   };
 }
@@ -158,6 +161,9 @@ describe('OptimizationSuggestionService', () => {
   let service: OptimizationSuggestionService;
   let db: ReturnType<typeof mocks.createMockDb>;
   let txDb: ReturnType<typeof mocks.createMockDb>;
+  let organizationAutonomyPolicyService: {
+    resolveAutonomyCapForTenant: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -166,6 +172,9 @@ describe('OptimizationSuggestionService', () => {
 
     db = mocks.createMockDb();
     txDb = mocks.createMockDb();
+    organizationAutonomyPolicyService = {
+      resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
+    };
 
     mocks.getTenantDb.mockReturnValue(db);
     db.transaction.mockImplementation(async (callback) => callback(txDb));
@@ -176,6 +185,10 @@ describe('OptimizationSuggestionService', () => {
         {
           provide: DRIZZLE,
           useValue: db,
+        },
+        {
+          provide: OrganizationAutonomyPolicyService,
+          useValue: organizationAutonomyPolicyService,
         },
       ],
     }).compile();
@@ -404,11 +417,28 @@ describe('OptimizationSuggestionService', () => {
       const suggestion = createSuggestion({
         suggestionType: 'autonomy_upgrade',
         suggestedValue: {
-          autonomyMode: 'full_autonomy',
+          autonomyMode: 'LLM_SUGGEST',
         } satisfies AutonomyUpgradeValue,
       });
       const workflow = createWorkflowDefinition([
-        createWorkflowNode({ autonomyMode: 'manual' }),
+        createWorkflowNode(
+          {
+            autonomyMode: 'MANUAL_CONFIRM',
+            modelId: 'gpt-4o',
+          },
+          NODE_ID,
+          {
+            autonomyMode: 'RULE_BASED',
+            autonomyConfig: {
+              mode: 'RULE_BASED',
+              confirmationThreshold: 0.6,
+            },
+            settings: {
+              autonomyMode: 'MANUAL_CONFIRM',
+              panel: 'advanced',
+            },
+          },
+        ),
       ]);
       const workflowUpdate = createUpdateReturning([{ id: WORKFLOW_ID }]);
       const suggestionUpdate = createUpdateReturning([
@@ -434,15 +464,109 @@ describe('OptimizationSuggestionService', () => {
       };
       expect(workflowSetPayload.nodes[0]).toMatchObject({
         data: {
-          autonomyMode: 'full_autonomy',
+          autonomyMode: 'LLM_SUGGEST',
           autonomyConfig: {
-            mode: 'full_autonomy',
+            mode: 'LLM_SUGGEST',
+            confirmationThreshold: 0.6,
           },
           config: {
-            autonomyMode: 'full_autonomy',
+            autonomyMode: 'LLM_SUGGEST',
+            modelId: 'gpt-4o',
+          },
+          settings: {
+            autonomyMode: 'LLM_SUGGEST',
+            panel: 'advanced',
           },
         },
       });
+    });
+
+    it('应在 autonomy_upgrade 超出组织上限时将建议标记为 blocked 并拒绝应用', async () => {
+      const suggestion = createSuggestion({
+        suggestionType: 'autonomy_upgrade',
+        suggestedValue: {
+          autonomyMode: 'LLM_SUGGEST',
+        } satisfies AutonomyUpgradeValue,
+      });
+      const workflow = createWorkflowDefinition([
+        createWorkflowNode({ autonomyMode: 'RULE_BASED' }),
+      ]);
+      const blockedSuggestion = createSuggestion({
+        ...suggestion,
+        status: 'blocked',
+        analysisMetadata: {
+          totalRecords: 100,
+          analyzerVersion: '1.0.0',
+          policyBlock: {
+            autonomyCap: 'RULE_BASED',
+            reasonCode: 'mode_exceeds_cap',
+            message:
+              '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+          },
+        },
+      });
+      const blockUpdate = createUpdateReturning([blockedSuggestion]);
+
+      organizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
+        'RULE_BASED',
+      );
+      db.select
+        .mockReturnValueOnce(createSelectWhereResolved([suggestion]))
+        .mockReturnValueOnce(createSelectWhereResolved([workflow]));
+      db.update.mockReturnValue(blockUpdate);
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        status: 422,
+        detail: expect.stringContaining('RULE_BASED'),
+      } as Record<string, unknown>);
+
+      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(blockUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'blocked',
+          analysisMetadata: expect.objectContaining({
+            policyBlock: expect.objectContaining({
+              autonomyCap: 'RULE_BASED',
+              reasonCode: 'mode_exceeds_cap',
+            }),
+          }),
+        }),
+      );
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('应在建议已被策略阻塞时直接拒绝应用', async () => {
+      db.select.mockReturnValue(
+        createSelectWhereResolved([
+          createSuggestion({
+            status: 'blocked',
+            analysisMetadata: {
+              totalRecords: 100,
+              analyzerVersion: '1.0.0',
+              policyBlock: {
+                autonomyCap: 'MANUAL_CONFIRM',
+                reasonCode: 'mode_exceeds_cap',
+                message:
+                  '自治模式 RULE_BASED 超出组织上限 MANUAL_CONFIRM，应降级为 MANUAL_CONFIRM',
+              },
+            },
+          }),
+        ]),
+      );
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        status: 422,
+        detail: expect.stringContaining('MANUAL_CONFIRM'),
+      } as Record<string, unknown>);
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it('建议不存在时应抛出 404 DomainException', async () => {
@@ -627,6 +751,7 @@ describe('OptimizationSuggestionService', () => {
         applied: 1,
         dismissed: 1,
         pending: 1,
+        blocked: 0,
         adoptionRate: 0.5,
         targetRate: 0.5,
         byType: [
@@ -636,6 +761,7 @@ describe('OptimizationSuggestionService', () => {
             applied: 1,
             dismissed: 1,
             pending: 0,
+            blocked: 0,
             adoptionRate: 0.5,
           },
           {
@@ -644,6 +770,7 @@ describe('OptimizationSuggestionService', () => {
             applied: 0,
             dismissed: 0,
             pending: 1,
+            blocked: 0,
             adoptionRate: 0,
           },
         ],
@@ -665,6 +792,7 @@ describe('OptimizationSuggestionService', () => {
         applied: 0,
         dismissed: 0,
         pending: 1,
+        blocked: 0,
         adoptionRate: 0,
         targetRate: 0.5,
         byType: [
@@ -674,6 +802,43 @@ describe('OptimizationSuggestionService', () => {
             applied: 0,
             dismissed: 0,
             pending: 1,
+            blocked: 0,
+            adoptionRate: 0,
+          },
+        ],
+      });
+    });
+
+    it('应将 blocked 建议纳入统计但不计入采纳率分母', async () => {
+      db.select.mockReturnValue(
+        createSelectWhereResolved([
+          {
+            suggestionType: 'autonomy_upgrade',
+            status: 'blocked',
+          },
+          {
+            suggestionType: 'autonomy_upgrade',
+            status: 'pending',
+          },
+        ]),
+      );
+
+      await expect(service.getAdoptionStats()).resolves.toEqual({
+        total: 2,
+        applied: 0,
+        dismissed: 0,
+        pending: 1,
+        blocked: 1,
+        adoptionRate: 0,
+        targetRate: 0.5,
+        byType: [
+          {
+            suggestionType: 'autonomy_upgrade',
+            total: 2,
+            applied: 0,
+            dismissed: 0,
+            pending: 1,
+            blocked: 1,
             adoptionRate: 0,
           },
         ],

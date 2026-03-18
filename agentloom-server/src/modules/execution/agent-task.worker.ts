@@ -56,6 +56,8 @@ import {
 import { AllModelsFallbackExhaustedException } from '../smart-routing/smart-routing.exceptions';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { LlmProviderException } from '../llm/llm.exceptions';
+import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
+import { clampAutonomyModeToCap } from '../agent/autonomy-mode-compat';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -90,6 +92,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly notificationService: NotificationService,
     private readonly llmEncryptionService: LlmEncryptionService,
     private readonly smartRoutingService: SmartRoutingService,
+    private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {
@@ -160,6 +163,10 @@ export class AgentTaskWorker extends WorkerHost {
     let lastStopReason: string | undefined;
     let decision: Record<string, unknown> | undefined;
     let chunkIndex = 0;
+    const effectiveAutonomyMode = await this.resolveEffectiveAutonomyMode(
+      tenantId,
+      nodeData,
+    );
 
     try {
       if (intervention) {
@@ -205,6 +212,7 @@ export class AgentTaskWorker extends WorkerHost {
           chunkIndex,
           startRound: resumedToolLoopState.round,
           existingToolCalls: resumedToolLoopState.toolCalls,
+          effectiveAutonomyMode,
         });
 
         if (loopResult.waitingPermission) {
@@ -239,10 +247,7 @@ export class AgentTaskWorker extends WorkerHost {
               typeof nodeData.systemPrompt === 'string'
                 ? nodeData.systemPrompt
                 : undefined,
-            autonomyMode:
-              typeof nodeData.autonomyMode === 'string'
-                ? nodeData.autonomyMode
-                : undefined,
+            autonomyMode: effectiveAutonomyMode,
             mcpServers,
             context: workflowContext,
           });
@@ -270,6 +275,7 @@ export class AgentTaskWorker extends WorkerHost {
           startRound: 0,
           existingToolCalls:
             this.loadToolLoopStateFromCheckpoint(step).toolCalls,
+          effectiveAutonomyMode,
         });
 
         if (loopResult.waitingPermission) {
@@ -1149,6 +1155,7 @@ export class AgentTaskWorker extends WorkerHost {
     chunkIndex: number;
     startRound: number;
     existingToolCalls: ToolCallEvent[];
+    effectiveAutonomyMode: string;
   }): Promise<{
     waitingPermission: boolean;
     accumulatedContent: string;
@@ -1159,10 +1166,7 @@ export class AgentTaskWorker extends WorkerHost {
     let contentBlocks = params.initialContentBlocks;
     let lastStopReason: string | undefined;
     let toolCalls = [...params.existingToolCalls];
-    const autonomyMode =
-      typeof params.nodeData.autonomyMode === 'string'
-        ? params.nodeData.autonomyMode
-        : 'FULL_AUTO';
+    const autonomyMode = params.effectiveAutonomyMode;
 
     for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
       const roundToolCallIds = new Set<string>();
@@ -1251,7 +1255,7 @@ export class AgentTaskWorker extends WorkerHost {
         break;
       }
 
-      if (autonomyMode === 'FULL_AUTO') {
+      if (autonomyMode === 'LLM_SUGGEST') {
         for (const toolCallId of roundToolCallIds) {
           const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
           if (!currentToolCall || currentToolCall.status !== 'pending') {
@@ -1362,6 +1366,52 @@ export class AgentTaskWorker extends WorkerHost {
       lastStopReason,
       decision,
     };
+  }
+
+  private async resolveEffectiveAutonomyMode(
+    tenantId: string,
+    nodeData: Record<string, unknown>,
+  ): Promise<string> {
+    const rawAutonomyMode = this.resolveRawAutonomyMode(nodeData);
+    const resolvedAutonomyCap =
+      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(
+        tenantId,
+      );
+    const autonomyCap = this.readString(resolvedAutonomyCap) ?? 'LLM_SUGGEST';
+
+    return clampAutonomyModeToCap(rawAutonomyMode, autonomyCap).effectiveMode;
+  }
+
+  private resolveRawAutonomyMode(nodeData: Record<string, unknown>): string {
+    const normalizedNodeData = this.asRecord(nodeData) ?? {};
+    const config = this.asRecord(normalizedNodeData.config) ?? {};
+    const settings = this.asRecord(normalizedNodeData.settings) ?? {};
+    const autonomyConfig = this.asRecord(normalizedNodeData.autonomyConfig) ?? {};
+
+    return (
+      this.readString(
+        normalizedNodeData.autonomyMode,
+        autonomyConfig.mode,
+        settings.autonomyMode,
+        config.autonomyMode,
+      ) ?? 'FULL_AUTO'
+    );
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    return typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private readString(...values: unknown[]): string | null {
+    for (const value of values) {
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+
+    return null;
   }
 
   private resolveNodeName(

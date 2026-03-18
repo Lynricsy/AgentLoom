@@ -17,6 +17,7 @@ import {
 } from '../workflow/dto/workflow-input-schema.dto';
 import { TemplateService } from '../template/template.service';
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
+import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
@@ -46,6 +47,7 @@ import {
 import {
   InvalidStatusTransitionException,
   WorkflowArchivedException,
+  WorkflowPublishAutonomyCapException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
@@ -116,6 +118,7 @@ export class WorkflowVersionService {
     private readonly redisCacheService: RedisCacheService,
     private readonly templateService: TemplateService,
     private readonly shareService: ShareService,
+    private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -829,6 +832,22 @@ export class WorkflowVersionService {
           ? workflow.edges
           : [];
         const warnings = this.validateEdgeTypeCompatibility(nodes, edges);
+        const autonomyPolicyInspection =
+          await this.organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy(
+            {
+              tenantId: workflow.tenantId,
+              workflowId: workflow.id,
+              workflowName: workflow.name,
+              nodes,
+            },
+          );
+
+        if (autonomyPolicyInspection.violations.length > 0) {
+          throw new WorkflowPublishAutonomyCapException(
+            autonomyPolicyInspection.autonomyCap,
+            autonomyPolicyInspection.violations,
+          );
+        }
 
         const publishedAt = new Date();
         const normalizedReleaseNotes = this.normalizeOptionalText(

@@ -53,6 +53,7 @@ function createContext(
     tenantId: '11111111-1111-4111-8111-111111111111',
     workflowDefinitionId: '22222222-2222-4222-8222-222222222222',
     nodeId: 'agent-node-1',
+    autonomyCap: 'LLM_SUGGEST',
     nodeConfig: {
       autonomyMode: 'MANUAL_CONFIRM',
     },
@@ -171,5 +172,28 @@ describe('AutonomyUpgradeAnalyzer', () => {
     expect(result).not.toBeNull();
     expect(result?.currentValue).toEqual({ autonomyMode: 'MANUAL_CONFIRM' });
     expect(result?.suggestedValue).toEqual({ autonomyMode: 'RULE_BASED' });
+  });
+
+  it('应在下一档升级超出组织上限时返回 null', () => {
+    const result = analyzer.analyze(
+      createContext(35, {
+        autonomyCap: 'MANUAL_CONFIRM',
+      }),
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('应将 legacy FULL_AUTO 归一化为最高档并停止继续升级', () => {
+    const result = analyzer.analyze(
+      createContext(40, {
+        autonomyCap: 'RULE_BASED',
+        nodeConfig: {
+          autonomyMode: 'FULL_AUTO',
+        },
+      }),
+    );
+
+    expect(result).toBeNull();
   });
 });

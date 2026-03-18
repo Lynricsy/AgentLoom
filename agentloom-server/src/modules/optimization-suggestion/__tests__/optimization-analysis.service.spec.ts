@@ -15,6 +15,7 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
 
 import type { DrizzleDB } from '../../../database/database.module';
 import type { SuggestionCandidate } from '../analyzers';
+import type { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { OptimizationAnalysisService } from '../optimization-analysis.service';
 
 type MockDb = ReturnType<typeof createMockDb>;
@@ -151,6 +152,9 @@ describe('OptimizationAnalysisService', () => {
   let timeoutAdjustmentAnalyzer: ReturnType<typeof createAnalyzer>;
   let toolPruningAnalyzer: ReturnType<typeof createAnalyzer>;
   let autonomyUpgradeAnalyzer: ReturnType<typeof createAnalyzer>;
+  let organizationAutonomyPolicyService: {
+    resolveAutonomyCapForTenant: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -160,6 +164,9 @@ describe('OptimizationAnalysisService', () => {
     timeoutAdjustmentAnalyzer = createAnalyzer('timeout_adjustment');
     toolPruningAnalyzer = createAnalyzer('tool_pruning');
     autonomyUpgradeAnalyzer = createAnalyzer('autonomy_upgrade');
+    organizationAutonomyPolicyService = {
+      resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
+    };
 
     runInTenantTransaction.mockImplementation(
       async (
@@ -175,6 +182,7 @@ describe('OptimizationAnalysisService', () => {
       timeoutAdjustmentAnalyzer as never,
       toolPruningAnalyzer as never,
       autonomyUpgradeAnalyzer as never,
+      organizationAutonomyPolicyService as unknown as OrganizationAutonomyPolicyService,
     );
   });
 
@@ -637,6 +645,45 @@ describe('OptimizationAnalysisService', () => {
       ]),
     );
     expect(result).toEqual({ analyzed: 1, suggestionsCreated: 4 });
+  });
+
+  it('应将租户自治上限透传给 analyzer 上下文', async () => {
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const insertChain = createInsertChain();
+
+    organizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
+      'RULE_BASED',
+    );
+    autonomyUpgradeAnalyzer.analyze.mockImplementation((context: { autonomyCap: string }) => {
+      expect(context.autonomyCap).toBe('RULE_BASED');
+      return createCandidate('autonomy_upgrade');
+    });
+
+    mockDb.select
+      .mockReturnValueOnce(createSelectChain([{ tenantId }]))
+      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]))
+      .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
+      .mockReturnValueOnce(createSelectChain([createTelemetryRecord('exec-1', 'node-1')]))
+      .mockReturnValueOnce(createSelectChain([createSummaryRecord('exec-1', 'node-1')]))
+      .mockReturnValueOnce(createSelectChain([]));
+
+    mockDb.insert.mockReturnValueOnce(insertChain);
+
+    const result = await service.runAnalysis();
+
+    expect(organizationAutonomyPolicyService.resolveAutonomyCapForTenant).toHaveBeenCalledWith(
+      tenantId,
+    );
+    expect(autonomyUpgradeAnalyzer.analyze).toHaveBeenCalledOnce();
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          suggestionType: 'autonomy_upgrade',
+          suggestedValue: { autonomyMode: 'MANUAL_CONFIRM' },
+        }),
+      ]),
+    );
+    expect(result).toEqual({ analyzed: 1, suggestionsCreated: 1 });
   });
 
   it('应在 telemetry count 查询为空时按 0 处理并跳过节点', async () => {

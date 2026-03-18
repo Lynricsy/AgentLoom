@@ -3,6 +3,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
+import { OrganizationModule } from '../organization/organization.module';
 import { ModelDowngradeAnalyzer } from './analyzers/model-downgrade.analyzer';
 import { TimeoutAdjustmentAnalyzer } from './analyzers/timeout-adjustment.analyzer';
 import { ToolPruningAnalyzer } from './analyzers/tool-pruning.analyzer';
@@ -19,6 +20,7 @@ import { OptimizationSuggestionController } from './optimization-suggestion.cont
 
 @Module({
   imports: [
+    OrganizationModule,
     BullModule.registerQueue({
       name: OPTIMIZATION_ANALYSIS_QUEUE,
       defaultJobOptions,
