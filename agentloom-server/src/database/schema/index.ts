@@ -18,6 +18,11 @@ export {
   type NewOrganizationInvitation,
 } from './organizations.schema';
 export {
+  organizationAutonomyPolicies,
+  type OrganizationAutonomyPolicy,
+  type NewOrganizationAutonomyPolicy,
+} from './org-autonomy-policies.schema';
+export {
   bytea,
   apiKeyStatusEnum,
   llmProviderEnum,
@@ -126,6 +131,24 @@ export {
   type ToolOutput,
 } from './evidence.schema';
 export {
+  evidenceExportJobStatusEnum,
+  evidenceExportJobs,
+  type EvidenceExportFilters,
+  type EvidenceExportJob,
+  type NewEvidenceExportJob,
+} from './evidence-export-jobs.schema';
+export {
+  auditActorTypeEnum,
+  auditLogs,
+  auditLogArchives,
+  type AuditActorType,
+  type AuditLogJson,
+  type AuditLog,
+  type NewAuditLog,
+  type AuditLogArchive,
+  type NewAuditLogArchive,
+} from './audit-logs.schema';
+export {
   workflowTemplates,
   type WorkflowTemplate,
   type NewWorkflowTemplate,
@@ -193,6 +216,7 @@ export {
 } from './platform-api-tokens.schema';
 export {
   createDirectTenantPolicies,
+  createAppendOnlyTenantPolicies,
   createJoinTenantPolicies,
 } from './rls-policies';
 export {

@@ -38,6 +38,23 @@ export function createDirectTenantPolicies(tableName: string) {
   ];
 }
 
+export function createAppendOnlyTenantPolicies(tableName: string) {
+  const tenantCheck = sql`tenant_id = ${getTenantId}`;
+
+  return [
+    pgPolicy(`${tableName}_select_policy`, {
+      for: 'select',
+      to: authenticatedRole,
+      using: tenantCheck,
+    }),
+    pgPolicy(`${tableName}_insert_policy`, {
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: tenantCheck,
+    }),
+  ];
+}
+
 /**
  * 创建通过 JOIN 父表实现的 RLS 策略
  * 适用于没有 tenant_id 列的子表（如 organization_members, organization_invitations）

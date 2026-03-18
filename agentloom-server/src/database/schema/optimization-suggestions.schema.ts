@@ -65,6 +65,7 @@ export const suggestionStatusEnum = pgEnum('suggestion_status', [
   'pending',
   'applied',
   'dismissed',
+  'blocked',
 ]);
 
 export const optimizationSuggestions = pgTable(

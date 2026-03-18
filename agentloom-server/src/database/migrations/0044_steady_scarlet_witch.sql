@@ -1,0 +1,2 @@
+CREATE INDEX "idx_audit_log_archives_tenant_event_created_at" ON "audit_log_archives" USING btree ("tenant_id","event_type","created_at");--> statement-breakpoint
+CREATE INDEX "idx_audit_logs_tenant_event_created_at" ON "audit_logs" USING btree ("tenant_id","event_type","created_at");

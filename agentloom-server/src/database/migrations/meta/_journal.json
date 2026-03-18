@@ -302,6 +302,34 @@
       "when": 1773718170262,
       "tag": "0042_salty_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1773734888824,
+      "tag": "0043_colorful_anita_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1773735785206,
+      "tag": "0044_steady_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1773759282645,
+      "tag": "0045_complete_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1773785182448,
+      "tag": "0046_rich_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }
