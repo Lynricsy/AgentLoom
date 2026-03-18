@@ -1,15 +1,33 @@
+import type { AutonomyMode } from '@/features/canvas/autonomy.types'
+
 export type SuggestionType =
   | 'model_downgrade'
   | 'timeout_adjustment'
   | 'tool_pruning'
   | 'autonomy_upgrade'
 
-export type SuggestionStatus = 'pending' | 'applied' | 'dismissed'
+export type SuggestionStatus = 'pending' | 'applied' | 'dismissed' | 'blocked'
 
 export interface ImpactEstimate {
   costSavingPct?: number
   latencyImpactPct?: number
   reliabilityImpactPct?: number
+}
+
+export interface OptimizationSuggestionPolicyBlock {
+  autonomyCap: AutonomyMode
+  rawMode: string
+  canonicalMode: AutonomyMode
+  replacementMode: AutonomyMode
+  source: string
+  reasonCode: string
+  message: string
+  blockedAt: string
+}
+
+export interface OptimizationSuggestionAnalysisMetadata {
+  policyBlock?: OptimizationSuggestionPolicyBlock | null
+  [key: string]: unknown
 }
 
 export interface OptimizationSuggestion {
@@ -24,7 +42,7 @@ export interface OptimizationSuggestion {
   suggestedValue: Record<string, unknown>
   rationale: string
   impactEstimate?: ImpactEstimate | null
-  analysisMetadata?: Record<string, unknown> | null
+  analysisMetadata?: OptimizationSuggestionAnalysisMetadata | null
   analysisPeriodStart: string
   analysisPeriodEnd: string
   appliedAt?: string | null
@@ -39,6 +57,7 @@ export interface AdoptionStatsByType {
   applied: number
   dismissed: number
   pending: number
+  blocked: number
   adoptionRate: number
 }
 
@@ -47,6 +66,7 @@ export interface AdoptionStats {
   applied: number
   dismissed: number
   pending: number
+  blocked: number
   adoptionRate: number
   targetRate: number
   byType: AdoptionStatsByType[]

@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { HTTPError, type NormalizedOptions } from 'ky'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockUseNodeSuggestions = vi.fn()
@@ -52,6 +53,27 @@ function makeSuggestion(
   }
 }
 
+function createHttpError(payload: Record<string, unknown>, status = 422) {
+  const response = new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+  const request = new Request(
+    'http://localhost/api/v1/optimization-suggestions/sug-1/apply',
+    { method: 'POST' },
+  )
+  const options: NormalizedOptions = {
+    method: 'POST',
+    retry: { limit: 0 },
+    prefixUrl: '',
+    onDownloadProgress: undefined,
+    onUploadProgress: undefined,
+    context: {},
+  }
+
+  return new HTTPError(response, request, options)
+}
+
 describe('OptimizationSuggestionsPanel', () => {
   const applyMutateFn = vi.fn()
   const dismissMutateFn = vi.fn()
@@ -60,6 +82,7 @@ describe('OptimizationSuggestionsPanel', () => {
     canvasState.workflowId = 'wf-1'
     canvasState.isDirty = false
     mockNotify.mockReset()
+    mockUseNodeSuggestions.mockReset()
     applyMutateFn.mockReset()
     dismissMutateFn.mockReset()
     mockUseApplySuggestion.mockReturnValue({ mutate: applyMutateFn })
@@ -142,6 +165,45 @@ describe('OptimizationSuggestionsPanel', () => {
     expect(screen.getAllByTestId('optimization-suggestion-card')).toHaveLength(2)
   })
 
+  it('renders blocked suggestions with explicit policy-block details', () => {
+    mockUseNodeSuggestions.mockReturnValue({
+      data: [
+        makeSuggestion({
+          suggestionType: 'autonomy_upgrade',
+          status: 'blocked',
+          currentValue: { autonomyMode: 'RULE_BASED' },
+          suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
+          analysisMetadata: {
+            policyBlock: {
+              autonomyCap: 'RULE_BASED',
+              rawMode: 'LLM_SUGGEST',
+              canonicalMode: 'LLM_SUGGEST',
+              replacementMode: 'RULE_BASED',
+              source: 'organization_policy',
+              reasonCode: 'AUTONOMY_CAP_EXCEEDED',
+              message: '组织自治上限禁止升级到 LLM 建议。',
+              blockedAt: '2026-03-16T10:00:00Z',
+            },
+          },
+        }),
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+
+    render(
+      <OptimizationSuggestionsPanel
+        workflowDefinitionId="wf-1"
+        nodeId="node-1"
+      />,
+    )
+
+    expect(screen.getByText('已阻断')).toBeInTheDocument()
+    expect(screen.getByText(/组织自治上限禁止升级到 LLM 建议/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '采纳' })).not.toBeInTheDocument()
+  })
+
   it('在画布有未保存修改时阻止采纳并提示用户先保存', async () => {
     const user = userEvent.setup()
     canvasState.isDirty = true
@@ -200,6 +262,70 @@ describe('OptimizationSuggestionsPanel', () => {
       expect.objectContaining({
         title: '优化建议已采纳',
         variant: 'success',
+      }),
+    )
+  })
+
+  it('采纳被组织策略阻断时展示清晰的 422 提示', async () => {
+    const user = userEvent.setup()
+    mockUseNodeSuggestions.mockReturnValue({
+      data: [
+        makeSuggestion({
+          suggestionType: 'autonomy_upgrade',
+          currentValue: { autonomyMode: 'RULE_BASED' },
+          suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
+        }),
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+    applyMutateFn.mockImplementation(
+      (_id: string, options?: { onError?: (error: unknown) => void | Promise<void> }) => {
+        void options?.onError?.(
+          createHttpError({
+            type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+            title: 'Suggestion Blocked By Organization Policy',
+            status: 422,
+            detail: '组织自治上限禁止采纳该建议。',
+            errors: [
+              {
+                field: 'suggestedValue.autonomyMode',
+                message: '组织自治上限禁止采纳该建议。',
+              },
+            ],
+            extensions: {
+              autonomyCap: 'RULE_BASED',
+              replacementMode: 'RULE_BASED',
+              reasonCode: 'AUTONOMY_CAP_EXCEEDED',
+            },
+          }),
+        )
+      },
+    )
+
+    render(
+      <OptimizationSuggestionsPanel
+        workflowDefinitionId="wf-1"
+        nodeId="node-1"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '采纳' }))
+
+    await waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '采纳优化建议失败',
+          description: expect.stringContaining('组织上限：规则补全'),
+          variant: 'error',
+        }),
+      )
+    })
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining('建议改为：规则补全'),
       }),
     )
   })

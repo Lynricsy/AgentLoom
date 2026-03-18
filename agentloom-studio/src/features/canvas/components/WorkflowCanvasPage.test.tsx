@@ -172,6 +172,10 @@ vi.mock('./panels/FieldMappingPanel', () => ({
   ),
 }))
 
+vi.mock('./panels/NodeConfigPanel', () => ({
+  NodeConfigPanel: () => <div data-testid="node-config-panel" />,
+}))
+
 vi.mock('./toolbar/VersionToolbar', () => ({
   VersionToolbar: (props: {
     onOpenPublish: (versionId?: string) => void

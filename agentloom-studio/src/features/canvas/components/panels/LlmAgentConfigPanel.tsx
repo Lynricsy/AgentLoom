@@ -1,7 +1,17 @@
-import { memo, Suspense, lazy, useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useAuthToken } from '@/features/execution'
+import {
+  AUTONOMY_MODES,
+  getAutonomyModeDescription,
+  getAutonomyModeLabel,
+  isAutonomyMode,
+  isAutonomyModeWithinCap,
+} from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
+import { useOrganizationAutonomyPolicy } from '@/features/organization-autonomy-policy/hooks/useOrganizationAutonomyPolicy'
+import { getOrganizationIdFromToken } from '@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
 import { Select } from '@/shared/ui/select'
@@ -15,7 +25,6 @@ import { useCanvasStore } from '../../stores/canvasStore'
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
 
-const AUTONOMY_MODES = ['MANUAL_CONFIRM', 'RULE_BASED', 'LLM_SUGGEST'] as const
 const FALLBACK_STRATEGIES = [
   'REQUIRE_CONFIRMATION',
   'USE_DEFAULT',
@@ -23,29 +32,10 @@ const FALLBACK_STRATEGIES = [
   'ABORT_EXECUTION',
 ] as const
 
-const AUTONOMY_MODE_META: Record<
-  AutonomyMode,
-  {
-    label: string
-    description: string
-    noteClassName: string
-  }
-> = {
-  MANUAL_CONFIRM: {
-    label: '手动确认',
-    description: '缺失输入必须由人工确认后再继续执行，不做自动推断。',
-    noteClassName: 'border-border/60 bg-muted/15 text-muted-foreground',
-  },
-  RULE_BASED: {
-    label: '规则补全',
-    description: '仅按白名单字段进行规则补全，未命中时再走兜底策略。',
-    noteClassName: 'border-primary/20 bg-primary/5 text-muted-foreground',
-  },
-  LLM_SUGGEST: {
-    label: 'LLM 建议',
-    description: 'LLM 可以给出建议，但建议可回退，不构成强承诺，仍可随时撤销或修改。',
-    noteClassName: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-  },
+const AUTONOMY_MODE_NOTE_CLASS_NAMES: Record<AutonomyMode, string> = {
+  MANUAL_CONFIRM: 'border-border/60 bg-muted/15 text-muted-foreground',
+  RULE_BASED: 'border-primary/20 bg-primary/5 text-muted-foreground',
+  LLM_SUGGEST: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
 }
 
 const FALLBACK_STRATEGY_META: Record<
@@ -77,8 +67,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isAutonomyMode(value: unknown): value is AutonomyMode {
-  return AUTONOMY_MODES.includes(value as AutonomyMode)
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
 }
 
 function isFallbackStrategy(value: unknown): value is FallbackStrategy {
@@ -96,26 +86,107 @@ function parseAllowedInferenceFields(value: string): string[] {
   )
 }
 
-function parseAutonomyConfig(value: unknown): AutonomyConfig {
-  if (!isRecord(value)) {
-    return { ...DEFAULT_AUTONOMY_CONFIG }
-  }
+interface ParsedAutonomyConfigResult {
+  config: AutonomyConfig
+  rawMode: string | null
+  hasLegacyMode: boolean
+}
+
+interface AutonomyModeMirrorSources {
+  autonomyMode: unknown
+  autonomyConfig: unknown
+  settings: unknown
+  config: unknown
+}
+
+function resolveAutonomyMode({
+  autonomyMode,
+  autonomyConfig,
+  settings,
+  config,
+}: AutonomyModeMirrorSources): Pick<ParsedAutonomyConfigResult, 'rawMode' | 'hasLegacyMode'> & {
+  mode: AutonomyMode
+} {
+  const normalizedAutonomyConfig = isRecord(autonomyConfig) ? autonomyConfig : {}
+  const normalizedSettings = isRecord(settings) ? settings : {}
+  const normalizedConfig = isRecord(config) ? config : {}
+  const rawModeValue = [
+    autonomyMode,
+    normalizedAutonomyConfig.mode,
+    normalizedSettings.autonomyMode,
+    normalizedConfig.autonomyMode,
+  ].find((value) => value !== undefined && value !== null)
+
+  const rawMode =
+    rawModeValue === undefined || rawModeValue === null
+      ? null
+      : typeof rawModeValue === 'string'
+        ? rawModeValue
+        : String(rawModeValue)
+  const resolvedMode = isAutonomyMode(rawMode) ? rawMode : DEFAULT_AUTONOMY_CONFIG.mode
 
   return {
-    mode: isAutonomyMode(value.mode) ? value.mode : DEFAULT_AUTONOMY_CONFIG.mode,
-    allowedInferenceFields: Array.isArray(value.allowedInferenceFields)
-      ? value.allowedInferenceFields
-          .filter((field): field is string => typeof field === 'string')
-          .map((field) => field.trim())
-          .filter((field) => field.length > 0)
-      : [...DEFAULT_AUTONOMY_CONFIG.allowedInferenceFields],
-    confirmationThreshold:
-      typeof value.confirmationThreshold === 'number' && Number.isFinite(value.confirmationThreshold)
-        ? value.confirmationThreshold
-        : DEFAULT_AUTONOMY_CONFIG.confirmationThreshold,
-    fallbackStrategy: isFallbackStrategy(value.fallbackStrategy)
-      ? value.fallbackStrategy
-      : DEFAULT_AUTONOMY_CONFIG.fallbackStrategy,
+    mode: resolvedMode,
+    rawMode,
+    hasLegacyMode: rawMode !== null && !isAutonomyMode(rawMode),
+  }
+}
+
+function parseAutonomyConfig({ autonomyConfig, ...modeSources }: AutonomyModeMirrorSources): ParsedAutonomyConfigResult {
+  const normalizedAutonomyConfig = isRecord(autonomyConfig) ? autonomyConfig : {}
+  const resolvedMode = resolveAutonomyMode({
+    autonomyConfig: normalizedAutonomyConfig,
+    ...modeSources,
+  })
+
+  return {
+    config: {
+      mode: resolvedMode.mode,
+      allowedInferenceFields: Array.isArray(normalizedAutonomyConfig.allowedInferenceFields)
+        ? normalizedAutonomyConfig.allowedInferenceFields
+            .filter((field): field is string => typeof field === 'string')
+            .map((field) => field.trim())
+            .filter((field) => field.length > 0)
+        : [...DEFAULT_AUTONOMY_CONFIG.allowedInferenceFields],
+      confirmationThreshold:
+        typeof normalizedAutonomyConfig.confirmationThreshold === 'number' &&
+        Number.isFinite(normalizedAutonomyConfig.confirmationThreshold)
+          ? normalizedAutonomyConfig.confirmationThreshold
+          : DEFAULT_AUTONOMY_CONFIG.confirmationThreshold,
+      fallbackStrategy: isFallbackStrategy(normalizedAutonomyConfig.fallbackStrategy)
+        ? normalizedAutonomyConfig.fallbackStrategy
+        : DEFAULT_AUTONOMY_CONFIG.fallbackStrategy,
+    },
+    rawMode: resolvedMode.rawMode,
+    hasLegacyMode: resolvedMode.hasLegacyMode,
+  }
+}
+
+function buildAutosavePatch({
+  autonomyConfig,
+  config,
+  settings,
+}: Pick<AutonomyModeMirrorSources, 'autonomyConfig' | 'config' | 'settings'>, values: LlmAgentFormValues) {
+  const nextAutonomyConfig = buildAutonomyConfig(values)
+  const nextAutonomyMode = nextAutonomyConfig.mode
+
+  return {
+    autonomyMode: nextAutonomyMode,
+    autonomyConfig: {
+      ...asRecord(autonomyConfig),
+      ...nextAutonomyConfig,
+      mode: nextAutonomyMode,
+    },
+    config: {
+      ...asRecord(config),
+      systemPrompt: values.systemPrompt ?? '',
+      outputSchemaTitle: values.outputSchemaTitle ?? '',
+      autonomyMode: nextAutonomyMode,
+    },
+    settings: {
+      ...asRecord(settings),
+      autonomyMode: nextAutonomyMode,
+    },
   }
 }
 
@@ -252,7 +323,27 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
   onApply,
   onValidationChange,
 }: LlmAgentConfigPanelProps) {
+  const authToken = useAuthToken()
+  const organizationId = useMemo(() => getOrganizationIdFromToken(authToken) ?? undefined, [authToken])
+  const { data: organizationAutonomyPolicy } = useOrganizationAutonomyPolicy(organizationId, {
+    enabled: Boolean(organizationId),
+  })
+  const autonomyCap = organizationAutonomyPolicy?.autonomyCap
+
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
+  const selectedAutonomyModeSource = useCanvasStore((state) => {
+    const selectedNodeId = state.selectedNodeId
+    if (!selectedNodeId) {
+      return null
+    }
+
+    const selectedNode = state.nodes.find((node) => node.id === selectedNodeId)
+    if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+      return null
+    }
+
+    return 'autonomyMode' in selectedNode.data ? selectedNode.data.autonomyMode : null
+  })
   const selectedAutonomyConfigSource = useCanvasStore((state) => {
     const selectedNodeId = state.selectedNodeId
     if (!selectedNodeId) {
@@ -266,10 +357,30 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
 
     return 'autonomyConfig' in selectedNode.data ? selectedNode.data.autonomyConfig : null
   })
-  const selectedAutonomyConfig = useMemo(
-    () => parseAutonomyConfig(selectedAutonomyConfigSource),
-    [selectedAutonomyConfigSource],
+  const selectedSettingsSource = useCanvasStore((state) => {
+    const selectedNodeId = state.selectedNodeId
+    if (!selectedNodeId) {
+      return null
+    }
+
+    const selectedNode = state.nodes.find((node) => node.id === selectedNodeId)
+    if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+      return null
+    }
+
+    return 'settings' in selectedNode.data ? selectedNode.data.settings : null
+  })
+  const parsedAutonomyConfig = useMemo(
+    () =>
+      parseAutonomyConfig({
+        autonomyMode: selectedAutonomyModeSource,
+        autonomyConfig: selectedAutonomyConfigSource,
+        settings: selectedSettingsSource,
+        config,
+      }),
+    [config, selectedAutonomyConfigSource, selectedAutonomyModeSource, selectedSettingsSource],
   )
+  const selectedAutonomyConfig = parsedAutonomyConfig.config
 
   const defaultValues = useMemo(
     () => buildFormValues(config, selectedAutonomyConfig),
@@ -304,10 +415,29 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
     control,
     name: 'systemPrompt',
   })
+  const legacyModeResetKey = `${selectedNodeId ?? '__none__'}:${parsedAutonomyConfig.rawMode ?? '__none__'}`
 
   const hiddenDraftsRef = useRef<HiddenAutonomyDraftValues>(extractHiddenDraftValues(defaultValues))
   const lastSelectedNodeIdRef = useRef<string | null>(selectedNodeId)
   const didMountRef = useRef(false)
+  const [legacyModeAcknowledged, setLegacyModeAcknowledged] = useState(
+    !parsedAutonomyConfig.hasLegacyMode,
+  )
+  const legacyModeAcknowledgedRef = useRef(legacyModeAcknowledged)
+
+  useEffect(() => {
+    legacyModeAcknowledgedRef.current = legacyModeAcknowledged
+  }, [legacyModeAcknowledged])
+
+  useEffect(() => {
+    if (!legacyModeResetKey) {
+      return
+    }
+
+    const nextAcknowledged = !parsedAutonomyConfig.hasLegacyMode
+    legacyModeAcknowledgedRef.current = nextAcknowledged
+    setLegacyModeAcknowledged(nextAcknowledged)
+  }, [legacyModeResetKey, parsedAutonomyConfig.hasLegacyMode])
 
   useEffect(() => {
     const nextValues = currentValues ?? defaultValues
@@ -365,13 +495,24 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
 
         const nextValues = parsed.data
 
-        onApplyRef.current({
-          config: {
-            systemPrompt: nextValues.systemPrompt ?? '',
-            outputSchemaTitle: nextValues.outputSchemaTitle ?? '',
-          },
-          autonomyConfig: buildAutonomyConfig(nextValues),
-        })
+        if (autonomyCap && !isAutonomyModeWithinCap(nextValues.mode, autonomyCap)) {
+          return
+        }
+
+        if (parsedAutonomyConfig.hasLegacyMode && !legacyModeAcknowledgedRef.current) {
+          return
+        }
+
+        onApplyRef.current(
+          buildAutosavePatch(
+            {
+              autonomyConfig: selectedAutonomyConfigSource,
+              config,
+              settings: selectedSettingsSource,
+            },
+            nextValues,
+          ),
+        )
       }, 300)
     })
 
@@ -382,10 +523,24 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
         clearTimeout(activeTimer)
       }
     }
-  }, [getValues, watch])
+  }, [
+    autonomyCap,
+    config,
+    getValues,
+    parsedAutonomyConfig.hasLegacyMode,
+    selectedAutonomyConfigSource,
+    selectedSettingsSource,
+    watch,
+  ])
 
-  const hasErrors =
+  const selectedMode = mode ?? DEFAULT_AUTONOMY_CONFIG.mode
+  const hasFormErrors =
     Object.keys(errors).length > 0 || !llmAgentSchema.safeParse(currentValues ?? defaultValues).success
+  const isCurrentModeBlockedByPolicy =
+    autonomyCap != null && !isAutonomyModeWithinCap(selectedMode, autonomyCap)
+  const hasLegacyModeBlockingSave = parsedAutonomyConfig.hasLegacyMode && !legacyModeAcknowledged
+  const hasErrors = hasFormErrors || isCurrentModeBlockedByPolicy || hasLegacyModeBlockingSave
+
   useEffect(() => {
     onValidationChange?.(hasErrors)
   }, [hasErrors, onValidationChange])
@@ -405,16 +560,66 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
     void trigger('confirmationThresholdInput')
   }, [trigger])
 
+  const acknowledgeLegacyMode = useCallback(() => {
+    if (!parsedAutonomyConfig.hasLegacyMode) {
+      return
+    }
+
+    setLegacyModeAcknowledged(true)
+  }, [parsedAutonomyConfig.hasLegacyMode])
+
   const handleModeChange = useCallback(
-    (nextMode: AutonomyMode, onChange: (value: AutonomyMode) => void) => {
+    (
+      nextMode: AutonomyMode,
+      currentMode: AutonomyMode,
+      onChange: (value: AutonomyMode) => void,
+    ) => {
+      acknowledgeLegacyMode()
+
+      if (autonomyCap && !isAutonomyModeWithinCap(nextMode, autonomyCap) && nextMode !== currentMode) {
+        return
+      }
+
       onChange(nextMode)
     },
-    [],
+    [acknowledgeLegacyMode, autonomyCap],
   )
 
   const confirmationThresholdRegistration = register('confirmationThresholdInput')
 
-  const modeMeta = AUTONOMY_MODE_META[mode ?? DEFAULT_AUTONOMY_CONFIG.mode]
+  const modeMeta = useMemo(
+    () => ({
+      label: getAutonomyModeLabel(selectedMode),
+      description: getAutonomyModeDescription(selectedMode),
+      noteClassName: AUTONOMY_MODE_NOTE_CLASS_NAMES[selectedMode],
+    }),
+    [selectedMode],
+  )
+  const blockedModes = useMemo(
+    () =>
+      autonomyCap
+        ? AUTONOMY_MODES.filter((autonomyMode) => !isAutonomyModeWithinCap(autonomyMode, autonomyCap))
+        : [],
+    [autonomyCap],
+  )
+  const organizationCapMessage = autonomyCap
+    ? `组织自治上限：${getAutonomyModeLabel(autonomyCap)}。${getAutonomyModeDescription(autonomyCap)}`
+    : null
+  const blockedModesMessage =
+    autonomyCap && blockedModes.length > 0
+      ? `高于该上限的模式不可新选：${blockedModes.map((autonomyMode) => getAutonomyModeLabel(autonomyMode)).join('、')}。`
+      : null
+  const legacyModeMessage = parsedAutonomyConfig.hasLegacyMode
+    ? `检测到历史自主模式“${parsedAutonomyConfig.rawMode ?? '未知模式'}”。当前表单按“${getAutonomyModeLabel(selectedMode)}”呈现；重新保存后会迁移为该模式。`
+    : null
+  const blockedCurrentModeMessage =
+    autonomyCap && isCurrentModeBlockedByPolicy
+      ? `当前节点仍配置为“${getAutonomyModeLabel(selectedMode)}”，高于组织自治上限“${getAutonomyModeLabel(autonomyCap)}”。请先降级到允许范围后再保存。`
+      : null
+  const modeFieldErrorMessage =
+    blockedCurrentModeMessage ?? (hasLegacyModeBlockingSave ? legacyModeMessage ?? undefined : undefined)
+  const manualModeHiddenFieldError =
+    errors.allowedInferenceFieldsText?.message ?? errors.fallbackStrategy?.message
 
   return (
     <div className="space-y-4 px-4 py-4" data-testid="llm-agent-config-panel">
@@ -491,28 +696,69 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
               aria-label="自主模式"
               id="llm-agent-autonomy-mode"
               value={field.value}
-              onValueChange={(value) => handleModeChange(value as AutonomyMode, field.onChange)}
-              onBlur={field.onBlur}
+              onValueChange={(value) =>
+                handleModeChange(value as AutonomyMode, field.value, field.onChange)
+              }
+              onBlur={() => {
+                acknowledgeLegacyMode()
+                field.onBlur()
+              }}
               data-testid="llm-agent-autonomy-mode-select"
             >
-              {AUTONOMY_MODES.map((autonomyMode) => (
-                <option key={autonomyMode} value={autonomyMode}>
-                  {AUTONOMY_MODE_META[autonomyMode].label}
-                </option>
-              ))}
+              {AUTONOMY_MODES.map((autonomyMode) => {
+                const isBlockedByPolicy =
+                  autonomyCap != null && !isAutonomyModeWithinCap(autonomyMode, autonomyCap)
+
+                return (
+                  <option
+                    key={autonomyMode}
+                    value={autonomyMode}
+                    disabled={isBlockedByPolicy && autonomyMode !== field.value}
+                  >
+                    {getAutonomyModeLabel(autonomyMode)}
+                    {isBlockedByPolicy ? '（受组织策略限制）' : ''}
+                  </option>
+                )
+              })}
             </Select>
           )}
         />
+
+        {organizationCapMessage ? (
+          <div
+            className="rounded-md border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground"
+            data-testid="llm-agent-autonomy-cap-notice"
+          >
+            <p>{organizationCapMessage}</p>
+            {blockedModesMessage ? <p className="mt-1">{blockedModesMessage}</p> : null}
+          </div>
+        ) : null}
+
+        {legacyModeMessage ? (
+          <div
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+            data-testid="llm-agent-autonomy-legacy-warning"
+          >
+            {legacyModeMessage}
+          </div>
+        ) : null}
+
+        {blockedCurrentModeMessage ? (
+          <div
+            className="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-xs text-error"
+            data-testid="llm-agent-autonomy-policy-warning"
+          >
+            {blockedCurrentModeMessage}
+          </div>
+        ) : null}
 
         <div className={`rounded-md border px-3 py-2 text-xs ${modeMeta.noteClassName}`}>
           {modeMeta.description}
         </div>
 
-        {mode === 'MANUAL_CONFIRM' ? (
-          <FieldError
-            message={errors.allowedInferenceFieldsText?.message ?? errors.fallbackStrategy?.message}
-          />
-        ) : null}
+        <FieldError message={modeFieldErrorMessage} />
+
+        {mode === 'MANUAL_CONFIRM' ? <FieldError message={manualModeHiddenFieldError} /> : null}
 
         {mode !== 'MANUAL_CONFIRM' ? (
           <div>

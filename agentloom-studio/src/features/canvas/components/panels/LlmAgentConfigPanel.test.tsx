@@ -6,6 +6,35 @@ import { useCanvasStore } from '../../stores/canvasStore'
 import { clonePortDefinitions, getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
 
+const {
+  mockUseAuthToken,
+  mockGetOrganizationIdFromToken,
+  mockUseOrganizationAutonomyPolicy,
+} = vi.hoisted(() => ({
+  mockUseAuthToken: vi.fn(),
+  mockGetOrganizationIdFromToken: vi.fn(),
+  mockUseOrganizationAutonomyPolicy: vi.fn(),
+}))
+
+vi.mock('@/features/execution', () => ({
+  useAuthToken: () => mockUseAuthToken(),
+}))
+
+vi.mock('@/features/organization-autonomy-policy/hooks/useOrganizationAutonomyPolicy', () => ({
+  useOrganizationAutonomyPolicy: (...args: unknown[]) => mockUseOrganizationAutonomyPolicy(...args),
+}))
+
+vi.mock('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions')
+  >('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions')
+
+  return {
+    ...actual,
+    getOrganizationIdFromToken: (...args: unknown[]) => mockGetOrganizationIdFromToken(...args),
+  }
+})
+
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     value,
@@ -24,36 +53,58 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }))
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
 function createSelectedAgentNode(
-  autonomyConfig: AutonomyConfig = DEFAULT_AUTONOMY_CONFIG,
+  autonomyConfig: AutonomyConfig | Record<string, unknown> = DEFAULT_AUTONOMY_CONFIG,
   config: Record<string, unknown> = {},
+  dataOverride: Partial<CanvasNode['data']> = {},
 ): CanvasNode {
   const llmAgentType = getNodeTypeConfig('llm-agent')
+  const defaultAgentData = createDefaultAgentNodeData()
+  const baseData: CanvasNode['data'] = {
+    label: llmAgentType.label,
+    nodeType: llmAgentType.type,
+    category: llmAgentType.category,
+    description: llmAgentType.description,
+    config: { ...config },
+    inputPorts: clonePortDefinitions(llmAgentType.inputPorts),
+    outputPorts: clonePortDefinitions(llmAgentType.outputPorts),
+    ...defaultAgentData,
+    autonomyConfig: {
+      ...defaultAgentData.autonomyConfig,
+      ...asRecord(autonomyConfig),
+    },
+  }
 
   return {
     id: 'node-1',
     type: 'agent',
     position: { x: 0, y: 0 },
     data: {
-      label: llmAgentType.label,
-      nodeType: llmAgentType.type,
-      category: llmAgentType.category,
-      description: llmAgentType.description,
-      config,
-      inputPorts: clonePortDefinitions(llmAgentType.inputPorts),
-      outputPorts: clonePortDefinitions(llmAgentType.outputPorts),
-      ...createDefaultAgentNodeData(),
-      autonomyConfig: { ...autonomyConfig },
+      ...baseData,
+      ...dataOverride,
+      config: Object.assign({}, asRecord(baseData.config), asRecord(dataOverride.config)),
+      autonomyConfig: Object.assign(
+        {},
+        asRecord(baseData.autonomyConfig),
+        asRecord(dataOverride.autonomyConfig),
+      ),
     },
   }
 }
 
 function setSelectedAgentNode(
-  autonomyConfig: AutonomyConfig = DEFAULT_AUTONOMY_CONFIG,
+  autonomyConfig: AutonomyConfig | Record<string, unknown> = DEFAULT_AUTONOMY_CONFIG,
   config: Record<string, unknown> = {},
+  dataOverride: Partial<CanvasNode['data']> = {},
 ) {
   useCanvasStore.setState({
-    nodes: [createSelectedAgentNode(autonomyConfig, config)],
+    nodes: [createSelectedAgentNode(autonomyConfig, config, dataOverride)],
     selectedNodeId: 'node-1',
   })
 }
@@ -78,6 +129,9 @@ function StoreBackedLlmAgentConfigPanel() {
 describe('LlmAgentConfigPanel', () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset()
+    mockUseAuthToken.mockReturnValue(undefined)
+    mockGetOrganizationIdFromToken.mockReturnValue(undefined)
+    mockUseOrganizationAutonomyPolicy.mockReturnValue({ data: undefined })
   })
 
   afterEach(() => {
@@ -179,6 +233,91 @@ describe('LlmAgentConfigPanel', () => {
     expect(screen.getByText(/建议可回退，不构成强承诺/)).toBeInTheDocument()
   })
 
+  it('reads autonomy mode using top-level mirror precedence over nested mirrors', async () => {
+    setSelectedAgentNode(
+      {
+        mode: 'RULE_BASED',
+        allowedInferenceFields: ['context.summary'],
+        confirmationThreshold: 0.64,
+        fallbackStrategy: 'USE_DEFAULT',
+      },
+      {
+        systemPrompt: '请总结上下文',
+        outputSchemaTitle: 'SummarySchema',
+        autonomyMode: 'MANUAL_CONFIRM',
+      },
+      {
+        autonomyMode: 'LLM_SUGGEST',
+        settings: {
+          autonomyMode: 'MANUAL_CONFIRM',
+        },
+      },
+    )
+
+    await act(async () => {
+      render(
+        <LlmAgentConfigPanel
+          config={{
+            systemPrompt: '请总结上下文',
+            outputSchemaTitle: 'SummarySchema',
+            autonomyMode: 'MANUAL_CONFIRM',
+          }}
+          onApply={vi.fn()}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('LLM_SUGGEST')
+    })
+    expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.summary')
+    expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.64)
+    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+  })
+
+  it('falls back from settings.autonomyMode to config.autonomyMode when higher-priority mirrors are absent', async () => {
+    setSelectedAgentNode(
+      {
+        mode: undefined,
+        allowedInferenceFields: ['context.summary'],
+        confirmationThreshold: 0.64,
+        fallbackStrategy: 'USE_DEFAULT',
+      },
+      {
+        systemPrompt: '请总结上下文',
+        outputSchemaTitle: 'SummarySchema',
+        autonomyMode: 'LLM_SUGGEST',
+      },
+      {
+        settings: {
+          autonomyMode: 'RULE_BASED',
+        },
+      },
+    )
+
+    await act(async () => {
+      render(
+        <LlmAgentConfigPanel
+          config={{
+            systemPrompt: '请总结上下文',
+            outputSchemaTitle: 'SummarySchema',
+            autonomyMode: 'LLM_SUGGEST',
+          }}
+          onApply={vi.fn()}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('RULE_BASED')
+    })
+    expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.summary')
+    expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+  })
+
   it('shows and hides autonomy fields dynamically when switching modes', async () => {
     setSelectedAgentNode(DEFAULT_AUTONOMY_CONFIG)
 
@@ -217,6 +356,193 @@ describe('LlmAgentConfigPanel', () => {
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '兜底策略' })).toBeInTheDocument()
     expect(screen.getByText(/建议可回退，不构成强承诺/)).toBeInTheDocument()
+  })
+
+  it('shows the organization cap and disables higher autonomy options', async () => {
+    mockUseAuthToken.mockReturnValue('owner-token')
+    mockGetOrganizationIdFromToken.mockReturnValue('org-1')
+    mockUseOrganizationAutonomyPolicy.mockReturnValue({
+      data: {
+        organizationId: 'org-1',
+        autonomyCap: 'RULE_BASED',
+        version: 3,
+        violationSummary: { workflowCount: 0, nodeCount: 0 },
+      },
+    })
+    setSelectedAgentNode(DEFAULT_AUTONOMY_CONFIG)
+
+    await act(async () => {
+      render(
+        <LlmAgentConfigPanel
+          config={{
+            systemPrompt: '',
+            outputSchemaTitle: '',
+          }}
+          onApply={vi.fn()}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('llm-agent-autonomy-cap-notice')).toHaveTextContent(
+      '组织自治上限：规则补全',
+    )
+    expect(
+      screen.getByRole('option', { name: 'LLM 建议（受组织策略限制）' }),
+    ).toBeDisabled()
+    expect(screen.getByRole('option', { name: '规则补全' })).not.toBeDisabled()
+  })
+
+  it('keeps stale over-cap modes visible and blocks autosave until downgraded', async () => {
+    vi.useFakeTimers()
+    const onApply = vi.fn()
+    const onValidationChange = vi.fn()
+
+    mockUseAuthToken.mockReturnValue('owner-token')
+    mockGetOrganizationIdFromToken.mockReturnValue('org-1')
+    mockUseOrganizationAutonomyPolicy.mockReturnValue({
+      data: {
+        organizationId: 'org-1',
+        autonomyCap: 'RULE_BASED',
+        version: 3,
+        violationSummary: { workflowCount: 1, nodeCount: 1 },
+      },
+    })
+
+    setSelectedAgentNode(
+      {
+        mode: 'LLM_SUGGEST',
+        allowedInferenceFields: ['context.topic'],
+        confirmationThreshold: 0.55,
+        fallbackStrategy: 'USE_DEFAULT',
+      },
+      {
+        systemPrompt: '先建议，再等待确认',
+        outputSchemaTitle: 'SuggestionSchema',
+      },
+    )
+
+    render(
+      <LlmAgentConfigPanel
+        config={{
+          systemPrompt: '先建议，再等待确认',
+          outputSchemaTitle: 'SuggestionSchema',
+        }}
+        onApply={onApply}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('LLM_SUGGEST')
+    expect(screen.getByTestId('llm-agent-autonomy-policy-warning')).toHaveTextContent(
+      '高于组织自治上限“规则补全”',
+    )
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: 'outputSchemaTitle' }), {
+        target: { value: 'ChangedSchema' },
+      })
+      await Promise.resolve()
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(onApply).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: '自主模式' }), {
+        target: { value: 'RULE_BASED' },
+      })
+      await Promise.resolve()
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    expect(onApply).toHaveBeenLastCalledWith({
+      autonomyMode: 'RULE_BASED',
+      settings: {
+        autonomyMode: 'RULE_BASED',
+      },
+      config: {
+        systemPrompt: '先建议，再等待确认',
+        outputSchemaTitle: 'ChangedSchema',
+        autonomyMode: 'RULE_BASED',
+      },
+      autonomyConfig: {
+        mode: 'RULE_BASED',
+        allowedInferenceFields: ['context.topic'],
+        confirmationThreshold: DEFAULT_AUTONOMY_CONFIG.confirmationThreshold,
+        fallbackStrategy: 'USE_DEFAULT',
+      },
+    })
+  })
+
+  it('surfaces legacy raw modes and requires explicit acknowledgement before saving', async () => {
+    vi.useFakeTimers()
+    const onApply = vi.fn()
+    const onValidationChange = vi.fn()
+
+    setSelectedAgentNode(
+      {
+        mode: 'LLM_DECIDE',
+        allowedInferenceFields: ['context.topic'],
+        confirmationThreshold: 0.61,
+        fallbackStrategy: 'USE_DEFAULT',
+      },
+      {
+        systemPrompt: '历史模式节点',
+        outputSchemaTitle: 'LegacySchema',
+      },
+    )
+
+    render(
+      <LlmAgentConfigPanel
+        config={{
+          systemPrompt: '历史模式节点',
+          outputSchemaTitle: 'LegacySchema',
+        }}
+        onApply={onApply}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    expect(screen.getByTestId('llm-agent-autonomy-legacy-warning')).toHaveTextContent(
+      '检测到历史自主模式“LLM_DECIDE”',
+    )
+    expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('MANUAL_CONFIRM')
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+
+    await act(async () => {
+      fireEvent.blur(screen.getByRole('combobox', { name: '自主模式' }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'outputSchemaTitle' }), {
+        target: { value: 'LegacySchemaV2' },
+      })
+      await Promise.resolve()
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    expect(onApply).toHaveBeenLastCalledWith({
+      autonomyMode: 'MANUAL_CONFIRM',
+      settings: {
+        autonomyMode: 'MANUAL_CONFIRM',
+      },
+      config: {
+        systemPrompt: '历史模式节点',
+        outputSchemaTitle: 'LegacySchemaV2',
+        autonomyMode: 'MANUAL_CONFIRM',
+      },
+      autonomyConfig: DEFAULT_AUTONOMY_CONFIG,
+    })
   })
 
   it('preserves llm-suggest draft values across MANUAL_CONFIRM round-trips within the open form', async () => {
@@ -305,9 +631,14 @@ describe('LlmAgentConfigPanel', () => {
     })
 
     expect(onApply).toHaveBeenLastCalledWith({
+      autonomyMode: 'MANUAL_CONFIRM',
+      settings: {
+        autonomyMode: 'MANUAL_CONFIRM',
+      },
       config: {
         systemPrompt: '先建议，再等待确认',
         outputSchemaTitle: 'SuggestionSchema',
+        autonomyMode: 'MANUAL_CONFIRM',
       },
       autonomyConfig: DEFAULT_AUTONOMY_CONFIG,
     })
@@ -335,6 +666,12 @@ describe('LlmAgentConfigPanel', () => {
       {
         systemPrompt: '先建议，再等待确认',
         outputSchemaTitle: 'SuggestionSchema',
+        temperature: 0.2,
+      },
+      {
+        settings: {
+          panelCollapsed: true,
+        },
       },
     )
 
@@ -351,7 +688,18 @@ describe('LlmAgentConfigPanel', () => {
       vi.advanceTimersByTime(300)
     })
 
+    expect(useCanvasStore.getState().nodes[0]?.data.autonomyMode).toBe('MANUAL_CONFIRM')
     expect(useCanvasStore.getState().nodes[0]?.data.autonomyConfig).toEqual(DEFAULT_AUTONOMY_CONFIG)
+    expect(useCanvasStore.getState().nodes[0]?.data.config).toMatchObject({
+      systemPrompt: '先建议，再等待确认',
+      outputSchemaTitle: 'SuggestionSchema',
+      temperature: 0.2,
+      autonomyMode: 'MANUAL_CONFIRM',
+    })
+    expect(useCanvasStore.getState().nodes[0]?.data.settings).toEqual({
+      panelCollapsed: true,
+      autonomyMode: 'MANUAL_CONFIRM',
+    })
 
     await act(async () => {
       fireEvent.change(modeSelect, { target: { value: 'LLM_SUGGEST' } })
@@ -432,20 +780,33 @@ describe('LlmAgentConfigPanel', () => {
     expect(onApply).not.toHaveBeenCalled()
   })
 
-  it('keeps existing fields autosave behavior while writing a full autonomyConfig payload', async () => {
+  it('keeps existing fields autosave behavior while writing all autonomy mirrors and preserving unrelated fields', async () => {
     vi.useFakeTimers()
     const onApply = vi.fn()
 
-    setSelectedAgentNode(DEFAULT_AUTONOMY_CONFIG, {
-      systemPrompt: '初始系统提示词',
-      outputSchemaTitle: 'InitialSchema',
-    })
+    setSelectedAgentNode(
+      {
+        ...DEFAULT_AUTONOMY_CONFIG,
+        customFlag: 'keep-me',
+      },
+      {
+        systemPrompt: '初始系统提示词',
+        outputSchemaTitle: 'InitialSchema',
+        temperature: 0.7,
+      },
+      {
+        settings: {
+          persistMe: true,
+        },
+      },
+    )
 
     render(
       <LlmAgentConfigPanel
         config={{
           systemPrompt: '初始系统提示词',
           outputSchemaTitle: 'InitialSchema',
+          temperature: 0.7,
         }}
         onApply={onApply}
       />,
@@ -468,11 +829,21 @@ describe('LlmAgentConfigPanel', () => {
     })
 
     expect(onApply).toHaveBeenLastCalledWith({
+      autonomyMode: 'MANUAL_CONFIRM',
+      settings: {
+        persistMe: true,
+        autonomyMode: 'MANUAL_CONFIRM',
+      },
       config: {
         systemPrompt: '初始系统提示词',
         outputSchemaTitle: 'UpdatedSchema',
+        temperature: 0.7,
+        autonomyMode: 'MANUAL_CONFIRM',
       },
-      autonomyConfig: DEFAULT_AUTONOMY_CONFIG,
+      autonomyConfig: {
+        ...DEFAULT_AUTONOMY_CONFIG,
+        customFlag: 'keep-me',
+      },
     })
   })
 })

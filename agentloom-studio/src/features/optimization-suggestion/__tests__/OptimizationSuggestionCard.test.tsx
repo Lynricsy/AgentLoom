@@ -118,6 +118,43 @@ describe('OptimizationSuggestionCard', () => {
     expect(screen.queryByText('忽略')).not.toBeInTheDocument()
   })
 
+  it('shows blocked badge and policy-block reason without apply actions', () => {
+    const suggestion = makeSuggestion({
+      suggestionType: 'autonomy_upgrade',
+      status: 'blocked',
+      currentValue: { autonomyMode: 'RULE_BASED' },
+      suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
+      analysisMetadata: {
+        policyBlock: {
+          autonomyCap: 'RULE_BASED',
+          rawMode: 'LLM_SUGGEST',
+          canonicalMode: 'LLM_SUGGEST',
+          replacementMode: 'RULE_BASED',
+          source: 'organization_policy',
+          reasonCode: 'AUTONOMY_CAP_EXCEEDED',
+          message: '组织自治上限禁止升级到 LLM 建议。',
+          blockedAt: '2026-03-16T10:00:00Z',
+        },
+      },
+    })
+
+    render(
+      <OptimizationSuggestionCard
+        suggestion={suggestion}
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('已阻断')).toBeInTheDocument()
+    expect(screen.getByTestId('optimization-suggestion-policy-block')).toHaveTextContent(
+      '组织自治上限禁止升级到 LLM 建议。',
+    )
+    expect(screen.getByText(/组织上限：规则补全/)).toBeInTheDocument()
+    expect(screen.queryByText('采纳')).not.toBeInTheDocument()
+    expect(screen.queryByText('忽略')).not.toBeInTheDocument()
+  })
+
   it('shows impact estimates', () => {
     const suggestion = makeSuggestion({
       impactEstimate: {
@@ -201,8 +238,8 @@ describe('OptimizationSuggestionCard', () => {
     )
 
     expect(screen.getByText('自主升级')).toBeInTheDocument()
-    expect(screen.getByText('MANUAL_CONFIRM')).toBeInTheDocument()
-    expect(screen.getByText('LLM_SUGGEST')).toBeInTheDocument()
+    expect(screen.getByText('手动确认')).toBeInTheDocument()
+    expect(screen.getByText('LLM 建议')).toBeInTheDocument()
     expect(screen.queryByText('LEGACY_CURRENT_MODE')).not.toBeInTheDocument()
     expect(screen.queryByText('LEGACY_SUGGESTED_MODE')).not.toBeInTheDocument()
   })
@@ -222,7 +259,7 @@ describe('OptimizationSuggestionCard', () => {
       />,
     )
 
-    expect(screen.getByText('RULE_BASED')).toBeInTheDocument()
-    expect(screen.getByText('LLM_SUGGEST')).toBeInTheDocument()
+    expect(screen.getByText('规则补全')).toBeInTheDocument()
+    expect(screen.getByText('LLM 建议')).toBeInTheDocument()
   })
 })

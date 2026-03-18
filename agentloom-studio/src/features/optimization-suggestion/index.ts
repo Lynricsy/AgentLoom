@@ -2,6 +2,8 @@ export type {
   SuggestionType,
   SuggestionStatus,
   OptimizationSuggestion,
+  OptimizationSuggestionAnalysisMetadata,
+  OptimizationSuggestionPolicyBlock,
   AdoptionStats,
   AdoptionStatsByType,
   ImpactEstimate,
