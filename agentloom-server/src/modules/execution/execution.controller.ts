@@ -17,6 +17,7 @@ import type { FastifyReply } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
 import { ExecutionService } from './execution.service';
 import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
@@ -186,6 +187,7 @@ export class ExecutionController {
   @Post('executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve')
   @HttpCode(HttpStatus.ACCEPTED)
   @Roles('owner', 'admin', 'creator', 'operator')
+  @CaptureAuditLog(auditLogCaptureConfigs.resolveToolPermission)
   @ApiOperation({ summary: '解析工具调用权限（批准/拒绝）' })
   @ApiResponse({ status: 202, description: '权限解析已接受' })
   @ApiResponse({ status: 409, description: '工具调用状态不允许解析' })

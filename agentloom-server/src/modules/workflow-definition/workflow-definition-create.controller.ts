@@ -18,6 +18,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
+import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
 import { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import {
   ImportWorkflowSchema,
@@ -73,6 +74,7 @@ export class WorkflowDefinitionCreateController {
 
   @Get(':workflowId/export')
   @Roles('owner', 'admin', 'creator', 'operator')
+  @CaptureAuditLog(auditLogCaptureConfigs.exportWorkflow)
   @ApiOperation({ summary: '导出工作流定义' })
   @ApiResponse({ status: 200, description: '工作流导出成功' })
   @ApiResponse({ status: 404, description: '工作流定义不存在' })
