@@ -18,6 +18,11 @@ import {
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
+import { ResourceGovernanceService } from '../../resource-governance/resource-governance.service';
+import {
+  ResourceGovernanceDecisionBlockedException,
+  type ResourceGovernanceDecisionBlockDetail,
+} from '../../resource-governance/resource-governance.exceptions';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -338,6 +343,40 @@ const mockAgentTaskQueue: Record<string, Mock> = {
   getJob: vi.fn(),
 };
 
+const mockResourceGovernanceService: Record<string, Mock> = {
+  resolveExecutionAdmissionDecision: vi.fn(),
+  recordBlockedDecision: vi.fn(),
+};
+
+function createBlockedDecision(
+  overrides: Partial<ResourceGovernanceDecisionBlockDetail>,
+): ResourceGovernanceDecisionBlockDetail {
+  return {
+    decision: 'blocked',
+    action: 'execution_start',
+    category: 'tenant_pause',
+    scope: 'tenant',
+    reason: 'tenant governance pause is preventing new workflow executions',
+    effectiveState: {
+      organizationId: '019391d4-f000-7000-0000-000000000006',
+      tenantControl: {
+        scope: 'tenant',
+        targetId: TENANT_ID,
+        status: 'paused',
+        reason: 'incident response',
+        updatedAt: NOW.toISOString(),
+        updatedBy: USER_ID,
+      },
+      workflowControl: null,
+    },
+    blockedAt: NOW.toISOString(),
+    metadata: {
+      workflowId: WORKFLOW_ID,
+    },
+    ...overrides,
+  };
+}
+
 describe('ExecutionService', () => {
   let service: ExecutionService;
 
@@ -361,6 +400,12 @@ describe('ExecutionService', () => {
     mockAgentTaskQueue.getFailed.mockReset();
     mockAgentTaskQueue.getJobCounts.mockReset();
     mockAgentTaskQueue.getJob.mockReset();
+    mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockReset();
+    mockResourceGovernanceService.recordBlockedDecision.mockReset();
+    mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValue(
+      null,
+    );
+    mockResourceGovernanceService.recordBlockedDecision.mockResolvedValue(undefined);
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -378,6 +423,10 @@ describe('ExecutionService', () => {
           useValue: mockAgentTaskQueue,
         },
         { provide: EventBridgeService, useValue: mockEventBridge },
+        {
+          provide: ResourceGovernanceService,
+          useValue: mockResourceGovernanceService,
+        },
       ],
     }).compile();
 
@@ -1137,6 +1186,136 @@ describe('ExecutionService', () => {
         {
           jobId: EXECUTION_ID,
         },
+      );
+    });
+
+    it('应在租户治理暂停时于创建 execution 前阻止新执行', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValueOnce(
+        createBlockedDecision({
+          category: 'tenant_pause',
+          scope: 'tenant',
+        }),
+      );
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toThrow(ResourceGovernanceDecisionBlockedException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(
+        mockResourceGovernanceService.resolveExecutionAdmissionDecision,
+      ).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        workflowId: WORKFLOW_ID,
+        dbClient: db,
+      });
+      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          actorId: USER_ID,
+          actorType: 'user',
+          block: expect.objectContaining({
+            category: 'tenant_pause',
+          }),
+        }),
+      );
+    });
+
+    it('应在工作流治理暂停时于租户事务内阻止新执行且不入队', async () => {
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValueOnce(
+        createBlockedDecision({
+          category: 'workflow_pause',
+          scope: 'workflow',
+          reason: 'workflow governance pause is preventing new workflow executions',
+          effectiveState: {
+            organizationId: '019391d4-f000-7000-0000-000000000006',
+            tenantControl: {
+              scope: 'tenant',
+              targetId: TENANT_ID,
+              status: 'active',
+              reason: null,
+              updatedAt: NOW.toISOString(),
+              updatedBy: USER_ID,
+            },
+            workflowControl: {
+              scope: 'workflow',
+              targetId: WORKFLOW_ID,
+              status: 'paused',
+              reason: 'workflow anomaly',
+              updatedAt: NOW.toISOString(),
+              updatedBy: USER_ID,
+            },
+          },
+        }),
+      );
+
+      await expect(
+        runInTenantTransaction(db as never, TENANT_ID, async () => {
+          await service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID);
+        }),
+      ).rejects.toThrow(ResourceGovernanceDecisionBlockedException);
+
+      expect(txDb.insert).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(
+        mockResourceGovernanceService.resolveExecutionAdmissionDecision,
+      ).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        workflowId: WORKFLOW_ID,
+        dbClient: txDb,
+      });
+      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          actorId: USER_ID,
+          actorType: 'user',
+          block: expect.objectContaining({
+            category: 'workflow_pause',
+          }),
+        }),
+      );
+    });
+
+    it('应在并发执行配额超限时阻止新执行且不写入 execution', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValueOnce(
+        createBlockedDecision({
+          category: 'execution_quota',
+          scope: 'tenant',
+          reason: 'tenant concurrent execution quota has been exceeded',
+          metadata: {
+            workflowId: WORKFLOW_ID,
+            metric: 'maxConcurrentExecutions',
+            limit: 1,
+            currentValue: 1,
+          },
+        }),
+      );
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toThrow(ResourceGovernanceDecisionBlockedException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          actorId: USER_ID,
+          actorType: 'user',
+          block: expect.objectContaining({
+            category: 'execution_quota',
+          }),
+        }),
       );
     });
 

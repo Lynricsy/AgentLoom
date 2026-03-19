@@ -21,6 +21,8 @@ import {
   WorkflowArchivedException,
 } from './execution.exceptions';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ResourceGovernanceService } from '../resource-governance/resource-governance.service';
+import { ResourceGovernanceDecisionBlockedException } from '../resource-governance/resource-governance.exceptions';
 import {
   EXECUTION_QUEUE,
   AGENT_TASK_QUEUE,
@@ -376,6 +378,7 @@ export class ExecutionService {
     @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
     @InjectQueue(AGENT_TASK_QUEUE) private readonly agentTaskQueue: Queue,
     private readonly eventBridge: EventBridgeService,
+    private readonly resourceGovernanceService: ResourceGovernanceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -421,6 +424,23 @@ export class ExecutionService {
       .select()
       .from(schema.workflowVersions)
       .where(eq(schema.workflowVersions.id, workflow.publishedVersionId));
+
+    const admissionDecision =
+      await this.resourceGovernanceService.resolveExecutionAdmissionDecision({
+        tenantId,
+        workflowId,
+        dbClient: this.tenantDb,
+      });
+
+    if (admissionDecision) {
+      await this.resourceGovernanceService.recordBlockedDecision({
+        tenantId,
+        actorId: userId,
+        actorType: 'user',
+        block: admissionDecision,
+      });
+      throw new ResourceGovernanceDecisionBlockedException(admissionDecision);
+    }
 
     const [execution] = await this.tenantDb
       .insert(schema.workflowExecutions)

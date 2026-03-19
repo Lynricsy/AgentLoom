@@ -1,11 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import * as jwt from 'jsonwebtoken';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector, type ModuleRef } from '@nestjs/core';
+import type {
+  ThrottlerModuleOptions,
+  ThrottlerRequest,
+  ThrottlerStorage,
+} from '@nestjs/throttler';
 
 import { CustomThrottlerGuard } from '../custom-throttler.guard';
+import { PlatformApiTokenService } from '../../../modules/platform-api-token/platform-api-token.service';
+import { ResourceGovernanceService } from '../../../modules/resource-governance/resource-governance.service';
+import type { ResourceGovernanceStateResponseDto } from '../../../modules/resource-governance/dto/resource-governance-response.dto';
+import { ResourceGovernanceDecisionBlockedException } from '../../../modules/resource-governance/resource-governance.exceptions';
+
+const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
+const USER_ID = '019391d4-b000-7000-0000-000000000002';
+const ORGANIZATION_ID = '019391d4-c000-7000-0000-000000000003';
 
 type GuardRequest = {
   headers?: Record<string, string | string[] | undefined>;
   authMethod?: string;
+  tenantId?: string;
   user?: {
     sub?: string;
   };
@@ -13,19 +29,174 @@ type GuardRequest = {
   ip?: string;
 };
 
+type HeaderWriter = {
+  header: Mock;
+};
+
+type PlatformApiTokenServiceLike = Pick<PlatformApiTokenService, 'validateToken'>;
+type ResourceGovernanceServiceLike = Pick<
+  ResourceGovernanceService,
+  | 'resolveRuntimeStateForTenant'
+  | 'buildBlockedDecision'
+  | 'recordBlockedDecision'
+>;
+
 class ExposedCustomThrottlerGuard extends CustomThrottlerGuard {
   public getTrackerForTest(req: GuardRequest): Promise<string> {
     return this.getTracker(req);
   }
+
+  public handleRequestForTest(
+    requestProps: ThrottlerRequest,
+  ): Promise<boolean> {
+    return this.handleRequest(requestProps);
+  }
+}
+
+const throttlerOptions: ThrottlerModuleOptions = [
+  { name: 'default', ttl: 60_000, limit: 100 },
+];
+
+const storageService = {
+  increment: vi.fn(),
+};
+
+const platformApiTokenService: Record<string, Mock> = {
+  validateToken: vi.fn(),
+};
+
+const resourceGovernanceService: Record<string, Mock> = {
+  resolveRuntimeStateForTenant: vi.fn(),
+  buildBlockedDecision: vi.fn(),
+  recordBlockedDecision: vi.fn(),
+};
+
+const moduleRef = {
+  get: vi.fn((token: unknown) => {
+    if (token === PlatformApiTokenService) {
+      return platformApiTokenService as unknown as PlatformApiTokenServiceLike;
+    }
+
+    if (token === ResourceGovernanceService) {
+      return resourceGovernanceService as unknown as ResourceGovernanceServiceLike;
+    }
+
+    throw new Error(`Unexpected provider token: ${String(token)}`);
+  }),
+};
+
+function createRuntimeState(
+  overrides: Partial<ResourceGovernanceStateResponseDto['quota']> = {},
+): ResourceGovernanceStateResponseDto {
+  return {
+    organizationId: ORGANIZATION_ID,
+    quota: {
+      organizationId: ORGANIZATION_ID,
+      tenantId: TENANT_ID,
+      apiRateLimitPerMinute: 100,
+      maxConcurrentExecutions: null,
+      dailyExecutionLimit: null,
+      dailyApiCallLimit: null,
+      storageQuotaMb: null,
+      maxSandboxCpuPercent: null,
+      maxSandboxMemoryMb: null,
+      version: 0,
+      ...overrides,
+    },
+    governance: {
+      organizationId: ORGANIZATION_ID,
+      tenantId: TENANT_ID,
+      tenantControl: {
+        scope: 'tenant',
+        targetId: TENANT_ID,
+        status: 'active',
+        reason: null,
+        updatedAt: null,
+        updatedBy: null,
+      },
+      workflowControls: [],
+      version: 0,
+    },
+  };
+}
+
+function createResponse(): HeaderWriter {
+  return {
+    header: vi.fn(),
+  };
+}
+
+function createRequestProps(
+  req: GuardRequest,
+  res: HeaderWriter,
+  overrides: Partial<
+    Pick<ThrottlerRequest, 'getTracker' | 'generateKey'>
+  > = {},
+): ThrottlerRequest {
+  const context = {
+    req,
+    res,
+  } as unknown as ExecutionContext;
+
+  return {
+    context,
+    limit: 100,
+    ttl: 60_000,
+    blockDuration: 60_000,
+    throttler: { name: 'default', limit: 100, ttl: 60_000 },
+    getTracker: overrides.getTracker ?? vi.fn().mockResolvedValue('jwt:user-1'),
+    generateKey: overrides.generateKey ?? vi.fn().mockReturnValue('minute-key'),
+  } as unknown as ThrottlerRequest;
 }
 
 function createGuard(): ExposedCustomThrottlerGuard {
-  return Object.create(
-    ExposedCustomThrottlerGuard.prototype,
-  ) as ExposedCustomThrottlerGuard;
+  const guard = new ExposedCustomThrottlerGuard(
+    throttlerOptions,
+    storageService as unknown as ThrottlerStorage,
+    new Reflector(),
+    moduleRef as unknown as ModuleRef,
+  );
+
+  Object.assign(guard, {
+    commonOptions: {},
+    getRequestResponse: vi.fn((context: ThrottlerRequest['context']) => {
+      const requestContext = context as unknown as {
+        req: GuardRequest;
+        res: HeaderWriter;
+      };
+      return {
+        req: requestContext.req,
+        res: requestContext.res,
+      };
+    }),
+  });
+
+  return guard;
 }
 
 describe('CustomThrottlerGuard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValue(null);
+    resourceGovernanceService.recordBlockedDecision.mockResolvedValue(undefined);
+    resourceGovernanceService.buildBlockedDecision.mockImplementation(
+      (input) => ({
+        decision: 'blocked',
+        action: input.action,
+        category: input.category,
+        scope: input.scope,
+        reason: input.reason,
+        effectiveState: {
+          organizationId: input.organizationId,
+          tenantControl: input.tenantControl,
+          workflowControl: input.workflowControl ?? null,
+        },
+        blockedAt: '2026-03-18T00:00:00.000Z',
+        metadata: input.metadata,
+      }),
+    );
+  });
+
   it('应优先从原始请求头读取 API key prefix 作为限流 tracker', async () => {
     const guard = createGuard();
 
@@ -84,4 +255,248 @@ describe('CustomThrottlerGuard', () => {
 
     await expect(guard.getTrackerForTest({})).resolves.toBe('unknown');
   });
+
+  it('应使用租户分钟配额作为 API rate limit 并返回 429 explain', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      tenantId: TENANT_ID,
+      user: { sub: USER_ID },
+      headers: {},
+      ip: '127.0.0.1',
+    };
+    const res = createResponse();
+    const requestProps = createRequestProps(req, res);
+
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 5 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 6,
+      timeToExpire: 12,
+      isBlocked: true,
+      timeToBlockExpire: 12,
+    });
+
+    try {
+      await guard.handleRequestForTest(requestProps);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
+      expect(
+        (error as ResourceGovernanceDecisionBlockedException).block,
+      ).toMatchObject({
+        category: 'api_rate_limit',
+        scope: 'api',
+      });
+      expect(
+        (error as ResourceGovernanceDecisionBlockedException).getStatus(),
+      ).toBe(429);
+    }
+
+    expect(storageService.increment).toHaveBeenCalledWith(
+      'minute-key',
+      60_000,
+      5,
+      60_000,
+      'default',
+    );
+    expect(res.header).toHaveBeenCalledWith('Retry-After', 12);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Limit', 5);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Remaining', 0);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Reset', 12);
+    expect(resourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        actorId: USER_ID,
+        actorType: 'user',
+        block: expect.objectContaining({
+          metadata: expect.objectContaining({
+            metric: 'apiRateLimitPerMinute',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('应在每日 API 配额超限时返回 409 且不再进入分钟限流', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      tenantId: TENANT_ID,
+      user: { sub: USER_ID },
+      headers: {},
+      ip: '127.0.0.1',
+    };
+    const res = createResponse();
+    const requestProps = createRequestProps(req, res);
+
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ dailyApiCallLimit: 2, apiRateLimitPerMinute: 5 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 3,
+      timeToExpire: 86_400_000,
+      isBlocked: true,
+      timeToBlockExpire: 86_400_000,
+    });
+
+    try {
+      await guard.handleRequestForTest(requestProps);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
+      expect(
+        (error as ResourceGovernanceDecisionBlockedException).getStatus(),
+      ).toBe(409);
+      expect(
+        (error as ResourceGovernanceDecisionBlockedException).block.metadata,
+      ).toMatchObject({
+        metric: 'dailyApiCallLimit',
+        limit: 2,
+        currentValue: 3,
+      });
+    }
+
+    expect(storageService.increment).toHaveBeenCalledTimes(1);
+    expect(res.header).not.toHaveBeenCalledWith('Retry-After', expect.anything());
+    expect(resourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        actorId: USER_ID,
+        actorType: 'user',
+        block: expect.objectContaining({
+          metadata: expect.objectContaining({
+            metric: 'dailyApiCallLimit',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('应在 API key 请求中懒加载 tenant 并使用租户分钟配额', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      headers: {
+        'x-api-key': 'al_testpref1234567890',
+      },
+      ip: '127.0.0.1',
+    };
+    const res = createResponse();
+    const requestProps = createRequestProps(req, res);
+
+    platformApiTokenService.validateToken.mockResolvedValueOnce({
+      tokenId: '019391d4-d000-7000-0000-000000000004',
+      tokenPrefix: 'al_testpref',
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      tenantRole: 'admin',
+    });
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 7 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 1,
+      timeToExpire: 60_000,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    });
+
+    await expect(guard.handleRequestForTest(requestProps)).resolves.toBe(true);
+
+    expect(platformApiTokenService.validateToken).toHaveBeenCalledWith(
+      'al_testpref1234567890',
+    );
+    expect(resourceGovernanceService.resolveRuntimeStateForTenant).toHaveBeenCalledWith(
+      TENANT_ID,
+    );
+    expect(req.tenantId).toBe(TENANT_ID);
+    expect(req.apiKeyPrefix).toBe('al_testpref');
+    expect(requestProps.generateKey).toHaveBeenCalledWith(
+      requestProps.context,
+      `tenant:${TENANT_ID}`,
+      'default',
+    );
+    expect(storageService.increment).toHaveBeenCalledWith(
+      'minute-key',
+      60_000,
+      7,
+      60_000,
+      'default',
+    );
+  });
+
+  it('应让同一租户下不同身份共享同一分钟限流桶', async () => {
+    const guard = createGuard();
+    const generateKey = vi.fn((_, tracker: string) => `minute:${tracker}`);
+    const reqFromJwt: GuardRequest = {
+      tenantId: TENANT_ID,
+      user: { sub: 'jwt-user' },
+      headers: {},
+      ip: '127.0.0.1',
+    };
+    const reqFromApiKey: GuardRequest = {
+      tenantId: TENANT_ID,
+      apiKeyPrefix: 'al_testpref',
+      authMethod: 'api_key',
+      headers: {},
+      ip: '127.0.0.2',
+    };
+    const jwtRequestProps = createRequestProps(reqFromJwt, createResponse(), {
+      getTracker: vi.fn().mockResolvedValue('jwt:jwt-user'),
+      generateKey,
+    });
+    const apiKeyRequestProps = createRequestProps(reqFromApiKey, createResponse(), {
+      getTracker: vi.fn().mockResolvedValue('apikey:al_testpref'),
+      generateKey,
+    });
+
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValue(
+      createRuntimeState({ apiRateLimitPerMinute: 7 }),
+    );
+    storageService.increment
+      .mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      })
+      .mockResolvedValueOnce({
+        totalHits: 2,
+        timeToExpire: 60_000,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+
+    await expect(guard.handleRequestForTest(jwtRequestProps)).resolves.toBe(true);
+    await expect(guard.handleRequestForTest(apiKeyRequestProps)).resolves.toBe(true);
+
+    expect(generateKey).toHaveBeenNthCalledWith(
+      1,
+      jwtRequestProps.context,
+      `tenant:${TENANT_ID}`,
+      'default',
+    );
+    expect(generateKey).toHaveBeenNthCalledWith(
+      2,
+      apiKeyRequestProps.context,
+      `tenant:${TENANT_ID}`,
+      'default',
+    );
+    expect(storageService.increment).toHaveBeenNthCalledWith(
+      1,
+      `minute:tenant:${TENANT_ID}`,
+      60_000,
+      7,
+      60_000,
+      'default',
+    );
+    expect(storageService.increment).toHaveBeenNthCalledWith(
+      2,
+      `minute:tenant:${TENANT_ID}`,
+      60_000,
+      7,
+      60_000,
+      'default',
+    );
+  });
+
 });

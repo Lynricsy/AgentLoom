@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
+import { transactionStorage } from '../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { NotificationService } from './notification.service';
@@ -10,6 +11,13 @@ import {
   type ExecutionStatusChangedPayload,
   type InterventionRequiredPayload,
 } from '../execution/types/execution-event.types';
+import {
+  ResourceGovernanceEventName,
+  type ResourceGovernanceControlsUpdatedEvent,
+  type ResourceGovernanceExecutionStartBlockedEvent,
+  type ResourceGovernanceExecutionTerminatedEvent,
+  type ResourceGovernanceQuotaUpdatedEvent,
+} from '../resource-governance/resource-governance.events';
 
 const EDITOR_ROLES = ['owner', 'admin', 'creator'] as const;
 const DEFAULT_INTERVENTION_REASON = '节点请求人工确认后才能继续执行。';
@@ -30,6 +38,11 @@ interface ExecutionNotificationContext {
   workflowName: string;
   executionId: string;
   errorMessage: Record<string, unknown> | null;
+}
+
+interface WorkflowNotificationContext {
+  workflowId: string;
+  workflowName: string;
 }
 
 @Injectable()
@@ -105,6 +118,136 @@ export class NotificationListener {
         ),
       );
     });
+  }
+
+  @OnEvent(ResourceGovernanceEventName.QUOTA_UPDATED)
+  async handleQuotaUpdated(
+    event: ResourceGovernanceQuotaUpdatedEvent,
+  ): Promise<void> {
+    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
+      const recipients = await this.findEditorRecipients(tenantDb, event.tenantId);
+
+      if (recipients.length === 0) {
+        return;
+      }
+
+      const notificationInput = this.buildQuotaUpdatedNotificationInput(event);
+
+      await Promise.all(
+        recipients.map(({ userId }) =>
+          this.notificationService.create(event.tenantId, {
+            userId,
+            ...notificationInput,
+          }),
+        ),
+      );
+    });
+  }
+
+  @OnEvent(ResourceGovernanceEventName.CONTROLS_UPDATED)
+  async handleControlsUpdated(
+    event: ResourceGovernanceControlsUpdatedEvent,
+  ): Promise<void> {
+    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
+      const recipients = await this.findEditorRecipients(tenantDb, event.tenantId);
+
+      if (recipients.length === 0) {
+        return;
+      }
+
+      const notificationInput = this.buildControlsUpdatedNotificationInput(event);
+
+      await Promise.all(
+        recipients.map(({ userId }) =>
+          this.notificationService.create(event.tenantId, {
+            userId,
+            ...notificationInput,
+          }),
+        ),
+      );
+    });
+  }
+
+  @OnEvent(ResourceGovernanceEventName.EXECUTION_START_BLOCKED)
+  async handleExecutionStartBlocked(
+    event: ResourceGovernanceExecutionStartBlockedEvent,
+  ): Promise<void> {
+    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
+      const [context, recipients] = await Promise.all([
+        this.findWorkflowContext(tenantDb, event.tenantId, event.workflowId),
+        this.findEditorRecipients(tenantDb, event.tenantId),
+      ]);
+
+      if (!context || recipients.length === 0) {
+        return;
+      }
+
+      const notificationInput = this.buildExecutionStartBlockedNotificationInput(
+        event,
+        context,
+      );
+
+      await Promise.all(
+        recipients.map(({ userId }) =>
+          this.notificationService.create(event.tenantId, {
+            userId,
+            ...notificationInput,
+          }),
+        ),
+      );
+    });
+  }
+
+  @OnEvent(ResourceGovernanceEventName.EXECUTION_TERMINATED)
+  async handleExecutionTerminated(
+    event: ResourceGovernanceExecutionTerminatedEvent,
+  ): Promise<void> {
+    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
+      const [context, recipients] = await Promise.all([
+        this.findExecutionContext(tenantDb, event.tenantId, event.executionId),
+        this.findEditorRecipients(tenantDb, event.tenantId),
+      ]);
+
+      if (!context || recipients.length === 0) {
+        return;
+      }
+
+      const notificationInput = this.buildExecutionTerminatedNotificationInput(
+        event,
+        context,
+      );
+
+      await Promise.all(
+        recipients.map(({ userId }) =>
+          this.notificationService.create(event.tenantId, {
+            userId,
+            ...notificationInput,
+          }),
+        ),
+      );
+    });
+  }
+
+  private async findWorkflowContext(
+    tenantDb: DrizzleDB,
+    tenantId: string,
+    workflowId: string,
+  ): Promise<WorkflowNotificationContext | null> {
+    const [workflow] = await tenantDb
+      .select({
+        workflowId: schema.workflowDefinitions.id,
+        workflowName: schema.workflowDefinitions.name,
+      })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    return workflow ?? null;
   }
 
   private isExecutionNotificationStatus(status: string): boolean {
@@ -223,6 +366,116 @@ export class NotificationListener {
         requestedAt: event.requestedAt,
       },
     };
+  }
+
+  private buildQuotaUpdatedNotificationInput(
+    event: ResourceGovernanceQuotaUpdatedEvent,
+  ): {
+    type: schema.Notification['type'];
+    title: string;
+    body: Record<string, unknown>;
+  } {
+    return {
+      type: 'resource_governance_quota_updated',
+      title: '资源配额已更新',
+      body: {
+        organizationId: event.organizationId,
+        requestedAt: event.requestedAt,
+        effectedAt: event.effectedAt,
+        updatedBy: event.actor.actorId,
+        quota: event.quota,
+        previousQuota: event.previousQuota,
+      },
+    };
+  }
+
+  private buildControlsUpdatedNotificationInput(
+    event: ResourceGovernanceControlsUpdatedEvent,
+  ): {
+    type: schema.Notification['type'];
+    title: string;
+    body: Record<string, unknown>;
+  } {
+    return {
+      type: 'resource_governance_controls_updated',
+      title: '执行治理策略已更新',
+      body: {
+        organizationId: event.organizationId,
+        requestedAt: event.requestedAt,
+        effectedAt: event.effectedAt,
+        updatedBy: event.actor.actorId,
+        tenantControl: event.governance.tenantControl,
+        workflowControls: event.governance.workflowControls,
+        previousGovernance: event.previousGovernance,
+      },
+    };
+  }
+
+  private buildExecutionStartBlockedNotificationInput(
+    event: ResourceGovernanceExecutionStartBlockedEvent,
+    context: WorkflowNotificationContext,
+  ): {
+    type: schema.Notification['type'];
+    title: string;
+    body: Record<string, unknown>;
+  } {
+    return {
+      type: 'resource_governance_execution_blocked',
+      title: '新执行已被资源治理阻止',
+      body: {
+        organizationId: event.organizationId,
+        workflowId: context.workflowId,
+        workflowName: context.workflowName,
+        reason: event.reason,
+        category: event.category,
+        scope: event.scope,
+        requestedAt: event.blockedAt,
+        resourceGovernanceUrl: '/settings/resource-quotas',
+      },
+    };
+  }
+
+  private buildExecutionTerminatedNotificationInput(
+    event: ResourceGovernanceExecutionTerminatedEvent,
+    context: ExecutionNotificationContext,
+  ): {
+    type: schema.Notification['type'];
+    title: string;
+    body: Record<string, unknown>;
+  } {
+    return {
+      type: 'resource_governance_execution_terminated',
+      title: '异常执行已终止',
+      body: {
+        ...this.buildBaseBody(context),
+        organizationId: event.organizationId,
+        reason: event.reason,
+        requestedAt: event.requestedAt,
+        effectedAt: event.effectedAt,
+      },
+    };
+  }
+
+  private async runInIndependentTenantTransaction<T>(
+    tenantId: string,
+    operation: (tenantDb: DrizzleDB) => Promise<T>,
+  ): Promise<T> {
+    if (typeof this.db.transaction !== 'function') {
+      return runInTenantTransaction(this.db, tenantId, operation);
+    }
+
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL ROLE authenticated`);
+      await tx.execute(
+        sql`SELECT set_config('app.current_tenant', ${tenantId}, true)`,
+      );
+
+      const tenantDb = tx as unknown as DrizzleDB;
+      return transactionStorage.run(
+        { db: tenantDb, afterCommitHooks: [] },
+        () => operation(tenantDb),
+      );
+    });
   }
 
   private buildBaseBody(

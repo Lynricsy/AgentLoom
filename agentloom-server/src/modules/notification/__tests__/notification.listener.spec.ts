@@ -56,6 +56,16 @@ function createJoinWhereLimited(result: unknown) {
   };
 }
 
+function createWhereLimited(result: unknown) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(result),
+      }),
+    }),
+  };
+}
+
 describe('NotificationListener', () => {
   let listener: NotificationListener;
   let db: ReturnType<typeof createMockDb>;
@@ -207,6 +217,253 @@ describe('NotificationListener', () => {
         nodeName: '审批节点',
         interventionReason: '预算金额超出阈值，需要人工确认。',
         requestedAt: '2026-03-10T10:00:00.000Z',
+      },
+    });
+  });
+
+  it('资源配额更新事件应通知租户内 Editor+ 用户', async () => {
+    db.select.mockReturnValueOnce(
+      createJoinWhereResolved([{ userId: 'owner-1' }, { userId: 'admin-1' }]),
+    );
+    notificationService.create.mockResolvedValue(undefined);
+
+    await listener.handleQuotaUpdated({
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      previousQuota: {
+        organizationId: 'org-1',
+        tenantId: 'tenant-1',
+        apiRateLimitPerMinute: 100,
+        maxConcurrentExecutions: null,
+        dailyExecutionLimit: null,
+        dailyApiCallLimit: null,
+        storageQuotaMb: null,
+        maxSandboxCpuPercent: null,
+        maxSandboxMemoryMb: null,
+        version: 0,
+      },
+      quota: {
+        organizationId: 'org-1',
+        tenantId: 'tenant-1',
+        apiRateLimitPerMinute: 180,
+        maxConcurrentExecutions: 8,
+        dailyExecutionLimit: 1200,
+        dailyApiCallLimit: null,
+        storageQuotaMb: null,
+        maxSandboxCpuPercent: null,
+        maxSandboxMemoryMb: null,
+        version: 1,
+      },
+      requestedAt: '2026-03-18T00:00:00.000Z',
+      effectedAt: '2026-03-18T00:00:01.000Z',
+      actor: {
+        actorId: 'user-1',
+        actorType: 'user',
+      },
+    });
+
+    expect(notificationService.create).toHaveBeenNthCalledWith(1, 'tenant-1', {
+      userId: 'owner-1',
+      type: 'resource_governance_quota_updated',
+      title: '资源配额已更新',
+      body: {
+        organizationId: 'org-1',
+        requestedAt: '2026-03-18T00:00:00.000Z',
+        effectedAt: '2026-03-18T00:00:01.000Z',
+        updatedBy: 'user-1',
+        quota: expect.objectContaining({
+          apiRateLimitPerMinute: 180,
+        }),
+        previousQuota: expect.objectContaining({
+          apiRateLimitPerMinute: 100,
+        }),
+      },
+    });
+    expect(notificationService.create).toHaveBeenNthCalledWith(2, 'tenant-1', {
+      userId: 'admin-1',
+      type: 'resource_governance_quota_updated',
+      title: '资源配额已更新',
+      body: expect.objectContaining({
+        organizationId: 'org-1',
+      }),
+    });
+  });
+
+  it('执行治理控制更新事件应通知租户内 Editor+ 用户', async () => {
+    db.select.mockReturnValueOnce(
+      createJoinWhereResolved([{ userId: 'creator-1' }]),
+    );
+    notificationService.create.mockResolvedValue(undefined);
+
+    await listener.handleControlsUpdated({
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      previousGovernance: {
+        organizationId: 'org-1',
+        tenantId: 'tenant-1',
+        tenantControl: {
+          scope: 'tenant',
+          targetId: 'tenant-1',
+          status: 'active',
+          reason: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        workflowControls: [],
+        version: 0,
+      },
+      governance: {
+        organizationId: 'org-1',
+        tenantId: 'tenant-1',
+        tenantControl: {
+          scope: 'tenant',
+          targetId: 'tenant-1',
+          status: 'paused',
+          reason: 'incident response',
+          updatedAt: '2026-03-18T00:00:01.000Z',
+          updatedBy: 'user-1',
+        },
+        workflowControls: [],
+        version: 1,
+      },
+      requestedAt: '2026-03-18T00:00:00.000Z',
+      effectedAt: '2026-03-18T00:00:01.000Z',
+      actor: {
+        actorId: 'user-1',
+        actorType: 'user',
+      },
+    });
+
+    expect(notificationService.create).toHaveBeenCalledWith('tenant-1', {
+      userId: 'creator-1',
+      type: 'resource_governance_controls_updated',
+      title: '执行治理策略已更新',
+      body: {
+        organizationId: 'org-1',
+        requestedAt: '2026-03-18T00:00:00.000Z',
+        effectedAt: '2026-03-18T00:00:01.000Z',
+        updatedBy: 'user-1',
+        tenantControl: {
+          scope: 'tenant',
+          targetId: 'tenant-1',
+          status: 'paused',
+          reason: 'incident response',
+          updatedAt: '2026-03-18T00:00:01.000Z',
+          updatedBy: 'user-1',
+        },
+        workflowControls: [],
+        previousGovernance: expect.objectContaining({
+          version: 0,
+        }),
+      },
+    });
+  });
+
+  it('新执行被资源治理阻止事件应通知租户内 Editor+ 用户', async () => {
+    db.select
+      .mockReturnValueOnce(
+        createWhereLimited([
+          {
+            workflowId: 'workflow-7',
+            workflowName: '受治理限制工作流',
+          },
+        ]),
+      )
+      .mockReturnValueOnce(createJoinWhereResolved([{ userId: 'owner-1' }]));
+    notificationService.create.mockResolvedValue(undefined);
+
+    await listener.handleExecutionStartBlocked({
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      workflowId: 'workflow-7',
+      category: 'workflow_pause',
+      scope: 'workflow',
+      reason: 'workflow governance pause is preventing new workflow executions',
+      blockedAt: '2026-03-18T00:00:02.000Z',
+      actor: {
+        actorId: 'admin-1',
+        actorType: 'user',
+      },
+      effectiveState: {
+        organizationId: 'org-1',
+        tenantControl: {
+          scope: 'tenant',
+          targetId: 'tenant-1',
+          status: 'active',
+          reason: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        workflowControl: {
+          scope: 'workflow',
+          targetId: 'workflow-7',
+          status: 'paused',
+          reason: 'incident response',
+          updatedAt: '2026-03-18T00:00:01.000Z',
+          updatedBy: 'admin-1',
+        },
+      },
+    });
+
+    expect(notificationService.create).toHaveBeenCalledWith('tenant-1', {
+      userId: 'owner-1',
+      type: 'resource_governance_execution_blocked',
+      title: '新执行已被资源治理阻止',
+      body: {
+        organizationId: 'org-1',
+        workflowId: 'workflow-7',
+        workflowName: '受治理限制工作流',
+        reason: 'workflow governance pause is preventing new workflow executions',
+        category: 'workflow_pause',
+        scope: 'workflow',
+        requestedAt: '2026-03-18T00:00:02.000Z',
+        resourceGovernanceUrl: '/settings/resource-quotas',
+      },
+    });
+  });
+
+  it('异常执行终止事件应携带结构化执行上下文通知 Editor+ 用户', async () => {
+    db.select
+      .mockReturnValueOnce(
+        createJoinWhereLimited([
+          {
+            workflowId: 'workflow-9',
+            workflowName: '治理终止工作流',
+            executionId: 'exec-9',
+            errorMessage: null,
+          },
+        ]),
+      )
+      .mockReturnValueOnce(createJoinWhereResolved([{ userId: 'owner-1' }]));
+    notificationService.create.mockResolvedValue(undefined);
+
+    await listener.handleExecutionTerminated({
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      executionId: 'exec-9',
+      workflowId: 'workflow-9',
+      reason: 'detected anomalous execution pattern',
+      requestedAt: '2026-03-18T00:00:00.000Z',
+      effectedAt: '2026-03-18T00:00:03.000Z',
+      actor: {
+        actorId: 'admin-1',
+        actorType: 'user',
+      },
+    });
+
+    expect(notificationService.create).toHaveBeenCalledWith('tenant-1', {
+      userId: 'owner-1',
+      type: 'resource_governance_execution_terminated',
+      title: '异常执行已终止',
+      body: {
+        workflowId: 'workflow-9',
+        workflowName: '治理终止工作流',
+        executionId: 'exec-9',
+        timelineUrl: '/executions/exec-9',
+        organizationId: 'org-1',
+        reason: 'detected anomalous execution pattern',
+        requestedAt: '2026-03-18T00:00:00.000Z',
+        effectedAt: '2026-03-18T00:00:03.000Z',
       },
     });
   });

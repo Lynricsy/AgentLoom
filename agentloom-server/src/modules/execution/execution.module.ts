@@ -9,6 +9,7 @@ import { LlmModule } from '../llm/llm.module';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { OrganizationModule } from '../organization/organization.module';
+import { ResourceGovernanceModule } from '../resource-governance/resource-governance.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
@@ -41,6 +42,7 @@ import {
     SmartRoutingModule,
     PluginModule,
     OrganizationModule,
+    ResourceGovernanceModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
