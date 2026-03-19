@@ -44,6 +44,7 @@ import { OptimizationSuggestionModule } from './modules/optimization-suggestion/
 import { ResourceGovernanceModule } from './modules/resource-governance/resource-governance.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PrivateDeploymentModule } from './modules/private-deployment/private-deployment.module';
+import { AcpGatewayModule } from './modules/acp-gateway/acp-gateway.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -120,6 +121,7 @@ function createThrottlerOptions(configService: ConfigService) {
     ResourceGovernanceModule,
     MonitoringModule,
     PrivateDeploymentModule,
+    AcpGatewayModule,
   ],
   providers: [
     RbacCacheService,
