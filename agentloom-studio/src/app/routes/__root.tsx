@@ -19,6 +19,9 @@ import { shareTokenRoute } from './share.$token';
 import { encryptionSettingsRoute } from './settings/encryption'
 import { developerEarningsRoute } from './developer-console/earnings';
 import { organizationAutonomyPolicyRoute } from './settings/security/autonomy-policy'
+import { resourceGovernanceRoute } from './settings/resource-quotas'
+import { monitoringRoute } from './settings/monitoring'
+import { privateDeploymentRoute } from './settings/private-deployment'
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -94,4 +97,7 @@ export const routeTree = rootRoute.addChildren([
   encryptionSettingsRoute,
   developerEarningsRoute,
   organizationAutonomyPolicyRoute,
+  resourceGovernanceRoute,
+  monitoringRoute,
+  privateDeploymentRoute,
 ]);
