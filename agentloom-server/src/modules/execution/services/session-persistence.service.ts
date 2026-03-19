@@ -56,16 +56,16 @@ const McpServerConfigSchema = z
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
     url: z.string().optional(),
-    env: z.record(z.string(), z.string()).optional(),
-    headers: z.record(z.string(), z.string()).optional(),
+    env: z.object({}).catchall(z.string()).optional(),
+    headers: z.object({}).catchall(z.string()).optional(),
   })
   .passthrough();
 const SessionContextSchema = z
   .object({
     history: z.array(ContentBlockSchema).default([]),
     cwd: z.string().optional(),
-    mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
-    workflowState: z.record(z.string(), z.unknown()).optional(),
+    mcpServers: z.object({}).catchall(McpServerConfigSchema).optional(),
+    workflowState: z.object({}).catchall(z.unknown()).optional(),
   })
   .passthrough();
 const SerializedSessionSchema = z
@@ -101,7 +101,7 @@ const ToolCallEventSchema = z
   .object({
     id: z.string().min(1),
     tool: z.string().min(1),
-    args: z.record(z.string(), z.unknown()),
+    args: z.object({}).catchall(z.unknown()),
     status: ToolCallStatusSchema,
     transitions: z.array(ToolCallTransitionRecordSchema).optional(),
     result: z.unknown().optional(),
