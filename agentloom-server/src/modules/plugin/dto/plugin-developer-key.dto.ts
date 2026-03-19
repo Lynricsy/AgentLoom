@@ -24,9 +24,9 @@ export const DeveloperKeyResponseSchema = RegisterDeveloperKeySchema.extend({
   id: z.uuid(),
   keyFingerprint: z.string(),
   status: DeveloperKeyStatusSchema,
-  createdAt: z.date(),
-  updatedAt: z.date(),
-  revokedAt: z.date().nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  revokedAt: z.string().datetime({ offset: true }).nullable(),
 });
 
 export class DeveloperKeyResponseDto extends createZodDto(

@@ -6,18 +6,9 @@ import { auditActorTypes } from '../../../database/schema/audit-logs.schema';
 const PageSizeSchema = z.coerce.number().int().min(1).max(100).optional();
 const NonEmptyStringSchema = z.string().trim().min(1).optional();
 const AuditActorTypeSchema = z.enum(auditActorTypes).optional();
-const ISO_DATETIME_REGEX =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
-
 const IsoDateCoerceSchema = z
-  .union([
-    z.string().refine(
-      (value) =>
-        ISO_DATETIME_REGEX.test(value) && !Number.isNaN(Date.parse(value)),
-      'Invalid ISO datetime',
-    ),
-    z.date(),
-  ])
+  .string()
+  .datetime({ offset: true, message: 'Invalid ISO datetime' })
   .pipe(z.coerce.date())
   .optional();
 
