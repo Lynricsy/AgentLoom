@@ -43,6 +43,7 @@ import { ExecutionRecordModule } from './modules/execution-record/execution-reco
 import { OptimizationSuggestionModule } from './modules/optimization-suggestion/optimization-suggestion.module';
 import { ResourceGovernanceModule } from './modules/resource-governance/resource-governance.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { PrivateDeploymentModule } from './modules/private-deployment/private-deployment.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -118,6 +119,7 @@ function createThrottlerOptions(configService: ConfigService) {
     OptimizationSuggestionModule,
     ResourceGovernanceModule,
     MonitoringModule,
+    PrivateDeploymentModule,
   ],
   providers: [
     RbacCacheService,
