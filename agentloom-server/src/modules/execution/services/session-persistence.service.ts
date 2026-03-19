@@ -56,16 +56,16 @@ const McpServerConfigSchema = z
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
     url: z.string().optional(),
-    env: z.record(z.string()).optional(),
-    headers: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();
 const SessionContextSchema = z
   .object({
     history: z.array(ContentBlockSchema).default([]),
     cwd: z.string().optional(),
-    mcpServers: z.record(McpServerConfigSchema).optional(),
-    workflowState: z.record(z.unknown()).optional(),
+    mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+    workflowState: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 const SerializedSessionSchema = z
@@ -101,7 +101,7 @@ const ToolCallEventSchema = z
   .object({
     id: z.string().min(1),
     tool: z.string().min(1),
-    args: z.record(z.unknown()),
+    args: z.record(z.string(), z.unknown()),
     status: ToolCallStatusSchema,
     transitions: z.array(ToolCallTransitionRecordSchema).optional(),
     result: z.unknown().optional(),
@@ -243,7 +243,7 @@ export class SessionPersistenceService {
   }
 
   async saveToCheckpoint(
-    tenantId: string,
+    _tenantId: string,
     stepId: string,
     session: AgentSession,
   ): Promise<void> {
@@ -270,7 +270,7 @@ export class SessionPersistenceService {
   }
 
   async loadFromCheckpoint(
-    tenantId: string,
+    _tenantId: string,
     stepId: string,
   ): Promise<AgentSession | null> {
     const [step] = await this.tenantDb
