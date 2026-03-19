@@ -48,7 +48,7 @@ server:
     pullPolicy: IfNotPresent
   command:
     - node
-    - dist/main
+    - dist/src/main.js
   service:
     port: 3000
   resources: {}

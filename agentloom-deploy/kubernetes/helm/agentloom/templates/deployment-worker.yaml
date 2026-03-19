@@ -1,5 +1,5 @@
 {{- if .Values.worker.enabled }}
-# 当前 chart 的 worker Deployment 仍然运行完整的 node dist/main；这是部署拓扑拆分，不是 worker-only runtime。
+# 当前 chart 的 worker Deployment 仍然运行完整的 node dist/src/main.js；这是部署拓扑拆分，不是 worker-only runtime。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
