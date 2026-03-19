@@ -68,7 +68,11 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1/healthz || exit 1']
+      test:
+        [
+          'CMD-SHELL',
+          'if command -v curl >/dev/null 2>&1; then curl -fsS http://127.0.0.1/healthz >/dev/null; else wget -q -O /dev/null http://127.0.0.1/healthz; fi',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -77,7 +81,11 @@ services:
   studio:
     <<: *studio-app
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1']
+      test:
+        [
+          'CMD-SHELL',
+          'if command -v curl >/dev/null 2>&1; then curl -fsS http://127.0.0.1:8080/ >/dev/null; else wget -q -O /dev/null http://127.0.0.1:8080/; fi',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -85,7 +93,7 @@ services:
 
   server:
     <<: *server-app
-    command: ['node', 'dist/main']
+    command: ['node', 'dist/src/main.js']
     expose:
       - '3000'
     healthcheck:
@@ -104,7 +112,7 @@ services:
   worker:
     <<: *server-app
     # 当前仓库没有 worker-only 入口；这里是部署拓扑拆分，不是运行职责隔离。
-    command: ['node', 'dist/main']
+    command: ['node', 'dist/src/main.js']
     healthcheck:
       test:
         [
@@ -167,7 +175,11 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live || exit 1']
+      test:
+        [
+          'CMD-SHELL',
+          'if command -v curl >/dev/null 2>&1; then curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; else wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live; fi',
+        ]
       interval: 15s
       timeout: 5s
       retries: 10
