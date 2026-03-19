@@ -1,73 +1,122 @@
-# React + TypeScript + Vite
+# AgentLoom Studio
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工作流画布编辑、执行调试、审计查询、治理配置、模板与市场浏览等 Web 体验。
 
-Currently, two official plugins are available:
+## 技术栈
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19 + TypeScript 5.9
+- Vite 7
+- TanStack Router v1（手工路由树）
+- TanStack Query + Zustand（immer / devtools）
+- Tailwind CSS v4 + Radix UI + CVA
+- ky（全局 snake_case ↔ camelCase 转换）
 
-## React Compiler
+## 当前关键页面
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 路由 | 页面 | 说明 |
+|------|------|------|
+| `/workflows/$workflowId` | WorkflowCanvasPage | React Flow 画布编辑器、自动保存、节点配置 |
+| `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图与垂直时间线 |
+| `/settings/audit-logs` | AuditLogPage | owner/admin 审计日志查询页 |
+| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页 |
+| `/settings/resource-quotas` | ResourceGovernancePage | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止 |
+| `/settings/monitoring` | MonitoringDashboardPage | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary |
+| `/settings/knowledge-bases` | KnowledgeBasesPage | 知识库管理 |
+| `/settings/tool-library` | ToolLibraryPage | MCP 工具库 |
+| `/marketplace` | MarketplaceBrowsePage | 工作流 / 插件市场 |
 
-## Expanding the ESLint configuration
+## Feature-Slice 结构
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+src/
+├── app/
+│   └── routes/
+├── features/
+│   ├── canvas/
+│   ├── execution/
+│   ├── audit-log/
+│   ├── organization-autonomy-policy/
+│   ├── resource-governance/
+│   ├── monitoring/
+│   ├── knowledge/
+│   ├── marketplace/
+│   ├── notification/
+│   └── ...
+├── shared/
+│   ├── api/
+│   ├── ui/
+│   ├── components/
+│   └── utils/
+└── test-setup.ts
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 资源治理前端事实
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+`features/resource-governance/` 当前已经提供：
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- 后端契约镜像类型：quota、tenant/workflow governance state、治理动作响应、异常 execution termination response
+- 4 个 API 封装：
+  - `GET /organizations/:id/resource-governance`
+  - `PUT /organizations/:id/resource-governance/quota`
+  - `PUT /organizations/:id/resource-governance/controls`
+  - `POST /organizations/:id/resource-governance/executions/:executionId/terminate`
+- TanStack Query hooks：读取状态 + quota mutation + controls mutation + termination mutation
+- token-based permissions helper：允许 `owner/admin`，并从 `organizationId/orgId/tenantId` claims 解析组织 / 租户信息
+- `ResourceGovernancePage`：metadata、7 个 quota 字段表单、tenant/workflow governance controls、异常 execution termination 表单与 action summary
+- 前端文案显式区分“治理暂停只阻止新执行进入”与 execution `paused`
+
+## 监控仪表板前端事实
+
+`features/monitoring/` 当前已经提供：
+
+- 后端契约镜像类型：`summary`、`trend`、`alerts`、`hotspots`、`riskSummary`，并显式建模 `scope/window/lastUpdatedAt/metricSources`
+- 只读 API 封装：`GET /organizations/:id/monitoring?window=15m|1h|24h`
+- TanStack Query hooks：`monitoringKeys.dashboard(organizationId, window)` 与 `useMonitoringDashboard()`，窗口值会进入 query key
+- `MonitoringDashboardPage`：owner/admin 门禁、`15m|1h|24h` 窗口切换、summary cards、`recharts` 执行趋势图、alert/risk summary、metric source 说明、热点列表
+- 监控页保持只读，只提供 `/settings/resource-quotas` 与 `/executions/:id` drill-down，不在 dashboard 内复刻治理 mutation
+- 文案显式区分“治理暂停”与 execution `paused（人工介入）`
+- 队列深度只来自当前 `agent-task` queue snapshot，会出现在摘要/告警/热点中，但不会被展示成跨窗口历史队列曲线
+
+## 开发命令
+
+```bash
+pnpm install
+pnpm dev
+pnpm test
+pnpm typecheck
+pnpm build
 ```
+
+## 资源治理相关验证
+
+```bash
+pnpm exec vitest run src/features/resource-governance/components/ResourceGovernancePage.test.tsx src/app/routes/settings/resource-quotas.test.tsx
+pnpm exec vitest run src/features/monitoring/api/monitoringKeys.test.ts src/features/monitoring/pages/MonitoringDashboardPage.test.tsx src/app/routes/settings/monitoring.test.tsx
+pnpm typecheck
+pnpm build
+```
+
+## 测试约定
+
+- `*.test.{ts,tsx}` 与源码同级
+- `@testing-library/react` + jsdom
+- `vi.hoisted()` + `vi.mock()` 管理 API / token / toast / hooks mock
+- 使用 `data-testid` 稳定定位 settings 页面关键区域
+
+## 环境变量
+
+- `VITE_API_BASE_URL`
+- `VITE_AUTOSAVE_DEBOUNCE_MS`
+
+Vite dev proxy 默认转发：
+
+- `/api` → `:3000`
+- `/socket.io` → `:3000`
+
+## 相关文档
+
+- `AGENTS.md`：持久化前端知识库
+- `src/features/resource-governance/`：资源治理前端实现
+- `src/app/routes/settings/resource-quotas.tsx`
+- `src/features/monitoring/`：组织级只读运行监控前端实现
+- `src/app/routes/settings/monitoring.tsx`
