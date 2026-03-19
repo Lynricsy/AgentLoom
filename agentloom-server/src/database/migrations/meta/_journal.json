@@ -330,6 +330,13 @@
       "when": 1773785182448,
       "tag": "0046_rich_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1773809124361,
+      "tag": "0047_outstanding_iceman",
+      "breakpoints": true
     }
   ]
 }
