@@ -126,7 +126,7 @@ export class PrivateDeploymentService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    @Optional() private readonly auditLogService: AuditLogService | undefined,
+    @Inject(AuditLogService) @Optional() private readonly auditLogService: AuditLogService | undefined,
     private readonly encryptionService: EncryptionService,
     private readonly configService: ConfigService,
   ) {}
