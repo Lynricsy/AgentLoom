@@ -285,6 +285,8 @@ export class AuthService {
     try {
       await this.supabaseService.signOut(accessToken);
     } catch (error) {
+      if (error instanceof DomainException) throw error;
+
       this.logger.error(
         'Failed to sign out from Supabase',
         error instanceof Error ? error.stack : undefined,

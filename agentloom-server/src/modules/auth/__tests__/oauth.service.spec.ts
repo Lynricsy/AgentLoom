@@ -3,6 +3,7 @@ import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import {
+  AuthUnavailableException,
   OAuthCallbackException,
   OAuthInitiationException,
 } from '../../../common/exceptions/auth.exceptions';
@@ -168,6 +169,15 @@ describe('OAuthService', () => {
     );
   });
 
+  it('private 模式认证不可用时发起 OAuth 透传领域异常', async () => {
+    const unavailableError = new AuthUnavailableException('private');
+    supabaseService.signInWithOAuth.mockRejectedValue(unavailableError);
+
+    await expect(oauthService.initiateOAuth('google')).rejects.toBe(
+      unavailableError,
+    );
+  });
+
   it('handleCallback 在无 MFA 时返回前端 access/refresh token 重定向', async () => {
     supabaseService.exchangeCodeForSession.mockResolvedValue({
       session: mockSession,
@@ -244,6 +254,15 @@ describe('OAuthService', () => {
 
     await expect(oauthService.handleCallback(MOCK_CODE)).rejects.toBeInstanceOf(
       OAuthCallbackException,
+    );
+  });
+
+  it('private 模式认证不可用时 OAuth 回调透传领域异常', async () => {
+    const unavailableError = new AuthUnavailableException('private');
+    supabaseService.exchangeCodeForSession.mockRejectedValue(unavailableError);
+
+    await expect(oauthService.handleCallback(MOCK_CODE)).rejects.toBe(
+      unavailableError,
     );
   });
 });

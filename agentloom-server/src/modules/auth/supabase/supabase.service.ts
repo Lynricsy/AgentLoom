@@ -2,44 +2,42 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 import type { OAuthProvider } from '../dto/oauth.dto';
 
 @Injectable()
 export class SupabaseService {
-  private readonly adminClient: SupabaseClient;
-  private readonly oauthClient: SupabaseClient;
+  private readonly deploymentMode: 'saas' | 'private';
+  private readonly supabaseUrl?: string;
+  private readonly supabaseServiceKey?: string;
+  private readonly supabaseAnonKey?: string;
+  private readonly isSupabaseConfigured: boolean;
+  private adminClient?: SupabaseClient;
+  private oauthClient?: SupabaseClient;
   private readonly logger = new Logger(SupabaseService.name);
 
   constructor(private readonly configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('APP_SUPABASE_URL')!;
-    const supabaseServiceKey = this.configService.get<string>(
+    this.deploymentMode =
+      this.configService.get<'saas' | 'private'>('APP_DEPLOYMENT_MODE') ??
+      'saas';
+    this.supabaseUrl = this.configService.get<string>('APP_SUPABASE_URL');
+    this.supabaseServiceKey = this.configService.get<string>(
       'APP_SUPABASE_SERVICE_KEY',
-    )!;
-    const supabaseAnonKey = this.configService.get<string>(
+    );
+    this.supabaseAnonKey = this.configService.get<string>(
       'APP_SUPABASE_ANON_KEY',
-    )!;
-
-    this.adminClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
-
-    this.oauthClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
+    );
+    this.isSupabaseConfigured = [
+      this.supabaseUrl,
+      this.supabaseServiceKey,
+      this.supabaseAnonKey,
+    ].every((value) => typeof value === 'string' && value.trim().length > 0);
   }
 
   // ─── 邮箱密码认证 ───────────────────────────────────────────
 
   async signUp(email: string, password: string) {
-    const { data, error } = await this.adminClient.auth.signUp({
+    const { data, error } = await this.getAdminClient().auth.signUp({
       email,
       password,
     });
@@ -53,7 +51,7 @@ export class SupabaseService {
   }
 
   async signIn(email: string, password: string) {
-    const { data, error } = await this.adminClient.auth.signInWithPassword({
+    const { data, error } = await this.getAdminClient().auth.signInWithPassword({
       email,
       password,
     });
@@ -67,7 +65,7 @@ export class SupabaseService {
   }
 
   async refreshToken(refreshToken: string) {
-    const { data, error } = await this.adminClient.auth.refreshSession({
+    const { data, error } = await this.getAdminClient().auth.refreshSession({
       refresh_token: refreshToken,
     });
 
@@ -80,7 +78,9 @@ export class SupabaseService {
   }
 
   async signOut(accessToken: string) {
-    const { error } = await this.adminClient.auth.admin.signOut(accessToken);
+    const { error } = await this.getAdminClient().auth.admin.signOut(
+      accessToken,
+    );
 
     if (error) {
       this.logger.warn(`SignOut failed: ${error.message}`);
@@ -89,7 +89,9 @@ export class SupabaseService {
   }
 
   async getUser(accessToken: string) {
-    const { data, error } = await this.adminClient.auth.getUser(accessToken);
+    const { data, error } = await this.getAdminClient().auth.getUser(
+      accessToken,
+    );
 
     if (error) {
       this.logger.warn(`GetUser failed: ${error.message}`);
@@ -115,7 +117,7 @@ export class SupabaseService {
       options.queryParams = { access_type: 'offline', prompt: 'consent' };
     }
 
-    const { data, error } = await this.oauthClient.auth.signInWithOAuth({
+    const { data, error } = await this.getOauthClient().auth.signInWithOAuth({
       provider,
       options,
     });
@@ -132,7 +134,7 @@ export class SupabaseService {
 
   async exchangeCodeForSession(code: string) {
     const { data, error } =
-      await this.oauthClient.auth.exchangeCodeForSession(code);
+      await this.getOauthClient().auth.exchangeCodeForSession(code);
 
     if (error) {
       this.logger.warn(`OAuth code exchange failed: ${error.message}`);
@@ -145,12 +147,9 @@ export class SupabaseService {
   // ─── MFA (TOTP) ─────────────────────────────────────────────
 
   createUserClient(accessToken: string): SupabaseClient {
-    const supabaseUrl = this.configService.get<string>('APP_SUPABASE_URL')!;
-    const supabaseAnonKey = this.configService.get<string>(
-      'APP_SUPABASE_ANON_KEY',
-    )!;
+    this.ensureAvailable();
 
-    return createClient(supabaseUrl, supabaseAnonKey, {
+    return createClient(this.supabaseUrl!, this.supabaseAnonKey!, {
       global: {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -244,5 +243,56 @@ export class SupabaseService {
     }
 
     return data;
+  }
+
+  private ensureAvailable() {
+    if (this.isSupabaseConfigured) {
+      return;
+    }
+
+    this.logger.warn(
+      `Supabase auth requested without complete configuration in ${this.deploymentMode} deployment mode`,
+    );
+    throw new AuthUnavailableException(this.deploymentMode);
+  }
+
+  private getAdminClient() {
+    this.ensureClientsInitialized();
+
+    return this.adminClient!;
+  }
+
+  private getOauthClient() {
+    this.ensureClientsInitialized();
+
+    return this.oauthClient!;
+  }
+
+  private ensureClientsInitialized() {
+    this.ensureAvailable();
+
+    if (!this.adminClient) {
+      this.adminClient = createClient(
+        this.supabaseUrl!,
+        this.supabaseServiceKey!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false,
+          },
+        },
+      );
+    }
+
+    if (!this.oauthClient) {
+      this.oauthClient = createClient(this.supabaseUrl!, this.supabaseAnonKey!, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      });
+    }
   }
 }

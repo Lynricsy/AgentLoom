@@ -7,6 +7,7 @@ import { MfaService } from '../mfa.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
   Aal2RequiredException,
+  AuthUnavailableException,
   MfaAlreadyEnrolledException,
   MfaDisableException,
   MfaEnrollmentException,
@@ -105,6 +106,15 @@ describe('MfaService', () => {
     await expect(
       mfaService.enrollTotp(TEST_SUPABASE_TOKEN),
     ).rejects.toBeInstanceOf(MfaEnrollmentException);
+  });
+
+  it('private 模式认证不可用时 enrollTotp 透传领域异常', async () => {
+    const unavailableError = new AuthUnavailableException('private');
+    supabaseService.listFactors.mockRejectedValue(unavailableError);
+
+    await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBe(
+      unavailableError,
+    );
   });
 
   it('verifyTotp 使用 access token 成功返回 AAL2 会话令牌', async () => {
@@ -210,6 +220,15 @@ describe('MfaService', () => {
     ).rejects.toBeInstanceOf(MfaVerificationException);
   });
 
+  it('private 模式认证不可用时 verifyTotp 透传领域异常', async () => {
+    const unavailableError = new AuthUnavailableException('private');
+    supabaseService.challengeAndVerifyTotp.mockRejectedValue(unavailableError);
+
+    await expect(
+      mfaService.verifyTotp(TEST_SUPABASE_TOKEN, TEST_FACTOR_ID, '123456'),
+    ).rejects.toBe(unavailableError);
+  });
+
   it('disableMfa 成功完成验证、解除绑定并返回降级后的会话令牌', async () => {
     supabaseService.listFactors.mockResolvedValue({
       totp: [
@@ -291,5 +310,16 @@ describe('MfaService', () => {
     await expect(
       mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
     ).rejects.toBeInstanceOf(MfaDisableException);
+  });
+
+  it('private 模式认证不可用时 disableMfa 透传领域异常', async () => {
+    const unavailableError = new AuthUnavailableException('private');
+    supabaseService.getAuthenticatorAssuranceLevel.mockRejectedValue(
+      unavailableError,
+    );
+
+    await expect(
+      mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
+    ).rejects.toBe(unavailableError);
   });
 });

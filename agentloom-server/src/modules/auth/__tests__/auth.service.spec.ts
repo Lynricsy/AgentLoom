@@ -6,6 +6,7 @@ import { AuthApiError } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
 import { AuthService } from '../auth.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import { DRIZZLE } from '../../../database/database.module';
@@ -280,6 +281,18 @@ describe('AuthService', () => {
         );
       }
     });
+
+    it('private 模式认证不可用时透传领域异常', async () => {
+      const unavailableError = new AuthUnavailableException('private');
+      supabaseService.signUp.mockRejectedValue(unavailableError);
+
+      await expect(
+        authService.register({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toBe(unavailableError);
+    });
   });
 
   describe('login', () => {
@@ -494,6 +507,18 @@ describe('AuthService', () => {
         email: MOCK_EMAIL,
       });
     });
+
+    it('private 模式认证不可用时 login 透传领域异常', async () => {
+      const unavailableError = new AuthUnavailableException('private');
+      supabaseService.signIn.mockRejectedValue(unavailableError);
+
+      await expect(
+        authService.login({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toBe(unavailableError);
+    });
   });
 
   describe('getSecurityInfo', () => {
@@ -544,6 +569,15 @@ describe('AuthService', () => {
         providers: ['email', 'google'],
       });
       expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('private 模式认证不可用时 getSecurityInfo 透传领域异常', async () => {
+      const unavailableError = new AuthUnavailableException('private');
+      supabaseService.listFactors.mockRejectedValue(unavailableError);
+
+      await expect(
+        authService.getSecurityInfo(mockSession.access_token),
+      ).rejects.toBe(unavailableError);
     });
   });
 
@@ -639,6 +673,17 @@ describe('AuthService', () => {
         expect(de.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
         expect(de.type).toBe('https://agentloom.dev/errors/refresh-failed');
       }
+    });
+
+    it('private 模式认证不可用时 refreshToken 透传领域异常', async () => {
+      const unavailableError = new AuthUnavailableException('private');
+      supabaseService.refreshToken.mockRejectedValue(unavailableError);
+
+      await expect(
+        authService.refreshToken({
+          refresh_token: 'old-refresh-token',
+        }),
+      ).rejects.toBe(unavailableError);
     });
   });
 
@@ -741,6 +786,19 @@ describe('AuthService', () => {
 
       expect(tokenBlacklist.add).not.toHaveBeenCalled();
       expect(supabaseService.signOut).toHaveBeenCalledWith(token);
+    });
+
+    it('private 模式认证不可用时 logout 透传领域异常而不是包装为通用错误', async () => {
+      const unavailableError = new AuthUnavailableException('private');
+      supabaseService.signOut.mockRejectedValue(unavailableError);
+      const token = createAccessToken();
+
+      await expect(authService.logout(token)).rejects.toBe(unavailableError);
+      expect(tokenBlacklist.add).toHaveBeenCalledWith(
+        token,
+        1999999999,
+        'test',
+      );
     });
   });
 });

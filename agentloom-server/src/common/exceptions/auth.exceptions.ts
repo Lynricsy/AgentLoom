@@ -126,6 +126,17 @@ export class OAuthInitiationException extends DomainException {
   }
 }
 
+export class AuthUnavailableException extends DomainException {
+  constructor(deploymentMode: string) {
+    super({
+      type: 'https://agentloom.dev/errors/auth-unavailable',
+      title: '认证能力不可用',
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      detail: `当前部署模式 ${deploymentMode} 未配置完整的 Supabase 认证服务，认证相关功能暂不可用`,
+    });
+  }
+}
+
 export class MfaFactorNotFoundException extends DomainException {
   constructor(factorId: string, detail?: string) {
     super({
