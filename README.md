@@ -18,6 +18,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
 - **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
 - **🧾 审计日志与保留归档** — evidence 域统一采集管理/执行关键事件，提供 owner/admin 审计查询页、资源级事件序列与 hot/archive 回查
+- **🛡️ 资源治理与异常执行处置** — `tenant_quotas` + `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 分钟限流 / 日配额、治理通知与异常 execution 终止 contract
 - **🛠️ 配置优化建议闭环** — 周期分析执行遥测，生成可解释的模型/超时/工具/自主性建议，应用时复用 workflow OCC 保护，并在画布存在未保存修改时避免静默覆盖本地编辑
 - **🌐 MCP 集成** — Model Context Protocol 工具编排，沙箱化执行环境
 - **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架
@@ -93,6 +94,7 @@ AgentLoom/
 | `organization` | 组织管理与多租户 |
 | `workflow-definition` | 工作流定义 CRUD + 版本管理 |
 | `execution` | DAG 调度引擎 + 状态机 + 人工介入 |
+| `resource-governance` | 租户资源配额、治理暂停、异常 execution 终止、治理通知/审计 |
 | `agent` | AI Agent 六边形架构 (Ports/Adapters) |
 | `llm` | 多模型集成 + Provider 管理 |
 | `smart-routing` | 6 种智能路由策略 |
@@ -116,15 +118,15 @@ AgentLoom/
 <summary>🔐 认证与多租户链路</summary>
 
 ```
-请求 → TenantMiddleware → TenantTransactionInterceptor → CustomThrottlerGuard (100 req/min)
+请求 → TenantMiddleware → TenantTransactionInterceptor → CustomThrottlerGuard (tenant-aware `apiRateLimitPerMinute` / `dailyApiCallLimit`)
      → AuthGuard (JWT → X-Api-Key fallback) → TenantGuard → RolesGuard
-                                                              │
-                                              owner > admin > creator > operator > viewer
+                                                               │
+                                               owner > admin > creator > operator > viewer
 ```
 
 - **租户隔离**: AsyncLocalStorage + Drizzle 事务级隔离
 - **双重认证**: Supabase JWT 或 `X-Api-Key`（SHA-256 哈希存储）
-- **API 限流**: 100 请求/分钟 (Throttler Guard)
+- **API 治理**: 分钟级 `apiRateLimitPerMinute` 继续返回 429 + `Retry-After` / `X-RateLimit-*`，`dailyApiCallLimit` 与其它治理阻断返回 409 结构化 problem details
 
 </details>
 
@@ -186,6 +188,8 @@ AgentLoom/
 | `/settings/knowledge-bases` | 知识库管理 |
 | `/settings/tool-library` | MCP 工具库 |
 | `/settings/audit-logs` | 审计日志查询页 |
+| `/settings/resource-quotas` | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
+| `/settings/monitoring` | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots） |
 | `/developer-console/earnings` | 开发者收益面板 |
 
 </details>
