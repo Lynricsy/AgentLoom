@@ -92,6 +92,21 @@ const LICENSE_STATUS_LABELS: Record<PrivateDeploymentLicenseStatus, string> = {
   expired: '已过期',
 }
 
+const PRIVATE_DEPLOYMENT_RELATED_OPERATIONS = [
+  {
+    href: '/settings/resource-quotas',
+    label: '资源治理设置',
+  },
+  {
+    href: '/settings/monitoring',
+    label: '运行监控',
+  },
+  {
+    href: '/settings/audit-logs',
+    label: '审计日志',
+  },
+] as const
+
 interface SmtpDraft {
   host: string
   port: string
@@ -696,6 +711,29 @@ function PrivateDeploymentContent({
           <p className="text-sm text-muted-foreground">
             `deploymentMode` 来自服务端环境，不在前端页面中直接编辑。其余配置项会按分组独立提交。
           </p>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-border/60 bg-background/30 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-foreground">相关操作</h3>
+              <p className="text-sm text-muted-foreground">
+                私有部署配置通常需要联动查看资源治理、运行监控与审计日志，便于统一排查企业运维问题。
+              </p>
+            </div>
+
+            <nav aria-label="私有部署相关操作" className="flex flex-col items-start gap-2">
+              {PRIVATE_DEPLOYMENT_RELATED_OPERATIONS.map((operation) => (
+                <a
+                  key={operation.href}
+                  href={operation.href}
+                  className="text-sm font-medium text-primary transition-colors hover:text-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                >
+                  {operation.label}
+                </a>
+              ))}
+            </nav>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

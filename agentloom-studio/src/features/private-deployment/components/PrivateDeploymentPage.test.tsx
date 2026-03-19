@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrivateDeploymentSettings } from '../types/privateDeployment'
@@ -125,8 +125,26 @@ describe('PrivateDeploymentPage', () => {
 
     render(<PrivateDeploymentPage />)
 
+    const metadataSection = screen.getByTestId('private-deployment-metadata')
+
     expect(screen.getByTestId('private-deployment-page')).toBeInTheDocument()
-    expect(screen.getByTestId('private-deployment-metadata')).toHaveTextContent('当前部署模式')
+    expect(metadataSection).toHaveTextContent('当前部署模式')
+    expect(metadataSection).toHaveTextContent('相关操作')
+    expect(
+      within(metadataSection).getByRole('link', {
+        name: '资源治理设置',
+      }),
+    ).toHaveAttribute('href', '/settings/resource-quotas')
+    expect(
+      within(metadataSection).getByRole('link', {
+        name: '运行监控',
+      }),
+    ).toHaveAttribute('href', '/settings/monitoring')
+    expect(
+      within(metadataSection).getByRole('link', {
+        name: '审计日志',
+      }),
+    ).toHaveAttribute('href', '/settings/audit-logs')
     expect(screen.getByTestId('private-deployment-smtp-form')).toHaveTextContent('SMTP')
     expect(screen.getByTestId('private-deployment-llm-proxy-form')).toHaveTextContent('LLM 代理')
     expect(screen.queryByText(smtpSecretRef)).not.toBeInTheDocument()
