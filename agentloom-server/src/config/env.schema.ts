@@ -6,6 +6,23 @@ const supabaseFieldRequirements = {
   APP_SUPABASE_SERVICE_KEY: 'Supabase Service Key 不能为空',
 } as const;
 
+const emptyStringToUndefined = (value: unknown) => {
+  if (typeof value === 'string' && value.trim().length === 0) {
+    return undefined;
+  }
+
+  return value;
+};
+
+const optionalUrlFromEnv = (message: string) =>
+  z.preprocess(emptyStringToUndefined, z.string().url(message).optional());
+
+const optionalNonEmptyStringFromEnv = (message: string) =>
+  z.preprocess(
+    emptyStringToUndefined,
+    z.string().min(1, message).optional(),
+  );
+
 const baseEnvSchema = z.object({
   APP_PORT: z.coerce.number().default(3000),
   APP_NODE_ENV: z
@@ -15,15 +32,13 @@ const baseEnvSchema = z.object({
 
   APP_DATABASE_URL: z.string().min(1, '数据库连接字符串不能为空'),
 
-  APP_SUPABASE_URL: z.string().url('无效的 Supabase URL').optional(),
-  APP_SUPABASE_ANON_KEY: z
-    .string()
-    .min(1, 'Supabase Anon Key 不能为空')
-    .optional(),
-  APP_SUPABASE_SERVICE_KEY: z
-    .string()
-    .min(1, 'Supabase Service Key 不能为空')
-    .optional(),
+  APP_SUPABASE_URL: optionalUrlFromEnv('无效的 Supabase URL'),
+  APP_SUPABASE_ANON_KEY: optionalNonEmptyStringFromEnv(
+    'Supabase Anon Key 不能为空',
+  ),
+  APP_SUPABASE_SERVICE_KEY: optionalNonEmptyStringFromEnv(
+    'Supabase Service Key 不能为空',
+  ),
 
   APP_JWT_SECRET: z.string().min(1, 'JWT Secret 不能为空'),
 
@@ -43,7 +58,9 @@ const baseEnvSchema = z.object({
       { message: '主加密密钥必须为 256 位（32 字节）Base64 编码' },
     ),
 
-  APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY: z.string().min(1).optional(),
+  APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY: optionalNonEmptyStringFromEnv(
+    '私有部署 License 公钥不能为空',
+  ),
 
   APP_OAUTH_REDIRECT_URL: z.string().url('无效的 OAuth 回调 URL'),
   APP_FRONTEND_URL: z.string().url('无效的前端 URL'),
