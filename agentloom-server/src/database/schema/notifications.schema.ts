@@ -17,6 +17,10 @@ export const notificationTypeEnum = pgEnum('notification_type_enum', [
   'execution_completed',
   'execution_failed',
   'intervention_required',
+  'resource_governance_execution_blocked',
+  'resource_governance_quota_updated',
+  'resource_governance_controls_updated',
+  'resource_governance_execution_terminated',
   'system',
 ]);
 
