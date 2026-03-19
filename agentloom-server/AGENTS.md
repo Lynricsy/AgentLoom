@@ -11,7 +11,7 @@ NestJS v11 + Fastify v5 后端。多租户 SaaS，七层全局中间件/守卫�
 ```
 TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key present)
   → TenantTransactionInterceptor (AsyncLocalStorage, Drizzle tenant tx)
-    → CustomThrottlerGuard (100 req/min, 按 API key prefix 或 JWT sub 限流；429 同时返回 Retry-After + X-RateLimit-*；Redis storage via @nestjs/throttler v6 + @nest-lab/throttler-storage-redis)
+    → CustomThrottlerGuard (tenant-aware `apiRateLimitPerMinute` / `dailyApiCallLimit` 治理；JWT 与 X-Api-Key 都会解析 tenant；分钟级 API 限流返回 429 + Retry-After + X-RateLimit-*，其它治理/配额阻断返回 409 `ResourceGovernanceDecisionBlockedException`；Redis storage via @nestjs/throttler v6 + @nest-lab/throttler-storage-redis)
       → AuthGuard (JWT priority → X-Api-Key fallback; ModuleRef lazy-loads PlatformApiTokenService)
         → TenantGuard (validate UUID tenantId)
           → RolesGuard (Redis-cached RBAC: owner>admin>creator>operator>viewer)
@@ -25,7 +25,8 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - `PlatformApiTokenService` 通过 `ModuleRef.get({strict:false})` 延迟解析，避免全局 APP_GUARD 的跨模块 DI 问题；API Key 认证成功时会把 `tokenPrefix` 写入 `req.apiKeyPrefix`
 
 ### 速率限制
-- `CustomThrottlerGuard` (`src/common/guards/custom-throttler.guard.ts`): 先从原始 `x-api-key` / `authorization` 头提取 tracker，返回 `apikey:{prefix}` 或 `jwt:{sub}`，无认证回退 `req.ip`；blocked 分支也补写 `X-RateLimit-Limit/Remaining/Reset`
+- `CustomThrottlerGuard` (`src/common/guards/custom-throttler.guard.ts`): 先从原始 `x-api-key` / `authorization` 头提取 tracker，返回 `apikey:{prefix}` 或 `jwt:{sub}`，无认证回退 `req.ip`；随后按 tenant-aware `apiRateLimitPerMinute` 动态替换分钟级 limit，并在 API key 路径通过 `PlatformApiTokenService.validateToken()` 懒解析 tenantId / tokenPrefix / userId
+- API 请求治理区分两类路径：`apiRateLimitPerMinute` 命中时返回 429 + `Retry-After` / `X-RateLimit-*`；`dailyApiCallLimit` 命中时返回 409 `ResourceGovernanceDecisionBlockedException`，响应体保留 canonical `decision/category/scope/reason/effectiveState/blockedAt/metadata` explain
 - `@SkipThrottle({ default: true })` 用于 HealthController (v6 语法: `Record<string, boolean>`)
 - ThrottlerModule: `{ ttl: 60_000, limit: 100 }` (100 req/min, ttl 单位为毫秒 — v6 breaking change)；`AppModule.onModuleDestroy()` 会主动关闭 throttler 内联 Redis 连接
 
@@ -35,6 +36,8 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 |------|------|------|----------|
 | auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
+| resource-governance | `modules/resource-governance/` | 租户资源配额与异常执行治理：`tenant_quotas` / `execution_governance_controls` typed store、治理读写 API、anomalous execution termination contract、治理事件 / 审计 / 通知 explain | EvidenceModule, EventEmitter2 |
+| monitoring | `modules/monitoring/` | 组织级 owner/admin 只读监控 dashboard：`GET /organizations/:id/monitoring`，按 `15m|1h|24h` 聚合 `workflow_executions`、`agent_execution_records`、governance state、notifications、audit logs 与当前 `agent-task` queue snapshot；趋势图聚焦 execution trend，queue depth 仅表示当前 snapshot，输出 summary/alerts/hotspots/riskSummary deep link contract | ResourceGovernanceModule, BullMQ, DrizzleDB |
 | api-key | `modules/api-key/` | API Key CRUD + 轮换 (AES 加密) | ConfigModule |
 | workflow-def | `modules/workflow-definition/` | 工作流版本 CRUD + 发布/归档/回滚 + 空白/模板创建 (`POST /workflow-definitions`) + 列表/详情查询 (`GET /workflow-definitions`, `GET /workflow-definitions/:id`) + 导出（`GET /workflow-definitions/:id/export`，返回已清洗的 `agentloom-workflow-v1` envelope，移除 API key/credentials/tenant/org/user 标识等敏感字段） + 自动保存/更新 (`PATCH /workflow-definitions/:id`，Creator/Admin/Owner 可写，OCC version 乐观并发，409 顶层 `currentVersion`) + 软删除 (`DELETE /workflow-definitions/:id` → archive) + 列表排序别名 (`updatedAt/createdAt/name` + `updated_at/created_at`) | TemplateModule |
 | llm | `modules/llm/` | LLM 模型/提供商配置 + catalog | ApiKeyModule |
@@ -169,6 +172,8 @@ HTTP POST /executions
 Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_templates` 表为系统级公共资源（无 RLS、无 tenant_id）。`device_tokens` 表为用户级资源（无 RLS、无 tenant_id，直接通过 user_id 关联）。`platform_api_tokens` 表为用户级 API Token 存储（无 RLS、通过 userId FK 关联，tokenHash UNIQUE + 租户-用户-状态复合索引 + prefix 索引）。`plugins` 表保存租户插件清单：`org_id + plugin_id` 唯一，状态枚举为 `registered|active|disabled|error`，并持久化 `manifest`、`node_definitions`、`permissions`、`signature`（text）、`content_hash`（varchar 64）、`wasm_bundle_url`（varchar 512）、`occ_version` 与 tenant-scoped RLS。`plugin_developer_keys` 表管理开发者 RSA 公钥：`org_id + key_fingerprint` 唯一，状态枚举 `active|revoked`，含 `public_key`（text）、`label`、`revoked_at` 与 tenant-scoped RLS。`agent_execution_records` 表存储 Agent 执行遥测记录：`tenant_id` 直连租户、`execution_id` FK → `workflow_executions` (cascade)、`step_id` FK → `execution_steps` (set null)、`record_type` 枚举 `step_telemetry|execution_summary`、`telemetry_data` JSONB（StepTelemetryData，��� step telemetry）、`summary_data` JSONB（ExecutionSummaryData，仅 execution summary），并通过 payload check 约束保证两类记录互斥；该表使用 `createDirectTenantPolicies` 做直接租户 RLS，并额外建立 `tenant_id` / `(tenant_id, execution_id)` 索引。`audit_logs` 与 `audit_log_archives` 为 evidence 域 append-only 审计双表，字段同构（`tenant_id/actor_id/actor_type/event_type/resource_type/resource_id/execution_id/summary/before/after/metadata/created_at`），只对 `authenticated` 授予 `SELECT/INSERT`，并通过 append-only tenant policy 保持 hot/archive 都不可 update/delete；两表均建立 `(tenant_id, created_at)`、`(tenant_id, event_type, created_at)`、`(tenant_id, resource_type, resource_id, created_at)`、`(tenant_id, execution_id, created_at)` 索引。`optimization_suggestions` 表保存按租户隔离的配置建议，字段包括 `workflow_definition_id/node_id/suggestion_type/status/confidence/current_value/suggested_value/rationale/impact_estimate/analysis_metadata/analysis_period_*` 与 apply/dismiss 审计列；该表启用 direct tenant RLS，并额外通过 migration 为 `authenticated` 授予 `SELECT/INSERT/UPDATE/DELETE`。Marketplace 现同时包含 `marketplace_listings`（上架记录 + `category/use_count/avg_rating/review_count` 聚合字段）与 `marketplace_reviews`（用户评分/评论，`listing_id + user_id` 唯一约束，评分 1..5 check）。
 关键：`workflowDefinitions` 存储 ReactFlow JSON (JSONB)，含 `metadata` jsonb 列（模板克隆信息等）；`documentChunks` 含 vector 列。
 补充：`workflow_definitions` 现新增 `input_schema` JSONB；`WorkflowVersionController GET /workflow-definitions/:workflowId/input-schema` 返回 canonical `WorkflowInputSchema`（operator+，未发布 409，空值默认 `{ version:1, collectionMode:'form', fields:[] }`）；`RunWorkflowDto.launchSource` 会被 `ExecutionService` 归并到 `workflow_executions.input_params._meta.launchSource`；模板 seeds 通过 `workflow_templates.definition.inputSchema` 承载示例 schema，并在克隆时复制到 `workflow_definitions.input_schema`。migration `0027_tidy_marauders.sql` 同时补齐了 `workflow_executions` / `execution_steps` 对 authenticated 的 GRANT，以修复 execution RLS 测试路径中的权限缺口。
+- **资源治理表**: `tenant_quotas` 提供 7 个 canonical quota 字段（`maxConcurrentExecutions`、`dailyExecutionLimit`、`dailyApiCallLimit`、`storageQuotaMb`、`apiRateLimitPerMinute`、`maxSandboxCpuPercent`、`maxSandboxMemoryMb`），使用 direct tenant RLS 与 `organization_id` 唯一索引；`execution_governance_controls` 以 `scope + targetId + status + reason` 保存 tenant/workflow 治理暂停状态，使用 `(organization_id, scope, target_id)` 唯一索引与 direct tenant RLS。
+- **治理通知枚举扩展**: `notifications.notification_type_enum` 现包含 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`，供 `/notification` socket、通知列表与治理审计链路复用。
 - **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
@@ -197,9 +202,9 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_t
 - `/notification` namespace: 连接握手复用 JWT blacklist + MFA 校验，连接即加入 `tenant:{tenantId}:user:{userId}` 房间
   - 事件: `notification.new`（完整通知记录）、`notification.unread-count`（`{ count }`）
   - 订阅事件: `notification:subscribe` / `notification:unsubscribe`
-  - 处理链路: `EventBridgeService.emitExecutionStatusChanged()` → `EventEmitter2('execution.status.changed')`，以及 `emitInterventionRequired()` → `EventEmitter2('execution.node.intervention-required')` → `NotificationListener` → `NotificationService.create()` → `NotificationProcessor`
+  - 处理链路: `EventBridgeService.emitExecutionStatusChanged()` → `EventEmitter2('execution.status.changed')`，`emitInterventionRequired()` → `EventEmitter2('execution.node.intervention-required')`，以及 `ResourceGovernanceService` 发出的 `resource-governance.*` 事件 → `NotificationListener` → `NotificationService.create()` → `NotificationProcessor`
   - 接收人策略: `NotificationListener` 基于 execution + workflow + organization members 联表，向租户内 `owner/admin/creator`（Editor+）批量创建通知，不再只通知执行创建者
-  - 载荷约定: `completed` / `failed` / `intervention_required` 通知 body 均包含 `workflowId`、`workflowName`、`executionId`、`timelineUrl`；失败额外含 `errorReason` / `suggestion`，人工介入额外含 `nodeId` / `nodeName` / `interventionReason` / `requestedAt`
+  - 载荷约定: `completed` / `failed` / `intervention_required` 通知 body 均包含 `workflowId`、`workflowName`、`executionId`、`timelineUrl`；失败额外含 `errorReason` / `suggestion`，人工介入额外含 `nodeId` / `nodeName` / `interventionReason` / `requestedAt`。资源治理通知类型包括 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`，body 至少保留 `organizationId` 与对应 workflow/execution/reason/requestedAt/effectedAt 等结构化字段。
 - `/knowledge` namespace: document status/kb updates (隐式契约)
 - 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 
@@ -221,6 +226,9 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`)。`workflow_t
 
 - **Unit**: `__tests__/*.spec.ts`，NestJS `Test.createTestingModule` + `vi.fn()`
 - **E2E**: `test/*.e2e-spec.ts`，Testcontainers PostgreSQL + NestFastifyApplication + `rls-test-utils.ts`
+- `package.json` 的 `test:e2e` 现通过 `scripts/run-e2e.mjs` 包装 `vitest.e2e.config.ts`，确保 `pnpm test:e2e -- <pattern>` 会把 pattern 正确前传给 Vitest 文件过滤。
+- `test/resource-governance.e2e-spec.ts` 会在 testcontainer 数据库内 bootstrap `tenant_quotas` / `execution_governance_controls` 与资源治理通知枚举扩展，并额外清理 `notifications/notification_preferences/workflow_executions/workflow_versions/execution_steps` 等扩展表，避免旧 migrations 缺口导致 suite 漂移。
+- `test/monitoring.e2e-spec.ts` 复用同一套 Testcontainers/RLS 基建，校验 monitoring route 的 owner/admin 门禁、`15m`→`24h` 窗口刷新、trend 中不伪造历史 queue depth，以及 resource governance / execution deep-link contract。
 - **Mock**: `vi.hoisted()` + mock factory 函数 (`createMockXxxService`)
 - **覆盖率**: 80% 阈值 (V8)，Vitest + SWC
 - `test/workflow-version.e2e-spec.ts` 初始化链路较重；为避免全量 E2E 下的冷启动 hook timeout，suite 的 `beforeAll` 明确使用 `30_000ms` timeout，`afterAll` 使用可选关闭保证初始化失败时也能安全清理。
