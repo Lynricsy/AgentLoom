@@ -23,6 +23,27 @@ export {
   type NewOrganizationAutonomyPolicy,
 } from './org-autonomy-policies.schema';
 export {
+  tenantQuotas,
+  type TenantQuota,
+  type NewTenantQuota,
+} from './tenant-quotas.schema';
+export {
+  privateCloudAuthMethodEnum,
+  privateDeploymentCertificateSourceEnum,
+  privateDeploymentSettings,
+  type PrivateDeploymentSetting,
+  type NewPrivateDeploymentSetting,
+} from './private-deployment-settings.schema';
+export {
+  executionGovernanceStateEnum,
+  governanceScopeEnum,
+  executionGovernanceControls,
+  type ExecutionGovernanceState,
+  type GovernanceScope,
+  type ExecutionGovernanceControl,
+  type NewExecutionGovernanceControl,
+} from './execution-governance-controls.schema';
+export {
   bytea,
   apiKeyStatusEnum,
   llmProviderEnum,
