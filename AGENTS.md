@@ -30,6 +30,7 @@ AgentLoom — 多智能体工作流编排平台。用户通过可视化画布将
 AgentLoomAUTO/
 ├── agentloom-server/         # NestJS v11 + Fastify v5 后端 (见子 AGENTS.md)
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
+├── agentloom-deploy/         # 私有化部署资产 (Docker Compose + Helm + 运维脚本)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
 ├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output)
 ├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令)
@@ -50,11 +51,13 @@ AgentLoomAUTO/
 | 添加后端 API 端点 | `agentloom-server/src/modules/` | NestJS 模块，每模块有 controller/service/dto |
 | 添加数据库表 | `agentloom-server/src/database/schema/` | Drizzle ORM，需 `pnpm db:generate` |
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
+| 管理 ACP stdio server 与协议适配层 | `agentloom-server/src/modules/acp-gateway/` + `agentloom-server/src/acp-stdio.ts` | initialize/authenticate、`session/new` / `session/prompt` / `session/cancel` / `session/update`、官方 `session/request_permission` request/response、conversation-session 级工具权限恢复、JSON-RPC 2.0 错误映射、连接状态、独立 stdio 入口 |
 | 管理服务端插件注册与生态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册 + canonical archive RSA-PSS 验签、`plugins`/`plugin_developer_keys`/`plugin_usage_records`/`plugin_earnings` 表、`PluginSandboxService`（Extism WASM 沙箱）、开发者密钥管理 API、`plugin-execution`/`earnings-settlement` 队列、插件市场 CRUD、使用量记录、收益结算 |
 | 管理 Agent 配置优化建议闭环 | `agentloom-server/src/modules/optimization-suggestion/` + `agentloom-studio/src/features/optimization-suggestion/` | 周期分析 `agent_execution_records`、生成/应用/忽略建议、采纳率统计、Studio live Agent Config 建议面板 |
 | 管理审计日志与保留归档 | `agentloom-server/src/modules/evidence/` + `agentloom-studio/src/features/audit-log/` | evidence 域统一审计写入、组织级 `audit-logs` 查询 API、按资源序列回放、hot/archive merged recall、`audit-log-retention` 单例归档调度、Studio `/settings/audit-logs` 查询页 |
 | 管理资源配额与异常执行治理 | `agentloom-server/src/modules/resource-governance/` + `agentloom-studio/src/features/resource-governance/` | `tenant_quotas` / `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 限流/日配额、治理操作审计/通知、Studio `/settings/resource-quotas` 管理页 |
 | 管理组织级运行监控仪表板 | `agentloom-server/src/modules/monitoring/` + `agentloom-studio/src/features/monitoring/` | owner/admin 只读 monitoring dashboard、`15m/1h/24h` 时间窗口、execution/governance/notification/audit 聚合与当前 queue snapshot 摘要、Studio `/settings/monitoring` 页面与 deep link |
+| 管理私有部署配置与部署资产 | `agentloom-server/src/modules/private-deployment/` + `agentloom-studio/src/features/private-deployment/` + `agentloom-deploy/` | owner/admin 私有部署设置 API 与 `/settings/private-deployment` 页面、受管 secret 引用 / RSA-PSS license 校验、Docker Compose / Helm / 备份恢复脚本与私有部署手册 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
@@ -103,6 +106,7 @@ server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + Mi
 # Server
 cd agentloom-server
 pnpm install && pnpm start:dev    # 开发 (watch mode)
+pnpm start:acp:stdio              # ACP stdio 独立入口
 pnpm test                          # 单元测试
 pnpm test:e2e                     # E2E (需 Docker)
 pnpm test:cov                     # 覆盖率 (80% 阈值)
@@ -171,6 +175,7 @@ dart run build_runner build        # 代码生成 (freezed/json_serializable)
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`
 - **OptimizationSuggestionModule**: `optimization_suggestions` 表保存 `model_downgrade|timeout_adjustment|tool_pruning|autonomy_upgrade` 四类建议，带 direct-tenant RLS 与 authenticated DML grant；`OptimizationAnalysisScheduler` 使用固定 scheduler ID 的 BullMQ `upsertJobScheduler()` 注册 `optimization-analysis` 周期任务（`0 2 * * 1`, UTC）；Server 提供 list/apply/dismiss/stats API，并在 apply 复用 `workflow_definitions.version` OCC、在 apply/dismiss 都使用 `pending` 状态 SQL guard；Studio 在 live `llm-agent` `NodeConfigPanel` 下挂载建议面板，以 `autonomyMode` 作为 canonical 自主性字段，并在 dirty canvas / server version refresh 时避免静默覆盖本地编辑
 - **ResourceGovernanceModule**: `tenant_quotas` 表提供 7 个 canonical quota 字段（并发执行、日执行量、日 API 调用量、存储预算、分钟级 API rate limit、sandbox CPU%、sandbox 内存）；`execution_governance_controls` 表以 `scope + targetId + status + reason` 保存 tenant/workflow 治理暂停状态。`ExecutionService.runWorkflow()` 在写入 `workflow_executions` 前调用资源治理准入判断；`CustomThrottlerGuard` 会对 JWT 与 API key 请求解析租户并应用 `apiRateLimitPerMinute` 与 `dailyApiCallLimit`。治理阻断统一使用 `ResourceGovernanceDecisionBlockedException`（分钟级 API 限流返回 429 + `Retry-After` / `X-RateLimit-*`，其余治理/配额阻断返回 409），并写正式审计。治理更新、execution start blocked、异常 execution termination 通过 EventEmitter2 驱动通知；Studio 管理入口位于 `/settings/resource-quotas`
+- **PrivateDeploymentModule**: `private_deployment_settings` 表保存组织级私有部署 SMTP / LLM proxy / certificates / license 配置，使用 direct-tenant RLS、`organization_id` 唯一索引与 authenticated DML grant。Server 提供 `GET/PUT /organizations/:id/private-deployment`（仅 owner/admin），响应只暴露受管 secret ref，不回显明文，license 使用 `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` 做 RSA-PSS 验签；Studio 管理入口位于 `/settings/private-deployment`，页内显式链接 `/settings/resource-quotas`、`/settings/monitoring`、`/settings/audit-logs` 形成组合式企业运维入口；`agentloom-deploy/` 提供私有化 Docker Compose、Helm、环境模板与 PostgreSQL/MinIO 备份恢复脚本
 - **AuditLogSystem**: `audit_logs` / `audit_log_archives` 属于 evidence 域，保持 append-only hot/archive 双表 + JSONB `before/after/metadata`；`AuditLogService.record()` 是唯一正式写入口，HTTP opt-in capture 与 execution/intervention listener 共用同一 evidence 写入能力。组织级查询接口为 `GET /audit-logs`、`GET /audit-logs/:id`、`GET /audit-logs/resources/:resourceType/:resourceId/sequence`，运行时权限固定 `owner/admin`（复用 `audit:read` 语义）；retention 通过 `audit-log-retention` 队列上的 `upsertJobScheduler()` 单例任务驱动，worker 在 raw base DB transaction 中执行 copy-then-delete，读侧继续 tenant-aware / RLS，并按 `(createdAt,id)` 做 hot/archive merged recall 与去重。Studio 审计页位于 `/settings/audit-logs`，前端 feature 在 `agentloom-studio/src/features/audit-log/`
 - **PluginModule**: `plugins` 表保存租户插件元数据（`org_id + plugin_id` 唯一，含 `manifest`、`node_definitions`、`signature`、`content_hash`、`wasm_bundle_url`、`occ_version` 与 tenant RLS）。`plugin_developer_keys` 表管理开发者 RSA 公钥（`org_id + key_fingerprint` 唯一，active/revoked 状态）。`plugin_usage_records` 表记录每次插件执行的使用量（含 billingAmount、executionDurationMs、inputTokens、outputTokens）。`plugin_earnings` 表记录收益结算周期（含 totalRevenue、developerShare、platformShare、listingCommission，`payoutStatusEnum`: pending/processing/completed/failed）。收益分成模型：总收入 × 0.70 = 开发者毛收入，毛收入 × 0.15 = 上架佣金，开发者净收入 = 毛收入 - 佣金（≈59.5%），平台份额 = 总收入 × 0.30。`/plugins` 提供 `.alp` multipart 注册、列表、详情、状态更新与删除；`/plugins/marketplace` 提供插件上架/列表/详情/更新 CRUD；`/plugins/developer-keys` 提供开发者密钥管理。`PluginExecutionWorker` 执行成功后 fire-and-forget 调用 `PluginUsageService.recordUsage()`。`EarningsSettlementWorker`（`earnings-settlement` 队列）按周期汇总使用量并计算收益分成，含幂等性检查。`PluginSandboxService` 使用 `@extism/extism` 创建隔离 WASM 实例（`runInWorker: true`），平台硬限制固定 `timeoutMs=30000` / `maxMemoryPages=4096`
 - **Marketplace**: 公共 browse/search/detail/reviews/install 链路。安装 RBAC `owner/admin/creator/operator`。发布审核基于 `workflowDefinitions.status + publishedVersionId`。`marketplace_listings` 支持 `listingType`（workflow/plugin）和 `pricingModel`（free/per_execution），`workflowVersionId` 为 nullable 以支持插件上架

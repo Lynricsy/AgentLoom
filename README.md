@@ -31,6 +31,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 AgentLoom/
 ├── agentloom-server/            # 🖥️  后端服务 (NestJS 11 + Fastify 5)
 ├── agentloom-studio/            # 🎨  前端应用 (React 19 + Vite 7)
+├── agentloom-deploy/            # 🏢  私有化部署资产 (Docker Compose + Helm + 运维脚本)
 ├── agentloom-type-engine/       # ⚙️  类型引擎 (Rust → WASM)
 ├── agentloom-plugin-sdk/        # 📦  插件开发 SDK (TypeScript)
 ├── agentloom-plugin-cli/        # 🔧  插件脚手架 CLI
@@ -102,6 +103,7 @@ AgentLoom/
 | `mcp` | Model Context Protocol 工具管理 |
 | `sandbox` | 隔离执行环境（生命周期管理） |
 | `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
+| `private-deployment` | 组织级私有部署设置 API、受管 secret 引用、许可证校验 |
 | `optimization-suggestion` | 基于执行记录的 Agent 配置优化建议、采纳率统计与工作流节点配置更新（含 workflow OCC 与 dirty-canvas 防覆盖保护） |
 | `trigger` | Cron / Webhook / API Event 触发器 |
 | `notification` | REST + BullMQ + Socket.IO + FCM |
@@ -187,6 +189,7 @@ AgentLoom/
 | `/marketplace` | 工作流/插件市场 |
 | `/settings/knowledge-bases` | 知识库管理 |
 | `/settings/tool-library` | MCP 工具库 |
+| `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板 |
 | `/settings/audit-logs` | 审计日志查询页 |
 | `/settings/resource-quotas` | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
 | `/settings/monitoring` | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots） |
@@ -386,6 +389,13 @@ fvm flutter run               # 启动应用
 
 ---
 
+### 私有化部署 Bundle
+
+- `agentloom-deploy/` 提供单机 Docker Compose、Kubernetes / Helm、环境模板、Nginx、数据库初始化、PostgreSQL/MinIO 备份恢复脚本。
+- 私有化部署与运维手册见 `agentloom-deploy/README.md`；其中定义了 `APP_DEPLOYMENT_MODE=private`、`APP_SUPABASE_*` 在 private 模式下“全省略或全提供”的契约，以及 `values.private.yaml` 的 Helm 示例。
+
+---
+
 ## 🔧 开发命令
 
 ### Server
@@ -452,9 +462,10 @@ dart run build_runner build   # Freezed 代码生成
 |------|------|
 | `APP_PORT` | 服务端口 |
 | `APP_DATABASE_URL` | PostgreSQL 连接字符串 |
+| `APP_DEPLOYMENT_MODE` | 部署模式：`saas` 或 `private` |
 | `APP_SUPABASE_URL` | Supabase 项目 URL |
 | `APP_SUPABASE_ANON_KEY` | Supabase 匿名 Key |
-| `APP_SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
+| `APP_SUPABASE_SERVICE_KEY` | Supabase Service Key |
 | `APP_JWT_SECRET` | JWT 签名密钥 |
 | `APP_REDIS_URL` | Redis 连接地址 |
 | `APP_MASTER_ENCRYPTION_KEY` | 主加密密钥 (E2EE) |
@@ -462,6 +473,7 @@ dart run build_runner build   # Freezed 代码生成
 | `APP_MINIO_ACCESS_KEY` | MinIO 访问密钥 |
 | `APP_MINIO_SECRET_KEY` | MinIO 密钥 |
 | `APP_QDRANT_URL` | Qdrant 向量库地址 |
+| `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` | 私有部署 License 验签公钥（private 模式可选） |
 | `FIREBASE_SERVICE_ACCOUNT` | Firebase 服务账号 JSON |
 
 ### Studio (`agentloom-studio/.env`)
