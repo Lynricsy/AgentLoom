@@ -12,6 +12,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 - **运行监控聚合**：`GET /organizations/:id/monitoring` 为 owner/admin 提供组织级只读 dashboard，聚合 execution summary、governance state、notifications、audit logs 与当前 `agent-task` queue snapshot；趋势图聚焦执行趋势，队列深度只表示当前 snapshot，支持 `15m|1h|24h` 窗口
 - **通知系统**：REST + BullMQ + `/notification` Socket.IO + FCM，资源治理通知类型包括 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`
 - **审计与证据**：`AuditLogService.record()` 负责 append-only 审计写入，evidence 域支持 hot/archive 回查与资源序列查询
+- **ACP stdio 网关**：`src/modules/acp-gateway/` + `src/acp-stdio.ts` 提供独立 ACP JSON-RPC stdio 入口，支持 initialize、严格协议版本协商、JWT authenticate、连接级 `session/new` / `session/load` / `session/prompt` / `session/cancel`、runtime `session/update` notifications、官方 `session/request_permission` request/response，以及读取并发/写出串行的 stdout 协议流隔离；conversation session 通过 durable `acp_conversation_sessions`（`session_snapshot` + ordered `replay_entries`）实现历史恢复，并在 `session/load` 中遵循 replay-before-response
 
 ## 关键模块
 
@@ -25,13 +26,17 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 | trigger | `src/modules/trigger/` | cron / webhook / api_event(预览) 触发链路 |
 | plugin | `src/modules/plugin/` | `.alp` 上传、签名校验、Extism WASM 沙箱、收益结算 |
 | optimization-suggestion | `src/modules/optimization-suggestion/` | 周期分析执行遥测并生成可应用建议 |
+| acp-gateway | `src/modules/acp-gateway/` | ACP stdio 协议适配、连接级 session registry、严格 initialize 版本协商、authenticate、`session/new` / `session/load` / `session/prompt` / `session/cancel`、runtime 事件到 `session/update` / `stopReason` 的映射、ordered history replay、官方 `session/request_permission` request/response，以及 JSON-RPC 2.0 错误映射 |
 
 ## 本地开发
 
 ```bash
 pnpm install
 pnpm start:dev
+pnpm start:acp:stdio
 ```
+
+`pnpm start:acp:stdio` 会先通过 `scripts/start-acp-stdio.mjs` 静默构建，再运行编译后的 `dist/src/acp-stdio.js`，避免 direct `tsx` 入口丢失 Nest DI 所需的 decorator metadata。
 
 Swagger 文档：`/docs`
 
@@ -40,6 +45,7 @@ Swagger 文档：`/docs`
 ```bash
 pnpm test                          # Vitest 单元测试
 pnpm test:e2e                     # E2E 测试（Testcontainers）
+pnpm start:acp:stdio              # ACP stdio 独立入口
 pnpm test:e2e -- resource-governance
 pnpm test:e2e -- monitoring
 pnpm test:cov                     # 覆盖率（80% 阈值）
@@ -54,6 +60,7 @@ pnpm sdk:generate                 # 生成 TypeScript / Python SDK
 ## E2E 说明
 
 - `pnpm test:e2e` 现通过 `scripts/run-e2e.mjs` 包装 Vitest，确保 `pnpm test:e2e -- <pattern>` 能正确前传文件过滤参数
+- `test/acp-stdio.e2e-spec.ts` 先构建 ACP 编译入口，再通过 `scripts/run-acp-stdio-e2e-helper.mjs` 在 Vitest 外驱动 stdio 对话；helper 会设置 `ACP_TEST_FAKE_RUNTIME=1` 以切到测试 runtime，验证 unsupported protocol version → `Invalid params`、initialize、`initialized` notification 静默、authenticate、`session/new` / `session/prompt` / `session/update` 主链、官方 `session/request_permission` request/response、approve 后恢复工具调用、`session/cancel` 结清 pending permission 并收束为 `cancelled`、`session/load` 的 ordered replay-before-response、load 后再次 prompt 的 permission continuity、parse error、非法 `id` invalid request、revoked token 与 stdout hygiene。
 - `test/resource-governance.e2e-spec.ts` 会在 testcontainer 数据库内 bootstrap 资源治理缺失的 enum / table / grant / policy，并额外清理 `notifications`、`notification_preferences`、`workflow_executions`、`workflow_versions`、`execution_steps` 等扩展表
 - `test/monitoring.e2e-spec.ts` 复用同一套 Testcontainers/RLS 基建，校验 monitoring route 的 owner/admin 门禁、时间窗口刷新与 deep-link contract
 
