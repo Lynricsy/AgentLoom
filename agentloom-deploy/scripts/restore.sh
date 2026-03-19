@@ -5,6 +5,7 @@ set -euo pipefail
 DEPLOY_DIR=$(cd "$(dirname "$0")/.." && pwd)
 COMPOSE_FILE=${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}
 ENV_FILE=${ENV_FILE:-$DEPLOY_DIR/.env}
+MINIO_SCHEME=http
 
 POSTGRES_DUMP=""
 MINIO_DIR=""
@@ -50,8 +51,43 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
+if [[ "${APP_MINIO_USE_SSL:-false}" == "true" ]]; then
+  MINIO_SCHEME=https
+fi
+
 compose() {
   docker compose "${COMPOSE_ARGS[@]}" "$@"
+}
+
+verify_postgres_dump() {
+  local dump_dir
+  local dump_file
+  local checksum_file
+
+  dump_dir=$(cd "$(dirname "$POSTGRES_DUMP")" && pwd)
+  dump_file=$(basename "$POSTGRES_DUMP")
+  checksum_file="$POSTGRES_DUMP.sha256"
+
+  if [[ -f "$checksum_file" ]]; then
+    printf '校验 PostgreSQL dump 校验和：%s\n' "$checksum_file"
+    (cd "$dump_dir" && sha256sum -c "$dump_file.sha256") >/dev/null
+  else
+    printf '未找到 PostgreSQL dump 校验和文件，继续执行结构校验：%s\n' "$checksum_file"
+  fi
+
+  printf '校验 PostgreSQL dump 结构可恢复...\n'
+  docker run --rm \
+    -v "$dump_dir:/backup:ro" \
+    "${POSTGRES_IMAGE:-postgres:16-alpine}" \
+    sh -eu -c 'pg_restore --list "/backup/'"$dump_file"'" >/dev/null'
+}
+
+verify_minio_snapshot() {
+  local bucket_dir="$MINIO_DIR/${APP_MINIO_BUCKET:-agentloom-documents}"
+  if [[ ! -d "$bucket_dir" ]]; then
+    printf 'MinIO 备份目录中缺少 bucket 快照：%s\n' "$bucket_dir" >&2
+    return 1
+  fi
 }
 
 wait_for_postgres() {
@@ -75,9 +111,10 @@ wait_for_minio() {
   while (( attempt <= retries )); do
     if docker run --rm \
       --network "${COMPOSE_NETWORK:-agentloom-private}" \
+      --entrypoint /bin/sh \
       "${MC_IMAGE:-minio/mc:latest}" \
-      sh -eu -c '
-        mc alias set target "http://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'" >/dev/null 2>&1
+      -eu -c '
+        mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'" >/dev/null 2>&1
       ' >/dev/null 2>&1; then
       return 0
     fi
@@ -88,6 +125,10 @@ wait_for_minio() {
   printf 'MinIO 未在预期时间内就绪。\n' >&2
   return 1
 }
+
+printf '执行恢复前校验...\n'
+verify_postgres_dump
+verify_minio_snapshot
 
 printf '停止应用层容器，避免恢复期间产生新写入...\n'
 compose stop reverse-proxy studio server worker >/dev/null 2>&1 || true
@@ -111,9 +152,10 @@ printf '恢复 MinIO：%s\n' "$MINIO_DIR"
 docker run --rm \
   --network "${COMPOSE_NETWORK:-agentloom-private}" \
   -v "$MINIO_DIR:/restore:ro" \
+  --entrypoint /bin/sh \
   "${MC_IMAGE:-minio/mc:latest}" \
-  sh -eu -c '
-    mc alias set target "http://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'"
+  -eu -c '
+    mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'"
     mc mb --ignore-existing "target/'"${APP_MINIO_BUCKET:-agentloom-documents}"'"
     mc mirror --overwrite --remove /restore/'"${APP_MINIO_BUCKET:-agentloom-documents}"' "target/'"${APP_MINIO_BUCKET:-agentloom-documents}"'"
   '
@@ -124,6 +166,6 @@ compose up -d server worker studio reverse-proxy
 printf '执行恢复后烟雾检查...\n'
 compose exec -T postgres sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"' >/dev/null
 compose exec -T server node -e "require('http').get('http://127.0.0.1:3000/api/v1/health', (res) => { if (res.statusCode !== 200) process.exit(1); res.resume(); res.on('end', () => process.exit(0)); }).on('error', () => process.exit(1))"
-compose exec -T reverse-proxy sh -lc 'wget -q -O /dev/null http://127.0.0.1/healthz'
+compose exec -T reverse-proxy sh -lc 'if command -v curl >/dev/null 2>&1; then curl -fsS http://127.0.0.1/healthz >/dev/null; else wget -q -O /dev/null http://127.0.0.1/healthz; fi'
 
 printf '恢复完成：数据库、对象存储与基础健康检查均已通过。\n'
