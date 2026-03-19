@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentloom.studioFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: studio
+spec:
+  {{- if not .Values.studio.autoscaling.enabled }}
+  replicas: {{ .Values.studio.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agentloom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: studio
+  template:
+    metadata:
+      labels:
+        {{- include "agentloom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: studio
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: studio
+          image: {{ include "agentloom.studioImage" . | quote }}
+          imagePullPolicy: {{ .Values.studio.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentloom.fullname" . }}-studio-config
+          ports:
+            - name: http
+              containerPort: {{ .Values.studio.service.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.studio.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml .Values.studio.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.studio.tolerations | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.studio.affinity | nindent 8 }}

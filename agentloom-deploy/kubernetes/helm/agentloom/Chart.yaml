@@ -1,0 +1,6 @@
+apiVersion: v2
+name: agentloom
+description: AgentLoom 私有部署 Helm Chart（基于当前仓库现实）
+type: application
+version: 0.1.0
+appVersion: "0.0.1"

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentloom.studioFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: studio
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "agentloom.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: studio
+  ports:
+    - name: http
+      port: {{ .Values.studio.service.port }}
+      targetPort: http
+      protocol: TCP

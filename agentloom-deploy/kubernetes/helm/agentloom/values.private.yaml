@@ -1,0 +1,107 @@
+ingress:
+  enabled: true
+  className: nginx
+  host: agentloom.internal.example.com
+  tls:
+    enabled: true
+    secretName: agentloom-private-tls
+
+env:
+  shared:
+    APP_PORT: "3000"
+    APP_NODE_ENV: production
+    APP_DEPLOYMENT_MODE: private
+    APP_DATABASE_URL: ""
+    APP_REDIS_URL: ""
+    APP_MINIO_ENDPOINT: ""
+    APP_MINIO_PORT: ""
+    APP_MINIO_ACCESS_KEY: ""
+    APP_MINIO_SECRET_KEY: ""
+    APP_MINIO_USE_SSL: "false"
+    APP_MINIO_BUCKET: agentloom-documents
+    APP_QDRANT_URL: ""
+  server:
+    APP_JWT_SECRET: replace-me-jwt-secret
+    APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES
+    APP_OAUTH_REDIRECT_URL: https://agentloom.internal.example.com/api/v1/auth/oauth/callback
+    APP_FRONTEND_URL: https://agentloom.internal.example.com
+    APP_SUPABASE_URL: ""
+    APP_SUPABASE_ANON_KEY: ""
+    APP_SUPABASE_SERVICE_KEY: ""
+    APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY: ""
+    FIREBASE_SERVICE_ACCOUNT: ""
+  studio:
+    VITE_API_BASE_URL: /api/v1
+    VITE_AUTOSAVE_DEBOUNCE_MS: "500"
+
+server:
+  replicaCount: 2
+  image:
+    repository: agentloom/server
+    tag: private-local
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+worker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+studio:
+  replicaCount: 2
+  image:
+    repository: agentloom/studio
+    tag: private-local
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgres:
+  enabled: true
+  auth:
+    user: agentloom
+    password: replace-me-db-password
+    database: agentloom
+  persistence:
+    enabled: true
+    size: 50Gi
+
+redis:
+  enabled: true
+  auth:
+    password: replace-me-redis-password
+  persistence:
+    enabled: true
+    size: 10Gi
+
+minio:
+  enabled: true
+  auth:
+    rootUser: agentloom
+    rootPassword: replace-me-minio-password
+  persistence:
+    enabled: true
+    size: 100Gi
+
+qdrant:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 50Gi

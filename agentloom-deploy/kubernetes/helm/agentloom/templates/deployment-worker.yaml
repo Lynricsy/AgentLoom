@@ -1,0 +1,63 @@
+{{- if .Values.worker.enabled }}
+# 当前 chart 的 worker Deployment 仍然运行完整的 node dist/main；这是部署拓扑拆分，不是 worker-only runtime。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentloom.workerFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agentloom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "agentloom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "agentloom.serverImage" . | quote }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command:
+            {{- include "agentloom.runtimeCommand" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "agentloom.fullname" . }}-server-config
+            - secretRef:
+                name: {{ include "agentloom.fullname" . }}-server-secret
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml .Values.worker.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.worker.tolerations | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.worker.affinity | nindent 8 }}
+{{- end }}
