@@ -1,0 +1,12 @@
+[Unit]
+Description=AgentLoom MinIO 每小时镜像备份
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=AGENTLOOM_DEPLOY_DIR=/opt/agentloom/agentloom-deploy
+ExecStart=/usr/bin/env bash -lc 'ENV_FILE="${AGENTLOOM_DEPLOY_DIR}/.env" COMPOSE_FILE="${AGENTLOOM_DEPLOY_DIR}/docker-compose.yml" "${AGENTLOOM_DEPLOY_DIR}/scripts/backup-minio.sh"'
+
+[Install]
+WantedBy=multi-user.target

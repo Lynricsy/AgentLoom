@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentLoom PostgreSQL 每小时逻辑备份定时器
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+Persistent=true
+AccuracySec=1m
+Unit=agentloom-backup-postgres.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentLoom MinIO 每小时镜像备份定时器
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+AccuracySec=1m
+Unit=agentloom-backup-minio.service
+
+[Install]
+WantedBy=timers.target
