@@ -26,6 +26,11 @@ export interface IAgentRuntime {
   loadSession(sessionId: string): Promise<AgentSession>;
   prompt(sessionId: string, content: ContentBlock[]): AsyncIterable<AgentEvent>;
   cancel(sessionId: string): Promise<void>;
+  resolveToolPermission?(
+    sessionId: string,
+    toolCallId: string,
+    action: 'approve' | 'deny',
+  ): Promise<void>;
   registerSessionMetadata?(
     sessionId: string,
     tenantId: string,

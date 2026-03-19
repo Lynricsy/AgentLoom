@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { SessionPersistenceService } from '../services/session-persistence.service';
+import {
+  ConversationSessionDataIntegrityError,
+  SessionPersistenceService,
+} from '../services/session-persistence.service';
 import { DRIZZLE } from '../../../database/database.module';
 import type { AgentSession } from '../../agent/types/agent-session.types';
+import type { ConversationReplayEntry } from '../../agent/types/conversation-history.types';
 
 const STEP_ID = '019391d4-a000-7000-0000-000000000001';
 const TENANT_ID = '019391d4-c000-7000-0000-000000000003';
@@ -51,6 +55,7 @@ describe('SessionPersistenceService', () => {
   beforeEach(async () => {
     mockDb = {
       select: vi.fn(),
+      insert: vi.fn(),
       update: vi.fn(),
     };
 
@@ -177,6 +182,194 @@ describe('SessionPersistenceService', () => {
       expect(result!.id).toBe('session-001');
       expect(result!.mode).toBe('workflow');
       expect(result!.createdAt).toEqual(NOW);
+    });
+  });
+
+  describe('conversation persistence', () => {
+    const replayEntry: ConversationReplayEntry = {
+      kind: 'user_message',
+      content: [{ type: 'text', text: '继续' }],
+    };
+
+    it('应保存 conversation session 到独立 durable store', async () => {
+      mockDb.select.mockReturnValue(createSelectChain([]));
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      });
+
+      await service.saveConversationSession(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+          context: {
+            history: [{ type: 'text', text: 'hello' }],
+            cwd: '/workspace/demo',
+            mcpServers: {
+              docs: {
+                transportType: 'stdio',
+                command: 'node',
+                args: ['mcp.js'],
+              },
+            },
+          },
+        }),
+      );
+
+      const valuesArg = mockDb.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(valuesArg).toMatchObject({
+        sessionId: 'conversation-001',
+        tenantId: TENANT_ID,
+        agentId: 'agent-001',
+        sessionSnapshot: expect.objectContaining({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+        replayEntries: [],
+      });
+    });
+
+    it('应从独立 durable store 加载 conversation session', async () => {
+      const serialized = service.serializeSession(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+      );
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            sessionSnapshot: serialized,
+          },
+        ]),
+      );
+
+      const result = await service.loadConversationSession('conversation-001');
+
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe('conversation-001');
+      expect(result?.mode).toBe('conversation');
+    });
+
+    it('应在 conversation session snapshot 损坏时抛出数据完整性错误', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            sessionSnapshot: {
+              id: 'conversation-001',
+              agentId: 'agent-001',
+              mode: 'broken-mode',
+              context: { history: [] },
+              status: 'active',
+              createdAt: NOW.toISOString(),
+              updatedAt: NOW.toISOString(),
+            },
+          },
+        ]),
+      );
+
+      await expect(
+        service.loadConversationSession('conversation-001'),
+      ).rejects.toBeInstanceOf(ConversationSessionDataIntegrityError);
+      await expect(
+        service.loadConversationSession('conversation-001'),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('session snapshot'),
+      });
+    });
+
+    it('应为 conversation session 追加 replay ledger 并同步保存快照', async () => {
+      const serialized = service.serializeSession(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+      );
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            replayEntries: [],
+            sessionSnapshot: serialized,
+          },
+        ]),
+      );
+      mockDb.update.mockReturnValue(createUpdateChainVoid());
+
+      await service.appendConversationReplayEntry(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+        replayEntry,
+      );
+
+      const setArg = mockDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setArg).toMatchObject({
+        replayEntries: [replayEntry],
+        sessionSnapshot: expect.objectContaining({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+      });
+    });
+
+    it('应读取 conversation replay ledger', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            replayEntries: [replayEntry],
+          },
+        ]),
+      );
+
+      await expect(
+        service.loadConversationReplay('conversation-001'),
+      ).resolves.toEqual([replayEntry]);
+    });
+
+    it('应在 replay ledger 损坏时拒绝静默降级为空历史', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            replayEntries: { kind: 'user_message' },
+          },
+        ]),
+      );
+
+      await expect(
+        service.loadConversationReplay('conversation-001'),
+      ).rejects.toBeInstanceOf(ConversationSessionDataIntegrityError);
+      await expect(
+        service.loadConversationReplay('conversation-001'),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('replay entries'),
+      });
+    });
+
+    it('应在追加 replay 前拒绝损坏的历史 ledger', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            replayEntries: { invalid: true },
+            sessionSnapshot: service.serializeSession(
+              makeSession({
+                id: 'conversation-001',
+                mode: 'conversation',
+              }),
+            ),
+          },
+        ]),
+      );
+
+      await expect(
+        service.appendConversationReplayEntry(
+          makeSession({
+            id: 'conversation-001',
+            mode: 'conversation',
+          }),
+          replayEntry,
+        ),
+      ).rejects.toBeInstanceOf(ConversationSessionDataIntegrityError);
+      expect(mockDb.update).not.toHaveBeenCalled();
     });
   });
 });

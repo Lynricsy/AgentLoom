@@ -16,6 +16,7 @@ import type {
   SessionContext,
 } from './types/agent-session.types';
 import type { AgentEvent, StopReason } from './types/agent-event.types';
+import type { ReplayableAgentEvent } from './types/conversation-history.types';
 import type { ContentBlock } from './types/content-block.types';
 import type { ToolCallEvent } from './types/tool-call-event.types';
 
@@ -29,7 +30,12 @@ interface SessionMetadata {
 export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
   private readonly sessionIndex = new Map<string, SessionMetadata>();
+  private readonly conversationSessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
+  private readonly pendingPermissionResolvers = new Map<
+    string,
+    Map<string, (action: 'approve' | 'deny') => void>
+  >();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -107,6 +113,9 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         stepId,
         session,
       );
+    } else if (params.mode === 'conversation') {
+      this.conversationSessions.set(session.id, session);
+      await this.sessionPersistence.saveConversationSession(session);
     }
 
     this.logger.debug(
@@ -116,6 +125,18 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   }
 
   async loadSession(sessionId: string): Promise<AgentSession> {
+    const conversationSession = this.conversationSessions.get(sessionId);
+    if (conversationSession) {
+      return conversationSession;
+    }
+
+    const durableConversationSession =
+      await this.sessionPersistence.loadConversationSession(sessionId);
+    if (durableConversationSession) {
+      this.conversationSessions.set(sessionId, durableConversationSession);
+      return durableConversationSession;
+    }
+
     const meta = this.sessionIndex.get(sessionId);
     if (!meta) {
       throw new Error(`Session not found: ${sessionId} (no metadata in index)`);
@@ -140,6 +161,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   ): AsyncGenerator<AgentEvent> {
     const session = await this.loadSession(sessionId);
     const meta = this.sessionIndex.get(sessionId);
+    const isConversationSession = session.mode === 'conversation';
 
     const abortController = new AbortController();
     this.abortControllers.set(sessionId, abortController);
@@ -148,8 +170,20 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       session.context.history.push(...content);
       session.updatedAt = new Date();
 
+       if (isConversationSession) {
+        await this.sessionPersistence.appendConversationReplayEntry(session, {
+          kind: 'user_message',
+          content,
+        });
+      }
+
       if (session.status === 'completed' || abortController.signal.aborted) {
         yield { type: 'done', stopReason: 'cancelled' } as const;
+        await this.persistConversationSessionAfterTurn(
+          session,
+          '',
+          'cancelled',
+        );
         return;
       }
 
@@ -170,13 +204,17 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         if (part.type === 'text-delta') {
           if (part.text) {
             accumulatedText += part.text;
-            yield { type: 'message_chunk', content: part.text } as const;
+            const event = { type: 'message_chunk', content: part.text } as const;
+            if (isConversationSession) {
+              await this.appendConversationAgentReplayEntry(session, event);
+            }
+            yield event;
           }
           continue;
         }
 
         if (part.type === 'tool-call') {
-          yield {
+          const event = {
             type: 'tool_call',
             call: {
               id: part.toolCallId,
@@ -185,11 +223,15 @@ export class InProcessAgentAdapter implements IAgentRuntime {
               status: 'pending',
             },
           } as const;
+          if (isConversationSession) {
+            await this.appendConversationAgentReplayEntry(session, event);
+          }
+          yield event;
           continue;
         }
 
         if (part.type === 'tool-result') {
-          yield {
+          const event = {
             type: 'tool_call',
             call: {
               id: part.toolCallId,
@@ -199,11 +241,15 @@ export class InProcessAgentAdapter implements IAgentRuntime {
               result: part.output,
             },
           } as const;
+          if (isConversationSession) {
+            await this.appendConversationAgentReplayEntry(session, event);
+          }
+          yield event;
           continue;
         }
 
         if (part.type === 'tool-error') {
-          yield {
+          const event = {
             type: 'tool_call',
             call: {
               id: part.toolCallId,
@@ -213,6 +259,10 @@ export class InProcessAgentAdapter implements IAgentRuntime {
               error: this.stringifyToolError(part.error),
             },
           } as const;
+          if (isConversationSession) {
+            await this.appendConversationAgentReplayEntry(session, event);
+          }
+          yield event;
           continue;
         }
 
@@ -225,6 +275,11 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         if (part.type === 'abort' || abortController.signal.aborted) {
           emittedDone = true;
           yield { type: 'done', stopReason: 'cancelled' } as const;
+          await this.persistConversationSessionAfterTurn(
+            session,
+            accumulatedText,
+            'cancelled',
+          );
           return;
         }
 
@@ -237,7 +292,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         if (part.type === 'finish') {
           emittedDone = true;
           if (session.autonomyMode === 'LLM_SUGGEST') {
-            yield {
+            const event = {
               type: 'decision',
               suggestedContent: accumulatedText,
               autonomyMode: session.autonomyMode,
@@ -245,10 +300,19 @@ export class InProcessAgentAdapter implements IAgentRuntime {
               alternatives: ['approve', 'modify', 'reject'],
               confidence: 0.5,
             } as const;
+            if (isConversationSession) {
+              await this.appendConversationAgentReplayEntry(session, event);
+            }
+            yield event;
             yield {
               type: 'done',
               stopReason: 'intervention_required',
             } as const;
+            await this.persistConversationSessionAfterTurn(
+              session,
+              accumulatedText,
+              'intervention_required',
+            );
             return;
           }
 
@@ -256,6 +320,11 @@ export class InProcessAgentAdapter implements IAgentRuntime {
             type: 'done',
             stopReason: this.mapFinishReason(part.finishReason),
           } as const;
+          await this.persistConversationSessionAfterTurn(
+            session,
+            accumulatedText,
+            this.mapFinishReason(part.finishReason),
+          );
           return;
         }
       }
@@ -265,6 +334,12 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       }
       session.status = 'active';
       session.updatedAt = new Date();
+
+      await this.persistConversationSessionAfterTurn(
+        session,
+        accumulatedText,
+        'end_turn',
+      );
 
       if (meta) {
         await this.sessionPersistence.saveToCheckpoint(
@@ -276,6 +351,12 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     } catch (error) {
       session.status = 'error';
       session.updatedAt = new Date();
+
+      await this.persistConversationSessionAfterTurn(
+        session,
+        '',
+        'intervention_required',
+      );
 
       if (meta) {
         await this.sessionPersistence.saveToCheckpoint(
@@ -313,6 +394,44 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         );
       }
     }
+
+    const conversationSession = this.conversationSessions.get(sessionId);
+    if (conversationSession) {
+      conversationSession.status = 'completed';
+      conversationSession.updatedAt = new Date();
+      await this.sessionPersistence.saveConversationSession(conversationSession);
+    }
+
+    this.pendingPermissionResolvers.delete(sessionId);
+  }
+
+  async resolveToolPermission(
+    sessionId: string,
+    toolCallId: string,
+    action: 'approve' | 'deny',
+  ): Promise<void> {
+    const sessionResolverMap = this.pendingPermissionResolvers.get(sessionId);
+    if (sessionResolverMap === undefined) {
+      throw new Error(
+        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+      );
+    }
+
+    const sessionResolvers = sessionResolverMap;
+
+    const resolver = sessionResolvers.get(toolCallId);
+    if (!resolver) {
+      throw new Error(
+        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+      );
+    }
+
+    sessionResolvers.delete(toolCallId);
+    if (sessionResolvers.size === 0) {
+      this.pendingPermissionResolvers.delete(sessionId);
+    }
+
+    resolver(action);
   }
 
   private async resolveModelConfig(
@@ -407,5 +526,47 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       default:
         return 'end_turn';
     }
+  }
+
+  private async appendConversationAgentReplayEntry(
+    session: AgentSession,
+    event: ReplayableAgentEvent,
+  ): Promise<void> {
+    if (session.mode !== 'conversation') {
+      return;
+    }
+
+    await this.sessionPersistence.appendConversationReplayEntry(session, {
+      kind: 'agent_event',
+      event,
+    });
+  }
+
+  private async persistConversationSessionAfterTurn(
+    session: AgentSession,
+    accumulatedText: string,
+    stopReason: StopReason,
+  ): Promise<void> {
+    if (session.mode !== 'conversation') {
+      return;
+    }
+
+    if (accumulatedText.length > 0) {
+      const history = session.context.history;
+      const lastBlock = history.at(-1);
+      if (!(lastBlock?.type === 'text' && lastBlock.text === accumulatedText)) {
+        history.push({
+          type: 'text',
+          text: accumulatedText,
+        });
+      }
+    }
+
+    if (session.status !== 'completed' && session.status !== 'error') {
+      session.status = stopReason === 'cancelled' ? 'completed' : 'active';
+    }
+
+    session.updatedAt = new Date();
+    await this.sessionPersistence.saveConversationSession(session);
   }
 }

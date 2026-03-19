@@ -8,6 +8,7 @@ import type {
   CreateSessionParams,
 } from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
+import type { ConversationReplayEntry } from '../types/conversation-history.types';
 import type { ContentBlock } from '../types/content-block.types';
 
 vi.mock('ai', () => ({
@@ -133,6 +134,10 @@ describe('InProcessAgentAdapter', () => {
     mockSessionPersistence = {
       saveToCheckpoint: vi.fn().mockResolvedValue(undefined),
       loadFromCheckpoint: vi.fn().mockResolvedValue(null),
+      saveConversationSession: vi.fn().mockResolvedValue(undefined),
+      loadConversationSession: vi.fn().mockResolvedValue(null),
+      appendConversationReplayEntry: vi.fn().mockResolvedValue(undefined),
+      loadConversationReplay: vi.fn().mockResolvedValue([]),
       serializeSession: vi.fn().mockReturnValue({}),
       deserializeSession: vi.fn(),
     };
@@ -198,6 +203,23 @@ describe('InProcessAgentAdapter', () => {
         session,
       );
     });
+
+    it('conversation session 创建后会写入 durable store', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+        cwd: '/workspace/demo',
+      });
+
+      expect(mockSessionPersistence.saveConversationSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: session.id,
+          mode: 'conversation',
+          tenantId: 'tenant-001',
+        }),
+      );
+    });
   });
 
   describe('loadSession', () => {
@@ -205,6 +227,39 @@ describe('InProcessAgentAdapter', () => {
       await expect(adapter.loadSession('missing-session')).rejects.toThrow(
         /not found/i,
       );
+    });
+
+    it('会在 conversation 内存缺失时回退到 durable store', async () => {
+      const durableConversationSession: AgentSession = {
+        id: 'conversation-001',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: {
+          history: [{ type: 'text', text: '历史消息' }],
+          cwd: '/workspace/demo',
+          mcpServers: {
+            docs: {
+              transportType: 'stdio',
+              command: 'node',
+              args: ['mcp.js'],
+            },
+          },
+        },
+        status: 'active',
+        tenantId: 'tenant-001',
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      mockSessionPersistence.loadConversationSession.mockResolvedValue(
+        durableConversationSession,
+      );
+
+      const loaded = await adapter.loadSession('conversation-001');
+
+      expect(mockSessionPersistence.loadConversationSession).toHaveBeenCalledWith(
+        'conversation-001',
+      );
+      expect(loaded).toEqual(durableConversationSession);
     });
   });
 
@@ -223,6 +278,87 @@ describe('InProcessAgentAdapter', () => {
       );
       return session;
     }
+
+    it('conversation 会话创建后可直接 prompt', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+        systemPrompt: '你是一个聊天助手',
+      });
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([
+          { type: 'text-delta', text: '你好，主人' },
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      const events: AgentEvent[] = [];
+      for await (const event of adapter.prompt(session.id, [textBlock])) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: 'message_chunk', content: '你好，主人' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
+
+    it('conversation prompt 会把用户输入与运行时事件追加到 durable replay ledger', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+        systemPrompt: '你是一个聊天助手',
+      });
+      mockSessionPersistence.loadConversationSession.mockResolvedValue({
+        ...session,
+        context: { history: [] },
+      });
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([
+          { type: 'text-delta', text: '你好，主人' },
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      for await (const _event of adapter.prompt(session.id, [textBlock])) {
+        continue;
+      }
+
+      expect(mockSessionPersistence.appendConversationReplayEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ id: session.id, mode: 'conversation' }),
+        {
+          kind: 'user_message',
+          content: [textBlock],
+        } satisfies ConversationReplayEntry,
+      );
+      expect(mockSessionPersistence.appendConversationReplayEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ id: session.id, mode: 'conversation' }),
+        {
+          kind: 'agent_event',
+          event: {
+            type: 'message_chunk',
+            content: '你好，主人',
+          },
+        } satisfies ConversationReplayEntry,
+      );
+      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: session.id,
+          mode: 'conversation',
+          context: {
+            history: [textBlock, { type: 'text', text: '你好，主人' }],
+          },
+        }),
+      );
+    });
 
     it('会解析默认模型配置、流式输出 message_chunk，并在 stop finishReason 时结束', async () => {
       await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
@@ -492,6 +628,24 @@ describe('InProcessAgentAdapter', () => {
 
     it('取消不存在的会话也不会抛错', async () => {
       await expect(adapter.cancel('missing-session')).resolves.not.toThrow();
+    });
+
+    it('conversation 会话 cancel 后会把 completed 状态写回 durable store', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+
+      await adapter.cancel(session.id);
+
+      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: session.id,
+          mode: 'conversation',
+          status: 'completed',
+        }),
+      );
     });
   });
 });

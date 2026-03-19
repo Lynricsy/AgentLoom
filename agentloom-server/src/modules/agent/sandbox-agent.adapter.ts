@@ -227,6 +227,14 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
   }
 
+  async resolveToolPermission(
+    _sessionId: string,
+    _toolCallId: string,
+    _action: 'approve' | 'deny',
+  ): Promise<void> {
+    throw new Error('SandboxAgentAdapter 尚未实现工具权限恢复');
+  }
+
   private async waitForSandboxReady(
     executionId: string,
     tenantId: string,
