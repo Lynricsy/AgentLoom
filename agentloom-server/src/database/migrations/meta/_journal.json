@@ -337,6 +337,20 @@
       "when": 1773809124361,
       "tag": "0047_outstanding_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1773885491144,
+      "tag": "0048_nasty_zuras",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1773925407397,
+      "tag": "0049_futuristic_sentinel",
+      "breakpoints": true
     }
   ]
 }

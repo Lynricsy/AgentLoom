@@ -300,3 +300,8 @@ export {
   type ImpactEstimate,
   type AnalysisMetadata,
 } from './optimization-suggestions.schema';
+export {
+  acpConversationSessions,
+  type AcpConversationSession,
+  type NewAcpConversationSession,
+} from './acp-conversation-sessions.schema';
