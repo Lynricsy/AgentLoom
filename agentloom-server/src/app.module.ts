@@ -41,6 +41,8 @@ import { PluginModule } from './modules/plugin/plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
 import { ExecutionRecordModule } from './modules/execution-record/execution-record.module';
 import { OptimizationSuggestionModule } from './modules/optimization-suggestion/optimization-suggestion.module';
+import { ResourceGovernanceModule } from './modules/resource-governance/resource-governance.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -114,6 +116,8 @@ function createThrottlerOptions(configService: ConfigService) {
     SmartRoutingModule,
     ExecutionRecordModule,
     OptimizationSuggestionModule,
+    ResourceGovernanceModule,
+    MonitoringModule,
   ],
   providers: [
     RbacCacheService,
