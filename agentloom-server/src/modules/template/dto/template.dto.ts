@@ -42,8 +42,8 @@ export const TemplateListItemSchema = z.object({
   thumbnailUrl: z.string().nullable(),
   metadata: z.record(z.string(), z.unknown()),
   displayOrder: z.number().int(),
-  createdAt: z.string().or(z.date()),
-  updatedAt: z.string().or(z.date()),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
 });
 
 export type TemplateListItem = z.infer<typeof TemplateListItemSchema>;

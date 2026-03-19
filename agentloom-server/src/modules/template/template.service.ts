@@ -9,12 +9,51 @@ import type {
   TemplateDetail,
   PaginationMeta,
 } from './dto/template.dto';
+import { TemplateListItemSchema } from './dto/template.dto';
 
 @Injectable()
 export class TemplateService {
   private readonly logger = new Logger(TemplateService.name);
 
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+
+  private serializeDate(value: Date | string): string {
+    return value instanceof Date ? value.toISOString() : value;
+  }
+
+  private parseTemplateCategory(category: string): TemplateListItem['category'] {
+    return TemplateListItemSchema.shape.category.parse(category);
+  }
+
+  private toTemplateListItem(
+    row: Omit<TemplateListItem, 'category' | 'createdAt' | 'updatedAt'> & {
+      category: string;
+      createdAt: Date | string;
+      updatedAt: Date | string;
+    },
+  ): TemplateListItem {
+    return {
+      ...row,
+      category: this.parseTemplateCategory(row.category),
+      createdAt: this.serializeDate(row.createdAt),
+      updatedAt: this.serializeDate(row.updatedAt),
+    };
+  }
+
+  private toTemplateDetail(
+    row: Omit<TemplateDetail, 'category' | 'createdAt' | 'updatedAt'> & {
+      category: string;
+      createdAt: Date | string;
+      updatedAt: Date | string;
+    },
+  ): TemplateDetail {
+    return {
+      ...row,
+      category: this.parseTemplateCategory(row.category),
+      createdAt: this.serializeDate(row.createdAt),
+      updatedAt: this.serializeDate(row.updatedAt),
+    };
+  }
 
   async findAll(
     category?: string,
@@ -57,7 +96,7 @@ export class TemplateService {
       .offset(offset);
 
     return {
-      data: rows as TemplateListItem[],
+      data: rows.map((row) => this.toTemplateListItem(row)),
       meta: { page, pageSize, total, totalPages },
     };
   }
@@ -78,6 +117,6 @@ export class TemplateService {
       throw new TemplateNotFoundException(slug);
     }
 
-    return row as unknown as TemplateDetail;
+    return this.toTemplateDetail(row);
   }
 }

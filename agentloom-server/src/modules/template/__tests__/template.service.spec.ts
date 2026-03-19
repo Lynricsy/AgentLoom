@@ -30,8 +30,22 @@ describe('TemplateService', () => {
 
   describe('findAll', () => {
     it('should return paginated templates', async () => {
+      const createdAt = new Date('2025-01-01T00:00:00.000Z');
+      const updatedAt = new Date('2025-01-02T00:00:00.000Z');
       const mockRows = [
-        { id: '1', slug: 'chatbot', name: 'Chatbot', displayOrder: 0 },
+        {
+          id: '1',
+          slug: 'chatbot',
+          name: 'Chatbot',
+          description: 'desc',
+          category: 'automation',
+          tags: ['tag'],
+          thumbnailUrl: null,
+          metadata: {},
+          displayOrder: 0,
+          createdAt,
+          updatedAt,
+        },
       ];
 
       // count query chain
@@ -51,7 +65,13 @@ describe('TemplateService', () => {
 
       const result = await service.findAll(undefined, 1, 20);
 
-      expect(result.data).toEqual(mockRows);
+      expect(result.data).toEqual([
+        {
+          ...mockRows[0],
+          createdAt: createdAt.toISOString(),
+          updatedAt: updatedAt.toISOString(),
+        },
+      ]);
       expect(result.meta).toEqual({
         page: 1,
         pageSize: 20,
@@ -127,11 +147,21 @@ describe('TemplateService', () => {
 
   describe('findBySlug', () => {
     it('should return template when found', async () => {
+      const createdAt = new Date('2025-01-01T00:00:00.000Z');
+      const updatedAt = new Date('2025-01-02T00:00:00.000Z');
       const mockTemplate = {
         id: '1',
         slug: 'chatbot',
         name: 'Chatbot',
-        definition: { nodes: [], edges: [] },
+        description: 'desc',
+        category: 'automation',
+        tags: ['tag'],
+        thumbnailUrl: null,
+        metadata: {},
+        displayOrder: 0,
+        createdAt,
+        updatedAt,
+        definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
       };
 
       const limitFn = vi.fn().mockResolvedValue([mockTemplate]);
@@ -141,7 +171,11 @@ describe('TemplateService', () => {
 
       const result = await service.findBySlug('chatbot');
 
-      expect(result).toEqual(mockTemplate);
+      expect(result).toEqual({
+        ...mockTemplate,
+        createdAt: createdAt.toISOString(),
+        updatedAt: updatedAt.toISOString(),
+      });
     });
 
     it('should throw TemplateNotFoundException when not found', async () => {
