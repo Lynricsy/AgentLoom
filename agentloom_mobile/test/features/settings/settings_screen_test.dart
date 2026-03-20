@@ -1,5 +1,7 @@
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/auth/api/auth_api.dart';
+import 'package:agentloom_mobile/features/settings/api/settings_api.dart';
+import 'package:agentloom_mobile/features/settings/providers/settings_provider.dart';
 import 'package:agentloom_mobile/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,8 @@ void main() {
       overrides: [
         tokenStorageProvider.overrideWithValue(mockTokenStorage),
         authApiProvider.overrideWithValue(mockAuthApi),
+        // 覆盖 securityInfoProvider，避免在测试中发起真实 API 请求
+        securityInfoProvider.overrideWith(_EmptySecurityInfoNotifier.new),
       ],
       child: const MaterialApp(home: SettingsScreen()),
     );
@@ -72,6 +76,16 @@ void main() {
       expect(find.text('退出登录'), findsOneWidget);
     });
 
+    testWidgets('渲染账户分区的退出所有设备', (tester) async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(find.text('退出所有设备'), findsOneWidget);
+      expect(find.text('在所有已登录设备上退出'), findsOneWidget);
+    });
+
     testWidgets('渲染安全相关图标', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
@@ -80,8 +94,9 @@ void main() {
 
       expect(find.byIcon(Icons.lock_outline), findsOneWidget);
       expect(find.byIcon(Icons.security_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.devices_outlined), findsOneWidget);
       expect(find.byIcon(Icons.logout), findsOneWidget);
+      // devices_outlined 出现两次：安全分区的"活跃会话"和账户分区的"退出所有设备"
+      expect(find.byIcon(Icons.devices_outlined), findsNWidgets(2));
     });
 
     testWidgets('使用 ListView 实现可滚动', (tester) async {
@@ -125,4 +140,12 @@ void main() {
       expect(find.text('确认退出'), findsNothing);
     });
   });
+}
+
+/// 返回空安全信息的 SecurityInfoNotifier（用于测试）
+class _EmptySecurityInfoNotifier extends SecurityInfoNotifier {
+  @override
+  Future<SecurityInfo> build() async {
+    return const SecurityInfo(mfaEnabled: false);
+  }
 }

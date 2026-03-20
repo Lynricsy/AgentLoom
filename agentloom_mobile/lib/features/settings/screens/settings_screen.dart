@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../features/auth/providers/auth_provider.dart';
 import '../../../routes/route_names.dart';
+import '../widgets/account_section.dart';
 
 /// 设置主页面 — 显示安全等设置分区
 class SettingsScreen extends ConsumerWidget {
@@ -58,50 +58,8 @@ class SettingsScreen extends ConsumerWidget {
 
           const Divider(height: 32),
 
-          // 账户分区标题
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              '账户',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-
-          // 退出登录
-          ListTile(
-            leading: Icon(Icons.logout, color: theme.colorScheme.error),
-            title: Text(
-              '退出登录',
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
-            onTap: () => _showLogoutConfirmDialog(context, ref),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLogoutConfirmDialog(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认退出'),
-        content: const Text('确定要退出登录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              ref.read(authProvider.notifier).logout();
-            },
-            child: const Text('退出'),
-          ),
+          // 账户分区 — 邮箱、关联账号、退出登录、退出所有设备
+          const AccountSection(),
         ],
       ),
     );

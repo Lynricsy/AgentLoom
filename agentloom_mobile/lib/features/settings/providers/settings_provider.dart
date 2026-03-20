@@ -159,3 +159,65 @@ final changePasswordProvider =
     NotifierProvider<ChangePasswordNotifier, ChangePasswordState>(
       ChangePasswordNotifier.new,
     );
+
+// ---------------------------------------------------------------------------
+// 注销所有会话
+// ---------------------------------------------------------------------------
+
+/// 注销所有会话操作状态
+sealed class RevokeAllSessionsState {
+  const RevokeAllSessionsState();
+}
+
+class RevokeAllSessionsIdle extends RevokeAllSessionsState {
+  const RevokeAllSessionsIdle();
+}
+
+class RevokeAllSessionsLoading extends RevokeAllSessionsState {
+  const RevokeAllSessionsLoading();
+}
+
+class RevokeAllSessionsSuccess extends RevokeAllSessionsState {
+  const RevokeAllSessionsSuccess();
+}
+
+class RevokeAllSessionsError extends RevokeAllSessionsState {
+  const RevokeAllSessionsError({required this.message});
+  final String message;
+}
+
+/// 注销所有会话 Notifier
+class RevokeAllSessionsNotifier extends Notifier<RevokeAllSessionsState> {
+  @override
+  RevokeAllSessionsState build() => const RevokeAllSessionsIdle();
+
+  /// 执行注销所有会话
+  Future<void> revokeAll() async {
+    state = const RevokeAllSessionsLoading();
+
+    try {
+      final api = ref.read(settingsApiProvider);
+      await api.revokeAllSessions();
+
+      if (!ref.mounted) return;
+      state = const RevokeAllSessionsSuccess();
+    } on DioException catch (e) {
+      if (!ref.mounted) return;
+      state = RevokeAllSessionsError(message: _extractErrorMessage(e));
+    } catch (e) {
+      if (!ref.mounted) return;
+      state = RevokeAllSessionsError(message: e.toString());
+    }
+  }
+
+  /// 重置为空闲状态
+  void reset() {
+    state = const RevokeAllSessionsIdle();
+  }
+}
+
+/// 注销所有会话 Provider
+final revokeAllSessionsProvider =
+    NotifierProvider<RevokeAllSessionsNotifier, RevokeAllSessionsState>(
+      RevokeAllSessionsNotifier.new,
+    );

@@ -39,19 +39,27 @@ class SecurityInfo {
     required this.mfaEnabled,
     this.mfaType,
     this.mfaEnrolledAt,
+    this.linkedProviders = const [],
   });
 
   factory SecurityInfo.fromJson(Map<String, dynamic> json) {
+    final providers = json['linked_providers'];
     return SecurityInfo(
       mfaEnabled: json['mfa_enabled'] as bool? ?? false,
       mfaType: json['mfa_type'] as String?,
       mfaEnrolledAt: json['mfa_enrolled_at'] as String?,
+      linkedProviders: providers is List
+          ? providers.map((e) => e.toString()).toList()
+          : const [],
     );
   }
 
   final bool mfaEnabled;
   final String? mfaType;
   final String? mfaEnrolledAt;
+
+  /// 已关联的 OAuth 提供商列表（如 ['google', 'github']）
+  final List<String> linkedProviders;
 }
 
 /// 设置 API 客户端
@@ -116,6 +124,11 @@ class SettingsApi {
   /// 禁用 MFA
   Future<void> disableMfa(String code) async {
     await _dio.delete('/api/v1/auth/mfa', data: {'code': code});
+  }
+
+  /// 注销所有会话（当前设备除外）
+  Future<void> revokeAllSessions() async {
+    await _dio.post('/api/v1/auth/sessions/revoke-all');
   }
 }
 
