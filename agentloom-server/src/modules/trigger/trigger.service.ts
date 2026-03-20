@@ -10,6 +10,7 @@ import type {
   WorkflowTrigger,
 } from '../../database/schema/workflow-triggers.schema';
 import {
+  ApiEventConfigSchema,
   CreateTriggerSchema,
   CronConfigSchema,
   QueryTriggerSchema,
@@ -28,7 +29,6 @@ import {
 import {
   TriggerLimitExceededException,
   TriggerNotFoundException,
-  TriggerTypePreviewOnlyException,
   WorkflowNotPublishedException,
 } from './trigger.exceptions';
 
@@ -332,7 +332,7 @@ export class TriggerService {
         };
       }
       case 'api_event':
-        throw new TriggerTypePreviewOnlyException(type);
+        return ApiEventConfigSchema.parse(config);
     }
   }
 
@@ -356,15 +356,11 @@ export class TriggerService {
         };
       }
       case 'api_event':
-        throw new TriggerTypePreviewOnlyException(currentTrigger.type);
+        return ApiEventConfigSchema.parse(nextConfig);
     }
   }
 
-  private assertMutableTriggerType(type: WorkflowTrigger['type']): void {
-    if (type === 'api_event') {
-      throw new TriggerTypePreviewOnlyException(type);
-    }
-  }
+  private assertMutableTriggerType(_type: WorkflowTrigger['type']): void {}
 
   private normalizeOptionalText(value?: string): string | null {
     if (value === undefined || value === '') {

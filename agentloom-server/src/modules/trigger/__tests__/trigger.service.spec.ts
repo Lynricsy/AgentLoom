@@ -6,7 +6,6 @@ import { DRIZZLE } from '../../../database/database.module';
 import {
   TriggerLimitExceededException,
   TriggerNotFoundException,
-  TriggerTypePreviewOnlyException,
   WorkflowNotPublishedException,
 } from '../trigger.exceptions';
 import { TriggerService } from '../trigger.service';
@@ -254,21 +253,34 @@ describe('TriggerService', () => {
       ).rejects.toThrow(TriggerLimitExceededException);
     });
 
-    it('api_event 仅预览时应拒绝创建', async () => {
-      await expect(
-        service.create(TENANT_ID, USER_ID, WORKFLOW_ID, {
-          name: 'API Event 预览',
-          isEnabled: true,
+    it('应创建 api_event 触发器', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectWhereResolved([publishedWorkflow]))
+        .mockReturnValueOnce(createSelectWhereResolved([{ count: 0 }]));
+
+      const insertChain = createInsertReturning([apiEventTrigger]);
+      db.insert.mockReturnValue(insertChain.chain);
+
+      const result = await service.create(TENANT_ID, USER_ID, WORKFLOW_ID, {
+        name: 'API Event 触发器',
+        isEnabled: true,
+        type: 'api_event',
+        config: {
+          eventSource: 'github',
+          eventType: 'pull_request',
+        },
+      });
+
+      expect(result.type).toBe('api_event');
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
           type: 'api_event',
           config: {
             eventSource: 'github',
             eventType: 'pull_request',
           },
         }),
-      ).rejects.toThrow(TriggerTypePreviewOnlyException);
-
-      expect(db.select).not.toHaveBeenCalled();
-      expect(db.insert).not.toHaveBeenCalled();
+      );
     });
   });
 
@@ -317,16 +329,27 @@ describe('TriggerService', () => {
       );
     });
 
-    it('api_event 仅预览时应拒绝更新', async () => {
+    it('应更新 api_event 触发器配置', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
+      const updatedTrigger = {
+        ...apiEventTrigger,
+        config: {
+          eventSource: 'gitlab',
+          eventType: 'merge_request',
+        },
+      };
+      const updateChain = createUpdateReturning([updatedTrigger]);
+      db.update.mockReturnValue(updateChain.chain);
 
-      await expect(
-        service.update(TENANT_ID, TRIGGER_ID, {
-          name: 'Updated preview name',
-        }),
-      ).rejects.toThrow(TriggerTypePreviewOnlyException);
+      const result = await service.update(TENANT_ID, TRIGGER_ID, {
+        config: {
+          eventSource: 'gitlab',
+          eventType: 'merge_request',
+        },
+      });
 
-      expect(db.update).not.toHaveBeenCalled();
+      expect(result.type).toBe('api_event');
+      expect(db.update).toHaveBeenCalled();
     });
   });
 
@@ -359,14 +382,18 @@ describe('TriggerService', () => {
       });
     });
 
-    it('api_event 仅预览时应拒绝切换启用状态', async () => {
+    it('应切换 api_event 触发器启用状态', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
-
-      await expect(service.toggle(TENANT_ID, TRIGGER_ID)).rejects.toThrow(
-        TriggerTypePreviewOnlyException,
+      db.update.mockReturnValue(
+        createUpdateReturning([{ ...apiEventTrigger, isEnabled: false }]).chain,
       );
 
-      expect(db.update).not.toHaveBeenCalled();
+      await expect(service.toggle(TENANT_ID, TRIGGER_ID)).resolves.toEqual({
+        ...apiEventTrigger,
+        isEnabled: false,
+      });
+
+      expect(db.update).toHaveBeenCalled();
     });
   });
 
