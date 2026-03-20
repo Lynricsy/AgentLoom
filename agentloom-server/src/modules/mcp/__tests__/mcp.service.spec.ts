@@ -18,6 +18,7 @@ const mcpMocks = vi.hoisted(() => {
   const mockClient = {
     connect: vi.fn(),
     listTools: vi.fn(),
+    callTool: vi.fn(),
     getServerVersion: vi.fn(),
     close: vi.fn(),
   };
@@ -31,6 +32,7 @@ const mcpMocks = vi.hoisted(() => {
   };
 
   const streamableHttpTransport = {
+    terminateSession: vi.fn(),
     close: vi.fn(),
   };
 
@@ -576,6 +578,72 @@ describe('McpService', () => {
       });
       expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
       expect(mcpMocks.stdioTransport.close).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('runtime facade', () => {
+    it('应当返回运行时 MCP 工具发现结果', async () => {
+      const tool = createDiscoveredTool();
+
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({
+        tools: [tool],
+      });
+
+      const result = await service.discoverRuntimeTools(createStdioConnection());
+
+      expect(result).toEqual([
+        {
+          name: 'search-docs',
+          title: '搜索文档',
+          description: '搜索知识库文档',
+          inputSchema: tool.inputSchema,
+          annotations: {
+            category: 'knowledge',
+          },
+        },
+      ]);
+      expect(mcpMocks.mockClient.listTools).toHaveBeenCalledOnce();
+      expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
+      expect(mcpMocks.stdioTransport.close).toHaveBeenCalledOnce();
+    });
+
+    it('应当在运行时调用 MCP 工具后关闭 streamable_http 会话', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.callTool.mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: 'ok',
+          },
+        ],
+      });
+
+      const result = await service.callRuntimeTool(
+        createStreamableHttpConnection(),
+        'search-docs',
+        {
+          query: 'AgentLoom',
+        },
+      );
+
+      expect(result).toEqual({
+        content: [
+          {
+            type: 'text',
+            text: 'ok',
+          },
+        ],
+      });
+      expect(mcpMocks.mockClient.callTool).toHaveBeenCalledWith({
+        name: 'search-docs',
+        arguments: {
+          query: 'AgentLoom',
+        },
+      });
+      expect(mcpMocks.streamableHttpTransport.terminateSession).toHaveBeenCalledOnce();
+      expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
+      expect(mcpMocks.streamableHttpTransport.close).toHaveBeenCalledOnce();
     });
   });
 

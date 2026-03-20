@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { streamText } from 'ai';
+import { jsonSchema, streamText, tool } from 'ai';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { InProcessAgentAdapter } from '../in-process-agent.adapter';
 import type {
@@ -12,7 +12,9 @@ import type { ConversationReplayEntry } from '../types/conversation-history.type
 import type { ContentBlock } from '../types/content-block.types';
 
 vi.mock('ai', () => ({
+  jsonSchema: vi.fn().mockImplementation((schema) => schema),
   streamText: vi.fn(),
+  tool: vi.fn().mockImplementation((definition) => definition),
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -210,6 +212,11 @@ describe('InProcessAgentAdapter', () => {
         mode: 'conversation',
         tenantId: 'tenant-001',
         cwd: '/workspace/demo',
+        serverSandbox: {
+          executionId: '019391d4-e000-7000-0000-000000000005',
+        },
+      } as CreateSessionParams & {
+        serverSandbox: { executionId: string };
       });
 
       expect(mockSessionPersistence.saveConversationSession).toHaveBeenCalledWith(
@@ -217,6 +224,11 @@ describe('InProcessAgentAdapter', () => {
           id: session.id,
           mode: 'conversation',
           tenantId: 'tenant-001',
+          context: expect.objectContaining({
+            serverSandbox: {
+              executionId: '019391d4-e000-7000-0000-000000000005',
+            },
+          }),
         }),
       );
     });
@@ -237,6 +249,9 @@ describe('InProcessAgentAdapter', () => {
         context: {
           history: [{ type: 'text', text: '历史消息' }],
           cwd: '/workspace/demo',
+          serverSandbox: {
+            executionId: '019391d4-e000-7000-0000-000000000005',
+          },
           mcpServers: {
             docs: {
               transportType: 'stdio',
@@ -313,10 +328,20 @@ describe('InProcessAgentAdapter', () => {
         mode: 'conversation',
         tenantId: 'tenant-001',
         systemPrompt: '你是一个聊天助手',
+        serverSandbox: {
+          executionId: '019391d4-e000-7000-0000-000000000005',
+        },
+      } as CreateSessionParams & {
+        serverSandbox: { executionId: string };
       });
       mockSessionPersistence.loadConversationSession.mockResolvedValue({
         ...session,
-        context: { history: [] },
+        context: {
+          history: [],
+          serverSandbox: {
+            executionId: '019391d4-e000-7000-0000-000000000005',
+          },
+        },
       });
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),
@@ -355,6 +380,9 @@ describe('InProcessAgentAdapter', () => {
           mode: 'conversation',
           context: {
             history: [textBlock, { type: 'text', text: '你好，主人' }],
+            serverSandbox: {
+              executionId: '019391d4-e000-7000-0000-000000000005',
+            },
           },
         }),
       );
@@ -396,6 +424,83 @@ describe('InProcessAgentAdapter', () => {
         { type: 'message_chunk', content: 'world' },
         { type: 'done', stopReason: 'end_turn' },
       ]);
+    });
+
+    it('注册 session-local tool provider 后会把 namespaced MCP tools 注入 streamText', async () => {
+      await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
+      adapter.registerSessionToolProvider('session-uuid', async () => ({
+        'docs/search': tool({
+          description: '搜索 MCP 文档',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+              },
+            },
+            required: ['query'],
+            additionalProperties: false,
+          }),
+          execute: vi.fn().mockResolvedValue({
+            hits: [],
+          }),
+        }),
+      }));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([{ type: 'finish', finishReason: 'stop' }]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      for await (const _event of adapter.prompt('session-uuid', [textBlock])) {
+        continue;
+      }
+
+      const invocation = mockedStreamText.mock.calls[0]?.[0];
+      expect(invocation).toMatchObject({
+        tools: {
+          'docs/search': expect.objectContaining({
+            description: '搜索 MCP 文档',
+          }),
+        },
+      });
+    });
+
+    it('注销 session-local tool provider 后不再向 streamText 注入 MCP tools', async () => {
+      await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
+      adapter.registerSessionToolProvider('session-uuid', async () => ({
+        'docs/search': tool({
+          description: '搜索 MCP 文档',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+              },
+            },
+            required: ['query'],
+            additionalProperties: false,
+          }),
+          execute: vi.fn().mockResolvedValue({
+            hits: [],
+          }),
+        }),
+      }));
+      adapter.unregisterSessionToolProvider('session-uuid');
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      mockedStreamText.mockReturnValue({
+        fullStream: createFullStream([{ type: 'finish', finishReason: 'stop' }]),
+      } as unknown as ReturnType<typeof streamText>);
+
+      for await (const _event of adapter.prompt('session-uuid', [textBlock])) {
+        continue;
+      }
+
+      const invocation = mockedStreamText.mock.calls[0]?.[0];
+      expect(invocation).not.toHaveProperty('tools');
     });
 
     it('在 LLM_SUGGEST 模式下会产出 decision 与 intervention_required', async () => {

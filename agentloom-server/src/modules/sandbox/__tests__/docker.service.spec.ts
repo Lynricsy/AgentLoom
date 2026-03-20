@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,11 +24,19 @@ const mockContainer = {
   logs: vi.fn(),
   stats: vi.fn(),
   getArchive: vi.fn(),
+  exec: vi.fn(),
+};
+
+const mockExec = {
+  id: 'exec-abc123',
+  start: vi.fn().mockResolvedValue(new PassThrough()),
+  inspect: vi.fn(),
 };
 
 const mockDocker = {
   createContainer: vi.fn().mockResolvedValue(mockContainer),
   getContainer: vi.fn().mockReturnValue(mockContainer),
+  getExec: vi.fn().mockReturnValue(mockExec),
 };
 
 vi.mock('dockerode', () => ({
@@ -46,6 +54,49 @@ const DEFAULT_CONFIG: SandboxConfig = {
   disk: 5,
   timeout: 4,
 };
+
+function createDockerMultiplexedFrame(
+  streamType: number,
+  message: string,
+): Buffer {
+  const payload = Buffer.from(message);
+  const frame = Buffer.alloc(8 + payload.length);
+  frame.writeUInt8(streamType, 0);
+  frame.writeUInt32BE(payload.length, 4);
+  payload.copy(frame, 8);
+  return frame;
+}
+
+function createExecInspectInfo(
+  overrides: Partial<{
+    ContainerID: string;
+    ExitCode: number | null;
+    ID: string;
+    Pid: number;
+    Running: boolean;
+  }> = {},
+) {
+  return {
+    CanRemove: false,
+    DetachKeys: 'ctrl-c',
+    ID: 'exec-abc123',
+    Running: true,
+    ExitCode: null,
+    ProcessConfig: {
+      privileged: false,
+      user: 'sandbox',
+      tty: false,
+      entrypoint: 'python',
+      arguments: ['-c', 'print("hello")'],
+    },
+    OpenStdin: false,
+    OpenStderr: true,
+    OpenStdout: true,
+    ContainerID: 'container-abc123',
+    Pid: 4321,
+    ...overrides,
+  };
+}
 
 describe('DockerService', () => {
   const service = new DockerService();
@@ -246,6 +297,129 @@ describe('DockerService', () => {
 
       emitter.emit('data', chunk2);
       expect(logs).toEqual([{ level: 'stdout', message: 'cross-boundary' }]);
+    });
+  });
+
+  describe('createExec', () => {
+    it('应创建并启动非交互式 exec', async () => {
+      const execStream = new PassThrough();
+      mockContainer.exec.mockResolvedValueOnce(mockExec);
+      mockExec.start.mockResolvedValueOnce(execStream);
+
+      const result = await service.createExec('container-abc123', {
+        command: 'python',
+        args: ['-c', 'print("hello")'],
+        cwd: '/workspace/demo',
+      });
+
+      expect(result).toEqual({ execId: 'exec-abc123' });
+      expect(mockDocker.getContainer).toHaveBeenCalledWith('container-abc123');
+      expect(mockContainer.exec).toHaveBeenCalledWith({
+        AttachStdin: false,
+        AttachStdout: true,
+        AttachStderr: true,
+        Cmd: ['python', '-c', 'print("hello")'],
+        Tty: false,
+        WorkingDir: '/workspace/demo',
+      });
+      expect(mockExec.start).toHaveBeenCalledWith({
+        Detach: false,
+        Tty: false,
+      });
+    });
+
+    it('创建 exec 失败时应抛出 SandboxCreationException', async () => {
+      mockContainer.exec.mockRejectedValueOnce(new Error('exec create failed'));
+
+      await expect(
+        service.createExec('container-abc123', {
+          command: 'python',
+        }),
+      ).rejects.toThrow(SandboxCreationException);
+    });
+  });
+
+  describe('attachExecOutput', () => {
+    it('应通过 header 字节区分 exec stdout 和 stderr', async () => {
+      const execStream = new PassThrough();
+      mockContainer.exec.mockResolvedValueOnce(mockExec);
+      mockExec.start.mockResolvedValueOnce(execStream);
+
+      const { execId } = await service.createExec('container-abc123', {
+        command: 'python',
+      });
+
+      const logs: { level: string; message: string }[] = [];
+      await service.attachExecOutput(execId, (level, message) => {
+        logs.push({ level, message });
+      });
+
+      execStream.write(createDockerMultiplexedFrame(1, 'hello stdout'));
+      execStream.write(createDockerMultiplexedFrame(2, 'err msg'));
+
+      expect(logs).toEqual([
+        { level: 'stdout', message: 'hello stdout' },
+        { level: 'stderr', message: 'err msg' },
+      ]);
+    });
+  });
+
+  describe('waitForExecExit', () => {
+    it('应轮询 exec inspect 直到进程退出', async () => {
+      vi.useFakeTimers();
+      mockExec.inspect
+        .mockResolvedValueOnce(createExecInspectInfo({ Running: true }))
+        .mockResolvedValueOnce(
+          createExecInspectInfo({
+            ExitCode: 0,
+            Running: false,
+          }),
+        );
+
+      const waitPromise = service.waitForExecExit('exec-abc123');
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(waitPromise).resolves.toEqual({
+        exitCode: 0,
+        pid: 4321,
+        running: false,
+      });
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('killExec', () => {
+    it('应通过非交互式 kill exec 终止目标进程', async () => {
+      const killStream = new PassThrough();
+      const killExec = {
+        id: 'exec-kill-001',
+        start: vi.fn().mockResolvedValue(killStream),
+      };
+
+      mockExec.inspect.mockResolvedValueOnce(
+        createExecInspectInfo({
+          ContainerID: 'container-abc123',
+          Pid: 9876,
+          Running: true,
+        }),
+      );
+      mockContainer.exec.mockResolvedValueOnce(killExec);
+
+      await service.killExec('exec-abc123');
+
+      expect(mockDocker.getExec).toHaveBeenCalledWith('exec-abc123');
+      expect(mockContainer.exec).toHaveBeenCalledWith({
+        AttachStdin: false,
+        AttachStdout: true,
+        AttachStderr: true,
+        Cmd: ['kill', '-TERM', '9876'],
+        Tty: false,
+      });
+      expect(killExec.start).toHaveBeenCalledWith({
+        Detach: false,
+        Tty: false,
+      });
     });
   });
 

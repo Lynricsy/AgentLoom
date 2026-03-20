@@ -72,6 +72,9 @@ describe('SessionPersistenceService', () => {
   describe('serializeSession()', () => {
     it('应将 AgentSession 序列化为 JSON-safe 对象', () => {
       const session = makeSession();
+      (session.context as Record<string, unknown>).serverSandbox = {
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      };
       const result = service.serializeSession(session);
 
       expect(result.id).toBe('session-001');
@@ -88,12 +91,18 @@ describe('SessionPersistenceService', () => {
         stepId: STEP_ID,
         nodeId: 'n1',
       });
+      expect((result.context as Record<string, unknown>).serverSandbox).toEqual({
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      });
     });
   });
 
   describe('deserializeSession()', () => {
     it('应将序列化数据还原为 AgentSession', () => {
       const session = makeSession();
+      (session.context as Record<string, unknown>).serverSandbox = {
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      };
       const serialized = service.serializeSession(session);
       const result = service.deserializeSession(
         serialized as unknown as Record<string, unknown>,
@@ -104,6 +113,9 @@ describe('SessionPersistenceService', () => {
       expect(result.createdAt).toEqual(NOW);
       expect(result.updatedAt).toEqual(NOW);
       expect(result.context.history).toEqual(session.context.history);
+      expect((result.context as Record<string, unknown>).serverSandbox).toEqual({
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      });
     });
 
     it('缺少 history 时应默认为空数组', () => {
@@ -198,21 +210,27 @@ describe('SessionPersistenceService', () => {
       });
 
       await service.saveConversationSession(
-        makeSession({
-          id: 'conversation-001',
-          mode: 'conversation',
-          context: {
-            history: [{ type: 'text', text: 'hello' }],
-            cwd: '/workspace/demo',
-            mcpServers: {
-              docs: {
-                transportType: 'stdio',
-                command: 'node',
-                args: ['mcp.js'],
+        (() => {
+          const session = makeSession({
+            id: 'conversation-001',
+            mode: 'conversation',
+            context: {
+              history: [{ type: 'text', text: 'hello' }],
+              cwd: '/workspace/demo',
+              mcpServers: {
+                docs: {
+                  transportType: 'stdio',
+                  command: 'node',
+                  args: ['mcp.js'],
+                },
               },
             },
-          },
-        }),
+          });
+          (session.context as Record<string, unknown>).serverSandbox = {
+            executionId: '019391d4-e000-7000-0000-000000000005',
+          };
+          return session;
+        })(),
       );
 
       const valuesArg = mockDb.insert.mock.results[0].value.values.mock.calls[0][0];
@@ -223,18 +241,25 @@ describe('SessionPersistenceService', () => {
         sessionSnapshot: expect.objectContaining({
           id: 'conversation-001',
           mode: 'conversation',
+          context: expect.objectContaining({
+            serverSandbox: {
+              executionId: '019391d4-e000-7000-0000-000000000005',
+            },
+          }),
         }),
         replayEntries: [],
       });
     });
 
     it('应从独立 durable store 加载 conversation session', async () => {
-      const serialized = service.serializeSession(
-        makeSession({
-          id: 'conversation-001',
-          mode: 'conversation',
-        }),
-      );
+      const session = makeSession({
+        id: 'conversation-001',
+        mode: 'conversation',
+      });
+      (session.context as Record<string, unknown>).serverSandbox = {
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      };
+      const serialized = service.serializeSession(session);
       mockDb.select.mockReturnValue(
         createSelectChain([
           {
@@ -248,6 +273,9 @@ describe('SessionPersistenceService', () => {
       expect(result).not.toBeNull();
       expect(result?.id).toBe('conversation-001');
       expect(result?.mode).toBe('conversation');
+      expect((result?.context as Record<string, unknown>).serverSandbox).toEqual({
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      });
     });
 
     it('应在 conversation session snapshot 损坏时抛出数据完整性错误', async () => {
@@ -278,12 +306,14 @@ describe('SessionPersistenceService', () => {
     });
 
     it('应为 conversation session 追加 replay ledger 并同步保存快照', async () => {
-      const serialized = service.serializeSession(
-        makeSession({
-          id: 'conversation-001',
-          mode: 'conversation',
-        }),
-      );
+      const session = makeSession({
+        id: 'conversation-001',
+        mode: 'conversation',
+      });
+      (session.context as Record<string, unknown>).serverSandbox = {
+        executionId: '019391d4-e000-7000-0000-000000000005',
+      };
+      const serialized = service.serializeSession(session);
       mockDb.select.mockReturnValue(
         createSelectChain([
           {
@@ -295,10 +325,7 @@ describe('SessionPersistenceService', () => {
       mockDb.update.mockReturnValue(createUpdateChainVoid());
 
       await service.appendConversationReplayEntry(
-        makeSession({
-          id: 'conversation-001',
-          mode: 'conversation',
-        }),
+        session,
         replayEntry,
       );
 
@@ -308,6 +335,11 @@ describe('SessionPersistenceService', () => {
         sessionSnapshot: expect.objectContaining({
           id: 'conversation-001',
           mode: 'conversation',
+          context: expect.objectContaining({
+            serverSandbox: {
+              executionId: '019391d4-e000-7000-0000-000000000005',
+            },
+          }),
         }),
       });
     });

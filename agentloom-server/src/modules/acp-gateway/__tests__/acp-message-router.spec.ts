@@ -11,6 +11,17 @@ function createRouter(overrides?: {
   sessionLoadHandler?: { handle: ReturnType<typeof vi.fn> };
   sessionPromptHandler?: { handle: ReturnType<typeof vi.fn> };
   sessionCancelHandler?: { handle: ReturnType<typeof vi.fn> };
+  terminalHandler?: {
+    handleCreate: ReturnType<typeof vi.fn>;
+    handleOutput: ReturnType<typeof vi.fn>;
+    handleWaitForExit: ReturnType<typeof vi.fn>;
+    handleKill: ReturnType<typeof vi.fn>;
+    handleRelease: ReturnType<typeof vi.fn>;
+  };
+  filesystemHandler?: {
+    handleReadTextFile: ReturnType<typeof vi.fn>;
+    handleWriteTextFile: ReturnType<typeof vi.fn>;
+  };
 }) {
   return new AcpMessageRouter(
     (overrides?.initializeHandler ?? { handle: vi.fn() }) as never,
@@ -19,6 +30,17 @@ function createRouter(overrides?: {
     (overrides?.sessionLoadHandler ?? { handle: vi.fn() }) as never,
     (overrides?.sessionPromptHandler ?? { handle: vi.fn() }) as never,
     (overrides?.sessionCancelHandler ?? { handle: vi.fn() }) as never,
+    (overrides?.terminalHandler ?? {
+      handleCreate: vi.fn(),
+      handleOutput: vi.fn(),
+      handleWaitForExit: vi.fn(),
+      handleKill: vi.fn(),
+      handleRelease: vi.fn(),
+    }) as never,
+    (overrides?.filesystemHandler ?? {
+      handleReadTextFile: vi.fn(),
+      handleWriteTextFile: vi.fn(),
+    }) as never,
   );
 }
 
@@ -335,6 +357,66 @@ describe('AcpMessageRouter', () => {
     });
   });
 
+  it('应在未认证时拒绝 fs/read_text_file', async () => {
+    const router = createRouter();
+
+    const response = await router.routeMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 12,
+        method: 'fs/read_text_file',
+        params: {
+          sessionId: 'session-001',
+          path: './notes.txt',
+          mode: 'client_proxy',
+        },
+      }),
+      {
+        initialized: true,
+      },
+    );
+
+    expect(response).toEqual({
+      jsonrpc: '2.0',
+      id: 12,
+      error: {
+        code: -32002,
+        message: 'Authentication required',
+      },
+    });
+  });
+
+  it.each([
+    ['terminal/create', { sessionId: 'session-001', command: 'pwd', args: [] }],
+    ['terminal/output', { sessionId: 'session-001', terminalId: 'term-001' }],
+    ['terminal/wait_for_exit', { sessionId: 'session-001', terminalId: 'term-001' }],
+    ['terminal/kill', { sessionId: 'session-001', terminalId: 'term-001' }],
+    ['terminal/release', { sessionId: 'session-001', terminalId: 'term-001' }],
+  ])('应在未认证时拒绝 %s', async (method, params) => {
+    const router = createRouter();
+
+    const response = await router.routeMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 15,
+        method,
+        params,
+      }),
+      {
+        initialized: true,
+      },
+    );
+
+    expect(response).toEqual({
+      jsonrpc: '2.0',
+      id: 15,
+      error: {
+        code: -32002,
+        message: 'Authentication required',
+      },
+    });
+  });
+
   it('应在认证后将 session/load 分发给 handler 并返回 sessionId', async () => {
     const sessionLoadHandler = {
       handle: vi.fn().mockResolvedValue({
@@ -383,6 +465,239 @@ describe('AcpMessageRouter', () => {
       },
     });
   });
+
+  it('应在认证后将 fs/read_text_file 分发给 handler 并返回 canonical content', async () => {
+    const filesystemHandler = {
+      handleReadTextFile: vi.fn().mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: 'hello from client',
+          },
+        ],
+      }),
+      handleWriteTextFile: vi.fn(),
+    };
+    const router = createRouter({
+      filesystemHandler,
+    });
+
+    const response = await router.routeMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 13,
+        method: 'fs/read_text_file',
+        params: {
+          sessionId: 'session-001',
+          path: './notes.txt',
+          mode: 'client_proxy',
+        },
+      }),
+      {
+        initialized: true,
+        authContext: {
+          userId: 'user-1',
+          email: 'user@example.com',
+          tenantId: 'tenant-1',
+          tenantRole: 'owner',
+          orgId: 'org-1',
+          authMethod: 'jwt',
+        },
+      },
+    );
+
+    expect(filesystemHandler.handleReadTextFile).toHaveBeenCalledWith(
+      {
+        sessionId: 'session-001',
+        path: './notes.txt',
+        mode: 'client_proxy',
+      },
+      expect.objectContaining({
+        initialized: true,
+      }),
+    );
+    expect(response).toEqual({
+      jsonrpc: '2.0',
+      id: 13,
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: 'hello from client',
+          },
+        ],
+      },
+    });
+  });
+
+  it('应在认证后将 fs/write_text_file 分发给 handler 并返回稳定确认', async () => {
+    const filesystemHandler = {
+      handleReadTextFile: vi.fn(),
+      handleWriteTextFile: vi.fn().mockResolvedValue({
+        success: true,
+      }),
+    };
+    const router = createRouter({
+      filesystemHandler,
+    });
+
+    const response = await router.routeMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 14,
+        method: 'fs/write_text_file',
+        params: {
+          sessionId: 'session-001',
+          path: './notes.txt',
+          content: 'updated',
+          mode: 'client_proxy',
+        },
+      }),
+      {
+        initialized: true,
+        authContext: {
+          userId: 'user-1',
+          email: 'user@example.com',
+          tenantId: 'tenant-1',
+          tenantRole: 'owner',
+          orgId: 'org-1',
+          authMethod: 'jwt',
+        },
+      },
+    );
+
+    expect(filesystemHandler.handleWriteTextFile).toHaveBeenCalledWith(
+      {
+        sessionId: 'session-001',
+        path: './notes.txt',
+        content: 'updated',
+        mode: 'client_proxy',
+      },
+      expect.objectContaining({
+        initialized: true,
+      }),
+    );
+    expect(response).toEqual({
+      jsonrpc: '2.0',
+      id: 14,
+      result: {
+        success: true,
+      },
+    });
+  });
+
+  it.each([
+    [
+      'terminal/create',
+      'handleCreate',
+      {
+        sessionId: 'session-001',
+        command: 'pwd',
+        args: [],
+      },
+      {
+        terminalId: 'term-001',
+      },
+    ],
+    [
+      'terminal/output',
+      'handleOutput',
+      {
+        sessionId: 'session-001',
+        terminalId: 'term-001',
+      },
+      {
+        terminalId: 'term-001',
+        output: '',
+        truncated: false,
+      },
+    ],
+    [
+      'terminal/wait_for_exit',
+      'handleWaitForExit',
+      {
+        sessionId: 'session-001',
+        terminalId: 'term-001',
+      },
+      {
+        terminalId: 'term-001',
+        status: 'running',
+      },
+    ],
+    [
+      'terminal/kill',
+      'handleKill',
+      {
+        sessionId: 'session-001',
+        terminalId: 'term-001',
+      },
+      {
+        success: true,
+      },
+    ],
+    [
+      'terminal/release',
+      'handleRelease',
+      {
+        sessionId: 'session-001',
+        terminalId: 'term-001',
+      },
+      {
+        success: true,
+      },
+    ],
+  ])(
+    '应在认证后将 %s 分发给 terminal handler',
+    async (method, handlerMethod, params, result) => {
+      const terminalHandler = {
+        handleCreate: vi.fn(),
+        handleOutput: vi.fn(),
+        handleWaitForExit: vi.fn(),
+        handleKill: vi.fn(),
+        handleRelease: vi.fn(),
+      };
+      terminalHandler[handlerMethod as keyof typeof terminalHandler].mockResolvedValue(
+        result,
+      );
+      const router = createRouter({
+        terminalHandler,
+      });
+
+      const response = await router.routeMessage(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 16,
+          method,
+          params,
+        }),
+        {
+          initialized: true,
+          authContext: {
+            userId: 'user-1',
+            email: 'user@example.com',
+            tenantId: 'tenant-1',
+            tenantRole: 'owner',
+            orgId: 'org-1',
+            authMethod: 'jwt',
+          },
+        },
+      );
+
+      expect(
+        terminalHandler[handlerMethod as keyof typeof terminalHandler],
+      ).toHaveBeenCalledWith(
+        params,
+        expect.objectContaining({
+          initialized: true,
+        }),
+      );
+      expect(response).toEqual({
+        jsonrpc: '2.0',
+        id: 16,
+        result,
+      });
+    },
+  );
 
   it('应将 handler 抛出的参数错误映射为 invalid params', async () => {
     const router = createRouter({
