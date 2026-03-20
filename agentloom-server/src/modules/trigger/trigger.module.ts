@@ -3,6 +3,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 
 import { ExecutionModule } from '../execution/execution.module';
+import { EventSourceAdapterRegistry } from './adapters/event-source-adapter.registry';
+import { GenericEventAdapter } from './adapters/generic-event.adapter';
 import { GithubWebhookAdapter } from './adapters/github-webhook.adapter';
 import { TriggerController } from './trigger.controller';
 import {
@@ -33,7 +35,9 @@ import { WebhookService } from './webhook.service';
     TriggerSchedulerProcessor,
     WebhookService,
     GithubWebhookAdapter,
+    GenericEventAdapter,
+    EventSourceAdapterRegistry,
   ],
-  exports: [TriggerService],
+  exports: [TriggerService, EventSourceAdapterRegistry],
 })
 export class TriggerModule {}
