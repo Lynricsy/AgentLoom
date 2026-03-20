@@ -329,6 +329,91 @@ export class AuthService {
     };
   }
 
+  async changePassword(
+    accessToken: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    if (currentPassword === newPassword) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/same-password',
+        title: 'Bad Request',
+        status: HttpStatus.BAD_REQUEST,
+        detail: '新密码不能与当前密码相同',
+      });
+    }
+
+    let supabaseUser: SupabaseUser | null = null;
+
+    try {
+      supabaseUser = await this.supabaseService.getUser(accessToken);
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/unauthorized',
+        title: 'Unauthorized',
+        status: HttpStatus.UNAUTHORIZED,
+        detail: 'Failed to authenticate user',
+      });
+    }
+
+    if (!supabaseUser?.email) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/unauthorized',
+        title: 'Unauthorized',
+        status: HttpStatus.UNAUTHORIZED,
+        detail: 'Unable to identify authenticated user',
+      });
+    }
+
+    try {
+      await this.supabaseService.signIn(supabaseUser.email, currentPassword);
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      if (error instanceof AuthApiError) {
+        if (this.isInvalidCredentialsError(error)) {
+          throw new DomainException({
+            type: 'https://agentloom.dev/errors/wrong-current-password',
+            title: 'Unauthorized',
+            status: HttpStatus.UNAUTHORIZED,
+            detail: '当前密码不正确',
+          });
+        }
+      }
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/change-password-failed',
+        title: 'Change Password Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'An unexpected error occurred while verifying current password',
+      });
+    }
+
+    try {
+      await this.supabaseService.updateUserPassword(
+        supabaseUser.id,
+        newPassword,
+      );
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      this.logger.error(
+        `Failed to update password for user ${supabaseUser.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/change-password-failed',
+        title: 'Change Password Failed',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'An unexpected error occurred while updating password',
+      });
+    }
+
+    return { message: '密码修改成功' };
+  }
+
   private async findUserByEmail(email: string) {
     return this.db.query.users.findFirst({
       where: eq(users.email, email),
@@ -398,9 +483,13 @@ export class AuthService {
       return null;
     }
 
+    const raw = decoded as Record<string, unknown>;
+
     return {
       sub: typeof decoded.sub === 'string' ? decoded.sub : undefined,
       exp: typeof decoded.exp === 'number' ? decoded.exp : undefined,
+      session_id:
+        typeof raw['session_id'] === 'string' ? raw['session_id'] : undefined,
     };
   }
 
@@ -439,6 +528,144 @@ export class AuthService {
       );
       return 1;
     }
+  }
+
+  async listSessions(accessToken: string) {
+    const claims = this.decodeAccessTokenClaims(accessToken);
+    const userId = claims?.sub;
+    const currentSessionId = claims?.session_id;
+
+    if (!userId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/unauthorized',
+        title: 'Unauthorized',
+        status: HttpStatus.UNAUTHORIZED,
+        detail: 'Unable to identify user from token',
+      });
+    }
+
+    try {
+      const result = await this.db.execute(sql`
+        SELECT
+          id::text,
+          user_agent,
+          ip::text AS ip,
+          created_at,
+          refreshed_at AS last_active_at
+        FROM auth.sessions
+        WHERE user_id = ${userId}::uuid
+          AND (not_after IS NULL OR not_after > NOW())
+        ORDER BY created_at DESC
+      `);
+
+      const rawResult = result as unknown;
+      const resultWithRows = rawResult as {
+        rows?: Array<{
+          id?: string;
+          user_agent?: string | null;
+          ip?: string | null;
+          created_at?: string | Date | null;
+          last_active_at?: string | Date | null;
+        }>;
+      };
+      const rows = Array.isArray(rawResult)
+        ? (rawResult as Array<{
+            id?: string;
+            user_agent?: string | null;
+            ip?: string | null;
+            created_at?: string | Date | null;
+            last_active_at?: string | Date | null;
+          }>)
+        : Array.isArray(resultWithRows.rows)
+          ? resultWithRows.rows
+          : [];
+
+      return {
+        data: {
+          sessions: rows.map((row) => ({
+            id: row.id ?? '',
+            user_agent: row.user_agent ?? null,
+            ip: row.ip ?? null,
+            created_at: row.created_at
+              ? new Date(row.created_at as string | Date).toISOString()
+              : null,
+            last_active_at: row.last_active_at
+              ? new Date(row.last_active_at as string | Date).toISOString()
+              : null,
+            is_current: currentSessionId
+              ? row.id === currentSessionId
+              : false,
+          })),
+        },
+      };
+    } catch (error) {
+      if (error instanceof DomainException) throw error;
+
+      this.logger.warn(
+        `Failed to list sessions for ${userId}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      return { data: { sessions: [] } };
+    }
+  }
+
+  async revokeSession(accessToken: string, sessionId: string) {
+    const claims = this.decodeAccessTokenClaims(accessToken);
+    const userId = claims?.sub;
+    const currentSessionId = claims?.session_id;
+
+    if (!userId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/unauthorized',
+        title: 'Unauthorized',
+        status: HttpStatus.UNAUTHORIZED,
+        detail: 'Unable to identify user from token',
+      });
+    }
+
+    if (currentSessionId && sessionId === currentSessionId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/session-revoke-current',
+        title: 'Bad Request',
+        status: HttpStatus.BAD_REQUEST,
+        detail: 'Cannot revoke the current active session',
+      });
+    }
+
+    const checkResult = await this.db.execute(sql`
+      SELECT id::text
+      FROM auth.sessions
+      WHERE id = ${sessionId}::uuid
+        AND user_id = ${userId}::uuid
+    `);
+
+    const rawCheck = checkResult as unknown;
+    const checkWithRows = rawCheck as {
+      rows?: Array<{ id?: string }>;
+    };
+    const checkRows = Array.isArray(rawCheck)
+      ? (rawCheck as Array<{ id?: string }>)
+      : Array.isArray(checkWithRows.rows)
+        ? checkWithRows.rows
+        : [];
+
+    if (checkRows.length === 0) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/session-not-found',
+        title: 'Not Found',
+        status: HttpStatus.NOT_FOUND,
+        detail: 'Session not found',
+      });
+    }
+
+    await this.db.execute(sql`
+      DELETE FROM auth.sessions
+      WHERE id = ${sessionId}::uuid
+        AND user_id = ${userId}::uuid
+    `);
+
+    return { message: 'Session revoked successfully' };
   }
 
   private extractProviders(user: SupabaseUser | null) {

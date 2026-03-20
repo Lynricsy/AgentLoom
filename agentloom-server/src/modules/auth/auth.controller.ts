@@ -1,9 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
@@ -14,6 +17,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -70,5 +74,48 @@ export class AuthController {
   getSecurityInfo(@Req() request: FastifyRequest) {
     const token = request.headers.authorization?.split(' ')[1];
     return this.authService.getSecurityInfo(token!);
+  }
+
+  @Patch('password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '修改当前用户密码' })
+  @ApiResponse({ status: 200, description: '密码修改成功' })
+  @ApiResponse({ status: 400, description: '新密码与当前密码相同' })
+  @ApiResponse({ status: 401, description: '当前密码错误或未认证' })
+  changePassword(
+    @Req() request: FastifyRequest,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    const token = request.headers.authorization?.split(' ')[1];
+    return this.authService.changePassword(
+      token!,
+      dto.current_password,
+      dto.new_password,
+    );
+  }
+
+  @Get('sessions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取当前用户所有活跃会话' })
+  @ApiResponse({ status: 200, description: '获取会话列表成功' })
+  @ApiResponse({ status: 401, description: '未认证' })
+  listSessions(@Req() request: FastifyRequest) {
+    const token = request.headers.authorization?.split(' ')[1];
+    return this.authService.listSessions(token!);
+  }
+
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '撤销指定会话' })
+  @ApiResponse({ status: 200, description: '会话撤销成功' })
+  @ApiResponse({ status: 400, description: '不能撤销当前会话' })
+  @ApiResponse({ status: 401, description: '未认证' })
+  @ApiResponse({ status: 404, description: '会话不存在' })
+  revokeSession(
+    @Param('id') sessionId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    const token = request.headers.authorization?.split(' ')[1];
+    return this.authService.revokeSession(token!, sessionId);
   }
 }

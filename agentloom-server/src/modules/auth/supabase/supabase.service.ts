@@ -101,6 +101,22 @@ export class SupabaseService {
     return data.user;
   }
 
+  async updateUserPassword(supabaseUserId: string, newPassword: string) {
+    const { data, error } =
+      await this.getAdminClient().auth.admin.updateUserById(supabaseUserId, {
+        password: newPassword,
+      });
+
+    if (error) {
+      this.logger.warn(
+        `UpdateUserPassword failed for ${supabaseUserId}: ${error.message}`,
+      );
+      throw error;
+    }
+
+    return data;
+  }
+
   // ─── OAuth 社交登录 ─────────────────────────────────────────
 
   async signInWithOAuth(provider: OAuthProvider, redirectTo: string) {
