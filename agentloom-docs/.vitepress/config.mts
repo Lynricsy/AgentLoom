@@ -9,7 +9,7 @@ export default withMermaid(
     srcExclude: ['AGENTS.md', '_bmad/**', 'node_modules/**'],
     cleanUrls: true,
     lastUpdated: true,
-    ignoreDeadLinks: true,
+    ignoreDeadLinks: false,
 
     head: [
       ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
@@ -61,17 +61,21 @@ export default withMermaid(
         ],
         '/zh/server/': [
           {
-            text: '服务端',
+            text: '核心架构',
             items: [
               { text: '概述', link: '/zh/server/' },
               { text: '模块架构', link: '/zh/server/modules' },
               { text: '中间件与守卫链', link: '/zh/server/middleware' },
               { text: '安全与加密', link: '/zh/server/security' },
-              { text: '认证与多租户', link: '/zh/server/auth' },
-              { text: '工作流引擎', link: '/zh/server/execution' },
-              { text: '智能路由', link: '/zh/server/smart-routing' },
-              { text: '知识库 RAG', link: '/zh/server/knowledge' },
-              { text: 'E2EE 加密', link: '/zh/server/encryption' },
+            ],
+          },
+          {
+            text: '基础设施',
+            items: [
+              { text: '数据库', link: '/zh/server/database' },
+              { text: '队列系统', link: '/zh/server/queues' },
+              { text: '实时通信', link: '/zh/server/realtime' },
+              { text: 'ACP 协议', link: '/zh/server/acp' },
             ],
           },
         ],
@@ -124,10 +128,7 @@ export default withMermaid(
           {
             text: 'API 参考',
             items: [
-              { text: '概述', link: '/zh/api/' },
-              { text: 'REST API', link: '/zh/api/rest' },
-              { text: 'Socket.IO 协议', link: '/zh/api/socketio' },
-              { text: '认证方式', link: '/zh/api/authentication' },
+              { text: 'OpenAPI 文档', link: '/zh/api/' },
             ],
           },
         ],
