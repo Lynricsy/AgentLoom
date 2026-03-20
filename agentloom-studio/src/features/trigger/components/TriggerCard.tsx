@@ -46,7 +46,7 @@ const typeBadgeClassNames: Record<Trigger['type'], string> = {
 const typeLabels: Record<Trigger['type'], string> = {
   cron: '定时触发',
   webhook: 'Webhook',
-  api_event: 'API Event · 预览',
+  api_event: 'API Event',
 }
 
 interface TriggerCardProps {
@@ -98,7 +98,6 @@ export const TriggerCard = memo(function TriggerCard({
   onToggle,
   onViewHistory,
 }: TriggerCardProps) {
-  const isApiEventPreview = trigger.type === 'api_event'
   const cronDescription = useMemo(() => getCronDescription(trigger), [trigger])
   const webhookUrl = useMemo(() => {
     if (trigger.type !== 'webhook' || !isWebhookConfig(trigger.config)) {
@@ -139,19 +138,14 @@ export const TriggerCard = memo(function TriggerCard({
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-xs font-medium text-foreground">
-                    {isApiEventPreview
-                      ? '预览中'
-                      : trigger.isEnabled
-                        ? '已启用'
-                        : '已停用'}
+                    {trigger.isEnabled ? '已启用' : '已停用'}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {isApiEventPreview ? 'API Event 暂不可启用或停用' : '切换后立即生效'}
+                    切换后立即生效
                   </p>
                 </div>
                 <Switch
                   checked={trigger.isEnabled}
-                  disabled={isApiEventPreview}
                   onCheckedChange={() => onToggle(trigger)}
                 />
               </div>
@@ -183,10 +177,7 @@ export const TriggerCard = memo(function TriggerCard({
 
           {trigger.type === 'api_event' && isApiEventConfig(trigger.config) ? (
             <div className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-amber-200">预配置事件契约</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                当前版本仅保存 API Event 触发器契约与过滤条件，暂未自动消费外部事件。
-              </p>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-amber-200">事件契约</p>
               <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
                 <span>事件源：{trigger.config.eventSource}</span>
                 <span>事件类型：{trigger.config.eventType}</span>
@@ -217,11 +208,10 @@ export const TriggerCard = memo(function TriggerCard({
             variant="ghost"
             size="sm"
             className="justify-center gap-1.5"
-            disabled={isApiEventPreview}
             onClick={() => onEdit(trigger)}
           >
             <PencilLine className="h-3.5 w-3.5" />
-            {isApiEventPreview ? '预览中' : '编辑'}
+            编辑
           </Button>
           <Button
             variant="ghost"
