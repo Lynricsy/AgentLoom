@@ -27,6 +27,7 @@ vi.mock('@/features/notification', () => ({
 vi.mock('@tanstack/react-router', () => ({
   Outlet: () => <div data-testid="outlet" />,
   createRootRoute: vi.fn().mockReturnValue({ options: {}, addChildren: vi.fn() }),
+  createRoute: vi.fn().mockReturnValue({}),
   Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
     <a href={to} {...rest}>{children}</a>
   ),
@@ -53,6 +54,7 @@ vi.mock('../settings/security/autonomy-policy', () => ({ organizationAutonomyPol
 vi.mock('../settings/resource-quotas', () => ({ resourceGovernanceRoute: {} }));
 vi.mock('../settings/monitoring', () => ({ monitoringRoute: {} }));
 vi.mock('../settings/private-deployment', () => ({ privateDeploymentRoute: {} }));
+vi.mock('../settings/security', () => ({ securitySettingsRoute: {} }));
 vi.mock('../auth/callback', () => ({ authCallbackRoute: {} }));
 vi.mock('../auth/login', () => ({ loginRoute: {} }));
 vi.mock('../auth/register', () => ({ registerRoute: {} }));
