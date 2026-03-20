@@ -24,9 +24,13 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/settings/monitoring` | MonitoringDashboardPage | owner/admin 组织级只读运行监控页：`15m/1h/24h` 窗口、执行趋势、当前队列快照摘要、alerts/hotspots/risk summary、跳转 `/settings/resource-quotas` 与 `/executions/$executionId` |
 | `/settings/private-deployment` | PrivateDeploymentPage | owner/admin 私有部署设置页：SMTP/LLM proxy/证书/license 配置，与治理/监控/审计入口形成企业运维面板 |
 | `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页：上限查看/更新 + 降级 preview/confirm |
+| `/login` | LoginPage | 邮箱密码登录 + OAuth 按钮 + 注册链接 |
+| `/register` | RegisterPage | 邮箱密码注册 + OAuth 按钮 + 登录链接 |
+| `/auth/callback` | AuthCallbackPage | Supabase OAuth PKCE 回调处理 |
+| `/settings/security` | SecuritySettingsPage | 密码修改 / MFA 管理 / 会话列表 |
 | `/templates` | TemplateBrowsePage | Tabs + 搜索 + 网格 + TemplateWizardDialog |
 
-TanStack Router v1，手动路由树 (`src/app/routes/`)。
+TanStack Router v1，手动路由树 (`src/app/routes/`)。`__root.tsx` 包含 auth guard：未认证用户重定向到 `/login`。
 
 ## 目录结构
 
@@ -34,6 +38,7 @@ TanStack Router v1，手动路由树 (`src/app/routes/`)。
 src/
 ├── app/              # 应用壳: providers.tsx, router.tsx, routes/
 ├── features/         # 业务功能 (Feature-Slice)
+│   ├── auth/         # Supabase Auth 集成：stores/auth.store.ts (Zustand), hooks/useAuth.ts, hooks/useAuthToken.ts (backward-compat), hooks/useMfa.ts, components (AuthLayout/OAuthButtons/PasswordInput/MfaEnrollDialog/MfaVerifyDialog/SecuritySettings)
 │   ├── canvas/       # 工作流画布 (见子 AGENTS.md) ← 最复杂
 │   ├── execution/    # 执行监控 (hooks, stores, types)
 │   ├── workflow/     # 工作流列表/管理
@@ -86,7 +91,7 @@ src/
 
 ## API 层
 
-- **ky** HTTP 客户端 (`shared/api/client.ts`)，全局 snake↔camel 转换 hook
+- **ky** HTTP 客户端 (`shared/api/client.ts`)，全局 snake↔camel 转换 hook，注入 `Bearer` token（从 Supabase session 获取），401 时通过 `supabase.auth.refreshSession()` 刷新重试，刷新失败自动 signOut
 - **TanStack Query**: staleTime=30s, retry=1, 禁用 focus-refetch
 - **Query Key Factory**: 每个 feature 独立 `xxxKeys` + `xxxApi` + `useXxx` hooks
 - **Socket.IO**: `/execution` namespace，typed events (`execution:subscribe`/`execution:unsubscribe` 带 ACK)，`lastEventId` 断线续传，5s 重连 (max 30s)，`callbacksRef` 模式
@@ -108,11 +113,11 @@ src/
 - **notificationStore** (`features/notification/stores/notificationStore.ts`): 维护 `notifications/unreadCount/isDropdownOpen`，支持 socket 增量插入、服务端列表同步与已读状态本地乐观更新
 - **提交动作**: `submitIntervention(executionId, stepId, payload)` 由 store 统一调用执行 API，并负责切换 `intervention.submitting`，让组件层只处理视图与错误呈现
 - **快照恢复**: `applySnapshot()` 会优先读取 `step.result.content` 恢复输出，并从 `step.checkpointData.interventionRequestedAt/interventionNodeName/decision/partialContent` 恢复人工介入面板状态
-- **认证占位** (`features/execution/hooks/useAuthToken.ts`): `useSyncExternalStore` + localStorage('auth_token')。TODO(auth): 待替换为真实 Supabase 认证
+- **认证** (`features/auth/`): Supabase Auth PKCE 集成。`auth.store.ts`（Zustand）管理 session/user/loading/initialized 状态，`useAuth` hook 提供 signIn/signUp/signOut/signInWithOAuth 操作，`useAuthToken` hook 保持后向兼容（从 Supabase session 读取 access token）。`useMfa` hook 封装 TOTP 注册/验证/撤销。组件：`AuthLayout`（居中卡片布局）、`OAuthButtons`（Google/GitHub OAuth）、`PasswordInput`（带可见性切换）、`MfaEnrollDialog`（TOTP QR 码注册 + 验证）、`MfaVerifyDialog`（TOTP 验证码输入）、`SecuritySettings`（密码修改/MFA 管理/活跃会话列表）。依赖 `@supabase/supabase-js`，Supabase client 初始化在 `shared/lib/supabase.ts`
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
 - **Marketplace feature** (`features/marketplace/`): 同时覆盖发布者后台与公共浏览链路。公共侧数据层使用 `publicMarketplaceApi` / `publicMarketplaceQueries` / `publicMarketplaceMutations`，query key 仍集中在 `marketplaceKeys.ts` 的 `publicMarketplaceKeys`；对应 `/marketplace/browse`（公开列表/详情/评论）与已认证 `/marketplace/listings/:id/install|reviews`。public contract 已与 server 收口：列表/评论统一 `{ data, meta }`，install 返回 `{ workflowDefinitionId, name, message }`，submit-review 返回 `{ id, rating, content, createdAt }`；`usePublicListings()` staleTime 2min，`usePublicListingDetail()` staleTime 5min，`useListingReviews()` staleTime 2min。页面层形成 `MarketplaceBrowsePage` → `MarketplaceDetailDialog` → `MarketplaceInstallDialog/ReviewForm` 闭环：浏览页使用 `meta.total/totalPages`、分类/排序/空态已中文化；`MarketplaceListingCard` 使用 `作者：` / `次安装` 文案；`MarketplaceDetailDialog` 评价总数优先取 `reviewsQuery.data.meta.total ?? listing.reviewCount`，头部同步展示 `Download + {useCount} 次安装`，CTA 为“安装到工作区”；`MarketplaceInstallDialog` 默认名称为 `${title} 副本`，安装成功后改用 `workflowDefinitionId` 跳转 `/workflows/$workflowId`。该链路的 4 个 marketplace 定向测试文件已通过 23 个测试。
-- **Trigger feature** (`features/trigger/`): `features/trigger/`webhook config 只保证 `token + ipWhitelist`，`secret` 仅在创建成功返回中可选出现；`TriggerHistoryStatus` 包含 `signature_failed`；`WebhookConfigForm` 编辑态只展示 URL/Token 与“一次性 secret”提示，不再重复展示 secret；`API Event` 为 preview-only：dialog 提交按钮禁用、表单只读、card 不允许编辑/启停，server 对 create/update/toggle 返回 409；当前 workflow 详情页仍然是 `WorkflowCanvasPage`（`/workflows/$workflowId`），不要为触发器发明独立 detail route
+- **Trigger feature** (`features/trigger/`): `features/trigger/`webhook config 只保证 `token + ipWhitelist`，`secret` 仅在创建成功返回中可选出现；`TriggerHistoryStatus` 包含 `signature_failed`；`WebhookConfigForm` 编辑态只展示 URL/Token 与“一次性 secret”提示，不再重复展示 secret；`API Event` 类型支持完整 CRUD 与启停操作，与  /  同等管理；当前 workflow 详情页仍然是 `WorkflowCanvasPage`（`/workflows/$workflowId`），不要为触发器发明独立 detail route
 - **MCP feature** (`features/mcp/`): 统一承载 imported tools 的 `mcpKeys` / `mcpApi` / `mcpQueries` / `mcpMutations` / `ToolLibraryPage` / `McpImportDialog`；shared data layer 现已补齐 `POST /mcp/test` 与 `POST /mcp/configs/:id/test` 前端类型，以及 `useTestMcpConnection()` / `useTestSavedMcpConnection()` mutations。`McpImportDialog` 为真正四步流（配置连接 → 测试连接 → 发现/选择工具 → 导入并同页复核回执），import 模式支持 `stdio | sse | streamable_http` 传输选择并跨步骤保留上下文；reimport 模式现先做 saved-config test，再在下一步独立 rediscover。`ToolLibraryPage` 现展示状态 / 来源 / 配置身份 / 导入与更新时间 / 端口摘要等管理元信息，停用确认使用 Radix Dialog 并在关闭后恢复焦点。`features/canvas/api/mcpToolQueries.ts` / `mcpToolKeys.ts` 仍作为兼容适配层复用 shared query key，确保工具库与 NodePalette 的 `Imported Tools` 同步刷新
 - **evidence feature** (`features/evidence/`): `types/index.ts` 使用 discriminated union `EvidencePacket`（`rag_retrieval | agent_decision | tool_output | user_input | intervention`），`EvidenceVerifyResult` 契约为 `{ evidenceId, valid, integrityWarning, currentHash }`；额外引入 `EvidencePacketSummary`、`IntegrityIssue`、`ChainIntegrityStatus`、`EvidenceChainNode`、`EvidenceChainResponse`、`PhysicalLocation.knowledgeBaseId` 与 `chunkContent`，用于 provenance chain 与文档查看器。`evidenceApi.ts` 提供 list/detail/verify/chain/documentContent API，并新增 `fetchAllEvidenceByExecution(executionId, params?)`：按页循环调用 `/executions/:executionId/evidence`（每页 100）并返回拼平后的 `EvidenceRecord[]`；`evidenceKeys.ts` 额外提供 `evidenceKeys.allRecords(executionId, filters?)` 和 `evidenceKeys.documentContent(kbId, docId)`；`evidenceQueries.ts` 提供 `useEvidenceList()`、`useAllEvidenceRecords()`、`useEvidenceDetail(executionId, evidenceId, { enabled? })`、`useEvidenceVerify()`、`useEvidenceChain()`、`useDocumentContent()`，其中 verify 采用 lazy query（`enabled: false`，通过 `refetch()` 触发），`useDocumentContent()` 会依据缓存中的 `expiresIn * 0.8` 计算 staleTime，chain query 使用 `staleTime: 5 * 60 * 1000` 与服务端 Redis TTL 对齐；evidence export 相关 `useEvidenceExportJob()` 会在 job 处于 `queued` / `running` 时每 5 秒自动轮询，进入终态后停止。链节点契约包含 `packetSummary`、`sourceUnavailable`、`sourceModified`、`unavailableReason`、`originalSnapshot`，顶层响应包含 `integrityStatus` 与可选 `cachedAt`。`evidenceUiStore`（Zustand）现管理面板与文档查看器状态：`openPanel(executionId, nodeId?, nodeName?, evidenceId?)`/`selectEvidence(id, {highlight?})`/`openDocumentViewer(state)`/`openFromPhysicalLocation(evidenceId, location)`/`clearHighlight()`/`closePanel()`/`closeDocumentViewer()`/`reset()`，并记录 `panelExecutionId/panelNodeId/panelNodeName/highlightUntil/documentViewer.physicalLocation`。组件层：`EvidenceReferencePanel`（400px 右滑，按 `executionId + nodeId` 拉证据链、支持 Escape 关闭与 2 秒高亮）、`EvidenceCard`（基于真实 `EvidenceRecord` + lazy verify 结构化渲染 5 种 sourceType，卡片与交互按钮分离避免嵌套 button）、`SourceStatusBadge`（valid/modified/unavailable 三态、tooltip 中显示 `currentHash/originalHash/unavailableReason` 并可切换原始快照）、`LocationLink`（直接基于 `PhysicalLocation` 打开 viewer）、`DocumentViewer`（`react-pdf` / `markdown-it` / 文本 `<pre>`，按 page/paragraph/offset/length 做 best-effort 定位高亮）、`DocumentViewerToolbar`（返回、位置标签、外链）、`InlineEvidenceRef`（蓝色上标，hover 懒加载 evidence detail tooltip，点击打开面板并高亮）。`lib/parseEvidenceRefs.ts` 解析 `[ref:evidenceId]` 正则为 `EvidenceRefSegment[]`；`TimelineIO.TextWithRefs` 和 `DecisionAnnotation` 都会渲染内联引用。
 - **证据扩展**: `EvidenceSourceType` 现包含 `node_error`；`EvidenceCard` 支持展示错误类型、节点 ID、错误摘要与类型不匹配对比；`InlineEvidenceRef` 的 source type 标签也已覆盖 `node_error`
@@ -174,7 +179,6 @@ react-hook-form + @hookform/resolvers + Zod v4
 - **非标准子目录**: `developer-console` 和 `monitoring` 使用 `pages/` 子目录（而非 `components/`）
 - **Barrel 导出例外**: `marketplace/index.ts` 使用 wildcard re-export（其余 feature 使用 named export）
 - **无 canonical 布局**: `workflow-input-schema` 无 `api/` 目录且无 `index.ts`
-- **认证逻辑散落**: auth 逻辑寄存在 `execution/hooks/useAuthToken.ts`（标记 `TODO(auth)`），不存在 `features/auth/` slice
 - **跨 feature 共享类型**: `canvas/autonomy.types.ts` 位于 feature 根目录，被 organization-autonomy-policy 和 optimization-suggestion 跨 feature 引用
 - **shared/ui 组件**: 仅含 8 个基础组件（button/input/label/select/slider/switch/tabs/toast）；其中 tabs 为自定义 Context-based 实现，非 Radix Tabs
 - **Query Key Factory 模式**: 各 feature 的 `[feature]Keys.ts` 遵循 `all → lists → list(filters) → details → detail(id)` 层级模式
@@ -205,4 +209,6 @@ react-hook-form + @hookform/resolvers + Zod v4
 
 - `VITE_API_BASE_URL` — API 地址
 - `VITE_AUTOSAVE_DEBOUNCE_MS` — 自动保存延迟
+- `VITE_SUPABASE_URL` — Supabase 项目 URL
+- `VITE_SUPABASE_ANON_KEY` — Supabase 匿名公钥
 - Vite proxy: `/api` → `:3000`，`/socket.io` → `:3000` (ws)

@@ -36,7 +36,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 
 | 模块 | 路径 | 职责 | 关键依赖 |
 |------|------|------|----------|
-| auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA | Supabase |
+| auth | `modules/auth/` | JWT 注册/登录/刷新/登出/OAuth/MFA/密码修改/会话列表/会话撤销；OAuth 支持 `?platform=mobile` 移动端重定向（`agentloom://auth/callback?access_token=...`） | Supabase |
 | org | `modules/organization/` | 组织 CRUD + 邀请 + 角色管理 | RBAC cache |
 | resource-governance | `modules/resource-governance/` | 租户资源配额与异常执行治理：`tenant_quotas` / `execution_governance_controls` typed store、治理读写 API、anomalous execution termination contract、治理事件 / 审计 / 通知 explain | EvidenceModule, EventEmitter2 |
 | monitoring | `modules/monitoring/` | 组织级 owner/admin 只读监控 dashboard：`GET /organizations/:id/monitoring`，按 `15m|1h|24h` 聚合 `workflow_executions`、`agent_execution_records`、governance state、notifications、audit logs 与当前 `agent-task` queue snapshot；趋势图聚焦 execution trend，queue depth 仅表示当前 snapshot，输出 summary/alerts/hotspots/riskSummary deep link contract | ResourceGovernanceModule, BullMQ, DrizzleDB |
@@ -50,7 +50,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | agent | `modules/agent/` | **六边形架构**: ports/AgentRuntime → InProcess\|Sandbox 适配器 | LlmModule, SandboxModule |
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引；`VECTOR_STORE` token 以 `useClass: QdrantVectorStoreService` 注入；`parsers/` 含 4 个解析器 + dispatcher | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers；**最高耦合模块**（imports 9 modules, exports 9 services）；含 `EventBridgeService`（monotonic eventId + ring buffer）、`StepStateMachineService`、`DagResolverService`、`CheckpointService`；CQRS-adjacent: `execution/`（write）vs `execution-record/`（analytics read-model） | AgentModule, Socket.IO |
-| trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD、cron 调度、webhook 验签与触发历史 | BullMQ, ExecutionModule, crypto HMAC |
+| trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD（cron/webhook/api_event 三种类型）、cron 调度、webhook 验签与触发历史、`POST /api-events` api_event 接入端点与 fan-out、`EventSourceAdapterRegistry` + `GithubWebhookAdapter`（HMAC-SHA256 验签）+ `GenericEventAdapter`（通用透传） | BullMQ, ExecutionModule, crypto HMAC |
 | notification | `modules/notification/` | 用户通知列表/偏好 + BullMQ 分发 + `/notification` WebSocket + 设备 token 注册/注销 + FCM 推送 (firebase-admin) | BullMQ, EventEmitter, firebase-admin |
 | plugin | `modules/plugin/` | 服务端插件注册与安全管理：`.alp` multipart 上传 + RSA-PSS 签名验证 + MinIO 归档/WASM 上传、使用 `@agentloom/plugin-sdk` 校验 manifest、`plugins` + `plugin_developer_keys` + `plugin_usage_records` + `plugin_earnings` 表 CRUD、`PluginSignatureService` RSA-PSS + SHA-256 签名验证、`PluginSandboxService` 封装 `@extism/extism` WASM 沙箱执行、`PluginExecutionWorker` 从 MinIO 下载 WASM 执行 + fire-and-forget 使用量记录、`PluginUsageService` 使用量 CRUD + 聚合统计、`PluginEarningsService` 收益分成计算与结算记录管理、`EarningsSettlementWorker` 周期性收益结算、`PluginMarketplaceController` 插件上架/列表/详情/更新 CRUD | BullMQ, JSZip, @extism/extism, node:crypto |
 | evidence | `modules/evidence/` | **双域合并**: 证据链 + 审计日志系统；注册全局 `APP_INTERCEPTOR`（`AuditLogInterceptor`）+ `@CaptureAuditLog(config)` 装饰器 opt-in capture；含 `EvidenceExportAccessGuard`；管理 3 个 BullMQ 队列（`audit-log-retention` + 2 个 evidence 内部队列）。证据记录 CRUD + 自动 evidence 监听 + 批量缓冲 + SHA-256 完整性校验 + 溯源链构建 (递归 CTE) + 来源可用性检测 + chunk content 嵌入 + Redis 缓存 + node_error 自动证据 (步骤失败监听) + 审计日志统一写入/查询/资源序列回放 + `audit-log-retention` 归档调度/worker。`evidence.service.ts`（1981L）为最大非测试生产文件，承担 4 项职责（重构候选） | EventEmitter, RedisCacheService, BullMQ |
@@ -167,7 +167,8 @@ HTTP POST /executions
 ## Trigger 系统
 
 - 数据表：`workflow_triggers` + `workflow_trigger_history`，schema 位于 `src/database/schema/workflow-triggers.schema.ts`
-- 触发类型：`cron | webhook | api_event`；当前 V1 已落地 cron/webhook 执行链路，`GithubWebhookAdapter` 仅为 api_event 占位，且 `TriggerService.create/update/toggle` 会对 `api_event` 抛出 preview-only 409，禁止创建、编辑或启用
+- 触发类型：`cron | webhook | api_event`；三种类型均支持完整 CRUD 与启停操作
+- `api_event` 接入：`POST /api/v1/api-events` 为公开接入端点，由 `ApiEventIngestionController` 接收外部事件，`ApiEventIngestionService` 通过 `EventSourceAdapterRegistry` 分发到注册的适配器：`GithubWebhookAdapter`（HMAC-SHA256 验签，`x-hub-signature-256` 头）、`GenericEventAdapter`（通用透传）。匹配 enabled `api_event` trigger 后 fan-out 触发工作流执行
 - REST：`/workflow-definitions/:workflowId/triggers` 提供 create/list/detail/update/delete/toggle/history；RBAC 为读 viewer+、写 creator+
 - Public webhook：`POST /api/v1/webhooks/:token`，`AppModule.configure()` 已通过 `TenantMiddleware.exclude()` 放行 `webhooks` 与 `webhooks/{*splat}`
 - Public share：`GET /api/v1/s/:token`，`SharePublicController` 类级 `@Public()`，`AppModule.configure()` 仅对 `s` 与 `s/{*splat}` 排除 `TenantMiddleware`；管理端 `/api/v1/workflow-shares` 仍保留租户上下文与 RBAC。`ShareService` 通过 `workflow_shares -> workflow_definitions -> workflow_versions.snapshot` 返回公开定义，并使用 `sql\`view_count + 1\`` / `sql\`copy_count + 1\`` 原子更新访问与复制计数

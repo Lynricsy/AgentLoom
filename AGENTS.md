@@ -55,6 +55,8 @@ AgentLoomAUTO/
 | 管理组织级运行监控仪表板 | `agentloom-server/src/modules/monitoring/` + `agentloom-studio/src/features/monitoring/` | owner/admin 只读 monitoring dashboard、`15m/1h/24h` 时间窗口、execution/governance/notification/audit 聚合与当前 queue snapshot 摘要、Studio `/settings/monitoring` 页面与 deep link |
 | 管理私有部署配置与部署资产 | `agentloom-server/src/modules/private-deployment/` + `agentloom-studio/src/features/private-deployment/` + `agentloom-deploy/` | owner/admin 私有部署设置 API 与 `/settings/private-deployment` 页面、受管 secret 引用 / RSA-PSS license 校验、Docker Compose / Helm / 备份恢复脚本与私有部署手册 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
+| 管理 Studio 认证与安全 | `agentloom-studio/src/features/auth/` | Supabase PKCE 认证、Zustand auth store、OAuth/MFA 组件、`/login` `/register` `/auth/callback` `/settings/security` 路由 |
+| 管理移动端认证与安全 | `agentloom_mobile/lib/features/auth/` + `agentloom_mobile/lib/features/settings/` | OAuth (Google/GitHub) + url_launcher、原生 MFA TOTP 屏幕、密码修改/会话管理/安全设置 |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
 | 添加画布节点类型 | `agentloom-studio/src/features/canvas/` | 见 canvas 子 AGENTS.md |
@@ -170,10 +172,10 @@ pnpm lint:md                      # Markdown lint
 - **Socket.IO `/execution` 协议**: typed `ExecutionEvent<T>` 信封（含 monotonic eventId），`execution:subscribe`/`execution:unsubscribe` + ACK，事件名 `execution.node.*` + `execution.status.changed`。Gateway 含背压队列（500 cap, 100ms drain），断线重连支持 `lastEventId` 增量回放。`/knowledge` namespace 仍为隐式契约
 - **Workflow Session**: 持久化到 `execution_steps.checkpointData.session`；工具权限端点 `/executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve`；`awaiting_permission` 是 tool-level 状态且 step 保持 `running`
 - **ShareModule**: 管理端 `/workflow-shares` RBAC + 公开只读 `/s/:token`。分享创建要求 `publishedVersionId` 非空，公开读取从 snapshot 返回 `nodes/edges/viewport`，原子递增 `view_count/copy_count`
-- **Studio 认证占位**: `useAuthToken` 使用 `localStorage('auth_token')` + `useSyncExternalStore`，标记 `TODO(auth)` 待替换为真实 Supabase 认证。Studio 无 Supabase 客户端/auth store
+- **Studio 认证**: `features/auth/` 集成 Supabase Auth（PKCE 流程），`auth.store.ts`（Zustand）管理会话/用户/loading 状态，`useAuth` hook 提供 signIn/signUp/signOut/OAuth 操作，`useAuthToken` hook 保持后向兼容。ky HTTP 客户端注入 `Bearer` token、401 时通过 `supabase.auth.refreshSession()` 刷新重试、刷新失败自动 signOut。路由包含 `/login`、`/register`、`/auth/callback`（OAuth PKCE 回调）、`/settings/security`（密码修改/MFA 管理/会话列表）。`__root.tsx` 包含 auth guard（未认证重定向到 `/login`）。MFA 支持 TOTP 注册（`MfaEnrollDialog`）与验证（`MfaVerifyDialog`）。依赖 `@supabase/supabase-js`，环境变量 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
 - **执行触发**: VersionToolbar Run → `useStartExecution` → `POST /workflow-definitions/:id/run` → `executionStore.initExecution(id)`。WorkflowStatusBar 显示 6 状态 + 进度
 - **通知模块**: `NotificationModule` 提供 REST + BullMQ queue + Socket.IO `/notification` namespace。fan-out 创建 `completed` / `failed` / `intervention_required` 通知。支持 `in_app` / `email` / `push` 三通道
-- **Trigger 系统**: 支持 `cron` / `webhook` / `api_event`(preview-only) 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 仅可查看不可创建/编辑/启用。执行创建在租户事务提交后才入队
+- **Trigger 系统**: 支持 `cron` / `webhook` / `api_event` 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 通过 `POST /api/v1/api-events` 接收外部事件，由 `EventSourceAdapterRegistry` 分发到注册的适配器（`GithubWebhookAdapter` HMAC-SHA256 验签、`GenericEventAdapter` 通用透传），匹配 enabled `api_event` trigger 后 fan-out 触发工作流执行。执行创建在租户事务提交后才入队
 - **Intervention Policy**: `intervention_policies` 表驱动介入策略，支持 approve/reject/escalate timeout 动作，`MAX_ESCALATION_ATTEMPTS = 3`
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`
 - **OptimizationSuggestionModule**: `optimization_suggestions` 表保存 `model_downgrade|timeout_adjustment|tool_pruning|autonomy_upgrade` 四类建议，带 direct-tenant RLS 与 authenticated DML grant；`OptimizationAnalysisScheduler` 使用固定 scheduler ID 的 BullMQ `upsertJobScheduler()` 注册 `optimization-analysis` 周期任务（`0 2 * * 1`, UTC）；Server 提供 list/apply/dismiss/stats API，并在 apply 复用 `workflow_definitions.version` OCC、在 apply/dismiss 都使用 `pending` 状态 SQL guard；Studio 在 live `llm-agent` `NodeConfigPanel` 下挂载建议面板，以 `autonomyMode` 作为 canonical 自主性字段，并在 dirty canvas / server version refresh 时避免静默覆盖本地编辑
