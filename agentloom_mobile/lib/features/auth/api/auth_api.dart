@@ -117,6 +117,23 @@ class AuthApi {
       options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
     );
   }
+
+  /// 获取 OAuth 授权跳转 URL
+  ///
+  /// 调用 `POST /auth/oauth/:provider`，传入 `platform: 'mobile'`，
+  /// 服务端返回包含 OAuth 授权页面的 redirect URL。
+  Future<String> getOAuthUrl(
+    String provider, {
+    String platform = 'mobile',
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/oauth/$provider',
+      data: {'redirect_url': null, 'platform': platform},
+    );
+
+    final data = response.data!['data'] as Map<String, dynamic>;
+    return (data['url'] ?? data['redirect_url'] ?? '') as String;
+  }
 }
 
 /// AuthApi 使用的独立 Dio 实例（不注入 AuthInterceptor）

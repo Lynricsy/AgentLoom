@@ -4,6 +4,7 @@ import 'package:agentloom_mobile/features/auth/models/auth_state.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/auth/screens/login_screen.dart';
+import 'package:agentloom_mobile/features/auth/widgets/oauth_button.dart';
 import 'package:agentloom_mobile/features/auth/api/auth_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -187,6 +188,55 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+  });
+
+  group('LoginScreen OAuth 按钮', () {
+    testWidgets('渲染 Google 和 GitHub OAuth 按钮', (tester) async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(find.text('使用 Google 登录'), findsOneWidget);
+      expect(find.text('使用 GitHub 登录'), findsOneWidget);
+      expect(find.byType(OAuthButton), findsNWidgets(2));
+    });
+
+    testWidgets('渲染"或"分隔线', (tester) async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(find.text('或'), findsOneWidget);
+      expect(find.byType(Divider), findsNWidgets(2));
+    });
+
+    testWidgets('加载状态下 OAuth 按钮禁用', (tester) async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            tokenStorageProvider.overrideWithValue(mockTokenStorage),
+            authApiProvider.overrideWithValue(mockAuthApi),
+            authProvider.overrideWith(() => _LoadingAuthNotifier()),
+          ],
+          child: const MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // OAuth 按钮在加载状态下应该被禁用
+      final oauthButtons = tester.widgetList<ElevatedButton>(
+        find.byType(ElevatedButton),
+      );
+      for (final button in oauthButtons) {
+        expect(button.onPressed, isNull);
+      }
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../models/auth_state.dart';
 import '../widgets/auth_text_field.dart';
+import '../widgets/oauth_button.dart';
 
 /// 登录页面
 class LoginScreen extends ConsumerStatefulWidget {
@@ -69,6 +70,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // 登录失败 → 清空密码
       _passwordController.clear();
     }
+  }
+
+  Future<void> _handleOAuthLogin(String provider) async {
+    await ref.read(authProvider.notifier).signInWithOAuth(provider);
   }
 
   @override
@@ -160,7 +165,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ],
                 const SizedBox(height: 32),
-                // TODO(oauth): 后续 Story 添加 OAuth 按钮区域
+                // OAuth 分隔线
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        '或',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // Google OAuth 按钮
+                OAuthButton(
+                  provider: 'google',
+                  label: '使用 Google 登录',
+                  icon: Icons.g_mobiledata,
+                  backgroundColor: const Color(0xFF4285F4),
+                  foregroundColor: Colors.white,
+                  isLoading: isLoading,
+                  onPressed: () => _handleOAuthLogin('google'),
+                ),
+                const SizedBox(height: 12),
+                // GitHub OAuth 按钮
+                OAuthButton(
+                  provider: 'github',
+                  label: '使用 GitHub 登录',
+                  icon: Icons.code,
+                  backgroundColor: const Color(0xFF24292E),
+                  foregroundColor: Colors.white,
+                  isLoading: isLoading,
+                  onPressed: () => _handleOAuthLogin('github'),
+                ),
               ],
             ),
           ),

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/auth_api.dart';
 import '../models/auth_state.dart';
@@ -62,6 +63,57 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       state = AsyncValue.data(AuthState.unauthenticated(message: message));
     } catch (e) {
       state = AsyncValue.data(AuthState.unauthenticated(message: e.toString()));
+    }
+  }
+
+  /// OAuth 登录 — 获取授权 URL 并打开系统浏览器
+  ///
+  /// 流程：调用服务端获取 OAuth redirect URL → 打开外部浏览器 →
+  /// 浏览器完成 OAuth → 重定向到 agentloom://auth/callback →
+  /// 深链处理器（auth_callback_screen）接管 token 存储。
+  Future<void> signInWithOAuth(String provider) async {
+    state = const AsyncValue.loading();
+
+    try {
+      final redirectUrl = await _authApi.getOAuthUrl(provider);
+
+      if (!ref.mounted) return;
+
+      if (redirectUrl.isEmpty) {
+        state = const AsyncValue.data(
+          AuthState.unauthenticated(message: 'OAuth 服务暂不可用，请稍后重试'),
+        );
+        return;
+      }
+
+      final uri = Uri.parse(redirectUrl);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!ref.mounted) return;
+
+      if (!launched) {
+        state = const AsyncValue.data(
+          AuthState.unauthenticated(message: '无法打开浏览器，请检查设备设置'),
+        );
+        return;
+      }
+
+      // 浏览器已打开，恢复为 unauthenticated 状态（无错误提示）。
+      // 用户完成 OAuth 后，深链回调会触发 handleOAuthCallback()。
+      // 如果用户取消，app 回到前台时保持 unauthenticated 即可。
+      state = const AsyncValue.data(AuthState.unauthenticated());
+    } on DioException catch (e) {
+      if (!ref.mounted) return;
+      final message = _extractErrorMessage(e);
+      state = AsyncValue.data(AuthState.unauthenticated(message: message));
+    } catch (e) {
+      if (!ref.mounted) return;
+      state = AsyncValue.data(
+        AuthState.unauthenticated(message: '打开 OAuth 登录失败：${e.toString()}'),
+      );
     }
   }
 

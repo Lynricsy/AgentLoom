@@ -300,4 +300,89 @@ void main() {
       expect(opts.headers?['Authorization'], 'Bearer my-access-token');
     });
   });
+
+  group('AuthApi.getOAuthUrl', () {
+    test('返回服务端提供的 OAuth 跳转 URL', () async {
+      when(
+        () => mockDio.post<Map<String, dynamic>>(
+          '/auth/oauth/google',
+          data: {'redirect_url': null, 'platform': 'mobile'},
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          data: {
+            'data': {
+              'url':
+                  'https://accounts.google.com/o/oauth2/v2/auth?client_id=xxx',
+            },
+          },
+          statusCode: 200,
+          requestOptions: reqOpts(),
+        ),
+      );
+
+      final url = await authApi.getOAuthUrl('google');
+
+      expect(url, 'https://accounts.google.com/o/oauth2/v2/auth?client_id=xxx');
+    });
+
+    test('兼容 redirect_url 字段名', () async {
+      when(
+        () => mockDio.post<Map<String, dynamic>>(
+          '/auth/oauth/github',
+          data: {'redirect_url': null, 'platform': 'mobile'},
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          data: {
+            'data': {
+              'redirect_url':
+                  'https://github.com/login/oauth/authorize?client_id=yyy',
+            },
+          },
+          statusCode: 200,
+          requestOptions: reqOpts(),
+        ),
+      );
+
+      final url = await authApi.getOAuthUrl('github');
+
+      expect(url, 'https://github.com/login/oauth/authorize?client_id=yyy');
+    });
+
+    test('响应中无 URL 字段时返回空字符串', () async {
+      when(
+        () => mockDio.post<Map<String, dynamic>>(
+          '/auth/oauth/google',
+          data: {'redirect_url': null, 'platform': 'mobile'},
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          data: {'data': <String, dynamic>{}},
+          statusCode: 200,
+          requestOptions: reqOpts(),
+        ),
+      );
+
+      final url = await authApi.getOAuthUrl('google');
+
+      expect(url, '');
+    });
+
+    test('网络错误时抛出 DioException', () async {
+      when(
+        () => mockDio.post<Map<String, dynamic>>(
+          '/auth/oauth/google',
+          data: any(named: 'data'),
+        ),
+      ).thenThrow(
+        DioException(
+          type: DioExceptionType.connectionTimeout,
+          requestOptions: reqOpts(),
+        ),
+      );
+
+      expect(() => authApi.getOAuthUrl('google'), throwsA(isA<DioException>()));
+    });
+  });
 }
