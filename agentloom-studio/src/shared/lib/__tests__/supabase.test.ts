@@ -1,5 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
+vi.unmock('@/shared/lib/supabase')
+
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
     auth: {
