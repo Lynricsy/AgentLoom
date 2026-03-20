@@ -10,7 +10,7 @@ import {
 } from '../../common/exceptions/auth.exceptions';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { users } from '../../database/schema';
-import type { OAuthProvider } from './dto/oauth.dto';
+import type { OAuthPlatform, OAuthProvider } from './dto/oauth.dto';
 import { SupabaseService } from './supabase/supabase.service';
 
 @Injectable()
@@ -23,11 +23,19 @@ export class OAuthService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
   ) {}
 
-  async initiateOAuth(provider: OAuthProvider, redirectUrl?: string) {
+  async initiateOAuth(
+    provider: OAuthProvider,
+    redirectUrl?: string,
+    platform?: OAuthPlatform,
+  ) {
     try {
-      const redirectTo =
+      const baseRedirectTo =
         redirectUrl ??
         this.configService.get<string>('APP_OAUTH_REDIRECT_URL')!;
+      const redirectTo =
+        platform === 'mobile'
+          ? `${baseRedirectTo}${baseRedirectTo.includes('?') ? '&' : '?'}platform=mobile`
+          : baseRedirectTo;
       const data = await this.supabaseService.signInWithOAuth(
         provider,
         redirectTo,
@@ -45,7 +53,7 @@ export class OAuthService {
     }
   }
 
-  async handleCallback(code: string) {
+  async handleCallback(code: string, platform?: OAuthPlatform) {
     try {
       const { session, user: supabaseUser } =
         await this.supabaseService.exchangeCodeForSession(code);
@@ -58,10 +66,19 @@ export class OAuthService {
       const verifiedTotpFactors = await this.getVerifiedTotpFactors(
         session.access_token,
       );
-      const redirectUrl =
-        verifiedTotpFactors.length > 0
-          ? this.buildFrontendMfaRedirectUrl(session.access_token, user)
-          : this.buildFrontendRedirectUrl(session);
+
+      let redirectUrl: string;
+
+      if (platform === 'mobile') {
+        redirectUrl = this.buildMobileRedirectUrl(session);
+      } else if (verifiedTotpFactors.length > 0) {
+        redirectUrl = this.buildFrontendMfaRedirectUrl(
+          session.access_token,
+          user,
+        );
+      } else {
+        redirectUrl = this.buildFrontendRedirectUrl(session);
+      }
 
       return {
         redirectUrl,
@@ -119,6 +136,19 @@ export class OAuthService {
     const query = new URLSearchParams(params);
 
     return `${callbackBaseUrl}?${query.toString()}`;
+  }
+
+  private buildMobileRedirectUrl(session: Session) {
+    return this.buildMobileCallbackUrl({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+  }
+
+  private buildMobileCallbackUrl(params: Record<string, string>) {
+    const query = new URLSearchParams(params);
+
+    return `agentloom://auth/callback?${query.toString()}`;
   }
 
   private async findUserByEmail(email: string) {

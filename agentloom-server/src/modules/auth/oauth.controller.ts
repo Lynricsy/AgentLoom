@@ -49,6 +49,7 @@ export class OAuthController {
     return this.oauthService.initiateOAuth(
       parsedProvider.data,
       body.redirectUrl,
+      body.platform,
     );
   }
 
@@ -62,10 +63,19 @@ export class OAuthController {
     @Res() reply: FastifyReply,
   ) {
     try {
-      const result = await this.oauthService.handleCallback(query.code);
+      const result = await this.oauthService.handleCallback(
+        query.code,
+        query.platform,
+      );
       reply.code(302);
       return reply.redirect(result.redirectUrl);
     } catch {
+      if (query.platform === 'mobile') {
+        reply.code(302);
+        return reply.redirect(
+          'agentloom://auth/callback?error=oauth_callback_failed',
+        );
+      }
       const frontendUrl = this.configService.get<string>('APP_FRONTEND_URL')!;
       const callbackBaseUrl = `${frontendUrl.replace(/\/$/, '')}/auth/callback`;
       reply.code(302);

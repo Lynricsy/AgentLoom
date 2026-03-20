@@ -265,4 +265,60 @@ describe('OAuthService', () => {
       unavailableError,
     );
   });
+
+  it('initiateOAuth 在 platform=mobile 时向 redirectTo 追加 platform=mobile 参数', async () => {
+    supabaseService.signInWithOAuth.mockResolvedValue({ url: MOCK_GOOGLE_URL });
+
+    await oauthService.initiateOAuth('google', undefined, 'mobile');
+
+    expect(supabaseService.signInWithOAuth).toHaveBeenCalledWith(
+      'google',
+      `${MOCK_REDIRECT_URL}?platform=mobile`,
+    );
+  });
+
+  it('initiateOAuth 在 platform=mobile 且 redirectUrl 已含查询参数时用 & 追加', async () => {
+    supabaseService.signInWithOAuth.mockResolvedValue({ url: MOCK_GOOGLE_URL });
+    const customRedirect = `${MOCK_REDIRECT_URL}?foo=bar`;
+
+    await oauthService.initiateOAuth('google', customRedirect, 'mobile');
+
+    expect(supabaseService.signInWithOAuth).toHaveBeenCalledWith(
+      'google',
+      `${customRedirect}&platform=mobile`,
+    );
+  });
+
+  it('handleCallback 在 platform=mobile 时返回 agentloom 深链接', async () => {
+    supabaseService.exchangeCodeForSession.mockResolvedValue({
+      session: mockSession,
+      user: mockSupabaseUser,
+    });
+    mockFindFirst.mockResolvedValueOnce(mockUserRecord);
+    mockUpdateReturning.mockResolvedValueOnce([mockUserRecord]);
+
+    const result = await oauthService.handleCallback(MOCK_CODE, 'mobile');
+
+    expect(result.redirectUrl).toBe(
+      'agentloom://auth/callback?access_token=oauth-access-token&refresh_token=oauth-refresh-token',
+    );
+  });
+
+  it('handleCallback 在 platform=mobile 且用户有 MFA 时也返回 agentloom 深链接（跳过 MFA 跳转）', async () => {
+    supabaseService.exchangeCodeForSession.mockResolvedValue({
+      session: mockSession,
+      user: mockSupabaseUser,
+    });
+    supabaseService.listFactors.mockResolvedValue({
+      totp: [{ id: 'factor-1', status: 'verified' }],
+    });
+    mockFindFirst.mockResolvedValueOnce(mockUserRecord);
+    mockUpdateReturning.mockResolvedValueOnce([mockUserRecord]);
+
+    const result = await oauthService.handleCallback(MOCK_CODE, 'mobile');
+
+    expect(result.redirectUrl).toMatch(/^agentloom:\/\/auth\/callback\?/);
+    expect(result.redirectUrl).toContain('access_token=oauth-access-token');
+    expect(result.redirectUrl).toContain('refresh_token=oauth-refresh-token');
+  });
 });

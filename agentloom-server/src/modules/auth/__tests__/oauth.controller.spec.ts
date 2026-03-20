@@ -61,6 +61,7 @@ describe('OAuthController', () => {
     expect(oauthService.initiateOAuth).toHaveBeenCalledWith(
       'google',
       'https://custom.example.com/callback',
+      undefined,
     );
   });
 
@@ -88,7 +89,7 @@ describe('OAuthController', () => {
       reply as unknown as FastifyReply,
     );
 
-    expect(oauthService.handleCallback).toHaveBeenCalledWith('oauth-code-123');
+    expect(oauthService.handleCallback).toHaveBeenCalledWith('oauth-code-123', undefined);
     expect(reply.code).toHaveBeenCalledWith(302);
     expect(reply.redirect).toHaveBeenCalledWith(
       'http://localhost:5173/auth/callback?access_token=token-a&refresh_token=token-b',
@@ -112,6 +113,73 @@ describe('OAuthController', () => {
     expect(reply.code).toHaveBeenCalledWith(302);
     expect(reply.redirect).toHaveBeenCalledWith(
       'http://localhost:5173/auth/callback?error=oauth_callback_failed',
+    );
+  });
+
+  it('POST :provider 在 platform=mobile 时传递 mobile 给 service', async () => {
+    oauthService.initiateOAuth.mockResolvedValue({
+      url: 'https://accounts.google.com/o/oauth2/v2/auth',
+    });
+
+    const result = await controller.initiateOAuth('google', {
+      redirectUrl: 'https://custom.example.com/callback',
+      platform: 'mobile',
+    });
+
+    expect(result).toEqual({
+      url: 'https://accounts.google.com/o/oauth2/v2/auth',
+    });
+    expect(oauthService.initiateOAuth).toHaveBeenCalledWith(
+      'google',
+      'https://custom.example.com/callback',
+      'mobile',
+    );
+  });
+
+  it('GET callback 在 platform=mobile 时重定向到 agentloom 深链接', async () => {
+    const reply = {
+      code: vi.fn().mockReturnThis(),
+      redirect: vi.fn(),
+    };
+    oauthService.handleCallback.mockResolvedValue({
+      redirectUrl:
+        'agentloom://auth/callback?access_token=token-a&refresh_token=token-b',
+      user: { id: 'user-1' },
+      session: { access_token: 'token-a', refresh_token: 'token-b' },
+    });
+
+    await controller.handleCallback(
+      { code: 'oauth-code-123', platform: 'mobile' },
+      reply as unknown as FastifyReply,
+    );
+
+    expect(oauthService.handleCallback).toHaveBeenCalledWith(
+      'oauth-code-123',
+      'mobile',
+    );
+    expect(reply.code).toHaveBeenCalledWith(302);
+    expect(reply.redirect).toHaveBeenCalledWith(
+      'agentloom://auth/callback?access_token=token-a&refresh_token=token-b',
+    );
+  });
+
+  it('GET callback 失败且 platform=mobile 时重定向到 agentloom 深链接错误地址', async () => {
+    const reply = {
+      code: vi.fn().mockReturnThis(),
+      redirect: vi.fn(),
+    };
+    oauthService.handleCallback.mockRejectedValue(
+      new Error('oauth callback failed'),
+    );
+
+    await controller.handleCallback(
+      { code: 'oauth-code-123', platform: 'mobile' },
+      reply as unknown as FastifyReply,
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(302);
+    expect(reply.redirect).toHaveBeenCalledWith(
+      'agentloom://auth/callback?error=oauth_callback_failed',
     );
   });
 });
