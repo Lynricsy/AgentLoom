@@ -12,6 +12,7 @@ export default {
       spec,
       config: {
         spec: { groupByTags: true, defaultTag: 'Default' },
+        i18n: { locale: 'zh' },
       },
     })
     theme.enhanceApp({ app })

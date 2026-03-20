@@ -11,6 +11,11 @@
     "prebuild": "node scripts/sync-openapi.mjs"
   },
   "dependencies": {
+    "@braintree/sanitize-url": "^7.1.2",
+    "cytoscape": "^3.33.1",
+    "cytoscape-cose-bilkent": "^4.1.0",
+    "dayjs": "^1.11.20",
+    "debug": "^4.4.3",
     "mermaid": "^11.0.0",
     "vitepress": "^2.0.0-alpha.17",
     "vitepress-openapi": "latest",
