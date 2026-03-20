@@ -1,6 +1,18 @@
-import { act, renderHook } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setAuthToken, useAuthToken } from './useAuthToken'
+
+vi.mock('@/shared/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn().mockReturnValue({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      }),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
+    },
+  },
+}))
 
 function createMockStorage(): Storage {
   const store = new Map<string, string>()
@@ -22,7 +34,7 @@ function createMockStorage(): Storage {
   }
 }
 
-describe('useAuthToken', () => {
+describe('useAuthToken (re-export backward compat)', () => {
   let mockStorage: Storage
 
   beforeEach(() => {
@@ -35,71 +47,27 @@ describe('useAuthToken', () => {
     vi.unstubAllGlobals()
   })
 
-  it('localStorage 中无 token 时返回 undefined', () => {
+  it('无 token 时返回 undefined', () => {
     const { result } = renderHook(() => useAuthToken())
     expect(result.current).toBeUndefined()
   })
 
-  it('localStorage 中有 token 时返回该值', () => {
-    mockStorage.setItem('auth_token', 'jwt-abc-123')
-    const { result } = renderHook(() => useAuthToken())
-    expect(result.current).toBe('jwt-abc-123')
-  })
-
   describe('setAuthToken', () => {
-    it('设置 token 后 hook 返回新值', () => {
-      const { result } = renderHook(() => useAuthToken())
-      expect(result.current).toBeUndefined()
-
-      act(() => {
-        setAuthToken('new-token')
-      })
-
+    it('设置 token 写入 localStorage', () => {
+      setAuthToken('new-token')
       expect(mockStorage.getItem('auth_token')).toBe('new-token')
     })
 
     it('传入 null 时移除 token', () => {
       mockStorage.setItem('auth_token', 'old-token')
-      const { result } = renderHook(() => useAuthToken())
-      expect(result.current).toBe('old-token')
-
-      act(() => {
-        setAuthToken(null)
-      })
-
+      setAuthToken(null)
       expect(mockStorage.getItem('auth_token')).toBeNull()
     })
   })
 
-  it('响应来自其他标签页的 storage 事件', () => {
+  it('函数签名保持 string | undefined 返回类型', () => {
     const { result } = renderHook(() => useAuthToken())
-    expect(result.current).toBeUndefined()
-
-    act(() => {
-      mockStorage.setItem('auth_token', 'cross-tab-token')
-      window.dispatchEvent(
-        new StorageEvent('storage', {
-          key: 'auth_token',
-          newValue: 'cross-tab-token',
-        }),
-      )
-    })
-
-    expect(result.current).toBe('cross-tab-token')
-  })
-
-  it('忽略无关 key 的 storage 事件', () => {
-    const { result } = renderHook(() => useAuthToken())
-
-    act(() => {
-      window.dispatchEvent(
-        new StorageEvent('storage', {
-          key: 'other_key',
-          newValue: 'irrelevant',
-        }),
-      )
-    })
-
-    expect(result.current).toBeUndefined()
+    const token: string | undefined = result.current
+    expect(token).toBeUndefined()
   })
 })
