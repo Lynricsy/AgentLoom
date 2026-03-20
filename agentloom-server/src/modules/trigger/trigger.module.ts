@@ -6,6 +6,8 @@ import { ExecutionModule } from '../execution/execution.module';
 import { EventSourceAdapterRegistry } from './adapters/event-source-adapter.registry';
 import { GenericEventAdapter } from './adapters/generic-event.adapter';
 import { GithubWebhookAdapter } from './adapters/github-webhook.adapter';
+import { ApiEventIngestionController } from './api-event-ingestion.controller';
+import { ApiEventIngestionService } from './api-event-ingestion.service';
 import { TriggerController } from './trigger.controller';
 import {
   TRIGGER_QUEUE,
@@ -27,7 +29,7 @@ import { WebhookService } from './webhook.service';
       defaultJobOptions: TRIGGER_QUEUE_DEFAULT_JOB_OPTIONS,
     }),
   ],
-  controllers: [TriggerController, WebhookController],
+  controllers: [TriggerController, WebhookController, ApiEventIngestionController],
   providers: [
     TriggerService,
     TriggerHistoryService,
@@ -37,6 +39,7 @@ import { WebhookService } from './webhook.service';
     GithubWebhookAdapter,
     GenericEventAdapter,
     EventSourceAdapterRegistry,
+    ApiEventIngestionService,
   ],
   exports: [TriggerService, EventSourceAdapterRegistry],
 })
