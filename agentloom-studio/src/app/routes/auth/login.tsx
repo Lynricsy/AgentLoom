@@ -59,7 +59,12 @@ export function LoginPage() {
         return;
       }
 
-      navigate({ to: '/' });
+      const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
+      if (returnUrl) {
+        window.location.href = returnUrl;
+      } else {
+        navigate({ to: '/' });
+      }
     } catch {
       setServerError('登录过程中发生未知错误，请稍后重试');
     } finally {

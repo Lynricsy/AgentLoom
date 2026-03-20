@@ -1,6 +1,7 @@
 import { Outlet, createRootRoute, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import { useAuthToken } from "@/features/execution";
+import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
 import {
   NotificationBell,
   useNotificationSocket,
@@ -26,10 +27,36 @@ import { authCallbackRoute } from './auth/callback'
 import { loginRoute } from './auth/login'
 import { registerRoute } from './auth/register'
 
-function RootLayout() {
+const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
+
+export function RootLayout() {
   const authToken = useAuthToken();
+  const isAuthenticated = useIsAuthenticated();
+  const isLoading = useAuthLoading();
 
   useNotificationSocket({ authToken });
+
+  const pathname = window.location.pathname;
+  const isPublicRoute =
+    PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) ||
+    pathname.startsWith('/s/');
+
+  if (isLoading && !isPublicRoute) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated && !isPublicRoute) {
+    window.location.href = `/login?returnUrl=${encodeURIComponent(pathname)}`;
+    return null;
+  }
+
+  if (isPublicRoute) {
+    return <Outlet />;
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
