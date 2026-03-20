@@ -11,6 +11,9 @@ import '../features/auth/screens/mfa_enroll_screen.dart';
 import '../features/auth/screens/mfa_verify_screen.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
+import '../features/settings/screens/change_password_screen.dart';
+import '../features/settings/screens/mfa_manage_screen.dart';
+import '../features/settings/screens/session_list_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
 import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/parameter_input_screen.dart';
@@ -157,6 +160,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 path: '/settings',
                 name: RouteNames.settings,
                 builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'change-password',
+                    name: RouteNames.changePassword,
+                    builder: (context, state) => const ChangePasswordScreen(),
+                  ),
+                  GoRoute(
+                    path: 'mfa',
+                    name: RouteNames.mfaManage,
+                    builder: (context, state) => const MfaManageScreen(),
+                  ),
+                  GoRoute(
+                    path: 'sessions',
+                    name: RouteNames.sessions,
+                    builder: (context, state) => const SessionListScreen(),
+                  ),
+                ],
               ),
             ],
           ),

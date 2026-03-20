@@ -17,4 +17,9 @@ class RouteNames {
   /// MFA 路由
   static const String mfaVerify = 'mfaVerify';
   static const String mfaEnroll = 'mfaEnroll';
+
+  /// 设置子路由
+  static const String changePassword = 'changePassword';
+  static const String mfaManage = 'mfaManage';
+  static const String sessions = 'sessions';
 }
