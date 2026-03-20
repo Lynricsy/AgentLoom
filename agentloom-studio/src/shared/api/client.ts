@@ -1,6 +1,7 @@
 import ky from 'ky'
 import { snakeToCamel, camelToSnake } from '@/shared/utils/caseConverter'
 import { supabase } from '@/shared/lib/supabase'
+import { useAuthStore } from '@/features/auth/stores/auth.store'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -34,16 +35,23 @@ export const apiClient = ky.create({
     ],
     beforeRetry: [
       async ({ request }) => {
-        const { data } = await supabase.auth.refreshSession()
+        const { data, error } = await supabase.auth.refreshSession()
         const newToken = data.session?.access_token
-        if (newToken) {
-          try {
-            globalThis.localStorage?.setItem(AUTH_TOKEN_KEY, newToken)
-          } catch {
-            /* noop */
+
+        if (error || !newToken) {
+          await useAuthStore.getState().signOut()
+          if (globalThis.window) {
+            globalThis.window.location.href = '/login'
           }
-          request.headers.set('Authorization', `Bearer ${newToken}`)
+          return
         }
+
+        try {
+          globalThis.localStorage?.setItem(AUTH_TOKEN_KEY, newToken)
+        } catch {
+          /* noop */
+        }
+        request.headers.set('Authorization', `Bearer ${newToken}`)
       },
     ],
     afterResponse: [
