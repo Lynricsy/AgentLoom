@@ -289,8 +289,9 @@ try {
   const result = checkCompatibility(invalidInput, {});
 } catch (error) {
   if (error instanceof Error && error.name === "TypeEngineError") {
-    console.error("错误码:", (error as any).code);
-    console.error("上下文:", (error as any).context);
+    const typeError = error as Error & { code: string; context: unknown };
+    console.error("错误码:", typeError.code);
+    console.error("上下文:", typeError.context);
   }
 }
 ```

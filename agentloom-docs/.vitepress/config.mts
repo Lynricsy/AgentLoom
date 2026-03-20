@@ -180,7 +180,7 @@ export default withMermaid(
       },
 
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/example/agentloom' },
+        { icon: 'github', link: 'https://github.com/AgentLoom/agentloom' },
       ],
 
       footer: {
