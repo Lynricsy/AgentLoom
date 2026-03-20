@@ -1,0 +1,8 @@
+{
+  // MD013: Line length - disabled for documentation flexibility
+  // MD033: HTML elements - allowed for rich documentation
+  "config": {
+    "MD013": false,
+    "MD033": false
+  }
+}

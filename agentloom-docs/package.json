@@ -1,0 +1,22 @@
+{
+  "name": "@agentloom/docs",
+  "version": "0.1.0",
+  "description": "AgentLoom Documentation",
+  "private": true,
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
+    "lint:md": "markdownlint-cli2 'zh/**/*.md'",
+    "prebuild": "node scripts/sync-openapi.mjs"
+  },
+  "dependencies": {
+    "mermaid": "^11.0.0",
+    "vitepress": "^2.0.0-alpha.17",
+    "vitepress-openapi": "latest",
+    "vitepress-plugin-mermaid": "^2.0.0"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "latest"
+  }
+}
