@@ -2,6 +2,16 @@ import { act, renderHook } from '@testing-library/react'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  useAuthStore,
+  useAccessToken,
+  useIsAuthenticated,
+  useAuthLoading,
+} from '../stores/auth.store'
+import { useAuthToken, setAuthToken } from '../hooks/useAuthToken'
+import { useAuth } from '../hooks/useAuth'
+import * as barrelExports from '../index'
+
 type AuthCallback = (event: AuthChangeEvent, session: Session | null) => void
 
 const mockUnsubscribe = vi.fn()
@@ -73,6 +83,16 @@ function setupSupabaseMocks(session: Session | null = null) {
   mockSignOut.mockResolvedValue({ error: null })
 }
 
+function resetStore() {
+  useAuthStore.setState({
+    session: null,
+    user: null,
+    accessToken: undefined,
+    isLoading: true,
+    isAuthenticated: false,
+  })
+}
+
 describe('AuthStore', () => {
   let mockStorage: Storage
 
@@ -84,21 +104,13 @@ describe('AuthStore', () => {
   })
 
   afterEach(() => {
-    const { useAuthStore } = require('../stores/auth.store')
-    useAuthStore.setState({
-      session: null,
-      user: null,
-      accessToken: undefined,
-      isLoading: true,
-      isAuthenticated: false,
-    })
+    resetStore()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
   describe('初始状态', () => {
     it('初始状态 isLoading=true, isAuthenticated=false', () => {
-      const { useAuthStore } = require('../stores/auth.store')
       const state = useAuthStore.getState()
       expect(state.isLoading).toBe(true)
       expect(state.isAuthenticated).toBe(false)
@@ -112,7 +124,6 @@ describe('AuthStore', () => {
     it('无现有 session 时: isLoading=false, isAuthenticated=false', async () => {
       setupSupabaseMocks(null)
 
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().initialize()
       })
@@ -130,7 +141,6 @@ describe('AuthStore', () => {
       const session = makeFakeSession()
       setupSupabaseMocks(session)
 
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().initialize()
       })
@@ -146,7 +156,6 @@ describe('AuthStore', () => {
       const session = makeFakeSession()
       setupSupabaseMocks(session)
 
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().initialize()
       })
@@ -158,7 +167,6 @@ describe('AuthStore', () => {
       mockStorage.setItem('auth_token', 'stale-token')
       setupSupabaseMocks(null)
 
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().initialize()
       })
@@ -169,7 +177,6 @@ describe('AuthStore', () => {
     it('getSession 异常时: isLoading=false 不崩溃', async () => {
       mockGetSession.mockRejectedValue(new Error('network error'))
 
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().initialize()
       })
@@ -182,7 +189,6 @@ describe('AuthStore', () => {
   describe('onAuthStateChange 事件', () => {
     it('SIGNED_IN: 更新 session 和 accessToken', async () => {
       setupSupabaseMocks(null)
-      const { useAuthStore } = require('../stores/auth.store')
 
       await act(async () => {
         await useAuthStore.getState().initialize()
@@ -208,7 +214,6 @@ describe('AuthStore', () => {
     it('TOKEN_REFRESHED: 更新 accessToken', async () => {
       const initialSession = makeFakeSession()
       setupSupabaseMocks(initialSession)
-      const { useAuthStore } = require('../stores/auth.store')
 
       await act(async () => {
         await useAuthStore.getState().initialize()
@@ -229,7 +234,6 @@ describe('AuthStore', () => {
     it('SIGNED_OUT: 清空所有认证状态', async () => {
       const session = makeFakeSession()
       setupSupabaseMocks(session)
-      const { useAuthStore } = require('../stores/auth.store')
 
       await act(async () => {
         await useAuthStore.getState().initialize()
@@ -252,7 +256,6 @@ describe('AuthStore', () => {
     it('未知事件: 不更新状态', async () => {
       const session = makeFakeSession()
       setupSupabaseMocks(session)
-      const { useAuthStore } = require('../stores/auth.store')
 
       await act(async () => {
         await useAuthStore.getState().initialize()
@@ -270,7 +273,6 @@ describe('AuthStore', () => {
 
   describe('signOut()', () => {
     it('调用 supabase.auth.signOut()', async () => {
-      const { useAuthStore } = require('../stores/auth.store')
       await act(async () => {
         await useAuthStore.getState().signOut()
       })
@@ -283,7 +285,6 @@ describe('AuthStore', () => {
     it('useAccessToken 返回 accessToken', async () => {
       const session = makeFakeSession()
       setupSupabaseMocks(session)
-      const { useAuthStore, useAccessToken } = require('../stores/auth.store')
 
       await act(async () => {
         await useAuthStore.getState().initialize()
@@ -293,14 +294,12 @@ describe('AuthStore', () => {
       expect(result.current).toBe('fake-access-token-123')
     })
 
-    it('useIsAuthenticated 返回布尔值', async () => {
-      const { useIsAuthenticated } = require('../stores/auth.store')
+    it('useIsAuthenticated 返回布尔值', () => {
       const { result } = renderHook(() => useIsAuthenticated())
       expect(result.current).toBe(false)
     })
 
-    it('useAuthLoading 返回 isLoading', async () => {
-      const { useAuthLoading } = require('../stores/auth.store')
+    it('useAuthLoading 返回 isLoading', () => {
       const { result } = renderHook(() => useAuthLoading())
       expect(result.current).toBe(true)
     })
@@ -318,14 +317,7 @@ describe('useAuthToken 后向兼容', () => {
   })
 
   afterEach(() => {
-    const { useAuthStore } = require('../stores/auth.store')
-    useAuthStore.setState({
-      session: null,
-      user: null,
-      accessToken: undefined,
-      isLoading: true,
-      isAuthenticated: false,
-    })
+    resetStore()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -333,9 +325,6 @@ describe('useAuthToken 后向兼容', () => {
   it('useAuthToken 返回 Zustand store 中的 accessToken', async () => {
     const session = makeFakeSession({ access_token: 'compat-token' })
     setupSupabaseMocks(session)
-
-    const { useAuthStore } = require('../stores/auth.store')
-    const { useAuthToken } = require('../hooks/useAuthToken')
 
     await act(async () => {
       await useAuthStore.getState().initialize()
@@ -346,14 +335,11 @@ describe('useAuthToken 后向兼容', () => {
   })
 
   it('useAuthToken 无 session 时返回 undefined', () => {
-    const { useAuthToken } = require('../hooks/useAuthToken')
     const { result } = renderHook(() => useAuthToken())
     expect(result.current).toBeUndefined()
   })
 
   it('setAuthToken 写入 localStorage', () => {
-    const { setAuthToken } = require('../hooks/useAuthToken')
-
     setAuthToken('manual-token')
     expect(mockStorage.getItem('auth_token')).toBe('manual-token')
 
@@ -361,15 +347,14 @@ describe('useAuthToken 后向兼容', () => {
     expect(mockStorage.getItem('auth_token')).toBeNull()
   })
 
-  it('返回类型为 string | undefined (类型兼容)', async () => {
-    const { useAuthToken } = require('../hooks/useAuthToken')
+  it('返回类型为 string | undefined (类型兼容)', () => {
     const { result } = renderHook(() => useAuthToken())
     const token: string | undefined = result.current
     expect(token).toBeUndefined()
   })
 })
 
-describe('re-export 后向兼容', () => {
+describe('useAuth hook', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', createMockStorage())
     vi.clearAllMocks()
@@ -377,35 +362,42 @@ describe('re-export 后向兼容', () => {
   })
 
   afterEach(() => {
-    const { useAuthStore } = require('../stores/auth.store')
-    useAuthStore.setState({
-      session: null,
-      user: null,
-      accessToken: undefined,
-      isLoading: true,
-      isAuthenticated: false,
-    })
+    resetStore()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
-  it('从 @/features/auth 导入的 useAuthToken 与直接导入相同', () => {
-    const directImport = require('../hooks/useAuthToken')
-    const barrelImport = require('../index')
+  it('返回完整认证状态对象', async () => {
+    const session = makeFakeSession()
+    setupSupabaseMocks(session)
 
-    expect(barrelImport.useAuthToken).toBe(directImport.useAuthToken)
-    expect(barrelImport.setAuthToken).toBe(directImport.setAuthToken)
+    await act(async () => {
+      await useAuthStore.getState().initialize()
+    })
+
+    const { result } = renderHook(() => useAuth())
+
+    expect(result.current.isAuthenticated).toBe(true)
+    expect(result.current.accessToken).toBe('fake-access-token-123')
+    expect(result.current.user?.email).toBe('fox@ling.plus')
+    expect(result.current.isLoading).toBe(false)
+    expect(typeof result.current.signOut).toBe('function')
+  })
+})
+
+describe('barrel export 后向兼容', () => {
+  it('从 @/features/auth barrel 导入的 useAuthToken 与直接导入相同', () => {
+    expect(barrelExports.useAuthToken).toBe(useAuthToken)
+    expect(barrelExports.setAuthToken).toBe(setAuthToken)
   })
 
   it('barrel export 包含所有预期的导出', () => {
-    const barrel = require('../index')
-
-    expect(barrel.useAuth).toBeDefined()
-    expect(barrel.useAuthToken).toBeDefined()
-    expect(barrel.setAuthToken).toBeDefined()
-    expect(barrel.useAuthStore).toBeDefined()
-    expect(barrel.useAccessToken).toBeDefined()
-    expect(barrel.useIsAuthenticated).toBeDefined()
-    expect(barrel.useAuthLoading).toBeDefined()
+    expect(barrelExports.useAuth).toBeDefined()
+    expect(barrelExports.useAuthToken).toBeDefined()
+    expect(barrelExports.setAuthToken).toBeDefined()
+    expect(barrelExports.useAuthStore).toBeDefined()
+    expect(barrelExports.useAccessToken).toBeDefined()
+    expect(barrelExports.useIsAuthenticated).toBeDefined()
+    expect(barrelExports.useAuthLoading).toBeDefined()
   })
 })
