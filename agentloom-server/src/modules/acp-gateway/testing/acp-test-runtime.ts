@@ -7,6 +7,7 @@ import {
 } from '../../agent/ports/agent-runtime.port';
 import type { AgentEvent, StopReason } from '../../agent/types/agent-event.types';
 import { InProcessAgentAdapter } from '../../agent/in-process-agent.adapter';
+import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import type { ReplayableAgentEvent } from '../../agent/types/conversation-history.types';
 import type {
   AgentSession,
@@ -19,6 +20,7 @@ import { SessionPersistenceService } from '../../execution/services/session-pers
 export class AcpTestRuntime implements IAgentRuntime {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
+  private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
   private readonly pendingPermissions = new Map<
     string,
     {
@@ -47,6 +49,9 @@ export class AcpTestRuntime implements IAgentRuntime {
         ...(params.mcpServers === undefined
           ? {}
           : { mcpServers: params.mcpServers }),
+        ...(params.serverSandbox === undefined
+          ? {}
+          : { serverSandbox: params.serverSandbox }),
         ...(params.context === undefined
           ? {}
           : { workflowState: params.context }),
@@ -97,6 +102,17 @@ export class AcpTestRuntime implements IAgentRuntime {
     this.abortControllers.set(sessionId, abortController);
 
     try {
+      const mcpTool = await this.resolveSessionMcpTool(sessionId, session);
+      if (mcpTool !== undefined) {
+        yield* this.promptWithMcpTool(
+          session,
+          content,
+          abortController.signal,
+          mcpTool,
+        );
+        return;
+      }
+
       const toolCallId = `tool-${sessionId}`;
       const permissionActionPromise = this.waitForPermission(
         sessionId,
@@ -255,6 +271,7 @@ export class AcpTestRuntime implements IAgentRuntime {
   async cancel(sessionId: string): Promise<void> {
     this.abortControllers.get(sessionId)?.abort();
     this.pendingPermissions.get(sessionId)?.resolve('cancelled');
+    this.sessionToolProviders.delete(sessionId);
     const session = await this.loadSession(sessionId);
     session.status = 'completed';
     session.updatedAt = new Date();
@@ -277,6 +294,122 @@ export class AcpTestRuntime implements IAgentRuntime {
 
     this.pendingPermissions.delete(sessionId);
     pendingPermission.resolve(action);
+  }
+
+  registerSessionToolProvider(
+    sessionId: string,
+    provider: SessionToolProvider,
+  ): void {
+    this.sessionToolProviders.set(sessionId, provider);
+  }
+
+  unregisterSessionToolProvider(sessionId: string): void {
+    this.sessionToolProviders.delete(sessionId);
+  }
+
+  private async *promptWithMcpTool(
+    session: AgentSession,
+    content: ContentBlock[],
+    signal: AbortSignal,
+    mcpTool: {
+      toolName: string;
+      execute: (input: Record<string, unknown>) => Promise<unknown>;
+    },
+  ): AsyncGenerator<AgentEvent> {
+    const promptText = this.extractPromptText(content);
+    const toolCallId = `mcp-tool-${session.id}`;
+    const toolArgs = {
+      query: promptText,
+    } satisfies Record<string, unknown>;
+
+    const inProgressEvent = {
+      type: 'tool_call',
+      call: {
+        id: toolCallId,
+        tool: mcpTool.toolName,
+        args: toolArgs,
+        status: 'in_progress',
+      },
+    } as const;
+    await this.appendConversationEvent(session, inProgressEvent);
+    yield inProgressEvent;
+
+    await delay(40);
+    if (signal.aborted) {
+      yield {
+        type: 'done',
+        stopReason: 'cancelled',
+      };
+      await this.persistConversationSession(session, '', 'cancelled');
+      return;
+    }
+
+    try {
+      const toolResult = await mcpTool.execute(toolArgs);
+      const completedEvent = {
+        type: 'tool_call',
+        call: {
+          id: toolCallId,
+          tool: mcpTool.toolName,
+          args: toolArgs,
+          status: 'completed',
+          result: toolResult,
+        },
+      } as const;
+      await this.appendConversationEvent(session, completedEvent);
+      yield completedEvent;
+
+      await delay(20);
+      if (signal.aborted) {
+        yield {
+          type: 'done',
+          stopReason: 'cancelled',
+        };
+        await this.persistConversationSession(session, '', 'cancelled');
+        return;
+      }
+
+      const assistantText = `已通过 ${mcpTool.toolName} 获取：${this.stringifyToolResult(toolResult)}`;
+      const messageEvent = {
+        type: 'message_chunk',
+        content: assistantText,
+      } as const;
+      await this.appendConversationEvent(session, messageEvent);
+      yield messageEvent;
+
+      yield {
+        type: 'done',
+        stopReason: 'end_turn',
+      };
+      await this.persistConversationSession(session, assistantText, 'end_turn');
+    } catch (error) {
+      const failedMessage = `MCP 工具调用失败：${this.getErrorMessage(error)}`;
+      const failedEvent = {
+        type: 'tool_call',
+        call: {
+          id: toolCallId,
+          tool: mcpTool.toolName,
+          args: toolArgs,
+          status: 'failed',
+          error: failedMessage,
+        },
+      } as const;
+      await this.appendConversationEvent(session, failedEvent);
+      yield failedEvent;
+
+      const messageEvent = {
+        type: 'message_chunk',
+        content: failedMessage,
+      } as const;
+      await this.appendConversationEvent(session, messageEvent);
+      yield messageEvent;
+
+      yield {
+        type: 'done',
+        stopReason: 'end_turn',
+      };
+      await this.persistConversationSession(session, failedMessage, 'end_turn');
+    }
   }
 
   private async waitForPermission(
@@ -305,6 +438,112 @@ export class AcpTestRuntime implements IAgentRuntime {
         },
       });
     });
+  }
+
+  private async resolveSessionMcpTool(
+    sessionId: string,
+    session: AgentSession,
+  ): Promise<
+    | {
+        toolName: string;
+        execute: (input: Record<string, unknown>) => Promise<unknown>;
+      }
+    | undefined
+  > {
+    const mcpServers = session.context.mcpServers;
+    if (!mcpServers || Object.keys(mcpServers).length === 0) {
+      return undefined;
+    }
+
+    const provider = this.sessionToolProviders.get(sessionId);
+    if (!provider) {
+      return undefined;
+    }
+
+    const tools = await provider();
+    const firstToolEntry = Object.entries(tools)[0];
+    if (!firstToolEntry) {
+      return undefined;
+    }
+
+    const [toolName, toolDefinition] = firstToolEntry;
+    const execute = this.readToolExecute(toolDefinition);
+    if (!execute) {
+      return undefined;
+    }
+
+    return {
+      toolName,
+      execute,
+    };
+  }
+
+  private readToolExecute(
+    toolDefinition: unknown,
+  ): ((input: Record<string, unknown>) => Promise<unknown>) | undefined {
+    if (typeof toolDefinition !== 'object' || toolDefinition === null) {
+      return undefined;
+    }
+
+    const execute = Reflect.get(toolDefinition, 'execute');
+    if (typeof execute !== 'function') {
+      return undefined;
+    }
+
+    return async (input: Record<string, unknown>) => await execute(input);
+  }
+
+  private extractPromptText(content: ContentBlock[]): string {
+    const textContent = content
+      .filter((block): block is Extract<ContentBlock, { type: 'text' }> => {
+        return block.type === 'text';
+      })
+      .map((block) => block.text.trim())
+      .filter((block) => block.length > 0);
+
+    if (textContent.length === 0) {
+      return 'ACP MCP 测试查询';
+    }
+
+    return textContent.join(' ');
+  }
+
+  private stringifyToolResult(result: unknown): string {
+    if (typeof result === 'string') {
+      return result;
+    }
+
+    if (typeof result === 'object' && result !== null) {
+      const content = Reflect.get(result, 'content');
+      if (Array.isArray(content)) {
+        const firstTextContent = content.find((entry) => {
+          if (typeof entry !== 'object' || entry === null) {
+            return false;
+          }
+
+          return (
+            Reflect.get(entry, 'type') === 'text' &&
+            typeof Reflect.get(entry, 'text') === 'string'
+          );
+        });
+
+        if (firstTextContent) {
+          return String(Reflect.get(firstTextContent, 'text'));
+        }
+      }
+
+      return JSON.stringify(result);
+    }
+
+    return String(result);
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.length > 0) {
+      return error.message;
+    }
+
+    return String(error);
   }
 
   private async appendConversationEvent(

@@ -13,6 +13,7 @@ const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_ORG_ID = '22222222-2222-4222-8222-222222222222';
 const TEST_MASTER_ENCRYPTION_KEY =
   'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
+const SANDBOX_SESSION_CWD = '/workspace/demo';
 const ACP_HELPER_ENV_KEYS = [
   'HOME',
   'PATH',
@@ -72,9 +73,63 @@ type AcpStdioScenarioResult = {
   initializeResponse?: JsonRpcResponse;
   validAuthResponse?: JsonRpcResponse;
   sessionNewResponse?: JsonRpcResponse;
+  terminalCreateResponse?: JsonRpcResponse;
+  terminalBoundedOutputResponse?: JsonRpcResponse;
+  terminalTailOutputResponse?: JsonRpcResponse;
+  terminalWaitForExitResponse?: JsonRpcResponse;
+  terminalRejectResponse?: JsonRpcResponse;
+  terminalExitedOutputResponse?: JsonRpcResponse;
+  terminalTimeoutCreateResponse?: JsonRpcResponse;
+  terminalTimeoutWaitForExitResponse?: JsonRpcResponse;
+  terminalKillCreateResponse?: JsonRpcResponse;
+  terminalKillResponse?: JsonRpcResponse;
+  terminalKilledOutputResponse?: JsonRpcResponse;
+  terminalReleaseCreateResponse?: JsonRpcResponse;
+  terminalReleaseResponse?: JsonRpcResponse;
+  terminalReleaseOutputResponse?: JsonRpcResponse;
+  terminalCancelSessionNewResponse?: JsonRpcResponse;
+  terminalCancelCreateResponse?: JsonRpcResponse;
+  terminalCancelOutputResponse?: JsonRpcResponse;
+  terminalKilledAuditRows?: Array<{
+    event_type: string;
+    metadata: Record<string, unknown>;
+  }>;
+  terminalLoadSessionNewResponse?: JsonRpcResponse;
+  terminalLoadCreateResponse?: JsonRpcResponse;
+  loadTerminalFailClosedResponse?: JsonRpcResponse;
+   sandboxReadResponse?: JsonRpcResponse;
+   fsReadServerRequests?: JsonRpcRequest[];
+   fsReadNotifications?: JsonRpcNotification[];
+   fsReadResponse?: JsonRpcResponse;
+  fsWriteServerRequests?: JsonRpcRequest[];
+  fsWriteNotifications?: JsonRpcNotification[];
+  fsWriteResponse?: JsonRpcResponse;
+  fsWriteDeniedServerRequests?: JsonRpcRequest[];
+  fsWriteDeniedNotifications?: JsonRpcNotification[];
+  fsWriteDeniedResponse?: JsonRpcResponse;
+   fsWriteCancelledServerRequests?: JsonRpcRequest[];
+   fsWriteCancelledNotifications?: JsonRpcNotification[];
+   fsWriteCancelledResponse?: JsonRpcResponse;
+   sandboxWriteServerRequests?: JsonRpcRequest[];
+   sandboxWriteNotifications?: JsonRpcNotification[];
+   sandboxWriteResponse?: JsonRpcResponse;
+   sandboxTraversalResponse?: JsonRpcResponse;
+   sandboxOversizeResponse?: JsonRpcResponse;
+   sandboxBinaryResponse?: JsonRpcResponse;
+   fsCancelSessionNewResponse?: JsonRpcResponse;
+   fsCancelServerRequest?: JsonRpcRequest;
+   fsCancelNotifications?: JsonRpcNotification[];
+  fsCancelResponse?: JsonRpcResponse;
   promptServerRequests?: JsonRpcRequest[];
   promptNotifications?: JsonRpcNotification[];
   promptResponse?: JsonRpcResponse;
+  mcpSessionNewResponse?: JsonRpcResponse;
+  mcpPromptServerRequests?: JsonRpcRequest[];
+  mcpPromptNotifications?: JsonRpcNotification[];
+  mcpPromptResponse?: JsonRpcResponse;
+  mcpCancelSessionNewResponse?: JsonRpcResponse;
+  mcpCancelPromptNotifications?: JsonRpcNotification[];
+  mcpCancelPromptResponse?: JsonRpcResponse;
   cancelSessionNewResponse?: JsonRpcResponse;
   cancelPromptPermissionRequest?: JsonRpcRequest;
   cancelPromptNotifications?: JsonRpcNotification[];
@@ -88,9 +143,18 @@ type AcpStdioScenarioResult = {
   loadAuthResponse?: JsonRpcResponse;
   loadNotifications?: JsonRpcNotification[];
   loadResponse?: JsonRpcResponse;
+   loadFsReadServerRequests?: JsonRpcRequest[];
+   loadFsReadNotifications?: JsonRpcNotification[];
+  loadFsReadResponse?: JsonRpcResponse;
+  loadSandboxReadResponse?: JsonRpcResponse;
   loadPromptServerRequests?: JsonRpcRequest[];
   loadPromptNotifications?: JsonRpcNotification[];
   loadPromptResponse?: JsonRpcResponse;
+  mcpLoadNotifications?: JsonRpcNotification[];
+  mcpLoadResponse?: JsonRpcResponse;
+  mcpLoadPromptServerRequests?: JsonRpcRequest[];
+  mcpLoadPromptNotifications?: JsonRpcNotification[];
+  mcpLoadPromptResponse?: JsonRpcResponse;
   error?: {
     message: string;
     stack?: string;
@@ -230,20 +294,20 @@ describe('ACP stdio E2E', () => {
   }, 30_000);
 
   it(
-    '应通过 stdio 处理协议版本协商、initialize、authenticate、坏 JSON 与 revoked token，且 stdout 仅输出协议帧',
+    '应通过 stdio 处理 terminal 主链、mcpServers lifecycle、session/load fail-closed、协议协商与 stdout hygiene',
     async () => {
       const { exitCode, stderr, result } = await runAcpStdioScenario(
         container.getConnectionUri(),
       );
 
       expect(stderr).toBe('');
-      expect(exitCode).toBe(0);
       expect(result.ok, result.error?.stack ?? result.error?.message).toBe(true);
+      expect(exitCode).toBe(0);
       expect(result.stderr).toBe('');
       expect(result.childExitCode).toBeNull();
       expect(result.initializedNotificationSilent).toBe(true);
       expect(result.loadInitializedNotificationSilent).toBe(true);
-      expect(result.protocolLines.length).toBeGreaterThanOrEqual(25);
+      expect(result.protocolLines.length).toBeGreaterThanOrEqual(35);
 
       expect(result.unsupportedInitializeResponse).toMatchObject({
         jsonrpc: '2.0',
@@ -270,10 +334,30 @@ describe('ACP stdio E2E', () => {
               loadSession: true,
               streaming: true,
               tools: true,
+              fs: {
+                readTextFile: true,
+                writeTextFile: true,
+              },
+              terminal: {
+                create: true,
+              },
             },
           },
         },
       });
+      const initializeCapabilities = (
+        result.initializeResponse as JsonRpcSuccessResponse
+      ).result as {
+        serverInfo: {
+          capabilities: Record<string, unknown>;
+        };
+      };
+      expect(initializeCapabilities.serverInfo.capabilities).not.toHaveProperty(
+        'mcpServers',
+      );
+      expect(initializeCapabilities.serverInfo.capabilities).not.toHaveProperty(
+        'mcpCapabilities',
+      );
 
       expect(result.validAuthResponse).toMatchObject({
         jsonrpc: '2.0',
@@ -286,6 +370,375 @@ describe('ACP stdio E2E', () => {
         id: 6,
         result: {
           sessionId: expect.any(String),
+        },
+      });
+
+      expect(result.terminalCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 75,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.terminalBoundedOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 76,
+        result: {
+          output: 'terminal',
+          nextOffset: 8,
+          truncated: false,
+        },
+      });
+      expect(result.terminalTailOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 77,
+        result: {
+          output: '-output',
+          nextOffset: 15,
+          truncated: false,
+        },
+      });
+      expect(result.terminalWaitForExitResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 78,
+        result: {
+          terminalId: expect.any(String),
+          status: 'exited',
+          exitCode: 0,
+          signal: null,
+        },
+      });
+      expect(result.terminalRejectResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 79,
+        error: {
+          code: -32004,
+          message: 'ACP terminal command is not allowed by sandbox policy',
+          data: {
+            reason: 'terminal_command_pattern_not_allowed',
+          },
+        },
+      });
+      expect(result.terminalExitedOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 80,
+        error: {
+          code: -32004,
+          message: 'ACP terminal output is unavailable because terminal is not running',
+          data: {
+            reason: 'terminal_output_unavailable',
+            status: 'exited',
+          },
+        },
+      });
+      expect(result.terminalTimeoutCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 81,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.terminalTimeoutWaitForExitResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 82,
+        error: {
+          code: -32004,
+          message: 'ACP terminal execution timed out',
+          data: {
+            reason: 'terminal_timeout',
+            signal: 'TERM',
+          },
+        },
+      });
+      expect(result.terminalKillCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 83,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.terminalKillResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 84,
+        result: {
+          success: true,
+        },
+      });
+      expect(result.terminalKilledOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 85,
+        error: {
+          code: -32004,
+          message: 'ACP terminal output is unavailable because terminal is not running',
+          data: {
+            reason: 'terminal_output_unavailable',
+            status: 'killed',
+          },
+        },
+      });
+      expect(result.terminalReleaseCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 86,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.terminalReleaseResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 87,
+        result: {
+          success: true,
+        },
+      });
+      expect(result.terminalReleaseOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 88,
+        error: {
+          code: -32602,
+          message: 'Invalid params',
+          data: {
+            reason: 'terminal_not_found',
+          },
+        },
+      });
+      expect(result.terminalCancelSessionNewResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 89,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.terminalCancelCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 90,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.terminalCancelOutputResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 91,
+        error: {
+          code: -32602,
+          message: 'Invalid params',
+          data: {
+            reason: 'Session not found',
+          },
+        },
+      });
+      expect(result.terminalKilledAuditRows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event_type: 'acp.terminal.server_sandbox.killed',
+            metadata: expect.objectContaining({
+              reason: 'manual_kill',
+              terminalId: expect.any(String),
+              execId: expect.any(String),
+            }),
+          }),
+          expect.objectContaining({
+            event_type: 'acp.terminal.server_sandbox.killed',
+            metadata: expect.objectContaining({
+              reason: 'session_cleanup',
+              terminalId: expect.any(String),
+              execId: expect.any(String),
+            }),
+          }),
+        ]),
+      );
+
+      expect(result.sandboxReadResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 60,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: '来自沙箱的文件内容',
+            },
+          ],
+        },
+      });
+
+      expect(result.fsReadNotifications).toEqual([]);
+      expect(result.fsReadServerRequests).toHaveLength(1);
+      expect(result.fsReadServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'fs/read_text_file',
+        params: {
+          sessionId: expect.any(String),
+          path: `${SANDBOX_SESSION_CWD}/notes/readme.txt`,
+        },
+      });
+      expect(result.fsReadResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 61,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: '来自客户端的文件内容',
+            },
+          ],
+        },
+      });
+
+      expect(result.fsWriteNotifications).toEqual([]);
+      expect(result.fsWriteServerRequests).toHaveLength(2);
+      expect(result.fsWriteServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/request_permission',
+        params: {
+          sessionId: expect.any(String),
+          toolCall: {
+            title: 'filesystem.write',
+            kind: 'tool_call',
+            status: 'awaiting_permission',
+            content: [
+              {
+                type: 'text',
+                text: `写入文件需要主人确认：${SANDBOX_SESSION_CWD}/notes/write.txt`,
+              },
+            ],
+            permissionRequest: {
+              description: `写入文件需要主人确认：${SANDBOX_SESSION_CWD}/notes/write.txt`,
+              resourcePaths: [`${SANDBOX_SESSION_CWD}/notes/write.txt`],
+            },
+          },
+        },
+      });
+      expect(result.fsWriteServerRequests?.[1]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'fs/write_text_file',
+        params: {
+          sessionId: expect.any(String),
+          path: `${SANDBOX_SESSION_CWD}/notes/write.txt`,
+          content: 'updated from client proxy',
+        },
+      });
+      expect(result.fsWriteResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 62,
+        result: {
+          success: true,
+        },
+      });
+
+      expect(result.fsWriteDeniedNotifications).toEqual([]);
+      expect(result.fsWriteDeniedServerRequests).toHaveLength(1);
+      expect(result.fsWriteDeniedServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/request_permission',
+        params: {
+          toolCall: {
+            title: 'filesystem.write',
+            permissionRequest: {
+              resourcePaths: [`${SANDBOX_SESSION_CWD}/notes/write-denied.txt`],
+            },
+          },
+        },
+      });
+      expect(result.fsWriteDeniedResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 66,
+        error: {
+          code: -32004,
+          message: 'ACP file operation was rejected by permission policy',
+        },
+      });
+
+      expect(result.fsWriteCancelledNotifications).toEqual([]);
+      expect(result.fsWriteCancelledServerRequests).toHaveLength(1);
+      expect(result.fsWriteCancelledServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/request_permission',
+        params: {
+          toolCall: {
+            title: 'filesystem.write',
+            permissionRequest: {
+              resourcePaths: [`${SANDBOX_SESSION_CWD}/notes/write-cancelled.txt`],
+            },
+          },
+        },
+      });
+
+      expect(result.sandboxWriteNotifications).toEqual([]);
+      expect(result.sandboxWriteServerRequests).toHaveLength(1);
+      expect(result.sandboxWriteServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/request_permission',
+        params: {
+          sessionId: expect.any(String),
+          toolCall: {
+            title: 'filesystem.write',
+            permissionRequest: {
+              resourcePaths: [`${SANDBOX_SESSION_CWD}/notes/write-sandbox.txt`],
+            },
+          },
+        },
+      });
+      expect(result.sandboxWriteResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 68,
+        result: {
+          success: true,
+        },
+      });
+      expect(result.sandboxTraversalResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 69,
+        error: {
+          code: -32004,
+          message: 'ACP server sandbox path escapes workspace',
+        },
+      });
+      expect(result.sandboxOversizeResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 70,
+        error: {
+          code: -32004,
+          message: 'ACP server sandbox file exceeds size limit',
+        },
+      });
+      expect(result.sandboxBinaryResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 71,
+        error: {
+          code: -32004,
+          message: 'ACP server sandbox file is binary and cannot be read as text',
+        },
+      });
+      expect(result.fsWriteCancelledResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 67,
+        error: {
+          code: -32005,
+          message: 'ACP file permission request was cancelled',
+        },
+      });
+
+      expect(result.fsCancelSessionNewResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 63,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.fsCancelServerRequest).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'fs/read_text_file',
+        params: {
+          sessionId: expect.any(String),
+          path: `${SANDBOX_SESSION_CWD}/notes/cancelled.txt`,
+        },
+      });
+      expect(result.fsCancelNotifications).toEqual([]);
+      expect(result.fsCancelResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 64,
+        error: {
+          code: -32005,
+          message: 'ACP client fs request was cancelled',
         },
       });
 
@@ -419,6 +872,103 @@ describe('ACP stdio E2E', () => {
         },
       });
 
+      expect(result.mcpSessionNewResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 16,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.mcpPromptServerRequests).toEqual([]);
+      expect(result.mcpPromptNotifications).toHaveLength(3);
+      expect(result.mcpPromptNotifications?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: expect.any(String),
+          update: {
+            type: 'tool_call',
+            call: {
+              tool: 'docs/search',
+              args: {
+                query: '请通过 MCP 查询 AgentLoom。',
+              },
+              status: 'in_progress',
+            },
+          },
+        },
+      });
+      expect(result.mcpPromptNotifications?.[1]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: expect.any(String),
+          update: {
+            type: 'tool_call',
+            call: {
+              tool: 'docs/search',
+              status: 'completed',
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: 'fixture-search:请通过 MCP 查询 AgentLoom。',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+      expect(result.mcpPromptNotifications?.[2]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: expect.any(String),
+          update: {
+            type: 'agent_message_chunk',
+            content: '已通过 docs/search 获取：fixture-search:请通过 MCP 查询 AgentLoom。',
+          },
+        },
+      });
+      expect(result.mcpPromptResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 17,
+        result: {
+          stopReason: 'end_turn',
+        },
+      });
+
+      expect(result.mcpCancelSessionNewResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 18,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.mcpCancelPromptNotifications).toHaveLength(1);
+      expect(result.mcpCancelPromptNotifications?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: expect.any(String),
+          update: {
+            type: 'tool_call',
+            call: {
+              tool: 'docs/search',
+              status: 'in_progress',
+            },
+          },
+        },
+      });
+      expect(result.mcpCancelPromptResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 19,
+        result: {
+          stopReason: 'cancelled',
+        },
+      });
+
       expect(result.cancelSessionNewResponse).toMatchObject({
         jsonrpc: '2.0',
         id: 8,
@@ -519,6 +1069,13 @@ describe('ACP stdio E2E', () => {
               loadSession: true,
               streaming: true,
               tools: true,
+              fs: {
+                readTextFile: true,
+                writeTextFile: true,
+              },
+              terminal: {
+                create: true,
+              },
             },
           },
         },
@@ -626,6 +1183,66 @@ describe('ACP stdio E2E', () => {
           sessionId: expect.any(String),
         },
       });
+      expect(result.terminalLoadSessionNewResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 92,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.terminalLoadCreateResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 93,
+        result: {
+          terminalId: expect.any(String),
+        },
+      });
+      expect(result.loadTerminalFailClosedResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 94,
+        error: {
+          code: -32603,
+          message: 'Failed to restore ACP terminal continuity',
+          data: {
+            reason: 'terminal_continuity_unavailable',
+          },
+        },
+      });
+
+      expect(result.loadFsReadNotifications).toEqual([]);
+      expect(result.loadFsReadServerRequests).toHaveLength(1);
+      expect(result.loadFsReadServerRequests?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'fs/read_text_file',
+        params: {
+          sessionId: expect.any(String),
+          path: `${SANDBOX_SESSION_CWD}/notes/loaded.txt`,
+        },
+      });
+      expect(result.loadFsReadResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 65,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: '恢复后的客户端文件内容',
+            },
+          ],
+        },
+      });
+      expect(result.loadSandboxReadResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 73,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: '来自沙箱的文件内容',
+            },
+          ],
+        },
+      });
 
       expect(result.loadPromptServerRequests).toHaveLength(1);
       expect(result.loadPromptServerRequests?.[0]).toMatchObject({
@@ -648,6 +1265,127 @@ describe('ACP stdio E2E', () => {
       expect(result.loadPromptResponse).toMatchObject({
         jsonrpc: '2.0',
         id: 15,
+        result: {
+          stopReason: 'end_turn',
+        },
+      });
+
+      expect(result.mcpLoadNotifications).toHaveLength(4);
+      expect(result.mcpLoadNotifications?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: expect.any(String),
+          update: {
+            type: 'user_message',
+            replayed: true,
+            content: [
+              {
+                type: 'text',
+                text: '请通过 MCP 查询 AgentLoom。',
+              },
+            ],
+          },
+        },
+      });
+      expect(result.mcpLoadNotifications?.[1]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'tool_call',
+            replayed: true,
+            call: {
+              tool: 'docs/search',
+              status: 'in_progress',
+            },
+          },
+        },
+      });
+      expect(result.mcpLoadNotifications?.[2]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'tool_call',
+            replayed: true,
+            call: {
+              tool: 'docs/search',
+              status: 'completed',
+            },
+          },
+        },
+      });
+      expect(result.mcpLoadNotifications?.[3]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'agent_message_chunk',
+            replayed: true,
+            content: '已通过 docs/search 获取：fixture-search:请通过 MCP 查询 AgentLoom。',
+          },
+        },
+      });
+      expect(result.mcpLoadResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 104,
+        result: {
+          sessionId: expect.any(String),
+        },
+      });
+      expect(result.mcpLoadPromptServerRequests).toEqual([]);
+      expect(result.mcpLoadPromptNotifications).toHaveLength(3);
+      expect(result.mcpLoadPromptNotifications?.[0]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'tool_call',
+            call: {
+              tool: 'docs/search',
+              args: {
+                query: '请在恢复后再次通过 MCP 查询 AgentLoom。',
+              },
+              status: 'in_progress',
+            },
+          },
+        },
+      });
+      expect(result.mcpLoadPromptNotifications?.[1]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'tool_call',
+            call: {
+              tool: 'docs/search',
+              status: 'completed',
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: 'fixture-search:请在恢复后再次通过 MCP 查询 AgentLoom。',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+      expect(result.mcpLoadPromptNotifications?.[2]).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          update: {
+            type: 'agent_message_chunk',
+            content: '已通过 docs/search 获取：fixture-search:请在恢复后再次通过 MCP 查询 AgentLoom。',
+          },
+        },
+      });
+      expect(result.mcpLoadPromptResponse).toMatchObject({
+        jsonrpc: '2.0',
+        id: 105,
         result: {
           stopReason: 'end_turn',
         },
