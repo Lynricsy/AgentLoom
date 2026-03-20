@@ -23,6 +23,8 @@ import { resourceGovernanceRoute } from './settings/resource-quotas'
 import { monitoringRoute } from './settings/monitoring'
 import { privateDeploymentRoute } from './settings/private-deployment'
 import { authCallbackRoute } from './auth/callback'
+import { loginRoute } from './auth/login'
+import { registerRoute } from './auth/register'
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -102,4 +104,6 @@ export const routeTree = rootRoute.addChildren([
   monitoringRoute,
   privateDeploymentRoute,
   authCallbackRoute,
+  loginRoute,
+  registerRoute,
 ]);
