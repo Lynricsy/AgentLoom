@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { supabase } from '@/shared/lib/supabase'
 import { rootRoute } from '../__root'
 
-function AuthCallbackPage() {
+export function AuthCallbackPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -16,7 +16,7 @@ function AuthCallbackPage() {
     }
 
     supabase.auth
-      .exchangeCodeForSession(window.location.href)
+      .exchangeCodeForSession(code)
       .then(({ error }) => {
         if (error) {
           window.location.href = `/login?error=${encodeURIComponent(error.message)}`
