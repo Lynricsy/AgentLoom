@@ -39,12 +39,23 @@ import {
 
 const CONNECT_TIMEOUT_MS = 30_000;
 const LIST_TOOLS_TIMEOUT_MS = 60_000;
+const CALL_TOOL_TIMEOUT_MS = 60_000;
 
-type McpConnection = TestMcpConnectionDto['connection'];
+export type McpRuntimeConnection = TestMcpConnectionDto['connection'];
+export type McpRuntimeDiscoveredTool = DiscoverMcpToolsResponse['tools'][number];
+
+type McpConnection = McpRuntimeConnection;
 type DiscoveredMcpTool = Awaited<
   ReturnType<Client['listTools']>
 >['tools'][number];
 type SavedMcpConfig = typeof mcpServerConfigs.$inferSelect;
+type McpOperation =
+  | '连接测试'
+  | '工具发现'
+  | '工具导入'
+  | '运行时工具发现'
+  | '运行时工具调用';
+type McpToolListingOperation = '工具发现' | '工具导入' | '运行时工具发现';
 
 type ImportSummary = {
   total: number;
@@ -105,6 +116,44 @@ export class McpService {
     dto: DiscoverMcpToolsDto,
   ): Promise<DiscoverMcpToolsResponse> {
     return await this.discoverToolsForConnection(dto.connection, '工具发现');
+  }
+
+  async discoverRuntimeTools(
+    connection: McpRuntimeConnection,
+  ): Promise<ReadonlyArray<McpRuntimeDiscoveredTool>> {
+    const result = await this.discoverToolsForConnection(
+      connection,
+      '运行时工具发现',
+    );
+
+    return result.tools;
+  }
+
+  async callRuntimeTool(
+    connection: McpRuntimeConnection,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    const { client, transport } = await this.createAndConnectClient(
+      connection,
+      CONNECT_TIMEOUT_MS,
+      '运行时工具调用',
+    );
+
+    try {
+      return await this.withTimeout(
+        client.callTool({
+          name: toolName,
+          arguments: args,
+        }),
+        CALL_TOOL_TIMEOUT_MS,
+        '运行时工具调用超时',
+      );
+    } catch (error) {
+      this.handleOperationError(error, connection, '运行时工具调用');
+    } finally {
+      await this.safeCloseClient(client, transport);
+    }
   }
 
   async testSavedConfigConnection(
@@ -577,7 +626,7 @@ export class McpService {
 
   private async discoverToolsForConnection(
     connection: McpConnection,
-    operation: '工具发现' | '工具导入',
+    operation: McpToolListingOperation,
   ): Promise<DiscoverMcpToolsResponse> {
     const { client, transport } = await this.createAndConnectClient(
       connection,
@@ -605,7 +654,7 @@ export class McpService {
   private async listToolsForConnection(
     connection: McpConnection,
     timeout: number,
-    operation: '工具发现' | '工具导入',
+    operation: McpToolListingOperation,
   ): Promise<Awaited<ReturnType<Client['listTools']>>['tools']> {
     const { client, transport } = await this.createAndConnectClient(
       connection,
@@ -784,7 +833,7 @@ export class McpService {
   private async createAndConnectClient(
     connection: McpConnection,
     timeout: number,
-    operation: '连接测试' | '工具发现' | '工具导入',
+    operation: McpOperation,
   ): Promise<{ client: Client; transport: Transport }> {
     const transport = this.createTransport(connection);
     const client = new Client({ name: 'agentloom', version: '1.0.0' });
@@ -804,7 +853,7 @@ export class McpService {
 
   private async listAllTools(
     client: Client,
-    operation: '工具发现' | '工具导入',
+    operation: McpToolListingOperation,
   ): Promise<Awaited<ReturnType<Client['listTools']>>['tools']> {
     const tools: Awaited<ReturnType<Client['listTools']>>['tools'] = [];
     const seenCursors = new Set<string>();
@@ -1034,7 +1083,7 @@ export class McpService {
   private handleOperationError(
     error: unknown,
     connection: McpConnection,
-    operation: '连接测试' | '工具发现' | '工具导入',
+    operation: McpOperation,
   ): never {
     const message = this.getErrorMessage(error);
 

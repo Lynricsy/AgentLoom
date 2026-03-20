@@ -11,6 +11,30 @@ export interface McpServerConfig {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+export interface ServerSandboxBinding {
+  readonly executionId: string;
+}
+
+export type TerminalContinuityStatus =
+  | 'running'
+  | 'exited'
+  | 'killed'
+  | 'released';
+
+export interface TerminalContinuityEntry {
+  readonly terminalId: string;
+  readonly execId: string;
+  readonly cwd: string;
+  readonly outputByteLimit: number;
+  readonly status: TerminalContinuityStatus;
+  readonly exitCode?: number | null;
+  readonly signal?: string | null;
+}
+
+export interface TerminalContinuityState {
+  readonly terminals: TerminalContinuityEntry[];
+}
+
 export type SessionMode = 'workflow' | 'conversation';
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'error';
@@ -19,7 +43,9 @@ export interface SessionContext {
   history: ContentBlock[];
   readonly cwd?: string;
   readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
+  readonly serverSandbox?: ServerSandboxBinding;
   readonly workflowState?: Readonly<Record<string, unknown>>;
+  terminalContinuity?: TerminalContinuityState;
 }
 
 export interface AgentSession {
@@ -41,6 +67,7 @@ export interface CreateSessionParams {
   readonly mode: SessionMode;
   readonly cwd?: string;
   readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
+  readonly serverSandbox?: ServerSandboxBinding;
   readonly tenantId?: string;
   readonly llmModelConfigId?: string;
   readonly systemPrompt?: string;

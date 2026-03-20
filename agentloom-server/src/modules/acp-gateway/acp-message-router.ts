@@ -9,8 +9,10 @@ import {
   type JsonRpcResponse,
 } from './acp-jsonrpc';
 import type { AcpConnectionState } from './acp-types';
+import { AcpFilesystemHandler } from './handlers/acp-filesystem.handler';
 import { AuthenticateHandler } from './handlers/authenticate.handler';
 import { InitializeHandler } from './handlers/initialize.handler';
+import { AcpTerminalHandler } from './handlers/acp-terminal.handler';
 import { SessionCancelHandler } from './handlers/session-cancel.handler';
 import { SessionLoadHandler } from './handlers/session-load.handler';
 import { SessionNewHandler } from './handlers/session-new.handler';
@@ -25,6 +27,8 @@ export class AcpMessageRouter {
     private readonly sessionLoadHandler: SessionLoadHandler,
     private readonly sessionPromptHandler: SessionPromptHandler,
     private readonly sessionCancelHandler: SessionCancelHandler,
+    private readonly terminalHandler: AcpTerminalHandler,
+    private readonly filesystemHandler: AcpFilesystemHandler,
   ) {}
 
   async routeMessage(
@@ -110,6 +114,78 @@ export class AcpMessageRouter {
         return null;
       }
 
+      if (request.method === 'terminal/create') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.terminalHandler.handleCreate(request.params, state);
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'terminal/output') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.terminalHandler.handleOutput(request.params, state);
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'terminal/wait_for_exit') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.terminalHandler.handleWaitForExit(
+          request.params,
+          state,
+        );
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'terminal/kill') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.terminalHandler.handleKill(request.params, state);
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'terminal/release') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.terminalHandler.handleRelease(request.params, state);
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'fs/read_text_file') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.filesystemHandler.handleReadTextFile(
+          request.params,
+          state,
+        );
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
+      if (request.method === 'fs/write_text_file') {
+        if (isNotification) {
+          throw new AcpJsonRpcError(-32600, 'Invalid Request');
+        }
+
+        const result = await this.filesystemHandler.handleWriteTextFile(
+          request.params,
+          state,
+        );
+        return buildJsonRpcSuccess(requestId, result);
+      }
+
       if (isNotification) {
         return null;
       }
@@ -155,7 +231,14 @@ export class AcpMessageRouter {
       request.method === 'session/new' ||
       request.method === 'session/load' ||
       request.method === 'session/prompt' ||
-      request.method === 'session/cancel'
+      request.method === 'session/cancel' ||
+      request.method === 'terminal/create' ||
+      request.method === 'terminal/output' ||
+      request.method === 'terminal/wait_for_exit' ||
+      request.method === 'terminal/kill' ||
+      request.method === 'terminal/release' ||
+      request.method === 'fs/read_text_file' ||
+      request.method === 'fs/write_text_file'
     );
   }
 }

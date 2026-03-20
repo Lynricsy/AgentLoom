@@ -10,6 +10,8 @@ import {
   buildJsonRpcNotification,
 } from '../acp-jsonrpc';
 import { mapConversationReplayEntryToAcpSessionUpdate } from '../acp-session-update.mapper';
+import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
+import { AcpTerminalProxyService } from '../services/acp-terminal-proxy.service';
 import type {
   AcpConnectionState,
   AcpSessionLoadParams,
@@ -28,6 +30,8 @@ export class SessionLoadHandler {
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly sessionPersistence: SessionPersistenceService,
+    private readonly terminalProxyService: AcpTerminalProxyService,
+    private readonly mcpSessionService: AcpSessionMcpRegistryService,
   ) {}
 
   async handle(
@@ -72,14 +76,54 @@ export class SessionLoadHandler {
       throw this.buildReplayFailureError(normalizedParams.sessionId, error);
     }
 
-    const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
-    state.sessions = sessions;
-    sessions.set(session.id, {
+    const trackedSession: AcpTrackedSession = {
       sessionId: session.id,
       runtimeSessionId: session.id,
       agentId: session.agentId,
       tenantId,
-    });
+      ...(session.context.cwd === undefined ? {} : { cwd: session.context.cwd }),
+      ...(session.context.serverSandbox === undefined
+        ? {}
+        : { serverSandbox: session.context.serverSandbox }),
+    };
+
+    if (session.context.mcpServers !== undefined) {
+      try {
+        await this.mcpSessionService.restoreSessionTools(
+          trackedSession,
+          session.context.mcpServers,
+        );
+      } catch (error) {
+        await this.safeCleanupSessionTools(trackedSession);
+        throw new AcpJsonRpcError(-32603, 'Failed to restore ACP MCP forwarding', {
+          sessionId: session.id,
+          reason: this.getErrorMessage(error),
+        });
+      }
+    }
+
+    const terminalContinuity = session.context.terminalContinuity;
+    if (terminalContinuity && terminalContinuity.terminals.length > 0) {
+      let terminalIds: string[];
+
+      try {
+        terminalIds = await this.terminalProxyService.restoreTerminalContinuity(
+          trackedSession,
+          terminalContinuity,
+        );
+      } catch (error) {
+        await this.safeCleanupSessionTools(trackedSession);
+        throw error;
+      }
+
+      if (terminalIds.length > 0) {
+        trackedSession.terminalIds = terminalIds;
+      }
+    }
+
+    const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
+    state.sessions = sessions;
+    sessions.set(session.id, trackedSession);
 
     return {
       sessionId: session.id,
@@ -143,5 +187,19 @@ export class SessionLoadHandler {
       sessionId,
       reason: 'Session not found',
     });
+  }
+
+  private async safeCleanupSessionTools(
+    trackedSession: AcpTrackedSession,
+  ): Promise<void> {
+    try {
+      await this.mcpSessionService.cleanupSessionTools(trackedSession);
+    } catch {
+      return;
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

@@ -19,7 +19,21 @@ interface SerializedSession {
     history: unknown[];
     cwd?: string;
     mcpServers?: Record<string, unknown>;
+    serverSandbox?: {
+      executionId: string;
+    };
     workflowState?: Record<string, unknown>;
+    terminalContinuity?: {
+      terminals: Array<{
+        terminalId: string;
+        execId: string;
+        cwd: string;
+        outputByteLimit: number;
+        status: 'running' | 'exited' | 'killed' | 'released';
+        exitCode?: number | null;
+        signal?: string | null;
+      }>;
+    };
   };
   status: string;
   tenantId?: string;
@@ -60,12 +74,35 @@ const McpServerConfigSchema = z
     headers: z.object({}).catchall(z.string()).optional(),
   })
   .passthrough();
+const ServerSandboxBindingSchema = z
+  .object({
+    executionId: z.string().min(1),
+  })
+  .passthrough();
+const TerminalContinuityEntrySchema = z
+  .object({
+    terminalId: z.string().min(1),
+    execId: z.string().min(1),
+    cwd: z.string().min(1),
+    outputByteLimit: z.number().int().positive(),
+    status: z.enum(['running', 'exited', 'killed', 'released']),
+    exitCode: z.number().int().nullable().optional(),
+    signal: z.string().min(1).nullable().optional(),
+  })
+  .passthrough();
+const TerminalContinuityStateSchema = z
+  .object({
+    terminals: z.array(TerminalContinuityEntrySchema),
+  })
+  .passthrough();
 const SessionContextSchema = z
   .object({
     history: z.array(ContentBlockSchema).default([]),
     cwd: z.string().optional(),
     mcpServers: z.object({}).catchall(McpServerConfigSchema).optional(),
+    serverSandbox: ServerSandboxBindingSchema.optional(),
     workflowState: z.object({}).catchall(z.unknown()).optional(),
+    terminalContinuity: TerminalContinuityStateSchema.optional(),
   })
   .passthrough();
 const SerializedSessionSchema = z
@@ -201,9 +238,13 @@ export class SessionPersistenceService {
         mcpServers: session.context.mcpServers as
           | Record<string, unknown>
           | undefined,
+        serverSandbox: session.context.serverSandbox,
         workflowState: session.context.workflowState as
           | Record<string, unknown>
           | undefined,
+        ...(session.context.terminalContinuity === undefined
+          ? {}
+          : { terminalContinuity: session.context.terminalContinuity }),
       },
       status: session.status,
       tenantId: session.tenantId,
@@ -230,7 +271,11 @@ export class SessionPersistenceService {
         history: raw.context.history,
         cwd: raw.context?.cwd,
         mcpServers: raw.context?.mcpServers,
+        serverSandbox: raw.context?.serverSandbox,
         workflowState: raw.context?.workflowState,
+        ...(raw.context?.terminalContinuity === undefined
+          ? {}
+          : { terminalContinuity: raw.context.terminalContinuity }),
       },
       status: raw.status,
       tenantId: raw.tenantId,

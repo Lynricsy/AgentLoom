@@ -191,6 +191,19 @@ async function bootstrap() {
     readline.close();
 
     try {
+      const trackedSessionIds = [...(state.sessions?.keys() ?? [])];
+      await Promise.allSettled(
+        trackedSessionIds.map(async (sessionId) => {
+          await gateway.handleMessage(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'session/cancel',
+              params: { sessionId },
+            }),
+            state,
+          );
+        }),
+      );
       await Promise.allSettled([...inFlight]);
       for (const [requestId, pendingRequest] of pendingClientRequests) {
         pendingRequest.reject(

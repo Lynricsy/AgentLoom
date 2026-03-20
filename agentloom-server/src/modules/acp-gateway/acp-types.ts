@@ -4,9 +4,11 @@ import type {
 } from '../agent/types/content-block.types';
 import type {
   SessionContext,
+  ServerSandboxBinding,
 } from '../agent/types/agent-session.types';
 import type {
   ToolCallEvent,
+  ToolPermissionRequest,
   ToolCallStatus,
 } from '../agent/types/tool-call-event.types';
 import type { JsonRpcId, JsonRpcNotification } from './acp-jsonrpc';
@@ -16,8 +18,8 @@ export interface AcpServerCapabilities {
   streaming: true;
   tools: true;
   fs?: {
-    read: boolean;
-    write: boolean;
+    readTextFile: boolean;
+    writeTextFile: boolean;
   };
   terminal?: {
     create: boolean;
@@ -33,8 +35,8 @@ export interface AcpClientRootsCapability {
 export interface AcpClientCapabilities {
   roots?: AcpClientRootsCapability;
   fs?: {
-    read: boolean;
-    write: boolean;
+    readTextFile: boolean;
+    writeTextFile: boolean;
   };
   terminal?: {
     create: boolean;
@@ -69,15 +71,103 @@ export interface AcpTrackedSession {
   runtimeSessionId: string;
   agentId: string;
   tenantId: string;
+  cwd?: SessionContext['cwd'];
+  serverSandbox?: ServerSandboxBinding;
   activePromptRequestId?: JsonRpcId;
   pendingPermissionRequestId?: JsonRpcId;
   pendingPermissionToolCallId?: string;
+  pendingFsRequestIds?: JsonRpcId[];
+  terminalIds?: string[];
+}
+
+export type AcpFilesystemMode = 'client_proxy' | 'server_sandbox';
+
+export type AcpTerminalMode = 'server_sandbox';
+
+export interface AcpReadTextFileParams {
+  sessionId: string;
+  path: string;
+  mode: AcpFilesystemMode;
+}
+
+export interface AcpReadTextFileResult {
+  content: ContentBlock[];
+}
+
+export interface AcpWriteTextFileParams {
+  sessionId: string;
+  path: string;
+  content: string;
+  mode: AcpFilesystemMode;
+}
+
+export interface AcpWriteTextFileResult {
+  success: true;
+}
+
+export interface AcpTerminalCreateParams {
+  sessionId: string;
+  command: string;
+  args?: string[];
+  cwd?: string;
+  mode?: AcpTerminalMode;
+  outputByteLimit?: number;
+}
+
+export interface AcpTerminalCreateResult {
+  terminalId: string;
+}
+
+export interface AcpTerminalOutputParams {
+  sessionId: string;
+  terminalId: string;
+  offset?: number;
+  outputByteLimit?: number;
+}
+
+export interface AcpTerminalOutputResult {
+  terminalId: string;
+  output: string;
+  nextOffset?: number;
+  truncated: boolean;
+}
+
+export interface AcpTerminalWaitForExitParams {
+  sessionId: string;
+  terminalId: string;
+  timeoutMs?: number;
+}
+
+export interface AcpTerminalWaitForExitResult {
+  terminalId: string;
+  status: 'running' | 'exited' | 'killed' | 'released';
+  exitCode?: number | null;
+  signal?: string | null;
+}
+
+export interface AcpTerminalKillParams {
+  sessionId: string;
+  terminalId: string;
+}
+
+export interface AcpTerminalKillResult {
+  success: true;
+}
+
+export interface AcpTerminalReleaseParams {
+  sessionId: string;
+  terminalId: string;
+}
+
+export interface AcpTerminalReleaseResult {
+  success: true;
 }
 
 export interface AcpSessionNewParams {
   agentId: string;
   cwd?: SessionContext['cwd'];
   mcpServers?: SessionContext['mcpServers'];
+  serverSandbox?: ServerSandboxBinding;
 }
 
 export interface AcpSessionNewResult {
@@ -125,6 +215,7 @@ export interface AcpPermissionToolCall {
   kind: 'tool_call';
   status: Extract<ToolCallStatus, 'awaiting_permission'>;
   content?: ContentBlock[];
+  permissionRequest?: Pick<ToolPermissionRequest, 'description' | 'resourcePaths'>;
 }
 
 export interface AcpPermissionSelectedOutcome {

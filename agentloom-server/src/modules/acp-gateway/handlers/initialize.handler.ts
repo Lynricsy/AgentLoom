@@ -6,6 +6,7 @@ import type {
   AcpClientCapabilities,
   AcpConnectionState,
   AcpInitializeResult,
+  AcpServerCapabilities,
 } from '../acp-types';
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2026-02-18'] as const;
@@ -50,16 +51,25 @@ export class InitializeHandler {
     state.clientCapabilities = clientCapabilities;
     state.negotiatedProtocolVersion = protocolVersion;
 
+    const capabilities: AcpServerCapabilities = {
+      loadSession: true,
+      streaming: true,
+      tools: true,
+    };
+
+    capabilities.fs = this.buildFilesystemCapability(state);
+
+    const terminalCapability = this.buildTerminalCapability(clientCapabilities);
+    if (terminalCapability) {
+      capabilities.terminal = terminalCapability;
+    }
+
     return {
       protocolVersion,
       serverInfo: {
         name: 'agentloom',
         version: this.serverVersion,
-        capabilities: {
-          loadSession: true,
-          streaming: true,
-          tools: true,
-        },
+        capabilities,
       },
     };
   }
@@ -121,6 +131,31 @@ export class InitializeHandler {
     return normalizedCapabilities;
   }
 
+  private buildFilesystemCapability(
+    state: AcpConnectionState,
+  ): AcpServerCapabilities['fs'] {
+    return {
+      readTextFile: true,
+      writeTextFile: typeof state.requestClient === 'function',
+    };
+  }
+
+  private buildTerminalCapability(
+    clientCapabilities: AcpClientCapabilities,
+  ): AcpServerCapabilities['terminal'] | undefined {
+    if (
+      !clientCapabilities.terminal ||
+      !clientCapabilities.terminal.create ||
+      !clientCapabilities.terminal.output
+    ) {
+      return undefined;
+    }
+
+    return {
+      create: true,
+    };
+  }
+
   private readRootsCapability(value: unknown): AcpClientCapabilities['roots'] {
     if (!isPlainObject(value)) {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
@@ -148,14 +183,24 @@ export class InitializeHandler {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 
-    if (typeof value.read !== 'boolean' || typeof value.write !== 'boolean') {
-      throw new AcpJsonRpcError(-32602, 'Invalid params');
+    if (
+      typeof value.readTextFile === 'boolean' &&
+      typeof value.writeTextFile === 'boolean'
+    ) {
+      return {
+        readTextFile: value.readTextFile,
+        writeTextFile: value.writeTextFile,
+      };
     }
 
-    return {
-      read: value.read,
-      write: value.write,
-    };
+    if (typeof value.read === 'boolean' && typeof value.write === 'boolean') {
+      return {
+        readTextFile: value.read,
+        writeTextFile: value.write,
+      };
+    }
+
+    throw new AcpJsonRpcError(-32602, 'Invalid params');
   }
 
   private readTerminalCapability(

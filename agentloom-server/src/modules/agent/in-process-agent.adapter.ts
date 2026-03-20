@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { streamText, type LanguageModel } from 'ai';
+import { streamText, type LanguageModel, type ToolSet } from 'ai';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -9,7 +9,10 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
 import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
-import type { IAgentRuntime } from './ports/agent-runtime.port';
+import type {
+  IAgentRuntime,
+  SessionToolProvider,
+} from './ports/agent-runtime.port';
 import type {
   AgentSession,
   CreateSessionParams,
@@ -32,6 +35,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly sessionIndex = new Map<string, SessionMetadata>();
   private readonly conversationSessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
+  private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
   private readonly pendingPermissionResolvers = new Map<
     string,
     Map<string, (action: 'approve' | 'deny') => void>
@@ -60,6 +64,17 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     this.sessionIndex.set(sessionId, { tenantId, stepId });
   }
 
+  registerSessionToolProvider(
+    sessionId: string,
+    provider: SessionToolProvider,
+  ): void {
+    this.sessionToolProviders.set(sessionId, provider);
+  }
+
+  unregisterSessionToolProvider(sessionId: string): void {
+    this.sessionToolProviders.delete(sessionId);
+  }
+
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
     let session: AgentSession;
 
@@ -84,6 +99,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         history: [],
         cwd: params.cwd,
         mcpServers: params.mcpServers,
+        serverSandbox: params.serverSandbox,
         workflowState: params.mode === 'workflow' ? params.context : undefined,
       };
 
@@ -170,7 +186,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       session.context.history.push(...content);
       session.updatedAt = new Date();
 
-       if (isConversationSession) {
+      if (isConversationSession) {
         await this.sessionPersistence.appendConversationReplayEntry(session, {
           kind: 'user_message',
           content,
@@ -190,11 +206,13 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       const modelConfig = await this.resolveModelConfig(session);
       const model = await this.piAiAdapter.getModel(modelConfig);
       const promptText = this.serializeContentBlocks(session.context.history);
+      const tools = await this.resolveSessionTools(sessionId);
       const result = streamText({
         model: model as LanguageModel,
         system: session.systemPrompt,
         prompt: promptText,
         abortSignal: abortController.signal,
+        ...(tools === undefined ? {} : { tools }),
       });
 
       let emittedDone = false;
@@ -403,6 +421,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     }
 
     this.pendingPermissionResolvers.delete(sessionId);
+    this.sessionToolProviders.delete(sessionId);
   }
 
   async resolveToolPermission(
@@ -501,6 +520,16 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         }
       })
       .join('\n\n');
+  }
+
+  private async resolveSessionTools(sessionId: string): Promise<ToolSet | undefined> {
+    const provider = this.sessionToolProviders.get(sessionId);
+    if (!provider) {
+      return undefined;
+    }
+
+    const tools = await provider();
+    return Object.keys(tools).length > 0 ? tools : undefined;
   }
 
   private normalizeToolArgs(input: unknown): ToolCallEvent['args'] {

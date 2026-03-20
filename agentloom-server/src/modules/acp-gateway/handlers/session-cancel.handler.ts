@@ -8,6 +8,8 @@ import type {
   AcpSessionRequestPermissionResult,
   AcpTrackedSession,
 } from '../acp-types';
+import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
+import { AcpTerminalProxyService } from '../services/acp-terminal-proxy.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -19,11 +21,24 @@ const CANCELLED_PERMISSION_RESULT: AcpSessionRequestPermissionResult = {
   },
 };
 
+const CANCELLED_FILESYSTEM_RESULT = {
+  cancelled: true,
+} as const;
+
+type SessionCleanupFailure = {
+  step: string;
+  reason: string;
+};
+
 @Injectable()
 export class SessionCancelHandler {
   private agentRuntime?: IAgentRuntime;
 
-  constructor(private readonly moduleRef: ModuleRef) {}
+  constructor(
+    private readonly moduleRef: ModuleRef,
+    private readonly terminalProxyService: AcpTerminalProxyService,
+    private readonly mcpSessionService: AcpSessionMcpRegistryService,
+  ) {}
 
   async handle(params: unknown, state: AcpConnectionState): Promise<void> {
     const normalizedParams = this.readParams(params);
@@ -33,16 +48,58 @@ export class SessionCancelHandler {
       return;
     }
 
+    state.sessions?.delete(trackedSession.sessionId);
+
+    const cleanupFailures: SessionCleanupFailure[] = [];
+
     if (trackedSession.pendingPermissionRequestId !== undefined) {
-      state.cancelClientRequest?.(
-        trackedSession.pendingPermissionRequestId,
-        CANCELLED_PERMISSION_RESULT,
-      );
+      try {
+        state.cancelClientRequest?.(
+          trackedSession.pendingPermissionRequestId,
+          CANCELLED_PERMISSION_RESULT,
+        );
+      } catch (error) {
+        cleanupFailures.push({
+          step: 'cancel_permission_request',
+          reason: this.getErrorMessage(error),
+        });
+      }
+
       delete trackedSession.pendingPermissionRequestId;
       delete trackedSession.pendingPermissionToolCallId;
     }
 
-    await this.getAgentRuntime().cancel(trackedSession.runtimeSessionId);
+    if (trackedSession.pendingFsRequestIds) {
+      for (const requestId of trackedSession.pendingFsRequestIds) {
+        try {
+          state.cancelClientRequest?.(requestId, CANCELLED_FILESYSTEM_RESULT);
+        } catch (error) {
+          cleanupFailures.push({
+            step: 'cancel_filesystem_request',
+            reason: `${requestId}: ${this.getErrorMessage(error)}`,
+          });
+        }
+      }
+
+      delete trackedSession.pendingFsRequestIds;
+    }
+
+    await this.runCleanupStep(cleanupFailures, 'cleanup_mcp_session_tools', () =>
+      this.mcpSessionService.cleanupSessionTools(trackedSession),
+    );
+    await this.runCleanupStep(cleanupFailures, 'cleanup_session_terminals', () =>
+      this.terminalProxyService.cleanupSessionTerminals(trackedSession),
+    );
+    await this.runCleanupStep(cleanupFailures, 'cancel_runtime_session', () =>
+      this.getAgentRuntime().cancel(trackedSession.runtimeSessionId),
+    );
+
+    if (cleanupFailures.length > 0) {
+      throw new AcpJsonRpcError(-32603, 'Failed to fully cancel ACP session', {
+        sessionId: trackedSession.sessionId,
+        cleanupFailures,
+      });
+    }
   }
 
   private getAgentRuntime(): IAgentRuntime {
@@ -83,5 +140,24 @@ export class SessionCancelHandler {
     }
 
     return trackedSession;
+  }
+
+  private async runCleanupStep(
+    cleanupFailures: SessionCleanupFailure[],
+    step: string,
+    action: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      cleanupFailures.push({
+        step,
+        reason: this.getErrorMessage(error),
+      });
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

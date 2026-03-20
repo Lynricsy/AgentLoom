@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Docker from 'dockerode';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../database/schema';
@@ -14,6 +16,30 @@ export interface ContainerStats {
   memoryLimitMb: number;
 }
 
+export interface DockerExecCreateOptions {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  env?: string[];
+}
+
+export interface DockerExecHandle {
+  execId: string;
+}
+
+export interface DockerExecExitInfo {
+  running: boolean;
+  exitCode: number | null;
+  pid: number | null;
+}
+
+interface FakeExecRecord {
+  readonly child: ReturnType<typeof spawn>;
+  readonly outputs: Array<{ level: string; message: string }>;
+  callback?: (level: string, message: string) => void;
+  exitInfo: DockerExecExitInfo;
+}
+
 const SANDBOX_IMAGE = 'agentloom/sandbox:latest';
 const SANDBOX_AGENT_PORT = '8080/tcp';
 const STOP_TIMEOUT_SECONDS = 10;
@@ -23,14 +49,20 @@ const HEALTHCHECK_INTERVAL_NS = 30 * 1_000_000_000;
 const HEALTHCHECK_START_PERIOD_NS = 5 * 1_000_000_000;
 const HEALTHCHECK_TIMEOUT_NS = 5 * 1_000_000_000;
 const HEALTHCHECK_RETRIES = 3;
+const DOCKER_STREAM_HEADER_SIZE = 8;
+const EXEC_INSPECT_POLL_INTERVAL_MS = 50;
 
 @Injectable()
 export class DockerService {
   private readonly docker: Docker;
+  private readonly execStreams = new Map<string, NodeJS.ReadableStream>();
+  private readonly fakeExecs = new Map<string, FakeExecRecord>();
+  private readonly useFakeExecRuntime: boolean;
   private readonly logger = new Logger(DockerService.name);
 
   constructor() {
     this.docker = new Docker();
+    this.useFakeExecRuntime = process.env.ACP_TEST_FAKE_RUNTIME === '1';
   }
 
   async createContainer(
@@ -73,6 +105,126 @@ export class DockerService {
         `Container creation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     }
+  }
+
+  async createExec(
+    containerId: string,
+    options: DockerExecCreateOptions,
+  ): Promise<DockerExecHandle> {
+    if (this.useFakeExecRuntime) {
+      return this.createFakeExec(options);
+    }
+
+    try {
+      const container = this.docker.getContainer(containerId);
+      const exec = await container.exec({
+        AttachStdin: false,
+        AttachStdout: true,
+        AttachStderr: true,
+        Cmd: [options.command, ...(options.args ?? [])],
+        Tty: false,
+        ...(options.cwd ? { WorkingDir: options.cwd } : {}),
+        ...(options.env?.length ? { Env: options.env } : {}),
+      });
+
+      const stream = await exec.start({
+        Detach: false,
+        Tty: false,
+      });
+
+      this.trackExecStream(exec.id, stream);
+
+      return { execId: exec.id };
+    } catch (error) {
+      this.logger.error(
+        `Failed to create exec for container ${containerId}`,
+        error instanceof Error ? error.stack : error,
+      );
+      throw new SandboxCreationException(
+        `Sandbox exec creation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+  }
+
+  async attachExecOutput(
+    execId: string,
+    callback: (level: string, message: string) => void,
+  ): Promise<void> {
+    if (this.useFakeExecRuntime) {
+      const fakeExec = this.fakeExecs.get(execId);
+
+      if (!fakeExec) {
+        throw new SandboxCreationException(
+          `Sandbox exec stream is unavailable for exec ${execId}`,
+        );
+      }
+
+      fakeExec.callback = callback;
+      for (const output of fakeExec.outputs) {
+        callback(output.level, output.message);
+      }
+      return;
+    }
+
+    const stream = this.execStreams.get(execId);
+
+    if (!stream) {
+      throw new SandboxCreationException(
+        `Sandbox exec stream is unavailable for exec ${execId}`,
+      );
+    }
+
+    this.attachMultiplexedStream(stream, callback, `exec ${execId}`);
+  }
+
+  async waitForExecExit(execId: string): Promise<DockerExecExitInfo> {
+    if (this.useFakeExecRuntime) {
+      return this.waitForFakeExecExit(execId);
+    }
+
+    const exec = this.docker.getExec(execId);
+
+    while (true) {
+      const info = await exec.inspect();
+
+      if (!info.Running) {
+        return {
+          running: false,
+          exitCode: info.ExitCode,
+          pid: info.Pid ?? null,
+        };
+      }
+
+      await this.delay(EXEC_INSPECT_POLL_INTERVAL_MS);
+    }
+  }
+
+  async killExec(execId: string, signal = 'TERM'): Promise<void> {
+    if (this.useFakeExecRuntime) {
+      await this.killFakeExec(execId, signal);
+      return;
+    }
+
+    const exec = this.docker.getExec(execId);
+    const info = await exec.inspect();
+
+    if (!info.Running || info.Pid <= 0) {
+      return;
+    }
+
+    const container = this.docker.getContainer(info.ContainerID);
+    const killExec = await container.exec({
+      AttachStdin: false,
+      AttachStdout: true,
+      AttachStderr: true,
+      Cmd: ['kill', `-${this.normalizeSignal(signal)}`, String(info.Pid)],
+      Tty: false,
+    });
+
+    await killExec.start({
+      Detach: false,
+      Tty: false,
+    });
   }
 
   async stopContainer(containerId: string): Promise<void> {
@@ -119,21 +271,91 @@ export class DockerService {
       timestamps: true,
     });
 
+    this.attachMultiplexedStream(stream, callback, `container ${containerId}`);
+  }
+
+  async getArchive(containerId: string, path: string): Promise<Readable> {
+    const container = this.docker.getContainer(containerId);
+    const stream = await container.getArchive({ path });
+    return stream as unknown as Readable;
+  }
+
+  async getWorkspaceHostPath(containerId: string): Promise<string> {
+    const container = this.docker.getContainer(containerId);
+    const info = await container.inspect();
+    const workspaceMount = info.Mounts?.find(
+      (mount) => mount.Destination === '/workspace',
+    );
+
+    if (!workspaceMount?.Source) {
+      throw new SandboxCreationException(
+        `Sandbox workspace mount is unavailable for container ${containerId}`,
+      );
+    }
+
+    return workspaceMount.Source;
+  }
+
+  async getContainerStats(containerId: string): Promise<ContainerStats> {
+    const container = this.docker.getContainer(containerId);
+    const stats = await container.stats({ stream: false });
+
+    const cpuDelta =
+      stats.cpu_stats.cpu_usage.total_usage -
+      stats.precpu_stats.cpu_usage.total_usage;
+    const systemDelta =
+      stats.cpu_stats.system_cpu_usage - stats.precpu_stats.system_cpu_usage;
+    const numCpus = stats.cpu_stats.online_cpus ?? 1;
+    const cpuPercent =
+      systemDelta > 0 ? (cpuDelta / systemDelta) * numCpus * 100 : 0;
+
+    return {
+      cpuPercent: Math.round(cpuPercent * 100) / 100,
+      memoryUsageMb: Math.round(stats.memory_stats.usage / MB_TO_BYTES),
+      memoryLimitMb: Math.round(stats.memory_stats.limit / MB_TO_BYTES),
+    };
+  }
+
+  private trackExecStream(
+    execId: string,
+    stream: NodeJS.ReadableStream,
+  ): void {
+    this.execStreams.set(execId, stream);
+
+    stream.on('close', () => {
+      this.execStreams.delete(execId);
+    });
+
+    stream.on('end', () => {
+      this.execStreams.delete(execId);
+    });
+
+    stream.on('error', (error: Error) => {
+      this.execStreams.delete(execId);
+      this.logger.error(`Exec stream error for ${execId}`, error.stack);
+    });
+  }
+
+  private attachMultiplexedStream(
+    stream: NodeJS.ReadableStream,
+    callback: (level: string, message: string) => void,
+    streamLabel: string,
+  ): void {
+    let buffer = Buffer.alloc(0);
+
     // Docker 多路复用流格式：
     //   字节 0:   流类型 (1=stdout, 2=stderr)
     //   字节 1-3: 填充 (0x00)
     //   字节 4-7: 载荷长度 (big-endian uint32)
     //   字节 8+:  载荷数据
     // TCP 分片可能将一个帧拆分到多个 chunk，或一个 chunk 包含多个帧
-    const HEADER_SIZE = 8;
-    let buffer = Buffer.alloc(0);
+    stream.on('data', (chunk: Buffer | string) => {
+      const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      buffer = Buffer.concat([buffer, chunkBuffer]);
 
-    stream.on('data', (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
-
-      while (buffer.length >= HEADER_SIZE) {
+      while (buffer.length >= DOCKER_STREAM_HEADER_SIZE) {
         const payloadSize = buffer.readUInt32BE(4);
-        const frameSize = HEADER_SIZE + payloadSize;
+        const frameSize = DOCKER_STREAM_HEADER_SIZE + payloadSize;
 
         if (buffer.length < frameSize) {
           break;
@@ -141,7 +363,7 @@ export class DockerService {
 
         const streamType = buffer.readUInt8(0);
         const payload = buffer
-          .subarray(HEADER_SIZE, frameSize)
+          .subarray(DOCKER_STREAM_HEADER_SIZE, frameSize)
           .toString('utf-8')
           .trimEnd();
 
@@ -155,7 +377,7 @@ export class DockerService {
     });
 
     stream.on('error', (err: Error) => {
-      this.logger.error(`Log stream error for ${containerId}`, err.stack);
+      this.logger.error(`Docker stream error for ${streamLabel}`, err.stack);
     });
   }
 
@@ -183,32 +405,6 @@ export class DockerService {
   async getSessionUrl(containerId: string): Promise<string> {
     const baseUrl = await this.getContainerBaseUrl(containerId);
     return `${baseUrl}/v1/session`;
-  }
-
-  async getArchive(containerId: string, path: string): Promise<Readable> {
-    const container = this.docker.getContainer(containerId);
-    const stream = await container.getArchive({ path });
-    return stream as unknown as Readable;
-  }
-
-  async getContainerStats(containerId: string): Promise<ContainerStats> {
-    const container = this.docker.getContainer(containerId);
-    const stats = await container.stats({ stream: false });
-
-    const cpuDelta =
-      stats.cpu_stats.cpu_usage.total_usage -
-      stats.precpu_stats.cpu_usage.total_usage;
-    const systemDelta =
-      stats.cpu_stats.system_cpu_usage - stats.precpu_stats.system_cpu_usage;
-    const numCpus = stats.cpu_stats.online_cpus ?? 1;
-    const cpuPercent =
-      systemDelta > 0 ? (cpuDelta / systemDelta) * numCpus * 100 : 0;
-
-    return {
-      cpuPercent: Math.round(cpuPercent * 100) / 100,
-      memoryUsageMb: Math.round(stats.memory_stats.usage / MB_TO_BYTES),
-      memoryLimitMb: Math.round(stats.memory_stats.limit / MB_TO_BYTES),
-    };
   }
 
   private async getContainerBaseUrl(containerId: string): Promise<string> {
@@ -240,5 +436,143 @@ export class DockerService {
       (error.message.includes('no such container') ||
         error.message.includes('is not found'))
     );
+  }
+
+  private normalizeSignal(signal: string): string {
+    return signal.replaceAll('-', '').toUpperCase();
+  }
+
+  private toNodeSignal(signal: string): NodeJS.Signals {
+    const normalizedSignal = this.normalizeSignal(signal);
+    return `SIG${normalizedSignal}` as NodeJS.Signals;
+  }
+
+  private parseExecEnv(envValues?: string[]): NodeJS.ProcessEnv {
+    if (!envValues?.length) {
+      return { ...process.env };
+    }
+
+    const env = { ...process.env };
+    for (const entry of envValues) {
+      const separatorIndex = entry.indexOf('=');
+      if (separatorIndex <= 0) {
+        continue;
+      }
+
+      const key = entry.slice(0, separatorIndex);
+      const value = entry.slice(separatorIndex + 1);
+      env[key] = value;
+    }
+
+    return env;
+  }
+
+  private async createFakeExec(
+    options: DockerExecCreateOptions,
+  ): Promise<DockerExecHandle> {
+    const execId = randomUUID();
+    const child = spawn(options.command, options.args ?? [], {
+      cwd: options.cwd,
+      env: this.parseExecEnv(options.env),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+
+    const fakeExec: FakeExecRecord = {
+      child,
+      outputs: [],
+      exitInfo: {
+        running: true,
+        exitCode: null,
+        pid: child.pid ?? null,
+      },
+    };
+    this.fakeExecs.set(execId, fakeExec);
+
+    const emitOutput = (level: string, chunk: string | Buffer) => {
+      const message = chunk.toString();
+      if (message.length === 0) {
+        return;
+      }
+
+      fakeExec.outputs.push({ level, message });
+      fakeExec.callback?.(level, message);
+    };
+
+    child.stdout.on('data', (chunk) => {
+      emitOutput('stdout', chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      emitOutput('stderr', chunk);
+    });
+    child.once('exit', (code) => {
+      fakeExec.exitInfo = {
+        running: false,
+        exitCode: code ?? null,
+        pid: child.pid ?? null,
+      };
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        child.off('spawn', onSpawn);
+        child.off('error', onError);
+      };
+
+      const onSpawn = () => {
+        cleanup();
+        resolve();
+      };
+
+      const onError = (error: Error) => {
+        cleanup();
+        this.fakeExecs.delete(execId);
+        reject(error);
+      };
+
+      child.once('spawn', onSpawn);
+      child.once('error', onError);
+    });
+
+    return { execId };
+  }
+
+  private async waitForFakeExecExit(execId: string): Promise<DockerExecExitInfo> {
+    const fakeExec = this.fakeExecs.get(execId);
+
+    if (!fakeExec) {
+      throw new SandboxCreationException(
+        `Sandbox exec stream is unavailable for exec ${execId}`,
+      );
+    }
+
+    if (!fakeExec.exitInfo.running) {
+      return fakeExec.exitInfo;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      fakeExec.child.once('exit', () => {
+        resolve();
+      });
+      fakeExec.child.once('error', reject);
+    });
+
+    return fakeExec.exitInfo;
+  }
+
+  private async killFakeExec(execId: string, signal: string): Promise<void> {
+    const fakeExec = this.fakeExecs.get(execId);
+
+    if (!fakeExec || !fakeExec.exitInfo.running) {
+      return;
+    }
+
+    fakeExec.child.kill(this.toNodeSignal(signal));
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

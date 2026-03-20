@@ -2,8 +2,12 @@ import { isAbsolute } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
-import type { McpServerConfig } from '../../agent/types/agent-session.types';
+import type {
+  McpServerConfig,
+  ServerSandboxBinding,
+} from '../../agent/types/agent-session.types';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
+import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
 import type {
   AcpConnectionState,
   AcpSessionNewParams,
@@ -19,7 +23,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export class SessionNewHandler {
   private agentRuntime?: IAgentRuntime;
 
-  constructor(private readonly moduleRef: ModuleRef) {}
+  constructor(
+    private readonly moduleRef: ModuleRef,
+    private readonly mcpSessionService: AcpSessionMcpRegistryService,
+  ) {}
 
   async handle(
     params: unknown,
@@ -41,16 +48,45 @@ export class SessionNewHandler {
       ...(normalizedParams.mcpServers === undefined
         ? {}
         : { mcpServers: normalizedParams.mcpServers }),
+      ...(normalizedParams.serverSandbox === undefined
+        ? {}
+        : { serverSandbox: normalizedParams.serverSandbox }),
     });
 
-    const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
-    state.sessions = sessions;
-    sessions.set(session.id, {
+    const trackedSession: AcpTrackedSession = {
       sessionId: session.id,
       runtimeSessionId: session.id,
       agentId: session.agentId,
       tenantId,
-    });
+      ...(normalizedParams.cwd === undefined ? {} : { cwd: normalizedParams.cwd }),
+      ...(normalizedParams.serverSandbox === undefined
+        ? {}
+        : { serverSandbox: normalizedParams.serverSandbox }),
+    };
+
+    if (normalizedParams.mcpServers !== undefined) {
+      try {
+        await this.mcpSessionService.bootstrapSessionTools(
+          trackedSession,
+          normalizedParams.mcpServers,
+        );
+      } catch (error) {
+        await this.safeCleanupSessionTools(trackedSession);
+        await this.safeCancelRuntimeSession(session.id);
+        throw new AcpJsonRpcError(
+          -32603,
+          'Failed to initialize ACP MCP forwarding',
+          {
+            sessionId: session.id,
+            reason: this.getErrorMessage(error),
+          },
+        );
+      }
+    }
+
+    const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
+    state.sessions = sessions;
+    sessions.set(session.id, trackedSession);
 
     return {
       sessionId: session.id,
@@ -79,11 +115,13 @@ export class SessionNewHandler {
 
     const cwd = this.readCwd(params.cwd);
     const mcpServers = this.readMcpServers(params.mcpServers);
+    const serverSandbox = this.readServerSandbox(params.serverSandbox);
 
     return {
       agentId,
       ...(cwd === undefined ? {} : { cwd }),
       ...(mcpServers === undefined ? {} : { mcpServers }),
+      ...(serverSandbox === undefined ? {} : { serverSandbox }),
     };
   }
 
@@ -111,5 +149,44 @@ export class SessionNewHandler {
     }
 
     return value as Readonly<Record<string, McpServerConfig>>;
+  }
+
+  private async safeCleanupSessionTools(
+    trackedSession: AcpTrackedSession,
+  ): Promise<void> {
+    try {
+      await this.mcpSessionService.cleanupSessionTools(trackedSession);
+    } catch {
+      return;
+    }
+  }
+
+  private async safeCancelRuntimeSession(sessionId: string): Promise<void> {
+    try {
+      await this.getAgentRuntime().cancel(sessionId);
+    } catch {
+      return;
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private readServerSandbox(value: unknown): ServerSandboxBinding | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (!isPlainObject(value)) {
+      throw new AcpJsonRpcError(-32602, 'Invalid params');
+    }
+
+    const executionId = value.executionId;
+    if (typeof executionId !== 'string' || executionId.length === 0) {
+      throw new AcpJsonRpcError(-32602, 'Invalid params');
+    }
+
+    return { executionId };
   }
 }

@@ -1,9 +1,12 @@
+import type { ToolSet } from 'ai';
 import type { AgentEvent } from '../types/agent-event.types';
 import type {
   AgentSession,
   CreateSessionParams,
 } from '../types/agent-session.types';
 import type { ContentBlock } from '../types/content-block.types';
+
+export type SessionToolProvider = () => Promise<ToolSet> | ToolSet;
 
 /**
  * NestJS 注入令牌：IAgentRuntime
@@ -26,6 +29,11 @@ export interface IAgentRuntime {
   loadSession(sessionId: string): Promise<AgentSession>;
   prompt(sessionId: string, content: ContentBlock[]): AsyncIterable<AgentEvent>;
   cancel(sessionId: string): Promise<void>;
+  registerSessionToolProvider?(
+    sessionId: string,
+    provider: SessionToolProvider,
+  ): void;
+  unregisterSessionToolProvider?(sessionId: string): void;
   resolveToolPermission?(
     sessionId: string,
     toolCallId: string,
