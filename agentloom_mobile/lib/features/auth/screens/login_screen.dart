@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
 import '../models/auth_state.dart';
@@ -55,9 +56,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // 检查登录后状态
     final authState = ref.read(authProvider).value;
-    if (authState is AuthStateUnauthenticated ||
-        authState is AuthStateMfaRequired) {
-      // 失败或 MFA → 清空密码
+    if (authState is AuthStateMfaRequired) {
+      // MFA 挑战 → 导航到 MFA 验证页面
+      _passwordController.clear();
+      if (mounted) {
+        context.go(
+          '/mfa-verify',
+          extra: {'mfaToken': authState.mfaToken, 'factors': authState.factors},
+        );
+      }
+    } else if (authState is AuthStateUnauthenticated) {
+      // 登录失败 → 清空密码
       _passwordController.clear();
     }
   }
@@ -67,13 +76,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.watch(authProvider);
     final isLoading = authState.isLoading;
 
-    // 提取错误消息
+    // 提取错误消息（MFA 状态不再显示错误，而是导航到 MFA 验证页面）
     String? errorMessage;
     final stateValue = authState.value;
     if (stateValue is AuthStateUnauthenticated) {
       errorMessage = stateValue.message;
-    } else if (stateValue is AuthStateMfaRequired) {
-      errorMessage = '此账户需要多因素认证，请在 Web 端登录';
     }
 
     return Scaffold(

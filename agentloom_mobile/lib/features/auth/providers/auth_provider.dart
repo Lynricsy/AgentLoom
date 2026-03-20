@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/auth_api.dart';
 import '../models/auth_state.dart';
+import '../models/auth_tokens.dart';
 import '../models/login_user.dart';
 import '../../notifications/providers/push_notification_provider.dart';
 import 'token_storage_provider.dart';
@@ -105,6 +106,48 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     } catch (_) {
       await forceLogout();
       return false;
+    }
+  }
+
+  /// 处理 OAuth 回调 tokens（来自 agentloom://auth/callback 深链）
+  ///
+  /// 将 tokens 保存到安全存储，并更新认证状态为已认证。
+  Future<void> handleOAuthCallback(AuthTokens tokens) async {
+    await _tokenStorage.saveTokens(tokens);
+    final user = _restoreUserFromAccessToken(tokens.accessToken);
+
+    if (!ref.mounted) return;
+
+    state = AsyncValue.data(
+      AuthState.authenticated(user: user, tokens: tokens),
+    );
+  }
+
+  /// MFA 验证成功后完成认证
+  ///
+  /// 由 MfaNotifier 在 TOTP 验证通过后调用，保存 tokens 并转入已认证状态。
+  Future<void> completeMfaAuthentication(AuthTokens tokens) async {
+    await _tokenStorage.saveTokens(tokens);
+    final user = _restoreUserFromAccessToken(tokens.accessToken);
+
+    if (!ref.mounted) return;
+
+    state = AsyncValue.data(
+      AuthState.authenticated(user: user, tokens: tokens),
+    );
+  }
+
+  /// 更新已认证用户的 tokens（MFA 注册/禁用后刷新 tokens）
+  Future<void> updateTokens(AuthTokens tokens) async {
+    await _tokenStorage.saveTokens(tokens);
+
+    if (!ref.mounted) return;
+
+    final currentState = state.value;
+    if (currentState is AuthStateAuthenticated) {
+      state = AsyncValue.data(
+        AuthState.authenticated(user: currentState.user, tokens: tokens),
+      );
     }
   }
 

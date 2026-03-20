@@ -5,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../app/shell_scaffold.dart';
 import '../features/auth/models/auth_state.dart';
 import '../features/auth/providers/auth_provider.dart';
+import '../features/auth/screens/auth_callback_screen.dart';
 import '../features/auth/screens/login_screen.dart';
+import '../features/auth/screens/mfa_enroll_screen.dart';
+import '../features/auth/screens/mfa_verify_screen.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
@@ -44,8 +47,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final authState = await ref.read(authProvider.future);
       final isAuthenticated = authState is AuthStateAuthenticated;
       final isLoginRoute = state.uri.path == '/login';
+      final isAuthCallbackRoute = state.uri.path == '/auth/callback';
+      final isMfaRoute =
+          state.uri.path == '/mfa-verify' || state.uri.path == '/mfa-enroll';
 
-      if (!isAuthenticated && !isLoginRoute) return '/login';
+      if (!isAuthenticated &&
+          !isLoginRoute &&
+          !isAuthCallbackRoute &&
+          !isMfaRoute) {
+        return '/login';
+      }
       if (isAuthenticated && isLoginRoute) return '/dashboard';
       return null;
     },
@@ -62,6 +73,34 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           final executionId = state.pathParameters['executionId']!;
           return ExecutionMonitorScreen(executionId: executionId);
         },
+      ),
+      GoRoute(
+        path: '/auth/callback',
+        name: RouteNames.authCallback,
+        builder: (context, state) {
+          final accessToken = state.uri.queryParameters['access_token'];
+          final refreshToken = state.uri.queryParameters['refresh_token'];
+          return AuthCallbackScreen(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/mfa-verify',
+        name: RouteNames.mfaVerify,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return MfaVerifyScreen(
+            mfaToken: extra['mfaToken'] as String? ?? '',
+            factors: (extra['factors'] as List<Map<String, dynamic>>?) ?? [],
+          );
+        },
+      ),
+      GoRoute(
+        path: '/mfa-enroll',
+        name: RouteNames.mfaEnroll,
+        builder: (context, state) => const MfaEnrollScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {

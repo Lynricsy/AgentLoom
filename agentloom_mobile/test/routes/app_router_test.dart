@@ -3,6 +3,7 @@ import 'package:agentloom_mobile/config/env.dart';
 import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/routes/app_router.dart';
+import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -170,6 +171,46 @@ void main() {
       expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
     });
+  });
+
+  group('deep link — auth callback', () {
+    test('authCallback route name constant is correct', () {
+      expect(RouteNames.authCallback, equals('authCallback'));
+    });
+
+    test('auth callback deep link route is registered in GoRouter', () {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      final router = container.read(goRouterProvider);
+
+      // namedLocation は route が登録されていない場合 GoException を throw する
+      // → これが通れば /auth/callback ルートが正しく登録されている証明
+      final location = router.namedLocation(RouteNames.authCallback);
+      expect(location, equals('/auth/callback'));
+    });
+
+    test(
+      'auth callback route generates correct location with query params',
+      () {
+        final container = createTestContainer();
+        addTearDown(container.dispose);
+
+        final router = container.read(goRouterProvider);
+
+        final location = router.namedLocation(
+          RouteNames.authCallback,
+          queryParameters: {
+            'access_token': 'test_access',
+            'refresh_token': 'test_refresh',
+          },
+        );
+
+        expect(location, contains('/auth/callback'));
+        expect(location, contains('access_token=test_access'));
+        expect(location, contains('refresh_token=test_refresh'));
+      },
+    );
   });
 }
 
