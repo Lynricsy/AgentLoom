@@ -61,6 +61,10 @@ describe('InProcessAgentAdapter', () => {
   let mockSessionPersistence: {
     saveToCheckpoint: ReturnType<typeof vi.fn>;
     loadFromCheckpoint: ReturnType<typeof vi.fn>;
+    saveConversationSession: ReturnType<typeof vi.fn>;
+    loadConversationSession: ReturnType<typeof vi.fn>;
+    appendConversationReplayEntry: ReturnType<typeof vi.fn>;
+    loadConversationReplay: ReturnType<typeof vi.fn>;
     serializeSession: ReturnType<typeof vi.fn>;
     deserializeSession: ReturnType<typeof vi.fn>;
   };

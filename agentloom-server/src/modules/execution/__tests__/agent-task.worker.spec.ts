@@ -224,6 +224,9 @@ describe('AgentTaskWorker', () => {
     loadSession: vi.fn(),
     prompt: vi.fn(),
     cancel: vi.fn(),
+    registerSessionToolProvider: vi.fn(),
+    unregisterSessionToolProvider: vi.fn(),
+    resolveToolPermission: vi.fn(),
     registerSessionMetadata: vi.fn(),
   };
 
@@ -235,6 +238,9 @@ describe('AgentTaskWorker', () => {
     loadSession: vi.fn(),
     prompt: vi.fn(),
     cancel: vi.fn(),
+    registerSessionToolProvider: vi.fn(),
+    unregisterSessionToolProvider: vi.fn(),
+    resolveToolPermission: vi.fn(),
     registerSessionMetadata: vi.fn(),
   };
 
