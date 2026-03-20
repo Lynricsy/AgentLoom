@@ -23,6 +23,7 @@ import { organizationAutonomyPolicyRoute } from './settings/security/autonomy-po
 import { resourceGovernanceRoute } from './settings/resource-quotas'
 import { monitoringRoute } from './settings/monitoring'
 import { privateDeploymentRoute } from './settings/private-deployment'
+import { securitySettingsRoute } from './settings/security'
 import { authCallbackRoute } from './auth/callback'
 import { loginRoute } from './auth/login'
 import { registerRoute } from './auth/register'
@@ -130,6 +131,7 @@ export const routeTree = rootRoute.addChildren([
   resourceGovernanceRoute,
   monitoringRoute,
   privateDeploymentRoute,
+  securitySettingsRoute,
   authCallbackRoute,
   loginRoute,
   registerRoute,

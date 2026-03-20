@@ -15,3 +15,4 @@ export {
   useAuthLoading,
 } from './stores/auth.store'
 export type { AuthState, AuthActions } from './stores/auth.store'
+export { SecuritySettings } from './components/SecuritySettings'
