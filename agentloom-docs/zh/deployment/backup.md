@@ -28,7 +28,7 @@ graph TD
 
 ## PostgreSQL 备份
 
-### 备份流程
+### PostgreSQL 备份流程
 
 `backup-postgres.sh` 脚本执行以下步骤：
 
@@ -38,7 +38,7 @@ graph TD
 4. **写入元数据** — 生成 `.meta` 文件（时间戳、大小、数据库名等）
 5. **清理历史** — 按保留策略删除过期备份
 
-### 执行方式
+### PostgreSQL 执行方式
 
 ```bash
 # 手动执行
@@ -52,26 +52,26 @@ graph TD
 
 ### 备份产物
 
-| 文件 | 说明 |
-|------|------|
-| `*.dump` | PostgreSQL 自定义格式备份（`pg_dump -Fc`） |
-| `*.dump.sha256` | SHA-256 校验码文件 |
-| `*.meta` | 元数据（时间戳、数据库名、大小） |
+| 文件            | 说明                                       |
+| --------------- | ------------------------------------------ |
+| `*.dump`        | PostgreSQL 自定义格式备份（`pg_dump -Fc`） |
+| `*.dump.sha256` | SHA-256 校验码文件                         |
+| `*.meta`        | 元数据（时间戳、数据库名、大小）           |
 
-### 环境变量
+### PostgreSQL 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `POSTGRES_HOST` | `localhost` | 数据库主机 |
-| `POSTGRES_PORT` | `5432` | 数据库端口 |
-| `POSTGRES_USER` | `agentloom` | 数据库用户 |
-| `POSTGRES_DB` | `agentloom` | 数据库名 |
-| `BACKUP_DIR` | `./backups/postgres` | 备份输出目录 |
-| `RETENTION_DAYS` | `7` | 备份保留天数 |
+| 变量             | 默认值               | 说明         |
+| ---------------- | -------------------- | ------------ |
+| `POSTGRES_HOST`  | `localhost`          | 数据库主机   |
+| `POSTGRES_PORT`  | `5432`               | 数据库端口   |
+| `POSTGRES_USER`  | `agentloom`          | 数据库用户   |
+| `POSTGRES_DB`    | `agentloom`          | 数据库名     |
+| `BACKUP_DIR`     | `./backups/postgres` | 备份输出目录 |
+| `RETENTION_DAYS` | `7`                  | 备份保留天数 |
 
 ## MinIO 备份
 
-### 备份流程
+### MinIO 备份流程
 
 `backup-minio.sh` 脚本执行以下步骤：
 
@@ -80,7 +80,7 @@ graph TD
 3. **写入元数据** — 生成 `backup.meta` 记录备份信息
 4. **清理历史** — 按保留策略删除过期备份目录
 
-### 执行方式
+### MinIO 执行方式
 
 ```bash
 # 手动执行
@@ -91,16 +91,16 @@ graph TD
 # backups/minio/<timestamp>/backup.meta
 ```
 
-### 环境变量
+### MinIO 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `MINIO_ENDPOINT` | `http://localhost:9000` | MinIO 端点 |
-| `MINIO_ROOT_USER` | — | MinIO 管理员用户 |
-| `MINIO_ROOT_PASSWORD` | — | MinIO 管理员密码 |
-| `MINIO_BUCKET` | `agentloom` | 备份的 Bucket 名称 |
-| `BACKUP_DIR` | `./backups/minio` | 备份输出目录 |
-| `RETENTION_DAYS` | `7` | 备份保留天数 |
+| 变量                  | 默认值                  | 说明               |
+| --------------------- | ----------------------- | ------------------ |
+| `MINIO_ENDPOINT`      | `http://localhost:9000` | MinIO 端点         |
+| `MINIO_ROOT_USER`     | —                       | MinIO 管理员用户   |
+| `MINIO_ROOT_PASSWORD` | —                       | MinIO 管理员密码   |
+| `MINIO_BUCKET`        | `agentloom`             | 备份的 Bucket 名称 |
+| `BACKUP_DIR`          | `./backups/minio`       | 备份输出目录       |
+| `RETENTION_DAYS`      | `7`                     | 备份保留天数       |
 
 ## 自动调度 (systemd)
 
@@ -108,17 +108,17 @@ AgentLoom 提供 4 个 systemd 单元文件，实现小时级自动备份：
 
 ### 单元文件
 
-| 文件 | 类型 | 说明 |
-|------|------|------|
-| `agentloom-backup-postgres.service` | Service | PostgreSQL 备份服务 |
-| `agentloom-backup-postgres.timer` | Timer | 每小时第 5 分钟触发 |
-| `agentloom-backup-minio.service` | Service | MinIO 备份服务 |
-| `agentloom-backup-minio.timer` | Timer | 每小时第 20 分钟触发 |
+| 文件                                | 类型    | 说明                 |
+| ----------------------------------- | ------- | -------------------- |
+| `agentloom-backup-postgres.service` | Service | PostgreSQL 备份服务  |
+| `agentloom-backup-postgres.timer`   | Timer   | 每小时第 5 分钟触发  |
+| `agentloom-backup-minio.service`    | Service | MinIO 备份服务       |
+| `agentloom-backup-minio.timer`      | Timer   | 每小时第 20 分钟触发 |
 
 ### 安装与启用
 
 ```bash
-# 1. 复��单元文件
+# 1. 复制单元文件
 sudo cp systemd/*.service systemd/*.timer /etc/systemd/system/
 
 # 2. 编辑 service 文件，确认脚本路径和环境变量
@@ -137,10 +137,10 @@ systemctl list-timers | grep agentloom
 
 ### 调度时间
 
-| Timer | 触发时间 | 说明 |
-|-------|---------|------|
-| postgres | `*:05:00` | 每小时第 5 分钟 |
-| minio | `*:20:00` | 每小时第 20 分钟 |
+| Timer    | 触发时间  | 说明             |
+| -------- | --------- | ---------------- |
+| postgres | `*:05:00` | 每小时第 5 分钟  |
+| minio    | `*:20:00` | 每小时第 20 分钟 |
 
 两个 timer 均配置了 `Persistent=true`，即使系统重启后也会补偿执行错过的备份周期。
 
@@ -211,23 +211,24 @@ graph TD
 5. **冒烟测试**
 
 ::: danger 恢复注意事项
+
 - 恢复操作会**完全覆盖**目标数据，请确认备份版本正确
 - PostgreSQL 恢复会先 **DROP** 整个数据库再重建
 - MinIO 的 `--remove` 参数会删除备份中不存在的文件
 - 恢复前建议先备份当前数据作为回退点
-:::
+  :::
 
 ## 备份策略建议
 
 ### 生产环境推荐
 
-| 配置项 | 建议值 | 说明 |
-|--------|--------|------|
-| PostgreSQL 备份频率 | 每小时 | 默认调度 |
-| MinIO 备份频率 | 每小时 | 默认调度 |
-| 本地保留 | 7 天 | 默认值 |
-| 异地备份 | 每日 | 使用 rsync/rclone 同步到远程 |
-| 恢复演练 | 每月 | 验证备份可用性 |
+| 配置项              | 建议值 | 说明                         |
+| ------------------- | ------ | ---------------------------- |
+| PostgreSQL 备份频率 | 每小时 | 默认调度                     |
+| MinIO 备份频率      | 每小时 | 默认调度                     |
+| 本地保留            | 7 天   | 默认值                       |
+| 异地备份            | 每日   | 使用 rsync/rclone 同步到远程 |
+| 恢复演练            | 每月   | 验证备份可用性               |
 
 ### 异地备份扩展
 

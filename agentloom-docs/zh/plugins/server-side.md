@@ -33,7 +33,7 @@ flowchart TB
 
 插件通过 `.alp` 文件（ZIP 格式）以 multipart 形式上传到平台：
 
-```
+```text
 POST /api/v1/plugins
 Content-Type: multipart/form-data
 
@@ -52,30 +52,31 @@ file: <.alp 文件>
 4. **校验哈希** — 使用 `computeContentHash()` 重新计算并比对内容哈希
 
 ::: info 公钥要求
+
 - 算法：RSA
 - 最低位数：**2048 bits**
 - 拒绝私钥上传
-:::
+  :::
 
 ### 数据模型
 
 注册后的插件存入 `plugins` 表：
 
-| 字段 | 说明 |
-|------|------|
-| `org_id` + `plugin_id` | 组合唯一键 |
-| `manifest` | 完整清单 JSONB |
-| `node_definitions` | 节点定义列表 |
-| `signature` | Base64 签名 |
-| `content_hash` | 内容哈希 |
-| `wasm_bundle_url` | WASM 包存储 URL |
-| `occ_version` | 乐观并发版本号 |
+| 字段                   | 说明            |
+| ---------------------- | --------------- |
+| `org_id` + `plugin_id` | 组合唯一键      |
+| `manifest`             | 完整清单 JSONB  |
+| `node_definitions`     | 节点定义列表    |
+| `signature`            | Base64 签名     |
+| `content_hash`         | 内容哈希        |
+| `wasm_bundle_url`      | WASM 包存储 URL |
+| `occ_version`          | 乐观并发版本号  |
 
 ## 开发者密钥管理
 
 开发者需要先将公钥注册到平台，后续的插件签名验证才能匹配：
 
-```
+```text
 POST   /api/v1/plugins/developer-keys     # 注册公钥
 GET    /api/v1/plugins/developer-keys     # 列出密钥
 DELETE /api/v1/plugins/developer-keys/:id # 吊销密钥
@@ -83,11 +84,11 @@ DELETE /api/v1/plugins/developer-keys/:id # 吊销密钥
 
 `plugin_developer_keys` 表结构：
 
-| 字段 | 说明 |
-|------|------|
-| `org_id` + `key_fingerprint` | 组合唯一键 |
-| `public_key` | PEM 格式公钥 |
-| `status` | `active` / `revoked` |
+| 字段                         | 说明                 |
+| ---------------------------- | -------------------- |
+| `org_id` + `key_fingerprint` | 组合唯一键           |
+| `public_key`                 | PEM 格式公钥         |
+| `status`                     | `active` / `revoked` |
 
 ## WASM 沙箱执行
 
@@ -97,32 +98,32 @@ DELETE /api/v1/plugins/developer-keys/:id # 吊销密钥
 
 ```typescript
 const plugin = await createPlugin(wasmBundle, {
-  runInWorker: true,      // Worker 线程隔离
+  runInWorker: true, // Worker 线程隔离
   config: pluginConfig,
-})
+});
 ```
 
 ### 平台硬限制
 
 以下限制为平台全局固定值，**不可由插件自行修改**：
 
-| 限制 | 值 | 说明 |
-|------|-----|------|
-| `timeoutMs` | **30,000** (30 秒) | 单次执行超时 |
-| `maxMemoryPages` | **4,096** (256 MB) | 最大内存页数 |
-| `allowedPaths` | `{}` (空) | 禁止文件系统访问 |
-| `useWasi` | `false` | 禁用 WASI |
+| 限制             | 值                 | 说明             |
+| ---------------- | ------------------ | ---------------- |
+| `timeoutMs`      | **30,000** (30 秒) | 单次执行超时     |
+| `maxMemoryPages` | **4,096** (256 MB) | 最大内存页数     |
+| `allowedPaths`   | `{}` (空)          | 禁止文件系统访问 |
+| `useWasi`        | `false`            | 禁用 WASI        |
 
 ### 错误分类
 
 沙箱执行中的异常会被分类处理：
 
-| 错误类型 | 触发条件 | 处理方式 |
-|----------|----------|----------|
-| `timeout` | 执行超过 30 秒 | 强制终止 |
-| `permission-denied` | 尝试越权操作 | 拒绝执行 |
-| `resource-exhausted` | 超出内存限制 | 强制终止 |
-| `sandbox-error` | 其他沙箱异常 | 记录日志 |
+| 错误类型             | 触发条件       | 处理方式 |
+| -------------------- | -------------- | -------- |
+| `timeout`            | 执行超过 30 秒 | 强制终止 |
+| `permission-denied`  | 尝试越权操作   | 拒绝执行 |
+| `resource-exhausted` | 超出内存限制   | 强制终止 |
+| `sandbox-error`      | 其他沙箱异常   | 记录日志 |
 
 ## 使用量记录
 
@@ -130,15 +131,15 @@ const plugin = await createPlugin(wasmBundle, {
 
 ### `plugin_usage_records` 表
 
-| 字段 | 说明 |
-|------|------|
-| `plugin_id` | 插件 ID |
-| `org_id` | 租户 ID |
-| `execution_id` | 工作流执行 ID |
-| `billing_amount` | 计费金额 |
+| 字段                    | 说明             |
+| ----------------------- | ---------------- |
+| `plugin_id`             | 插件 ID          |
+| `org_id`                | 租户 ID          |
+| `execution_id`          | 工作流执行 ID    |
+| `billing_amount`        | 计费金额         |
 | `execution_duration_ms` | 执行耗时（毫秒） |
-| `input_tokens` | 输入 token 数 |
-| `output_tokens` | 输出 token 数 |
+| `input_tokens`          | 输入 token 数    |
+| `output_tokens`         | 输出 token 数    |
 
 ### 聚合查询
 
@@ -148,7 +149,7 @@ const usage = await pluginUsageService.getUsageByPluginForPeriod(
   pluginId,
   startDate,
   endDate,
-)
+);
 ```
 
 ## 收益结算
@@ -157,7 +158,7 @@ const usage = await pluginUsageService.getUsageByPluginForPeriod(
 
 AgentLoom 采用 **70/30** 收益分成模型：
 
-```
+```text
 总收入 (totalRevenue)
 ├── 开发者份额: 70%
 │   ├── 毛收入 = totalRevenue × 0.70
@@ -169,13 +170,14 @@ AgentLoom 采用 **70/30** 收益分成模型：
 ::: tip 具体示例
 假设某插件在一个结算周期内产生 **¥1,000** 收入：
 
-| 项目 | 计算 | 金额 |
-|------|------|------|
-| 开发者毛收入 | ¥1,000 × 70% | ¥700 |
-| 上架佣金 | ¥700 × 15% | ¥105 |
-| **开发者净收入** | ¥700 - ¥105 | **¥595** |
-| 平台份额 | ¥1,000 × 30% | ¥300 |
-| 上架佣金（归平台） | — | ¥105 |
+| 项目               | 计算         | 金额     |
+| ------------------ | ------------ | -------- |
+| 开发者毛收入       | ¥1,000 × 70% | ¥700     |
+| 上架佣金           | ¥700 × 15%   | ¥105     |
+| **开发者净收入**   | ¥700 - ¥105  | **¥595** |
+| 平台份额           | ¥1,000 × 30% | ¥300     |
+| 上架佣金（归平台） | —            | ¥105     |
+
 :::
 
 ### 结算流程
@@ -194,15 +196,15 @@ flowchart TD
 
 ### `plugin_earnings` 表
 
-| 字段 | 说明 |
-|------|------|
-| `plugin_id` | 插件 ID |
-| `period_start` / `period_end` | 结算周期 |
-| `total_revenue` | 总收入 |
-| `developer_share` | 开发者净收入 |
-| `platform_share` | 平台份额 |
-| `listing_commission` | 上架佣金 |
-| `payout_status` | `pending` / `processing` / `completed` / `failed` |
+| 字段                          | 说明                                              |
+| ----------------------------- | ------------------------------------------------- |
+| `plugin_id`                   | 插件 ID                                           |
+| `period_start` / `period_end` | 结算周期                                          |
+| `total_revenue`               | 总收入                                            |
+| `developer_share`             | 开发者净收入                                      |
+| `platform_share`              | 平台份额                                          |
+| `listing_commission`          | 上架佣金                                          |
+| `payout_status`               | `pending` / `processing` / `completed` / `failed` |
 
 ### 结算特性
 
@@ -216,7 +218,7 @@ flowchart TD
 
 已注册的插件可通过市场 API 进行上架管理：
 
-```
+```text
 POST   /api/v1/plugins/marketplace          # 上架
 GET    /api/v1/plugins/marketplace          # 浏览列表
 GET    /api/v1/plugins/marketplace/:id      # 详情
@@ -225,10 +227,10 @@ PUT    /api/v1/plugins/marketplace/:id      # 更新
 
 ### `marketplace_listings` 表
 
-| 字段 | 说明 |
-|------|------|
-| `listing_type` | `workflow` / `plugin` |
-| `pricing_model` | `free` / `per_execution` |
+| 字段                  | 说明                     |
+| --------------------- | ------------------------ |
+| `listing_type`        | `workflow` / `plugin`    |
+| `pricing_model`       | `free` / `per_execution` |
 | `workflow_version_id` | nullable，插件上架时为空 |
 
 ### 安装权限
@@ -244,7 +246,7 @@ PUT    /api/v1/plugins/marketplace/:id      # 更新
 
 插件系统使用两个 BullMQ 队列：
 
-| 队列名 | 说明 | 触发方式 |
-|--------|------|----------|
-| `plugin-execution` | 插件执行 | 工作流节点触发 |
-| `earnings-settlement` | 收益结算 | 定时调度 |
+| 队列名                | 说明     | 触发方式       |
+| --------------------- | -------- | -------------- |
+| `plugin-execution`    | 插件执行 | 工作流节点触发 |
+| `earnings-settlement` | 收益结算 | 定时调度       |

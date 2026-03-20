@@ -4,11 +4,11 @@ AgentLoom 支持多种部署模式，适用于从开发调试到企业级生产�
 
 ## 部署模式
 
-| 模式 | 适用场景 | 复杂度 |
-|------|---------|--------|
-| [Docker Compose](./docker) | 单机部署、小团队 | ⭐ 低 |
-| [Kubernetes / Helm](./helm) | 集群部署、弹性伸缩 | ⭐⭐⭐ 高 |
-| 裸机部署 | 特殊合规要求 | ⭐⭐⭐⭐ 极高 |
+| 模式                        | 适用场景           | 复杂度        |
+| --------------------------- | ------------------ | ------------- |
+| [Docker Compose](./docker)  | 单机部署、小团队   | ⭐ 低         |
+| [Kubernetes / Helm](./helm) | 集群部署、弹性伸缩 | ⭐⭐⭐ 高     |
+| 裸机部署                    | 特殊合规要求       | ⭐⭐⭐⭐ 极高 |
 
 ::: tip 推荐
 对于大多数私有化部署场景，**Docker Compose** 模式是最佳起步方案 — 快速、可预测、运维简单。
@@ -18,20 +18,20 @@ AgentLoom 支持多种部署模式，适用于从开发调试到企业级生产�
 
 ### 最低配置
 
-| 资源 | 要求 |
-|------|------|
-| CPU | 4 vCPU |
-| 内存 | 8 GiB |
-| 磁盘 | 100 GiB SSD |
+| 资源     | 要求                                    |
+| -------- | --------------------------------------- |
+| CPU      | 4 vCPU                                  |
+| 内存     | 8 GiB                                   |
+| 磁盘     | 100 GiB SSD                             |
 | 操作系统 | Linux (推荐 Ubuntu 22.04+ / Debian 12+) |
-| Docker | 24.0+ (含 Compose V2) |
+| Docker   | 24.0+ (含 Compose V2)                   |
 
 ### 推荐生产配置
 
-| 资源 | 要求 |
-|------|------|
-| CPU | 8+ vCPU |
-| 内存 | 16+ GiB |
+| 资源 | 要求              |
+| ---- | ----------------- |
+| CPU  | 8+ vCPU           |
+| 内存 | 16+ GiB           |
 | 磁盘 | 200+ GiB NVMe SSD |
 | 网络 | 内网带宽 ≥ 1 Gbps |
 
@@ -64,16 +64,16 @@ graph TD
 
 ### 服务说明
 
-| 服务 | 镜像 | 说明 |
-|------|------|------|
-| **reverse-proxy** | `nginx:1.27-alpine` | 反向代理，统一入口 |
-| **studio** | `agentloom/studio` | React 前端，Nginx 托管 SPA |
-| **server** | `agentloom/server` | NestJS API 服务 |
-| **worker** | `agentloom/server` | 后台任务处理（与 server 共享镜像） |
-| **postgres** | `postgres:16-alpine` | 主数据库 |
-| **redis** | `redis:7-alpine` | 缓存与消息队列 (BullMQ) |
-| **minio** | `minio/minio:latest` | S3 兼容对象存储 |
-| **qdrant** | `qdrant/qdrant:v1.14.0` | 向量数据库（知识库 RAG） |
+| 服务              | 镜像                    | 说明                               |
+| ----------------- | ----------------------- | ---------------------------------- |
+| **reverse-proxy** | `nginx:1.27-alpine`     | 反向代理，统一入口                 |
+| **studio**        | `agentloom/studio`      | React 前端，Nginx 托管 SPA         |
+| **server**        | `agentloom/server`      | NestJS API 服务                    |
+| **worker**        | `agentloom/server`      | 后台任务处理（与 server 共享镜像） |
+| **postgres**      | `postgres:16-alpine`    | 主数据库                           |
+| **redis**         | `redis:7-alpine`        | 缓存与消息队列 (BullMQ)            |
+| **minio**         | `minio/minio:latest`    | S3 兼容对象存储                    |
+| **qdrant**        | `qdrant/qdrant:v1.14.0` | 向量数据库（知识库 RAG）           |
 
 ::: info Server 与 Worker 的关系
 Server 和 Worker 使用**完全相同的 Docker 镜像和启动命令**，仅通过拓扑分离实现职责划分。这种设计简化了构建流程并确保代码一致性。
@@ -148,12 +148,12 @@ VITE_WS_URL=ws://localhost:8080
 
 ## 运维文档导航
 
-| 文档 | 内容 |
-|------|------|
-| [Docker Compose 部署](./docker) | 完整的 Docker Compose 部署指南 |
-| [Kubernetes / Helm 部署](./helm) | Helm Chart 安装与配置 |
-| [备份与恢复](./backup) | 数据备份策略与灾难恢复 |
-| [Nginx 文档站托管](./nginx) | VitePress 文档站的 Nginx 配置 |
+| 文档                             | 内容                           |
+| -------------------------------- | ------------------------------ |
+| [Docker Compose 部署](./docker)  | 完整的 Docker Compose 部署指南 |
+| [Kubernetes / Helm 部署](./helm) | Helm Chart 安装与配置          |
+| [备份与恢复](./backup)           | 数据备份策略与灾难恢复         |
+| [Nginx 文档站托管](./nginx)      | VitePress 文档站的 Nginx 配置  |
 
 ## 相关管理功能
 

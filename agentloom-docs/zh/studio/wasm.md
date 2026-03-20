@@ -34,12 +34,12 @@ graph TB
 
 ### 各层职责
 
-| 层级 | 文件 | 职责 |
-|------|------|------|
-| **TypeEngineService** | `type-engine.service.ts` | 应用层 API，供画布组件调用 |
-| **TypeEngineRuntime** | `type-engine.runtime.ts` | 管理 Worker 生命周期、消息序列化、超时控制 |
-| **Worker** | `runtime.worker.ts` | Web Worker 桥接层，加载和调用 WASM |
-| **WASM** | `agentloom_type_engine.wasm` | Rust 编译的类型检查引擎 |
+| 层级                  | 文件                         | 职责                                       |
+| --------------------- | ---------------------------- | ------------------------------------------ |
+| **TypeEngineService** | `type-engine.service.ts`     | 应用层 API，供画布组件调用                 |
+| **TypeEngineRuntime** | `type-engine.runtime.ts`     | 管理 Worker 生命周期、消息序列化、超时控制 |
+| **Worker**            | `runtime.worker.ts`          | Web Worker 桥接层，加载和调用 WASM         |
+| **WASM**              | `agentloom_type_engine.wasm` | Rust 编译的类型检查引擎                    |
 
 ## WASM 加载
 
@@ -63,11 +63,11 @@ WASM 二进制产物位于 `agentloom-type-engine/pkg/`，已提交到仓库。
 
 当 WASM 不可用时（浏览器不支持 / 加载失败），TypeEngineRuntime 自动降级到纯 JavaScript 实现：
 
-| 场景 | 行为 |
-|------|------|
-| WASM 加载成功 | 使用 WASM 执行兼容性检查 |
+| 场景          | 行为                         |
+| ------------- | ---------------------------- |
+| WASM 加载成功 | 使用 WASM 执行兼容性检查     |
 | WASM 加载失败 | 自动回退到 JS 实现，功能等价 |
-| Worker 不可用 | 直接在主线程使用 JS 实现 |
+| Worker 不可用 | 直接在主线程使用 JS 实现     |
 
 ::: tip 性能差异
 WASM 实现在大量端口检查场景下性能显著优于 JS 回退，但对于常规工作流（< 50 节点）差异不明显。
@@ -85,7 +85,7 @@ sequenceDiagram
 
     C->>S: checkCompatibility(sourcePort, targetPort)
     S->>R: check(sourceType, targetType)
-    
+
     alt WASM 可用
         R->>W: postMessage({ source, target })
         W->>M: check_compatibility(source, target)
@@ -94,19 +94,19 @@ sequenceDiagram
     else WASM 不可用
         R->>R: jsFallback(source, target)
     end
-    
+
     R-->>S: CompatibilityLevel
     S-->>C: EXACT | TRANSFORM | PARTIAL | INCOMPATIBLE
 ```
 
 ### 兼容性等级
 
-| 等级 | 含义 | 可视化 |
-|------|------|--------|
-| `EXACT` | 类型完全匹配 | 默认连线样式 |
-| `TRANSFORM` | 需要隐式转换 | 提示标记 |
-| `PARTIAL` | 部分兼容 | 提示标记 |
-| `INCOMPATIBLE` | 不可连接 | 红色错误 |
+| 等级           | 含义         | 可视化       |
+| -------------- | ------------ | ------------ |
+| `EXACT`        | 类型完全匹配 | 默认连线样式 |
+| `TRANSFORM`    | 需要隐式转换 | 提示标记     |
+| `PARTIAL`      | 部分兼容     | 提示标记     |
+| `INCOMPATIBLE` | 不可连接     | 红色错误     |
 
 8 种端口数据类型（`model` / `text` / `json` / `image` / `audio` / `tool` / `sandbox` / `knowledge`）的完整兼容性矩阵详见 [类型引擎 — 架构与兼容性规则](/zh/type-engine/architecture)。
 

@@ -4,9 +4,9 @@
   "description": "AgentLoom Documentation",
   "private": true,
   "scripts": {
-    "dev": "vitepress dev",
-    "build": "vitepress build",
-    "preview": "vitepress preview",
+    "dev": "node --no-experimental-webstorage ./node_modules/vitepress/bin/vitepress.js dev",
+    "build": "node --no-experimental-webstorage ./node_modules/vitepress/bin/vitepress.js build",
+    "preview": "node --no-experimental-webstorage ./node_modules/vitepress/bin/vitepress.js preview",
     "lint:md": "markdownlint-cli2 'zh/**/*.md'",
     "prebuild": "node scripts/sync-openapi.mjs"
   },

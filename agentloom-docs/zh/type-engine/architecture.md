@@ -31,16 +31,16 @@ graph TD
 
 类型引擎的兼容性判定结果分为四个级别（从高到低）：
 
-| 级别 | 标识 | 含义 | 画布表现 |
-|------|------|------|----------|
-| **完全兼容** | `EXACT` | 类型和 Schema 完全匹配 | 绿色连线，直接连接 |
-| **可转换** | `TRANSFORM` | 类型不同但存在已知转换规则 | 橙色连线，提示转换 |
-| **部分兼容** | `PARTIAL` | 部分字段匹配，存在缺失或候选映射 | 黄色连线，显示映射建议 |
-| **不兼容** | `INCOMPATIBLE` | 无法连接 | 红色，禁止连线 |
+| 级别         | 标识           | 含义                             | 画布表现               |
+| ------------ | -------------- | -------------------------------- | ---------------------- |
+| **完全兼容** | `EXACT`        | 类型和 Schema 完全匹配           | 绿色连线，直接连接     |
+| **可转换**   | `TRANSFORM`    | 类型不同但存在已知转换规则       | 橙色连线，提示转换     |
+| **部分兼容** | `PARTIAL`      | 部分字段匹配，存在缺失或候选映射 | 黄色连线，显示映射建议 |
+| **不兼容**   | `INCOMPATIBLE` | 无法连接                         | 红色，禁止连线         |
 
 ### 判定优先级
 
-```
+```text
 EXACT > TRANSFORM > PARTIAL > INCOMPATIBLE
 ```
 
@@ -63,24 +63,26 @@ enum PortDataType {
 
 下表展示了所有端口数据类型对之间的 **基础兼容性**（不考虑 Schema 级比较）：
 
-| 源 ↓ \ 目标 → | model | text | json | image | audio | tool | sandbox | knowledge |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **model** | ✅ EXACT | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **text** | ❌ | ✅ EXACT | 🔄 TRANSFORM | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **json** | ❌ | 🔄 TRANSFORM | ✅ EXACT | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **image** | ❌ | ❌ | ❌ | ✅ EXACT | ❌ | ❌ | ❌ | ❌ |
-| **audio** | ❌ | ❌ | ❌ | ❌ | ✅ EXACT | ❌ | ❌ | ❌ |
-| **tool** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ EXACT | ❌ | ❌ |
-| **sandbox** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ EXACT | ❌ |
-| **knowledge** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ EXACT |
+| 源 ↓ \ 目标 → |  model   |     text     |     json     |  image   |  audio   |   tool   | sandbox  | knowledge |
+| :-----------: | :------: | :----------: | :----------: | :------: | :------: | :------: | :------: | :-------: |
+|   **model**   | ✅ EXACT |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |
+|   **text**    |    ❌    |   ✅ EXACT   | 🔄 TRANSFORM |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |
+|   **json**    |    ❌    | 🔄 TRANSFORM |   ✅ EXACT   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |
+|   **image**   |    ❌    |      ❌      |      ❌      | ✅ EXACT |    ❌    |    ❌    |    ❌    |    ❌     |
+|   **audio**   |    ❌    |      ❌      |      ❌      |    ❌    | ✅ EXACT |    ❌    |    ❌    |    ❌     |
+|   **tool**    |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    | ✅ EXACT |    ❌    |    ❌     |
+|  **sandbox**  |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    | ✅ EXACT |    ❌     |
+| **knowledge** |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    | ✅ EXACT  |
 
 **图例：**
+
 - ✅ **EXACT** — 类型完全匹配，直接连接
 - 🔄 **TRANSFORM** — 需要内置转换（`text↔json`）
 - ❌ **INCOMPATIBLE** — 不可连接
 
 ::: info 关于转换规则
 当前引擎内置 **2 条转换规则**：
+
 - `text → json`：`parse_json` — 将文本解析为 JSON 结构
 - `json → text`：`stringify_json` — 将 JSON 序列化为文本
 
@@ -99,12 +101,12 @@ enum PortDataType {
 
 ```typescript
 interface ScalarTypeSchema {
-  kind: 'model' | 'text' | 'image' | 'audio' | 'tool' | 'sandbox' | 'knowledge'
-  format?: string
-  examples?: string[]
-  title?: string
-  description?: string
-  nullable?: boolean
+  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge";
+  format?: string;
+  examples?: string[];
+  title?: string;
+  description?: string;
+  nullable?: boolean;
 }
 ```
 
@@ -116,14 +118,14 @@ Scalar 的 `kind` **不能**为 `json`。`json` 类型必须使用 Object 或 Ar
 
 ```typescript
 interface ObjectTypeSchema {
-  kind: 'json'           // 必须为 json
-  shape: 'object'        // 形状标识符
-  properties: Record<string, TypeSchema>
-  required?: string[]
-  additionalProperties?: boolean
-  title?: string
-  description?: string
-  nullable?: boolean
+  kind: "json"; // 必须为 json
+  shape: "object"; // 形状标识符
+  properties: Record<string, TypeSchema>;
+  required?: string[];
+  additionalProperties?: boolean;
+  title?: string;
+  description?: string;
+  nullable?: boolean;
 }
 ```
 
@@ -131,20 +133,21 @@ interface ObjectTypeSchema {
 
 ```typescript
 interface ArrayTypeSchema {
-  kind: 'json'           // 必须为 json
-  shape: 'array'         // 形状标识符
-  items: TypeSchema      // 元素 Schema（递归）
-  minItems?: number
-  maxItems?: number
-  title?: string
-  description?: string
-  nullable?: boolean
+  kind: "json"; // 必须为 json
+  shape: "array"; // 形状标识符
+  items: TypeSchema; // 元素 Schema（递归）
+  minItems?: number;
+  maxItems?: number;
+  title?: string;
+  description?: string;
+  nullable?: boolean;
 }
 ```
 
 ### Schema 序列化
 
 Schema 使用 `shape` 字段作为判别符（discriminator）：
+
 - 无 `shape` 字段 → Scalar
 - `shape: "object"` → Object
 - `shape: "array"` → Array
@@ -154,6 +157,7 @@ Schema 使用 `shape` 字段作为判别符（discriminator）：
 ### Scalar 比较
 
 直接比较 `kind` 值：
+
 - 相同 → `EXACT`
 - 不同 → 检查转换规则 → `TRANSFORM` 或 `INCOMPATIBLE`
 
@@ -166,11 +170,13 @@ Schema 使用 `shape` 字段作为判别符（discriminator）：
 3. **候选映射**：对未匹配字段进行相似度计算（`field_similarity()`），生成映射建议
 
 **相似度阈值：**
+
 - `≥ 0.55` — 纳入候选列表
 - `≥ 0.85` — 自动推荐映射
 - 每个字段最多 **6** 个候选
 
 **结果判定：**
+
 - 全部匹配 + 无缺失 → `EXACT`
 - 部分匹配 → `PARTIAL`（附带 `matchedRatio`、候选映射等元数据）
 - 全部缺失 → `INCOMPATIBLE`
@@ -184,13 +190,13 @@ Schema 使用 `shape` 字段作为判别符（discriminator）：
 
 Schema 校验器（`SchemaValidator`，默认最大深度 12 层）执行以下检查：
 
-| 规则 | 说明 |
-|------|------|
-| Scalar 不能使用 `json` kind | `json` 类型必须具有 Object 或 Array 形状 |
-| Object/Array 必须使用 `json` kind | 只有 `json` 类型支持结构化形状 |
-| required 字段必须存在于 properties | 不允许引用不存在的属性名 |
-| minItems ≤ maxItems | 数组基数约束不能矛盾 |
-| 递���深度 ≤ 12 | 防止无限递归 |
+| 规则                               | 说明                                     |
+| ---------------------------------- | ---------------------------------------- |
+| Scalar 不能使用 `json` kind        | `json` 类型必须具有 Object 或 Array 形状 |
+| Object/Array 必须使用 `json` kind  | 只有 `json` 类型支持结构化形状           |
+| required 字段必须存在于 properties | 不允许引用不存在的属性名                 |
+| minItems ≤ maxItems                | 数组基数约束不能矛盾                     |
+| 递���深度 ≤ 12                     | 防止无限递归                             |
 
 校验返回 `ValidationResult`，包含 `valid` 布尔值和 `errors` 错误列表。
 
@@ -200,9 +206,9 @@ WASM 层统一使用 `WasmError` 结构，映射为 JavaScript 的 `TypeEngineEr
 
 ```typescript
 class TypeEngineError extends Error {
-  name: 'TypeEngineError'
-  code: string      // 错误码
-  context?: unknown  // 上下文信息
+  name: "TypeEngineError";
+  code: string; // 错误码
+  context?: unknown; // 上下文信息
 }
 ```
 

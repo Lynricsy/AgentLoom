@@ -12,12 +12,12 @@
 
 ## Chart 概览
 
-| 属性 | 值 |
-|------|------|
-| Chart 版本 | `0.1.0` |
-| App 版本 | `0.0.1` |
-| Chart 名称 | `agentloom` |
-| 路径 | `agentloom-deploy/kubernetes/helm/agentloom/` |
+| 属性       | 值                                            |
+| ---------- | --------------------------------------------- |
+| Chart 版本 | `0.1.0`                                       |
+| App 版本   | `0.0.1`                                       |
+| Chart 名称 | `agentloom`                                   |
+| 路径       | `agentloom-deploy/kubernetes/helm/agentloom/` |
 
 ## 快速安装
 
@@ -43,23 +43,23 @@ helm status agentloom -n agentloom
 
 Chart 包含 15 个 Kubernetes 模板：
 
-| 模板文件 | 资源类型 | 说明 |
-|---------|---------|------|
-| `_helpers.tpl` | — | 模板辅助函数（含 BYOD 校验） |
-| `configmap.yaml` | ConfigMap | 共享环境变量 |
-| `secret.yaml` | Secret | 敏感配置（密码、密钥） |
-| `pvc.yaml` | PersistentVolumeClaim | 持久化存储声明 |
-| `hpa.yaml` | HorizontalPodAutoscaler | 自动水平扩缩容 |
-| `ingress.yaml` | Ingress | 外部流量入口 |
-| `service-server.yaml` | Service | Server API 服务 |
-| `service-studio.yaml` | Service | Studio 前端服务 |
-| `deployment-server.yaml` | Deployment | Server API 部署 |
-| `deployment-studio.yaml` | Deployment | Studio 前端部署 |
-| `deployment-worker.yaml` | Deployment | Worker 后台任务部署 |
-| `dependencies-postgres.yaml` | Deployment + Service + PVC | PostgreSQL（可选内置） |
-| `dependencies-redis.yaml` | Deployment + Service + PVC | Redis（可选内置） |
-| `dependencies-minio.yaml` | Deployment + Service + PVC | MinIO（可选内置） |
-| `dependencies-qdrant.yaml` | Deployment + Service + PVC | Qdrant（可选内置） |
+| 模板文件                     | 资源类型                   | 说明                         |
+| ---------------------------- | -------------------------- | ---------------------------- |
+| `_helpers.tpl`               | —                          | 模板辅助函数（含 BYOD 校验） |
+| `configmap.yaml`             | ConfigMap                  | 共享环境变量                 |
+| `secret.yaml`                | Secret                     | 敏感配置（密码、密钥）       |
+| `pvc.yaml`                   | PersistentVolumeClaim      | 持久化存储声明               |
+| `hpa.yaml`                   | HorizontalPodAutoscaler    | 自动水平扩缩容               |
+| `ingress.yaml`               | Ingress                    | 外部流量入口                 |
+| `service-server.yaml`        | Service                    | Server API 服务              |
+| `service-studio.yaml`        | Service                    | Studio 前端服务              |
+| `deployment-server.yaml`     | Deployment                 | Server API 部署              |
+| `deployment-studio.yaml`     | Deployment                 | Studio 前端部署              |
+| `deployment-worker.yaml`     | Deployment                 | Worker 后台任务部署          |
+| `dependencies-postgres.yaml` | Deployment + Service + PVC | PostgreSQL（可选内置）       |
+| `dependencies-redis.yaml`    | Deployment + Service + PVC | Redis（可选内置）            |
+| `dependencies-minio.yaml`    | Deployment + Service + PVC | MinIO（可选内置）            |
+| `dependencies-qdrant.yaml`   | Deployment + Service + PVC | Qdrant（可选内置）           |
 
 ## values.yaml 配置
 
@@ -104,7 +104,7 @@ server:
 worker:
   replicaCount: 1
   image:
-    repository: agentloom/server    # 与 server 共享镜像
+    repository: agentloom/server # 与 server 共享镜像
     tag: latest
   resources:
     requests:
@@ -134,10 +134,10 @@ studio:
 
 ```yaml
 postgres:
-  enabled: true           # 设为 false 则使用外部数据库
+  enabled: true # 设为 false 则使用外部数据库
   persistence:
     size: 20Gi
-    storageClass: ""      # 使用默认 StorageClass
+    storageClass: "" # 使用默认 StorageClass
 
 redis:
   enabled: true
@@ -193,7 +193,7 @@ Chart 提供了 `values.private.yaml` 作为生产环境参考：
 ```yaml
 # 生产配置要点
 server:
-  replicaCount: 2           # 双副本高可用
+  replicaCount: 2 # 双副本高可用
   resources:
     requests:
       cpu: "1"
@@ -207,14 +207,14 @@ worker:
 
 ingress:
   enabled: true
-  tls:                       # 启用 TLS
+  tls: # 启用 TLS
     - secretName: agentloom-tls
       hosts:
         - agentloom.example.com
 
 postgres:
   persistence:
-    size: 50Gi               # 生产级存储
+    size: 50Gi # 生产级存储
 
 minio:
   persistence:
@@ -248,16 +248,16 @@ kubectl delete pvc -l app.kubernetes.io/instance=agentloom -n agentloom
 
 ## 与 Docker Compose 的差异
 
-| 特性 | Docker Compose | Helm |
-|------|---------------|------|
-| 运行环境 | 单机 | Kubernetes 集群 |
-| 扩缩容 | 手动 `scale` | HPA 自动 |
-| 高可用 | 无 | 多副本 + 自愈 |
-| 存储 | 本地 Volume | PVC 动态供给 |
-| 网络 | Docker bridge | K8s Service + Ingress |
-| 备份调度 | systemd timer | CronJob |
-| 证书管理 | 手动 | cert-manager 自动 |
-| 复杂度 | 低 | 高 |
+| 特性     | Docker Compose | Helm                  |
+| -------- | -------------- | --------------------- |
+| 运行环境 | 单机           | Kubernetes 集群       |
+| 扩缩容   | 手动 `scale`   | HPA 自动              |
+| 高可用   | 无             | 多副本 + 自愈         |
+| 存储     | 本地 Volume    | PVC 动态供给          |
+| 网络     | Docker bridge  | K8s Service + Ingress |
+| 备份调度 | systemd timer  | CronJob               |
+| 证书管理 | 手动           | cert-manager 自动     |
+| 复杂度   | 低             | 高                    |
 
 ::: warning 备份调度差异
 Docker Compose 模式使用 systemd timer 进行定时备份。在 Kubernetes 环境中，应使用 **CronJob** 替代，目前 Helm Chart 尚未内置 CronJob 模板，需手动创建。

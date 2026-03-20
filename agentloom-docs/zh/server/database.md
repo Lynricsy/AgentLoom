@@ -4,12 +4,12 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 
 ## 技术栈概览
 
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| ORM | Drizzle ORM | 类型安全、schema-first |
-| 数据库 | PostgreSQL (Supabase) | 含 RLS 策略 |
-| 迁移 | Drizzle Kit | 声明式 diff + SQL 生成 |
-| 连接池 | `drizzle-orm/node-postgres` | pg Pool |
+| 组件   | 技术                        | 说明                   |
+| ------ | --------------------------- | ---------------------- |
+| ORM    | Drizzle ORM                 | 类型安全、schema-first |
+| 数据库 | PostgreSQL (Supabase)       | 含 RLS 策略            |
+| 迁移   | Drizzle Kit                 | 声明式 diff + SQL 生成 |
+| 连接池 | `drizzle-orm/node-postgres` | pg Pool                |
 
 ## Schema 文件总览
 
@@ -17,93 +17,93 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 
 ### 核心工作流域
 
-| 表名 | 说明 |
-|------|------|
+| 表名                   | 说明                           |
+| ---------------------- | ------------------------------ |
 | `workflow_definitions` | 工作流定义（画布节点/边/视口） |
-| `workflow_versions` | 版本快照（不可变 snapshot） |
-| `workflow_executions` | 执行实例（含定义快照） |
-| `execution_steps` | 执行步骤（DAG 节点级） |
-| `execution_records` | Agent 执行记录 |
-| `reusable_blocks` | 可复用节点模板 |
+| `workflow_versions`    | 版本快照（不可变 snapshot）    |
+| `workflow_executions`  | 执行实例（含定义快照）         |
+| `execution_steps`      | 执行步骤（DAG 节点级）         |
+| `execution_records`    | Agent 执行记录                 |
+| `reusable_blocks`      | 可复用节点模板                 |
 
 ### 认证与租户域
 
-| 表名 | 说明 |
-|------|------|
-| `users` | 用户（关联 Supabase Auth） |
-| `organizations` | 组织（自动生成 tenant_id） |
-| `organization_members` | 组织成员（5 级角色） |
-| `organization_invitations` | 邀请（token + 过期） |
-| `tenant_encryption_keys` | E2EE 公钥历史（append-only） |
-| `org_autonomy_policies` | 组织级自主策略 |
-| `revoked_tokens` | 令牌黑名单 |
+| 表名                       | 说明                         |
+| -------------------------- | ---------------------------- |
+| `users`                    | 用户（关联 Supabase Auth）   |
+| `organizations`            | 组织（自动生成 tenant_id）   |
+| `organization_members`     | 组织成员（5 级角色）         |
+| `organization_invitations` | 邀请（token + 过期）         |
+| `tenant_encryption_keys`   | E2EE 公钥历史（append-only） |
+| `org_autonomy_policies`    | 组织级自主策略               |
+| `revoked_tokens`           | 令牌黑名单                   |
 
 ### 插件域
 
-| 表名 | 说明 |
-|------|------|
-| `plugins` | 插件注册元数据（WASM bundle） |
-| `plugin_developer_keys` | 开发者 RSA 公钥 |
-| `plugin_usage_records` | 使用量计量 |
-| `plugin_earnings` | 收益结算周期 |
+| 表名                    | 说明                          |
+| ----------------------- | ----------------------------- |
+| `plugins`               | 插件注册元数据（WASM bundle） |
+| `plugin_developer_keys` | 开发者 RSA 公钥               |
+| `plugin_usage_records`  | 使用量计量                    |
+| `plugin_earnings`       | 收益结算周期                  |
 
 ### 审计与证据域
 
-| 表名 | 说明 |
-|------|------|
-| `audit_logs` | 审计日志（热表） |
-| `audit_log_archives` | 审计日志归档（冷表） |
-| `evidence_records` | 证据链（含加密） |
-| `evidence_export_jobs` | 证据导出任务 |
-| `sandbox_logs` | 沙箱操作日志 |
+| 表名                   | 说明                 |
+| ---------------------- | -------------------- |
+| `audit_logs`           | 审计日志（热表）     |
+| `audit_log_archives`   | 审计日志归档（冷表） |
+| `evidence_records`     | 证据链（含加密）     |
+| `evidence_export_jobs` | 证据导出任务         |
+| `sandbox_logs`         | 沙箱操作日志         |
 
 ### 平台与市场域
 
-| 表名 | 说明 |
-|------|------|
-| `marketplace_listings` | 市场上架（workflow/plugin） |
-| `marketplace_reviews` | 用户评价 |
-| `workflow_shares` | 分享链接（公开短链） |
-| `workflow_templates` | 系统预置模板 |
-| `workflow_triggers` | 触发器（cron/webhook/api_event） |
-| `workflow_trigger_history` | 触发执行历史 |
+| 表名                       | 说明                             |
+| -------------------------- | -------------------------------- |
+| `marketplace_listings`     | 市场上架（workflow/plugin）      |
+| `marketplace_reviews`      | 用户评价                         |
+| `workflow_shares`          | 分享链接（公开短链）             |
+| `workflow_templates`       | 系统预置模板                     |
+| `workflow_triggers`        | 触发器（cron/webhook/api_event） |
+| `workflow_trigger_history` | 触发执行历史                     |
 
 ### Agent 与工具配置域
 
-| 表名 | 说明 |
-|------|------|
-| `llm_model_configs` | LLM 模型配置 |
-| `mcp_server_configs` | MCP Server 配置 |
-| `tool_definitions` | 工具定义 |
-| `routing_decisions` | 智能路由决策记录 |
-| `intervention_policies` | 介入策略 |
+| 表名                       | 说明               |
+| -------------------------- | ------------------ |
+| `llm_model_configs`        | LLM 模型配置       |
+| `mcp_server_configs`       | MCP Server 配置    |
+| `tool_definitions`         | 工具定义           |
+| `routing_decisions`        | 智能路由决策记录   |
+| `intervention_policies`    | 介入策略           |
 | `optimization_suggestions` | Agent 配置优化建议 |
 
 ### 治理与运维域
 
-| 表名 | 说明 |
-|------|------|
-| `tenant_quotas` | 租户配额（7 个指标） |
-| `execution_governance_controls` | 执行治理暂停控制 |
-| `private_deployment_settings` | 私有部署配置 |
-| `platform_api_tokens` | API Key 管理 |
-| `api_keys` | 通用 API 密钥 |
-| `notifications` | 通知记录 |
-| `device_tokens` | 设备推送令牌 |
+| 表名                            | 说明                 |
+| ------------------------------- | -------------------- |
+| `tenant_quotas`                 | 租户配额（7 个指标） |
+| `execution_governance_controls` | 执行治理暂停控制     |
+| `private_deployment_settings`   | 私有部署配置         |
+| `platform_api_tokens`           | API Key 管理         |
+| `api_keys`                      | 通用 API 密钥        |
+| `notifications`                 | 通知记录             |
+| `device_tokens`                 | 设备推送令牌         |
 
 ### 知识库域
 
-| 表名 | 说明 |
-|------|------|
-| `knowledge_bases` | 知识库 |
+| 表名              | 说明               |
+| ----------------- | ------------------ |
+| `knowledge_bases` | 知识库             |
 | `document_chunks` | 文档分块（向量化） |
 
 ### ACP 会话域
 
-| 表名 | 说明 |
-|------|------|
+| 表名                        | 说明           |
+| --------------------------- | -------------- |
 | `acp_conversation_sessions` | ACP 会话持久化 |
-| `sandbox_sessions` | 沙箱会话 |
+| `sandbox_sessions`          | 沙箱会话       |
 
 ---
 
@@ -447,6 +447,7 @@ EXISTS (
 ```
 
 **适用表**：
+
 - `organization_members` — 通过 `organizations` 关联
 - `organization_invitations` — 通过 `organizations` 关联
 - `execution_steps` — 通过 `workflow_executions` 关联
@@ -466,13 +467,13 @@ tenant_id = get_tenant_id()
 
 部分表不使用 RLS，原因各异：
 
-| 表名 | 原因 |
-|------|------|
-| `users` | 用户级，无租户概念 |
-| `workflow_templates` | 系统级预置模板，全局共享 |
-| `device_tokens` | 用户级，通过 `user_id` 控制 |
-| `platform_api_tokens` | 用户级，通过 `user_id` 控制 |
-| `workflow_shares` | 公开访问，通过 TenantMiddleware 排除 |
+| 表名                  | 原因                                 |
+| --------------------- | ------------------------------------ |
+| `users`               | 用户级，无租户概念                   |
+| `workflow_templates`  | 系统级预置模板，全局共享             |
+| `device_tokens`       | 用户级，通过 `user_id` 控制          |
+| `platform_api_tokens` | 用户级，通过 `user_id` 控制          |
+| `workflow_shares`     | 公开访问，通过 TenantMiddleware 排除 |
 
 ### 辅助函数
 
@@ -536,9 +537,9 @@ flowchart LR
 
 ### 审计日志双表架构
 
-| 表 | 用途 | 特点 |
-|----|------|------|
-| `audit_logs` | 热表 | 近期数据，高频查询 |
+| 表                   | 用途 | 特点                         |
+| -------------------- | ---- | ---------------------------- |
+| `audit_logs`         | 热表 | 近期数据，高频查询           |
 | `audit_log_archives` | 冷表 | 归档数据，retention 策略迁移 |
 
 归档由 `audit-log-retention` BullMQ 任务驱动，在原始事务中执行 copy-then-delete。读取侧使用 `(created_at, id)` 做 hot/archive merged recall 与去重。
@@ -547,11 +548,11 @@ flowchart LR
 
 多个表使用 JSONB 存储结构化数据：
 
-| 字段 | 类型说明 |
-|------|---------|
-| `workflow_definitions.nodes` | `ReactFlowNode[]` — 画布节点 |
-| `workflow_definitions.edges` | `ReactFlowEdge[]` — 画布连线 |
-| `workflow_versions.snapshot` | `WorkflowVersionSnapshot` — 不可变版本快照 |
-| `execution_steps.checkpoint_data` | 包含 session、tool 权限等运行时上下文 |
-| `plugins.manifest` | 插件清单（端口、配置 schema 等） |
-| `evidence_records.packet` | `EvidencePacket` — 结构化证据包 |
+| 字段                              | 类型说明                                   |
+| --------------------------------- | ------------------------------------------ |
+| `workflow_definitions.nodes`      | `ReactFlowNode[]` — 画布节点               |
+| `workflow_definitions.edges`      | `ReactFlowEdge[]` — 画布连线               |
+| `workflow_versions.snapshot`      | `WorkflowVersionSnapshot` — 不可变版本快照 |
+| `execution_steps.checkpoint_data` | 包含 session、tool 权限等运行时上下文      |
+| `plugins.manifest`                | 插件清单（端口、配置 schema 等）           |
+| `evidence_records.packet`         | `EvidencePacket` — 结构化证据包            |

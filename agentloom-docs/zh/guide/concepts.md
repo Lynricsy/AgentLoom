@@ -99,14 +99,14 @@ flowchart TB
 
 ### 关键节点说明
 
-| 节点 | 说明 |
-|------|------|
-| **llm-agent** | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环 |
+| 节点              | 说明                                                                      |
+| ----------------- | ------------------------------------------------------------------------- |
+| **llm-agent**     | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环                     |
 | **smart-routing** | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
-| **mcp-tool** | 调用 MCP（Model Context Protocol）兼容的外部工具 |
-| **condition** | 基于条件表达式分支，支持多条件分支 |
-| **plugin** | 在 WASM 沙箱中执行第三方插件 |
-| **sandbox** | ACP 沙箱环境，提供文件读写和终端操作能力 |
+| **mcp-tool**      | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
+| **condition**     | 基于条件表达式分支，支持多条件分支                                        |
+| **plugin**        | 在 WASM 沙箱中执行第三方插件                                              |
+| **sandbox**       | ACP 沙箱环境，提供文件读写和终端操作能力                                  |
 
 ## 端口与数据类型
 
@@ -130,16 +130,16 @@ flowchart LR
     end
 ```
 
-| 类型 | 描述 | 典型场景 |
-|------|------|---------|
-| `model` | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → llm-agent |
-| `text` | 纯文本内容 | input → llm-agent → output |
-| `json` | 结构化 JSON 数据 | transform → api-call → merge |
-| `image` | 图像数据（URL 或 Base64） | 多模态 Agent 输入 |
-| `audio` | 音频数据 | 语音场景 |
-| `tool` | MCP 工具定义 | mcp-tool → llm-agent |
-| `sandbox` | 沙箱会话引用 | sandbox → llm-agent |
-| `knowledge` | 知识库引用或检索结果 | knowledge-retrieval → llm-agent |
+| 类型        | 描述                                  | 典型场景                        |
+| ----------- | ------------------------------------- | ------------------------------- |
+| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → llm-agent       |
+| `text`      | 纯文本内容                            | input → llm-agent → output      |
+| `json`      | 结构化 JSON 数据                      | transform → api-call → merge    |
+| `image`     | 图像数据（URL 或 Base64）             | 多模态 Agent 输入               |
+| `audio`     | 音频数据                              | 语音场景                        |
+| `tool`      | MCP 工具定义                          | mcp-tool → llm-agent            |
+| `sandbox`   | 沙箱会话引用                          | sandbox → llm-agent             |
+| `knowledge` | 知识库引用或检索结果                  | knowledge-retrieval → llm-agent |
 
 ### 类型兼容性
 
@@ -257,12 +257,12 @@ sequenceDiagram
 
 工作流执行可以通过多种方式触发：
 
-| 触发方式 | 说明 | 状态 |
-|---------|------|------|
-| **手动执行** | Studio 画布中点击 Run 按钮 | 完整支持 |
-| **Cron 定时** | 基于 Cron 表达式的周期触发 | 完整支持 |
-| **Webhook** | 外部系统通过 HTTP 回调触发，含签名验证 | 完整支持 |
-| **API 事件** | 通过 Open API 编程触发 | 预览（只读） |
+| 触发方式      | 说明                                   | 状态         |
+| ------------- | -------------------------------------- | ------------ |
+| **手动执行**  | Studio 画布中点击 Run 按钮             | 完整支持     |
+| **Cron 定时** | 基于 Cron 表达式的周期触发             | 完整支持     |
+| **Webhook**   | 外部系统通过 HTTP 回调触发，含签名验证 | 完整支持     |
+| **API 事件**  | 通过 Open API 编程触发                 | 预览（只读） |
 
 ::: warning API Event 限制
 `api_event` 类型触发器目前为预览状态，仅可通过 API 查看，不支持在 Studio 中创建或编辑。
@@ -272,14 +272,14 @@ sequenceDiagram
 
 Smart Routing 节点提供 **6 种模型选择策略**，根据不同维度动态选择最优模型：
 
-| 策略 | 优化目标 | 适用场景 |
-|------|---------|---------|
-| `TOKEN_OPTIMIZED` | 最小化 Token 消耗 | 长文本处理 |
-| `COST_OPTIMIZED` | 最低执行成本 | 预算敏感场景 |
-| `QUALITY_FIRST` | 最高输出质量 | 关键决策任务 |
-| `LATENCY_FIRST` | 最低响应延迟 | 实时交互 |
-| `HISTORICAL_BEST` | 基于历史表现 | 稳定性优先 |
-| `FALLBACK_CHAIN` | 故障自动降级 | 高可用场景 |
+| 策略              | 优化目标          | 适用场景     |
+| ----------------- | ----------------- | ------------ |
+| `TOKEN_OPTIMIZED` | 最小化 Token 消耗 | 长文本处理   |
+| `COST_OPTIMIZED`  | 最低执行成本      | 预算敏感场景 |
+| `QUALITY_FIRST`   | 最高输出质量      | 关键决策任务 |
+| `LATENCY_FIRST`   | 最低响应延迟      | 实时交互     |
+| `HISTORICAL_BEST` | 基于历史表现      | 稳定性优先   |
+| `FALLBACK_CHAIN`  | 故障自动降级      | 高可用场景   |
 
 `FALLBACK_CHAIN` 策略会在非认证失败的情况下自动切换到备选模型重试，是系统默认的路由策略。
 

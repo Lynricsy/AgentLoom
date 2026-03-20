@@ -4,11 +4,11 @@
 
 ## 基本信息
 
-| 属性 | 值 |
-|------|-----|
-| 包名 | `@agentloom/plugin-cli` |
-| 版本 | `0.1.0` |
-| 入口命令 | `agentloom-plugin` |
+| 属性     | 值                                                                               |
+| -------- | -------------------------------------------------------------------------------- |
+| 包名     | `@agentloom/plugin-cli`                                                          |
+| 版本     | `0.1.0`                                                                          |
+| 入口命令 | `agentloom-plugin`                                                               |
 | 核心依赖 | `commander ^12`、`prompts ^2.4`、`archiver ^7`、`chokidar ^3.6`、`express ^4.18` |
 
 ## 安装
@@ -19,13 +19,13 @@ npm install -g @agentloom/plugin-cli
 
 ## 命令概览
 
-| 命令 | 说明 | 核心参数 |
-|------|------|----------|
-| `create <name>` | 创建插件项目 | 交互式提示 |
-| `build` | 构建并打包 `.alp` | `-o`、`--wasm` |
-| `keys generate` | 生成 RSA 密钥对 | `-o`、`-b` |
-| `dev` | 启动开发服务器 | `-p` |
-| `publish` | 签名并发布 | `-k`、`-o` |
+| 命令            | 说明              | 核心参数       |
+| --------------- | ----------------- | -------------- |
+| `create <name>` | 创建插件项目      | 交互式提示     |
+| `build`         | 构建并打包 `.alp` | `-o`、`--wasm` |
+| `keys generate` | 生成 RSA 密钥对   | `-o`、`-b`     |
+| `dev`           | 启动开发服务器    | `-p`           |
+| `publish`       | 签名并发布        | `-k`、`-o`     |
 
 ---
 
@@ -39,15 +39,15 @@ agentloom-plugin create <name>
 
 ### 交互提示
 
-| 字段 | 说明 | 默认值 |
-|------|------|--------|
-| Author | 作者名 | — |
-| Description | 插件描述 | — |
-| License | 开源许可证 | MIT |
+| 字段        | 说明       | 默认值 |
+| ----------- | ---------- | ------ |
+| Author      | 作者名     | —      |
+| Description | 插件描述   | —      |
+| License     | 开源许可证 | MIT    |
 
 ### 生成文件
 
-```
+```text
 <name>/
 ├── manifest.json      # 插件清单 (id: com.agentloom.<name>)
 ├── package.json       # 项目配置
@@ -58,7 +58,7 @@ agentloom-plugin create <name>
     └── index.test.ts  # 测试文件
 ```
 
-### 示例
+### create 示例
 
 ```bash
 agentloom-plugin create text-processor
@@ -90,12 +90,12 @@ agentloom-plugin create text-processor
 agentloom-plugin build [options]
 ```
 
-### 参数
+### build 参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-o, --output <dir>` | 输出目录 | `build/` |
-| `--wasm` | 使用 wasm-pack 构建 | `false` |
+| 参数                 | 说明                | 默认值   |
+| -------------------- | ------------------- | -------- |
+| `-o, --output <dir>` | 输出目录            | `build/` |
+| `--wasm`             | 使用 wasm-pack 构建 | `false`  |
 
 ### 构建流程
 
@@ -105,7 +105,7 @@ agentloom-plugin build [options]
 
 ### 归档内容
 
-```
+```text
 {pluginId}-{version}.alp (ZIP)
 ├── manifest.json
 ├── dist/            # 编译产物
@@ -113,7 +113,7 @@ agentloom-plugin build [options]
 └── README.md        # 如果存在
 ```
 
-### 示例
+### build 示例
 
 ```bash
 # 标准 TypeScript 构建
@@ -136,12 +136,12 @@ agentloom-plugin build --wasm
 agentloom-plugin keys generate [options]
 ```
 
-### 参数
+### keys 参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-o, --output <dir>` | 输出目录 | `keys/` |
-| `-b, --bits <number>` | RSA 密钥长度 | `2048` |
+| 参数                  | 说明         | 默认值  |
+| --------------------- | ------------ | ------- |
+| `-o, --output <dir>`  | 输出目录     | `keys/` |
+| `-b, --bits <number>` | RSA 密钥长度 | `2048`  |
 
 ### 支持的密钥长度
 
@@ -151,7 +151,7 @@ agentloom-plugin keys generate [options]
 
 ### 输出文件
 
-```
+```text
 keys/
 ├── public.pem       # 公钥（注册到平台）
 └── private.pem      # 私钥（本地保管，用于签名）
@@ -161,7 +161,7 @@ keys/
 
 生成完成后会输出密钥指纹（SPKI DER 的 SHA-256），用于在平台上关联开发者身份。
 
-### 示例
+### keys 示例
 
 ```bash
 # 默认 2048 位
@@ -185,18 +185,18 @@ agentloom-plugin keys generate -b 4096 -o my-keys/
 agentloom-plugin dev [options]
 ```
 
-### 参数
+### dev 参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
+| 参数                  | 说明       | 默认值 |
+| --------------------- | ---------- | ------ |
 | `-p, --port <number>` | 服务器端口 | `4400` |
 
 ### 开发服务器端点
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `GET` | `/manifest` | 返回插件清单 |
-| `GET` | `/nodes` | 返回所有节点定义 |
+| 方法   | 路径                   | 说明             |
+| ------ | ---------------------- | ---------------- |
+| `GET`  | `/manifest`            | 返回插件清单     |
+| `GET`  | `/nodes`               | 返回所有节点定义 |
 | `POST` | `/nodes/:type/execute` | 执行指定类型节点 |
 
 ### 工作原理
@@ -205,7 +205,7 @@ agentloom-plugin dev [options]
 2. **Chokidar 监听** — 监听 `src/` 目录下的文件变更
 3. **自动重载** — 文件变更时自动重新加载插件
 
-### 示例
+### dev 示例
 
 ```bash
 # 默认端口 4400
@@ -236,12 +236,12 @@ curl -X POST http://localhost:4400/nodes/text-to-uppercase/execute \
 agentloom-plugin publish [options]
 ```
 
-### 参数
+### publish 参数
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-k, --key <path>` | 私钥路径 | `keys/private.pem` |
-| `-o, --output <dir>` | 输出目录 | `build/` |
+| 参数                 | 说明     | 默认值             |
+| -------------------- | -------- | ------------------ |
+| `-k, --key <path>`   | 私钥路径 | `keys/private.pem` |
+| `-o, --output <dir>` | 输出目录 | `build/`           |
 
 ### 签名流程
 
@@ -260,13 +260,13 @@ flowchart TD
 
 签名后，`manifest.json` 会被注入以下字段：
 
-| 字段 | 说明 |
-|------|------|
-| `signature` | Base64 编码的 RSA-PSS 签名 |
-| `contentHash` | 规范化归档载荷的 SHA-256 哈希 |
-| `developerKeyFingerprint` | 开发者公钥的指纹 |
+| 字段                      | 说明                          |
+| ------------------------- | ----------------------------- |
+| `signature`               | Base64 编码的 RSA-PSS 签名    |
+| `contentHash`             | 规范化归档载荷的 SHA-256 哈希 |
+| `developerKeyFingerprint` | 开发者公钥的指纹              |
 
-### 示例
+### publish 示例
 
 ```bash
 # 使用默认密钥路径

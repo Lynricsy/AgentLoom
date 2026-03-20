@@ -4,22 +4,22 @@ AgentLoom 服务端基于 **NestJS v11 + Fastify v5** 构建，采用模块化�
 
 ## 技术栈
 
-| 层 | 技术选型 | 说明 |
-|---|---------|------|
-| HTTP 框架 | Fastify v5 | 高性能 HTTP 服务（非 Express） |
-| 应用框架 | NestJS v11 | 模块化依赖注入 |
-| ORM | Drizzle ORM | 类型安全 SQL 构建器（非 TypeORM） |
-| 数据库 | PostgreSQL (Supabase) | 多租户 RLS + 行级安全 |
-| 缓存/队列 | Redis + BullMQ | 限流、缓存、异步任务队列 |
-| 实时通信 | Socket.IO (Redis Adapter) | `/execution`、`/knowledge`、`/notification` 命名空间 |
-| 向量数据库 | Qdrant | 知识库 RAG 语义检索 |
-| 对象存储 | MinIO | 文件、WASM bundle 存储 |
-| 校验 | Zod | DTO 校验（非 class-validator） |
-| 测试 | Vitest + Testcontainers | 80% 覆盖率阈值 |
+| 层         | 技术选型                  | 说明                                                 |
+| ---------- | ------------------------- | ---------------------------------------------------- |
+| HTTP 框架  | Fastify v5                | 高性能 HTTP 服务（非 Express）                       |
+| 应用框架   | NestJS v11                | 模块化依赖注入                                       |
+| ORM        | Drizzle ORM               | 类型安全 SQL 构建器（非 TypeORM）                    |
+| 数据库     | PostgreSQL (Supabase)     | 多租户 RLS + 行级安全                                |
+| 缓存/队列  | Redis + BullMQ            | 限流、缓存、异步任务队列                             |
+| 实时通信   | Socket.IO (Redis Adapter) | `/execution`、`/knowledge`、`/notification` 命名空间 |
+| 向量数据库 | Qdrant                    | 知识库 RAG 语义检索                                  |
+| 对象存储   | MinIO                     | 文件、WASM bundle 存储                               |
+| 校验       | Zod                       | DTO 校验（非 class-validator）                       |
+| 测试       | Vitest + Testcontainers   | 80% 覆盖率阈值                                       |
 
 ## 目录结构
 
-```
+```text
 agentloom-server/src/
 ├── common/                    # 全局横切关注点
 │   ├── guards/                # AuthGuard, TenantGuard, RolesGuard 等
@@ -46,15 +46,15 @@ agentloom-server/src/
 
 服务端的 30 个 NestJS 模块按职责划分为 7 个领域：
 
-| 领域 | 模块数 | 说明 |
-|------|--------|------|
-| [核心工作流](/zh/server/modules#核心工作流) | 4 | 工作流定义、执行引擎、执行记录、可复用块 |
-| [AI 服务](/zh/server/modules#ai-服务) | 5 | Agent、LLM、MCP 工具、智能路由、知识库 |
-| [平台服务](/zh/server/modules#平台服务) | 9 | 认证、组织、通知、模板、分享、市场等 |
-| [企业运维](/zh/server/modules#企业运维) | 6 | 资源治理、监控、审计、优化建议、私有部署 |
-| [插件生态](/zh/server/modules#插件生态) | 1 | WASM 沙箱插件注册与执行 |
-| [ACP 网关](/zh/server/modules#acp-网关) | 1 | ACP 协议适配与 stdio 网关 |
-| [基础设施](/zh/server/modules#基础设施) | 4 | 沙箱、健康检查、触发器、API Key |
+| 领域                                        | 模块数 | 说明                                     |
+| ------------------------------------------- | ------ | ---------------------------------------- |
+| [核心工作流](/zh/server/modules#核心工作流) | 4      | 工作流定义、执行引擎、执行记录、可复用块 |
+| [AI 服务](/zh/server/modules#ai-服务)       | 5      | Agent、LLM、MCP 工具、智能路由、知识库   |
+| [平台服务](/zh/server/modules#平台服务)     | 9      | 认证、组织、通知、模板、分享、市场等     |
+| [企业运维](/zh/server/modules#企业运维)     | 6      | 资源治理、监控、审计、优化建议、私有部署 |
+| [插件生态](/zh/server/modules#插件生态)     | 1      | WASM 沙箱插件注册与执行                  |
+| [ACP 网关](/zh/server/modules#acp-网关)     | 1      | ACP 协议适配与 stdio 网关                |
+| [基础设施](/zh/server/modules#基础设施)     | 4      | 沙箱、健康检查、触发器、API Key          |
 
 > 详见 [模块架构](/zh/server/modules) 获取每个模块的完整说明。
 
@@ -62,7 +62,7 @@ agentloom-server/src/
 
 每个 HTTP 请求经过 **6 层中间件/守卫链** 处理后到达 Controller：
 
-```
+```text
 请求 → TenantMiddleware → TenantTransactionInterceptor → CustomThrottlerGuard
      → AuthGuard → TenantGuard → RolesGuard → Controller
 ```
@@ -85,19 +85,19 @@ agentloom-server/src/
 
 服务端使用 BullMQ 管理 11 个任务队列：
 
-| 队列 | 用途 |
-|------|------|
-| `execution-queue` | 工作流执行调度 |
-| `agent-task-queue` | Agent 任务处理 |
-| `plugin-execution` | 插件 WASM 执行 |
-| `optimization-analysis` | 周期性 Agent 配置优化分析 |
-| `audit-log-retention` | 审计日志归档 |
-| `trigger-scheduler` | 定时触发器调度 |
-| `notification` | 通知分发 (in_app / email / push) |
-| `earnings-settlement` | 插件收益结算 |
-| `sandbox-lifecycle-queue` | 沙箱生命周期管理 |
-| `document-processing-queue` | 文档处理 |
-| `document-indexing-queue` | 文档向量化索引 |
+| 队列                        | 用途                             |
+| --------------------------- | -------------------------------- |
+| `execution-queue`           | 工作流执行调度                   |
+| `agent-task-queue`          | Agent 任务处理                   |
+| `plugin-execution`          | 插件 WASM 执行                   |
+| `optimization-analysis`     | 周期性 Agent 配置优化分析        |
+| `audit-log-retention`       | 审计日志归档                     |
+| `trigger-scheduler`         | 定时触发器调度                   |
+| `notification`              | 通知分发 (in_app / email / push) |
+| `earnings-settlement`       | 插件收益结算                     |
+| `sandbox-lifecycle-queue`   | 沙箱生命周期管理                 |
+| `document-processing-queue` | 文档处理                         |
+| `document-indexing-queue`   | 文档向量化索引                   |
 
 ## 实时通信
 

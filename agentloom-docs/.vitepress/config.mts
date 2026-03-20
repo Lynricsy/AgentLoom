@@ -11,6 +11,12 @@ export default withMermaid(
     lastUpdated: true,
     ignoreDeadLinks: false,
 
+    vite: {
+      build: {
+        chunkSizeWarningLimit: 10000,
+      },
+    },
+
     head: [
       ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
     ],

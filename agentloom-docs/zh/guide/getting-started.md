@@ -6,20 +6,20 @@
 
 在开始之前，请确保你的开发机器已安装以下工具：
 
-| 工具 | 最低版本 | 说明 |
-|------|---------|------|
-| **Node.js** | 20+ | 推荐使用 LTS 版本 |
-| **pnpm** | 9+ | 各子包独立管理依赖 |
-| **Docker** | 24+ | 用于运行 Qdrant 等基础设施 |
-| **PostgreSQL** | 15+ | 主数据库（或使用 Supabase 托管） |
-| **Redis** | 7+ | BullMQ 消息队列 |
+| 工具           | 最低版本 | 说明                             |
+| -------------- | -------- | -------------------------------- |
+| **Node.js**    | 20+      | 推荐使用 LTS 版本                |
+| **pnpm**       | 9+       | 各子包独立管理依赖               |
+| **Docker**     | 24+      | 用于运行 Qdrant 等基础设施       |
+| **PostgreSQL** | 15+      | 主数据库（或使用 Supabase 托管） |
+| **Redis**      | 7+       | BullMQ 消息队列                  |
 
 **可选工具：**
 
-| 工具 | 用途 |
-|------|------|
-| **Rust + wasm-pack** | 修改类型引擎时需要 |
-| **Flutter 3.41.2 (FVM)** | 移动端开发 |
+| 工具                     | 用途               |
+| ------------------------ | ------------------ |
+| **Rust + wasm-pack**     | 修改类型引擎时需要 |
+| **Flutter 3.41.2 (FVM)** | 移动端开发         |
 
 ## 克隆项目
 
@@ -43,23 +43,23 @@ docker compose -f docker-compose.dev.yml up -d
 
 确保以下服务可访问：
 
-| 服务 | 默认地址 | 说明 |
-|------|---------|------|
+| 服务       | 默认地址         | 说明                     |
+| ---------- | ---------------- | ------------------------ |
 | PostgreSQL | `localhost:5432` | 可使用 Supabase 托管实例 |
-| Redis | `localhost:6379` | BullMQ 队列 |
-| Qdrant | `localhost:6333` | 向量检索 |
-| MinIO | `localhost:9000` | 对象存储 |
+| Redis      | `localhost:6379` | BullMQ 队列              |
+| Qdrant     | `localhost:6333` | 向量检索                 |
+| MinIO      | `localhost:9000` | 对象存储                 |
 
 ## 配置服务端
 
-### 1. 安装依赖
+### 1. 安装服务端依赖
 
 ```bash
 cd agentloom-server
 pnpm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置服务端环境变量
 
 复制环境变量模板并编辑：
 
@@ -110,7 +110,7 @@ APP_QDRANT_URL=http://localhost:6333
 `APP_MASTER_ENCRYPTION_KEY` 用于 E2EE 体系的主密钥派生，务必使用强随机值并妥善保管。
 :::
 
-### 3. 初始化数据库
+### 3. 初始化服务端数据库
 
 ```bash
 # 生成 Drizzle 迁移文件
@@ -123,7 +123,7 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-### 4. 启动开发服务器
+### 4. 启动服务端开发服务器
 
 ```bash
 pnpm start:dev
@@ -133,14 +133,14 @@ pnpm start:dev
 
 ## 配置前端工作台
 
-### 1. 安装依赖
+### 1. 安装前端依赖
 
 ```bash
 cd agentloom-studio
 pnpm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置前端环境变量
 
 ```bash
 cp .env.example .env
@@ -160,7 +160,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### 3. 启动开发服务器
+### 3. 启动前端开发服务器
 
 ```bash
 pnpm dev

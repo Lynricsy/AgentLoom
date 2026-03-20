@@ -53,11 +53,11 @@ sequenceDiagram
 
 租户识别中间件，是请求链路的第一道关卡。
 
-| 特性 | 说明 |
-|------|------|
-| 提取方式 | 从 JWT payload 无验证提取 `tenantId`（仅解码，不校验签名） |
+| 特性         | 说明                                                                        |
+| ------------ | --------------------------------------------------------------------------- |
+| 提取方式     | 从 JWT payload 无验证提取 `tenantId`（仅解码，不校验签名）                  |
 | API Key 处理 | 当请求携带 `X-Api-Key` 头时跳过（租户 ID 在 AuthGuard 中由 API Token 解析） |
-| 注入位置 | `req.tenantId` |
+| 注入位置     | `req.tenantId`                                                              |
 
 ::: tip 为什么不验证 JWT 签名？
 TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 JWT 签名验证在 AuthGuard 中执行。这避免了重复验签的性能开销。
@@ -69,10 +69,10 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 确保每个请求在正确的租户事务上下文中执行。
 
-| 特性 | 说明 |
-|------|------|
-| 存储机制 | `AsyncLocalStorage` 请求级隔离 |
-| 事务管理 | Drizzle ORM 租户级事务包裹 |
+| 特性     | 说明                                                  |
+| -------- | ----------------------------------------------------- |
+| 存储机制 | `AsyncLocalStorage` 请求级隔离                        |
+| 事务管理 | Drizzle ORM 租户级事务包裹                            |
 | 辅助函数 | `runInTenantTransaction()` 供业务代码获取当前租户事务 |
 
 ### 3. CustomThrottlerGuard
@@ -81,14 +81,14 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 基于 `@nestjs/throttler` 的租户感知限流守卫。
 
-| 特性 | 说明 |
-|------|------|
-| 默认限制 | 100 req/min（`ThrottlerModule { ttl: 60_000, limit: 100 }`） |
+| 特性     | 说明                                                                   |
+| -------- | ---------------------------------------------------------------------- |
+| 默认限制 | 100 req/min（`ThrottlerModule { ttl: 60_000, limit: 100 }`）           |
 | 租户覆盖 | 从 `tenant_quotas` 读取 `apiRateLimitPerMinute` 和 `dailyApiCallLimit` |
-| 追踪键 | `apikey:{prefix}` / `jwt:{sub}` / `req.ip`（三级优先级） |
-| 存储 | Redis |
-| 响应 | 分钟限流 → `429` + `Retry-After` + `X-RateLimit-*` 头 |
-| 日配额 | 超出 → `409` 治理阻断 |
+| 追踪键   | `apikey:{prefix}` / `jwt:{sub}` / `req.ip`（三级优先级）               |
+| 存储     | Redis                                                                  |
+| 响应     | 分钟限流 → `429` + `Retry-After` + `X-RateLimit-*` 头                  |
+| 日配额   | 超出 → `409` 治理阻断                                                  |
 
 ### 4. AuthGuard
 
@@ -96,7 +96,7 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 双重认证守卫，是安全链的核心。
 
-```
+```text
 请求 → 检查 JWT
          ├── JWT 有效 → 设置 req.user + req.authMethod = 'jwt'
          └── JWT 无效/缺失 → 检查 X-Api-Key
@@ -106,13 +106,13 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
                                 └── 均无效 → 401 Unauthorized
 ```
 
-| 特性 | 说明 |
-|------|------|
-| JWT 来源 | Supabase Auth |
-| API Key 格式 | `al_` 前缀 + 随机字符串 |
-| API Key 存储 | SHA-256 hash（不存储明文） |
-| 懒加载 | `ModuleRef.get({strict: false})` 按需加载 `PlatformApiTokenService` |
-| 输出 | `req.user`、`req.tenantId`、`req.authMethod` |
+| 特性         | 说明                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| JWT 来源     | Supabase Auth                                                       |
+| API Key 格式 | `al_` 前缀 + 随机字符串                                             |
+| API Key 存储 | SHA-256 hash（不存储明文）                                          |
+| 懒加载       | `ModuleRef.get({strict: false})` 按需加载 `PlatformApiTokenService` |
+| 输出         | `req.user`、`req.tenantId`、`req.authMethod`                        |
 
 ::: warning @Public() 装饰器
 标记 `@Public()` 的端点将跳过 AuthGuard 认证检查，但仍会经过 TenantMiddleware 和限流。
@@ -124,11 +124,11 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 租户归属校验守卫。
 
-| 特性 | 说明 |
-|------|------|
-| 校验内容 | `req.tenantId` 必须为有效 UUID |
+| 特性     | 说明                                           |
+| -------- | ---------------------------------------------- |
+| 校验内容 | `req.tenantId` 必须为有效 UUID                 |
 | 跳过条件 | `@Public()` 装饰器或无 `@Roles()` 装饰器的端点 |
-| 作用 | 确保已认证用户只能访问其所属租户的资源 |
+| 作用     | 确保已认证用户只能访问其所属租户的资源         |
 
 ### 6. RolesGuard
 
@@ -136,21 +136,21 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 基于 Redis 缓存的 RBAC 角色守卫。
 
-| 特性 | 说明 |
-|------|------|
-| 角色层级 | `owner` > `admin` > `creator` > `operator` > `viewer` |
-| 缓存 | `RbacCacheService.getUserRole()` Redis 缓存查询 |
+| 特性     | 说明                                                                  |
+| -------- | --------------------------------------------------------------------- |
+| 角色层级 | `owner` > `admin` > `creator` > `operator` > `viewer`                 |
+| 缓存     | `RbacCacheService.getUserRole()` Redis 缓存查询                       |
 | 匹配规则 | 向上兼容 — 要求 `operator` 权限时，`creator`/`admin`/`owner` 均可通过 |
 
 #### 角色权限矩阵
 
-| 角色 | 工作流 CRUD | 执行 | 组织管理 | 资源治理 | 插件安装 |
-|------|-----------|------|---------|---------|---------|
-| `owner` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `creator` | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `operator` | 只读 | ✅ | ❌ | ❌ | ✅ |
-| `viewer` | 只读 | 只读 | ❌ | ❌ | ❌ |
+| 角色       | 工作流 CRUD | 执行 | 组织管理 | 资源治理 | 插件安装 |
+| ---------- | ----------- | ---- | -------- | -------- | -------- |
+| `owner`    | ✅          | ✅   | ✅       | ✅       | ✅       |
+| `admin`    | ✅          | ✅   | ✅       | ✅       | ✅       |
+| `creator`  | ✅          | ✅   | ❌       | ❌       | ✅       |
+| `operator` | 只读        | ✅   | ❌       | ❌       | ✅       |
+| `viewer`   | 只读        | 只读 | ❌       | ❌       | ❌       |
 
 ## 全局横切组件
 
@@ -162,11 +162,11 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 全局异常过滤器，捕获所有未处理异常并格式化为统一的 JSON 错误响应。
 
-| 异常类型 | HTTP 状态码 |
-|---------|------------|
-| `HttpException` | 保持原始状态码 |
+| 异常类型                                     | HTTP 状态码    |
+| -------------------------------------------- | -------------- |
+| `HttpException`                              | 保持原始状态码 |
 | `ResourceGovernanceDecisionBlockedException` | `409` 或 `429` |
-| 未知异常 | `500` |
+| 未知异常                                     | `500`          |
 
 ### ZodValidationPipe
 
@@ -176,8 +176,8 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 ## 常用装饰器
 
-| 装饰器 | 说明 |
-|--------|------|
-| `@CurrentUser()` | 注入当前认证用户对象 |
-| `@Roles('admin', 'owner')` | 声明端点所需最低角色 |
-| `@Public()` | 标记公开端点，跳过认证 |
+| 装饰器                     | 说明                   |
+| -------------------------- | ---------------------- |
+| `@CurrentUser()`           | 注入当前认证用户对象   |
+| `@Roles('admin', 'owner')` | 声明端点所需最低角色   |
+| `@Public()`                | 标记公开端点，跳过认证 |

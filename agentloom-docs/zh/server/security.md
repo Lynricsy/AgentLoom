@@ -35,12 +35,12 @@ sequenceDiagram
 
 采用 **RSA-OAEP + AES-256-GCM** 混合加密：
 
-| 步骤 | 算法 | 说明 |
-|------|------|------|
-| 1. 生成随机对称密钥 | AES-256 | 每次加密生成新密钥 |
-| 2. 加密数据 | AES-256-GCM | 使用对称密钥加密明文，附带认证标签 |
-| 3. 加密对称密钥 | RSA-OAEP (4096-bit) | 使用租户公钥加密 AES 密钥 |
-| 4. 打包密文 | — | 组合加密后的 AES 密钥 + IV + 认证标签 + 密文 |
+| 步骤                | 算法                | 说明                                         |
+| ------------------- | ------------------- | -------------------------------------------- |
+| 1. 生成随机对称密钥 | AES-256             | 每次加密生成新密钥                           |
+| 2. 加密数据         | AES-256-GCM         | 使用对称密钥加密明文，附带认证标签           |
+| 3. 加密对称密钥     | RSA-OAEP (4096-bit) | 使用租户公钥加密 AES 密钥                    |
+| 4. 打包密文         | —                   | 组合加密后的 AES 密钥 + IV + 认证标签 + 密文 |
 
 ### 密钥管理
 
@@ -63,10 +63,10 @@ sequenceDiagram
 
 ### 加密覆盖范围
 
-| 组件 | 加密时机 | 加密内容 |
-|------|---------|---------|
-| `AgentTaskWorker` | Agent 任务完成时 | LLM 输出内容 |
-| `EvidenceService` | 证据记录时 | `agent_decision`、`tool_output` 证据 |
+| 组件              | 加密时机         | 加密内容                             |
+| ----------------- | ---------------- | ------------------------------------ |
+| `AgentTaskWorker` | Agent 任务完成时 | LLM 输出内容                         |
+| `EvidenceService` | 证据记录时       | `agent_decision`、`tool_output` 证据 |
 
 ## 多租户隔离
 
@@ -84,7 +84,7 @@ AgentLoom 使用三层多租户隔离策略：
 
 `TenantTransactionInterceptor` 通过 `AsyncLocalStorage` 将每个请求绑定到租户事务上下文：
 
-```
+```text
 请求 → TenantMiddleware(提取 tenantId)
      → TenantTransactionInterceptor(创建租户事务)
      → 业务代码(通过 runInTenantTransaction() 获取事务)
@@ -135,21 +135,21 @@ flowchart TD
 
 ### Token 生命周期
 
-| 操作 | API | 权限 |
-|------|-----|------|
-| 创建 | `POST /api-tokens` | `owner` / `admin` |
-| 列表 | `GET /api-tokens` | `owner` / `admin` |
+| 操作 | API                      | 权限              |
+| ---- | ------------------------ | ----------------- |
+| 创建 | `POST /api-tokens`       | `owner` / `admin` |
+| 列表 | `GET /api-tokens`        | `owner` / `admin` |
 | 吊销 | `DELETE /api-tokens/:id` | `owner` / `admin` |
 
 ### Token 规格
 
-| 属性 | 说明 |
-|------|------|
-| 前缀 | `al_`（AgentLoom 标识） |
+| 属性     | 说明                                             |
+| -------- | ------------------------------------------------ |
+| 前缀     | `al_`（AgentLoom 标识）                          |
 | 存储方式 | SHA-256 hash（创建时返回一次明文，之后不可恢复） |
-| 租户限额 | 每个组织最多 20 个 Token |
-| 过期检查 | 每次认证时校验 |
-| 吊销状态 | `revoked` 标记，立即生效 |
+| 租户限额 | 每个组织最多 20 个 Token                         |
+| 过期检查 | 每次认证时校验                                   |
+| 吊销状态 | `revoked` 标记，立即生效                         |
 
 ### 安全实践
 
@@ -161,7 +161,7 @@ API Token 创建时响应中包含完整明文，之后服务端仅存储 SHA-25
 
 ### 角色层级
 
-```
+```text
 owner → admin → creator → operator → viewer
 ```
 
@@ -169,13 +169,13 @@ owner → admin → creator → operator → viewer
 
 ### 角色定义
 
-| 角色 | 典型用户 | 核心权限 |
-|------|---------|---------|
-| `owner` | 组织创建者 | 完整管理权限，包括组织设置、资源治理、私有部署 |
-| `admin` | 组织管理员 | 等同 owner，但不可转移组织所有权 |
-| `creator` | 工作流开发者 | 工作流和 Agent 的完整 CRUD，可执行和安装插件 |
-| `operator` | 运营人员 | 只读查看工作流，可触发执行和安装插件 |
-| `viewer` | 只读访客 | 只读查看工作流和执行记录 |
+| 角色       | 典型用户     | 核心权限                                       |
+| ---------- | ------------ | ---------------------------------------------- |
+| `owner`    | 组织创建者   | 完整管理权限，包括组织设置、资源治理、私有部署 |
+| `admin`    | 组织管理员   | 等同 owner，但不可转移组织所有权               |
+| `creator`  | 工作流开发者 | 工作流和 Agent 的完整 CRUD，可执行和安装插件   |
+| `operator` | 运营人员     | 只读查看工作流，可触发执行和安装插件           |
+| `viewer`   | 只读访客     | 只读查看工作流和执行记录                       |
 
 ### 缓存策略
 
@@ -185,10 +185,10 @@ owner → admin → creator → operator → viewer
 
 ### 默认限制
 
-| 维度 | 默��值 | 超限响应 |
-|------|--------|---------|
-| 每分钟请求数 | 100 req/min | `429 Too Many Requests` + `Retry-After` + `X-RateLimit-*` |
-| 每日 API 调用 | 由 `tenant_quotas` 配置 | `409 Conflict`（治理阻断） |
+| 维度          | 默��值                  | 超限响应                                                  |
+| ------------- | ----------------------- | --------------------------------------------------------- |
+| 每分钟请求数  | 100 req/min             | `429 Too Many Requests` + `Retry-After` + `X-RateLimit-*` |
+| 每日 API 调用 | 由 `tenant_quotas` 配置 | `409 Conflict`（治理阻断）                                |
 
 ### 租户级覆盖
 
@@ -204,10 +204,10 @@ owner → admin → creator → operator → viewer
 
 `ExecutionService.runWorkflow()` 在创建执行记录前，会调用资源治理准入判断：
 
-| 检查项 | 阻断条件 | 响应 |
-|--------|---------|------|
-| 并发执行数 | 超出租户配额 | `409` + `ResourceGovernanceDecisionBlockedException` |
-| 日执行量 | 超出每日上限 | `409` |
-| 治理暂停 | `execution_governance_controls` 有活跃暂停记录 | `409` |
+| 检查项     | 阻断条件                                       | 响应                                                 |
+| ---------- | ---------------------------------------------- | ---------------------------------------------------- |
+| 并发执行数 | 超出租户配额                                   | `409` + `ResourceGovernanceDecisionBlockedException` |
+| 日执行量   | 超出每日上限                                   | `409`                                                |
+| 治理暂停   | `execution_governance_controls` 有活跃暂停记录 | `409`                                                |
 
 所有治理阻断均写入正式审计日志，并通过 `EventEmitter2` 驱动通知。

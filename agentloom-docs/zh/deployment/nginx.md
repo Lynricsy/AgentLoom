@@ -282,13 +282,13 @@ sudo systemctl reload nginx
 
 ## 安全加固建议
 
-| 配置 | 说明 |
-|------|------|
-| `server_tokens off` | 隐藏 Nginx 版本号 |
-| `X-Content-Type-Options: nosniff` | 禁止 MIME 嗅探 |
-| `X-Frame-Options: DENY` | 禁止 iframe 嵌入 |
-| `Content-Security-Policy` | 限制资源加载来源 |
-| `Referrer-Policy: strict-origin` | 控制 Referrer 泄露 |
+| 配置                              | 说明               |
+| --------------------------------- | ------------------ |
+| `server_tokens off`               | 隐藏 Nginx 版本号  |
+| `X-Content-Type-Options: nosniff` | 禁止 MIME 嗅探     |
+| `X-Frame-Options: DENY`           | 禁止 iframe 嵌入   |
+| `Content-Security-Policy`         | 限制资源加载来源   |
+| `Referrer-Policy: strict-origin`  | 控制 Referrer 泄露 |
 
 ```nginx
 # 安全头示例

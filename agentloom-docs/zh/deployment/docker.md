@@ -71,12 +71,12 @@ graph LR
 
 基于 `nginx:1.27-alpine`，对外暴露 `${EXPOSE_PORT:-8080}` 端口，承担所有流量路由：
 
-| 路径 | 上游 | 说明 |
-|------|------|------|
-| `/healthz` | 本地 200 | 健康检查端点 |
+| 路径          | 上游          | 说明                       |
+| ------------- | ------------- | -------------------------- |
+| `/healthz`    | 本地 200      | 健康检查端点               |
 | `/socket.io/` | `server:3000` | WebSocket 升级，超时 3600s |
-| `/api/` | `server:3000` | REST API 代理 |
-| `/` | `studio:8080` | 前端 SPA |
+| `/api/`       | `server:3000` | REST API 代理              |
+| `/`           | `studio:8080` | 前端 SPA                   |
 
 关键配置参数：
 
@@ -92,6 +92,7 @@ proxy_http_version 1.1;        # WebSocket 必需
 
 ::: info 运行时环境变量注入
 Studio 使用 **构建时占位符 + 运行时 sed 替换** 策略：
+
 1. 构建时，Vite 环境变量使用 `__VITE_*__` 占位符
 2. 容器启动时，`/docker-entrypoint.d/40-runtime-env.sh` 脚本自动将占位符替换为实际环境变量值
 
@@ -110,12 +111,12 @@ Worker 使用**与 Server 完全相同的镜像和启动命令**。两者通过 
 
 ### 基础设施服务
 
-| 服务 | 镜像 | 持久化卷 | 说明 |
-|------|------|---------|------|
-| **postgres** | `postgres:16-alpine` | `postgres_data` | 主数据库，含初始化脚本 |
-| **redis** | `redis:7-alpine` | `redis_data` | 开启 AOF 持久化，需配置密码 |
-| **minio** | `minio/minio:latest` | `minio_data` | 控制台绑定 `127.0.0.1:9001` |
-| **qdrant** | `qdrant/qdrant:v1.14.0` | `qdrant_data` | 绑定 `127.0.0.1:6333`，仅内网可访问 |
+| 服务         | 镜像                    | 持久化卷        | 说明                                |
+| ------------ | ----------------------- | --------------- | ----------------------------------- |
+| **postgres** | `postgres:16-alpine`    | `postgres_data` | 主数据库，含初始化脚本              |
+| **redis**    | `redis:7-alpine`        | `redis_data`    | 开启 AOF 持久化，需配置密码         |
+| **minio**    | `minio/minio:latest`    | `minio_data`    | 控制台绑定 `127.0.0.1:9001`         |
+| **qdrant**   | `qdrant/qdrant:v1.14.0` | `qdrant_data`   | 绑定 `127.0.0.1:6333`，仅内网可访问 |
 
 ## Dockerfile 解析
 
@@ -186,9 +187,9 @@ x-server-app: &server-app
   env_file: .env
   depends_on:
     postgres: { condition: service_healthy }
-    redis:    { condition: service_healthy }
-    minio:    { condition: service_healthy }
-    qdrant:   { condition: service_healthy }
+    redis: { condition: service_healthy }
+    minio: { condition: service_healthy }
+    qdrant: { condition: service_healthy }
   networks:
     - agentloom-private
 
@@ -206,16 +207,16 @@ services:
 
 所有 8 个服务均配置了健康检查，确保依赖服务就绪后再启动上游：
 
-| 服务 | 检查方式 | 间隔 |
-|------|---------|------|
-| postgres | `pg_isready` | 10s |
-| redis | `redis-cli ping` | 10s |
-| minio | `curl /minio/health/live` | 10s |
-| qdrant | HTTP `/healthz` | 10s |
-| server | HTTP `/api/health` | 15s |
-| worker | HTTP `/api/health` | 15s |
-| studio | HTTP 200 检查 | 15s |
-| reverse-proxy | 依赖上游健康 | — |
+| 服务          | 检查方式                  | 间隔 |
+| ------------- | ------------------------- | ---- |
+| postgres      | `pg_isready`              | 10s  |
+| redis         | `redis-cli ping`          | 10s  |
+| minio         | `curl /minio/health/live` | 10s  |
+| qdrant        | HTTP `/healthz`           | 10s  |
+| server        | HTTP `/api/health`        | 15s  |
+| worker        | HTTP `/api/health`        | 15s  |
+| studio        | HTTP 200 检查             | 15s  |
+| reverse-proxy | 依赖上游健康              | —    |
 
 ## 常用运维命令
 
@@ -242,11 +243,11 @@ docker compose down -v
 
 ## 端口映射
 
-| 端口 | 服务 | 绑定 | 说明 |
-|------|------|------|------|
-| `${EXPOSE_PORT:-8080}` | reverse-proxy | `0.0.0.0` | 对外统一入口 |
-| 9001 | minio 控制台 | `127.0.0.1` | 仅本地访问 |
-| 6333 | qdrant HTTP | `127.0.0.1` | 仅本地访问 |
+| 端口                   | 服务          | 绑定        | 说明         |
+| ---------------------- | ------------- | ----------- | ------------ |
+| `${EXPOSE_PORT:-8080}` | reverse-proxy | `0.0.0.0`   | 对外统一入口 |
+| 9001                   | minio 控制台  | `127.0.0.1` | 仅本地访问   |
+| 6333                   | qdrant HTTP   | `127.0.0.1` | 仅本地访问   |
 
 ::: danger 安全提示
 MinIO 控制台 (9001) 和 Qdrant HTTP 接口 (6333) 默认仅绑定 `127.0.0.1`。**切勿**将这些端口暴露到公网。如需远程管理，请使用 SSH 隧道。

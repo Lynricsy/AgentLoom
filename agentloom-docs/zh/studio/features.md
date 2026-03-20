@@ -23,11 +23,11 @@ DAG 工作流的可视化编辑器，基于 `@xyflow/react` v12，支持 17 种�
 
 定义工作流的输入 schema，支持 3 种 `collectionMode`：
 
-| 模式 | 说明 |
-|------|------|
-| `form` | 表单收集参数 |
-| `conversation` | 对话式输入 |
-| `hybrid` | 混合模式 |
+| 模式           | 说明         |
+| -------------- | ------------ |
+| `form`         | 表单收集参数 |
+| `conversation` | 对话式输入   |
+| `hybrid`       | 混合模式     |
 
 `input_schema` 以 JSONB 存储在 `workflow_definitions` 表。
 
@@ -42,7 +42,8 @@ DAG 工作流的可视化编辑器，基于 `@xyflow/react` v12，支持 17 种�
 工作流执行的核心 feature：
 
 **触发流程**：
-```
+
+```text
 VersionToolbar [Run] → useStartExecution
   → POST /workflow-definitions/:id/run（支持 launchSource 参数）
   → executionStore.initExecution(id)
@@ -81,14 +82,14 @@ LLM 模型配置管理，对应画布中的 `llm-model` 节点类型。
 
 6 种路由策略配置，对应画布中的 `smart-routing` 节点：
 
-| 策略 | 说明 |
-|------|------|
-| `TOKEN_OPTIMIZED` | 最小化 token 消耗 |
-| `COST_OPTIMIZED` | 最小化费用 |
-| `QUALITY_FIRST` | 质量优先 |
-| `LATENCY_FIRST` | 延迟优先 |
-| `HISTORICAL_BEST` | 基于历史表现 |
-| `FALLBACK_CHAIN` | 故障回退链（默认策略） |
+| 策略              | 说明                   |
+| ----------------- | ---------------------- |
+| `TOKEN_OPTIMIZED` | 最小化 token 消耗      |
+| `COST_OPTIMIZED`  | 最小化费用             |
+| `QUALITY_FIRST`   | 质量优先               |
+| `LATENCY_FIRST`   | 延迟优先               |
+| `HISTORICAL_BEST` | 基于历史表现           |
+| `FALLBACK_CHAIN`  | 故障回退链（默认策略） |
 
 canonical 端口：`model-in-0` / `model-in-1` / `model-out`。
 
@@ -120,10 +121,10 @@ MCP（Model Context Protocol）工具管理，对应画布中的 `mcp-tool` 节�
 
 支持 3 种触发类型：
 
-| 类型 | 说明 |
-|------|------|
-| `cron` | 定时任务 |
-| `webhook` | Webhook 回调（签名验证） |
+| 类型        | 说明                               |
+| ----------- | ---------------------------------- |
+| `cron`      | 定时任务                           |
+| `webhook`   | Webhook 回调（签名验证）           |
 | `api_event` | API 事件（preview-only，仅可查看） |
 
 ### intervention-policy — 介入策略
@@ -205,11 +206,11 @@ RSA-4096 公钥管理。`tenant_encryption_keys` 为 append-only 历史模型（
 
 全局通知系统，支持 3 种通道：
 
-| 通道 | 说明 |
-|------|------|
+| 通道     | 说明       |
+| -------- | ---------- |
 | `in_app` | 应用内通知 |
-| `email` | 邮件通知 |
-| `push` | 推送通知 |
+| `email`  | 邮件通知   |
+| `push`   | 推送通知   |
 
 通知类型：`completed` / `failed` / `intervention_required`。
 
@@ -229,12 +230,12 @@ API Key 管理入口（`al_` prefix + SHA-256 hash），位于 `/developer-conso
 
 以下组件为 Studio 中行数最多、逻辑最复杂的模块：
 
-| 组件 | 约行数 | Feature |
-|------|--------|---------|
-| `McpImportDialog` | 1239 | mcp |
-| `PrivateDeploymentPage` | 1222 | private-deployment |
-| `WorkflowCanvas` | 728 | canvas |
-| `canvasStore` | 535 | canvas |
+| 组件                    | 约行数 | Feature            |
+| ----------------------- | ------ | ------------------ |
+| `McpImportDialog`       | 1239   | mcp                |
+| `PrivateDeploymentPage` | 1222   | private-deployment |
+| `WorkflowCanvas`        | 728    | canvas             |
+| `canvasStore`           | 535    | canvas             |
 
 ## 相关文档
 

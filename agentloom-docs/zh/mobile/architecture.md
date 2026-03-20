@@ -110,7 +110,7 @@ lib/
 
 **认证流程:**
 
-```
+```text
 LoginScreen → AuthApi.login() → AuthNotifier → TokenStorage
                                      ↓
                             GoRouter redirect guard
@@ -134,15 +134,15 @@ LoginScreen → AuthApi.login() → AuthNotifier → TokenStorage
 
 **页面:**
 
-| 页面 | 路由 | 功能 |
-|------|------|------|
-| WorkflowsScreen | `/workflows` | 搜索、状态筛选、下拉刷新、无限滚动 |
-| WorkflowDetailScreen | `/workflows/:workflowId` | 元数据卡片、执行历史、FAB 运行按钮 |
+| 页面                 | 路由                            | 功能                                            |
+| -------------------- | ------------------------------- | ----------------------------------------------- |
+| WorkflowsScreen      | `/workflows`                    | 搜索、状态筛选、下拉刷新、无限滚动              |
+| WorkflowDetailScreen | `/workflows/:workflowId`        | 元数据卡片、执行历史、FAB 运行按钮              |
 | ParameterInputScreen | `/workflows/:workflowId/launch` | 动态参数表单、空参数确认、conversation Web 引导 |
 
 **启动链路:**
 
-```
+```text
 WorkflowDetailScreen FAB
   → /workflows/:workflowId/launch (ParameterInputScreen)
     → 参数校验 + 提交
@@ -167,7 +167,7 @@ WorkflowDetailScreen FAB
 - **ExecutionMonitorNotifier** — `AsyncNotifierProvider.autoDispose.family`，REST detail 建立初始 snapshot，WS 事件流式更新
 - **ExecutionMonitorScreen** — 状态头 + 告警横幅 + 步骤时间线 + 连接模式指示器
 
-**实时通信策略详见下方 [Socket.IO 集成](#socket-io-集成) 章节。**
+**实时通信策略详见下方 [Socket.IO 集成](#socketio-集成) 章节。**
 
 ### notifications — 推送通知模块
 
@@ -198,18 +198,18 @@ FCM 推送全链路管理。
 
 **四种 401 类型处理:**
 
-| 类型 | 行为 |
-|------|------|
+| 类型            | 行为                   |
+| --------------- | ---------------------- |
 | `token-expired` | 刷新 token，重试原请求 |
-| `token-revoked` | 强制登出 |
-| `token-invalid` | 强制登出 |
-| `token-missing` | 强制登出 |
+| `token-revoked` | 强制登出               |
+| `token-invalid` | 强制登出               |
+| `token-missing` | 强制登出               |
 
 **Stale-token 优化:** 比较当前存储的 token 与失败请求携带的 token。如果 token 已被其他请求刷新，直接用新 token 重试，不再触发额外的 refresh 请求。
 
 **QueuedInterceptorsWrapper 原理:**
 
-```
+```text
 请求 A (401) ──→ 进入队列，触发 refresh
 请求 B (401) ──→ 进入队列，等待（不触发第二次 refresh）
 请求 C (401) ──→ 进入队列，等待
@@ -249,7 +249,7 @@ FCM 推送全链路管理。
 
 **降级策略:**
 
-```
+```text
 Socket.IO 连接正常 → 实时 WS 事件推送
         ↓ 断连
 5 秒 REST 轮询 (GET /executions/:id)
@@ -300,7 +300,7 @@ Future<void> submit() async {
 
 - `InputFieldDefinition` 有意不使用 Freezed（含递归 `Object?` equality，deep equality 不适用）
 - `WorkflowInputSchema` 含可选 `conversationPlan: ConversationPlan { systemPrompt, maxTurns }`
-- `WorkflowApi.getInputSchema()` 对 `collectionMode` / `minLength` / `maxLength` 等做 camelCase/snake\_case 兼容归一化
+- `WorkflowApi.getInputSchema()` 对 `collectionMode` / `minLength` / `maxLength` 等做 camelCase/snake_case 兼容归一化
 
 ## 平台配置
 

@@ -4,18 +4,18 @@ AgentLoom Mobile 是基于 Flutter 的移动端伴侣应用，让你随时随地
 
 ## 技术栈
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| Flutter | 3.41.2 (FVM) | 跨平台 UI 框架 |
-| Riverpod | 3.x | 状态管理（手写 Provider，无代码生成） |
-| GoRouter | 17.x | 声明式路由 + 认证守卫 |
-| Dio | 5.x | HTTP 客户端 + AuthInterceptor |
-| Freezed | 3.x | 不可变模型 + JSON 序列化 |
-| Socket.IO Client | 3.x | 实时执行状态推送 |
-| FCM | firebase_messaging 15.x | 推送通知 |
-| flutter_secure_storage | 9.x | Token 安全存储 |
-| flutter_dotenv | 5.x | 环境变量管理 |
-| mocktail | 1.x | 测试 Mock 框架 |
+| 技术                   | 版本                    | 用途                                  |
+| ---------------------- | ----------------------- | ------------------------------------- |
+| Flutter                | 3.41.2 (FVM)            | 跨平台 UI 框架                        |
+| Riverpod               | 3.x                     | 状态管理（手写 Provider，无代码生成） |
+| GoRouter               | 17.x                    | 声明式路由 + 认证守卫                 |
+| Dio                    | 5.x                     | HTTP 客户端 + AuthInterceptor         |
+| Freezed                | 3.x                     | 不可变模型 + JSON 序列化              |
+| Socket.IO Client       | 3.x                     | 实时执行状态推送                      |
+| FCM                    | firebase_messaging 15.x | 推送通知                              |
+| flutter_secure_storage | 9.x                     | Token 安全存储                        |
+| flutter_dotenv         | 5.x                     | 环境变量管理                          |
+| mocktail               | 1.x                     | 测试 Mock 框架                        |
 
 ## 核心能力
 
@@ -47,24 +47,24 @@ FCM token 生命周期管理、前台本地通知转发、后台/终止态深链
 
 应用包含 6 个 feature 模块：
 
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| `auth` | `features/auth/` | 登录/登出/Token 刷新/强制登出 |
-| `dashboard` | `features/dashboard/` | 快速访问 + 最近执行聚合 |
-| `workflows` | `features/workflows/` | 列表搜索/详情/参数化启动 |
-| `execution` | `features/execution/` | Socket.IO 实时监控 + REST 轮询降级 |
-| `notifications` | `features/notifications/` | FCM 推送 + 本地通知 + 深链跳转 |
-| `settings` | `features/settings/` | 设置页（占位） |
+| 模块            | 路径                      | 职责                               |
+| --------------- | ------------------------- | ---------------------------------- |
+| `auth`          | `features/auth/`          | 登录/登出/Token 刷新/强制登出      |
+| `dashboard`     | `features/dashboard/`     | 快速访问 + 最近执行聚合            |
+| `workflows`     | `features/workflows/`     | 列表搜索/详情/参数化启动           |
+| `execution`     | `features/execution/`     | Socket.IO 实时监控 + REST 轮询降级 |
+| `notifications` | `features/notifications/` | FCM 推送 + 本地通知 + 深链跳转     |
+| `settings`      | `features/settings/`      | 设置页（占位）                     |
 
 ## 导航结构
 
 应用采用 `StatefulShellRoute.indexedStack` 三标签导航：
 
-| 标签 | 路由 | 页面 |
-|------|------|------|
+| 标签      | 路由         | 页面                |
+| --------- | ------------ | ------------------- |
 | Dashboard | `/dashboard` | 快速访问 + 最近执行 |
-| Workflows | `/workflows` | 工作流列表 |
-| Settings | `/settings` | 设置 |
+| Workflows | `/workflows` | 工作流列表          |
+| Settings  | `/settings`  | 设置                |
 
 此外，执行监控页 `/executions/:executionId` 位于 Shell 外部，支持深链直达。
 
@@ -72,11 +72,11 @@ FCM token 生命周期管理、前台本地通知转发、后台/终止态深链
 
 通过 `flutter_dotenv` 加载三套环境文件，运行时通过 `--dart-define=ENV=<env>` 切换：
 
-| 环境 | 文件 | 用途 |
-|------|------|------|
-| dev | `.env.dev` | 开发环境 |
+| 环境    | 文件           | 用途       |
+| ------- | -------------- | ---------- |
+| dev     | `.env.dev`     | 开发环境   |
 | staging | `.env.staging` | 预发布环境 |
-| prod | `.env.prod` | 生产环境 |
+| prod    | `.env.prod`    | 生产环境   |
 
 环境文件已声明为 Flutter assets，包含 `API_BASE_URL` 和 `APP_NAME` 等配置项。未传 `ENV` 参数时默认回退到 `dev`。
 
@@ -93,13 +93,14 @@ FCM token 生命周期管理、前台本地通知转发、后台/终止态深链
 
 移动端与 `agentloom-server` 共用同一套 REST API（`/api/v1`）和 Socket.IO 命名空间，和 Studio Web 端访问相同的后端服务。
 
-```
+```text
 agentloom_mobile ──HTTP REST──→ server (/api/v1)
                  ──Socket.IO──→ server (/execution namespace, JWT auth)
                  ←──FCM Push── server (notification module)
 ```
 
 ::: tip 下一步
+
 - [架构详解](./architecture) — 深入了解各模块内部结构和关键设计模式
 - [开发指南](./getting-started) — 环境搭建、运行、测试的完整步骤
-:::
+  :::

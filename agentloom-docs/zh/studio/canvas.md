@@ -43,50 +43,50 @@ graph TD
 
 ### 节点类型详述
 
-| 类别 | 节点 | 输入端口 | 输出端口 | 说明 |
-|------|------|----------|----------|------|
-| **Agent** | `llm-agent` | text, model, tool, knowledge | text, json | 核心 LLM Agent，支持工具调用与 RAG |
-| | `chat-agent` | text, model | text | 对话式 Agent，支持多轮交互 |
-| | `llm-model` | — | model | 模型配置节点，输出 model 端口 |
-| **Tool** | `http-tool` | json | json | HTTP API 调用 |
-| | `code-tool` | json | json | 沙箱代码执行 |
-| | `mcp-tool` | json | json, tool | MCP 协议工具集成 |
-| | `sandbox` | text | sandbox | ACP 沙箱终端 |
-| **Trigger** | `manual-trigger` | — | text | 手动触发入口 |
-| | `schedule-trigger` | — | text | Cron 定时触发 |
-| **Knowledge** | `knowledge-base` | text | knowledge | 向量知识库检索 |
-| **Output** | `text-output` | text | — | 文本结果输出 |
-| | `json-output` | json | — | 结构化数据输出 |
-| **Control** | `condition` | json | json (多分支) | 条件分支路由 |
-| | `loop` | json | json | 循环执行 |
-| | `reusable-block` | (动态) | (动态) | 子工作流引用 |
-| **Plugin** | `plugin` | (动态) | (动态) | 第三方插件节点 |
+| 类别          | 节点               | 输入端口                     | 输出端口      | 说明                               |
+| ------------- | ------------------ | ---------------------------- | ------------- | ---------------------------------- |
+| **Agent**     | `llm-agent`        | text, model, tool, knowledge | text, json    | 核心 LLM Agent，支持工具调用与 RAG |
+|               | `chat-agent`       | text, model                  | text          | 对话式 Agent，支持多轮交互         |
+|               | `llm-model`        | —                            | model         | 模型配置节点，输出 model 端口      |
+| **Tool**      | `http-tool`        | json                         | json          | HTTP API 调用                      |
+|               | `code-tool`        | json                         | json          | 沙箱代码执行                       |
+|               | `mcp-tool`         | json                         | json, tool    | MCP 协议工具集成                   |
+|               | `sandbox`          | text                         | sandbox       | ACP 沙箱终端                       |
+| **Trigger**   | `manual-trigger`   | —                            | text          | 手动触发入口                       |
+|               | `schedule-trigger` | —                            | text          | Cron 定时触发                      |
+| **Knowledge** | `knowledge-base`   | text                         | knowledge     | 向量知识库检索                     |
+| **Output**    | `text-output`      | text                         | —             | 文本结果输出                       |
+|               | `json-output`      | json                         | —             | 结构化数据输出                     |
+| **Control**   | `condition`        | json                         | json (多分支) | 条件分支路由                       |
+|               | `loop`             | json                         | json          | 循环执行                           |
+|               | `reusable-block`   | (动态)                       | (动态)        | 子工作流引用                       |
+| **Plugin**    | `plugin`           | (动态)                       | (动态)        | 第三方插件节点                     |
 
 ## 端口数据类型
 
 画布使用 **8 种 canonical 端口数据类型**，与 Server 和 [Type Engine](/zh/type-engine/) 三端统一：
 
-| 类型 | 说明 | 典型场景 |
-|------|------|----------|
-| `model` | LLM 模型配置 | llm-model → llm-agent |
-| `text` | 纯文本 | 触发器 → Agent → 输出 |
-| `json` | 结构化 JSON | 工具输入/输出 |
-| `image` | 图像数据 | 多模态 Agent 输入 |
-| `audio` | 音频数据 | 语音相关处理 |
-| `tool` | 工具引用 | mcp-tool → llm-agent |
-| `sandbox` | 沙箱会话 | sandbox → Agent |
-| `knowledge` | 知识库引用 | knowledge-base → Agent |
+| 类型        | 说明         | 典型场景               |
+| ----------- | ------------ | ---------------------- |
+| `model`     | LLM 模型配置 | llm-model → llm-agent  |
+| `text`      | 纯文本       | 触发器 → Agent → 输出  |
+| `json`      | 结构化 JSON  | 工具输入/输出          |
+| `image`     | 图像数据     | 多模态 Agent 输入      |
+| `audio`     | 音频数据     | 语音相关处理           |
+| `tool`      | 工具引用     | mcp-tool → llm-agent   |
+| `sandbox`   | 沙箱会话     | sandbox → Agent        |
+| `knowledge` | 知识库引用   | knowledge-base → Agent |
 
 ### 兼容性检查
 
 连线时 [Type Engine](/zh/type-engine/) 实时计算端口兼容性，分为 4 个等级：
 
-| 等级 | 可视化 | 含义 |
-|------|--------|------|
-| `EXACT` | L0 默认样式 | 类型完全匹配 |
-| `TRANSFORM` | L1 提示标记 | 需要隐式转换 |
-| `PARTIAL` | L1 提示标记 | 部分兼容，可能丢失信息 |
-| `INCOMPATIBLE` | 红色错误 | 不可连接 |
+| 等级           | 可视化      | 含义                   |
+| -------------- | ----------- | ---------------------- |
+| `EXACT`        | L0 默认样式 | 类型完全匹配           |
+| `TRANSFORM`    | L1 提示标记 | 需要隐式转换           |
+| `PARTIAL`      | L1 提示标记 | 部分兼容，可能丢失信息 |
+| `INCOMPATIBLE` | 红色错误    | 不可连接               |
 
 ::: info Legacy 兼容
 `mcpToolMapping` 对 legacy `number` / `boolean` 类型自动回退为 `json`，保持向后兼容。
@@ -96,11 +96,11 @@ graph TD
 
 画布实现 **3 级 LOD（Level of Detail）** 渲染，根据缩放级别动态切换节点渲染精度：
 
-| 缩放级别 | LOD 等级 | 渲染内容 |
-|----------|----------|----------|
-| zoom ≥ 0.7 | **Full** | 完整节点配置面板、端口标签、状态指示器 |
-| 0.4 ≤ zoom < 0.7 | **Compact** | 紧凑布局，仅显示节点名、图标和端口 |
-| zoom < 0.4 | **Minimal** | 最小化展示，仅图标和连线 |
+| 缩放级别         | LOD 等级    | 渲染内容                               |
+| ---------------- | ----------- | -------------------------------------- |
+| zoom ≥ 0.7       | **Full**    | 完整节点配置面板、端口标签、状态指示器 |
+| 0.4 ≤ zoom < 0.7 | **Compact** | 紧凑布局，仅显示节点名、图标和端口     |
+| zoom < 0.4       | **Minimal** | 最小化展示，仅图标和连线               |
 
 LOD 切换使用 `React.memo` 避免非必要重渲染，在大型工作流（50+ 节点）下保持流畅。
 
@@ -119,7 +119,7 @@ graph TB
     WCP[WorkflowCanvasPage]
     WC[WorkflowCanvas<br/>728 行]
     CN[CanvasNode<br/>React.memo]
-    
+
     WCP --> WC
     WC --> CN
     CN --> Shell[CanvasNodeShell<br/>外壳容器]
@@ -138,14 +138,14 @@ graph TB
 
 ### 关键组件说明
 
-| 组件 | 行数 | 职责 |
-|------|------|------|
-| `WorkflowCanvas` | ~728 | 画布容器，管理 ReactFlow 实例、事件监听、连线逻辑 |
-| `CanvasNode` | — | React.memo 包裹，根据节点类型分发到对应 Body |
-| `CanvasNodeShell` | — | 统一外壳：阴影、选中态、拖拽 |
-| `TypedPort` | — | 类型化端口渲染，显示端口颜色与标签 |
-| `NodeConfigPanel` | — | 右侧配置面板，选中节点时弹出 |
-| `LlmAgentConfigPanel` | — | LLM Agent 专用面板，lazy 加载 Monaco 编辑器 |
+| 组件                  | 行数 | 职责                                              |
+| --------------------- | ---- | ------------------------------------------------- |
+| `WorkflowCanvas`      | ~728 | 画布容器，管理 ReactFlow 实例、事件监听、连线逻辑 |
+| `CanvasNode`          | —    | React.memo 包裹，根据节点类型分发到对应 Body      |
+| `CanvasNodeShell`     | —    | 统一外壳：阴影、选中态、拖拽                      |
+| `TypedPort`           | —    | 类型化端口渲染，显示端口颜色与标签                |
+| `NodeConfigPanel`     | —    | 右侧配置面板，选中节点时弹出                      |
+| `LlmAgentConfigPanel` | —    | LLM Agent 专用面板，lazy 加载 Monaco 编辑器       |
 
 ### Overlay 层
 
@@ -163,31 +163,31 @@ graph TB
 
 ```typescript
 interface CanvasState {
-  nodes: Node[]             // ReactFlow 节点数组
-  edges: Edge[]             // ReactFlow 连线数组
-  selectedNodeId: string | null
-  viewport: Viewport        // { x, y, zoom }
-  isDirty: boolean          // 是否有未保存修改
+  nodes: Node[]; // ReactFlow 节点数组
+  edges: Edge[]; // ReactFlow 连线数组
+  selectedNodeId: string | null;
+  viewport: Viewport; // { x, y, zoom }
+  isDirty: boolean; // 是否有未保存修改
   // ...更多状态字段
 }
 ```
 
 ### 关键 Action
 
-| Action | 说明 |
-|--------|------|
-| `addNode(type, position)` | 添加节点到画布 |
-| `removeNode(id)` | 删除节点及关联连线 |
-| `updateNodeData(id, data)` | 更新节点配置 |
-| `addEdge(connection)` | 添加连线（触发兼容性检查） |
-| `setViewport(viewport)` | 更新视口状态 |
-| `saveToServer()` | 持久化到服务端 |
+| Action                     | 说明                       |
+| -------------------------- | -------------------------- |
+| `addNode(type, position)`  | 添加节点到画布             |
+| `removeNode(id)`           | 删除节点及关联连线         |
+| `updateNodeData(id, data)` | 更新节点配置               |
+| `addEdge(connection)`      | 添加连线（触发兼容性检查） |
+| `setViewport(viewport)`    | 更新视口状态               |
+| `saveToServer()`           | 持久化到服务端             |
 
 ### 自动保存
 
 canvasStore 使用 `subscribe()` 监听状态变更，配合 **2 秒 debounce** 自动触发持久化：
 
-```
+```text
 用户编辑 → canvasStore 更新 → isDirty=true
                              → 2s debounce
                              → PUT /workflow-versions/:id

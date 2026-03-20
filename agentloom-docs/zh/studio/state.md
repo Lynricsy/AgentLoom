@@ -57,13 +57,13 @@ Studio 使用 **4 个 Zustand Store**，均配置 `immer` + `devtools` + `subscr
 
 画布核心状态，管理节点、连线、视口、选中态。
 
-| 状态 | 类型 | 说明 |
-|------|------|------|
-| `nodes` | `Node[]` | ReactFlow 节点数组 |
-| `edges` | `Edge[]` | ReactFlow 连线数组 |
-| `selectedNodeId` | `string \| null` | 当前选中节点 |
-| `viewport` | `Viewport` | 画布视口 `{ x, y, zoom }` |
-| `isDirty` | `boolean` | 未保存修改标记 |
+| 状态             | 类型             | 说明                      |
+| ---------------- | ---------------- | ------------------------- |
+| `nodes`          | `Node[]`         | ReactFlow 节点数组        |
+| `edges`          | `Edge[]`         | ReactFlow 连线数组        |
+| `selectedNodeId` | `string \| null` | 当前选中节点              |
+| `viewport`       | `Viewport`       | 画布视口 `{ x, y, zoom }` |
+| `isDirty`        | `boolean`        | 未保存修改标记            |
 
 **自动保存机制**：`subscribe()` 监听 → 2 秒 debounce → `PUT /workflow-versions/:id`
 
@@ -73,16 +73,16 @@ Studio 使用 **4 个 Zustand Store**，均配置 `immer` + `devtools` + `subscr
 
 工作流执行状态追踪，与 Socket.IO `/execution` namespace 联动。
 
-| 状态 | 说明 |
-|------|------|
-| 当前执行 ID | 活跃执行标识 |
+| 状态         | 说明                                   |
+| ------------ | -------------------------------------- |
+| 当前执行 ID  | 活跃执行标识                           |
 | 节点执行状态 | 每个节点的 running/success/failed 状态 |
-| 执行日志 | 实时日志流 |
-| 进度信息 | 总步数与已完成步数 |
+| 执行日志     | 实时日志流                             |
+| 进度信息     | 总步数与已完成步数                     |
 
 **执行触发流程**：
 
-```
+```text
 VersionToolbar [Run]
   → useStartExecution hook
   → POST /workflow-definitions/:id/run
@@ -103,10 +103,10 @@ VersionToolbar [Run]
 
 服务端数据缓存层，全局配置：
 
-| 配置 | 值 | 说明 |
-|------|-----|------|
-| `staleTime` | 30 秒 | 数据新鲜期 |
-| `retry` | 1 | 失败重试次数 |
+| 配置                   | 值      | 说明             |
+| ---------------------- | ------- | ---------------- |
+| `staleTime`            | 30 秒   | 数据新鲜期       |
+| `retry`                | 1       | 失败重试次数     |
 | `refetchOnWindowFocus` | `false` | 禁用焦点自动刷新 |
 
 ### 典型使用模式
@@ -114,23 +114,23 @@ VersionToolbar [Run]
 ```typescript
 // 查询工作流列表
 const { data } = useQuery({
-  queryKey: ['workflows'],
-  queryFn: () => api.get('workflow-definitions').json(),
-})
+  queryKey: ["workflows"],
+  queryFn: () => api.get("workflow-definitions").json(),
+});
 
 // 突变 + 缓存失效
 const mutation = useMutation({
-  mutationFn: (data) => api.post('workflow-definitions', { json: data }).json(),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
-})
+  mutationFn: (data) => api.post("workflow-definitions", { json: data }).json(),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ["workflows"] }),
+});
 ```
 
 ## HTTP 客户端 — ky
 
 Studio 使用 [ky](https://github.com/sindresorhus/ky) 作为 HTTP 客户端（非 axios / 原生 fetch），配置全局 hook 实现自动大小写转换：
 
-| Hook | 方向 | 转换 |
-|------|------|------|
+| Hook            | 方向          | 转换                   |
+| --------------- | ------------- | ---------------------- |
 | `beforeRequest` | 请求 → 服务端 | camelCase → snake_case |
 | `afterResponse` | 服务端 → 前端 | snake_case → camelCase |
 
@@ -147,14 +147,14 @@ Studio 内部使用 **camelCase**，Server API 使用 **snake_case**。ky 全局
 
 ```typescript
 const schema = z.object({
-  name: z.string().min(1, '名称必填'),
+  name: z.string().min(1, "名称必填"),
   temperature: z.number().min(0).max(2),
-})
+});
 
 const form = useForm({
   resolver: zodResolver(schema),
-  defaultValues: { name: '', temperature: 0.7 },
-})
+  defaultValues: { name: "", temperature: 0.7 },
+});
 ```
 
 ## Socket.IO 实时通信
@@ -180,12 +180,12 @@ Studio 连接 3 个 Socket.IO namespace：
 
 ## 样式系统
 
-| 技术 | 说明 |
-|------|------|
-| Tailwind CSS v4 | dark-only 主题，无 light mode |
-| Radix UI | 无障碍原语组件 |
-| CVA | Class Variance Authority，组件变体管理 |
-| `cn()` | `clsx` + `tailwind-merge` 工具函数 |
+| 技术            | 说明                                   |
+| --------------- | -------------------------------------- |
+| Tailwind CSS v4 | dark-only 主题，无 light mode          |
+| Radix UI        | 无障碍原语组件                         |
+| CVA             | Class Variance Authority，组件变体管理 |
+| `cn()`          | `clsx` + `tailwind-merge` 工具函数     |
 
 共享 UI 组件位于 `shared/ui/`，包含 8 个基础组件。详见 [Studio 概述 — 共享 UI 层](./#共享-ui-层)。
 

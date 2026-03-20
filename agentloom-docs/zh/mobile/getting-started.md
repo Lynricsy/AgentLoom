@@ -2,13 +2,13 @@
 
 ## 前置要求
 
-| 依赖 | 版本 | 说明 |
-|------|------|------|
-| Flutter | 3.41.2 | 通过 FVM 管理，项目已固定版本 |
-| FVM | 最新 | Flutter 版本管理器 |
-| Dart | ≥ 3.11.0 | 随 Flutter SDK 附带 |
-| Android Studio / Xcode | 最新 | 原生平台编译环境 |
-| agentloom-server | 运行中 | 后端 API 服务 |
+| 依赖                   | 版本     | 说明                          |
+| ---------------------- | -------- | ----------------------------- |
+| Flutter                | 3.41.2   | 通过 FVM 管理，项目已固定版本 |
+| FVM                    | 最新     | Flutter 版本管理器            |
+| Dart                   | ≥ 3.11.0 | 随 Flutter SDK 附带           |
+| Android Studio / Xcode | 最新     | 原生平台编译环境              |
+| agentloom-server       | 运行中   | 后端 API 服务                 |
 
 ### 安装 FVM
 
@@ -46,11 +46,11 @@ fvm flutter pub get
 
 项目包含三套环境文件，已提交到 git：
 
-| 文件 | API 地址 | 用途 |
-|------|---------|------|
-| `.env.dev` | `https://api-dev.agentloom.com/api/v1` | 开发环境 |
-| `.env.staging` | staging 环境 API | 预发布环境 |
-| `.env.prod` | 生产环境 API | 正式环境 |
+| 文件           | API 地址                               | 用途       |
+| -------------- | -------------------------------------- | ---------- |
+| `.env.dev`     | `https://api-dev.agentloom.com/api/v1` | 开发环境   |
+| `.env.staging` | staging 环境 API                       | 预发布环境 |
+| `.env.prod`    | 生产环境 API                           | 正式环境   |
 
 环境文件在 `pubspec.yaml` 中声明为 Flutter assets，由 `flutter_dotenv` 在运行时加载。如需修改 API 地址，直接编辑对应的 `.env.*` 文件。
 
@@ -140,12 +140,12 @@ fvm flutter test --coverage
 
 ### 测试模式说明
 
-| 模式 | 用法 |
-|------|------|
-| Mock 框架 | `mocktail` |
-| 测试工厂 | 集中在 `test/helpers/test_helpers.dart` |
+| 模式          | 用法                                                             |
+| ------------- | ---------------------------------------------------------------- |
+| Mock 框架     | `mocktail`                                                       |
+| 测试工厂      | 集中在 `test/helpers/test_helpers.dart`                          |
 | Provider 测试 | `container.listen()` + `Completer<void>` 避免 dispose StateError |
-| Widget 测试 | `UncontrolledProviderScope` + `ProviderContainer` |
+| Widget 测试   | `UncontrolledProviderScope` + `ProviderContainer`                |
 
 ## 静态分析
 
@@ -216,18 +216,20 @@ Future<void> fetchData() async {
 
 移动端依赖 `agentloom-server` 提供的以下服务：
 
-| 服务 | 端点/协议 | 用途 |
-|------|----------|------|
-| REST API | `GET/POST /api/v1/*` | 认证、工作流、执行等 CRUD |
-| Socket.IO | `/execution` namespace | 执行状态实时推送 |
-| FCM | Firebase Admin SDK | 推送通知 |
+| 服务      | 端点/协议              | 用途                      |
+| --------- | ---------------------- | ------------------------- |
+| REST API  | `GET/POST /api/v1/*`   | 认证、工作流、执行等 CRUD |
+| Socket.IO | `/execution` namespace | 执行状态实时推送          |
+| FCM       | Firebase Admin SDK     | 推送通知                  |
 
 确保后端服务已启动，且 `.env.*` 中的 `API_BASE_URL` 配置正确。
 
 ::: tip 快速启动后端
+
 ```bash
 cd agentloom-server
 pnpm install && pnpm start:dev
 ```
+
 参考 [服务端文档](/zh/server/) 了解完整的后端配置。
 :::
