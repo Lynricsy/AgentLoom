@@ -74,6 +74,8 @@ describe('ApiEventIngestionService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockAdapter.validateEvent.mockReturnValue(true);
+    mockAdapter.matchesTrigger.mockReturnValue(true);
 
     db = mocks.createMockDb();
     mocks.getTenantDb.mockReturnValue(db);
@@ -171,6 +173,26 @@ describe('ApiEventIngestionService', () => {
         executions: [],
         skippedCount: 1,
       });
+      expect(executionService.runWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('validateEvent が false を返した場合はスキップして skippedCount を増やす', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([baseTrigger]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+      mockAdapter.validateEvent.mockReturnValue(false);
+
+      const result = await service.ingestEvent(TENANT_ID, validDto);
+
+      expect(result).toEqual({
+        triggeredCount: 0,
+        executions: [],
+        skippedCount: 1,
+      });
+      expect(mockAdapter.matchesTrigger).not.toHaveBeenCalled();
       expect(executionService.runWorkflow).not.toHaveBeenCalled();
     });
 

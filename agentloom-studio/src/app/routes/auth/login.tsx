@@ -5,6 +5,7 @@ import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { AuthLayout } from '@/features/auth/components/AuthLayout';
+import { MfaVerifyDialog } from '@/features/auth/components/MfaVerifyDialog';
 import { OAuthButtons } from '@/features/auth/components/OAuthButtons';
 import { PasswordInput } from '@/features/auth/components/PasswordInput';
 import { supabase } from '@/shared/lib/supabase';
@@ -22,6 +23,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showMfaVerify, setShowMfaVerify] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState('');
 
   const {
     register,
@@ -31,6 +34,15 @@ export function LoginPage() {
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
   });
+
+  const handleLoginSuccess = () => {
+    const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
+    if (returnUrl) {
+      window.location.href = returnUrl;
+    } else {
+      navigate({ to: '/' });
+    }
+  };
 
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
@@ -46,8 +58,6 @@ export function LoginPage() {
         return;
       }
 
-      // MFA challenge detection: Supabase returns factors in the session
-      // when MFA is enabled but not yet verified
       if (
         result.session === null &&
         result.user &&
@@ -55,16 +65,12 @@ export function LoginPage() {
         Array.isArray(result.user.factors) &&
         result.user.factors.length > 0
       ) {
-        setServerError('此账号启用了多因素认证 (MFA)，暂不支持 MFA 验证，请联系管理员');
+        setMfaFactorId(result.user.factors[0]?.id ?? '');
+        setShowMfaVerify(true);
         return;
       }
 
-      const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
-      if (returnUrl) {
-        window.location.href = returnUrl;
-      } else {
-        navigate({ to: '/' });
-      }
+      handleLoginSuccess();
     } catch {
       setServerError('登录过程中发生未知错误，请稍后重试');
     } finally {
@@ -141,6 +147,13 @@ export function LoginPage() {
           </Link>
         </p>
       </div>
+
+      <MfaVerifyDialog
+        open={showMfaVerify}
+        factorId={mfaFactorId}
+        onClose={() => setShowMfaVerify(false)}
+        onSuccess={handleLoginSuccess}
+      />
     </AuthLayout>
   );
 }

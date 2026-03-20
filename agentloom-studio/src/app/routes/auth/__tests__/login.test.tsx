@@ -39,6 +39,26 @@ vi.mock('@/app/routes/__root', () => ({
   rootRoute: {},
 }));
 
+vi.mock('@/features/auth/components/MfaVerifyDialog', () => ({
+  MfaVerifyDialog: ({
+    open,
+    onClose,
+    onSuccess,
+  }: {
+    open: boolean;
+    factorId: string;
+    onClose: () => void;
+    onSuccess?: () => void;
+  }) =>
+    open ? (
+      <div data-testid="mfa-verify-dialog">
+        <span>多因素认证</span>
+        <button type="button" onClick={onClose}>关闭</button>
+        <button type="button" onClick={onSuccess}>验证成功</button>
+      </div>
+    ) : null,
+}));
+
 import { LoginPage } from '../login';
 
 describe('LoginPage', () => {

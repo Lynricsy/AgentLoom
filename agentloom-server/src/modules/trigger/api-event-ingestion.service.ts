@@ -66,6 +66,20 @@ export class ApiEventIngestionService {
 
       const adapter = this.resolveAdapter(parsed.source)
 
+      if (!adapter.validateEvent(payload, config)) {
+        skippedCount++
+        this.logger.warn(
+          JSON.stringify({
+            action: 'api_event_validation_failed',
+            triggerId: trigger.id,
+            source: parsed.source,
+            type: parsed.type,
+            tenantId,
+          }),
+        )
+        continue
+      }
+
       if (!adapter.matchesTrigger(payload, config)) {
         skippedCount++
         continue

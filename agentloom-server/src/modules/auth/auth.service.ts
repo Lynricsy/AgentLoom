@@ -668,6 +668,54 @@ export class AuthService {
     return { message: 'Session revoked successfully' };
   }
 
+  async revokeAllSessions(accessToken: string) {
+    const claims = this.decodeAccessTokenClaims(accessToken);
+    const userId = claims?.sub;
+    const currentSessionId = claims?.session_id;
+
+    if (!userId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/unauthorized',
+        title: 'Unauthorized',
+        status: HttpStatus.UNAUTHORIZED,
+        detail: 'Unable to identify user from token',
+      });
+    }
+
+    const listResult = await this.db.execute(sql`
+      SELECT id::text
+      FROM auth.sessions
+      WHERE user_id = ${userId}::uuid
+        AND (not_after IS NULL OR not_after > NOW())
+    `);
+
+    const rawList = listResult as unknown;
+    const listWithRows = rawList as { rows?: Array<{ id?: string }> };
+    const allRows: Array<{ id?: string }> = Array.isArray(rawList)
+      ? (rawList as Array<{ id?: string }>)
+      : Array.isArray(listWithRows.rows)
+        ? listWithRows.rows
+        : [];
+
+    const otherSessionIds = allRows
+      .map((r) => r.id ?? '')
+      .filter((id) => id && id !== currentSessionId);
+
+    if (otherSessionIds.length === 0) {
+      return { data: { revokedCount: 0 } };
+    }
+
+    for (const id of otherSessionIds) {
+      await this.db.execute(sql`
+        DELETE FROM auth.sessions
+        WHERE id = ${id}::uuid
+          AND user_id = ${userId}::uuid
+      `);
+    }
+
+    return { data: { revokedCount: otherSessionIds.length } };
+  }
+
   private extractProviders(user: SupabaseUser | null) {
     const providers = new Set<string>();
     const appMetadata =

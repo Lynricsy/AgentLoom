@@ -195,4 +195,42 @@ describe('AuthService — session management', () => {
       expect(mockExecute).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('revokeAllSessions', () => {
+    it('成功：現在のセッション以外を全て削除し revokedCount を返す', async () => {
+      const token = buildFakeToken(
+        mocks.MOCK_USER_ID,
+        mocks.MOCK_SESSION_ID,
+      );
+
+      mockExecute.mockResolvedValueOnce({
+        rows: [
+          { id: mocks.MOCK_SESSION_ID },
+          { id: mocks.MOCK_OTHER_SESSION_ID },
+        ],
+      });
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const result = await authService.revokeAllSessions(token);
+
+      expect(result).toEqual({ data: { revokedCount: 1 } });
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('成功：削除対象セッションが無い場合は revokedCount=0 を返す', async () => {
+      const token = buildFakeToken(
+        mocks.MOCK_USER_ID,
+        mocks.MOCK_SESSION_ID,
+      );
+
+      mockExecute.mockResolvedValueOnce({
+        rows: [{ id: mocks.MOCK_SESSION_ID }],
+      });
+
+      const result = await authService.revokeAllSessions(token);
+
+      expect(result).toEqual({ data: { revokedCount: 0 } });
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+    });
+  });
 });

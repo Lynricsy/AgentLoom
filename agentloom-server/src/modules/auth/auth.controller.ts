@@ -118,4 +118,14 @@ export class AuthController {
     const token = request.headers.authorization?.split(' ')[1];
     return this.authService.revokeSession(token!, sessionId);
   }
+
+  @Post('sessions/revoke-all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '撤销当前用户的所有其他会话' })
+  @ApiResponse({ status: 200, description: '会话批量撤销成功' })
+  @ApiResponse({ status: 401, description: '未认证' })
+  revokeAllSessions(@Req() request: FastifyRequest) {
+    const token = request.headers.authorization?.split(' ')[1];
+    return this.authService.revokeAllSessions(token!);
+  }
 }
