@@ -16,7 +16,7 @@ type AuthenticatedRequest = {
 }
 
 @ApiTags('Triggers')
-@Controller('events')
+@Controller('api-events')
 export class ApiEventIngestionController {
   private readonly logger = new Logger(ApiEventIngestionController.name)
 
