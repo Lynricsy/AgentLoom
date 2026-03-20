@@ -97,3 +97,5 @@ lerna-debug.log*
 .cache/
 .temp/
 .tmp/
+api-page-check.png
+api-page-v2.png
