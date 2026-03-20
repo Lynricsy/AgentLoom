@@ -39,6 +39,9 @@ importers:
       markdownlint-cli2:
         specifier: latest
         version: 0.21.0
+      vue:
+        specifier: 3.5.30
+        version: 3.5.30
 
 packages:
 

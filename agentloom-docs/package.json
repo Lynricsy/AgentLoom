@@ -22,6 +22,7 @@
     "vitepress-plugin-mermaid": "^2.0.0"
   },
   "devDependencies": {
-    "markdownlint-cli2": "latest"
+    "markdownlint-cli2": "latest",
+    "vue": "3.5.30"
   }
 }
