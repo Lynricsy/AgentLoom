@@ -1,0 +1,84 @@
+/**
+ * AgentLoom 品牌主题 — Violet/Purple AI 美学
+ *
+ * 基于 Tailwind violet 色阶:
+ *   50:  #f5f3ff   100: #ede9fe   200: #ddd6fe   300: #c4b5fd
+ *   400: #a78bfa   500: #8b5cf6   600: #7c3aed   700: #6d28d9
+ *   800: #5b21b6   900: #4c1d95
+ */
+
+/* ------------------------------------------------------------------ */
+/*  品牌色 — 覆盖 VitePress 默认蓝色                                     */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* 品牌色阶 (light) */
+  --vp-c-brand-1: #7c3aed;
+  --vp-c-brand-2: #6d28d9;
+  --vp-c-brand-3: #5b21b6;
+  --vp-c-brand-soft: rgba(124, 58, 237, 0.14);
+
+  /* Hero name 渐变 */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(
+    135deg,
+    #7c3aed 0%,
+    #a78bfa 50%,
+    #c4b5fd 100%
+  );
+
+  /* Hero 背景光晕 */
+  --vp-home-hero-image-background-image: linear-gradient(
+    -45deg,
+    rgba(124, 58, 237, 0.3) 0%,
+    rgba(167, 139, 250, 0.3) 50%,
+    rgba(196, 181, 253, 0.3) 100%
+  );
+  --vp-home-hero-image-filter: blur(44px);
+
+  /* 按钮 — brand */
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-bg: #7c3aed;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #ffffff;
+  --vp-button-brand-hover-bg: #6d28d9;
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #ffffff;
+  --vp-button-brand-active-bg: #5b21b6;
+}
+
+.dark {
+  /* 暗色模式品牌色 — 稍亮以保持可读性 */
+  --vp-c-brand-1: #a78bfa;
+  --vp-c-brand-2: #8b5cf6;
+  --vp-c-brand-3: #7c3aed;
+  --vp-c-brand-soft: rgba(167, 139, 250, 0.16);
+
+  /* Hero name 渐变 (dark) */
+  --vp-home-hero-name-background: linear-gradient(
+    135deg,
+    #a78bfa 0%,
+    #c4b5fd 50%,
+    #ede9fe 100%
+  );
+
+  /* Hero 背景光晕 (dark) */
+  --vp-home-hero-image-background-image: linear-gradient(
+    -45deg,
+    rgba(167, 139, 250, 0.25) 0%,
+    rgba(124, 58, 237, 0.25) 50%,
+    rgba(109, 40, 217, 0.25) 100%
+  );
+
+  /* 按钮 — brand (dark) */
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #1e1b2e;
+  --vp-button-brand-bg: #a78bfa;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: #1e1b2e;
+  --vp-button-brand-hover-bg: #8b5cf6;
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: #1e1b2e;
+  --vp-button-brand-active-bg: #7c3aed;
+}
