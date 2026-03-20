@@ -145,7 +145,7 @@ void main() {
       expect(find.text('邮箱或密码错误'), findsOneWidget);
     });
 
-    testWidgets('MFA 状态显示提示信息', (tester) async {
+    testWidgets('MFA 状态渲染登录表单（不显示旧版提示文字）', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
       await tester.pumpWidget(
@@ -160,7 +160,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('此账户需要多因素认证，请在 Web 端登录'), findsOneWidget);
+      // LoginScreen 现在在初始渲染时不显示 MFA 提示消息。
+      // MFA 状态下导航到 /mfa-verify 由 _handleLogin() 触发，而非初始渲染。
+      expect(find.text('AgentLoom'), findsOneWidget);
+      expect(find.text('此账户需要多因素认证，请在 Web 端登录'), findsNothing);
     });
   });
 
