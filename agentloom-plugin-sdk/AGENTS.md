@@ -54,9 +54,47 @@ src/
 | 补充 SDK 单测 | `src/validation/*.test.ts` + `src/helpers/*.test.ts` | 使用 Vitest，覆盖 schema / helper / type guard |
 | 签名/验证插件归档 | `src/signing/archive.ts` + `src/signing/sign.ts` + `src/signing/verify.ts` | 基于 canonical unsigned archive payload 的 SHA-256 / RSA-PSS；使用 `jszip` 读取/改写 `manifest.json` |
 
+## 签名链路
+
+10 步完整签名流程：
+
+1. `keys generate` — 生成 RSA 密钥对
+2. `keys` 注册公钥到 Server `plugin_developer_keys`
+3. `build` — 构建无签名 `.alp` 归档
+4. canonical payload — 从归档读取 manifest，剥离 `SIGNING_METADATA_KEYS`（signature/contentHash/developerKeyFingerprint），对 JSON deep-sort key，对每个文件计算 SHA-256
+5. sign — RSA-PSS SHA-256, `saltLength: DIGEST`
+6. contentHash — canonical unsigned payload 的 SHA-256 hex
+7. 注入 `signature` / `contentHash` / `developerKeyFingerprint` 到 manifest.json
+8. 覆写归档
+9. CLI self-verify（读取归档重新计算 canonical payload 并验签）
+10. Server re-verify（上传时以相同逻辑再次验签）
+
+verify 端使用 `saltLength: AUTO`（兼容 Web Crypto 规范，可正确校验 `DIGEST` 生成的签名）。
+
+## `.alp` 归档格式
+
+- ZIP DEFLATE-9 压缩
+- 必含：`manifest.json` + `dist/` + `package.json`
+- 可选：`README.md`
+- WASM 入口：`dist/plugin.wasm`
+- 最大 50MB
+
+## Zod 校验模式
+
+SDK 中使用的 8 种 canonical Zod 校验模式：
+
+1. reverse-domain regex (`/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/`)
+2. `semver.valid()` refine
+3. const-array enum 派生（`z.enum(ARRAY as [string, ...string[]])`）
+4. hex digest regex（64 字符 hex）
+5. 所有 object schema 使用 `.strip()` 丢弃未知字段
+6. `safeParse` → `ValidationResult { valid, errors[] }` 包装
+7. `.wasm` 后缀 refine
+8. 权限枚举校验
+
 ## 约定
 
-- 使用 **Zod 3.x**，不要引入 Zod 4 API
+- 使用 **Zod 3.x**（有意区别于 Server 端的 Zod 4，确保插件生态的广泛兼容性），不要引入 Zod 4 API
 - `PluginManifest.id` 使用 reverse-domain 格式，如 `com.example.my-plugin`
 - `version` 与 `minPlatformVersion` 通过 `semver.valid()` 校验
 - `permissions` 默认空数组；未知 manifest 字段由 Zod object 默认 strip
@@ -81,3 +119,11 @@ Vitest 测试位于 `src/**/*.test.ts`。`tsconfig.json` 开启 `strict`，`modu
 - PortDataType 与主仓 server/studio/type-engine 的 canonical 8 值保持一致
 - 该包是 standalone npm package，拥有独立 `node_modules/` 与 `pnpm-lock.yaml`
 - 不依赖其他 AgentLoom 包；通过导出类型与运行时校验作为插件生态边界
+
+## 跨包流转
+
+```
+SDK → CLI (file: dep) → Template (file: dep) → Server (file: dep) → Studio (HTTP API)
+```
+
+CLI、Template 通过 `file:` 引用 SDK。SDK `package.json` 包含 `"prepare": "pnpm build"` 和 `"prepack": "pnpm build"` hook，当 CLI/Template 执行 `pnpm install` 时自动重建 SDK `dist/`。

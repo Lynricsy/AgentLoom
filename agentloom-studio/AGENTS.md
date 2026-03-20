@@ -22,6 +22,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/settings/audit-logs` | AuditLogPage | owner/admin 审计日志查询页：筛选 + 分页 + 详情 + 资源时序 |
 | `/settings/resource-quotas` | ResourceGovernancePage | owner/admin 资源治理设置页：7 个 canonical quota 字段、tenant/workflow governance pause、异常 execution 终止 |
 | `/settings/monitoring` | MonitoringDashboardPage | owner/admin 组织级只读运行监控页：`15m/1h/24h` 窗口、执行趋势、当前队列快照摘要、alerts/hotspots/risk summary、跳转 `/settings/resource-quotas` 与 `/executions/$executionId` |
+| `/settings/private-deployment` | PrivateDeploymentPage | owner/admin 私有部署设置页：SMTP/LLM proxy/证书/license 配置，与治理/监控/审计入口形成企业运维面板 |
 | `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页：上限查看/更新 + 降级 preview/confirm |
 | `/templates` | TemplateBrowsePage | Tabs + 搜索 + 网格 + TemplateWizardDialog |
 
@@ -48,7 +49,16 @@ src/
 │   ├── developer-console/ # 开发者收益仪表盘（api/components/pages），recharts 月度趋势图
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   ├── plugin/      # 插件 API 层（types/api/queries/keys），供画布 NodePalette 动态加载已安装插件
-│   └── llm/          # LLM 模型配置
+│   ├── llm/          # LLM 模型配置
+│   ├── share/        # 工作流分享链接管理（types/api/hooks）
+│   ├── trigger/      # 工作流触发器管理 cron/webhook/api_event（types/api/hooks/components）
+│   ├── tenant-key/   # 租户 E2EE 密钥管理（clientCrypto/keyStorage/hooks/components）
+│   ├── smart-routing/ # 智能路由 API 层（routingApi/routingKeys/routingQueries），无 UI 组件
+│   ├── optimization-suggestion/ # Agent 配置优化建议面板（types/api/hooks/components）
+│   ├── intervention-policy/ # 介入策略管理（approve/reject/escalate timeout）
+│   ├── private-deployment/ # 私有部署设置页 `/settings/private-deployment`（types/api/hooks/components）
+│   ├── workflow-input-schema/ # 工作流输入参数 schema 编辑器（无 api/、无 index.ts，属于例外布局）
+│   └── block-library/ # 可复用块库管理
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
 │   ├── components/   # Pagination 等通用组件
@@ -61,13 +71,14 @@ src/
 
 ## 状态管理
 
-**2 个 Zustand stores** (immer + devtools + subscribeWithSelector):
+**4 个 Zustand stores** (immer + devtools + subscribeWithSelector):
 
 | Store | 路径 | 职责 |
 |-------|------|------|
 | canvasStore | `features/canvas/stores/` | nodes/edges/viewport/selection/search/dirty/mapping |
 | executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming/intervention)/recentEvents(cap 50) |
 | evidenceUiStore | `features/evidence/stores/` | isOpen/panelExecutionId/panelNodeId/panelNodeName/selectedEvidenceId/highlightUntil/documentViewer |
+| notificationStore | `features/notification/stores/` | notifications/unreadCount/isDropdownOpen，socket 增量插入与已读乐观更新 |
 
 **自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
 
@@ -158,6 +169,16 @@ react-hook-form + @hookform/resolvers + Zod v4
 | 新服务端状态 | `xxxKeys` factory + `xxxApi` 函数 + `useXxx` query hook |
 | 新 Zustand 状态 | 按 canvasStore 模式: immer + devtools + subscribeWithSelector |
 
+## 架构偏差与注意事项
+
+- **非标准子目录**: `developer-console` 和 `monitoring` 使用 `pages/` 子目录（而非 `components/`）
+- **Barrel 导出例外**: `marketplace/index.ts` 使用 wildcard re-export（其余 feature 使用 named export）
+- **无 canonical 布局**: `workflow-input-schema` 无 `api/` 目录且无 `index.ts`
+- **认证逻辑散落**: auth 逻辑寄存在 `execution/hooks/useAuthToken.ts`（标记 `TODO(auth)`），不存在 `features/auth/` slice
+- **跨 feature 共享类型**: `canvas/autonomy.types.ts` 位于 feature 根目录，被 organization-autonomy-policy 和 optimization-suggestion 跨 feature 引用
+- **shared/ui 组件**: 仅含 8 个基础组件（button/input/label/select/slider/switch/tabs/toast）；其中 tabs 为自定义 Context-based 实现，非 Radix Tabs
+- **Query Key Factory 模式**: 各 feature 的 `[feature]Keys.ts` 遵循 `all → lists → list(filters) → details → detail(id)` 层级模式
+
 ## 测试约定
 
 - `*.test.{ts,tsx}` 与源码同级
@@ -169,11 +190,16 @@ react-hook-form + @hookform/resolvers + Zod v4
 
 ## 复杂度热点
 
+- `McpImportDialog.tsx` (1239L) — 四步导入流（配置→测试→发现→导入）
+- `PrivateDeploymentPage.tsx` (1222L) — 私有部署 SMTP/LLM proxy/证书/license 配置
+- `FieldMappingPanel.tsx` (1122L) — L2 树形字段映射 + 智能建议 + 批量拖拽 + undo
+- `ResourceGovernancePage.tsx` (1092L) — quota/governance/termination 三合一管理
+- `InterventionPolicyTab.tsx` (1051L) — 介入策略 approve/reject/escalate timeout
 - `WorkflowCanvas.tsx` (728L) — 5 overlays + connection validation + DAG preview
 - `KnowledgeBaseDetailPage.tsx` (700L) — WebSocket + form + pagination + upload
 - `LlmModelConfigPanel.tsx` (678L) — 多模型配置面板
+- `nodeTypeRegistry.ts` (590L) — 17 种节点类型配置 (纯数据，含 smart-routing)
 - `canvasStore.ts` (535L) — 画布完整状态管理
-- `nodeTypeRegistry.ts` (590L) — 16 种节点类型配置 (纯数据，含 smart-routing)
 
 ## 环境变量
 

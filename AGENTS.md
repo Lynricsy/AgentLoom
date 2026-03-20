@@ -1,6 +1,6 @@
 # AGENTLOOM 项目知识库
 
-> **Generated:** 2026-03-09 | **Commit:** 5092f50 | **Branch:** main
+> **Generated:** 2026-03-20 | **Commit:** 98f67df | **Branch:** main
 
 ## 自动化开发循环规则
 
@@ -30,12 +30,13 @@ AgentLoom — 多智能体工作流编排平台。用户通过可视化画布将
 AgentLoomAUTO/
 ├── agentloom-server/         # NestJS v11 + Fastify v5 后端 (见子 AGENTS.md)
 ├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
-├── agentloom-deploy/         # 私有化部署资产 (Docker Compose + Helm + 运维脚本)
+├── agentloom-deploy/         # 私有化部署资产 (Docker Compose + Helm + 运维脚本) (见子 AGENTS.md)
+├── agentloom-docs/           # VitePress 2 文档站 (中英双语 + OpenAPI + Mermaid) (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
-├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output)
+├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output) (见子 AGENTS.md)
 ├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令)
 ├── agentloom-plugin-template/ # 示例插件模板 (text-to-uppercase)
-├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio)
+├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio) (见子 AGENTS.md)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
 ├── _bmad/                    # BMAD agent 系统配置 (勿修改)
 ├── _bmad-output/             # BMAD 生成的文档
@@ -69,6 +70,7 @@ AgentLoomAUTO/
 | 修改移动端路由 | `agentloom_mobile/lib/routes/` | GoRouter + StatefulShellRoute |
 | 移动端共享组件 | `agentloom_mobile/lib/shared/` | providers/models/widgets |
 | 环境变量 | `agentloom-server/.env.example` / `agentloom-studio/.env.example` / `agentloom_mobile/.env.*` | |
+| 添加/编辑文档 | `agentloom-docs/zh/` / `agentloom-docs/en/` | VitePress 2，中英双语，prebuild 同步 OpenAPI spec |
 
 ## 跨包架构
 
@@ -157,6 +159,12 @@ flutter analyze                    # 静态分析
 flutter test                       # 单元测试
 flutter test --coverage            # 覆盖率
 dart run build_runner build        # 代码生成 (freezed/json_serializable)
+
+# Docs
+cd agentloom-docs
+pnpm install && pnpm dev          # 开发 (VitePress)
+pnpm build                        # 生产构建
+pnpm lint:md                      # Markdown lint
 ```
 
 ## 注意事项

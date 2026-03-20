@@ -76,12 +76,15 @@ fvm flutter test --coverage
 
 ## 数据层模式
 
-- **Freezed 3.x**: 模型使用 `abstract class` + `@freezed` + `@JsonKey(name: 'snake_case')` 进行 JSON 序列化
+- **Freezed 3.x**: 模型使用 `abstract class` + `sealed class` + `@freezed` + `@JsonKey(name: 'snake_case')` 进行 JSON 序列化；生成的 `.freezed.dart` / `.g.dart` 已提交到 git
+- **InputFieldDefinition**: 有意不使用 Freezed（含递归 `Object?` equality，Freezed deep equality 不适用）
 - **PaginatedResponse<T>**: 泛型分页封装，`@JsonSerializable(genericArgumentFactories: true)`
 - **WorkflowApi**: 封装 Dio 调用，方法签名与服务端 REST 端点一一对应；`getExecution()` 消费完整 execution detail `steps[]`，`getInputSchema()` 会对 `collectionMode`/`minLength`/`maxLength`/`visibility`/`collectionHint` 做 camelCase/snake_case 兼容归一化，`runWorkflow()` 发送 canonical camelCase `inputParams` / `launchSource`
 - **InputFieldDefinition**: 含可选 `visibility: InputFieldVisibility { fieldId, equals }`（`fromJson()` 兼容 `fieldId/field_id`）与可选 `collectionHint`；`ParameterInputScreen` 基于 visibility 递归求值决定字段显示，提交时仅收集可见字段
 - **WorkflowInputSchema**: 含可选 `conversationPlan: ConversationPlan { systemPrompt, maxTurns }`，`collectionMode != 'form'` 时统一走 `ConversationModePrompt` Web-first fallback
-- **Riverpod 3.x**: 手写 Provider（无 riverpod_generator），AsyncNotifier/FutureProvider 用于状态管理
+- **Riverpod 3.x**: 手写 Provider（无 riverpod_generator / @riverpod），AsyncNotifier/FutureProvider 用于状态管理；constructor-injection `family` 模式
+- **Sealed class 状态**: `AuthState`（Freezed sealed）、`ExecutionMonitorState`、`WorkflowLaunchState`、`WorkflowListState` 均为 sealed class 状态机，非 plain AsyncValue
+- **`ref.mounted` 守卫**: 所有 async 路径在 `await` 后均检查 `ref.mounted`，防止 dispose 后写入
 - **execution monitor**: REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
 
 ## 测试模式
@@ -98,8 +101,22 @@ fvm flutter test --coverage
 - `secureStorageProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入 `FlutterSecureStorage()` 实例
 - AuthApi 使用独立 `authDioProvider` (无 AuthInterceptor) 避免循环依赖
 - AuthInterceptor 处理 4 种 401 type: `token-expired` (刷新重试), `token-revoked`/`token-invalid`/`token-missing` (强制登出)
+- AuthInterceptor 继承 `QueuedInterceptorsWrapper`，序列化并发 401 请求（避免多个请求同时触发 refresh）；含 stale-token 优化（比较当前 token 与失败 token，已刷新则直接重试不再 refresh）
 - GoRouter redirect guard 通过 `AuthRouteNotifier` (ChangeNotifier) 桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由
 - `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 access/refresh/expires_in 三项完整
 - `.env.*` 已在 `pubspec.yaml` 声明为 Flutter assets，供 `flutter_dotenv` 加载
+- `.env.dev` / `.env.staging` / `.env.prod` 已提交到 git，通过 `--dart-define=ENV=<dev|staging|prod>` 选择环境
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
 - `WorkflowLaunchNotifier.submit()` 在异步成功/失败路径均使用 `ref.mounted` 守卫，防止 dispose 后写入状态
+
+## 平台配置
+
+- **iOS**: `AppDelegate` 实现 `FlutterImplicitEngineDelegate` + `FlutterAppDelegate`，支持 Firebase Messaging
+- **Android**: `AndroidManifest.xml` 声明 `POST_NOTIFICATIONS` 权限；FCM channel ID 硬编码；`main.dart` 中后台消息 handler 使用 `@pragma('vm:entry-point')` 标注
+- **Firebase 优雅降级**: 应用在无 Firebase 配置文件（`google-services.json` / `GoogleService-Info.plist`）时仍可正常运行，推送功能自动跳过
+
+## 推送通知细节
+
+- `PushNotificationNotifier._initCompleter` 提供幂等锁，多次调用 `initializeAfterAuth()` 只执行一次初始化
+- FCM token 缓存 + dedup，避免重复注册
+- 前台消息转 JSON local notification payload（通过 `flutter_local_notifications` 展示）

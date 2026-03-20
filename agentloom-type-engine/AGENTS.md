@@ -65,9 +65,21 @@ wasm-pack build --target bundler --release
 ## 约定
 
 - `#![deny(clippy::unwrap_used)]` — 禁止 unwrap，使用 Result/Option 处理
-- Rust Edition 2024
+- Rust Edition 2024，`crate-type = ["cdylib", "rlib"]`（同时输出 WASM 动态库和 Rust 静态库供测试链接）
 - Serde 用于 JSON 序列化 (serde-wasm-bindgen 跨 WASM 边界)
 - `TypeConstraint` 已定义但为死代码（未在 checker 中使用）
+- 集成测试含 inline timing assert（`elapsed().as_millis() < 100`），确保兼容性检查不退化
+
+## 对齐约束
+
+4 级兼容性结果与 8 种 PortDataType 为 canonical 定义，在以下 4 处独立维护，存在漂移风险：
+
+1. **Rust type-engine** — `src/types/port.rs`
+2. **Server schema** — Drizzle enum + Zod
+3. **Studio mcpToolMapping** — `features/canvas/types/typeSchema.ts`（含 legacy `number`/`boolean → json` 回退）
+4. **Plugin SDK** — `src/types/port.ts`
+
+修改任一处后需同步其余三处。
 
 ## 与 Studio 的关系
 

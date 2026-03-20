@@ -65,7 +65,7 @@ WorkflowCanvasPage.tsx
 
 | 目录 | 职责 |
 |------|------|
-| `api/` | 画布相关 API 调用 |
+| `api/` | 画布相关 API 调用；含 `mcpToolQueries.ts` / `mcpToolKeys.ts` 兼容适配层（复用 `features/mcp/` 的 shared query key，违反单一归属原则但保证 NodePalette 与 ToolLibrary 同步刷新） |
 | `components/` | 上述组件树，含 `BlockCreateDialog` / `nodes/ReusableBlockBody.tsx` / `panels/ReusableBlockPanel.tsx` |
 | `hooks/` | 画布交互 hooks（拖拽/连接/快捷键 + `useLevelOfDetail`） |
 | `lib/` | `connectionCompatibility.ts`（同步 guard + cache 读取 + async 适配）、`encapsulation.ts`（多选节点封装分析与 block 替换纯函数）、`typeEngine/`（runtime/worker/fallback/serialize）、`configSchemaToZod.ts`、`nestedFieldTree.ts`（MAX_NESTED_DEPTH=5，buildSchemaTree/buildNestedFieldTree/collectLeafPaths）、`fieldSuggestionEngine.ts`（Levenshtein + token overlap + type compat 三维评分，Top-3 建议 + 0.70 阈值）、`coercionStrategies.ts`（text↔json 转换策略注册表） |
@@ -106,3 +106,4 @@ WorkflowCanvasPage.tsx
 - `DynamicConfigForm` 使用 react-hook-form + Zod；任一字段 blur 后会触发整表校验，以满足多必填字段同时报错
 - `LlmAgentConfigPanel` 使用 `@monaco-editor/react` lazy import，编辑器内容必须能在 mount 后响应外部 config 更新；面板会通过 auth token 的组织 claim 查询 organization autonomy policy，显示自治上限、禁用超 cap 的新选项、阻止保存 stale over-cap 模式，并对 legacy raw mode 给出显式迁移提示，同时保持现有 react-hook-form + zodResolver + 300ms debounce + hidden drafts 架构；当前 autonomy mode 读取优先级为 `node.data.autonomyMode -> node.data.autonomyConfig.mode -> node.data.settings.autonomyMode -> node.data.config.autonomyMode`，autosave 必须同步写回这四个 mirror 并保留 `config/settings/autonomyConfig` 里的无关字段
 - 端口兼容性检查在拖拽连线时实时触发
+- `lib/typeEngine/runtime.worker.ts` 实质上是平台级服务（WASM 加载 + Web Worker 通信），寄存在 feature `lib/` 下而非 `shared/`
