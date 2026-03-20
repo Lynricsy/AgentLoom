@@ -22,6 +22,7 @@ import { organizationAutonomyPolicyRoute } from './settings/security/autonomy-po
 import { resourceGovernanceRoute } from './settings/resource-quotas'
 import { monitoringRoute } from './settings/monitoring'
 import { privateDeploymentRoute } from './settings/private-deployment'
+import { authCallbackRoute } from './auth/callback'
 
 function RootLayout() {
   const authToken = useAuthToken();
@@ -100,4 +101,5 @@ export const routeTree = rootRoute.addChildren([
   resourceGovernanceRoute,
   monitoringRoute,
   privateDeploymentRoute,
+  authCallbackRoute,
 ]);
