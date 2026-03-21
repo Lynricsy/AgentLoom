@@ -305,3 +305,29 @@ export {
   type AcpConversationSession,
   type NewAcpConversationSession,
 } from './acp-conversation-sessions.schema';
+export {
+  agentStatusEnum,
+  agentDefinitions,
+  agentVersions,
+  type AgentDefinition,
+  type NewAgentDefinition,
+  type AgentVersionSnapshot,
+  type AgentVersion,
+  type NewAgentVersion,
+} from './agent-definitions.schema';
+export {
+  conversationStatusEnum,
+  messageRoleEnum,
+  agentConversations,
+  agentMessages,
+  type AgentConversation,
+  type NewAgentConversation,
+  type AgentMessage,
+  type NewAgentMessage,
+} from './agent-conversations.schema';
+export {
+  workspaceSnapshotStatusEnum,
+  workspaceSnapshots,
+  type WorkspaceSnapshot,
+  type NewWorkspaceSnapshot,
+} from './workspace-snapshots.schema';
