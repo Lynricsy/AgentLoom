@@ -43,14 +43,14 @@ void main() {
       expect(materialApp.theme?.useMaterial3, isTrue);
     });
 
-    testWidgets('shows NavigationBar with 3 destinations', (tester) async {
+    testWidgets('shows NavigationBar with 4 destinations', (tester) async {
       await tester.pumpWidget(createApp());
       await tester.pumpAndSettle();
 
       expect(find.byType(NavigationBar), findsOneWidget);
-      // NavigationBar destinations contain Dashboard, Workflows, Settings
+      // NavigationBar destinations contain Dashboard, Workflows, Agents, Settings
       final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(navBar.destinations.length, 3);
+      expect(navBar.destinations.length, 4);
     });
 
     testWidgets('defaults to Dashboard tab', (tester) async {
