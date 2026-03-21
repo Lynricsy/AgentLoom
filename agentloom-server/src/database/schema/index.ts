@@ -317,6 +317,7 @@ export {
 } from './agent-definitions.schema';
 export {
   conversationStatusEnum,
+  messageContentTypeEnum,
   messageRoleEnum,
   agentConversations,
   agentMessages,
