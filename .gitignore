@@ -99,3 +99,5 @@ lerna-debug.log*
 .tmp/
 api-page-check.png
 api-page-v2.png
+design_pic/
+studio-*.png
