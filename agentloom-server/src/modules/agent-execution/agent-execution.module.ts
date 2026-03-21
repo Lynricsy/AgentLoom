@@ -1,5 +1,6 @@
 import { Module, type Provider } from '@nestjs/common';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -15,6 +16,8 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
+import { ThrottleService } from '../execution/services/throttle.service';
+import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import {
@@ -23,6 +26,7 @@ import {
   AgentExecutionService,
 } from './agent-execution.service';
 import { AgentExecutionWorker } from './agent-execution.worker';
+import { AgentConversationGateway } from './agent-conversation.gateway';
 
 const agentExecutionServiceProvider: Provider = {
   provide: AgentExecutionService,
@@ -69,8 +73,34 @@ const agentExecutionWorkerProvider: Provider = {
   ],
 };
 
+const agentConversationGatewayProvider: Provider = {
+  provide: AgentConversationGateway,
+  useFactory: (
+    configService: ConfigService,
+    throttleService: ThrottleService,
+    eventBridge: EventBridgeService,
+    tokenBlacklistService: TokenBlacklistService,
+    agentExecutionService: AgentExecutionService,
+  ) =>
+    new AgentConversationGateway(
+      configService,
+      throttleService,
+      eventBridge,
+      tokenBlacklistService,
+      agentExecutionService,
+    ),
+  inject: [
+    ConfigService,
+    ThrottleService,
+    EventBridgeService,
+    TokenBlacklistService,
+    AgentExecutionService,
+  ],
+};
+
 @Module({
   imports: [
+    ConfigModule,
     AgentModule,
     AgentConversationModule,
     AgentDefinitionModule,
@@ -81,7 +111,11 @@ const agentExecutionWorkerProvider: Provider = {
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
     }),
   ],
-  providers: [agentExecutionServiceProvider, agentExecutionWorkerProvider],
+  providers: [
+    agentExecutionServiceProvider,
+    agentExecutionWorkerProvider,
+    agentConversationGatewayProvider,
+  ],
   exports: [AgentExecutionService],
 })
 export class AgentExecutionModule {}
