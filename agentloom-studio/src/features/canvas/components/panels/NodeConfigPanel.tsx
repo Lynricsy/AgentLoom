@@ -26,6 +26,7 @@ import { HttpToolConfigPanel } from './HttpToolConfigPanel'
 import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
+import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -306,6 +307,14 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
     handlesValidation: true,
     render: ({ node, onConfigChange }) => (
       <PluginConfigPanel node={node} onConfigChange={onConfigChange} />
+    ),
+  },
+  'agent': {
+    render: ({ node, onConfigChange }) => (
+      <AgentNodeConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
     ),
   },
 }

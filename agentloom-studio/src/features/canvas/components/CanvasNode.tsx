@@ -46,6 +46,7 @@ import {
   type FallbackStrategy,
 } from '../autonomy.types'
 import type { CanvasNode, PluginNodeData, SmartRoutingNodeData } from '../types'
+import type { AgentNodeData as WorkflowAgentNodeData } from '@/features/agent/types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { useLevelOfDetail } from '../hooks/useLevelOfDetail'
 import {
@@ -63,6 +64,7 @@ import { ReusableBlockBody } from './nodes/ReusableBlockBody'
 import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 import { PluginNodeBody } from './nodes/PluginNodeBody'
+import { AgentNodeBody } from './nodes/AgentNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -607,6 +609,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             />
           ) : data.nodeType === 'plugin' ? (
             <PluginNodeBody data={data as PluginNodeData} />
+          ) : data.nodeType === 'agent' ? (
+            <AgentNodeBody data={data as WorkflowAgentNodeData} />
           ) : (
             config.description
           )}

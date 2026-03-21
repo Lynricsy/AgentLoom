@@ -26,6 +26,7 @@ export const NODE_TYPES = [
   'smart-routing',
   'plugin',
   'input-preprocessor',
+  'agent',
 ] as const
 
 export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
@@ -578,6 +579,40 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       },
       required: ['transformType', 'expression'],
     },
+  },
+  'agent': {
+    type: 'agent',
+    category: 'agent',
+    label: 'Agent',
+    icon: 'Brain',
+    description: '调用已发布的 Agent Definition 执行任务',
+    colorToken: CATEGORY_COLOR_TOKENS.agent,
+    inputPorts: [
+      createPort('text-input', '文本输入', 'input', 'text', {
+        required: true,
+        description: 'Agent 的文本输入',
+      }),
+      createPort('sandbox', 'Sandbox', 'input', 'sandbox', {
+        maxConnections: 1,
+        description: '外部沙箱（覆盖 Agent 内置沙箱配置）',
+      }),
+      createPort('context', '上下文', 'input', 'json', {
+        description: '附加上下文数据',
+      }),
+    ],
+    outputPorts: [
+      createPort('agent-output', 'Agent 输出', 'output', 'text', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 执行的文本输出',
+      }),
+      createPort('structured-output', '结构化输出', 'output', 'json', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 执行的结构化输出',
+      }),
+    ],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
 }
 
