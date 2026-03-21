@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -17,7 +18,10 @@ import { serializeMessage } from './dto/message-response.dto';
 export class AgentConversationService {
   private readonly logger = new Logger(AgentConversationService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -241,5 +245,12 @@ export class AgentConversationService {
     }
 
     this.logger.log(`Conversation ${conversationId} ended`);
+
+    this.eventEmitter.emit('agent-conversation.ended', {
+      conversationId: conversation.id,
+      tenantId: conversation.tenantId,
+      organizationId: conversation.tenantId,
+      userId: conversation.createdBy,
+    });
   }
 }
