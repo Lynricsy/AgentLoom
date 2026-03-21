@@ -279,7 +279,7 @@ export class SessionPersistenceService {
         history: raw.context.history,
         cwd: raw.context?.cwd,
         mcpServers: raw.context?.mcpServers,
-        serverSandbox: raw.context?.serverSandbox,
+        serverSandbox: raw.context?.serverSandbox as unknown as ServerSandboxBinding | undefined,
         workflowState: raw.context?.workflowState,
         ...(raw.context?.terminalContinuity === undefined
           ? {}

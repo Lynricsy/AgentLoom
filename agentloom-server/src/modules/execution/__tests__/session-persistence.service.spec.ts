@@ -5,7 +5,10 @@ import {
   SessionPersistenceService,
 } from '../services/session-persistence.service';
 import { DRIZZLE } from '../../../database/database.module';
-import type { AgentSession } from '../../agent/types/agent-session.types';
+import type {
+  AgentSession,
+  ServerSandboxBinding,
+} from '../../agent/types/agent-session.types';
 import type { ConversationReplayEntry } from '../../agent/types/conversation-history.types';
 
 const STEP_ID = '019391d4-a000-7000-0000-000000000001';
@@ -14,7 +17,7 @@ const NOW = new Date('2025-01-01T00:00:00Z');
 const SERVER_SANDBOX = {
   executionId: '019391d4-e000-7000-0000-000000000005',
 };
-const CONVERSATION_SANDBOX = {
+const CONVERSATION_SANDBOX: ServerSandboxBinding = {
   agentConversationId: '019391d4-f000-7000-0000-000000000006',
 };
 
@@ -56,7 +59,7 @@ function createUpdateChainVoid() {
 
 function withServerSandbox(
   session: AgentSession,
-  serverSandbox = SERVER_SANDBOX,
+  serverSandbox: ServerSandboxBinding = SERVER_SANDBOX,
 ): AgentSession {
   return {
     ...session,
