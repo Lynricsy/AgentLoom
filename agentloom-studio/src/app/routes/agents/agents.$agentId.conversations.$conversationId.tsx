@@ -1,17 +1,27 @@
-import { createRoute } from '@tanstack/react-router'
-import { rootRoute } from '../__root'
+import { createRoute, useNavigate } from '@tanstack/react-router';
+import { useCallback } from 'react';
+import { rootRoute } from '../__root';
+import { AgentConversationPage } from '@/features/agent-conversation/components/AgentConversationPage';
 
-function ConversationPage() {
+function ConversationPageWrapper() {
+  const { agentId, conversationId } = agentConversationRoute.useParams();
+  const navigate = useNavigate();
+
+  const handleBack = useCallback(() => {
+    navigate({ to: '/agents/$agentId', params: { agentId } });
+  }, [navigate, agentId]);
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-2xl font-semibold text-foreground">对话</h1>
-      <p className="text-sm text-muted-foreground">与智能体的对话界面</p>
-    </div>
-  )
+    <AgentConversationPage
+      agentId={agentId}
+      conversationId={conversationId}
+      onBack={handleBack}
+    />
+  );
 }
 
 export const agentConversationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/agents/$agentId/conversations/$conversationId',
-  component: ConversationPage,
-})
+  component: ConversationPageWrapper,
+});
