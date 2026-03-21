@@ -27,6 +27,10 @@ import { securitySettingsRoute } from './settings/security'
 import { authCallbackRoute } from './auth/callback'
 import { loginRoute } from './auth/login'
 import { registerRoute } from './auth/register'
+import { agentsIndexRoute } from './agents/agents.index'
+import { agentDetailRoute } from './agents/agents.$agentId'
+import { agentNewConversationRoute } from './agents/agents.$agentId.conversations.new'
+import { agentConversationRoute } from './agents/agents.$agentId.conversations.$conversationId'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -70,6 +74,12 @@ export function RootLayout() {
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               工作流
+            </Link>
+            <Link
+              to="/agents/"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              Agent
             </Link>
             <Link
               to="/templates"
@@ -135,4 +145,8 @@ export const routeTree = rootRoute.addChildren([
   authCallbackRoute,
   loginRoute,
   registerRoute,
+  agentsIndexRoute,
+  agentDetailRoute,
+  agentNewConversationRoute,
+  agentConversationRoute,
 ]);
