@@ -8,6 +8,16 @@ import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import { SandboxNotFoundException } from '../sandbox.exceptions';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: vi.fn(
+    (_db: any, _tenantId: string, op: () => Promise<any>) => op(),
+  ),
+}));
+
+vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
+  getTenantDb: vi.fn((db: any) => db),
+}));
+
 function createSelectChainWithLimit(result: unknown[]) {
   return {
     from: vi.fn().mockReturnValue({
@@ -42,6 +52,14 @@ function createSelectChainWithOrderBy(result: unknown[]) {
       where: vi.fn().mockReturnValue({
         orderBy: vi.fn().mockResolvedValue(result),
       }),
+    }),
+  };
+}
+
+function createUpdateChainNoReturn() {
+  return {
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
     }),
   };
 }
@@ -357,6 +375,101 @@ describe('SandboxService', () => {
       const result = await service.getSandboxLogs(TEST_SESSION_ID);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('endConversationSandbox', () => {
+    it('session モード（デフォルト）の場合、destroyConversationSandbox を呼び出す', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+        containerId: 'container-conv',
+        config: TEST_CONFIG,
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.endConversationSandbox(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: TEST_SESSION_ID,
+          agentConversationId: TEST_CONVERSATION_ID,
+          tenantId: TEST_TENANT_ID,
+          containerId: 'container-conv',
+        }),
+      );
+    });
+
+    it('session モードで lifecycleMode が明示的に session の場合も destroy する', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+        containerId: 'container-conv',
+        config: { ...TEST_CONFIG, lifecycleMode: 'session' as const },
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.endConversationSandbox(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalled();
+    });
+
+    it('persistent モードの場合、agentConversationId を null に設定して切断のみ', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+        containerId: 'container-conv',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent' as const,
+          persistenceExpiryHours: 48,
+        },
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(createUpdateChainNoReturn());
+
+      await service.endConversationSandbox(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalledOnce();
+    });
+
+    it('アクティブセッション未発見時にスキップ', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await service.endConversationSandbox(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+      expect(Logger.prototype.warn).toHaveBeenCalled();
     });
   });
 });

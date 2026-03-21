@@ -470,5 +470,144 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).toBe(false);
     });
+
+    it('timeout 时有 persistencePath 应先归档 workspace 再销毁', async () => {
+      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+        id: 's1',
+        status: 'ready',
+        containerId: 'c-123',
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 2,
+          persistencePath: '/outputs/result',
+        },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+          }),
+        ),
+      ).rejects.toThrow(SandboxTimeoutException);
+
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        'c-123',
+        '/workspace/',
+      );
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        'tenants/t1/outputs/result/workspace.tar',
+        expect.any(Readable),
+        undefined,
+        'application/x-tar',
+      );
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('timeout 归档失败时应警告但仍然销毁沙箱', async () => {
+      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+        id: 's1',
+        status: 'ready',
+        containerId: 'c-123',
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 2,
+          persistencePath: '/outputs/result',
+        },
+      });
+
+      mockDockerService.getArchive.mockRejectedValueOnce(
+        new Error('archive stream failed'),
+      );
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+          }),
+        ),
+      ).rejects.toThrow(SandboxTimeoutException);
+
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        'c-123',
+        '/workspace/',
+      );
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('timeout 时无 persistencePath 不应尝试归档', async () => {
+      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+        id: 's1',
+        status: 'ready',
+        containerId: 'c-123',
+        config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+          }),
+        ),
+      ).rejects.toThrow(SandboxTimeoutException);
+
+      expect(mockDockerService.getArchive).not.toHaveBeenCalled();
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('conversation timeout 时有 persistencePath 应归档 workspace', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValueOnce({
+        id: 's-conv',
+        status: 'ready',
+        containerId: 'c-123',
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 2,
+          persistencePath: '/conv-outputs',
+        },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's-conv',
+            agentConversationId: 'conv-1',
+            tenantId: 't1',
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        'c-123',
+        '/workspace/',
+      );
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        'tenants/t1/conv-outputs/workspace.tar',
+        expect.any(Readable),
+        undefined,
+        'application/x-tar',
+      );
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+    });
   });
 });

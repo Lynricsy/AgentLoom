@@ -3,6 +3,7 @@ import { and, eq, notInArray, asc } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import * as schema from '../../database/schema';
 import type {
   SandboxConfig,
@@ -145,6 +146,43 @@ export class SandboxService {
       { agentConversationId, tenantId },
       `conversation ${agentConversationId}`,
     );
+  }
+
+  async endConversationSandbox(
+    agentConversationId: string,
+    tenantId: string,
+    options: { archive?: boolean } = {},
+  ): Promise<void> {
+    const session = await this.findActiveSession({
+      agentConversationId,
+      tenantId,
+    });
+
+    if (!session) {
+      this.logger.warn(
+        `No active sandbox session found for conversation ${agentConversationId}, skipping end`,
+      );
+      return;
+    }
+
+    const lifecycleMode = session.config.lifecycleMode ?? 'session';
+
+    if (lifecycleMode === 'persistent') {
+      await runInTenantTransaction(this.db, tenantId, async () => {
+        const tenantDb = getTenantDb(this.db);
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({ agentConversationId: null })
+          .where(eq(schema.sandboxSessions.id, session.id));
+      });
+
+      this.logger.log(
+        `Persistent sandbox ${session.id} disconnected from conversation ${agentConversationId}`,
+      );
+      return;
+    }
+
+    await this.destroyConversationSandbox(agentConversationId, tenantId);
   }
 
   private async destroyActiveSandbox(

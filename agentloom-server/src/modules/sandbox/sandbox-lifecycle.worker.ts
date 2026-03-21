@@ -245,6 +245,34 @@ export class SandboxLifecycleWorker extends WorkerHost {
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
     if (session.containerId) {
+      if (session.config.persistencePath) {
+        try {
+          const archiveStream = await this.dockerService.getArchive(
+            session.containerId,
+            CONTAINER_WORKSPACE,
+          );
+          const bindingId = this.getBindingId(binding);
+          const storageKey = this.resolvePersistenceStorageKey(
+            tenantId,
+            bindingId,
+            session.config.persistencePath,
+          );
+          await this.storageService.upload(
+            storageKey,
+            archiveStream,
+            undefined,
+            'application/x-tar',
+          );
+          this.logger.log(
+            `Workspace archived before timeout for session ${sessionId}: ${storageKey}`,
+          );
+        } catch (archiveError) {
+          this.logger.warn(
+            `Failed to archive workspace before timeout for session ${sessionId}: ${archiveError instanceof Error ? archiveError.message : String(archiveError)}`,
+          );
+        }
+      }
+
       await this.dockerService.stopContainer(session.containerId);
       await this.dockerService.removeContainer(session.containerId);
     }

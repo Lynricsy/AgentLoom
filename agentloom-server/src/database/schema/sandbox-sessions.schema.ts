@@ -36,6 +36,10 @@ export interface SandboxConfig {
   timeout: number;
   /** 工作区快照 ID（可选，创建时恢复到容器） */
   restoreWorkspaceId?: string;
+  /** 生命周期模式：session=对话结束时销毁，persistent=保持存活直到过期或手动销毁（默认 session） */
+  lifecycleMode?: 'session' | 'persistent';
+  /** persistent 模式下的过期时间（小时），超过后自动销毁（仅 persistent 模式生效） */
+  persistenceExpiryHours?: number;
 }
 
 export const sandboxSessions = pgTable(
