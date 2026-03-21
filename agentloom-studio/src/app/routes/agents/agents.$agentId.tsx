@@ -1,12 +1,17 @@
 import { createRoute } from '@tanstack/react-router'
+import { ReactFlowProvider } from '@xyflow/react'
 import { rootRoute } from '../__root'
+import { AgentCanvas } from '@/features/agent-canvas'
 
 function AgentCanvasPage() {
+  const { agentId } = agentDetailRoute.useParams()
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-2xl font-semibold text-foreground">Agent 画布</h1>
-      <p className="text-sm text-muted-foreground">智能体配置与编排画布</p>
-    </div>
+    <ReactFlowProvider>
+      <div className="h-screen w-screen">
+        <AgentCanvas agentId={agentId} />
+      </div>
+    </ReactFlowProvider>
   )
 }
 
