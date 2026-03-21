@@ -51,7 +51,7 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
 
   function handleSelectAgent() {
     onOpenChange(false)
-    navigate({ to: '/agents/' })
+    navigate({ to: '/agents' })
   }
 
   return (

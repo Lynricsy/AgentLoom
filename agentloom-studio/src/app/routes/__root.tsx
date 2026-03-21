@@ -76,7 +76,7 @@ export function RootLayout() {
               工作流
             </Link>
             <Link
-              to="/agents/"
+              to="/agents"
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               Agent
