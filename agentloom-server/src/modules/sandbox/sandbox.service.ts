@@ -14,6 +14,14 @@ import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 
+type CreateSandboxSessionParams = {
+  executionId?: string;
+  sandboxNodeId: string | null;
+  config: SandboxConfig;
+  tenantId: string;
+  agentConversationId?: string;
+};
+
 @Injectable()
 export class SandboxService {
   private readonly logger = new Logger(SandboxService.name);
@@ -27,13 +35,13 @@ export class SandboxService {
     return getTenantDb(this.db);
   }
 
-  async createSandboxSession(
-    executionId: string | undefined,
-    sandboxNodeId: string | null,
-    config: SandboxConfig,
-    tenantId: string,
-    agentConversationId?: string,
-  ): Promise<SandboxSession> {
+  async createSandboxSession({
+    executionId,
+    sandboxNodeId,
+    config,
+    tenantId,
+    agentConversationId,
+  }: CreateSandboxSessionParams): Promise<SandboxSession> {
     const existing = await this.findActiveSession({
       executionId,
       agentConversationId,
@@ -78,11 +86,18 @@ export class SandboxService {
     return session;
   }
 
-  async getSandboxSession(
+  async findByExecutionId(
     executionId: string,
     tenantId: string,
   ): Promise<SandboxSession | null> {
     return this.findActiveSession({ executionId, tenantId });
+  }
+
+  async getSandboxSession(
+    executionId: string,
+    tenantId: string,
+  ): Promise<SandboxSession | null> {
+    return this.findByExecutionId(executionId, tenantId);
   }
 
   async findByConversationId(
@@ -210,10 +225,16 @@ export class SandboxService {
       );
     }
 
-    return and(
-      eq(schema.sandboxSessions.agentConversationId, agentConversationId!),
-      eq(schema.sandboxSessions.tenantId, tenantId),
-      notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
+    if (agentConversationId) {
+      return and(
+        eq(schema.sandboxSessions.agentConversationId, agentConversationId),
+        eq(schema.sandboxSessions.tenantId, tenantId),
+        notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
+      );
+    }
+
+    throw new Error(
+      'Sandbox session requires executionId or agentConversationId',
     );
   }
 

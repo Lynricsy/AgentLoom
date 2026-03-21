@@ -183,9 +183,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
             containerId,
             CONTAINER_WORKSPACE,
           );
+          const bindingId = this.getBindingId(binding);
           const storageKey = this.resolvePersistenceStorageKey(
             tenantId,
-            binding.executionId ?? binding.agentConversationId!,
+            bindingId,
             persistencePath,
           );
           await this.storageService.upload(
@@ -231,12 +232,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const { sessionId, tenantId } = data;
     const binding = this.resolveBinding(data);
 
-    const session = binding.executionId
-      ? await this.sandboxService.getSandboxSession(binding.executionId, tenantId)
-      : await this.sandboxService.findByConversationId(
-          binding.agentConversationId!,
-          tenantId,
-        );
+    const session = await this.findActiveSessionForBinding(binding, tenantId);
     if (
       !session ||
       TERMINAL_SANDBOX_STATUSES.includes(
@@ -360,6 +356,43 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
     throw new SandboxCreationException(
       'Missing executionId and agentConversationId in sandbox lifecycle job data',
+    );
+  }
+
+  private getBindingId(binding: {
+    executionId?: string;
+    agentConversationId?: string;
+  }): string {
+    if (binding.executionId) {
+      return binding.executionId;
+    }
+
+    if (binding.agentConversationId) {
+      return binding.agentConversationId;
+    }
+
+    throw new SandboxCreationException(
+      'Missing executionId and agentConversationId in sandbox lifecycle binding',
+    );
+  }
+
+  private findActiveSessionForBinding(
+    binding: { executionId?: string; agentConversationId?: string },
+    tenantId: string,
+  ) {
+    if (binding.executionId) {
+      return this.sandboxService.getSandboxSession(binding.executionId, tenantId);
+    }
+
+    if (binding.agentConversationId) {
+      return this.sandboxService.findByConversationId(
+        binding.agentConversationId,
+        tenantId,
+      );
+    }
+
+    throw new SandboxCreationException(
+      'Missing executionId and agentConversationId in sandbox lifecycle binding',
     );
   }
 

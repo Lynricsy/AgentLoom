@@ -124,12 +124,12 @@ describe('SandboxService', () => {
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
       db.insert.mockReturnValueOnce(createInsertChainReturning([newSession]));
 
-      const result = await service.createSandboxSession(
-        TEST_EXECUTION_ID,
-        'sandbox-1',
-        TEST_CONFIG,
-        TEST_TENANT_ID,
-      );
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        config: TEST_CONFIG,
+        tenantId: TEST_TENANT_ID,
+      });
 
       expect(result).toEqual(newSession);
       expect(db.insert).toHaveBeenCalledOnce();
@@ -146,12 +146,12 @@ describe('SandboxService', () => {
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([existing]));
 
-      const result = await service.createSandboxSession(
-        TEST_EXECUTION_ID,
-        'sandbox-1',
-        TEST_CONFIG,
-        TEST_TENANT_ID,
-      );
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        config: TEST_CONFIG,
+        tenantId: TEST_TENANT_ID,
+      });
 
       expect(result).toEqual(existing);
       expect(db.insert).not.toHaveBeenCalled();
@@ -168,13 +168,12 @@ describe('SandboxService', () => {
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
       db.insert.mockReturnValueOnce(createInsertChainReturning([newSession]));
 
-      const result = await service.createSandboxSession(
-        undefined,
-        null,
-        TEST_CONFIG,
-        TEST_TENANT_ID,
-        TEST_CONVERSATION_ID,
-      );
+      const result = await service.createSandboxSession({
+        sandboxNodeId: null,
+        config: TEST_CONFIG,
+        tenantId: TEST_TENANT_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+      });
 
       expect(result).toEqual(newSession);
       expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
@@ -187,6 +186,17 @@ describe('SandboxService', () => {
   });
 
   describe('getSandboxSession', () => {
+    it('findByExecutionId 命中时返回会话', async () => {
+      const session = buildSession({ status: 'ready' });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+
+      const result = await service.findByExecutionId(
+        TEST_EXECUTION_ID,
+        TEST_TENANT_ID,
+      );
+      expect(result).toEqual(session);
+    });
+
     it('アクティブセッション発見時にセッションを返す', async () => {
       const session = buildSession({ status: 'ready' });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));

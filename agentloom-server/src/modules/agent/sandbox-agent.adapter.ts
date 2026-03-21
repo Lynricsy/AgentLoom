@@ -32,6 +32,11 @@ const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
+type SandboxBinding = {
+  executionId?: string;
+  agentConversationId?: string;
+};
+
 @Injectable()
 export class SandboxAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(SandboxAgentAdapter.name);
@@ -67,16 +72,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     this.abortControllers.set(session.id, new AbortController());
 
     const workflowState = params.context ?? {};
-    const executionId =
-      typeof workflowState['executionId'] === 'string'
-        ? workflowState['executionId']
-        : null;
+    const sandboxBinding = this.readSandboxBinding(workflowState);
     const tenantId = params.tenantId ?? null;
 
-    if (executionId && tenantId) {
+    if (tenantId && this.hasSandboxBinding(sandboxBinding)) {
       try {
         const sandboxSession = await this.waitForSandboxReady(
-          executionId,
+          sandboxBinding,
           tenantId,
         );
         const sessionUrl = await this.dockerService.getSessionUrl(
@@ -122,24 +124,21 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     session.updatedAt = new Date();
 
     const workflowState = session.context.workflowState ?? {};
-    const executionId =
-      typeof workflowState['executionId'] === 'string'
-        ? workflowState['executionId']
-        : null;
+    const sandboxBinding = this.readSandboxBinding(workflowState);
     const tenantId =
       typeof workflowState['tenantId'] === 'string'
         ? workflowState['tenantId']
         : (session.tenantId ?? null);
 
-    if (!executionId || !tenantId) {
+    if (!tenantId || !this.hasSandboxBinding(sandboxBinding)) {
       throw new Error(
-        'Sandbox workflow context missing executionId or tenantId',
+        'Sandbox workflow context missing sandbox binding or tenantId',
       );
     }
 
     try {
       const sandboxSession = await this.waitForSandboxReady(
-        executionId,
+        sandboxBinding,
         tenantId,
       );
       if (!sandboxSession.containerId) {
@@ -236,21 +235,27 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   }
 
   private async waitForSandboxReady(
-    executionId: string,
+    sandboxBinding: SandboxBinding,
     tenantId: string,
   ): Promise<SandboxSession & { containerId: string }> {
     const startedAt = Date.now();
+    const bindingLabel = this.describeSandboxBinding(sandboxBinding);
 
     while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
-      const sandboxSession = await this.sandboxService.getSandboxSession(
-        executionId,
-        tenantId,
-      );
+      const sandboxSession = sandboxBinding.executionId
+        ? await this.sandboxService.getSandboxSession(
+            sandboxBinding.executionId,
+            tenantId,
+          )
+        : sandboxBinding.agentConversationId
+          ? await this.sandboxService.findByConversationId(
+              sandboxBinding.agentConversationId,
+              tenantId,
+            )
+          : null;
 
       if (!sandboxSession) {
-        throw new Error(
-          `Sandbox session not found for execution ${executionId}`,
-        );
+        throw new Error(`Sandbox session not found for ${bindingLabel}`);
       }
 
       if (
@@ -276,9 +281,63 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       await this.delay(SANDBOX_READY_POLL_INTERVAL_MS);
     }
 
-    throw new Error(
-      `Sandbox session is not ready for execution ${executionId}`,
-    );
+    throw new Error(`Sandbox session is not ready for ${bindingLabel}`);
+  }
+
+  private readSandboxBinding(
+    workflowState: Record<string, unknown>,
+  ): SandboxBinding {
+    const executionId =
+      typeof workflowState['executionId'] === 'string'
+        ? workflowState['executionId']
+        : null;
+    const agentConversationId =
+      typeof workflowState['agentConversationId'] === 'string'
+        ? workflowState['agentConversationId']
+        : null;
+    const serverSandbox = workflowState['serverSandbox'];
+    const nestedExecutionId =
+      this.isRecord(serverSandbox) &&
+      typeof serverSandbox.executionId === 'string'
+        ? serverSandbox.executionId
+        : null;
+    const nestedConversationId =
+      this.isRecord(serverSandbox) &&
+      typeof serverSandbox.agentConversationId === 'string'
+        ? serverSandbox.agentConversationId
+        : null;
+
+    return {
+      ...((executionId ?? nestedExecutionId)
+        ? { executionId: executionId ?? nestedExecutionId ?? undefined }
+        : {}),
+      ...((agentConversationId ?? nestedConversationId)
+        ? {
+            agentConversationId:
+              agentConversationId ?? nestedConversationId ?? undefined,
+          }
+        : {}),
+    };
+  }
+
+  private hasSandboxBinding(binding: SandboxBinding): boolean {
+    return Boolean(binding.executionId || binding.agentConversationId);
+  }
+
+  private describeSandboxBinding(binding: SandboxBinding): string {
+    if (binding.executionId && binding.agentConversationId) {
+      return `execution ${binding.executionId} / conversation ${binding.agentConversationId}`;
+    }
+
+    if (binding.executionId) {
+      return `execution ${binding.executionId}`;
+    }
+
+    if (binding.agentConversationId) {
+      return `conversation ${binding.agentConversationId}`;
+    }
+
+    return 'sandbox binding';
   }
 
   private async initializeContainerSession(
@@ -383,5 +442,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   private async delay(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

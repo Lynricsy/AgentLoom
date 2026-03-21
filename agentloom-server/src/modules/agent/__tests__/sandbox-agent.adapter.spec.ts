@@ -22,6 +22,7 @@ describe('SandboxAgentAdapter', () => {
   let adapter: SandboxAgentAdapter;
   let mockSandboxService: {
     getSandboxSession: ReturnType<typeof vi.fn>;
+    findByConversationId: ReturnType<typeof vi.fn>;
   };
   let mockDockerService: {
     getPromptUrl: ReturnType<typeof vi.fn>;
@@ -46,6 +47,11 @@ describe('SandboxAgentAdapter', () => {
     savedFetch = globalThis.fetch;
     mockSandboxService = {
       getSandboxSession: vi.fn().mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      }),
+      findByConversationId: vi.fn().mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
         containerId: 'abc123def456',
@@ -132,6 +138,25 @@ describe('SandboxAgentAdapter', () => {
       expect(session.status).toBe('active');
     });
 
+    it('有 agentConversationId 和 tenantId 时也应调用 conversation sandbox 初始化', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: { agentConversationId: 'conv-001' },
+      });
+
+      expect(mockSandboxService.findByConversationId).toHaveBeenCalledWith(
+        'conv-001',
+        'tenant-001',
+      );
+      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(mockDockerService.getSessionUrl).toHaveBeenCalledWith(
+        'abc123def456',
+      );
+      expect(session.status).toBe('active');
+    });
+
     it('容器 session 初始化失败时应设置会话状态为 error 并抛出', async () => {
       globalThis.fetch = vi
         .fn()
@@ -170,13 +195,14 @@ describe('SandboxAgentAdapter', () => {
       }
     });
 
-    it('无 executionId 时应跳过容器 session 初始化', async () => {
+    it('无 sandbox binding 时应跳过容器 session 初始化', async () => {
       const session = await adapter.createSession({
         ...defaultParams,
         context: {},
       });
 
       expect(mockSandboxService.getSandboxSession).not.toHaveBeenCalled();
+      expect(mockSandboxService.findByConversationId).not.toHaveBeenCalled();
       expect(mockDockerService.getSessionUrl).not.toHaveBeenCalled();
       expect(session.status).toBe('active');
     });
@@ -267,7 +293,7 @@ describe('SandboxAgentAdapter', () => {
       globalThis.fetch = originalFetch;
     });
 
-    it('缺失 executionId 时应抛出错误', async () => {
+    it('缺失 sandbox binding 时应抛出错误', async () => {
       const session = await adapter.createSession({
         ...defaultParams,
         context: {},
@@ -278,8 +304,66 @@ describe('SandboxAgentAdapter', () => {
           adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
         ),
       ).rejects.toThrow(
-        'Sandbox workflow context missing executionId or tenantId',
+        'Sandbox workflow context missing sandbox binding or tenantId',
       );
+    });
+
+    it('conversation sandbox ready 后应通过 conversationId 请求容器端点', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: { agentConversationId: 'conv-001' },
+      });
+      mockSandboxService.findByConversationId.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      const originalFetch = globalThis.fetch;
+      const encoder = new TextEncoder();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => {
+            let emitted = false;
+            return {
+              read: vi.fn(async () => {
+                if (emitted) {
+                  return { done: true, value: undefined };
+                }
+                emitted = true;
+                return {
+                  done: false,
+                  value: encoder.encode(
+                    'data: {"type":"message_chunk","content":"hello"}\n\n' +
+                      'data: {"type":"done","stopReason":"end_turn"}\n\n',
+                  ),
+                };
+              }),
+            };
+          },
+        },
+      } as unknown as Response);
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
+
+      expect(events).toEqual([
+        { type: 'message_chunk', content: 'hello' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect(mockSandboxService.findByConversationId).toHaveBeenCalledWith(
+        'conv-001',
+        'tenant-001',
+      );
+
+      globalThis.fetch = originalFetch;
     });
 
     it('fetch 失败时应将错误抛给上层', async () => {

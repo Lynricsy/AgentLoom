@@ -325,10 +325,17 @@ export class AcpFilesystemSandboxService {
       );
     }
 
-    return and(
-      eq(sandboxSessions.agentConversationId, binding.agentConversationId!),
-      eq(sandboxSessions.tenantId, tenantId),
-      inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
+    if (binding.agentConversationId) {
+      return and(
+        eq(sandboxSessions.agentConversationId, binding.agentConversationId),
+        eq(sandboxSessions.tenantId, tenantId),
+        inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
+      );
+    }
+
+    throw this.createSandboxError(
+      'ACP server sandbox is not bound to current session',
+      'sandbox_binding_missing',
     );
   }
 

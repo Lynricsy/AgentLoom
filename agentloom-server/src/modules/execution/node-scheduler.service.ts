@@ -1425,12 +1425,12 @@ export class NodeSchedulerService {
           : {}),
       };
 
-      const session = await this.sandboxService.createSandboxSession(
+      const session = await this.sandboxService.createSandboxSession({
         executionId,
-        step.nodeId,
+        sandboxNodeId: step.nodeId,
         config,
         tenantId,
-      );
+      });
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -1490,6 +1490,13 @@ export class NodeSchedulerService {
 
     if (this.isRecord(sandboxConfig)) {
       return sandboxConfig;
+    }
+
+    if (
+      this.isRecord(globalSandboxConfig) &&
+      this.isRecord(globalSandboxConfig.sandboxConfig)
+    ) {
+      return globalSandboxConfig.sandboxConfig;
     }
 
     if (this.isRecord(globalSandboxConfig)) {
