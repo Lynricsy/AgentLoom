@@ -117,9 +117,9 @@ void main() {
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
 
-      // 验证选中索引同步为 2
+      // 验证选中索引同步为 3 (Dashboard=0, Workflows=1, Agents=2, Settings=3)
       navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(navBar.selectedIndex, 2);
+      expect(navBar.selectedIndex, 3);
     });
 
     testWidgets('bottom nav highlight syncs after programmatic navigation', (
