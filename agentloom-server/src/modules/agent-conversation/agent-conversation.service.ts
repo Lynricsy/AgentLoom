@@ -1,0 +1,245 @@
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { and, desc, eq, sql } from 'drizzle-orm';
+
+import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import {
+  agentConversations,
+  agentMessages,
+} from '../../database/schema/agent-conversations.schema';
+import { agentDefinitions } from '../../database/schema/agent-definitions.schema';
+import type { CreateConversationDto } from './dto/create-conversation.dto';
+import type { SendMessageDto } from './dto/send-message.dto';
+import { serializeConversation } from './dto/conversation-response.dto';
+import { serializeMessage } from './dto/message-response.dto';
+
+@Injectable()
+export class AgentConversationService {
+  private readonly logger = new Logger(AgentConversationService.name);
+
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
+  }
+
+  async create(
+    agentDefinitionId: string,
+    tenantId: string,
+    userId: string,
+    dto: CreateConversationDto,
+  ) {
+    const [agent] = await this.tenantDb
+      .select({ id: agentDefinitions.id })
+      .from(agentDefinitions)
+      .where(eq(agentDefinitions.id, agentDefinitionId))
+      .limit(1);
+
+    if (!agent) {
+      throw new NotFoundException(
+        `Agent definition ${agentDefinitionId} not found`,
+      );
+    }
+
+    const [conversation] = await this.tenantDb
+      .insert(agentConversations)
+      .values({
+        agentDefinitionId,
+        tenantId,
+        title: dto.title,
+        metadata: dto.metadata ?? {},
+        createdBy: userId,
+      })
+      .returning();
+
+    this.logger.log(
+      `Created conversation ${conversation.id} for agent ${agentDefinitionId}`,
+    );
+
+    return { data: serializeConversation(conversation) };
+  }
+
+  async listByAgent(
+    agentDefinitionId: string,
+    query: { page: number; limit: number; status?: string },
+  ) {
+    const { page, limit, status } = query;
+    const offset = (page - 1) * limit;
+
+    const conditions = [
+      eq(agentConversations.agentDefinitionId, agentDefinitionId),
+    ];
+
+    if (status) {
+      conditions.push(
+        eq(
+          agentConversations.status,
+          status as 'active' | 'paused' | 'ended' | 'failed',
+        ),
+      );
+    }
+
+    const whereClause = and(...conditions);
+
+    const [data, [{ total }]] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(agentConversations)
+        .where(whereClause)
+        .orderBy(desc(agentConversations.updatedAt))
+        .limit(limit)
+        .offset(offset),
+      this.tenantDb
+        .select({ total: sql<number>`count(*)::int` })
+        .from(agentConversations)
+        .where(whereClause),
+    ]);
+
+    return {
+      data: data.map(serializeConversation),
+      meta: {
+        total,
+        page,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getDetail(
+    conversationId: string,
+    messagesPage = 1,
+    messagesLimit = 50,
+  ) {
+    const [conversation] = await this.tenantDb
+      .select()
+      .from(agentConversations)
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found`,
+      );
+    }
+
+    const offset = (messagesPage - 1) * messagesLimit;
+
+    const [messages, [{ total }]] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(agentMessages)
+        .where(eq(agentMessages.conversationId, conversationId))
+        .orderBy(agentMessages.createdAt)
+        .limit(messagesLimit)
+        .offset(offset),
+      this.tenantDb
+        .select({ total: sql<number>`count(*)::int` })
+        .from(agentMessages)
+        .where(eq(agentMessages.conversationId, conversationId)),
+    ]);
+
+    return {
+      data: {
+        ...serializeConversation(conversation),
+        messages: {
+          data: messages.map(serializeMessage),
+          meta: {
+            total,
+            page: messagesPage,
+            pageSize: messagesLimit,
+            totalPages: Math.ceil(total / messagesLimit),
+          },
+        },
+      },
+    };
+  }
+
+  async sendMessage(
+    conversationId: string,
+    tenantId: string,
+    dto: SendMessageDto,
+  ) {
+    const [conversation] = await this.tenantDb
+      .select({
+        id: agentConversations.id,
+        status: agentConversations.status,
+      })
+      .from(agentConversations)
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found`,
+      );
+    }
+
+    if (conversation.status !== 'active') {
+      throw new NotFoundException(
+        `Conversation ${conversationId} is not active (status: ${conversation.status})`,
+      );
+    }
+
+    const [message] = await this.tenantDb
+      .insert(agentMessages)
+      .values({
+        conversationId,
+        tenantId,
+        role: dto.role ?? 'user',
+        content: dto.content,
+        metadata: dto.metadata ?? {},
+      })
+      .returning();
+
+    await this.tenantDb
+      .update(agentConversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentConversations.id, conversationId));
+
+    this.logger.log(
+      `Message ${message.id} sent to conversation ${conversationId}`,
+    );
+
+    return { data: serializeMessage(message) };
+  }
+
+  async cancel(conversationId: string) {
+    const [conversation] = await this.tenantDb
+      .update(agentConversations)
+      .set({ status: 'ended', updatedAt: new Date() })
+      .where(
+        and(
+          eq(agentConversations.id, conversationId),
+          eq(agentConversations.status, 'active'),
+        ),
+      )
+      .returning();
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Active conversation ${conversationId} not found`,
+      );
+    }
+
+    this.logger.log(`Conversation ${conversationId} cancelled`);
+
+    return { data: serializeConversation(conversation) };
+  }
+
+  async end(conversationId: string) {
+    const [conversation] = await this.tenantDb
+      .update(agentConversations)
+      .set({ status: 'ended', updatedAt: new Date() })
+      .where(eq(agentConversations.id, conversationId))
+      .returning();
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found`,
+      );
+    }
+
+    this.logger.log(`Conversation ${conversationId} ended`);
+  }
+}
