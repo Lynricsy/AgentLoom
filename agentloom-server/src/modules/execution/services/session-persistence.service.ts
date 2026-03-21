@@ -5,7 +5,10 @@ import * as schema from '../../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import type { ConversationReplayEntry } from '../../agent/types/conversation-history.types';
-import type { AgentSession } from '../../agent/types/agent-session.types';
+import type {
+  AgentSession,
+  ServerSandboxBinding,
+} from '../../agent/types/agent-session.types';
 import {
   ContentBlockArraySchema,
   ContentBlockSchema,
@@ -19,9 +22,7 @@ interface SerializedSession {
     history: unknown[];
     cwd?: string;
     mcpServers?: Record<string, unknown>;
-    serverSandbox?: {
-      executionId: string;
-    };
+    serverSandbox?: ServerSandboxBinding;
     workflowState?: Record<string, unknown>;
     terminalContinuity?: {
       terminals: Array<{
@@ -76,9 +77,16 @@ const McpServerConfigSchema = z
   .passthrough();
 const ServerSandboxBindingSchema = z
   .object({
-    executionId: z.string().min(1),
+    executionId: z.string().min(1).optional(),
+    agentConversationId: z.string().min(1).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine(
+    (value) =>
+      typeof value.executionId === 'string' ||
+      typeof value.agentConversationId === 'string',
+    'Sandbox binding must include executionId or agentConversationId',
+  );
 const TerminalContinuityEntrySchema = z
   .object({
     terminalId: z.string().min(1),

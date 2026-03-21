@@ -1481,9 +1481,19 @@ export class NodeSchedulerService {
     nodeData: Record<string, unknown>,
   ): Record<string, unknown> {
     const nestedConfig = nodeData.config;
+    const sandboxConfig = nodeData.sandboxConfig;
+    const globalSandboxConfig = nodeData.globalSandboxConfig;
 
     if (this.isRecord(nestedConfig)) {
       return nestedConfig;
+    }
+
+    if (this.isRecord(sandboxConfig)) {
+      return sandboxConfig;
+    }
+
+    if (this.isRecord(globalSandboxConfig)) {
+      return globalSandboxConfig;
     }
 
     return nodeData;

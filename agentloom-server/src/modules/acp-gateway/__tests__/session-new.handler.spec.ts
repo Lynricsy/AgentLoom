@@ -143,6 +143,54 @@ describe('SessionNewHandler', () => {
     expect(mcpSessionService.bootstrapSessionTools).not.toHaveBeenCalled();
   });
 
+  it('应接受仅包含 agentConversationId 的 serverSandbox 绑定', async () => {
+    const createSession = vi.fn().mockResolvedValue({
+      id: 'session-conv',
+      agentId: 'agent-001',
+    });
+    const handler = new SessionNewHandler(
+      {
+        get: vi.fn().mockReturnValue({
+          createSession,
+          cancel: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as unknown as ModuleRef,
+      createMcpSessionService() as never,
+    );
+
+    await expect(
+      handler.handle(
+        {
+          agentId: 'agent-001',
+          serverSandbox: {
+            agentConversationId: '019391d4-f000-7000-0000-000000000006',
+          },
+        } as never,
+        {
+          initialized: true,
+          authContext: {
+            userId: 'user-1',
+            email: 'user@example.com',
+            tenantId: 'tenant-1',
+            tenantRole: 'owner',
+            orgId: 'org-1',
+            authMethod: 'jwt',
+          },
+        },
+      ),
+    ).resolves.toEqual({
+      sessionId: 'session-conv',
+    });
+
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverSandbox: {
+          agentConversationId: '019391d4-f000-7000-0000-000000000006',
+        },
+      }),
+    );
+  });
+
   it('ACP MCP bootstrap 失败时应回滚 runtime session 并且不注册连接级 session', async () => {
     const runtime = {
       createSession: vi.fn().mockResolvedValue({
@@ -205,7 +253,7 @@ describe('SessionNewHandler', () => {
     expect(state.sessions?.size).toBe(0);
   });
 
-  it('应拒绝缺少 executionId 的 serverSandbox 绑定', async () => {
+  it('应拒绝同时缺少 executionId 与 agentConversationId 的 serverSandbox 绑定', async () => {
     const handler = new SessionNewHandler({
       get: vi.fn(),
     } as unknown as ModuleRef, createMcpSessionService() as never);

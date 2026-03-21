@@ -45,6 +45,23 @@ describe('SandboxLifecycleProducer', () => {
     });
   });
 
+  it('addCreateTask 应支持 conversation 绑定入队', async () => {
+    await producer.addCreateTask({
+      sessionId: 's-conv',
+      agentConversationId: 'c1',
+      config: DEFAULT_CONFIG,
+      tenantId: 't1',
+    });
+
+    expect(mockQueue.add).toHaveBeenCalledWith('sandbox-create', {
+      sessionId: 's-conv',
+      agentConversationId: 'c1',
+      tenantId: 't1',
+      jobType: 'create',
+      config: DEFAULT_CONFIG,
+    });
+  });
+
   it('addDestroyTask 应使用正确的 jobType 和 containerId 入队', async () => {
     await producer.addDestroyTask({
       sessionId: 's1',
@@ -61,6 +78,23 @@ describe('SandboxLifecycleProducer', () => {
       jobType: 'destroy',
       containerId: 'c1',
       persistencePath: 'tenants/t1/sandboxes/e1',
+    });
+  });
+
+  it('addDestroyTask 应支持 conversation 绑定入队', async () => {
+    await producer.addDestroyTask({
+      sessionId: 's-conv',
+      agentConversationId: 'c1',
+      containerId: 'c1',
+      tenantId: 't1',
+    });
+
+    expect(mockQueue.add).toHaveBeenCalledWith('sandbox-destroy', {
+      sessionId: 's-conv',
+      agentConversationId: 'c1',
+      tenantId: 't1',
+      jobType: 'destroy',
+      containerId: 'c1',
     });
   });
 
@@ -84,6 +118,30 @@ describe('SandboxLifecycleProducer', () => {
         attempts: 1,
         delay: 14_400_000,
         jobId: 'sandbox-timeout:s1',
+      },
+    );
+  });
+
+  it('addTimeoutCheckTask 应支持 conversation 绑定入队', async () => {
+    await producer.addTimeoutCheckTask({
+      sessionId: 's-conv',
+      agentConversationId: 'c1',
+      tenantId: 't1',
+      delayMs: 5_000,
+    });
+
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'sandbox-timeout-check',
+      {
+        sessionId: 's-conv',
+        agentConversationId: 'c1',
+        tenantId: 't1',
+        jobType: 'timeout_check',
+      },
+      {
+        attempts: 1,
+        delay: 5_000,
+        jobId: 'sandbox-timeout:s-conv',
       },
     );
   });

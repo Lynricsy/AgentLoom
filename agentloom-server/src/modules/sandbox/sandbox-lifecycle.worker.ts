@@ -62,7 +62,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleCreate(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, executionId, tenantId, config } = data;
+    const { sessionId, tenantId, config } = data;
+    const binding = this.resolveBinding(data);
 
     if (!config) {
       throw new SandboxCreationException('Missing config in create job data');
@@ -130,9 +131,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
       const delayMs = config.timeout * HOURS_TO_MS;
       await this.lifecycleProducer.addTimeoutCheckTask({
         sessionId,
-        executionId,
         tenantId,
         delayMs,
+        ...binding,
       });
 
       this.logger.log(
@@ -172,8 +173,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, executionId, tenantId, persistencePath } =
-      data;
+    const { sessionId, containerId, tenantId, persistencePath } = data;
+    const binding = this.resolveBinding(data);
 
     if (containerId) {
       if (persistencePath) {
@@ -184,7 +185,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           );
           const storageKey = this.resolvePersistenceStorageKey(
             tenantId,
-            executionId,
+            binding.executionId ?? binding.agentConversationId!,
             persistencePath,
           );
           await this.storageService.upload(
@@ -227,12 +228,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private async handleTimeoutCheck(
     data: SandboxLifecycleJobData,
   ): Promise<void> {
-    const { sessionId, executionId, tenantId } = data;
+    const { sessionId, tenantId } = data;
+    const binding = this.resolveBinding(data);
 
-    const session = await this.sandboxService.getSandboxSession(
-      executionId,
-      tenantId,
-    );
+    const session = binding.executionId
+      ? await this.sandboxService.getSandboxSession(binding.executionId, tenantId)
+      : await this.sandboxService.findByConversationId(
+          binding.agentConversationId!,
+          tenantId,
+        );
     if (
       !session ||
       TERMINAL_SANDBOX_STATUSES.includes(
@@ -256,46 +260,50 @@ export class SandboxLifecycleWorker extends WorkerHost {
         .set({
           status: 'failed',
           stoppedAt: new Date(),
-        })
-        .where(eq(schema.sandboxSessions.id, sessionId));
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
 
-      await tenantDb
-        .update(schema.executionSteps)
-        .set({
-          status: 'failed',
-          completedAt: new Date(),
-          updatedAt: new Date(),
-          errorMessage: { message: 'sandbox_timeout' },
-        })
-        .where(
-          and(
-            eq(schema.executionSteps.executionId, executionId),
-            inArray(schema.executionSteps.status, [...ACTIVE_STEP_STATUSES]),
-          ),
-        );
+      if (binding.executionId) {
+        await tenantDb
+          .update(schema.executionSteps)
+          .set({
+            status: 'failed',
+            completedAt: new Date(),
+            updatedAt: new Date(),
+            errorMessage: { message: 'sandbox_timeout' },
+          })
+          .where(
+            and(
+              eq(schema.executionSteps.executionId, binding.executionId),
+              inArray(schema.executionSteps.status, [...ACTIVE_STEP_STATUSES]),
+            ),
+          );
 
-      await tenantDb
-        .update(schema.workflowExecutions)
-        .set({
-          status: 'failed',
-          failedAt: new Date(),
-          updatedAt: new Date(),
-          errorMessage: { message: 'sandbox_timeout' },
-        })
-        .where(
-          and(
-            eq(schema.workflowExecutions.id, executionId),
-            notInArray(schema.workflowExecutions.status, [
-              'failed',
-              'completed',
-            ]),
-          ),
-        );
+        await tenantDb
+          .update(schema.workflowExecutions)
+          .set({
+            status: 'failed',
+            failedAt: new Date(),
+            updatedAt: new Date(),
+            errorMessage: { message: 'sandbox_timeout' },
+          })
+          .where(
+            and(
+              eq(schema.workflowExecutions.id, binding.executionId),
+              notInArray(schema.workflowExecutions.status, [
+                'failed',
+                'completed',
+              ]),
+            ),
+          );
+      }
     });
 
     await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
 
-    throw new SandboxTimeoutException(session.config.timeout);
+    if (binding.executionId) {
+      throw new SandboxTimeoutException(session.config.timeout);
+    }
   }
 
   private async insertLog(
@@ -316,7 +324,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
   private resolvePersistenceStorageKey(
     tenantId: string,
-    executionId: string,
+    bindingId: string,
     persistencePath: string,
   ): string {
     const normalizedSegments = persistencePath
@@ -329,12 +337,30 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const tenantScopedPath = normalizedPath.startsWith(`tenants/${tenantId}/`)
       ? normalizedPath
       : normalizedPath
-        ? `tenants/${tenantId}/${normalizedPath}`
-        : `tenants/${tenantId}/sandboxes/${executionId}`;
+      ? `tenants/${tenantId}/${normalizedPath}`
+        : `tenants/${tenantId}/sandboxes/${bindingId}`;
 
     return tenantScopedPath.endsWith('.tar')
       ? tenantScopedPath
       : `${tenantScopedPath}/workspace.tar`;
+  }
+
+  private resolveBinding(data: SandboxLifecycleJobData): {
+    executionId?: string;
+    agentConversationId?: string;
+  } {
+    if (data.executionId || data.agentConversationId) {
+      return {
+        ...(data.executionId ? { executionId: data.executionId } : {}),
+        ...(data.agentConversationId
+          ? { agentConversationId: data.agentConversationId }
+          : {}),
+      };
+    }
+
+    throw new SandboxCreationException(
+      'Missing executionId and agentConversationId in sandbox lifecycle job data',
+    );
   }
 
   @OnWorkerEvent('failed')

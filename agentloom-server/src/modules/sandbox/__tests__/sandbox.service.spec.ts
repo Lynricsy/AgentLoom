@@ -49,6 +49,7 @@ function createSelectChainWithOrderBy(result: unknown[]) {
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_EXECUTION_ID = '00000000-0000-0000-0000-000000000002';
 const TEST_SESSION_ID = '00000000-0000-0000-0000-000000000003';
+const TEST_CONVERSATION_ID = '00000000-0000-0000-0000-000000000004';
 
 const TEST_CONFIG: SandboxConfig = {
   cpu: 1,
@@ -156,6 +157,33 @@ describe('SandboxService', () => {
       expect(db.insert).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
+
+    it('conversation 绑定时应按 agentConversationId 创建新会话', async () => {
+      const newSession = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: null,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+      db.insert.mockReturnValueOnce(createInsertChainReturning([newSession]));
+
+      const result = await service.createSandboxSession(
+        undefined,
+        null,
+        TEST_CONFIG,
+        TEST_TENANT_ID,
+        TEST_CONVERSATION_ID,
+      );
+
+      expect(result).toEqual(newSession);
+      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+        tenantId: TEST_TENANT_ID,
+        config: TEST_CONFIG,
+      });
+    });
   });
 
   describe('getSandboxSession', () => {
@@ -178,6 +206,22 @@ describe('SandboxService', () => {
         TEST_TENANT_ID,
       );
       expect(result).toBeNull();
+    });
+
+    it('findByConversationId 命中时返回会话', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+
+      const result = await service.findByConversationId(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(result).toEqual(session);
     });
   });
 
@@ -242,6 +286,32 @@ describe('SandboxService', () => {
       expect(db.update).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
       expect(Logger.prototype.warn).toHaveBeenCalled();
+    });
+
+    it('destroyConversationSandbox 命中时应按 conversation 绑定入队', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+        containerId: 'container-conv',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.destroyConversationSandbox(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+        tenantId: TEST_TENANT_ID,
+        containerId: 'container-conv',
+      });
     });
   });
 

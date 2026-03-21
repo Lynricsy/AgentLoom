@@ -11,9 +11,15 @@ export interface McpServerConfig {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-export interface ServerSandboxBinding {
-  readonly executionId: string;
-}
+export type ServerSandboxBinding =
+  | {
+      readonly executionId: string;
+      readonly agentConversationId?: string;
+    }
+  | {
+      readonly executionId?: string;
+      readonly agentConversationId: string;
+    };
 
 export type TerminalContinuityStatus =
   | 'running'

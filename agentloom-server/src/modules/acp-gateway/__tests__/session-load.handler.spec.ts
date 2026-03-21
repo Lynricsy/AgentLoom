@@ -500,6 +500,59 @@ describe('SessionLoadHandler', () => {
     expect(mcpSessionService.restoreSessionTools).not.toHaveBeenCalled();
   });
 
+  it('应恢复仅使用 agentConversationId 的 serverSandbox 绑定', async () => {
+    const state = createState();
+    const handler = new SessionLoadHandler(
+      {
+        get: vi.fn().mockReturnValue({
+          loadSession: vi.fn().mockResolvedValue({
+            id: 'session-conv',
+            agentId: 'agent-001',
+            mode: 'conversation',
+            context: {
+              history: [],
+              cwd: '/workspace/demo',
+              serverSandbox: {
+                agentConversationId: '019391d4-f000-7000-0000-000000000006',
+              },
+            },
+            status: 'active',
+            tenantId: 'tenant-1',
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          }),
+        }),
+      } as unknown as ModuleRef,
+      {
+        loadConversationReplay: vi.fn().mockResolvedValue([]),
+      } as never,
+      createTerminalProxyService() as never,
+      createMcpSessionService() as never,
+    );
+
+    await expect(
+      handler.handle(
+        {
+          sessionId: 'session-conv',
+        },
+        state,
+      ),
+    ).resolves.toEqual({
+      sessionId: 'session-conv',
+    });
+
+    expect(state.sessions?.get('session-conv')).toEqual({
+      sessionId: 'session-conv',
+      runtimeSessionId: 'session-conv',
+      agentId: 'agent-001',
+      tenantId: 'tenant-1',
+      cwd: '/workspace/demo',
+      serverSandbox: {
+        agentConversationId: '019391d4-f000-7000-0000-000000000006',
+      },
+    });
+  });
+
   it('应在 cold recovery 无法重绑 terminal continuity 时 fail-closed 且不注册 session', async () => {
     const state = createState();
     const terminalProxyService = {

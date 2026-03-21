@@ -127,6 +127,34 @@ describe('AcpFilesystemSandboxService', () => {
     expect(dockerService.getWorkspaceHostPath).toHaveBeenCalledWith('container-1');
   });
 
+  it('应支持按 agentConversationId 绑定解析工作区', async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
+    await writeFile(
+      join(workspaceRoot, 'demo', 'notes', 'conversation.txt'),
+      'conversation sandbox ok',
+      'utf8',
+    );
+    runInTenantTransactionMock.mockResolvedValue({
+      containerId: 'container-conv',
+      workspacePath: workspaceRoot,
+    });
+    const { service } = createService();
+
+    await expect(
+      service.readTextFile({
+        trackedSession: createTrackedSession({
+          serverSandbox: {
+            agentConversationId: '019391d4-f000-7000-0000-000000000006',
+          },
+        }),
+        path: 'notes/conversation.txt',
+      }),
+    ).resolves.toEqual({
+      text: 'conversation sandbox ok',
+    });
+  });
+
   it('应拒绝逃逸 /workspace 边界的读取路径', async () => {
     const workspaceRoot = await createWorkspaceRoot();
     runInTenantTransactionMock.mockResolvedValue({

@@ -14,6 +14,9 @@ const NOW = new Date('2025-01-01T00:00:00Z');
 const SERVER_SANDBOX = {
   executionId: '019391d4-e000-7000-0000-000000000005',
 };
+const CONVERSATION_SANDBOX = {
+  agentConversationId: '019391d4-f000-7000-0000-000000000006',
+};
 
 function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
   return {
@@ -51,12 +54,15 @@ function createUpdateChainVoid() {
   };
 }
 
-function withServerSandbox(session: AgentSession): AgentSession {
+function withServerSandbox(
+  session: AgentSession,
+  serverSandbox = SERVER_SANDBOX,
+): AgentSession {
   return {
     ...session,
     context: {
       ...session.context,
-      serverSandbox: SERVER_SANDBOX,
+      serverSandbox,
     },
   };
 }
@@ -133,6 +139,17 @@ describe('SessionPersistenceService', () => {
       });
 
       expect(result.context.history).toEqual([]);
+    });
+
+    it('应支持仅使用 agentConversationId 的 sandbox 绑定', () => {
+      const session = withServerSandbox(makeSession(), CONVERSATION_SANDBOX);
+      const serialized = service.serializeSession(session);
+
+      const result = service.deserializeSession(
+        serialized as unknown as Record<string, unknown>,
+      );
+
+      expect(result.context.serverSandbox).toEqual(CONVERSATION_SANDBOX);
     });
   });
 
@@ -268,6 +285,30 @@ describe('SessionPersistenceService', () => {
       expect(result?.id).toBe('conversation-001');
       expect(result?.mode).toBe('conversation');
       expect(result?.context.serverSandbox).toEqual(SERVER_SANDBOX);
+    });
+
+    it('应持久化并恢复 conversation-only sandbox 绑定', async () => {
+      const session = withServerSandbox(
+        makeSession({
+          id: 'conversation-conv-only',
+          mode: 'conversation',
+        }),
+        CONVERSATION_SANDBOX,
+      );
+      const serialized = service.serializeSession(session);
+      mockDb.select.mockReturnValue(
+        createSelectChain([
+          {
+            sessionSnapshot: serialized,
+          },
+        ]),
+      );
+
+      const result = await service.loadConversationSession(
+        'conversation-conv-only',
+      );
+
+      expect(result?.context.serverSandbox).toEqual(CONVERSATION_SANDBOX);
     });
 
     it('应在 conversation session snapshot 损坏时抛出数据完整性错误', async () => {

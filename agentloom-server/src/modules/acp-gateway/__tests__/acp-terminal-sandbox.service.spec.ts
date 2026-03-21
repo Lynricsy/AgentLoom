@@ -131,6 +131,40 @@ describe('AcpTerminalSandboxService', () => {
     });
   });
 
+  it('应支持按 agentConversationId 绑定创建 terminal', async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
+    runInTenantTransactionMock.mockResolvedValue({
+      containerId: 'container-conv',
+      workspacePath: workspaceRoot,
+    });
+    const { service, dockerService } = createService();
+    dockerService.createExec.mockResolvedValue({
+      execId: 'exec-conv',
+    });
+
+    await expect(
+      service.createTerminal({
+        trackedSession: createTrackedSession({
+          serverSandbox: {
+            agentConversationId: '019391d4-f000-7000-0000-000000000006',
+          },
+        }),
+        command: 'ls',
+        cwd: 'notes',
+      }),
+    ).resolves.toEqual({
+      execId: 'exec-conv',
+      cwd: '/workspace/demo/notes',
+    });
+
+    expect(dockerService.createExec).toHaveBeenCalledWith('container-conv', {
+      command: 'ls',
+      args: undefined,
+      cwd: '/workspace/demo/notes',
+    });
+  });
+
   it('应拒绝逃逸 /workspace 边界的终端 cwd', async () => {
     const workspaceRoot = await createWorkspaceRoot();
     await mkdir(join(workspaceRoot, 'demo'), { recursive: true });

@@ -28,34 +28,32 @@ export class SandboxService {
   }
 
   async createSandboxSession(
-    executionId: string,
-    sandboxNodeId: string,
+    executionId: string | undefined,
+    sandboxNodeId: string | null,
     config: SandboxConfig,
     tenantId: string,
+    agentConversationId?: string,
   ): Promise<SandboxSession> {
-    const existing = await this.tenantDb
-      .select()
-      .from(schema.sandboxSessions)
-      .where(
-        and(
-          eq(schema.sandboxSessions.executionId, executionId),
-          eq(schema.sandboxSessions.tenantId, tenantId),
-          notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
-        ),
-      )
-      .limit(1);
+    const existing = await this.findActiveSession({
+      executionId,
+      agentConversationId,
+      tenantId,
+    });
 
-    if (existing.length > 0) {
+    if (existing) {
       this.logger.debug(
-        `Reusing existing sandbox session ${existing[0].id} (status=${existing[0].status}) for execution ${executionId}`,
+        `Reusing existing sandbox session ${existing.id} (status=${existing.status}) for ${this.describeBinding({ executionId, agentConversationId })}`,
       );
-      return existing[0];
+      return existing;
     }
+
+    this.ensureBinding({ executionId, agentConversationId });
 
     const [session] = await this.tenantDb
       .insert(schema.sandboxSessions)
       .values({
-        executionId,
+        ...(executionId ? { executionId } : {}),
+        ...(agentConversationId ? { agentConversationId } : {}),
         sandboxNodeId,
         tenantId,
         config,
@@ -65,13 +63,16 @@ export class SandboxService {
 
     await this.lifecycleProducer.addCreateTask({
       sessionId: session.id,
-      executionId,
       tenantId,
       config,
+      ...(session.executionId ? { executionId: session.executionId } : {}),
+      ...(session.agentConversationId
+        ? { agentConversationId: session.agentConversationId }
+        : {}),
     });
 
     this.logger.log(
-      `Created sandbox session ${session.id} for execution ${executionId}`,
+      `Created sandbox session ${session.id} for ${this.describeBinding({ executionId: session.executionId ?? undefined, agentConversationId: session.agentConversationId ?? undefined })}`,
     );
 
     return session;
@@ -81,19 +82,14 @@ export class SandboxService {
     executionId: string,
     tenantId: string,
   ): Promise<SandboxSession | null> {
-    const [session] = await this.tenantDb
-      .select()
-      .from(schema.sandboxSessions)
-      .where(
-        and(
-          eq(schema.sandboxSessions.executionId, executionId),
-          eq(schema.sandboxSessions.tenantId, tenantId),
-          notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
-        ),
-      )
-      .limit(1);
+    return this.findActiveSession({ executionId, tenantId });
+  }
 
-    return session ?? null;
+  async findByConversationId(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<SandboxSession | null> {
+    return this.findActiveSession({ agentConversationId, tenantId });
   }
 
   async updateSessionStatus(
@@ -120,11 +116,35 @@ export class SandboxService {
   }
 
   async destroySandbox(executionId: string, tenantId: string): Promise<void> {
-    const session = await this.getSandboxSession(executionId, tenantId);
+    await this.destroyActiveSandbox(
+      { executionId, tenantId },
+      `execution ${executionId}`,
+    );
+  }
+
+  async destroyConversationSandbox(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    await this.destroyActiveSandbox(
+      { agentConversationId, tenantId },
+      `conversation ${agentConversationId}`,
+    );
+  }
+
+  private async destroyActiveSandbox(
+    params: {
+      executionId?: string;
+      agentConversationId?: string;
+      tenantId: string;
+    },
+    bindingLabel: string,
+  ): Promise<void> {
+    const session = await this.findActiveSession(params);
 
     if (!session) {
       this.logger.warn(
-        `No active sandbox session found for execution ${executionId}, skipping destroy`,
+        `No active sandbox session found for ${bindingLabel}, skipping destroy`,
       );
       return;
     }
@@ -133,8 +153,11 @@ export class SandboxService {
 
     await this.lifecycleProducer.addDestroyTask({
       sessionId: session.id,
-      executionId,
-      tenantId,
+      tenantId: params.tenantId,
+      ...(session.executionId ? { executionId: session.executionId } : {}),
+      ...(session.agentConversationId
+        ? { agentConversationId: session.agentConversationId }
+        : {}),
       ...(session.containerId ? { containerId: session.containerId } : {}),
       ...(session.config.persistencePath
         ? { persistencePath: session.config.persistencePath }
@@ -142,6 +165,82 @@ export class SandboxService {
     });
 
     this.logger.log(`Enqueued destroy for sandbox session ${session.id}`);
+  }
+
+  private async findActiveSession(params: {
+    executionId?: string;
+    agentConversationId?: string;
+    tenantId: string;
+  }): Promise<SandboxSession | null> {
+    const { executionId, agentConversationId, tenantId } = params;
+    this.ensureBinding({ executionId, agentConversationId });
+
+    const [session] = await this.tenantDb
+      .select()
+      .from(schema.sandboxSessions)
+      .where(
+        this.buildActiveSessionWhere({ executionId, agentConversationId, tenantId }),
+      )
+      .limit(1);
+
+    return session ?? null;
+  }
+
+  private buildActiveSessionWhere(params: {
+    executionId?: string;
+    agentConversationId?: string;
+    tenantId: string;
+  }) {
+    const { executionId, agentConversationId, tenantId } = params;
+
+    if (executionId && agentConversationId) {
+      return and(
+        eq(schema.sandboxSessions.executionId, executionId),
+        eq(schema.sandboxSessions.agentConversationId, agentConversationId),
+        eq(schema.sandboxSessions.tenantId, tenantId),
+        notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
+      );
+    }
+
+    if (executionId) {
+      return and(
+        eq(schema.sandboxSessions.executionId, executionId),
+        eq(schema.sandboxSessions.tenantId, tenantId),
+        notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
+      );
+    }
+
+    return and(
+      eq(schema.sandboxSessions.agentConversationId, agentConversationId!),
+      eq(schema.sandboxSessions.tenantId, tenantId),
+      notInArray(schema.sandboxSessions.status, [...TERMINAL_STATUSES]),
+    );
+  }
+
+  private ensureBinding(params: {
+    executionId?: string;
+    agentConversationId?: string;
+  }): void {
+    if (!params.executionId && !params.agentConversationId) {
+      throw new Error(
+        'Sandbox session requires executionId or agentConversationId',
+      );
+    }
+  }
+
+  private describeBinding(params: {
+    executionId?: string;
+    agentConversationId?: string;
+  }): string {
+    if (params.executionId && params.agentConversationId) {
+      return `execution ${params.executionId} / conversation ${params.agentConversationId}`;
+    }
+
+    if (params.executionId) {
+      return `execution ${params.executionId}`;
+    }
+
+    return `conversation ${params.agentConversationId}`;
   }
 
   async getSandboxLogs(sessionId: string): Promise<SandboxLog[]> {

@@ -183,10 +183,34 @@ export class SessionNewHandler {
     }
 
     const executionId = value.executionId;
-    if (typeof executionId !== 'string' || executionId.length === 0) {
+    if (
+      executionId !== undefined &&
+      (typeof executionId !== 'string' || executionId.length === 0)
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 
-    return { executionId };
+    const agentConversationId = value.agentConversationId;
+    if (
+      agentConversationId !== undefined &&
+      (typeof agentConversationId !== 'string' ||
+        agentConversationId.length === 0)
+    ) {
+      throw new AcpJsonRpcError(-32602, 'Invalid params');
+    }
+
+    if (
+      typeof executionId !== 'string' &&
+      typeof agentConversationId !== 'string'
+    ) {
+      throw new AcpJsonRpcError(-32602, 'Invalid params');
+    }
+
+    return {
+      ...(typeof executionId === 'string' ? { executionId } : {}),
+      ...(typeof agentConversationId === 'string'
+        ? { agentConversationId }
+        : {}),
+    } as ServerSandboxBinding;
   }
 }

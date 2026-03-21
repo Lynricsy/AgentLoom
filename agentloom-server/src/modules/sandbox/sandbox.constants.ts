@@ -4,9 +4,13 @@ export const SANDBOX_LIFECYCLE_QUEUE = 'sandbox-lifecycle';
 
 export type SandboxLifecycleJobType = 'create' | 'destroy' | 'timeout_check';
 
-export interface SandboxLifecycleJobData {
+export interface SandboxLifecycleBinding {
+  executionId?: string;
+  agentConversationId?: string;
+}
+
+export interface SandboxLifecycleJobData extends SandboxLifecycleBinding {
   sessionId: string;
-  executionId: string;
   tenantId: string;
   jobType: SandboxLifecycleJobType;
   config?: SandboxConfig;

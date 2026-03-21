@@ -259,13 +259,7 @@ export class AcpFilesystemSandboxService {
   private async resolveWorkspaceRoot(
     trackedSession: AcpTrackedSession,
   ): Promise<string> {
-    const executionId = trackedSession.serverSandbox?.executionId;
-    if (typeof executionId !== 'string' || executionId.length === 0) {
-      throw this.createSandboxError(
-        'ACP server sandbox is not bound to current session',
-        'sandbox_binding_missing',
-      );
-    }
+    const binding = this.readSandboxBinding(trackedSession);
 
     const sandboxSession = await runInTenantTransaction(
       this.db,
@@ -278,11 +272,7 @@ export class AcpFilesystemSandboxService {
           })
           .from(sandboxSessions)
           .where(
-            and(
-              eq(sandboxSessions.executionId, executionId),
-              eq(sandboxSessions.tenantId, trackedSession.tenantId),
-              inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
-            ),
+            this.buildActiveSandboxWhere(trackedSession.tenantId, binding),
           )
           .limit(1);
 
@@ -312,6 +302,55 @@ export class AcpFilesystemSandboxService {
     }
 
     return this.dockerService.getWorkspaceHostPath(sandboxSession.containerId);
+  }
+
+  private buildActiveSandboxWhere(
+    tenantId: string,
+    binding: { executionId?: string; agentConversationId?: string },
+  ) {
+    if (binding.executionId && binding.agentConversationId) {
+      return and(
+        eq(sandboxSessions.executionId, binding.executionId),
+        eq(sandboxSessions.agentConversationId, binding.agentConversationId),
+        eq(sandboxSessions.tenantId, tenantId),
+        inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
+      );
+    }
+
+    if (binding.executionId) {
+      return and(
+        eq(sandboxSessions.executionId, binding.executionId),
+        eq(sandboxSessions.tenantId, tenantId),
+        inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
+      );
+    }
+
+    return and(
+      eq(sandboxSessions.agentConversationId, binding.agentConversationId!),
+      eq(sandboxSessions.tenantId, tenantId),
+      inArray(sandboxSessions.status, [...ACTIVE_SANDBOX_STATUSES]),
+    );
+  }
+
+  private readSandboxBinding(trackedSession: AcpTrackedSession): {
+    executionId?: string;
+    agentConversationId?: string;
+  } {
+    const executionId = trackedSession.serverSandbox?.executionId;
+    const agentConversationId =
+      trackedSession.serverSandbox?.agentConversationId;
+
+    if (!executionId && !agentConversationId) {
+      throw this.createSandboxError(
+        'ACP server sandbox is not bound to current session',
+        'sandbox_binding_missing',
+      );
+    }
+
+    return {
+      ...(executionId ? { executionId } : {}),
+      ...(agentConversationId ? { agentConversationId } : {}),
+    };
   }
 
   private isTrustedWorkspacePath(

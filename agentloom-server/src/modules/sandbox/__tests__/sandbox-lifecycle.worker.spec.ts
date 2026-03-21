@@ -15,6 +15,7 @@ const mockDockerService = {
 
 const mockSandboxService = {
   getSandboxSession: vi.fn(),
+  findByConversationId: vi.fn(),
 };
 
 const mockLifecycleProducer = {
@@ -137,6 +138,25 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalledWith({
         sessionId: 's1',
         executionId: 'e1',
+        tenantId: 't1',
+        delayMs: 4 * 60 * 60 * 1000,
+      });
+    });
+
+    it('conversation create 应携带 agentConversationId 设置超时检查', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's-conv',
+          agentConversationId: 'conv-1',
+          tenantId: 't1',
+          config: DEFAULT_CONFIG,
+        }),
+      );
+
+      expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalledWith({
+        sessionId: 's-conv',
+        agentConversationId: 'conv-1',
         tenantId: 't1',
         delayMs: 4 * 60 * 60 * 1000,
       });
@@ -300,6 +320,24 @@ describe('SandboxLifecycleWorker', () => {
         'application/x-tar',
       );
     });
+
+    it('conversation destroy 缺少 executionId 时也应完成销毁', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's-conv',
+          agentConversationId: 'conv-1',
+          tenantId: 't1',
+          containerId: 'c-123',
+        }),
+      );
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'stopped' }),
+      );
+    });
   });
 
   describe('timeout_check job', () => {
@@ -384,6 +422,53 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+    });
+
+    it('conversation timeout 应只停止 sandbox 且不级联失败 workflow', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValueOnce({
+        id: 's-conv',
+        status: 'ready',
+        containerId: 'c-123',
+        config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's-conv',
+            agentConversationId: 'conv-1',
+            tenantId: 't1',
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockSandboxService.findByConversationId).toHaveBeenCalledWith(
+        'conv-1',
+        't1',
+      );
+      expect(mockSandboxService.getSandboxSession).not.toHaveBeenCalled();
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
+      expect(
+        updatePayloads.some(
+          (payload) =>
+            payload &&
+            typeof payload === 'object' &&
+            'completedAt' in payload &&
+            'errorMessage' in payload,
+        ),
+      ).toBe(false);
+      expect(
+        updatePayloads.some(
+          (payload) =>
+            payload &&
+            typeof payload === 'object' &&
+            'failedAt' in payload &&
+            'errorMessage' in payload,
+        ),
+      ).toBe(false);
     });
   });
 });
