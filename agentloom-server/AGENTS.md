@@ -48,6 +48,11 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | acp-gateway | `modules/acp-gateway/` | **Command Handler 模式**，在 HTTP app 和 stdio app 两个 NestJS 应用中注册；**ANTI-PATTERN**: providers[] 手动 re-provision 服务而非 import 父模块；使用 JSON-RPC auth（非 HTTP guards）。ACP stdio 协议适配层：严格 initialize 版本协商、authenticate、连接级 session registry、`session/new` / `session/load` / `session/prompt` request、`session/cancel` fire-and-forget 处理、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy + server-sandbox surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` server-sandbox surface、canonical `readTextFile` / `writeTextFile` 能力协商（兼容 initialize legacy alias），以及仅在 client 同时启用 `terminal.create` 与 `terminal.output` 时暴露的粗粒度 `terminal: { create: true }` 总开关、写入前 `session/request_permission` bridge、基于 `sandbox_sessions` 的 ACP-local sandbox workspace 解析、`/workspace/` 边界 + `realpath` / symlink / traversal / oversize / binary guardrails、session-bound terminal registry + durable continuity metadata、默认 1MB terminal ring buffer / 每 session 5 并发 / 300s timeout kill / denylist 审计、runtime `plan/message_chunk/tool_call/decision/done` → `session/update` / `stopReason` 映射、`session/load` replay-before-response 历史回放与 terminal continuity fail-closed、官方 `session/request_permission` request/response 语义、conversation-session 级 approve/deny/cancel 工具权限闭环、JSON-RPC 2.0 错误映射、`initialized` no-op、独立 `AcpStdioModule` bootstrap | AppConfigModule, DatabaseModule, LlmModule, TokenBlacklistModule, `AGENT_RUNTIME -> ACP_TEST_RUNTIME_PROVIDER`（默认 `InProcessAgentAdapter`，`ACP_TEST_FAKE_RUNTIME=1` 时切到 `AcpTestRuntime`） |
 | sandbox | `modules/sandbox/` | Docker 沙箱生命周期管理 | BullMQ |
 | agent | `modules/agent/` | **六边形架构**: ports/AgentRuntime → InProcess\|Sandbox 适配器 | LlmModule, SandboxModule |
+| agent-definition | `modules/agent-definition/` | Agent 定义 CRUD + 版本管理 + canvas 保存 + 发布/归档；`agent_definitions`/`agent_versions` 表；runtime config 接口定义 Agent 运行参数（CPU/memory/timeout/lifecycle） | WorkspaceModule |
+| agent-conversation | `modules/agent-conversation/` | Agent 对话生命周期管理：创建/列表/消息历史/发送消息 API；`agent_conversations`/`agent_messages` 表 | AgentDefinitionModule |
+| agent-execution | `modules/agent-execution/` | Agent 对话执行引擎：`AgentExecutionWorker` 处理对话消息、`AgentConversationGateway`（Socket.IO `/agent-conversation` namespace）实时推送、`WorkspaceIntegrationService` 文件集成、`WorkflowAgentAdapter` 桥接工作流 `agent` 节点执行 | AgentModule, SandboxModule, Socket.IO |
+| shared-resources | `modules/shared-resources/` | 通用共享资源注册表：`SharedResourceRegistry` 提供 `SharedResourceProvider<TConfig, TInstance>` 接口（type/create/destroy/share），sandbox 为首个 provider 实现，支持跨 workflow/agent 的资源复用 | SandboxModule |
+| workspace | `modules/workspace/` | Workspace 持久化服务：管理 `workspace_snapshots` 表，支持 Agent 对话与工作流执行的文件状态快照 | DatabaseModule |
 | knowledge | `modules/knowledge/` | RAG: 解析 → 分块 → Qdrant 向量索引；`VECTOR_STORE` token 以 `useClass: QdrantVectorStoreService` 注入；`parsers/` 含 4 个解析器 + dispatcher | BullMQ, Qdrant |
 | execution | `modules/execution/` | DAG 调度 + 状态机 + BullMQ workers；**最高耦合模块**（imports 9 modules, exports 9 services）；含 `EventBridgeService`（monotonic eventId + ring buffer）、`StepStateMachineService`、`DagResolverService`、`CheckpointService`；CQRS-adjacent: `execution/`（write）vs `execution-record/`（analytics read-model） | AgentModule, Socket.IO |
 | trigger | `modules/trigger/` | 事件驱动触发系统：工作流 trigger CRUD（cron/webhook/api_event 三种类型）、cron 调度、webhook 验签与触发历史、`POST /api-events` api_event 接入端点与 fan-out、`EventSourceAdapterRegistry` + `GithubWebhookAdapter`（HMAC-SHA256 验签）+ `GenericEventAdapter`（通用透传） | BullMQ, ExecutionModule, crypto HMAC |
@@ -154,6 +159,7 @@ HTTP POST /executions
 |------|------|------|
 | execution-queue | 1次 | 工作流执行入口 |
 | agent-task-queue | 首次执行 + 3次重试 exp (2s base) | 单节点 Agent 任务 |
+| agent-conversation-queue | 3次重试 exp (2s base) | Agent 对话消息执行 |
 | plugin-execution | 3次 exp (2s base) | `plugin` 节点 WASM 沙箱执行 worker |
 | optimization-analysis | 1次 | Agent 配置优化建议周期分析 |
 | audit-log-retention | 1次 | 审计日志热层归档与 hot/archive 回查基线维护 |
@@ -188,6 +194,9 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
 - **资源治理表**: `tenant_quotas` 提供 7 个 canonical quota 字段（`maxConcurrentExecutions`、`dailyExecutionLimit`、`dailyApiCallLimit`、`storageQuotaMb`、`apiRateLimitPerMinute`、`maxSandboxCpuPercent`、`maxSandboxMemoryMb`），使用 direct tenant RLS 与 `organization_id` 唯一索引；`execution_governance_controls` 以 `scope + targetId + status + reason` 保存 tenant/workflow 治理暂停状态，使用 `(organization_id, scope, target_id)` 唯一索引与 direct tenant RLS。
 - **私有部署表**: `private_deployment_settings` 保存组织级 SMTP、LLM Proxy、证书与 License 加密 envelope，依赖 `private_cloud_auth_method` / `private_deployment_certificate_source` enum，使用 `organization_id` 唯一索引、`tenant_id` 索引、direct tenant RLS 与 authenticated `SELECT/INSERT/UPDATE/DELETE` grant；license 公钥不入库，运行时通过 `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` 做 RSA-PSS 验签。
 - **治理通知枚举扩展**: `notifications.notification_type_enum` 现包含 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`，供 `/notification` socket、通知列表与治理审计链路复用。
+- **Agent 表**: `agent_definitions` 存储 Agent 定义（名称/描述/配置/状态/canvas JSON），`agent_versions` 管理版本历史（snapshot/发布状态）。`agent_conversations` 记录对话会话（关联 agent_definition_id），`agent_messages` 存储对话消息序列（role/content/metadata）。四表均使用 tenant-scoped RLS。
+- **Workspace 表**: `workspace_snapshots` 存储文件状态快照，支持 Agent 对话与工作流执行场景。
+- **sandbox_sessions 双 FK**: `sandbox_sessions` 表使用 `execution_id` 与 `agent_conversation_id` 双 FK + CHECK 约束（至少一个非空），实现沙箱会话在工作流执行与 Agent 对话间的复用。
 - **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
@@ -220,6 +229,10 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
   - 接收人策略: `NotificationListener` 基于 execution + workflow + organization members 联表，向租户内 `owner/admin/creator`（Editor+）批量创建通知，不再只通知执行创建者
   - 载荷约定: `completed` / `failed` / `intervention_required` 通知 body 均包含 `workflowId`、`workflowName`、`executionId`、`timelineUrl`；失败额外含 `errorReason` / `suggestion`，人工介入额外含 `nodeId` / `nodeName` / `interventionReason` / `requestedAt`。资源治理通知类型包括 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`，body 至少保留 `organizationId` 与对应 workflow/execution/reason/requestedAt/effectedAt 等结构化字段。
 - `/knowledge` namespace: document status/kb updates (隐式契约，**无认证守卫**)
+- `/agent-conversation` namespace: Agent 对话实时事件推送，与 `/execution` namespace 对称
+  - 复用 EventBridge 模式，typed event 信封
+  - 订阅/取消订阅 + ACK，支持 JWT + MFA 认证
+  - 事件类型覆盖对话消息流、Agent 状态变更、工具调用等
 - 均使用 `WsJwtGuard` 认证 (blacklist + MFA)
 
 ## common/ 目录

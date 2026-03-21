@@ -29,6 +29,10 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/auth/callback` | AuthCallbackPage | Supabase OAuth PKCE 回调处理 |
 | `/settings/security` | SecuritySettingsPage | 密码修改 / MFA 管理 / 会话列表 |
 | `/templates` | TemplateBrowsePage | Tabs + 搜索 + 网格 + TemplateWizardDialog |
+| `/agents` | AgentListPage | Agent 列表/创建入口 |
+| `/agents/$agentId` | AgentCanvasPage | Agent 配置编辑器画布 (ReactFlow, CPU/memory/timeout/lifecycle 参数) |
+| `/agents/$agentId/conversations/new` | AgentConversationPage | 创建新对话 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话 UI (对话列表/消息流/上下文面板) |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。`__root.tsx` 包含 auth guard：未认证用户重定向到 `/login`。
 
@@ -63,7 +67,10 @@ src/
 │   ├── intervention-policy/ # 介入策略管理（approve/reject/escalate timeout）
 │   ├── private-deployment/ # 私有部署设置页 `/settings/private-deployment`（types/api/hooks/components）
 │   ├── workflow-input-schema/ # 工作流输入参数 schema 编辑器（无 api/、无 index.ts，属于例外布局）
-│   └── block-library/ # 可复用块库管理
+│   ├── block-library/ # 可复用块库管理
+│   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
+│   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
+│   └── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
 │   ├── components/   # Pagination 等通用组件
@@ -76,7 +83,7 @@ src/
 
 ## 状态管理
 
-**4 个 Zustand stores** (immer + devtools + subscribeWithSelector):
+**4 个 Zustand stores + 2 个 Agent stores** (immer + devtools + subscribeWithSelector):
 
 | Store | 路径 | 职责 |
 |-------|------|------|
@@ -84,6 +91,8 @@ src/
 | executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming/intervention)/recentEvents(cap 50) |
 | evidenceUiStore | `features/evidence/stores/` | isOpen/panelExecutionId/panelNodeId/panelNodeName/selectedEvidenceId/highlightUntil/documentViewer |
 | notificationStore | `features/notification/stores/` | notifications/unreadCount/isDropdownOpen，socket 增量插入与已读乐观更新 |
+| agentCanvasStore | `features/agent-canvas/stores/` | Agent 配置画布状态：nodes/edges/viewport/dirty，AGENT_CANVAS_NODE_REGISTRY 子集节点类型 |
+| agentConversationStore | `features/agent-conversation/stores/` | 对话状态：messages/streaming/conversationList/activeConversationId，Socket.IO `/agent-conversation` 事件驱动 |
 
 **自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
 
@@ -101,6 +110,7 @@ src/
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 - **通知 Socket.IO**: `/notification` namespace，`useNotificationSocket` 复用 execution 的 `resolveSocketUrl + callbacksRef + 单 useEffect` 模式；根布局 `__root.tsx` 负责激活连接，并通过 `NotificationBell`/`NotificationDropdown` 暴露未读数与最近 20 条通知
+- **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
   - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `listExecutions` (GET /workflow-definitions/:id/executions), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
@@ -116,6 +126,9 @@ src/
 - **认证** (`features/auth/`): Supabase Auth PKCE 集成。`auth.store.ts`（Zustand）管理 session/user/loading/initialized 状态，`useAuth` hook 提供 signIn/signUp/signOut/signInWithOAuth 操作，`useAuthToken` hook 保持后向兼容（从 Supabase session 读取 access token）。`useMfa` hook 封装 TOTP 注册/验证/撤销。组件：`AuthLayout`（居中卡片布局）、`OAuthButtons`（Google/GitHub OAuth）、`PasswordInput`（带可见性切换）、`MfaEnrollDialog`（TOTP QR 码注册 + 验证）、`MfaVerifyDialog`（TOTP 验证码输入）、`SecuritySettings`（密码修改/MFA 管理/活跃会话列表）。依赖 `@supabase/supabase-js`，Supabase client 初始化在 `shared/lib/supabase.ts`
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
+- **Agent feature** (`features/agent/`): Agent CRUD 页面 (列表/创建/设置)。`agentApi.ts` 封装 Agent 定义与版本 REST API，`agentKeys.ts` 提供 TanStack Query key factory，`useAgentList`/`useAgentDetail` query hooks，`useCreateAgent`/`useUpdateAgent`/`usePublishAgent` mutations。`AgentListPage` 支持搜索与状态筛选
+- **Agent Canvas feature** (`features/agent-canvas/`): Agent 配置编辑器画布，使用 ReactFlow 渲染 `AGENT_CANVAS_NODE_REGISTRY` 子集节点（CPU/memory/timeout/lifecycle 等运行时参数），非执行 DAG。`agentCanvasStore` (Zustand) 管理画布状态，支持自动保存到 `agent_versions`
+- **Agent Conversation feature** (`features/agent-conversation/`): 三列对话 UI (对话列表/消息流/上下文面板)。`agentConversationStore` (Zustand) 管理消息列表与流式状态，`useAgentConversationSocket` 通过 Socket.IO `/agent-conversation` namespace 实现实时消息推送与 mid-stream injection。支持多轮对话与文件上下文
 - **Marketplace feature** (`features/marketplace/`): 同时覆盖发布者后台与公共浏览链路。公共侧数据层使用 `publicMarketplaceApi` / `publicMarketplaceQueries` / `publicMarketplaceMutations`，query key 仍集中在 `marketplaceKeys.ts` 的 `publicMarketplaceKeys`；对应 `/marketplace/browse`（公开列表/详情/评论）与已认证 `/marketplace/listings/:id/install|reviews`。public contract 已与 server 收口：列表/评论统一 `{ data, meta }`，install 返回 `{ workflowDefinitionId, name, message }`，submit-review 返回 `{ id, rating, content, createdAt }`；`usePublicListings()` staleTime 2min，`usePublicListingDetail()` staleTime 5min，`useListingReviews()` staleTime 2min。页面层形成 `MarketplaceBrowsePage` → `MarketplaceDetailDialog` → `MarketplaceInstallDialog/ReviewForm` 闭环：浏览页使用 `meta.total/totalPages`、分类/排序/空态已中文化；`MarketplaceListingCard` 使用 `作者：` / `次安装` 文案；`MarketplaceDetailDialog` 评价总数优先取 `reviewsQuery.data.meta.total ?? listing.reviewCount`，头部同步展示 `Download + {useCount} 次安装`，CTA 为“安装到工作区”；`MarketplaceInstallDialog` 默认名称为 `${title} 副本`，安装成功后改用 `workflowDefinitionId` 跳转 `/workflows/$workflowId`。该链路的 4 个 marketplace 定向测试文件已通过 23 个测试。
 - **Trigger feature** (`features/trigger/`): `features/trigger/`webhook config 只保证 `token + ipWhitelist`，`secret` 仅在创建成功返回中可选出现；`TriggerHistoryStatus` 包含 `signature_failed`；`WebhookConfigForm` 编辑态只展示 URL/Token 与“一次性 secret”提示，不再重复展示 secret；`API Event` 类型支持完整 CRUD 与启停操作，与  /  同等管理；当前 workflow 详情页仍然是 `WorkflowCanvasPage`（`/workflows/$workflowId`），不要为触发器发明独立 detail route
 - **MCP feature** (`features/mcp/`): 统一承载 imported tools 的 `mcpKeys` / `mcpApi` / `mcpQueries` / `mcpMutations` / `ToolLibraryPage` / `McpImportDialog`；shared data layer 现已补齐 `POST /mcp/test` 与 `POST /mcp/configs/:id/test` 前端类型，以及 `useTestMcpConnection()` / `useTestSavedMcpConnection()` mutations。`McpImportDialog` 为真正四步流（配置连接 → 测试连接 → 发现/选择工具 → 导入并同页复核回执），import 模式支持 `stdio | sse | streamable_http` 传输选择并跨步骤保留上下文；reimport 模式现先做 saved-config test，再在下一步独立 rediscover。`ToolLibraryPage` 现展示状态 / 来源 / 配置身份 / 导入与更新时间 / 端口摘要等管理元信息，停用确认使用 Radix Dialog 并在关闭后恢复焦点。`features/canvas/api/mcpToolQueries.ts` / `mcpToolKeys.ts` 仍作为兼容适配层复用 shared query key，确保工具库与 NodePalette 的 `Imported Tools` 同步刷新

@@ -54,6 +54,13 @@ AgentLoomAUTO/
 | 管理资源配额与异常执行治理 | `agentloom-server/src/modules/resource-governance/` + `agentloom-studio/src/features/resource-governance/` | `tenant_quotas` / `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 限流/日配额、治理操作审计/通知、Studio `/settings/resource-quotas` 管理页 |
 | 管理组织级运行监控仪表板 | `agentloom-server/src/modules/monitoring/` + `agentloom-studio/src/features/monitoring/` | owner/admin 只读 monitoring dashboard、`15m/1h/24h` 时间窗口、execution/governance/notification/audit 聚合与当前 queue snapshot 摘要、Studio `/settings/monitoring` 页面与 deep link |
 | 管理私有部署配置与部署资产 | `agentloom-server/src/modules/private-deployment/` + `agentloom-studio/src/features/private-deployment/` + `agentloom-deploy/` | owner/admin 私有部署设置 API 与 `/settings/private-deployment` 页面、受管 secret 引用 / RSA-PSS license 校验、Docker Compose / Helm / 备份恢复脚本与私有部署手册 |
+| 管理 Agent 定义与版本 | `agentloom-server/src/modules/agent-definition/` | Agent CRUD + 版本管理 + canvas 保存 + 发布/归档，`agent_definitions`/`agent_versions` 表 |
+| 管理 Agent 对话 | `agentloom-server/src/modules/agent-conversation/` + `agentloom-studio/src/features/agent-conversation/` + `agentloom_mobile/lib/features/agents/` | 对话生命周期 CRUD、消息历史 API、`agent_conversations`/`agent_messages` 表、Studio 三列对话 UI、Mobile 对话屏 |
+| 管理 Agent 执行引擎 | `agentloom-server/src/modules/agent-execution/` | 对话执行 worker + Socket.IO `/agent-conversation` gateway + workspace 文件集成、`WorkflowAgentAdapter` 桥接工作流 `agent` 节点 |
+| 管理 Agent 配置画布 | `agentloom-studio/src/features/agent-canvas/` | Agent 配置编辑器画布（CPU/memory/timeout/lifecycle 参数，非执行 DAG），使用 ReactFlow + `AGENT_CANVAS_NODE_REGISTRY` 子集 |
+| 管理 Agent CRUD 页面 | `agentloom-studio/src/features/agent/` | Agent 列表/创建/设置页面，query hooks，mutations |
+| 管理共享资源注册表 | `agentloom-server/src/modules/shared-resources/` | `SharedResourceRegistry` 通用 provider 接口（type/create/destroy/share），sandbox 为首个实现 |
+| 管理 Workspace 快照 | `agentloom-server/src/modules/workspace/` | Workspace 持久化服务，`workspace_snapshots` 表 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 管理 Studio 认证与安全 | `agentloom-studio/src/features/auth/` | Supabase PKCE 认证、Zustand auth store、OAuth/MFA 组件、`/login` `/register` `/auth/callback` `/settings/security` 路由 |
 | 管理移动端认证与安全 | `agentloom_mobile/lib/features/auth/` + `agentloom_mobile/lib/features/settings/` | OAuth (Google/GitHub) + url_launcher、原生 MFA TOTP 屏幕、密码修改/会话管理/安全设置 |
@@ -76,12 +83,18 @@ type-engine (Rust/WASM)
   └── studio（TypeEngineService + Web Worker/WASM runtime + 受控 fallback）
 
 studio (React) ──HTTP REST──→ server (/api/v1)
-              ──Socket.IO──→ server (/execution, /knowledge, /notification)
+              ──Socket.IO──→ server (/execution, /agent-conversation, /knowledge, /notification)
 
 mobile (Flutter) ──HTTP REST──→ server (/api/v1)
-              ──Socket.IO──→ server (/execution namespace, JWT auth)
+              ──Socket.IO──→ server (/execution, /agent-conversation namespace, JWT auth)
 
 server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + MinIO
+
+Agent 与 Workflow 为两个并行顶层概念:
+  Workflow: DAG 编排 → /execution namespace → workflow_executions/execution_steps
+  Agent:    独立配置 → /agent-conversation namespace → agent_conversations/agent_messages
+  桥接:     WorkflowAgentAdapter 允许 Agent 作为工作流 `agent` 节点执行
+  沙箱共享: sandbox_sessions 双 FK (execution_id OR agent_conversation_id, CHECK 至少一个非空)
 ```
 
 **类型共享**: 无共享包。通过约定/手动镜像同步（有漂移风险）。
@@ -186,5 +199,8 @@ pnpm lint:md                      # Markdown lint
 - **Marketplace**: 公共 browse/search/detail/reviews/install 链路。安装 RBAC `owner/admin/creator/operator`。发布审核基于 `workflowDefinitions.status + publishedVersionId`。`marketplace_listings` 支持 `listingType`（workflow/plugin）和 `pricingModel`（free/per_execution），`workflowVersionId` 为 nullable 以支持插件上架
 - **导出/导入**: 导出使用 `agentloom-workflow-v1` 信封 + `sanitizeDefinition()` 递归剥离敏感信息。导入含 Zod 校验 + `cloneDefinitionWithNewIds()`。创建工作流支持 `template_slug` / `share_token` / `marketplace_listing_id` 三种克隆源（互斥）
 - **Open API & SDK**: `PlatformApiTokenModule` 管理 API Key（`al_` prefix + SHA-256 hash）。`AuthGuard` 双重认证 JWT → X-Api-Key fallback。`CustomThrottlerGuard` 100 req/min 限流。支持 TS-fetch / Python SDK 生成
+- **Agent-Workflow 分离**: Agent 与 Workflow 为两个并行顶层概念。Agent 拥有独立的定义/版本/对话/执行体系，通过 `WorkflowAgentAdapter` 可作为工作流 `agent` 节点执行。Agent 配置画布（`agent-canvas`）为参数编辑器（CPU/memory/timeout/lifecycle），非执行 DAG。`sandbox_sessions` 表使用双 FK（`execution_id` OR `agent_conversation_id`）+ CHECK 约束（至少一个非空）实现沙箱会话在工作流与 Agent 对话间的复用
+- **SharedResourceRegistry**: `shared-resources` 模块提供通用 `SharedResourceProvider<TConfig, TInstance>` 接口（type/create/destroy/share），sandbox 为首个 provider 实现，支持跨 workflow/agent 的资源共享
+- **Socket.IO `/agent-conversation` 协议**: 与 `/execution` namespace 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 `.wasm` 文件

@@ -5,7 +5,7 @@
 AgentLoom Flutter 移动端应用：
 
 - Riverpod ProviderScope 启动入口
-- GoRouter + `StatefulShellRoute.indexedStack` 三标签导航 (Dashboard / Workflows / Settings)
+- GoRouter + `StatefulShellRoute.indexedStack` 四标签导航 (Dashboard / Workflows / Agents / Settings)
 - Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
 - dotenv 环境切换（dev / staging / prod）
 - 完整认证链路：LoginScreen → AuthApi → AuthNotifier → TokenStorage (flutter_secure_storage)
@@ -19,6 +19,8 @@ AgentLoom Flutter 移动端应用：
 - 执行监控：Socket.IO 实时状态 + REST execution detail 5s 轮询降级，状态头 + 告警横幅 + 步骤时间线 + disconnected 语义纠正
 - 推送通知：FCM token 生命周期管理、前台本地通知、后台/终止态深链导航到执行详情
 - 工作流启动链路：`WorkflowDetailScreen` FAB → `/workflows/:workflowId/launch` → 参数提交 → `/executions/:executionId`
+- Agent 管理：Agent 列表/详情/对话三屏，4th shell branch (Agents tab)
+- Agent 对话：`AgentConversationScreen` 全屏路由（非 shell 内），Socket.IO `/agent-conversation` 实时消息推送
 
 ## 目录约定
 
@@ -59,7 +61,13 @@ lib/
 │       ├── providers/   # WorkflowListNotifier, workflowDetailProvider, workflowExecutionsProvider, WorkflowLaunchNotifier
 │       ├── screens/     # WorkflowsScreen, WorkflowDetailScreen, ParameterInputScreen
 │       └── widgets/     # WorkflowCard, WorkflowStatusChip, ExecutionSummaryTile, input-field widgets, no-params/conversation prompts
-├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 顶层路由) 与路由名
+│   └── agents/
+│       ├── api/         # AgentApi (list/get/conversations/messages/send) + agentApiProvider
+│       ├── models/      # Freezed: AgentDefinitionDto, AgentConversationDto, AgentMessageDto
+│       ├── providers/   # AgentListNotifier, agentDetailProvider, AgentConversationNotifier
+│       ├── screens/     # AgentListScreen, AgentDetailScreen, AgentConversationScreen (全屏对话)
+│       └── widgets/     # AgentCard, AgentStatusChip, ConversationBubble, MessageInput
+├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 与 /agents/:agentId/conversations/:conversationId 顶层路由) 与路由名
 └── shared/
     ├── interceptors/    # AuthInterceptor (QueuedInterceptorsWrapper, 401 刷新 + 重试)
     ├── models/          # PaginatedResponse<T> + PaginationMeta
@@ -91,6 +99,7 @@ fvm flutter test --coverage
 - **Sealed class 状态**: `AuthState`（Freezed sealed）、`ExecutionMonitorState`、`WorkflowLaunchState`、`WorkflowListState` 均为 sealed class 状态机，非 plain AsyncValue
 - **`ref.mounted` 守卫**: 所有 async 路径在 `await` 后均检查 `ref.mounted`，防止 dispose 后写入
 - **execution monitor**: REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
+- **Agent 数据层**: `AgentApi` 封装 Agent 定义列表/详情与对话生命周期 REST API，`AgentListNotifier` / `agentDetailProvider` 管理列表与详情状态，`AgentConversationNotifier` 管理对话消息流与 Socket.IO `/agent-conversation` 实时连接。`AgentConversationScreen` 为全屏路由（非 shell 标签内），支持多轮对话与 mid-stream message injection
 
 ## 测试模式
 
