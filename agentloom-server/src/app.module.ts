@@ -45,6 +45,7 @@ import { ResourceGovernanceModule } from './modules/resource-governance/resource
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PrivateDeploymentModule } from './modules/private-deployment/private-deployment.module';
 import { AcpGatewayModule } from './modules/acp-gateway/acp-gateway.module';
+import { AgentDefinitionModule } from './modules/agent-definition/agent-definition.module';
 import { AgentConversationModule } from './modules/agent-conversation/agent-conversation.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AuthGuard } from './common/guards/auth.guard';
@@ -124,6 +125,7 @@ function createThrottlerOptions(configService: ConfigService) {
     MonitoringModule,
     PrivateDeploymentModule,
     AcpGatewayModule,
+    AgentDefinitionModule,
     AgentConversationModule,
     WorkspaceModule,
   ],

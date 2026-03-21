@@ -280,6 +280,15 @@ export class DockerService {
     return stream as unknown as Readable;
   }
 
+  async putArchive(
+    containerId: string,
+    stream: Readable,
+    path: string,
+  ): Promise<void> {
+    const container = this.docker.getContainer(containerId);
+    await container.putArchive(stream, { path });
+  }
+
   async getWorkspaceHostPath(containerId: string): Promise<string> {
     const container = this.docker.getContainer(containerId);
     const info = await container.inspect();

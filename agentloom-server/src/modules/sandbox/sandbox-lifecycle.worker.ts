@@ -1,4 +1,5 @@
 import { Inject, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 
@@ -12,6 +13,7 @@ import { StorageService } from '../../infrastructure/storage/storage.service';
 import { DockerService } from './docker.service';
 import { SandboxService } from './sandbox.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
+import { WorkspaceService } from '../workspace/workspace.service';
 import {
   SANDBOX_LIFECYCLE_QUEUE,
   type SandboxLifecycleJobData,
@@ -37,6 +39,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly moduleRef: ModuleRef,
     private readonly dockerService: DockerService,
     private readonly sandboxService: SandboxService,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
@@ -86,6 +89,27 @@ export class SandboxLifecycleWorker extends WorkerHost {
           })
           .where(eq(schema.sandboxSessions.id, sessionId));
       });
+
+      if (config.restoreWorkspaceId && containerId) {
+        try {
+          const workspaceService = this.moduleRef.get(WorkspaceService, {
+            strict: false,
+          });
+          await workspaceService.restoreToSandbox(
+            config.restoreWorkspaceId,
+            containerId,
+            tenantId,
+          );
+          this.logger.log(
+            `Restored workspace ${config.restoreWorkspaceId} to sandbox ${sessionId}`,
+          );
+        } catch (restoreError) {
+          this.logger.warn(
+            `Failed to restore workspace ${config.restoreWorkspaceId} to sandbox ${sessionId}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+          );
+          // 恢复失败不阻塞沙箱创建，容器仍然可用（只是没有预加载的工作区）
+        }
+      }
 
       await this.insertLog(
         sessionId,

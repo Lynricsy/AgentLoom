@@ -34,6 +34,8 @@ export interface SandboxConfig {
   persistencePath?: string;
   /** 超时时间（小时，1-24） */
   timeout: number;
+  /** 工作区快照 ID（可选，创建时恢复到容器） */
+  restoreWorkspaceId?: string;
 }
 
 export const sandboxSessions = pgTable(
