@@ -547,6 +547,28 @@ export class AgentConversationGateway
     );
   }
 
+  @OnEvent('workspace.file_change')
+  handleWorkspaceFileChange(payload: {
+    conversationId: string;
+    tenantId: string;
+    changedFiles: string[];
+    timestamp: string;
+  }): void {
+    if (!this.hasSubscribers(payload.conversationId)) return;
+
+    const envelope = this.buildEventPayload(
+      payload.conversationId,
+      payload.tenantId,
+      payload as unknown as Record<string, unknown>,
+    );
+    this.broadcastConversationEvent(
+      payload.tenantId,
+      payload.conversationId,
+      ConversationEventName.SANDBOX_FILE_CHANGE,
+      envelope,
+    );
+  }
+
   broadcastConversationEvent(
     tenantId: string,
     conversationId: string,

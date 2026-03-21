@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentConversationController } from './agent-conversation.controller';
 import { AgentConversationService } from './agent-conversation.service';
+import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 
 const mockService = {
   create: vi.fn(),
@@ -12,6 +13,11 @@ const mockService = {
   sendMessage: vi.fn(),
   cancel: vi.fn(),
   end: vi.fn(),
+};
+
+const mockWorkspaceIntegrationService = {
+  getFileTree: vi.fn(),
+  getFileContent: vi.fn(),
 };
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -30,6 +36,7 @@ describe('AgentConversationController', () => {
       controllers: [AgentConversationController],
       providers: [
         { provide: AgentConversationService, useValue: mockService },
+        { provide: WorkspaceIntegrationService, useValue: mockWorkspaceIntegrationService },
       ],
     }).compile();
 

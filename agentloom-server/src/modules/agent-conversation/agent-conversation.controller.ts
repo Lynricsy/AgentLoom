@@ -16,6 +16,7 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AgentConversationService } from './agent-conversation.service';
+import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -25,6 +26,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 export class AgentConversationController {
   constructor(
     private readonly conversationService: AgentConversationService,
+    private readonly workspaceIntegrationService: WorkspaceIntegrationService,
   ) {}
 
   @Post('agent-definitions/:agentId/conversations')
@@ -97,5 +99,32 @@ export class AgentConversationController {
   @ApiResponse({ status: 204, description: 'Conversation ended' })
   async end(@Param('id', ParseUUIDPipe) id: string) {
     return this.conversationService.end(id);
+  }
+
+  @Get('agent-conversations/:id/workspace/tree')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'Get workspace file tree for a conversation sandbox' })
+  @ApiResponse({ status: 200, description: 'File tree' })
+  async getWorkspaceTree(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.workspaceIntegrationService.getFileTree(id, tenantId);
+  }
+
+  @Get('agent-conversations/:id/workspace/files/*')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'Get workspace file content by path' })
+  @ApiResponse({ status: 200, description: 'File content' })
+  async getWorkspaceFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('*') filePath: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.workspaceIntegrationService.getFileContent(
+      id,
+      tenantId,
+      filePath,
+    );
   }
 }
