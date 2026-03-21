@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,6 +100,7 @@ describe('AgentConversationService', () => {
   let module: TestingModule;
   let service: AgentConversationService;
   let db: MockDb;
+  let mockEventEmitter: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -111,10 +113,13 @@ describe('AgentConversationService', () => {
       update: vi.fn(),
     };
 
+    mockEventEmitter = { emit: vi.fn() };
+
     module = await Test.createTestingModule({
       providers: [
         AgentConversationService,
         { provide: DRIZZLE, useValue: db },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
@@ -436,6 +441,24 @@ describe('AgentConversationService', () => {
       await expect(
         service.end(CONVERSATION_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('结束对话后应发出 agent-conversation.ended 事件并携带正确载荷', async () => {
+      const updated = createConversationRecord({ status: 'ended' });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.end(CONVERSATION_ID);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'agent-conversation.ended',
+        {
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: TENANT_ID,
+          userId: USER_ID,
+        },
+      );
     });
   });
 });
