@@ -38,6 +38,7 @@ import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import { PluginService } from '../../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
+import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -195,6 +196,9 @@ describe('NodeSchedulerService', () => {
   let mockPluginService: {
     findActiveByPluginId: ReturnType<typeof vi.fn>;
   };
+  let mockWorkflowAgentAdapterFactory: {
+    createFromAgentDefinition: ReturnType<typeof vi.fn>;
+  };
 
   beforeAll(() => {
     vi.useFakeTimers();
@@ -279,6 +283,9 @@ describe('NodeSchedulerService', () => {
         status: 'active',
       }),
     };
+    mockWorkflowAgentAdapterFactory = {
+      createFromAgentDefinition: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -301,6 +308,10 @@ describe('NodeSchedulerService', () => {
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
         { provide: RbacCacheService, useValue: mockRbacCacheService },
         { provide: PluginService, useValue: mockPluginService },
+        {
+          provide: AgentAdapterFactory,
+          useValue: mockWorkflowAgentAdapterFactory,
+        },
       ],
     }).compile();
 
@@ -797,6 +808,90 @@ describe('NodeSchedulerService', () => {
         input: { A: { answer: 'hello' } },
         nodeData: { agentId: 'agent-b' },
       }, undefined);
+    });
+
+    it('带 agentDefinitionId 的 agent 节点会内联执行工作流 agent adapter，并复用上游 sandbox', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('S', 'sandbox', {
+            config: { cpu: 4, memory: 2048, disk: 8, timeout: 6 },
+          }),
+          makeNode('A', 'agent', {
+            agentDefinitionId: 'agent-def-1',
+            agentVersionId: 'agent-version-1',
+          }),
+        ],
+        [makeEdge('S', 'A')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'completed',
+          nodeType: 'sandbox',
+          nodeData: {
+            config: { cpu: 4, memory: 2048, disk: 8, timeout: 6 },
+          },
+          result: { sessionId: 'sandbox-session-001', status: 'ready' },
+        }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {
+            agentDefinitionId: 'agent-def-1',
+            agentVersionId: 'agent-version-1',
+          },
+        }),
+      ];
+      const workflowAgentAdapter = {
+        execute: vi.fn().mockResolvedValue({ content: 'workflow-agent-output' }),
+      };
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue(
+        workflowAgentAdapter,
+      );
+
+      await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
+
+      expect(
+        mockWorkflowAgentAdapterFactory.createFromAgentDefinition,
+      ).toHaveBeenCalledWith('agent-def-1', {
+        cpu: 4,
+        memory: 2048,
+        disk: 8,
+        timeout: 6,
+      });
+      expect(workflowAgentAdapter.execute).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        step: steps[1],
+        input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
+        tenantId: TENANT_ID,
+        sandboxBinding: { executionId: EXECUTION_ID },
+        agentVersionId: 'agent-version-1',
+      });
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-a',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-a',
+        'completed',
+        { result: { content: 'workflow-agent-output' } },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-a',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
     it('smart-routing 节点会默认使用 FALLBACK_CHAIN，并产出完整运行时 metadata', async () => {

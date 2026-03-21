@@ -51,6 +51,7 @@ import {
   InputPreprocessorHandlerImpl,
   type InputPreprocessorConfig,
 } from './node-handlers/input-preprocessor.handler';
+import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -86,6 +87,7 @@ export class NodeSchedulerService {
     private readonly rbacCacheService: RbacCacheService,
     private readonly smartRoutingService: SmartRoutingService,
     private readonly pluginService: PluginService,
+    private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
     @InjectQueue(PLUGIN_EXECUTION_QUEUE)
@@ -245,6 +247,18 @@ export class NodeSchedulerService {
 
     switch (step.nodeType) {
       case 'agent':
+        if (this.getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
+          await this.executeWorkflowAgentNode(
+            step,
+            input,
+            tenantId,
+            executionId,
+            snapshot.edges,
+            steps,
+          );
+          break;
+        }
+
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           step.id,
@@ -923,7 +937,7 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'completed',
-        { result },
+        { result: result as Record<string, unknown> },
       );
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1392,6 +1406,142 @@ export class NodeSchedulerService {
 
   // ── 私有辅助 ───────────────────────────────────────────────
 
+  private getWorkflowAgentDefinitionId(
+    nodeData: Record<string, unknown>,
+  ): string | undefined {
+    if (typeof nodeData.agentDefinitionId === 'string') {
+      return nodeData.agentDefinitionId;
+    }
+
+    if (typeof nodeData.agent_definition_id === 'string') {
+      return nodeData.agent_definition_id;
+    }
+
+    return undefined;
+  }
+
+  private async executeWorkflowAgentNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = step.nodeData ?? {};
+      const agentDefinitionId = this.getWorkflowAgentDefinitionId(nodeData);
+
+      if (!agentDefinitionId) {
+        throw new Error(`Workflow agent node ${step.nodeId} 缺少 agentDefinitionId`);
+      }
+
+      const workflowSandboxConfig = this.getWorkflowSandboxOverride(
+        step.nodeId,
+        edges,
+        steps,
+      );
+      const adapter = this.workflowAgentAdapterFactory.createFromAgentDefinition(
+        agentDefinitionId,
+        workflowSandboxConfig,
+      );
+
+      const result = await adapter.execute({
+        executionId,
+        step,
+        input,
+        tenantId,
+        ...(workflowSandboxConfig
+          ? { sandboxBinding: { executionId } }
+          : {}),
+        ...(typeof nodeData.agentVersionId === 'string'
+          ? { agentVersionId: nodeData.agentVersionId }
+          : typeof nodeData.agent_version_id === 'string'
+            ? { agentVersionId: nodeData.agent_version_id }
+            : {}),
+      });
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private getWorkflowSandboxOverride(
+    nodeId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): SandboxConfig | undefined {
+    const incomingEdges = edges.filter((edge) => edge.target === nodeId);
+
+    for (const edge of incomingEdges) {
+      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
+      if (sourceStep?.nodeType !== 'sandbox') {
+        continue;
+      }
+
+      return this.resolveSandboxConfig(sourceStep.nodeData ?? {});
+    }
+
+    return undefined;
+  }
+
+  private resolveSandboxConfig(nodeData: Record<string, unknown>): SandboxConfig {
+    const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
+
+    return {
+      cpu: typeof sandboxConfigSource.cpu === 'number' ? sandboxConfigSource.cpu : 1,
+      memory:
+        typeof sandboxConfigSource.memory === 'number'
+          ? sandboxConfigSource.memory
+          : 512,
+      disk: typeof sandboxConfigSource.disk === 'number' ? sandboxConfigSource.disk : 2,
+      timeout:
+        typeof sandboxConfigSource.timeout === 'number'
+          ? sandboxConfigSource.timeout
+          : 2,
+      ...(typeof sandboxConfigSource.persistencePath === 'string'
+        ? { persistencePath: sandboxConfigSource.persistencePath }
+        : {}),
+    };
+  }
+
   async executeSandboxNode(
     step: ExecutionStep,
     _input: Record<string, unknown>,
@@ -1401,29 +1551,7 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = step.nodeData ?? {};
-      const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
-      const config: SandboxConfig = {
-        cpu:
-          typeof sandboxConfigSource.cpu === 'number'
-            ? sandboxConfigSource.cpu
-            : 1,
-        memory:
-          typeof sandboxConfigSource.memory === 'number'
-            ? sandboxConfigSource.memory
-            : 512,
-        disk:
-          typeof sandboxConfigSource.disk === 'number'
-            ? sandboxConfigSource.disk
-            : 2,
-        timeout:
-          typeof sandboxConfigSource.timeout === 'number'
-            ? sandboxConfigSource.timeout
-            : 2,
-        ...(typeof sandboxConfigSource.persistencePath === 'string'
-          ? { persistencePath: sandboxConfigSource.persistencePath }
-          : {}),
-      };
+      const config = this.resolveSandboxConfig(step.nodeData ?? {});
 
       const session = await this.sandboxService.createSandboxSession({
         executionId,

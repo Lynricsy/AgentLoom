@@ -1,8 +1,14 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
+import { DRIZZLE } from '../../database/database.module';
 import { AgentModule } from '../agent/agent.module';
+import { AGENT_RUNTIME_FACTORY } from '../agent/agent-adapter.factory';
+import { AGENT_RUNTIME } from '../agent/ports/agent-runtime.port';
+import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
+import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { SandboxService } from '../sandbox/sandbox.service';
 import { InterventionPolicyModule } from '../intervention-policy/intervention-policy.module';
 import { NotificationModule } from '../notification/notification.module';
 import { LlmModule } from '../llm/llm.module';
@@ -24,6 +30,7 @@ import { EventBridgeService } from './services/event-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
 import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
+import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
 import {
   EXECUTION_QUEUE,
   AGENT_TASK_QUEUE,
@@ -35,6 +42,7 @@ import {
   imports: [
     ConfigModule,
     AgentModule,
+    AgentDefinitionModule,
     SandboxModule,
     InterventionPolicyModule,
     NotificationModule,
@@ -66,6 +74,33 @@ import {
     ThrottleService,
     StateReplayService,
     ToolCallStateMachineService,
+    {
+      provide: AgentAdapterFactory,
+      useFactory: (
+        db,
+        agentRuntime,
+        runtimeAdapterFactory,
+        agentDefinitionService,
+        sandboxService,
+        eventBridge,
+      ) =>
+        new AgentAdapterFactory(
+          db,
+          agentRuntime,
+          runtimeAdapterFactory,
+          agentDefinitionService,
+          sandboxService,
+          eventBridge,
+        ),
+      inject: [
+        DRIZZLE,
+        AGENT_RUNTIME,
+        AGENT_RUNTIME_FACTORY,
+        AgentDefinitionService,
+        SandboxService,
+        EventBridgeService,
+      ],
+    },
     RbacCacheService,
   ],
   exports: [
