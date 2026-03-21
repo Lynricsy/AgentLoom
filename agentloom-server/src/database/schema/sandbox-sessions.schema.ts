@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   jsonb,
   pgEnum,
@@ -10,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { createDirectTenantPolicies } from './rls-policies';
+import { agentConversations } from './agent-conversations.schema';
 import { workflowExecutions } from './workflow-executions.schema';
 
 export const sandboxSessionStatusEnum = pgEnum('sandbox_session_status_enum', [
@@ -41,9 +43,10 @@ export const sandboxSessions = pgTable(
       .primaryKey()
       .default(sql`uuid_generate_v7()`),
     executionId: uuid('execution_id')
-      .notNull()
       .references(() => workflowExecutions.id, { onDelete: 'cascade' }),
-    sandboxNodeId: varchar('sandbox_node_id', { length: 64 }).notNull(),
+    agentConversationId: uuid('agent_conversation_id')
+      .references(() => agentConversations.id, { onDelete: 'cascade' }),
+    sandboxNodeId: varchar('sandbox_node_id', { length: 64 }),
     tenantId: uuid('tenant_id').notNull(),
     containerId: varchar('container_id', { length: 128 }),
     status: sandboxSessionStatusEnum('status').notNull().default('creating'),
@@ -60,6 +63,13 @@ export const sandboxSessions = pgTable(
     index('idx_sandbox_sessions_tenant_status').on(
       table.tenantId,
       table.status,
+    ),
+    index('idx_sandbox_sessions_agent_conversation_id').on(
+      table.agentConversationId,
+    ),
+    check(
+      'chk_sandbox_sessions_fk',
+      sql`execution_id IS NOT NULL OR agent_conversation_id IS NOT NULL`,
     ),
     ...createDirectTenantPolicies('sandbox_sessions'),
   ],
