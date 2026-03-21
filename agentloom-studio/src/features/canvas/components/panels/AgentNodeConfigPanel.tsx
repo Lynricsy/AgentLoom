@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useState } from 'react'
-import { Brain, Container, Loader2, Search } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Brain, Container, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
 
@@ -13,6 +13,16 @@ interface AgentConfig {
   agentVersionId: string | null
   agentName: string | null
   versionLabel: string | null
+  inputMapping: Record<string, string>
+}
+
+function parseInputMapping(raw: unknown): Record<string, string> {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const result: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string') result[k] = v
+  }
+  return result
 }
 
 function parseAgentConfig(config: Record<string, unknown>): AgentConfig {
@@ -21,6 +31,7 @@ function parseAgentConfig(config: Record<string, unknown>): AgentConfig {
     agentVersionId: typeof config.agentVersionId === 'string' ? config.agentVersionId : null,
     agentName: typeof config.agentName === 'string' ? config.agentName : null,
     versionLabel: typeof config.versionLabel === 'string' ? config.versionLabel : null,
+    inputMapping: parseInputMapping(config.inputMapping),
   }
 }
 
@@ -35,6 +46,14 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [loadingVersions, setLoadingVersions] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  const inputMappingEntries = useMemo(
+    () => {
+      const entries = Object.entries(agentConfig.inputMapping)
+      return entries.length > 0 ? entries.map(([k, v]) => ({ key: k, value: v })) : []
+    },
+    [agentConfig.inputMapping],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -106,6 +125,53 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       })
     },
     [config, onApply],
+  )
+
+  const applyInputMapping = useCallback(
+    (mapping: Record<string, string>) => {
+      const current = parseAgentConfig(config)
+      onApply({
+        config: { ...current, inputMapping: mapping },
+        inputMapping: mapping,
+      })
+    },
+    [config, onApply],
+  )
+
+  const handleAddMappingRow = useCallback(() => {
+    const current = parseAgentConfig(config).inputMapping
+    const newKey = `field_${Object.keys(current).length}`
+    applyInputMapping({ ...current, [newKey]: '' })
+  }, [config, applyInputMapping])
+
+  const handleRemoveMappingRow = useCallback(
+    (key: string) => {
+      const current = { ...parseAgentConfig(config).inputMapping }
+      delete current[key]
+      applyInputMapping(current)
+    },
+    [config, applyInputMapping],
+  )
+
+  const handleUpdateMappingKey = useCallback(
+    (oldKey: string, newKey: string) => {
+      const current = parseAgentConfig(config).inputMapping
+      const entries = Object.entries(current)
+      const updated: Record<string, string> = {}
+      for (const [k, v] of entries) {
+        updated[k === oldKey ? newKey : k] = v
+      }
+      applyInputMapping(updated)
+    },
+    [config, applyInputMapping],
+  )
+
+  const handleUpdateMappingValue = useCallback(
+    (key: string, value: string) => {
+      const current = parseAgentConfig(config).inputMapping
+      applyInputMapping({ ...current, [key]: value })
+    },
+    [config, applyInputMapping],
   )
 
   const filteredAgents = searchQuery.trim()
@@ -236,6 +302,57 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           </div>
         </div>
       )}
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <label htmlFor="input-mapping-add" className="block text-xs font-medium text-foreground">
+            输入映射
+          </label>
+          <button
+            id="input-mapping-add"
+            type="button"
+            onClick={handleAddMappingRow}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Plus className="h-3 w-3" />
+            添加
+          </button>
+        </div>
+        {inputMappingEntries.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+            暂无输入映射，点击「添加」定义字段绑定
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {inputMappingEntries.map(({ key, value }) => (
+              <div key={key} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={key}
+                  onChange={(e) => handleUpdateMappingKey(key, e.target.value)}
+                  placeholder="字段名"
+                  className="w-2/5 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">→</span>
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => handleUpdateMappingValue(key, e.target.value)}
+                  placeholder="来源表达式"
+                  className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveMappingRow(key)}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 })

@@ -36,6 +36,7 @@ import { TriggerModule } from './modules/trigger/trigger.module';
 import { InterventionPolicyModule } from './modules/intervention-policy/intervention-policy.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { ShareModule } from './modules/share/share.module';
+import { SharedResourcesModule } from './modules/shared-resources/shared-resources.module';
 import { PlatformApiTokenModule } from './modules/platform-api-token/platform-api-token.module';
 import { PluginModule } from './modules/plugin/plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
@@ -116,6 +117,7 @@ function createThrottlerOptions(configService: ConfigService) {
     InterventionPolicyModule,
     MarketplaceModule,
     ShareModule,
+    SharedResourcesModule,
     PlatformApiTokenModule,
     PluginModule,
     SmartRoutingModule,
