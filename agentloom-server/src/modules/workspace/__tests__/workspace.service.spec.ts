@@ -237,6 +237,33 @@ describe('WorkspaceService', () => {
       expect(db.update).toHaveBeenCalled();
       expect(mockStorageService.delete).toHaveBeenCalled();
     });
+
+    it('MinIO 上传失败时应当将快照标记为 deleted 并尝试清理', async () => {
+      const session = buildSandboxSession();
+      const creatingSnapshot = buildSnapshot({ status: 'creating' });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([creatingSnapshot]),
+      );
+      db.update.mockReturnValueOnce(createUpdateChainNoReturning());
+      mockStorageService.upload.mockRejectedValueOnce(
+        new Error('MinIO unavailable'),
+      );
+
+      await expect(
+        service.createFromSandbox(
+          TEST_TENANT_ID,
+          TEST_ORG_ID,
+          TEST_USER_ID,
+          TEST_SESSION_ID,
+          'test',
+        ),
+      ).rejects.toThrow('MinIO unavailable');
+
+      expect(db.update).toHaveBeenCalled();
+      expect(mockStorageService.delete).toHaveBeenCalled();
+    });
   });
 
   // ─── restoreToSandbox ──────────────────────────────────────────────────

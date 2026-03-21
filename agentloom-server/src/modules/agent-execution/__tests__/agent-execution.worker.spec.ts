@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
-import { EventBridgeService } from '../../execution/services/event-bridge.service';
-import { SandboxService } from '../../sandbox/sandbox.service';
-import { AgentExecutionService } from '../agent-execution.service';
 import { AgentExecutionWorker } from '../agent-execution.worker';
 
 const {
@@ -70,7 +66,90 @@ type WorkerInternals = {
   updateExecutionMetadata: ReturnType<typeof vi.fn>;
   persistConversationTurn: ReturnType<typeof vi.fn>;
   safeUpdateExecutionMetadata: ReturnType<typeof vi.fn>;
+  buildPromptBlocks: ReturnType<typeof vi.fn>;
+  readExecutionMetadata: ReturnType<typeof vi.fn>;
+  mergeExecutionMetadata: ReturnType<typeof vi.fn>;
+  writeExecutionMetadata: ReturnType<typeof vi.fn>;
+  runConversationTurn: ReturnType<typeof vi.fn>;
 };
+
+function createJob(name: string, data: Record<string, unknown>) {
+  return { id: 'job-1', name, data } as never;
+}
+
+function makeActiveContext(
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    conversation: {
+      id: 'conversation-1',
+      agentDefinitionId: 'agent-1',
+      tenantId: 'tenant-1',
+      status: 'active',
+      metadata: {},
+    },
+    runtimeConfig: {},
+    systemPrompt: 'system',
+    hasSandbox: false,
+    executionMetadata: {},
+    ...overrides,
+  };
+}
+
+function makeSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'session-1',
+    agentId: 'agent-1',
+    mode: 'conversation',
+    context: { history: [] },
+    status: 'active',
+    tenantId: 'tenant-1',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function setupLoopMocks(
+  workerInternals: WorkerInternals,
+  opts: {
+    context?: Record<string, unknown> | null;
+    pendingMessages?: unknown[][];
+    persistResult?: Record<string, unknown>;
+  } = {},
+) {
+  workerInternals.loadConversationExecutionContext = vi
+    .fn()
+    .mockResolvedValue(opts.context ?? makeActiveContext());
+  workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
+    runtime: mockRuntime,
+    session: makeSession(),
+  });
+
+  const pendingMsgMock = vi.fn();
+  const msgs = opts.pendingMessages ?? [[], []];
+  for (const batch of msgs) {
+    pendingMsgMock.mockResolvedValueOnce(batch);
+  }
+  workerInternals.loadPendingUserMessages = pendingMsgMock;
+
+  workerInternals.updateExecutionMetadata = vi.fn().mockResolvedValue({
+    sessionId: 'session-1',
+    runningState: 'running',
+  });
+  workerInternals.persistConversationTurn = vi.fn().mockResolvedValue(
+    opts.persistResult ?? {
+      sessionId: 'session-1',
+      lastProcessedMessageId: 'message-1',
+      lastStopReason: 'end_turn',
+      runningState: 'running',
+    },
+  );
+  workerInternals.safeUpdateExecutionMetadata = vi.fn().mockResolvedValue({
+    sessionId: 'session-1',
+    runningState: 'idle',
+  });
+}
 
 describe('AgentExecutionWorker', () => {
   let worker: AgentExecutionWorker;
@@ -91,6 +170,369 @@ describe('AgentExecutionWorker', () => {
     );
     workerInternals = worker as unknown as WorkerInternals;
   });
+
+  describe('process()', () => {
+    it('跳过非 agent-conversation-execution job', async () => {
+      const job = createJob('other-job', {
+        conversationId: 'c-1',
+        tenantId: 't-1',
+      });
+      await worker.process(job);
+      expect(mockExecutionService.registerActiveRun).not.toHaveBeenCalled();
+    });
+
+    it('正确分发 agent-conversation-execution job', async () => {
+      mockExecutionService.registerActiveRun.mockReturnValue(null);
+
+      setupLoopMocks(workerInternals);
+
+      const job = createJob('execute-agent-loop', {
+        conversationId: 'c-1',
+        tenantId: 't-1',
+      });
+      await worker.process(job);
+      expect(mockExecutionService.registerActiveRun).toHaveBeenCalledWith(
+        'c-1',
+        expect.any(AbortController),
+      );
+    });
+  });
+
+  describe('onFailed()', () => {
+    it('undefined job 时不抛异常', () => {
+      expect(() =>
+        worker.onFailed(undefined, new Error('test error')),
+      ).not.toThrow();
+    });
+
+    it('有 job 时记录错误（无异常）', () => {
+      const job = createJob('agent-conversation-execution', {
+        conversationId: 'c-1',
+        tenantId: 't-1',
+      });
+      expect(() =>
+        worker.onFailed(job, new Error('test error')),
+      ).not.toThrow();
+    });
+  });
+
+  describe('executeAgentLoop() — duplicate guard', () => {
+    it('registerActiveRun 返回 null 时直接退出', async () => {
+      mockExecutionService.registerActiveRun.mockReturnValue(null);
+      await worker.executeAgentLoop('c-1', 't-1');
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('executeAgentLoop() — context not found', () => {
+    it('loadConversationExecutionContext 返回 null 时直接退出并清理', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(null);
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('executeAgentLoop() — non-active conversation', () => {
+    it('failed 状态的会话直接退出，不发送状态事件', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(
+          makeActiveContext({
+            conversation: {
+              id: 'c-1',
+              agentDefinitionId: 'a-1',
+              tenantId: 't-1',
+              status: 'failed',
+              metadata: {},
+            },
+          }),
+        );
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('ended 状态的会话直接退出，不发送状态事件', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(
+          makeActiveContext({
+            conversation: {
+              id: 'c-1',
+              agentDefinitionId: 'a-1',
+              tenantId: 't-1',
+              status: 'ended',
+              metadata: {},
+            },
+          }),
+        );
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('executeAgentLoop() — error path', () => {
+    it('出错时更新状态为 failed 并重新抛出', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(makeActiveContext());
+      workerInternals.prepareRuntimeSession = vi
+        .fn()
+        .mockRejectedValue(new Error('Runtime init failed'));
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await expect(
+        worker.executeAgentLoop('c-1', 't-1'),
+      ).rejects.toThrow('Runtime init failed');
+
+      expect(
+        workerInternals.safeUpdateExecutionMetadata,
+      ).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({ runningState: 'failed' }),
+      );
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'failed',
+          errorMessage: 'Runtime init failed',
+        }),
+      );
+    });
+
+    it('非 Error 对象也能生成错误消息', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(makeActiveContext());
+      workerInternals.prepareRuntimeSession = vi
+        .fn()
+        .mockRejectedValue('string-error');
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await expect(
+        worker.executeAgentLoop('c-1', 't-1'),
+      ).rejects.toThrow();
+
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          errorMessage: 'Agent conversation execution failed',
+        }),
+      );
+    });
+
+    it('abort 状态下出错时不重新抛出', async () => {
+      let activeAbort: AbortController | null = null;
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => {
+          activeAbort = abort;
+          return { abort, notify: vi.fn() };
+        },
+      );
+
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(makeActiveContext());
+      workerInternals.prepareRuntimeSession = vi
+        .fn()
+        .mockImplementation(async () => {
+          activeAbort!.abort();
+          throw new Error('Cancelled by abort');
+        });
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({ status: 'cancelled' }),
+      );
+    });
+  });
+
+  describe('executeAgentLoop() — sandbox adapter selection', () => {
+    it('hasSandbox=true 时 prepareRuntimeSession 传入正确 context', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      const sandboxContext = makeActiveContext({
+        hasSandbox: true,
+        runtimeConfig: { sandboxConfig: { image: 'node:20' } },
+      });
+
+      setupLoopMocks(workerInternals, {
+        context: sandboxContext,
+        pendingMessages: [[]],
+      });
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(workerInternals.prepareRuntimeSession).toHaveBeenCalledWith(
+        expect.objectContaining({ hasSandbox: true }),
+        'c-1',
+        't-1',
+      );
+    });
+  });
+
+  describe('executeAgentLoop() — session resumption', () => {
+    it('有 sessionId 时尝试恢复 session', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      const contextWithSession = makeActiveContext({
+        executionMetadata: { sessionId: 'existing-session' },
+      });
+
+      setupLoopMocks(workerInternals, {
+        context: contextWithSession,
+        pendingMessages: [[]],
+      });
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(workerInternals.prepareRuntimeSession).toHaveBeenCalledWith(
+        contextWithSession,
+        'c-1',
+        't-1',
+      );
+    });
+  });
+
+  describe('executeAgentLoop() — notified loop', () => {
+    it('waitForNotification 返回 notified 时继续循环', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification
+        .mockResolvedValueOnce('notified')
+        .mockResolvedValueOnce('timeout');
+
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [],
+          [{ id: 'msg-1', content: '你好', createdAt: new Date() }],
+          [],
+        ],
+      });
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([
+          { type: 'message_chunk', content: '回复' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(
+        mockExecutionService.waitForNotification,
+      ).toHaveBeenCalledTimes(2);
+      expect(mockRuntime.prompt).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('executeAgentLoop() — turn cancelled', () => {
+    it('stopReason=cancelled 时退出循环', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'msg-1', content: '请取消', createdAt: new Date() }],
+        ],
+        persistResult: {
+          sessionId: 'session-1',
+          lastProcessedMessageId: 'msg-1',
+          lastStopReason: 'cancelled',
+          runningState: 'running',
+        },
+      });
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([
+          { type: 'done', stopReason: 'cancelled' },
+        ]),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({ status: 'cancelled' }),
+      );
+    });
+  });
+
 
   it('执行多轮 loop，并在 tool_use 后自动续轮直到完成', async () => {
     mockExecutionService.registerActiveRun.mockImplementation(

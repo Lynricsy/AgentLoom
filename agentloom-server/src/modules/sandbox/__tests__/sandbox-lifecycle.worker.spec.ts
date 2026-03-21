@@ -197,6 +197,75 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxCreationException);
     });
+
+    it('config.restoreWorkspaceId 存在时应在创建后恢复工作区', async () => {
+      const mockWorkspaceService = {
+        restoreToSandbox: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockModuleRef = {
+        get: vi.fn().mockReturnValue(mockWorkspaceService),
+      };
+
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        mockModuleRef as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+        }),
+      );
+
+      expect(mockModuleRef.get).toHaveBeenCalled();
+      expect(mockWorkspaceService.restoreToSandbox).toHaveBeenCalledWith(
+        'ws-1',
+        'c-123',
+        't1',
+      );
+    });
+
+    it('工作区恢复失败时不阻塞沙箱创建', async () => {
+      const mockWorkspaceService = {
+        restoreToSandbox: vi
+          .fn()
+          .mockRejectedValue(new Error('Workspace restore failed')),
+      };
+      const mockModuleRef = {
+        get: vi.fn().mockReturnValue(mockWorkspaceService),
+      };
+
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        mockModuleRef as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+        }),
+      );
+
+      expect(mockWorkspaceService.restoreToSandbox).toHaveBeenCalled();
+      expect(mockDockerService.attachLogs).toHaveBeenCalled();
+      expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalled();
+    });
   });
 
   describe('destroy job', () => {

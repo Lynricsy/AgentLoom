@@ -21,6 +21,10 @@ vi.mock('../node-handlers/sub-agent.handler', async () => {
   };
 });
 
+vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
+  getTenantDb: vi.fn((db: unknown) => db),
+}));
+
 const TENANT_ID = '019577a0-0000-7000-8000-000000000099';
 const EXECUTION_ID = '019577a0-0000-7000-8000-000000000001';
 
@@ -66,6 +70,23 @@ async function* emit(events: AgentEvent[]): AsyncGenerator<AgentEvent> {
   for (const event of events) {
     yield event;
   }
+}
+
+function createAdapter(
+  deps: Record<string, unknown>,
+  config: Record<string, unknown> = { agentDefinitionId: 'parent-agent' },
+) {
+  return new WorkflowAgentAdapter(
+    {
+      db: deps.db ?? ({} as never),
+      agentRuntime: deps.agentRuntime ?? ({} as never),
+      runtimeAdapterFactory: deps.runtimeAdapterFactory ?? ({} as never),
+      agentDefinitionService: deps.agentDefinitionService ?? ({} as never),
+      sandboxService: deps.sandboxService ?? ({} as never),
+      eventBridge: deps.eventBridge ?? ({} as never),
+    } as never,
+    config as never,
+  );
 }
 
 describe('WorkflowAgentAdapter', () => {
@@ -302,5 +323,362 @@ describe('WorkflowAgentAdapter', () => {
       }),
     );
     expect(result).toMatchObject({ content: 'sandbox-output' });
+  });
+
+  function setupNoSandboxAgent() {
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'parent-agent',
+      publishedVersionId: 'parent-agent-version',
+      systemPrompt: null,
+      sandboxConfig: null,
+    });
+  }
+
+  it('无 sandbox 时使用 agentRuntime 而非 adapterFactory', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: 'direct-output' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(mockRuntimeAdapterFactory.selectAdapter).not.toHaveBeenCalled();
+    expect(mockAgentRuntime.createSession).toHaveBeenCalled();
+    expect(result.content).toBe('direct-output');
+  });
+
+  it('tool_use 触发多轮循环直到 end_turn', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: '准备调用工具...' },
+          { type: 'done', stopReason: 'tool_use' },
+        ]),
+      )
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: '工具结果处理完毕' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(2);
+    expect(result.content).toBe('准备调用工具...工具结果处理完毕');
+  });
+
+  it('达到 MAX_TOOL_ROUNDS 上限时抛出异常', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt.mockImplementation(() =>
+      emit([{ type: 'done', stopReason: 'tool_use' }]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await expect(
+      adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'loop' },
+        tenantId: TENANT_ID,
+        versionSnapshot: makeSnapshot('no-sandbox-node'),
+      }),
+    ).rejects.toThrow('exceeded the maximum tool rounds');
+  });
+
+  it('decision 事件被正确收集到结果中', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: 'decided' },
+        {
+          type: 'decision',
+          suggestedContent: 'approval needed',
+          autonomyMode: 'suggest',
+          confidence: 0.95,
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'decide' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(result.decision).toMatchObject({
+      suggestedContent: 'approval needed',
+      autonomyMode: 'suggest',
+      confidence: 0.95,
+    });
+  });
+
+  it('无版本快照时抛出异常', async () => {
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'no-snap-agent',
+      publishedVersionId: null,
+      systemPrompt: null,
+      sandboxConfig: null,
+    });
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    }, { agentDefinitionId: 'no-snap-agent' });
+
+    await expect(
+      adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'test' },
+        tenantId: TENANT_ID,
+      }),
+    ).rejects.toThrow('no published version snapshot');
+  });
+
+  it('emitEvents=false 时不调用 eventBridge', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: 'silent' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+      emitEvents: false,
+    });
+
+    expect(mockEventBridge.emitOutputChunk).not.toHaveBeenCalled();
+    expect(mockEventBridge.emitStepAgentEvent).not.toHaveBeenCalled();
+  });
+
+  it('stopReason 非 end_turn 时包含在结果中', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: 'cancelled' },
+        { type: 'done', stopReason: 'cancelled' },
+      ]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {},
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(result.stopReason).toBe('cancelled');
+  });
+
+  it('子 Agent 无 alias 时使用 agentDefinitionId 作为 key', async () => {
+    mockAgentDefinitionService.findDetailById.mockImplementation(
+      async (agentDefinitionId: string) => ({
+        id: agentDefinitionId,
+        publishedVersionId: `${agentDefinitionId}-version`,
+        systemPrompt: null,
+        sandboxConfig: null,
+      }),
+    );
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockImplementation(
+      (nodes: Array<{ id?: string }>) => {
+        if (nodes[0]?.id === 'parent-node') {
+          return {
+            modelConfig: { modelId: 'model-parent' },
+            subAgents: [{ agentDefinitionId: 'child-agent' }],
+          };
+        }
+
+        return {
+          modelConfig: { modelId: 'model-child' },
+          subAgents: [],
+        };
+      },
+    );
+
+    mockAgentRuntime.createSession
+      .mockResolvedValueOnce({ id: 'child-session' })
+      .mockResolvedValueOnce({ id: 'parent-session' });
+    mockAgentRuntime.prompt
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: 'child-result' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      )
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: 'parent-result' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('parent-node'),
+    });
+
+    expect(result.subAgents).toHaveProperty('child-agent');
+    expect(result.subAgents?.['child-agent']).toMatchObject({
+      content: 'child-result',
+    });
+  });
+
+  it('子 Agent 无可执行版本快照时抛出异常', async () => {
+    mockResolveSubAgent.mockResolvedValue({
+      agentDefinition: { id: 'child-agent' },
+      versionSnapshot: { snapshot: null },
+    });
+
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
+      subAgents: [{ agentDefinitionId: 'child-agent', alias: 'writer' }],
+    });
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await expect(
+      adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'test' },
+        tenantId: TENANT_ID,
+        versionSnapshot: parentSnapshot,
+        sandboxBinding: { executionId: EXECUTION_ID },
+      }),
+    ).rejects.toThrow('no executable version snapshot');
   });
 });
