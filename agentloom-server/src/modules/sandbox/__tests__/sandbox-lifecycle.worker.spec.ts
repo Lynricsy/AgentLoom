@@ -97,6 +97,7 @@ describe('SandboxLifecycleWorker', () => {
 
     worker = new SandboxLifecycleWorker(
       {} as any,
+      {} as any,
       mockDockerService as any,
       mockSandboxService as any,
       mockLifecycleProducer as any,

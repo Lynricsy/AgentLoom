@@ -38,13 +38,14 @@ describe('sandboxSessions 表定义', () => {
     expect(getTableName(sandboxSessions)).toBe('sandbox_sessions');
   });
 
-  it('应包含 11 个字段', () => {
+  it('应包含 12 个字段', () => {
     const columnNames = Object.keys(columns);
-    expect(columnNames).toHaveLength(11);
+    expect(columnNames).toHaveLength(12);
     expect(columnNames).toEqual(
       expect.arrayContaining([
         'id',
         'executionId',
+        'agentConversationId',
         'sandboxNodeId',
         'tenantId',
         'containerId',
@@ -63,8 +64,8 @@ describe('sandboxSessions 表定义', () => {
     expect(columns.id.hasDefault).toBe(true);
   });
 
-  it('executionId 应不可为空', () => {
-    expect(columns.executionId.notNull).toBe(true);
+  it('executionId 应可为空（sandbox 可由 agent conversation 创建）', () => {
+    expect(columns.executionId.notNull).toBe(false);
   });
 
   it('containerId 应可为空', () => {

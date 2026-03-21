@@ -27,3 +27,8 @@ export {
   CreateAgentVersionSchema,
   CreateAgentVersionDto,
 } from './create-agent-version.dto';
+
+export {
+  ListAgentDefinitionsQuerySchema,
+  ListAgentDefinitionsQueryDto,
+} from './list-agent-definitions-query.dto';
