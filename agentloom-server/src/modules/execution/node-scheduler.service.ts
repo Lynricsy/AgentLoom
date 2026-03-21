@@ -47,6 +47,10 @@ import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import type { RoutingStrategy, RoutingContext } from '../smart-routing/dto/routing-context.dto';
 import { PluginService } from '../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../plugin/plugin.constants';
+import {
+  InputPreprocessorHandlerImpl,
+  type InputPreprocessorConfig,
+} from './node-handlers/input-preprocessor.handler';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -276,6 +280,27 @@ export class NodeSchedulerService {
 
       case 'plugin':
         await this.executePlugin(step, input, tenantId, executionId);
+        break;
+
+      case 'input-preprocessor':
+        await this.executeInputPreprocessor(step, input, tenantId, executionId);
+        break;
+
+      case 'sub-agent':
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'queued',
+        );
+        {
+          const { data, options } = this.buildAgentTaskJobData({
+            executionId,
+            tenantId,
+            step,
+            input,
+          });
+          await this.agentTaskQueue.add('agent-task', data, options);
+        }
         break;
 
       default:
@@ -904,6 +929,81 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       // updateStepStatus 抛出的 InvalidStepTransitionException 不二次捕获
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeInputPreprocessor(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+
+      const config: InputPreprocessorConfig = {
+        transformType:
+          typeof nodeData.transformType === 'string'
+            ? (nodeData.transformType as InputPreprocessorConfig['transformType'])
+            : 'jmespath',
+        expression:
+          typeof nodeData.expression === 'string'
+            ? nodeData.expression
+            : '',
+        ...(typeof nodeData.outputFormat === 'string'
+          ? { outputFormat: nodeData.outputFormat }
+          : {}),
+      };
+
+      const handler = new InputPreprocessorHandlerImpl();
+      const { output, outputFormat } = await handler.execute(input, config);
+
+      const result: Record<string, unknown> =
+        typeof output === 'string' ? { text: output } : output;
+
+      if (outputFormat) {
+        result._outputFormat = outputFormat;
+      }
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
       if (
         error instanceof Error &&
         error.constructor.name === 'InvalidStepTransitionException'
