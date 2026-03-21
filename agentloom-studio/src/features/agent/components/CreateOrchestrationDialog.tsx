@@ -1,8 +1,9 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate } from '@tanstack/react-router'
-import { GitBranch, Bot, X } from 'lucide-react'
+import { GitBranch, Bot, X, Loader2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { useCreateAgent } from '../api/agentMutations'
 
 interface CreateOrchestrationDialogProps {
   open: boolean
@@ -43,15 +44,25 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
   onOpenChange,
 }: CreateOrchestrationDialogProps) {
   const navigate = useNavigate()
+  const createAgent = useCreateAgent()
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false)
 
   function handleSelectWorkflow() {
     onOpenChange(false)
     navigate({ to: '/workflows/$workflowId', params: { workflowId: 'draft' } })
   }
 
-  function handleSelectAgent() {
-    onOpenChange(false)
-    navigate({ to: '/agents' })
+  async function handleSelectAgent() {
+    if (isCreatingAgent) return
+    setIsCreatingAgent(true)
+    try {
+      const agent = await createAgent.mutateAsync({ name: '未命名智能体' })
+      onOpenChange(false)
+      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+    } catch {
+      // 创建失败时保持对话框打开，mutation 错误由 TanStack Query 管理
+      setIsCreatingAgent(false)
+    }
   }
 
   return (
@@ -94,9 +105,9 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
               onClick={handleSelectWorkflow}
             />
             <TypeCard
-              icon={<Bot className="h-5 w-5" />}
+              icon={isCreatingAgent ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bot className="h-5 w-5" />}
               title="智能体"
-              description="配置具备记忆和工具调用能力的对话式 Agent"
+              description={isCreatingAgent ? '正在创建…' : '配置具备记忆和工具调用能力的对话式 Agent'}
               onClick={handleSelectAgent}
             />
           </div>
