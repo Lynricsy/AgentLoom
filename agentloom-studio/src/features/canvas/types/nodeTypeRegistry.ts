@@ -25,6 +25,7 @@ export const NODE_TYPES = [
   'reusable-block',
   'smart-routing',
   'plugin',
+  'input-preprocessor',
 ] as const
 
 export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
@@ -537,6 +538,46 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
+  },
+  'input-preprocessor': {
+    type: 'input-preprocessor',
+    category: 'tool',
+    label: '输入预处理器',
+    icon: 'Filter',
+    description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
+    colorToken: CATEGORY_COLOR_TOKENS.tool,
+    inputPorts: [
+      createPort('text-in', '文本输入', 'input', 'text', {
+        description: '文本格式输入数据',
+      }),
+      createPort('json-in', 'JSON 输入', 'input', 'json', {
+        description: 'JSON 格式输入数据',
+      }),
+    ],
+    outputPorts: [
+      createPort('text-out', '文本输出', 'output', 'text', {
+        description: '文本格式转换结果',
+        multiple: true,
+        maxConnections: null,
+      }),
+      createPort('json-out', 'JSON 输出', 'output', 'json', {
+        description: 'JSON 格式转换结果',
+        multiple: true,
+        maxConnections: null,
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        transformType: createConfigField('string', '转换类型', {
+          enum: ['jmespath', 'jsonata', 'template', 'script'],
+          default: 'jmespath',
+        }),
+        expression: createConfigField('string', '转换表达式'),
+        outputFormat: createConfigField('string', '输出格式'),
+      },
+      required: ['transformType', 'expression'],
+    },
   },
 }
 
