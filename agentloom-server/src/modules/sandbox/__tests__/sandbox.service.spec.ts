@@ -67,6 +67,7 @@ function buildSession(overrides?: Partial<SandboxSession>): SandboxSession {
     status: 'creating',
     config: TEST_CONFIG,
     workspacePath: null,
+    agentConversationId: null,
     startedAt: null,
     stoppedAt: null,
     createdAt: new Date('2025-01-01'),

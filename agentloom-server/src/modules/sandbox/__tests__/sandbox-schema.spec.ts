@@ -162,6 +162,7 @@ describe('推断类型导出验证', () => {
       status: 'creating',
       config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       workspacePath: null,
+      agentConversationId: null,
       startedAt: null,
       stoppedAt: null,
       createdAt: new Date(),
