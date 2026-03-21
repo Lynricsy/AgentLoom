@@ -9,6 +9,11 @@ class RouteNames {
   static const String executionMonitor = 'executionMonitor';
   static const String workflowLaunch = 'workflowLaunch';
 
+  /// Agent 路由
+  static const String agents = 'agents';
+  static const String agentDetail = 'agentDetail';
+  static const String agentConversation = 'agentConversation';
+
   static const String login = 'login';
 
   /// OAuth 回调深链路由 (agentloom://auth/callback)

@@ -15,6 +15,9 @@ import '../features/settings/screens/change_password_screen.dart';
 import '../features/settings/screens/mfa_manage_screen.dart';
 import '../features/settings/screens/session_list_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
+import '../features/agents/screens/agent_list_screen.dart';
+import '../features/agents/screens/agent_detail_screen.dart';
+import '../features/agents/screens/agent_conversation_screen.dart';
 import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/parameter_input_screen.dart';
 import '../features/workflows/screens/workflows_screen.dart';
@@ -75,6 +78,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final executionId = state.pathParameters['executionId']!;
           return ExecutionMonitorScreen(executionId: executionId);
+        },
+      ),
+      GoRoute(
+        path: '/agents/:agentId/conversations/:conversationId',
+        name: RouteNames.agentConversation,
+        builder: (context, state) {
+          final agentId = state.pathParameters['agentId']!;
+          final conversationId = state.pathParameters['conversationId']!;
+          return AgentConversationScreen(
+            agentId: agentId,
+            conversationId: conversationId,
+          );
         },
       ),
       GoRoute(
@@ -149,6 +164,25 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                         },
                       ),
                     ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/agents',
+                name: RouteNames.agents,
+                builder: (context, state) => const AgentListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':agentId',
+                    name: RouteNames.agentDetail,
+                    builder: (context, state) {
+                      final agentId = state.pathParameters['agentId']!;
+                      return AgentDetailScreen(agentId: agentId);
+                    },
                   ),
                 ],
               ),

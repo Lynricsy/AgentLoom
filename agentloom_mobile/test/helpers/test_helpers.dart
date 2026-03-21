@@ -1,3 +1,7 @@
+import 'package:agentloom_mobile/features/agents/api/agent_api.dart';
+import 'package:agentloom_mobile/features/agents/models/agent_definition_dto.dart';
+import 'package:agentloom_mobile/features/agents/models/agent_conversation_dto.dart';
+import 'package:agentloom_mobile/features/agents/models/conversation_message_dto.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_event.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
@@ -12,6 +16,9 @@ import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
 import 'package:dio/dio.dart';
 import 'package:mocktail/mocktail.dart';
+
+/// Mock AgentApi
+class MockAgentApi extends Mock implements AgentApi {}
 
 /// Mock WorkflowApi
 class MockWorkflowApi extends Mock implements WorkflowApi {}
@@ -317,5 +324,109 @@ PaginatedResponse<ExecutionSummaryDto> createTestExecutionList({
       pageSize: pageSize,
       totalPages: totalPages,
     ),
+  );
+}
+
+/// 测试用 AgentDefinitionDto 工厂
+AgentDefinitionDto createTestAgent({
+  String id = 'agent-test-001',
+  String organizationId = 'org-001',
+  String name = 'Test Agent',
+  String? description = 'A test agent for unit tests',
+  String status = 'published',
+  String? systemPrompt,
+  String? modelId = 'gpt-4',
+  String? autonomyMode = 'semi_autonomous',
+  int? maxIterations = 10,
+  int? timeoutSeconds = 300,
+  int? version = 1,
+  String createdAt = '2026-01-01T00:00:00.000Z',
+  String updatedAt = '2026-01-01T00:00:00.000Z',
+}) {
+  return AgentDefinitionDto(
+    id: id,
+    organizationId: organizationId,
+    name: name,
+    description: description,
+    status: status,
+    systemPrompt: systemPrompt,
+    modelId: modelId,
+    autonomyMode: autonomyMode,
+    maxIterations: maxIterations,
+    timeoutSeconds: timeoutSeconds,
+    version: version,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
+/// 测试用 Agent 分页列表工厂
+PaginatedResponse<AgentDefinitionDto> createTestAgentList({
+  List<AgentDefinitionDto>? agents,
+  int total = 2,
+  int page = 1,
+  int pageSize = 20,
+  int totalPages = 1,
+}) {
+  return PaginatedResponse(
+    data:
+        agents ??
+        [
+          createTestAgent(id: 'agent-1', name: 'Agent Alpha'),
+          createTestAgent(
+            id: 'agent-2',
+            name: 'Agent Beta',
+            status: 'draft',
+            description: 'Beta agent description',
+          ),
+        ],
+    meta: PaginationMeta(
+      total: total,
+      page: page,
+      pageSize: pageSize,
+      totalPages: totalPages,
+    ),
+  );
+}
+
+/// 测试用 AgentConversationDto 工厂
+AgentConversationDto createTestConversation({
+  String id = 'conv-001',
+  String agentDefinitionId = 'agent-test-001',
+  String organizationId = 'org-001',
+  String status = 'active',
+  String? title = 'Test Conversation',
+  String createdAt = '2026-01-01T00:00:00.000Z',
+  String updatedAt = '2026-01-01T00:00:00.000Z',
+  String? createdBy,
+}) {
+  return AgentConversationDto(
+    id: id,
+    agentDefinitionId: agentDefinitionId,
+    organizationId: organizationId,
+    status: status,
+    title: title,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    createdBy: createdBy,
+  );
+}
+
+/// 测试用 ConversationMessageDto 工厂
+ConversationMessageDto createTestMessage({
+  String id = 'msg-001',
+  String conversationId = 'conv-001',
+  MessageRole role = MessageRole.user,
+  MessageType type = MessageType.text,
+  required String content,
+  String createdAt = '2026-01-01T00:00:00.000Z',
+}) {
+  return ConversationMessageDto(
+    id: id,
+    conversationId: conversationId,
+    role: role,
+    type: type,
+    content: content,
+    createdAt: createdAt,
   );
 }
