@@ -27,6 +27,15 @@ export const messageRoleEnum = pgEnum('message_role_enum', [
   'tool',
 ]);
 
+export const messageContentTypeEnum = pgEnum('message_content_type_enum', [
+  'text',
+  'image',
+  'file',
+  'tool_call',
+  'tool_result',
+  'system',
+]);
+
 export const agentConversations = pgTable(
   'agent_conversations',
   {
@@ -92,6 +101,8 @@ export const agentMessages = pgTable(
 
     role: messageRoleEnum('role').notNull(),
 
+    contentType: messageContentTypeEnum('content_type').notNull().default('text'),
+
     content: text('content').notNull(),
 
     toolCalls: jsonb('tool_calls')
@@ -106,6 +117,10 @@ export const agentMessages = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+
+    parentMessageId: uuid('parent_message_id').references(
+      () => agentMessages.id,
+    ),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
