@@ -18,7 +18,6 @@ import {
 } from './step-state-machine.service';
 import {
   AGENT_TASK_QUEUE,
-  INTERVENTION_TIMEOUT_MS,
   MAX_ESCALATION_ATTEMPTS,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
@@ -798,7 +797,7 @@ export class NodeSchedulerService {
     const timeoutMs =
       typeof options === 'number'
         ? options
-        : await this.resolveInterventionTimeoutMs(executionId, stepId, tenantId);
+        : await this.resolveInterventionTimeoutMs(stepId, tenantId);
 
     await this.agentTaskQueue.add(
       'intervention-timeout',
@@ -830,7 +829,6 @@ export class NodeSchedulerService {
   }
 
   private async resolveInterventionTimeoutMs(
-    executionId: string,
     stepId: string,
     tenantId: string,
   ): Promise<number> {
@@ -1871,18 +1869,5 @@ export class NodeSchedulerService {
       }
     }
     return result;
-  }
-
-  private extractErrorMessage(errorMessage: unknown): string | undefined {
-    if (typeof errorMessage === 'string') {
-      return errorMessage;
-    }
-
-    if (errorMessage && typeof errorMessage === 'object') {
-      const message = (errorMessage as { message?: unknown }).message;
-      return typeof message === 'string' ? message : undefined;
-    }
-
-    return undefined;
   }
 }
