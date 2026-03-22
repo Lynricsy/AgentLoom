@@ -27,6 +27,8 @@ class RouteNames {
   static const String memoryList = 'memoryList';
   static const String memoryDetail = 'memoryDetail';
   static const String memoryNode = 'memoryNode';
+  static const String memoryAudit = 'memoryAudit';
+  static const String memoryAuditDetail = 'memoryAuditDetail';
 
   /// 设置子路由
   static const String changePassword = 'changePassword';

@@ -9,6 +9,7 @@ import 'package:agentloom_mobile/features/execution/services/execution_socket_se
 import 'package:agentloom_mobile/features/memory/api/memory_api.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_instance.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_node.dart';
+import 'package:agentloom_mobile/features/memory/models/memory_audit_entry.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_version.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/conversation_plan.dart';
@@ -549,6 +550,52 @@ List<MemoryVersionDto> createTestMemoryVersionList({
       content: 'Version $i content.',
       versionNumber: i + 1,
       changeType: i == 0 ? 'created' : 'updated',
+    ),
+  );
+}
+
+// ==================== Memory 审计日志测试工厂 ====================
+
+/// 测试用 MemoryAuditEntryDto 工厂
+MemoryAuditEntryDto createTestMemoryAuditEntry({
+  String id = 'audit-1',
+  String action = 'create_node',
+  String userId = 'user-001',
+  String? targetNodeId = 'mem-node-1',
+  String? targetVersionId = 'mem-ver-1',
+  Map<String, dynamic>? metadata,
+  DateTime? createdAt,
+}) {
+  return MemoryAuditEntryDto(
+    id: id,
+    action: action,
+    userId: userId,
+    targetNodeId: targetNodeId,
+    targetVersionId: targetVersionId,
+    metadata: metadata ?? {'nodeName': 'Test Node', 'versionNumber': 1},
+    createdAt: createdAt ?? DateTime.now().subtract(const Duration(hours: 1)),
+  );
+}
+
+/// 测试用 MemoryAuditEntryDto 列表工厂
+List<MemoryAuditEntryDto> createTestMemoryAuditEntryList({int count = 5}) {
+  const actions = [
+    'create_node',
+    'update_version',
+    'delete_path',
+    'review_approved',
+    'review_rejected',
+    'rollback',
+  ];
+  return List.generate(
+    count,
+    (i) => createTestMemoryAuditEntry(
+      id: 'audit-$i',
+      action: actions[i % actions.length],
+      targetNodeId: 'mem-node-$i',
+      targetVersionId: i.isEven ? 'mem-ver-$i' : null,
+      metadata: {'nodeName': 'Node $i', 'versionNumber': i + 1},
+      createdAt: DateTime.now().subtract(Duration(hours: i + 1)),
     ),
   );
 }

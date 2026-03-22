@@ -18,8 +18,12 @@ import '../features/settings/screens/settings_screen.dart';
 import '../features/agents/screens/agent_list_screen.dart';
 import '../features/agents/screens/agent_detail_screen.dart';
 import '../features/agents/screens/agent_conversation_screen.dart';
-import '../features/memory/screens/memory_list_screen.dart';
+import '../features/memory/models/memory_audit_entry.dart';
+import '../features/memory/providers/memory_providers.dart';
+import '../features/memory/screens/memory_audit_detail_screen.dart';
+import '../features/memory/screens/memory_audit_screen.dart';
 import '../features/memory/screens/memory_detail_screen.dart';
+import '../features/memory/screens/memory_list_screen.dart';
 import '../features/memory/screens/memory_node_screen.dart';
 import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/parameter_input_screen.dart';
@@ -144,6 +148,35 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                   final nodeId = state.pathParameters['nodeId']!;
                   return MemoryNodeScreen(instanceId: id, nodeId: nodeId);
                 },
+              ),
+              GoRoute(
+                path: 'audit',
+                name: RouteNames.memoryAudit,
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ProviderScope(
+                    overrides: [
+                      memoryAuditInstanceIdProvider.overrideWithValue(id),
+                    ],
+                    child: MemoryAuditScreen(instanceId: id),
+                  );
+                },
+                routes: [
+                  GoRoute(
+                    path: ':entryId',
+                    name: RouteNames.memoryAuditDetail,
+                    builder: (context, state) {
+                      final id = state.pathParameters['id']!;
+                      final entryId = state.pathParameters['entryId']!;
+                      final entry = state.extra as MemoryAuditEntryDto?;
+                      return MemoryAuditDetailScreen(
+                        instanceId: id,
+                        entryId: entryId,
+                        entry: entry,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),

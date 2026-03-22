@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/providers/api_client_provider.dart';
+import '../models/memory_audit_entry.dart';
 import '../models/memory_instance.dart';
 import '../models/memory_node.dart';
 import '../models/memory_version.dart';
@@ -69,6 +70,51 @@ class MemoryApi {
     );
     final data = response.data as Map<String, dynamic>;
     return MemoryNodeDto.fromJson(data);
+  }
+
+  /// 获取 Memory 实例审计日志（分页）
+  Future<({List<MemoryAuditEntryDto> data, int total, int totalPages})>
+  getAuditLog(String instanceId, {int page = 1, int pageSize = 20}) async {
+    final response = await _dio.get(
+      '/api/v1/memory-instances/$instanceId/audit',
+      queryParameters: {'page': page, 'page_size': pageSize},
+    );
+    final data = response.data;
+    if (data is List) {
+      final entries = data
+          .map(
+            (json) =>
+                MemoryAuditEntryDto.fromJson(json as Map<String, dynamic>),
+          )
+          .toList();
+      return (data: entries, total: entries.length, totalPages: 1);
+    }
+    final mapData = data as Map<String, dynamic>;
+    final items = mapData['data'] as List? ?? [];
+    final meta = mapData['meta'] as Map<String, dynamic>? ?? {};
+    final entries = items
+        .map(
+          (json) => MemoryAuditEntryDto.fromJson(json as Map<String, dynamic>),
+        )
+        .toList();
+    return (
+      data: entries,
+      total: (meta['total'] as int?) ?? entries.length,
+      totalPages: (meta['totalPages'] as int?) ?? 1,
+    );
+  }
+
+  /// 获取节点版本详情
+  Future<MemoryVersionDto> getVersionDetail(
+    String instanceId,
+    String nodeId,
+    String versionId,
+  ) async {
+    final response = await _dio.get(
+      '/api/v1/memory-instances/$instanceId/nodes/$nodeId/versions/$versionId',
+    );
+    final data = response.data as Map<String, dynamic>;
+    return MemoryVersionDto.fromJson(data);
   }
 
   /// 获取节点版本历史
