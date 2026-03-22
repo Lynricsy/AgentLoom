@@ -168,6 +168,56 @@ describe('MemoryToolsService', () => {
     });
   });
 
+  it('reads system index entries from fused boot sequence', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'read_memory');
+    memoryFusionService.bootAll.mockResolvedValue(
+      createBootSequence({
+        index: [createPath({ domain: 'notes', pathString: 'context/summary' })],
+      }),
+    );
+
+    const result = await definition?.execute({ uri: 'system://index' });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        uri: 'system://index',
+        entries: [
+          {
+            id: 'path-1',
+            domain: 'notes',
+            pathString: 'context/summary',
+            nodeId: 'node-1',
+            uri: 'notes://context/summary',
+          },
+        ],
+      },
+    });
+  });
+
+  it('reads glossary entries from fused boot sequence', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'read_memory');
+    memoryFusionService.bootAll.mockResolvedValue(
+      createBootSequence({
+        glossary: [createGlossaryBinding({ keyword: 'memory-term' })],
+      }),
+    );
+
+    const result = await definition?.execute({ uri: 'system://glossary' });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        uri: 'system://glossary',
+        entries: [{ id: 'keyword-1', keyword: 'memory-term', nodeId: 'node-1' }],
+      },
+    });
+  });
+
   it('reads ordinary memory and enriches returned paths', async () => {
     const definition = service
       .getToolDefinitions(['session-1'])
@@ -282,6 +332,37 @@ describe('MemoryToolsService', () => {
     });
   });
 
+  it('creates memory without optional node fields when they are omitted', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'create_memory');
+    const targetSession = createTargetSession();
+    const node = createNode();
+    const path = createPath({ domain: 'notes', pathString: 'context/summary' });
+    const version = createVersion({ content: 'minimal content' });
+
+    memoryFusionService.getWriteTarget.mockResolvedValue(targetSession);
+    pathResolverService.resolveUri.mockRejectedValue(
+      new NotFoundException('Memory path notes://context/summary not found'),
+    );
+    memoryNodeService.createNode.mockResolvedValue(node);
+    pathResolverService.createPath.mockResolvedValue(path);
+    memoryVersionService.createVersion.mockResolvedValue(version);
+
+    const result = await definition?.execute({
+      uri: 'notes://context/summary',
+      content: 'minimal content',
+    });
+
+    expect(memoryNodeService.createNode).toHaveBeenCalledWith('instance-1', {});
+    expect(memoryVersionService.createVersion).toHaveBeenCalledWith(
+      'node-1',
+      'minimal content',
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+  });
+
   it('returns conflict when create_memory uri already exists', async () => {
     const definition = service
       .getToolDefinitions(['session-1'])
@@ -348,6 +429,38 @@ describe('MemoryToolsService', () => {
     });
   });
 
+  it('appends memory through appendVersion when a latest version already exists', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'update_memory');
+    const latestVersion = createVersion({ id: 'version-latest' });
+    const appendedVersion = createVersion({
+      id: 'version-2',
+      content: 'existing\nappend text',
+    });
+
+    memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
+    pathResolverService.resolveUri.mockResolvedValue(createNode());
+    memoryVersionService.getLatestVersion.mockResolvedValue(latestVersion);
+    memoryVersionService.appendVersion.mockResolvedValue(appendedVersion);
+    pathResolverService.getPathsByNode.mockResolvedValue([createPath()]);
+
+    const result = await definition?.execute({
+      uri: 'core://profile/name',
+      mode: 'append',
+      appendContent: 'append text',
+      createdBy: 'agent',
+    });
+
+    expect(memoryVersionService.appendVersion).toHaveBeenCalledWith(
+      'node-1',
+      'append text',
+      'agent',
+    );
+    expect(memoryVersionService.createVersion).not.toHaveBeenCalled();
+    expect(result?.success).toBe(true);
+  });
+
   it('patches memory content in patch mode', async () => {
     const definition = service
       .getToolDefinitions(['session-1'])
@@ -372,6 +485,50 @@ describe('MemoryToolsService', () => {
       undefined,
     );
     expect(result?.success).toBe(true);
+  });
+
+  it('fails patch mode when oldString is empty', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'update_memory');
+
+    memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
+    pathResolverService.resolveUri.mockResolvedValue(createNode());
+
+    const result = await definition?.execute({
+      uri: 'core://profile/name',
+      mode: 'patch',
+      oldString: '',
+      newString: 'new value',
+    });
+
+    expect(result).toEqual({
+      success: false,
+      data: null,
+      error: 'oldString is required for patch mode',
+    });
+  });
+
+  it('fails patch mode when newString is omitted', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'update_memory');
+
+    memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
+    pathResolverService.resolveUri.mockResolvedValue(createNode());
+
+    const result = await definition?.execute({
+      uri: 'core://profile/name',
+      mode: 'patch',
+      oldString: 'old value',
+      newString: undefined,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      data: null,
+      error: 'newString is required for patch mode',
+    });
   });
 
   it('fails append mode when appendContent is empty', async () => {
@@ -592,6 +749,26 @@ describe('MemoryToolsService', () => {
     });
   });
 
+  it('searches memory without optional pagination filters', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'search_memory');
+
+    memoryFusionService.searchAll.mockResolvedValue([]);
+
+    const result = await definition?.execute({ query: 'fox' });
+
+    expect(memoryFusionService.searchAll).toHaveBeenCalledWith(
+      ['session-1'],
+      'fox',
+      {},
+    );
+    expect(result).toEqual({
+      success: true,
+      data: [],
+    });
+  });
+
   it('maps thrown errors into tool result failures', async () => {
     const definition = service
       .getToolDefinitions(['session-1'])
@@ -607,6 +784,22 @@ describe('MemoryToolsService', () => {
       success: false,
       data: null,
       error: 'read failed',
+    });
+  });
+
+  it('maps non-Error throws into stringified tool failures', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'read_memory');
+
+    memoryFusionService.readFromAll.mockRejectedValue('plain failure');
+
+    const result = await definition?.execute({ uri: 'core://broken' });
+
+    expect(result).toEqual({
+      success: false,
+      data: null,
+      error: 'plain failure',
     });
   });
 
@@ -639,6 +832,29 @@ describe('MemoryToolsService', () => {
     memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
     pathResolverService.resolveUri.mockRejectedValue(
       new BadRequestException('Invalid URI format'),
+    );
+
+    const result = await definition?.execute({
+      uri: 'invalid-uri',
+      content: 'hello',
+    });
+
+    expect(result).toEqual({
+      success: false,
+      data: null,
+      error: 'Invalid URI format',
+    });
+    expect(memoryNodeService.createNode).not.toHaveBeenCalled();
+  });
+
+  it('fails create_memory when uri parsing fallback detects an invalid format', async () => {
+    const definition = service
+      .getToolDefinitions(['session-1'])
+      .find((tool) => tool.name === 'create_memory');
+
+    memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
+    pathResolverService.resolveUri.mockRejectedValue(
+      new NotFoundException('Memory path invalid-uri not found'),
     );
 
     const result = await definition?.execute({

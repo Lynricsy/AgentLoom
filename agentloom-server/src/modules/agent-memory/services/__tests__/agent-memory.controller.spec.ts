@@ -453,6 +453,33 @@ describe('AgentMemoryController', () => {
       });
     });
 
+    it('分页参数缺省时应回退到默认值', async () => {
+      const instances = [createInstance()];
+      const dataQuery = createSelectChain(instances);
+      const countQuery = createSelectChain([{ total: 1 }]);
+
+      tenantDb.select
+        .mockReturnValueOnce(dataQuery)
+        .mockReturnValueOnce(countQuery);
+
+      const result = await controller.listInstances(
+        TENANT_ID,
+        d<ListMemoryInstancesQueryDto>({
+          search: undefined,
+          status: undefined,
+        }),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+      expect(dataQuery.limit).toHaveBeenCalledWith(20);
+      expect(dataQuery.offset).toHaveBeenCalledWith(0);
+    });
+
     it('应支持 search 和 status 过滤', async () => {
       const dataQuery = createSelectChain([]);
       const countQuery = createSelectChain([{ total: 0 }]);
@@ -578,6 +605,45 @@ describe('AgentMemoryController', () => {
       expect(tenantDb.update).toHaveBeenCalledWith(agentMemoryInstances);
     });
 
+    it('应仅写入已提供的可选字段', async () => {
+      const updated = createInstance({
+        description: '新的实例描述',
+        config: { fusionPriority: 4 },
+        systemPromptOverride: 'custom prompt',
+        validDomains: ['notes'],
+        coreMemoryUris: ['core://updated'],
+        status: 'archived',
+      });
+      const updateQuery = createUpdateChain([updated]);
+      tenantDb.update.mockReturnValueOnce(updateQuery.chain);
+
+      const result = await controller.updateInstance(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<UpdateMemoryInstanceDto>({
+          name: undefined,
+          description: '新的实例描述',
+          config: { fusionPriority: 4 },
+          systemPromptOverride: 'custom prompt',
+          validDomains: ['notes'],
+          coreMemoryUris: ['core://updated'],
+          status: 'archived',
+        }),
+      );
+
+      const updates = updateQuery.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(result).toEqual({ data: updated });
+      expect(updates).toMatchObject({
+        description: '新的实例描述',
+        config: { fusionPriority: 4 },
+        systemPromptOverride: 'custom prompt',
+        validDomains: ['notes'],
+        coreMemoryUris: ['core://updated'],
+        status: 'archived',
+      });
+      expect(updates).not.toHaveProperty('name');
+    });
+
     it('实例不存在时应抛出 NotFoundException', async () => {
       const updateQuery = createUpdateChain([]);
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
@@ -670,6 +736,32 @@ describe('AgentMemoryController', () => {
         page: 1,
         limit: 10,
         contentType: 'markdown',
+      });
+    });
+
+    it('未传分页参数时应使用默认分页', async () => {
+      const nodes = [createNode()];
+      mockNodeService.listNodes.mockResolvedValueOnce({
+        data: nodes,
+        total: 1,
+      });
+
+      const result = await controller.listNodes(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<ListMemoryNodesQueryDto>({ contentType: undefined }),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+      expect(mockNodeService.listNodes).toHaveBeenCalledWith(INSTANCE_ID, {
+        page: undefined,
+        limit: undefined,
+        contentType: undefined,
       });
     });
   });
@@ -963,6 +1055,25 @@ describe('AgentMemoryController', () => {
         'core',
       );
     });
+
+    it('分页参数缺省时应使用路径列表默认值', async () => {
+      tenantDb.select
+        .mockReturnValueOnce(createSelectChain([createPath()]))
+        .mockReturnValueOnce(createSelectChain([{ total: 1 }]));
+
+      const result = await controller.listPaths(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<ListMemoryPathsQueryDto>({ domain: undefined }),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+    });
   });
 
   // ─── Edge Operations ───────────────────────────────────────────────
@@ -1017,6 +1128,28 @@ describe('AgentMemoryController', () => {
         memoryEdges.childNodeId,
         CHILD_NODE_ID,
       );
+    });
+
+    it('分页参数缺省时应使用边列表默认值', async () => {
+      tenantDb.select
+        .mockReturnValueOnce(createSelectChain([createEdge()]))
+        .mockReturnValueOnce(createSelectChain([{ total: 1 }]));
+
+      const result = await controller.listEdges(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<ListMemoryEdgesQueryDto>({
+          parentNodeId: undefined,
+          childNodeId: undefined,
+        }),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
     });
   });
 
@@ -1262,6 +1395,25 @@ describe('AgentMemoryController', () => {
       expect(result.meta.total).toBe(1);
       expect(dataQuery.from).toHaveBeenCalledWith(memoryVersions);
     });
+
+    it('分页参数缺省时应使用审计日志默认分页', async () => {
+      tenantDb.select
+        .mockReturnValueOnce(createSelectChain([createVersion()]))
+        .mockReturnValueOnce(createSelectChain([{ total: 1 }]));
+
+      const result = await controller.listAuditLogs(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<ListAuditLogQueryDto>({}),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+    });
   });
 
   describe('reviewVersion', () => {
@@ -1348,6 +1500,27 @@ describe('AgentMemoryController', () => {
         memoryVersions.reviewStatus,
         'pending',
       );
+    });
+
+    it('分页参数缺省时应使用待审核列表默认值', async () => {
+      tenantDb.select
+        .mockReturnValueOnce(
+          createSelectChain([createVersion({ reviewStatus: 'pending' })]),
+        )
+        .mockReturnValueOnce(createSelectChain([{ total: 1 }]));
+
+      const result = await controller.listPendingReviews(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<ListPendingReviewsQueryDto>({}),
+      );
+
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
     });
   });
 

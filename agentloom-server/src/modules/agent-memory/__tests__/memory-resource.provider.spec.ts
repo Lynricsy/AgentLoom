@@ -36,6 +36,7 @@ import {
   MEMORY_RESOURCE_TYPE,
   MemoryResourceProvider,
 } from '../memory-resource.provider';
+import { AgentMemoryModule } from '../agent-memory.module';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
 
@@ -153,6 +154,23 @@ describe('MemoryResourceProvider', () => {
         },
       });
     });
+
+    it('should throw when the insert does not return a created session', async () => {
+      const insertQuery = createInsertChain([]);
+
+      tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
+
+      await expect(
+        provider.create({
+          memoryInstanceId: INSTANCE_ID,
+          role: 'primary',
+          bootUris: [],
+          fusionPriority: 0,
+          tenantId: TENANT_ID,
+          executionId: EXECUTION_ID,
+        }),
+      ).rejects.toThrow('Failed to create memory session resource');
+    });
   });
 
   describe('destroy', () => {
@@ -224,6 +242,70 @@ describe('MemoryResourceProvider', () => {
       );
       expect(updateQuery.where).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'and' }),
+      );
+    });
+
+    it('should rebuild default share config when the current config is null', async () => {
+      const session = createSession({ config: null });
+      const updateQuery = createUpdateChain([{ id: session.id }]);
+      const instance = {
+        sessionId: session.id,
+        session,
+        memoryInstanceId: session.memoryInstanceId,
+        tenantId: TENANT_ID,
+      };
+
+      tenantDb.update.mockReturnValueOnce(updateQuery.chain);
+
+      await expect(provider.share(instance, 'consumer-fallback')).resolves.toBeUndefined();
+
+      const updatePayload = updateQuery.set.mock.calls[0]?.[0] as {
+        config: Record<string, unknown>;
+      };
+      expect(updatePayload.config).toEqual(
+        expect.objectContaining({
+          bootUris: [],
+          fusionPriority: 0,
+          sharedConsumers: ['consumer-fallback'],
+          shareCount: 1,
+          shareLog: [
+            expect.objectContaining({
+              consumerId: 'consumer-fallback',
+            }),
+          ],
+        }),
+      );
+      expect(instance.session.config).toEqual(updatePayload.config);
+    });
+  });
+
+  describe('AgentMemoryModule', () => {
+    it('should pass module init when the memory resource provider is already registered', () => {
+      const registry = {
+        getProvider: vi.fn().mockReturnValue({ type: MEMORY_RESOURCE_TYPE }),
+      };
+      const memoryProvider = { type: MEMORY_RESOURCE_TYPE } as MemoryResourceProvider;
+      const module = new AgentMemoryModule(
+        registry as never,
+        memoryProvider as never,
+      );
+
+      expect(() => module.onModuleInit()).not.toThrow();
+      expect(registry.getProvider).toHaveBeenCalledWith(MEMORY_RESOURCE_TYPE);
+    });
+
+    it('should fail module init when the provider is missing from the registry', () => {
+      const registry = {
+        getProvider: vi.fn().mockReturnValue(undefined),
+      };
+      const memoryProvider = { type: MEMORY_RESOURCE_TYPE } as MemoryResourceProvider;
+      const module = new AgentMemoryModule(
+        registry as never,
+        memoryProvider as never,
+      );
+
+      expect(() => module.onModuleInit()).toThrow(
+        /MemoryResourceProvider \('memory'\) not found in SharedResourceRegistry/,
       );
     });
   });
