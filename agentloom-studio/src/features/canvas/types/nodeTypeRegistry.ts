@@ -26,6 +26,7 @@ export const NODE_TYPES = [
   'smart-routing',
   'plugin',
   'input-preprocessor',
+  'memory',
   'agent',
 ] as const
 
@@ -110,6 +111,7 @@ const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
   output: 'var(--color-type-text)',
   control: 'var(--color-muted)',
   plugin: 'var(--color-type-tool)',
+  memory: 'var(--color-type-json)',
 }
 
 type NonJsonPortDataType = Exclude<PortDataType, 'json'>
@@ -582,6 +584,36 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         outputFormat: createConfigField('string', '输出格式'),
       },
       required: ['transformType', 'expression'],
+    },
+  },
+  'memory': {
+    type: 'memory',
+    category: 'memory',
+    label: 'Memory',
+    icon: 'BrainCircuit',
+    description: '图谱记忆实例节点',
+    colorToken: CATEGORY_COLOR_TOKENS.memory,
+    inputPorts: [],
+    outputPorts: [
+      createPort('memory-out-0', 'Memory', 'output', 'json', {
+        description: '记忆会话引用',
+        schema: createJsonSchema('Memory', '记忆会话引用'),
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        memoryInstanceId: createConfigField('string', 'Memory Instance'),
+        role: createConfigField('string', '角色', {
+          enum: ['primary', 'readonly'],
+          default: 'primary',
+        }),
+        fusionPriority: createConfigField('number', '融合优先级', {
+          default: 1,
+        }),
+        bootUris: createConfigField('string', '引导 URIs'),
+      },
+      required: ['memoryInstanceId'],
     },
   },
   'agent': {

@@ -4,7 +4,7 @@ import type { AutonomyConfig, OutputFormatStrategy } from './autonomy.types'
 import type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
 import type { PortDataType, TypeSchema } from './types/typeSchema'
 
-export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control' | 'plugin'
+export type NodeCategory = 'agent' | 'tool' | 'trigger' | 'knowledge' | 'output' | 'control' | 'plugin' | 'memory'
 
 export interface NodeCategoryMeta {
   category: NodeCategory

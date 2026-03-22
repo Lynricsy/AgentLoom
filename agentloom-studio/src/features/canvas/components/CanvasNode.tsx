@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Bot,
   Brain,
+  BrainCircuit,
   Braces,
   Clock,
   Code,
@@ -65,6 +66,7 @@ import { SandboxNodeBody } from './nodes/SandboxNodeBody'
 import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 import { PluginNodeBody } from './nodes/PluginNodeBody'
 import { AgentNodeBody } from './nodes/AgentNodeBody'
+import { MemoryNodeBody } from './nodes/MemoryNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -84,6 +86,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Repeat,
   Package,
   Puzzle,
+  BrainCircuit,
 }
 
 type NodeShellStatus =
@@ -609,6 +612,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             />
           ) : data.nodeType === 'plugin' ? (
             <PluginNodeBody data={data as PluginNodeData} />
+          ) : data.nodeType === 'memory' ? (
+            <MemoryNodeBody config={data.config} />
           ) : data.nodeType === 'agent' ? (
             <AgentNodeBody data={data as WorkflowAgentNodeData} />
           ) : (

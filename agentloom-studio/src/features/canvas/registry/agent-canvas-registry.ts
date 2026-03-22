@@ -29,6 +29,7 @@ const AGENT_CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
   output: 'var(--color-type-text)',
   control: 'var(--color-muted)',
   plugin: 'var(--color-type-tool)',
+  memory: 'var(--color-type-json)',
 }
 
 // Local createConfigField helper — mirrors the unexported version in nodeTypeRegistry.ts

@@ -109,6 +109,7 @@ describe('NodePalette', () => {
     expect(groupHeaders).toContain('Tool')
     expect(groupHeaders).toContain('Trigger')
     expect(groupHeaders).toContain('Knowledge')
+    expect(groupHeaders).toContain('Memory')
     expect(groupHeaders).toContain('Output')
     expect(groupHeaders).toContain('Control')
   })
@@ -142,6 +143,7 @@ describe('NodePalette', () => {
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',
+      'memory',
       'text-output',
       'json-output',
       'condition',

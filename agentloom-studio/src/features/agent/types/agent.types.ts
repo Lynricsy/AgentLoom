@@ -103,6 +103,7 @@ export interface AgentDefinition {
   viewport: Viewport | null
   sandboxConfig: AgentGlobalSandboxConfig | null
   workspaceSnapshotId: string | null
+  memoryInstanceIds: string[] | null
   version: number
   status: AgentStatus
   publishedVersionId: string | null

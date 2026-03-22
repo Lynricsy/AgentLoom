@@ -35,6 +35,7 @@ describe('nodeTypeRegistry', () => {
       'smart-routing',
       'plugin',
       'input-preprocessor',
+      'memory',
       'agent',
     ])
   })
@@ -184,6 +185,7 @@ describe('nodeTypeRegistry', () => {
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',
+      'memory',
       'text-output',
       'json-output',
       'condition',

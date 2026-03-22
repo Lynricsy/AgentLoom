@@ -1,9 +1,11 @@
 import { memo, useCallback, useState } from 'react';
+import { BrainCircuit } from 'lucide-react';
 import { Slider } from '@/shared/ui/slider';
 import { Switch } from '@/shared/ui/switch';
 import { Select } from '@/shared/ui/select';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
+import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances';
 import {
   useAgentCanvasActions,
   useAgentGlobalSandboxConfig,
@@ -11,6 +13,7 @@ import {
   useAgentWorkspaceId,
   useAgentInputSchema,
   useAgentCanvasSaveStatus,
+  useAgentMemoryInstanceIds,
 } from '../stores/agent-canvas.store';
 import type { AgentInputSchema } from '../stores/agent-canvas.store';
 
@@ -149,17 +152,32 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
   const lifecycle = useAgentSandboxLifecycle();
   const workspaceId = useAgentWorkspaceId();
   const inputSchema = useAgentInputSchema();
+  const memoryInstanceIds = useAgentMemoryInstanceIds();
   const { isDirty, isSaving } = useAgentCanvasSaveStatus();
   const {
     setGlobalSandboxConfig,
     setSandboxLifecycle,
     setWorkspaceId,
     setInputSchema,
+    setMemoryInstanceIds,
     saveCanvas,
     compileConfig,
   } = useAgentCanvasActions();
+  const { data: memoryInstances, isLoading: isLoadingMemory } =
+    useAllMemoryInstances();
 
   const [isExpanded, setIsExpanded] = useState(true);
+
+  const handleToggleMemoryInstance = useCallback(
+    (instanceId: string) => {
+      const current = memoryInstanceIds;
+      const next = current.includes(instanceId)
+        ? current.filter((id) => id !== instanceId)
+        : [...current, instanceId];
+      setMemoryInstanceIds(next);
+    },
+    [memoryInstanceIds, setMemoryInstanceIds],
+  );
 
   return (
     <div
@@ -269,6 +287,68 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
           </div>
 
           <InputSchemaEditor schema={inputSchema} onChange={setInputSchema} />
+
+          {/* Memory Instances */}
+          <div className="flex flex-col gap-2 border-b border-neutral-700 pb-3">
+            <div className="flex items-center gap-1.5">
+              <BrainCircuit className="h-3.5 w-3.5 text-purple-400" />
+              <span className="text-xs font-medium text-neutral-300">
+                Memory Instances
+              </span>
+            </div>
+
+            {isLoadingMemory ? (
+              <span className="text-xs text-neutral-500">
+                Loading instances...
+              </span>
+            ) : !memoryInstances?.length ? (
+              <span className="text-xs text-neutral-500">
+                No memory instances available
+              </span>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {memoryInstances.map((instance) => {
+                  const isSelected = memoryInstanceIds.includes(instance.id);
+                  const selectedIndex = memoryInstanceIds.indexOf(instance.id);
+                  const isPrimary = selectedIndex === 0;
+                  return (
+                    <button
+                      key={instance.id}
+                      type="button"
+                      className={cn(
+                        'flex items-center justify-between rounded px-2 py-1.5 text-left text-xs transition-colors cursor-pointer',
+                        isSelected
+                          ? 'bg-purple-500/20 border border-purple-500/40 text-purple-200'
+                          : 'bg-neutral-800 border border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300',
+                      )}
+                      onClick={() => handleToggleMemoryInstance(instance.id)}
+                      data-testid={`memory-instance-toggle-${instance.id}`}
+                    >
+                      <span className="truncate flex-1">{instance.name}</span>
+                      {isSelected && (
+                        <span
+                          className={cn(
+                            'ml-2 shrink-0 rounded px-1 py-0.5 text-[10px] font-medium',
+                            isPrimary
+                              ? 'bg-purple-500/30 text-purple-300'
+                              : 'bg-neutral-600/50 text-neutral-400',
+                          )}
+                        >
+                          {isPrimary ? 'Primary' : 'Readonly'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {memoryInstanceIds.length > 0 && (
+              <span className="text-[10px] text-neutral-500">
+                First selected = primary (writeable). Rest = readonly.
+              </span>
+            )}
+          </div>
 
           <div className="flex gap-2">
             <Button

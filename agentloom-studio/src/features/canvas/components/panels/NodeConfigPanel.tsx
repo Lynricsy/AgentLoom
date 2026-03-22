@@ -27,6 +27,7 @@ import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
+import { MemoryConfigPanel } from './MemoryConfigPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -314,6 +315,16 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
       <AgentNodeConfigPanel
         config={node.data.config}
         onApply={onConfigChange}
+      />
+    ),
+  },
+  'memory': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <MemoryConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
       />
     ),
   },
