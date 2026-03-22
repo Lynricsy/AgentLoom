@@ -42,6 +42,7 @@ import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import { PluginService } from '../../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
+import { SharedResourceRegistry } from '../../shared-resources/shared-resource-registry';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -210,6 +211,9 @@ describe('NodeSchedulerService', () => {
   let mockWorkflowAgentAdapterFactory: {
     createFromAgentDefinition: ReturnType<typeof vi.fn>;
   };
+  let mockSharedResourceRegistry: {
+    createResource: ReturnType<typeof vi.fn>;
+  };
 
   beforeAll(() => {
     vi.useFakeTimers();
@@ -308,6 +312,17 @@ describe('NodeSchedulerService', () => {
     mockWorkflowAgentAdapterFactory = {
       createFromAgentDefinition: vi.fn(),
     };
+    mockSharedResourceRegistry = {
+      createResource: vi.fn().mockResolvedValue({
+        sessionId: '019577a0-0000-7000-8000-memory000001',
+        session: {
+          id: '019577a0-0000-7000-8000-memory000001',
+          status: 'active',
+        },
+        memoryInstanceId: '019577a0-0000-7000-8000-memoryinst001',
+        tenantId: TENANT_ID,
+      }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -342,6 +357,10 @@ describe('NodeSchedulerService', () => {
         {
           provide: AgentAdapterFactory,
           useValue: mockWorkflowAgentAdapterFactory,
+        },
+        {
+          provide: SharedResourceRegistry,
+          useValue: mockSharedResourceRegistry,
         },
       ],
     }).compile();
@@ -651,6 +670,139 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('memory 节点会通过 SharedResourceRegistry 创建 memory session 并自动完成', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('M', 'memory', {
+            config: {
+              memoryInstanceId: '019577a0-0000-7000-8000-memoryinst001',
+              role: 'readonly',
+              bootUris: ['system://boot', 'system://index'],
+              fusionPriority: 3,
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'memory',
+          nodeData: {
+            config: {
+              memoryInstanceId: '019577a0-0000-7000-8000-memoryinst001',
+              role: 'readonly',
+              bootUris: ['system://boot', 'system://index'],
+              fusionPriority: 3,
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockSharedResourceRegistry.createResource).toHaveBeenCalledWith(
+        'memory',
+        {
+          memoryInstanceId: '019577a0-0000-7000-8000-memoryinst001',
+          role: 'readonly',
+          bootUris: ['system://boot', 'system://index'],
+          fusionPriority: 3,
+          tenantId: TENANT_ID,
+          executionId: EXECUTION_ID,
+        },
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'completed',
+        {
+          result: {
+            sessionId: '019577a0-0000-7000-8000-memory000001',
+            instanceId: '019577a0-0000-7000-8000-memoryinst001',
+            role: 'readonly',
+            status: 'active',
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-m',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('memory 节点创建 session 失败时应标记 failed 并触发 onNodeFailed', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('M', 'memory', {
+            config: {
+              memoryInstanceId: '019577a0-0000-7000-8000-memoryinst404',
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'memory',
+          nodeData: {
+            config: {
+              memoryInstanceId: '019577a0-0000-7000-8000-memoryinst404',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockSharedResourceRegistry.createResource.mockRejectedValueOnce(
+        new Error('Memory instance not found'),
+      );
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message: 'Memory instance not found',
+            nodeId: 'M',
+          }),
+        }),
+      );
+      expect(onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-m',
+        TENANT_ID,
+      );
     });
 
     it('sandbox 节点对历史扁平 nodeData 仍保持兼容', async () => {

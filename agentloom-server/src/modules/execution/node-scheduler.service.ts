@@ -51,6 +51,11 @@ import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-mo
 import { EmbeddingIntegrationService } from '../smart-routing/embedding/embedding.service';
 import { PluginService } from '../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../plugin/plugin.constants';
+import type {
+  MemoryResourceConfig,
+  MemoryResourceInstance,
+} from '../agent-memory/memory-resource.provider';
+import { SharedResourceRegistry } from '../shared-resources/shared-resource-registry';
 import {
   InputPreprocessorHandlerImpl,
   type InputPreprocessorConfig,
@@ -96,6 +101,7 @@ export class NodeSchedulerService {
     private readonly embeddingService: EmbeddingIntegrationService,
     private readonly pluginService: PluginService,
     private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
+    private readonly sharedResourceRegistry: SharedResourceRegistry,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
     @InjectQueue(PLUGIN_EXECUTION_QUEUE)
@@ -286,6 +292,10 @@ export class NodeSchedulerService {
 
       case 'sandbox':
         await this.executeSandboxNode(step, input, tenantId, executionId);
+        break;
+
+      case 'memory':
+        await this.executeMemoryNode(step, tenantId, executionId);
         break;
 
       case 'data_transform':
@@ -1920,6 +1930,68 @@ export class NodeSchedulerService {
     }
   }
 
+  async executeMemoryNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const config = this.resolveMemoryConfig(step.nodeData ?? {}, tenantId, executionId);
+      const instance =
+        await this.sharedResourceRegistry.createResource<
+          MemoryResourceConfig,
+          MemoryResourceInstance
+        >('memory', config);
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            sessionId: instance.sessionId,
+            instanceId: config.memoryInstanceId,
+            role: config.role,
+            status: instance.session.status,
+          },
+        },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
   private getSandboxConfigSource(
     nodeData: Record<string, unknown>,
   ): Record<string, unknown> {
@@ -1947,6 +2019,37 @@ export class NodeSchedulerService {
     }
 
     return nodeData;
+  }
+
+  private resolveMemoryConfig(
+    nodeData: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): MemoryResourceConfig {
+    const memoryConfigSource = this.isRecord(nodeData.config)
+      ? nodeData.config
+      : nodeData;
+    const memoryInstanceId = memoryConfigSource.memoryInstanceId;
+
+    if (typeof memoryInstanceId !== 'string' || memoryInstanceId.length === 0) {
+      throw new Error('Memory node requires memoryInstanceId');
+    }
+
+    return {
+      memoryInstanceId,
+      role: memoryConfigSource.role === 'readonly' ? 'readonly' : 'primary',
+      bootUris: Array.isArray(memoryConfigSource.bootUris)
+        ? memoryConfigSource.bootUris.filter(
+            (uri): uri is string => typeof uri === 'string',
+          )
+        : [],
+      fusionPriority:
+        typeof memoryConfigSource.fusionPriority === 'number'
+          ? memoryConfigSource.fusionPriority
+          : 0,
+      tenantId,
+      executionId,
+    };
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
