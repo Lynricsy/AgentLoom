@@ -1,5 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, getTableColumns, gte, inArray, sql } from 'drizzle-orm';
+import { z } from 'zod';
 
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
@@ -26,11 +27,33 @@ import type {
   RoutingDecisionResult,
 } from './dto/routing-context.dto';
 import { ROUTING_STRATEGIES } from './dto/routing-context.dto';
+import type {
+  ProviderHealthStatusesResponseDtoType,
+  ProviderHealthStatusDto,
+} from './dto/provider-health.dto';
 import type { QueryRoutingDecisionsDto } from './dto/query-routing-decisions.dto';
+import type {
+  SmartRoutingStrategyConfigSchemaResponseDtoType,
+  SmartRoutingStrategiesResponseDtoType,
+  SmartRoutingStrategyDto,
+} from './dto/smart-routing-strategies.dto';
 import {
   InvalidRoutingStrategyException,
   InsufficientModelsException,
 } from './smart-routing.exceptions';
+
+const PUBLIC_ROUTER_STRATEGY_NAMES = new Set([
+  'random',
+  'round_robin',
+  'rules',
+  'llm_as_router',
+  'knn',
+  'mlp',
+  'elo',
+  'memory_bank',
+  'fallback_chain',
+  'wasm_plugin',
+]);
 
 const STRATEGY_REGISTRY: Record<RoutingStrategy, StrategyFn> = {
   TOKEN_OPTIMIZED: tokenOptimized,
@@ -319,6 +342,54 @@ export class SmartRoutingService {
         },
       ]),
     );
+  }
+
+  listStrategies(): SmartRoutingStrategiesResponseDtoType {
+    const data: SmartRoutingStrategyDto[] = this.routerRegistry
+      .list()
+      .filter((strategy) => PUBLIC_ROUTER_STRATEGY_NAMES.has(strategy.name))
+      .map((strategy) => ({
+        name: strategy.name,
+        category: strategy.category,
+        requiresEmbedding: strategy.requiresEmbedding,
+        configSchema: z.toJSONSchema(strategy.configSchema),
+      }));
+
+    return { data };
+  }
+
+  async getProviderHealthStatuses(
+    tenantId: string,
+  ): Promise<ProviderHealthStatusesResponseDtoType> {
+    const statuses = await this.circuitBreakerService.listStatuses(tenantId);
+    const data: ProviderHealthStatusDto[] = statuses.map((status) => ({
+      providerName: status.provider,
+      modelId: status.modelId,
+      status: status.status,
+      failureCount: status.failureCount,
+      lastFailureAt: status.lastFailureAt,
+    }));
+
+    return { data };
+  }
+
+  getStrategyConfigSchema(
+    name: string,
+  ): SmartRoutingStrategyConfigSchemaResponseDtoType {
+    try {
+      const strategy = this.routerRegistry.get(name);
+
+      return {
+        data: {
+          name: strategy.name,
+          configSchema: z.toJSONSchema(strategy.configSchema),
+        },
+      };
+    } catch (error) {
+      throw new NotFoundException(
+        error instanceof Error ? error.message : `Strategy \"${name}\" not found`,
+      );
+    }
   }
 
   /**
