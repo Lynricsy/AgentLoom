@@ -34,13 +34,18 @@ export async function fetchRoutingDecisions(params: {
 }
 
 export async function fetchStrategies(): Promise<StrategyInfo[]> {
-  return apiClient.get('smart-routing/strategies').json()
+  const res = await apiClient.get('smart-routing/strategies').json<{ data: StrategyInfo[] }>()
+  return res.data
 }
 
 export async function fetchHealthStatus(): Promise<ProviderHealth[]> {
-  return apiClient.get('smart-routing/health').json()
+  const res = await apiClient.get('smart-routing/health').json<{ data: ProviderHealth[] }>()
+  return res.data
 }
 
 export async function fetchConfigSchema(strategyName: string): Promise<JsonSchema> {
-  return apiClient.get(`smart-routing/strategies/${strategyName}/config-schema`).json()
+  const res = await apiClient
+    .get(`smart-routing/strategies/${strategyName}/config-schema`)
+    .json<{ data: JsonSchema }>()
+  return res.data
 }

@@ -5,6 +5,21 @@ import { SmartRoutingConfigPanel } from '../SmartRoutingConfigPanel'
 
 const mocks = vi.hoisted(() => ({
   updateNodeData: vi.fn(),
+  useStrategies: vi.fn().mockReturnValue({
+    data: [
+      { name: 'random', category: 'simple', requiresEmbedding: false, configSchema: null },
+      { name: 'round_robin', category: 'simple', requiresEmbedding: false, configSchema: null },
+      { name: 'rules', category: 'simple', requiresEmbedding: false, configSchema: null },
+      { name: 'llm_as_router', category: 'simple', requiresEmbedding: false, configSchema: null },
+      { name: 'fallback_chain', category: 'simple', requiresEmbedding: false, configSchema: null },
+      { name: 'knn', category: 'ml', requiresEmbedding: true, configSchema: null },
+      { name: 'mlp', category: 'ml', requiresEmbedding: false, configSchema: null },
+      { name: 'elo', category: 'ml', requiresEmbedding: false, configSchema: null },
+      { name: 'memory_bank', category: 'rag', requiresEmbedding: true, configSchema: null },
+      { name: 'wasm_plugin', category: 'plugin', requiresEmbedding: false, configSchema: null },
+    ],
+    isLoading: false,
+  }),
   useHealthStatus: vi.fn().mockReturnValue({ data: undefined }),
   useConfigSchema: vi.fn().mockReturnValue({ data: undefined }),
 }))
@@ -19,6 +34,7 @@ vi.mock('@/features/smart-routing', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
+    useStrategies: mocks.useStrategies,
     useHealthStatus: mocks.useHealthStatus,
     useConfigSchema: mocks.useConfigSchema,
   }
@@ -82,6 +98,21 @@ describe('SmartRoutingConfigPanel', () => {
   beforeEach(() => {
     onConfigChange.mockReset()
     mocks.updateNodeData.mockReset()
+    mocks.useStrategies.mockReturnValue({
+      data: [
+        { name: 'random', category: 'simple', requiresEmbedding: false, configSchema: null },
+        { name: 'round_robin', category: 'simple', requiresEmbedding: false, configSchema: null },
+        { name: 'rules', category: 'simple', requiresEmbedding: false, configSchema: null },
+        { name: 'llm_as_router', category: 'simple', requiresEmbedding: false, configSchema: null },
+        { name: 'fallback_chain', category: 'simple', requiresEmbedding: false, configSchema: null },
+        { name: 'knn', category: 'ml', requiresEmbedding: true, configSchema: null },
+        { name: 'mlp', category: 'ml', requiresEmbedding: false, configSchema: null },
+        { name: 'elo', category: 'ml', requiresEmbedding: false, configSchema: null },
+        { name: 'memory_bank', category: 'rag', requiresEmbedding: true, configSchema: null },
+        { name: 'wasm_plugin', category: 'plugin', requiresEmbedding: false, configSchema: null },
+      ],
+      isLoading: false,
+    })
     mocks.useHealthStatus.mockReturnValue({ data: undefined })
     mocks.useConfigSchema.mockReturnValue({ data: undefined })
   })

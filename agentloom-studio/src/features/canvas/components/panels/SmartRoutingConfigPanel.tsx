@@ -26,7 +26,6 @@ import {
   STRATEGY_CATEGORY_COLORS,
   STRATEGY_CATEGORY_BG,
   STRATEGY_CATEGORY_LABELS,
-  STRATEGY_NAMES_BY_CATEGORY,
 } from '@/features/smart-routing'
 import type {
   StrategyName,
@@ -35,7 +34,7 @@ import type {
   ProviderHealthStatus,
   JsonSchemaProperty,
 } from '@/features/smart-routing'
-import { useHealthStatus, useConfigSchema } from '@/features/smart-routing'
+import { useHealthStatus, useConfigSchema, useStrategies } from '@/features/smart-routing'
 import { cn } from '@/shared/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -51,21 +50,11 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Puzzle,
 }
 
-const ALL_STRATEGY_NAMES: StrategyName[] = [
-  'random',
-  'round_robin',
-  'rules',
-  'llm_as_router',
-  'fallback_chain',
-  'knn',
-  'mlp',
-  'elo',
-  'memory_bank',
-  'wasm_plugin',
-]
+/** 从 STRATEGY_META 键中获取 fallback 策略名列表（API 不可用时使用） */
+const FALLBACK_STRATEGY_NAMES: StrategyName[] = Object.keys(STRATEGY_META) as StrategyName[]
 
 function isRoutingStrategy(value: unknown): value is RoutingStrategy {
-  return ALL_STRATEGY_NAMES.includes(value as StrategyName)
+  return FALLBACK_STRATEGY_NAMES.includes(value as StrategyName)
 }
 
 const MIN_MODEL_PORTS = 2
@@ -213,6 +202,28 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 }: SmartRoutingConfigPanelProps) {
   const { updateNodeData } = useCanvasActions()
 
+  const { data: strategies, isLoading: isStrategiesLoading } = useStrategies()
+
+  const strategyNamesByCategory: Record<StrategyCategory, StrategyName[]> = useMemo(() => {
+    const groups: Record<StrategyCategory, StrategyName[]> = {
+      simple: [],
+      ml: [],
+      rag: [],
+      plugin: [],
+    }
+    if (strategies && strategies.length > 0) {
+      for (const s of strategies) {
+        groups[s.category]?.push(s.name)
+      }
+    } else {
+      for (const name of FALLBACK_STRATEGY_NAMES) {
+        const meta = STRATEGY_META[name]
+        groups[meta.category]?.push(name)
+      }
+    }
+    return groups
+  }, [strategies])
+
   const strategy: RoutingStrategy = isRoutingStrategy(node.data.strategy)
     ? node.data.strategy
     : 'random'
@@ -334,24 +345,29 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
           data-testid="strategy-select"
           value={strategy}
           onChange={handleStrategyChange}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          disabled={isStrategiesLoading}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {CATEGORY_ORDER.map((cat) => (
-            <optgroup
-              key={cat}
-              label={STRATEGY_CATEGORY_LABELS[cat]}
-              data-testid={`strategy-group-${cat}`}
-            >
-              {STRATEGY_NAMES_BY_CATEGORY[cat].map((name) => {
-                const m = STRATEGY_META[name]
-                return (
-                  <option key={name} value={name}>
-                    {m.displayName}
-                  </option>
-                )
-              })}
-            </optgroup>
-          ))}
+          {CATEGORY_ORDER.map((cat) => {
+            const names = strategyNamesByCategory[cat]
+            if (names.length === 0) return null
+            return (
+              <optgroup
+                key={cat}
+                label={STRATEGY_CATEGORY_LABELS[cat]}
+                data-testid={`strategy-group-${cat}`}
+              >
+                {names.map((name) => {
+                  const m = STRATEGY_META[name]
+                  return (
+                    <option key={name} value={name}>
+                      {m?.displayName ?? name}
+                    </option>
+                  )
+                })}
+              </optgroup>
+            )
+          })}
         </select>
         {meta ? (
           <div className="flex items-center gap-1.5">
