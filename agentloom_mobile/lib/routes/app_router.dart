@@ -18,6 +18,9 @@ import '../features/settings/screens/settings_screen.dart';
 import '../features/agents/screens/agent_list_screen.dart';
 import '../features/agents/screens/agent_detail_screen.dart';
 import '../features/agents/screens/agent_conversation_screen.dart';
+import '../features/memory/screens/memory_list_screen.dart';
+import '../features/memory/screens/memory_detail_screen.dart';
+import '../features/memory/screens/memory_node_screen.dart';
 import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/parameter_input_screen.dart';
 import '../features/workflows/screens/workflows_screen.dart';
@@ -119,6 +122,32 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/mfa-enroll',
         name: RouteNames.mfaEnroll,
         builder: (context, state) => const MfaEnrollScreen(),
+      ),
+      GoRoute(
+        path: '/memory',
+        name: RouteNames.memoryList,
+        builder: (context, state) => const MemoryListScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            name: RouteNames.memoryDetail,
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return MemoryDetailScreen(instanceId: id);
+            },
+            routes: [
+              GoRoute(
+                path: 'nodes/:nodeId',
+                name: RouteNames.memoryNode,
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  final nodeId = state.pathParameters['nodeId']!;
+                  return MemoryNodeScreen(instanceId: id, nodeId: nodeId);
+                },
+              ),
+            ],
+          ),
+        ],
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {

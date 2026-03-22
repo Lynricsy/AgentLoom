@@ -6,6 +6,10 @@ import 'package:agentloom_mobile/features/execution/models/execution_event.dart'
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
+import 'package:agentloom_mobile/features/memory/api/memory_api.dart';
+import 'package:agentloom_mobile/features/memory/models/memory_instance.dart';
+import 'package:agentloom_mobile/features/memory/models/memory_node.dart';
+import 'package:agentloom_mobile/features/memory/models/memory_version.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/conversation_plan.dart';
 import 'package:agentloom_mobile/features/workflows/models/input_field_definition.dart';
@@ -19,6 +23,9 @@ import 'package:mocktail/mocktail.dart';
 
 /// Mock AgentApi
 class MockAgentApi extends Mock implements AgentApi {}
+
+/// Mock MemoryApi
+class MockMemoryApi extends Mock implements MemoryApi {}
 
 /// Mock WorkflowApi
 class MockWorkflowApi extends Mock implements WorkflowApi {}
@@ -428,5 +435,120 @@ ConversationMessageDto createTestMessage({
     type: type,
     content: content,
     createdAt: createdAt,
+  );
+}
+
+// ==================== Memory 测试工厂 ====================
+
+/// 测试用 MemoryInstanceDto 工厂
+MemoryInstanceDto createTestMemoryInstance({
+  String id = 'mem-inst-1',
+  String name = 'Test Memory',
+  String? description = 'A test memory instance',
+  Map<String, dynamic>? config,
+  String status = 'active',
+  int nodeCount = 5,
+  int edgeCount = 3,
+  String createdAt = '2026-01-01T00:00:00.000Z',
+  String updatedAt = '2026-01-15T12:00:00.000Z',
+}) {
+  return MemoryInstanceDto(
+    id: id,
+    name: name,
+    description: description,
+    config: config ?? {'type': 'knowledge_graph'},
+    status: status,
+    nodeCount: nodeCount,
+    edgeCount: edgeCount,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
+/// 测试用 MemoryInstanceDto 列表工厂
+List<MemoryInstanceDto> createTestMemoryInstanceList({int count = 3}) {
+  return List.generate(
+    count,
+    (i) => createTestMemoryInstance(
+      id: 'mem-inst-$i',
+      name: 'Memory Instance $i',
+      nodeCount: i * 2 + 1,
+      edgeCount: i + 1,
+    ),
+  );
+}
+
+/// 测试用 MemoryNodeDto 工厂
+MemoryNodeDto createTestMemoryNode({
+  String id = 'mem-node-1',
+  String instanceId = 'mem-inst-1',
+  String content = 'This is a test memory node content.',
+  String? disclosureLevel = 'public',
+  List<String> triggerKeywords = const ['test', 'memory'],
+  String createdAt = '2026-01-01T00:00:00.000Z',
+  String updatedAt = '2026-01-15T12:00:00.000Z',
+}) {
+  return MemoryNodeDto(
+    id: id,
+    instanceId: instanceId,
+    content: content,
+    disclosureLevel: disclosureLevel,
+    triggerKeywords: triggerKeywords,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
+/// 测试用 MemoryNodeDto 列表工厂
+List<MemoryNodeDto> createTestMemoryNodeList({
+  int count = 3,
+  String instanceId = 'mem-inst-1',
+}) {
+  return List.generate(
+    count,
+    (i) => createTestMemoryNode(
+      id: 'mem-node-$i',
+      instanceId: instanceId,
+      content: 'Node content $i - some detailed memory information.',
+      triggerKeywords: ['keyword-$i', 'test'],
+    ),
+  );
+}
+
+/// 测试用 MemoryVersionDto 工厂
+MemoryVersionDto createTestMemoryVersion({
+  String id = 'mem-ver-1',
+  String nodeId = 'mem-node-1',
+  String content = 'Version content text.',
+  int versionNumber = 1,
+  String? changeType = 'created',
+  bool deprecated = false,
+  String createdAt = '2026-01-01T00:00:00.000Z',
+}) {
+  return MemoryVersionDto(
+    id: id,
+    nodeId: nodeId,
+    content: content,
+    versionNumber: versionNumber,
+    changeType: changeType,
+    deprecated: deprecated,
+    createdAt: createdAt,
+  );
+}
+
+/// 测试用 MemoryVersionDto 列表工厂
+List<MemoryVersionDto> createTestMemoryVersionList({
+  int count = 3,
+  String nodeId = 'mem-node-1',
+}) {
+  return List.generate(
+    count,
+    (i) => createTestMemoryVersion(
+      id: 'mem-ver-$i',
+      nodeId: nodeId,
+      content: 'Version $i content.',
+      versionNumber: i + 1,
+      changeType: i == 0 ? 'created' : 'updated',
+    ),
   );
 }

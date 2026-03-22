@@ -23,6 +23,11 @@ class RouteNames {
   static const String mfaVerify = 'mfaVerify';
   static const String mfaEnroll = 'mfaEnroll';
 
+  /// Memory 路由
+  static const String memoryList = 'memoryList';
+  static const String memoryDetail = 'memoryDetail';
+  static const String memoryNode = 'memoryNode';
+
   /// 设置子路由
   static const String changePassword = 'changePassword';
   static const String mfaManage = 'mfaManage';
