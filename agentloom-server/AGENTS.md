@@ -67,6 +67,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | execution-record | `modules/execution-record/` | Agent 执行遥测数据自动记录：`@OnEvent` 监听步骤完成/失败写入 `step_telemetry`（`telemetry_data`，toolCalls/errors/selfRepairs/ioSnapshots/llmInteractions），监听执行完成/失败聚合 `execution_summary`（`summary_data`）；写入时显式持久化 `tenant_id`；`GET /execution-records` 在租户事务内先校验 `workflow_executions` 是否存在，不存在/不可访问抛 `ExecutionNotFoundException` 404，存在但无记录返回空数组；`sanitizeTelemetryData` 对对象/数组做结构化 `[TRUNCATED]` 截断并保留 token 计数字段 | EventEmitter, DrizzleDB |
 | optimization-suggestion | `modules/optimization-suggestion/` | 基于 `agent_execution_records` 的规则分析建议闭环：四类 analyzer、使用 `upsertJobScheduler()` 注册的 `optimization-analysis` 周期任务、建议 list/apply/dismiss/stats API、带 workflow OCC + pending status guard 的工作流节点配置手术式更新 | ExecutionRecordModule, BullMQ |
 | health | `modules/health/` | 健康检查 (public) | — |
+| agent-memory | `modules/agent-memory/` | 图拓扑 Agent 记忆系统：`MemoryNodeService` / `MemoryEdgeService`（循环检测）/ `MemoryVersionService`（create/patch/append + 版本回滚）/ `PathResolverService`（URI 域寻址 `domain://path/segments`）/ `GlossaryService`（Aho-Corasick 词汇表自动标注）/ `BootProtocolService`（`system://boot\|index\|glossary` 启动协议）/ `MemorySearchService`（纯 PostgreSQL FTS，无 Qdrant）/ `MemoryFusionService`（多实例融合）/ `MemoryToolsService`（7 个 Agent 工具）；25 个 REST 端点（`/memory-instances`）；Socket.IO `/memory` namespace；`MemoryResourceProvider` 注册于 `SharedResourceRegistry`；`memory_sessions` 双 FK 对齐 `sandbox_sessions` 设计 | SharedResourcesModule, EvidenceModule |
 
 ### ACP terminal 补充事实
 
@@ -197,10 +198,23 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
 - **Agent 表**: `agent_definitions` 存储 Agent 定义（名称/描述/配置/状态/canvas JSON），`agent_versions` 管理版本历史（snapshot/发布状态）。`agent_conversations` 记录对话会话（关联 agent_definition_id），`agent_messages` 存储对话消息序列（role/content/metadata）。四表均使用 tenant-scoped RLS。
 - **Workspace 表**: `workspace_snapshots` 存储文件状态快照，支持 Agent 对话与工作流执行场景。
 - **sandbox_sessions 双 FK**: `sandbox_sessions` 表使用 `execution_id` 与 `agent_conversation_id` 双 FK + CHECK 约束（至少一个非空），实现沙箱会话在工作流执行与 Agent 对话间的复用。
+- **Agent Memory 表**: 七张表均使用 `createDirectTenantPolicies` 做 direct-tenant RLS：`agent_memory_instances`（记忆实例，含 `name/description/config/system_prompt_override/valid_domains/core_memory_uris/status/occ_version`，状态枚举 `active|archived|deleted`）；`memory_nodes`（图节点，含 `instance_id/content_type/metadata/disclosure_level`）；`memory_edges`（图边，含 `instance_id/parent_node_id/child_node_id/name/priority/disclosure`，创建时循环检测）；`memory_paths`（URI 路径绑定，含 `instance_id/domain/path_string/node_id`）；`memory_node_versions`（节点版本历史，含 `node_id/content/mode/review_status/deprecated_at`，支持 `create|patch|append` 三种写入模式与 approved/rejected/pending review 状态）；`memory_sessions`（会话，双 FK `execution_id` OR `agent_conversation_id` + CHECK 至少一个非空，对齐 `sandbox_sessions` 设计，含 `memory_instance_id/role/status/config`）；`memory_glossary_keywords`（词汇表关键词，供 `GlossaryService` Aho-Corasick 自动标注使用）。
 - **WorkflowInputSchema 规范**: canonical `WorkflowInputSchema` 现同时承载 form baseline 的 `visibility: { fieldId, equals }` 与 `conversationPlan { systemPrompt, maxTurns }` / 字段级 `collectionHint?: string`；`GET/PATCH /workflow-definitions/:id` 继续承担 draft hydrate/persist，`inputSchema.version` 只在逻辑 schema diff 时递增，仍独立于 workflow OCC `version`。`POST /workflow-definitions/:id/run` 接受 `schemaVersion` / `schema_version`，`ExecutionService` 会基于 published schema 做 required/default/visibility/type/unknown-field 校验，并把规范化结果写入 `_meta.launchConfig { workflowId, schemaVersion, collectionMode, resolvedInputs, unresolvedFieldIds, launchSource }`；客户端可以做 staged collection，但 server 仍是 launch normalization 的唯一权威，不信任客户端自报的 unresolved/option semantics。`WorkflowLaunchSchemaVersionMismatchException` 返回 409，`WorkflowLaunchInputValidationException` 返回 422。
 迁移命令: `pnpm db:generate` → `pnpm db:migrate`。种子数据: `pnpm db:seed` (5 个预置模板，upsert on slug)。
 种子脚本入口: `drizzle/seed/templates.ts`，种子数据: `src/database/seeds/template-seeds.ts`。
 模板 `definition` 现与 `workflowDefinitions.definition` 保持同构，`nodes/edges/viewport` 均为必填；公共模板路由在 `AppModule.configure()` 里通过 `TenantMiddleware.exclude({ path: 'templates', method: RequestMethod.ALL }, { path: 'templates/{*splat}', method: RequestMethod.ALL })` 绕过租户中间件。
+
+## Agent Memory
+
+- **图拓扑模型**: 记忆以 `Node → Edge → Path` 三层图结构组织。`MemoryEdgeService.createEdge()` 在建边前通过 BFS 检测循环，循环返回 409。`PathResolverService` 负责 URI 域寻址（格式 `domain://path/segments`），将 URI 解析为节点，并支持别名 `addAlias()`。
+- **版本控制**: `MemoryVersionService` 支持三种写入模式：`create`（全量替换）、`patch`（字符串替换 oldString→newString）、`append`（内容追加）；版本有 `pending|approved|rejected` review 状态；`rollbackToVersion()` 创建新版本并将旧版本标记为 deprecated，保持版本链不可变历史。
+- **启动协议**: `BootProtocolService` 在 Agent 对话或工作流执行建立 memory session 时自动解析 `system://boot`（根引导节点）、`system://index`（记忆索引）、`system://glossary`（词汇表挂载点）三个保留 URI，确保 Agent 拥有结构化的起始上下文。
+- **纯 PostgreSQL FTS**: `MemorySearchService` 使用 PostgreSQL 全文搜索（`to_tsvector` / `to_tsquery`）索引 memory node 内容，不依赖 Qdrant；支持 `minDisclosure` 阈值过滤，限制 Agent 可见度。
+- **Aho-Corasick 词汇表**: `GlossaryService` 维护 `memory_glossary_keywords` 词汇表；节点写入时自动多关键词匹配并写入 `metadata.glossaryMatches`，为 Agent 提供跨节点语义关联。
+- **7 个 Agent 工具**: `MemoryToolsService` 实现 `read_memory`（URI → 内容）、`create_memory`（URI + content 写入新节点）、`update_memory`（patch/append 模式）、`delete_memory`（URI 删除节点）、`add_alias`（添加别名 URI）、`manage_triggers`（节点触发条件管理）、`search_memory`（FTS 查询），均实现 `SessionToolProvider` 接口，工具超时 2000ms。
+- **REST API**: 25 个端点挂载于 `/memory-instances`；实例 CRUD（5）+ 图操作（7：节点列表/详情/创建/子节点/URI 解析/搜索/图全量）+ 路径与别名（4）+ 边操作（3）+ 版本管理（3：列表/创建/回滚）+ 审计与审核（3：审计日志/版本审核/待审核列表）；RBAC 读操作为 viewer+，写操作为 creator+。
+- **SharedResourceRegistry 集成**: `MemoryResourceProvider` 实现 `SharedResourceProvider<MemoryResourceConfig, MemoryResourceInstance>` 接口（type `'memory'`），由 `SharedResourcesModule.onModuleInit()` 负责注册；`AgentMemoryModule.onModuleInit()` 仅做 DI smoke-check，不重复注册。`memory_sessions` 通过双 FK（`execution_id` OR `agent_conversation_id`）+ CHECK 约束对齐 `sandbox_sessions` 设计，实现跨 workflow 与 agent 对话的记忆会话复用。
+- **模块导出**: `AgentMemoryModule` 导出 `MemoryToolsService`（供 Agent 执行引擎注入工具集）、`MemoryFusionService`（多实例融合）、`BootProtocolService`（启动序列）、`MemoryResourceProvider`（资源注册表集成）；其余服务（NodeService/EdgeService/VersionService/PathResolver/Glossary/Search）仅在模块内可见。
 
 ## Marketplace
 
@@ -229,6 +243,12 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
   - 接收人策略: `NotificationListener` 基于 execution + workflow + organization members 联表，向租户内 `owner/admin/creator`（Editor+）批量创建通知，不再只通知执行创建者
   - 载荷约定: `completed` / `failed` / `intervention_required` 通知 body 均包含 `workflowId`、`workflowName`、`executionId`、`timelineUrl`；失败额外含 `errorReason` / `suggestion`，人工介入额外含 `nodeId` / `nodeName` / `interventionReason` / `requestedAt`。资源治理通知类型包括 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`，body 至少保留 `organizationId` 与对应 workflow/execution/reason/requestedAt/effectedAt 等结构化字段。
 - `/knowledge` namespace: document status/kb updates (隐式契约，**无认证守卫**)
+- `/memory` namespace: Agent 记忆实时事件推送，`WsJwtGuard` 认证（JWT blacklist + MFA）
+  - 订阅/取消订阅 + ACK：`memory:subscribe` / `memory:unsubscribe`，payload 含 `instanceId`，加入房间 `memory:{tenantId}:{instanceId}`
+  - 断线回放：订阅时携带 `lastEventId` query 参数，服务端重放 replay buffer 中该 ID 之后的事件（最大 1000 条/实例）
+  - 事件名称：`memory.node.created`、`memory.node.updated`、`memory.node.deleted`、`memory.version.created`、`memory.version.rollback`、`memory.review.submitted`
+  - 背压：per-instance 队列 500 事件上限，100ms drain 间隔；`flushMemoryQueue()` 供服务层在操作终态后立即排空
+  - 认证失败：`createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame
 - `/agent-conversation` namespace: Agent 对话实时事件推送，与 `/execution` namespace 对称
   - 复用 EventBridge 模式，typed event 信封
   - 订阅/取消订阅 + ACK，支持 JWT + MFA 认证
