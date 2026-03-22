@@ -1,8 +1,5 @@
 import type { MemoryInstanceListParams } from '../types';
 
-/**
- * Memory Instance React Query key factory
- */
 export const memoryInstanceKeys = {
   all: ['memory-instances'] as const,
   lists: () => [...memoryInstanceKeys.all, 'list'] as const,

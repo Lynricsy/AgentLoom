@@ -57,7 +57,6 @@ async function fetchMemoryNodeVersions(
 
 // --- Query hooks ---
 
-/** 拉取记忆实例的全部节点 + 边 */
 export function useMemoryGraph(instanceId: string) {
   return useQuery({
     queryKey: memoryGraphKeys.graph(instanceId),
@@ -73,7 +72,6 @@ export function useMemoryGraph(instanceId: string) {
   })
 }
 
-/** 拉取单个记忆节点详情 */
 export function useMemoryNodeDetail(
   instanceId: string,
   nodeId: string | null,
@@ -86,7 +84,6 @@ export function useMemoryNodeDetail(
   })
 }
 
-/** 拉取记忆节点版本历史 */
 export function useMemoryNodeVersions(
   instanceId: string,
   nodeId: string | null,

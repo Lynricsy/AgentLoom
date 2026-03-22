@@ -14,9 +14,6 @@ import type {
   UpdateMemoryInstanceInput,
 } from '../types';
 
-/**
- * 分页获取 Memory Instance 列表
- */
 export function useMemoryInstances(params?: MemoryInstanceListParams) {
   return useQuery({
     queryKey: memoryInstanceKeys.list(params),
@@ -24,9 +21,6 @@ export function useMemoryInstances(params?: MemoryInstanceListParams) {
   });
 }
 
-/**
- * 获取全部 Memory Instance（不分页）
- */
 export function useAllMemoryInstances(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: memoryInstanceKeys.allOptions(),
@@ -35,9 +29,6 @@ export function useAllMemoryInstances(options?: { enabled?: boolean }) {
   });
 }
 
-/**
- * 获取单个 Memory Instance 详情
- */
 export function useMemoryInstance(id: string | null) {
   return useQuery({
     queryKey: memoryInstanceKeys.detail(id!),
@@ -46,9 +37,6 @@ export function useMemoryInstance(id: string | null) {
   });
 }
 
-/**
- * 创建 Memory Instance
- */
 export function useCreateMemoryInstance() {
   const queryClient = useQueryClient();
 
@@ -65,9 +53,6 @@ export function useCreateMemoryInstance() {
   });
 }
 
-/**
- * 更新 Memory Instance
- */
 export function useUpdateMemoryInstance() {
   const queryClient = useQueryClient();
 
@@ -87,9 +72,6 @@ export function useUpdateMemoryInstance() {
   });
 }
 
-/**
- * 删除 Memory Instance
- */
 export function useDeleteMemoryInstance() {
   const queryClient = useQueryClient();
 

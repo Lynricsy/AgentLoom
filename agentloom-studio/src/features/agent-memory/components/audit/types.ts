@@ -1,17 +1,9 @@
-/**
- * 记忆审计仪表板 — 类型定义
- */
-
-/** 审计日志操作类型 */
 export type AuditOperationType = 'create' | 'update' | 'delete' | 'rollback';
 
-/** 审核状态 */
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
-/** 审核操作 */
 export type ReviewAction = 'approve' | 'reject';
 
-/** 审计日志条目 */
 export interface AuditLogEntry {
   id: string;
   instanceId: string;
@@ -29,7 +21,6 @@ export interface AuditLogEntry {
   metadata: Record<string, unknown>;
 }
 
-/** 版本信息 */
 export interface MemoryVersion {
   id: string;
   nodeId: string;
@@ -42,7 +33,6 @@ export interface MemoryVersion {
   changeDescription: string;
 }
 
-/** 待审核项 */
 export interface PendingReview {
   id: string;
   instanceId: string;
@@ -58,7 +48,6 @@ export interface PendingReview {
   currentValue: string | null;
 }
 
-/** 审计日志筛选参数 */
 export interface AuditLogFilters {
   page: number;
   pageSize: number;
@@ -68,27 +57,23 @@ export interface AuditLogFilters {
   nodeName?: string;
 }
 
-/** 审核请求体 */
 export interface ReviewRequestBody {
   nodeId: string;
   versionId: string;
   action: ReviewAction;
 }
 
-/** 回滚请求参数 */
 export interface RollbackParams {
   instanceId: string;
   nodeId: string;
   versionId: string;
 }
 
-/** 版本对比选择 */
 export interface VersionDiffSelection {
   oldVersion: MemoryVersion;
   newVersion: MemoryVersion;
 }
 
-/** Socket.IO 实时事件载荷 */
 export interface MemoryVersionCreatedEvent {
   instanceId: string;
   nodeId: string;

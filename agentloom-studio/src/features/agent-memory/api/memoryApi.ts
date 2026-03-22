@@ -10,9 +10,6 @@ import type {
 
 const BASE_PATH = 'memory-instances';
 
-/**
- * 获取 Memory Instance 分页列表
- */
 export async function fetchMemoryInstances(
   params?: MemoryInstanceListParams,
 ): Promise<PaginatedResponse<MemoryInstance>> {
@@ -33,9 +30,6 @@ export async function fetchMemoryInstances(
     .json<PaginatedResponse<MemoryInstance>>();
 }
 
-/**
- * 获取全部 Memory Instance（不分页，循环获取所有页）
- */
 export async function fetchAllMemoryInstances(): Promise<MemoryInstance[]> {
   const allItems: MemoryInstance[] = [];
   let page = 1;
@@ -55,9 +49,6 @@ export async function fetchAllMemoryInstances(): Promise<MemoryInstance[]> {
   return allItems;
 }
 
-/**
- * 获取单个 Memory Instance 详情（含统计信息）
- */
 export async function fetchMemoryInstance(
   id: string,
 ): Promise<MemoryInstanceDetail> {
@@ -67,9 +58,6 @@ export async function fetchMemoryInstance(
   return response.data;
 }
 
-/**
- * 创建 Memory Instance
- */
 export async function createMemoryInstance(
   input: CreateMemoryInstanceInput,
 ): Promise<MemoryInstance> {
@@ -79,9 +67,6 @@ export async function createMemoryInstance(
   return response.data;
 }
 
-/**
- * 更新 Memory Instance
- */
 export async function updateMemoryInstance(
   id: string,
   input: UpdateMemoryInstanceInput,
@@ -92,9 +77,6 @@ export async function updateMemoryInstance(
   return response.data;
 }
 
-/**
- * 删除 Memory Instance
- */
 export async function deleteMemoryInstance(id: string): Promise<void> {
   await apiClient.delete(`${BASE_PATH}/${id}`);
 }
