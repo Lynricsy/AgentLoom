@@ -41,6 +41,8 @@ import {
 } from '../../agent/agent-adapter.factory';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { AgentSession } from '../../agent/types/agent-session.types';
+import { MemoryToolsService } from '../../agent-memory/memory-tools.service';
+import { MemoryFusionService } from '../../agent-memory/services/memory-fusion.service';
 
 vi.mock(
   '../../../common/interceptors/tenant-transaction.context',
@@ -288,6 +290,14 @@ describe('AgentTaskWorker', () => {
     resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
   };
 
+  const mockMemoryToolsService = {
+    createSessionToolProvider: vi.fn(),
+  };
+
+  const mockMemoryFusionService = {
+    bootAll: vi.fn(),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -309,6 +319,8 @@ describe('AgentTaskWorker', () => {
     mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
+    mockMemoryToolsService.createSessionToolProvider.mockReset();
+    mockMemoryFusionService.bootAll.mockReset();
     mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.enqueueInterventionTimeout
@@ -369,6 +381,8 @@ describe('AgentTaskWorker', () => {
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
         { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockAgentTaskQueue },
+        { provide: MemoryToolsService, useValue: mockMemoryToolsService },
+        { provide: MemoryFusionService, useValue: mockMemoryFusionService },
       ],
     }).compile();
 
@@ -418,6 +432,117 @@ describe('AgentTaskWorker', () => {
         mockDb,
         TENANT_ID,
         expect.any(Function),
+      );
+    });
+
+    it('存在 memory session 时会在 createSession 前注入 boot prompt 并注册 session tools', async () => {
+      const input = { source: { text: 'hello' } };
+      const step = makeStep({
+        input,
+        nodeData: {
+          agentId: AGENT_ID,
+          systemPrompt: '原始系统提示',
+          autonomyMode: 'LLM_SUGGEST',
+          llmModelConfigId: 'model-config-001',
+        },
+      });
+      const toolProvider = vi.fn();
+
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockMemoryFusionService.bootAll.mockResolvedValue({
+        systemPrompt: 'memory-system-prompt',
+        boot: 'memory-boot',
+        index: [
+          {
+            domain: 'core',
+            pathString: 'profile/name',
+          },
+        ],
+        glossary: [{ keyword: 'fox', nodeId: 'node-1' }],
+      });
+      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(toolProvider);
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            workflowContext: {
+              memorySessionIds: ['memory-session-1'],
+            },
+          },
+        }),
+      );
+
+      expect(mockMemoryFusionService.bootAll).toHaveBeenCalledWith([
+        'memory-session-1',
+      ]);
+      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith({
+        agentId: AGENT_ID,
+        mode: 'workflow',
+        tenantId: TENANT_ID,
+        llmModelConfigId: 'model-config-001',
+        systemPrompt:
+          'memory-system-prompt\n\n## Memory Boot\nmemory-boot\n\n## Memory Index\n- core://profile/name\n\n## Memory Glossary\n- fox -> node:node-1\n\n原始系统提示',
+        autonomyMode: 'LLM_SUGGEST',
+        context: {
+          executionId: EXECUTION_ID,
+          hasSandbox: false,
+          input,
+          nodeId: 'node-1',
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          memorySessionIds: ['memory-session-1'],
+        },
+      });
+      expect(mockMemoryToolsService.createSessionToolProvider).toHaveBeenCalledWith(
+        ['memory-session-1'],
+      );
+      expect(mockAgentRuntime.registerSessionToolProvider).toHaveBeenCalledWith(
+        SESSION_ID,
+        toolProvider,
+      );
+    });
+
+    it('memory boot 加载失败时会降级为原始 systemPrompt', async () => {
+      const step = makeStep({
+        nodeData: {
+          agentId: AGENT_ID,
+          systemPrompt: '原始系统提示',
+          autonomyMode: 'LLM_SUGGEST',
+          llmModelConfigId: 'model-config-001',
+        },
+      });
+
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockMemoryFusionService.bootAll.mockRejectedValue(new Error('boot failed'));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            workflowContext: {
+              memorySessionIds: ['memory-session-1'],
+            },
+          },
+        }),
+      );
+
+      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: '原始系统提示',
+        }),
       );
     });
 

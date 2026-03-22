@@ -20,6 +20,9 @@ import { ThrottleService } from '../execution/services/throttle.service';
 import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { MemoryToolsService } from '../agent-memory/memory-tools.service';
+import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider';
+import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import {
   AGENT_CONVERSATION_EXECUTION_QUEUE,
   AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -52,6 +55,9 @@ const agentExecutionWorkerProvider: Provider = {
     eventBridge: EventBridgeService,
     sandboxService: SandboxService,
     agentDefinitionService: AgentDefinitionService,
+    memoryToolsService?: MemoryToolsService,
+    memoryFusionService?: MemoryFusionService,
+    memoryResourceProvider?: MemoryResourceProvider,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -61,6 +67,9 @@ const agentExecutionWorkerProvider: Provider = {
       eventBridge,
       sandboxService,
       agentDefinitionService,
+      memoryToolsService,
+      memoryFusionService,
+      memoryResourceProvider,
     ),
   inject: [
     DRIZZLE,
@@ -70,6 +79,9 @@ const agentExecutionWorkerProvider: Provider = {
     EventBridgeService,
     SandboxService,
     AgentDefinitionService,
+    { token: MemoryToolsService, optional: true },
+    { token: MemoryFusionService, optional: true },
+    { token: MemoryResourceProvider, optional: true },
   ],
 };
 

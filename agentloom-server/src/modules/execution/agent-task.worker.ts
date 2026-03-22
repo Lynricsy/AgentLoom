@@ -59,6 +59,9 @@ import { RoutingLearningProducer } from '../smart-routing/learning/routing-learn
 import { LlmProviderException } from '../llm/llm.exceptions';
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { clampAutonomyModeToCap } from '../agent/autonomy-mode-compat';
+import { MemoryToolsService } from '../agent-memory/memory-tools.service';
+import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
+import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -100,6 +103,10 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly circuitBreakerService: CircuitBreakerService,
     @Optional()
     private readonly routingLearningProducer: RoutingLearningProducer,
+    @Optional()
+    private readonly memoryToolsService?: MemoryToolsService,
+    @Optional()
+    private readonly memoryFusionService?: MemoryFusionService,
   ) {
     super();
     void throttleService;
@@ -164,6 +171,9 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       ...workflowContextExtras,
     };
+    const memorySessionIds = this.resolveMemorySessionIds(
+      workflowContextExtras.memorySessionIds,
+    );
     let sessionId = resumeSessionId;
     let accumulatedContent = '';
     let lastStopReason: string | undefined;
@@ -191,6 +201,11 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (toolPermission) {
         runtime.registerSessionMetadata?.(sessionId!, tenantId, stepId);
+        this.registerMemoryToolsProvider(
+          runtime,
+          sessionId,
+          memorySessionIds,
+        );
         const toolLoopState = this.loadToolLoopStateFromCheckpoint(step);
         accumulatedContent = toolLoopState.partialContent;
         decision = toolLoopState.decision;
@@ -242,6 +257,12 @@ export class AgentTaskWorker extends WorkerHost {
         });
 
         if (!sessionId) {
+          const systemPrompt = await this.resolveWorkflowSystemPrompt(
+            memorySessionIds,
+            typeof nodeData.systemPrompt === 'string'
+              ? nodeData.systemPrompt
+              : undefined,
+          );
           const session = await runtime.createSession({
             agentId: nodeData.agentId as string,
             mode: 'workflow',
@@ -250,10 +271,7 @@ export class AgentTaskWorker extends WorkerHost {
               typeof nodeData.llmModelConfigId === 'string'
                 ? nodeData.llmModelConfigId
                 : undefined,
-            systemPrompt:
-              typeof nodeData.systemPrompt === 'string'
-                ? nodeData.systemPrompt
-                : undefined,
+            systemPrompt,
             autonomyMode: effectiveAutonomyMode,
             mcpServers,
             context: workflowContext,
@@ -264,6 +282,8 @@ export class AgentTaskWorker extends WorkerHost {
             session: this.sessionPersistence.serializeSession(session),
           };
         }
+
+        this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
 
         const initialContentBlocks = this.buildContentBlocks(input);
         const loopResult = await this.executeMultiTurnLoop({
@@ -400,6 +420,7 @@ export class AgentTaskWorker extends WorkerHost {
         );
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
+      this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
 
       await this.reportSmartRoutingOutcome({
         tenantId,
@@ -655,6 +676,7 @@ export class AgentTaskWorker extends WorkerHost {
         );
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
+      this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
       throw finalError;
     }
   }
@@ -744,6 +766,11 @@ export class AgentTaskWorker extends WorkerHost {
       },
     );
     await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
+    this.cleanupMemoryToolsProvider(
+      this.agentRuntime,
+      typeof checkpointData.sessionId === 'string' ? checkpointData.sessionId : null,
+      [],
+    );
   }
 
   private resolveInterventionRecord(
@@ -814,6 +841,130 @@ export class AgentTaskWorker extends WorkerHost {
 
   private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
     return [{ type: 'text', text: JSON.stringify(input) }];
+  }
+
+  private resolveMemorySessionIds(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  private async resolveWorkflowSystemPrompt(
+    memorySessionIds: string[],
+    baseSystemPrompt?: string,
+  ): Promise<string | undefined> {
+    if (!memorySessionIds.length || !this.memoryFusionService) {
+      return baseSystemPrompt;
+    }
+
+    try {
+      const bootSequence = await this.memoryFusionService.bootAll(memorySessionIds);
+      const memoryPrompt = this.buildMemoryBootPrompt(bootSequence);
+      return this.prependSystemPrompt(memoryPrompt, baseSystemPrompt);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load memory boot context: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return baseSystemPrompt;
+    }
+  }
+
+  private buildMemoryBootPrompt(
+    bootSequence: MemoryBootSequenceResult,
+  ): string | undefined {
+    const sections = [bootSequence.systemPrompt.trim()];
+
+    if (typeof bootSequence.boot === 'string' && bootSequence.boot.trim()) {
+      sections.push(`## Memory Boot\n${bootSequence.boot.trim()}`);
+    }
+
+    const navigationSummary = this.buildMemoryNavigationSummary(bootSequence);
+    if (navigationSummary) {
+      sections.push(navigationSummary);
+    }
+
+    return sections.filter(Boolean).join('\n\n') || undefined;
+  }
+
+  private buildMemoryNavigationSummary(
+    bootSequence: MemoryBootSequenceResult,
+  ): string | undefined {
+    const sections: string[] = [];
+
+    if (bootSequence.index.length) {
+      sections.push(
+        ['## Memory Index', ...bootSequence.index.map((path) => `- ${path.domain}://${path.pathString}`)].join('\n'),
+      );
+    }
+
+    if (bootSequence.glossary.length) {
+      sections.push(
+        [
+          '## Memory Glossary',
+          ...bootSequence.glossary.map(
+            (entry) => `- ${entry.keyword} -> node:${entry.nodeId}`,
+          ),
+        ].join('\n'),
+      );
+    }
+
+    return sections.join('\n\n') || undefined;
+  }
+
+  private prependSystemPrompt(
+    memoryPrompt?: string,
+    baseSystemPrompt?: string,
+  ): string | undefined {
+    const sections = [memoryPrompt?.trim(), baseSystemPrompt?.trim()].filter(
+      (value): value is string => Boolean(value),
+    );
+
+    return sections.length ? sections.join('\n\n') : undefined;
+  }
+
+  private registerMemoryToolsProvider(
+    runtime: IAgentRuntime,
+    sessionId: string | null | undefined,
+    memorySessionIds: string[],
+  ): void {
+    if (
+      !sessionId ||
+      !memorySessionIds.length ||
+      !this.memoryToolsService ||
+      !runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    runtime.registerSessionToolProvider(
+      sessionId,
+      this.memoryToolsService.createSessionToolProvider(memorySessionIds),
+    );
+  }
+
+  private cleanupMemoryToolsProvider(
+    runtime: IAgentRuntime,
+    sessionId: string | null | undefined,
+    memorySessionIds: string[],
+  ): void {
+    if (
+      !sessionId ||
+      !memorySessionIds.length ||
+      !this.memoryToolsService ||
+      !runtime.unregisterSessionToolProvider
+    ) {
+      return;
+    }
+
+    try {
+      runtime.unregisterSessionToolProvider(sessionId);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to unregister memory tool provider: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private resolveSessionMcpServers(

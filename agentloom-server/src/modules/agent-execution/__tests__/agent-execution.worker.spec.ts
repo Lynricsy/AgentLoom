@@ -9,12 +9,17 @@ const {
   mockEventBridge,
   mockSandboxService,
   mockAgentDefinitionService,
+  mockMemoryToolsService,
+  mockMemoryFusionService,
+  mockMemoryResourceProvider,
 } = vi.hoisted(() => ({
   mockRuntime: {
     prompt: vi.fn(),
     cancel: vi.fn(),
     createSession: vi.fn(),
     loadSession: vi.fn(),
+    registerSessionToolProvider: vi.fn(),
+    unregisterSessionToolProvider: vi.fn(),
   },
   mockAdapterFactory: {
     selectAdapter: vi.fn(),
@@ -36,6 +41,16 @@ const {
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
     buildRuntimeConfigFromNodes: vi.fn(),
+  },
+  mockMemoryToolsService: {
+    createSessionToolProvider: vi.fn(),
+  },
+  mockMemoryFusionService: {
+    bootAll: vi.fn(),
+  },
+  mockMemoryResourceProvider: {
+    create: vi.fn(),
+    destroy: vi.fn(),
   },
 }));
 
@@ -158,6 +173,10 @@ describe('AgentExecutionWorker', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockAdapterFactory.selectAdapter.mockReturnValue(mockRuntime);
+    mockMemoryToolsService.createSessionToolProvider.mockReset();
+    mockMemoryFusionService.bootAll.mockReset();
+    mockMemoryResourceProvider.create.mockReset();
+    mockMemoryResourceProvider.destroy.mockReset();
 
     worker = new AgentExecutionWorker(
       {} as never,
@@ -167,6 +186,9 @@ describe('AgentExecutionWorker', () => {
       mockEventBridge as never,
       mockSandboxService as never,
       mockAgentDefinitionService as never,
+      mockMemoryToolsService as never,
+      mockMemoryFusionService as never,
+      mockMemoryResourceProvider as never,
     );
     workerInternals = worker as unknown as WorkerInternals;
   });
@@ -461,6 +483,95 @@ describe('AgentExecutionWorker', () => {
         'c-1',
         't-1',
       );
+    });
+  });
+
+  describe('prepareRuntimeSession() — memory integration', () => {
+    it('会创建对话 memory sessions、prepend boot prompt 并注册 session tools', async () => {
+      const toolProvider = vi.fn();
+      const runtimeSessionWorker = worker as unknown as {
+        prepareRuntimeSession: (
+          context: Record<string, unknown>,
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{
+          runtime: typeof mockRuntime;
+          session: ReturnType<typeof makeSession>;
+          memorySessionIds: string[];
+        }>;
+      };
+
+      mockMemoryResourceProvider.create
+        .mockResolvedValueOnce({
+          sessionId: 'memory-session-1',
+          session: { id: 'memory-session-1' },
+          memoryInstanceId: 'memory-instance-1',
+          tenantId: 'tenant-1',
+        })
+        .mockResolvedValueOnce({
+          sessionId: 'memory-session-2',
+          session: { id: 'memory-session-2' },
+          memoryInstanceId: 'memory-instance-2',
+          tenantId: 'tenant-1',
+        });
+      mockMemoryFusionService.bootAll.mockResolvedValue({
+        systemPrompt: 'memory-system-prompt',
+        boot: 'memory-boot',
+        index: [{ domain: 'core', pathString: 'profile/name' }],
+        glossary: [{ keyword: 'fox', nodeId: 'node-1' }],
+      });
+      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(toolProvider);
+      mockRuntime.createSession.mockResolvedValue(makeSession());
+
+      const result = await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          systemPrompt: 'agent-system-prompt',
+          memoryInstanceIds: ['memory-instance-1', 'memory-instance-2'],
+          runtimeConfig: { modelConfig: { modelId: 'model-1' } },
+        }),
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(mockMemoryResourceProvider.create).toHaveBeenNthCalledWith(1, {
+        memoryInstanceId: 'memory-instance-1',
+        role: 'primary',
+        bootUris: ['system://boot', 'system://index', 'system://glossary'],
+        fusionPriority: 1,
+        tenantId: 'tenant-1',
+        agentConversationId: 'conversation-1',
+      });
+      expect(mockMemoryResourceProvider.create).toHaveBeenNthCalledWith(2, {
+        memoryInstanceId: 'memory-instance-2',
+        role: 'readonly',
+        bootUris: ['system://boot', 'system://index', 'system://glossary'],
+        fusionPriority: 2,
+        tenantId: 'tenant-1',
+        agentConversationId: 'conversation-1',
+      });
+      expect(mockRuntime.createSession).toHaveBeenCalledWith({
+        agentId: 'agent-1',
+        mode: 'conversation',
+        tenantId: 'tenant-1',
+        llmModelConfigId: 'model-1',
+        systemPrompt:
+          'memory-system-prompt\n\n## Memory Boot\nmemory-boot\n\n## Memory Index\n- core://profile/name\n\n## Memory Glossary\n- fox -> node:node-1\n\nagent-system-prompt',
+        serverSandbox: { agentConversationId: 'conversation-1' },
+        context: {
+          tenantId: 'tenant-1',
+          agentConversationId: 'conversation-1',
+          serverSandbox: { agentConversationId: 'conversation-1' },
+          memorySessionIds: ['memory-session-1', 'memory-session-2'],
+        },
+      });
+      expect(mockRuntime.registerSessionToolProvider).toHaveBeenCalledWith(
+        'session-1',
+        toolProvider,
+      );
+      expect(result.memorySessionIds).toEqual([
+        'memory-session-1',
+        'memory-session-2',
+      ]);
     });
   });
 

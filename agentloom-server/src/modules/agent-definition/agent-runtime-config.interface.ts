@@ -50,4 +50,5 @@ export interface AgentRuntimeConfig {
   inputPreprocessors?: AgentInputPreprocessor[];
   sandboxConfig?: SandboxConfig;
   routingConfig?: AgentRoutingConfig;
+  memoryInstanceIds?: string[];
 }

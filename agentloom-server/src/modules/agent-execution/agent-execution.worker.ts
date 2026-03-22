@@ -8,7 +8,7 @@ import type { Job } from 'bullmq';
 import { and, asc, eq } from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
-import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import type { DrizzleDB } from '../../database/database.module';
 import {
   agentConversations,
   agentMessages,
@@ -18,9 +18,10 @@ import {
   agentVersions,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
-import { AgentAdapterFactory, AGENT_RUNTIME_FACTORY } from '../agent/agent-adapter.factory';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../agent/ports/agent-runtime.port';
-import type { AgentEvent, DecisionEvent, StopReason } from '../agent/types/agent-event.types';
+import { memorySessions, type MemorySession } from '../../database/schema';
+import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
+import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
+import type { DecisionEvent, StopReason } from '../agent/types/agent-event.types';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import type {
   ContentBlock,
@@ -31,6 +32,10 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { MemoryToolsService } from '../agent-memory/memory-tools.service';
+import { MemoryResourceProvider, type MemoryResourceInstance } from '../agent-memory/memory-resource.provider';
+import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
+import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import {
   AGENT_CONVERSATION_EXECUTION_JOB,
   AGENT_CONVERSATION_EXECUTION_QUEUE,
@@ -41,6 +46,7 @@ import {
 
 type ConversationExecutionMetadata = {
   sessionId?: string;
+  memorySessionIds?: string[];
   lastProcessedMessageId?: string;
   lastAssistantMessageId?: string;
   lastStopReason?: StopReason;
@@ -58,6 +64,7 @@ type ConversationExecutionContext = {
   runtimeConfig: AgentRuntimeConfig;
   systemPrompt?: string;
   hasSandbox: boolean;
+  memoryInstanceIds: string[];
   executionMetadata: ConversationExecutionMetadata;
 };
 
@@ -70,7 +77,14 @@ type PendingMessage = {
 type RuntimeSessionContext = {
   runtime: IAgentRuntime;
   session: AgentSession;
+  memorySessionIds: string[];
 };
+
+const DEFAULT_MEMORY_BOOT_URIS = [
+  'system://boot',
+  'system://index',
+  'system://glossary',
+];
 
 type ConversationTurnResult = {
   assistantText: string;
@@ -93,6 +107,9 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly eventBridge: EventBridgeService,
     private readonly sandboxService: SandboxService,
     private readonly agentDefinitionService: AgentDefinitionService,
+    private readonly memoryToolsService?: MemoryToolsService,
+    private readonly memoryFusionService?: MemoryFusionService,
+    private readonly memoryResourceProvider?: MemoryResourceProvider,
   ) {
     super();
   }
@@ -136,6 +153,8 @@ export class AgentExecutionWorker extends WorkerHost {
     let executionMetadata: ConversationExecutionMetadata = {};
     let conversationMetadata: Record<string, unknown> = {};
     let terminalStatus: 'completed' | 'cancelled' | 'failed' = 'completed';
+    let conversationStatus: 'active' | 'paused' | 'ended' | 'failed' = 'active';
+    let memorySessionIds: string[] = [];
 
     try {
       const context = await this.loadConversationExecutionContext(
@@ -147,18 +166,24 @@ export class AgentExecutionWorker extends WorkerHost {
         return;
       }
 
+      executionMetadata = context.executionMetadata;
+      conversationMetadata = context.conversation.metadata;
+      conversationStatus = context.conversation.status;
+
       if (context.conversation.status !== 'active') {
         terminalStatus = context.conversation.status === 'failed' ? 'failed' : 'cancelled';
+        await this.cleanupConversationMemorySessions(tenantId, executionMetadata.memorySessionIds);
         return;
       }
 
-      executionMetadata = context.executionMetadata;
-      conversationMetadata = context.conversation.metadata;
-      ({ runtime, session } = await this.prepareRuntimeSession(
+      const runtimeSessionContext = await this.prepareRuntimeSession(
         context,
         conversationId,
         tenantId,
-      ));
+      );
+      runtime = runtimeSessionContext.runtime;
+      session = runtimeSessionContext.session;
+      memorySessionIds = runtimeSessionContext.memorySessionIds ?? [];
 
       const cancelRuntime = async () => {
         if (!runtime || !session) {
@@ -184,6 +209,7 @@ export class AgentExecutionWorker extends WorkerHost {
         conversationMetadata,
         {
           sessionId: session.id,
+          ...(memorySessionIds.length ? { memorySessionIds } : {}),
           runningState: 'running',
         },
       );
@@ -257,6 +283,13 @@ export class AgentExecutionWorker extends WorkerHost {
         runningState: terminalStatus,
       });
 
+      if (terminalStatus === 'failed') {
+        await this.cleanupConversationMemorySessions(
+          tenantId,
+          executionMetadata.memorySessionIds ?? memorySessionIds,
+        );
+      }
+
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
         executionId: conversationId,
         status: terminalStatus,
@@ -277,6 +310,13 @@ export class AgentExecutionWorker extends WorkerHost {
       ...executionMetadata,
       runningState: terminalStatus === 'completed' ? 'idle' : terminalStatus,
     });
+
+    if (conversationStatus !== 'active') {
+      await this.cleanupConversationMemorySessions(
+        tenantId,
+        executionMetadata.memorySessionIds ?? memorySessionIds,
+      );
+    }
 
     this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
       executionId: conversationId,
@@ -311,6 +351,7 @@ export class AgentExecutionWorker extends WorkerHost {
           publishedVersionId: agentDefinitions.publishedVersionId,
           systemPrompt: agentDefinitions.systemPrompt,
           sandboxConfig: agentDefinitions.sandboxConfig,
+          metadata: agentDefinitions.metadata,
         })
         .from(agentDefinitions)
         .where(eq(agentDefinitions.id, conversation.agentDefinitionId))
@@ -354,11 +395,18 @@ export class AgentExecutionWorker extends WorkerHost {
           runtimeConfig.sandboxConfig ?? definition.sandboxConfig ?? undefined;
       }
 
+      const memoryInstanceIds = this.resolveDefaultMemoryInstanceIds(
+        definition.metadata,
+        snapshot?.metadata,
+      );
+      runtimeConfig.memoryInstanceIds = memoryInstanceIds;
+
       return {
         conversation,
         runtimeConfig,
         systemPrompt,
         hasSandbox: Boolean(runtimeConfig.sandboxConfig),
+        memoryInstanceIds,
         executionMetadata: this.readExecutionMetadata(conversation.metadata),
       };
     });
@@ -372,6 +420,11 @@ export class AgentExecutionWorker extends WorkerHost {
     const runtime = context.hasSandbox
       ? this.adapterFactory.selectAdapter(true)
       : this.agentRuntime;
+    const memorySessionIds = await this.ensureConversationMemorySessions(
+      context,
+      conversationId,
+      tenantId,
+    );
 
     if (context.runtimeConfig.sandboxConfig) {
       await this.sandboxService.createSandboxSession({
@@ -386,7 +439,8 @@ export class AgentExecutionWorker extends WorkerHost {
     if (sessionId) {
       try {
         const session = await runtime.loadSession(sessionId);
-        return { runtime, session };
+        this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+        return { runtime, session, memorySessionIds };
       } catch (error) {
         this.logger.debug(
           `Failed to resume conversation session ${sessionId}, creating a new one: ${error instanceof Error ? error.message : String(error)}`,
@@ -394,21 +448,29 @@ export class AgentExecutionWorker extends WorkerHost {
       }
     }
 
+    const systemPrompt = await this.resolveConversationSystemPrompt(
+      memorySessionIds,
+      context.systemPrompt,
+    );
+
     const session = await runtime.createSession({
       agentId: context.conversation.agentDefinitionId,
       mode: 'conversation',
       tenantId,
       llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
-      systemPrompt: context.systemPrompt,
+      systemPrompt,
       serverSandbox: { agentConversationId: conversationId },
       context: {
         tenantId,
         agentConversationId: conversationId,
         serverSandbox: { agentConversationId: conversationId },
+        ...(memorySessionIds.length ? { memorySessionIds } : {}),
       },
     });
 
-    return { runtime, session };
+    this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+
+    return { runtime, session, memorySessionIds };
   }
 
   private async loadPendingUserMessages(
@@ -707,7 +769,38 @@ export class AgentExecutionWorker extends WorkerHost {
       return {};
     }
 
-    return execution as ConversationExecutionMetadata;
+    const executionRecord = execution as Record<string, unknown>;
+
+    return {
+      ...(typeof executionRecord.sessionId === 'string'
+        ? { sessionId: executionRecord.sessionId }
+        : {}),
+      ...(Array.isArray(executionRecord.memorySessionIds)
+        ? {
+            memorySessionIds: executionRecord.memorySessionIds.filter(
+              (value): value is string => typeof value === 'string',
+            ),
+          }
+        : {}),
+      ...(typeof executionRecord.lastProcessedMessageId === 'string'
+        ? { lastProcessedMessageId: executionRecord.lastProcessedMessageId }
+        : {}),
+      ...(typeof executionRecord.lastAssistantMessageId === 'string'
+        ? { lastAssistantMessageId: executionRecord.lastAssistantMessageId }
+        : {}),
+      ...(typeof executionRecord.lastStopReason === 'string'
+        ? { lastStopReason: executionRecord.lastStopReason as StopReason }
+        : {}),
+      ...(typeof executionRecord.runningState === 'string'
+        ? {
+            runningState: executionRecord.runningState as
+              | 'idle'
+              | 'running'
+              | 'failed'
+              | 'cancelled',
+          }
+        : {}),
+    };
   }
 
   private mergeExecutionMetadata(
@@ -724,6 +817,195 @@ export class AgentExecutionWorker extends WorkerHost {
       ...(patch.lastAssistantMessageId === undefined
         ? {}
         : { lastAssistantMessageId: patch.lastAssistantMessageId }),
+      ...(patch.memorySessionIds === undefined
+        ? {}
+        : { memorySessionIds: patch.memorySessionIds }),
+    };
+  }
+
+  private resolveDefaultMemoryInstanceIds(
+    definitionMetadata: Record<string, unknown>,
+    snapshotMetadata?: Record<string, unknown>,
+  ): string[] {
+    const snapshotMemoryInstanceIds = this.extractStringArray(
+      snapshotMetadata?.memoryInstanceIds,
+    );
+
+    if (snapshotMemoryInstanceIds.length) {
+      return snapshotMemoryInstanceIds;
+    }
+
+    return this.extractStringArray(definitionMetadata['memoryInstanceIds']);
+  }
+
+  private extractStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  private async ensureConversationMemorySessions(
+    context: ConversationExecutionContext,
+    conversationId: string,
+    tenantId: string,
+  ): Promise<string[]> {
+    const existingSessionIds = context.executionMetadata.memorySessionIds ?? [];
+    if (existingSessionIds.length || !context.memoryInstanceIds.length) {
+      return existingSessionIds;
+    }
+
+    if (!this.memoryResourceProvider) {
+      return [];
+    }
+
+    const createdSessions: string[] = [];
+    for (const [index, memoryInstanceId] of context.memoryInstanceIds.entries()) {
+      const instance = await this.memoryResourceProvider.create({
+        memoryInstanceId,
+        role: index === 0 ? 'primary' : 'readonly',
+        bootUris: DEFAULT_MEMORY_BOOT_URIS,
+        fusionPriority: index + 1,
+        tenantId,
+        agentConversationId: conversationId,
+      });
+      createdSessions.push(instance.sessionId);
+    }
+
+    return createdSessions;
+  }
+
+  private async resolveConversationSystemPrompt(
+    memorySessionIds: string[],
+    baseSystemPrompt?: string,
+  ): Promise<string | undefined> {
+    if (!memorySessionIds.length || !this.memoryFusionService) {
+      return baseSystemPrompt;
+    }
+
+    try {
+      const bootSequence = await this.memoryFusionService.bootAll(memorySessionIds);
+      const memoryPrompt = this.buildMemoryBootPrompt(bootSequence);
+      return this.prependSystemPrompt(memoryPrompt, baseSystemPrompt);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load conversation memory boot context: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return baseSystemPrompt;
+    }
+  }
+
+  private buildMemoryBootPrompt(
+    bootSequence: MemoryBootSequenceResult,
+  ): string | undefined {
+    const sections = [bootSequence.systemPrompt.trim()];
+
+    if (typeof bootSequence.boot === 'string' && bootSequence.boot.trim()) {
+      sections.push(`## Memory Boot\n${bootSequence.boot.trim()}`);
+    }
+
+    const navigationSummary = this.buildMemoryNavigationSummary(bootSequence);
+    if (navigationSummary) {
+      sections.push(navigationSummary);
+    }
+
+    return sections.filter(Boolean).join('\n\n') || undefined;
+  }
+
+  private buildMemoryNavigationSummary(
+    bootSequence: MemoryBootSequenceResult,
+  ): string | undefined {
+    const sections: string[] = [];
+
+    if (bootSequence.index.length) {
+      sections.push(
+        ['## Memory Index', ...bootSequence.index.map((path) => `- ${path.domain}://${path.pathString}`)].join('\n'),
+      );
+    }
+
+    if (bootSequence.glossary.length) {
+      sections.push(
+        [
+          '## Memory Glossary',
+          ...bootSequence.glossary.map(
+            (entry) => `- ${entry.keyword} -> node:${entry.nodeId}`,
+          ),
+        ].join('\n'),
+      );
+    }
+
+    return sections.join('\n\n') || undefined;
+  }
+
+  private prependSystemPrompt(
+    memoryPrompt?: string,
+    baseSystemPrompt?: string,
+  ): string | undefined {
+    const sections = [memoryPrompt?.trim(), baseSystemPrompt?.trim()].filter(
+      (value): value is string => Boolean(value),
+    );
+
+    return sections.length ? sections.join('\n\n') : undefined;
+  }
+
+  private registerMemoryToolsProvider(
+    runtime: IAgentRuntime,
+    sessionId: string,
+    memorySessionIds: string[],
+  ): void {
+    if (
+      !memorySessionIds.length ||
+      !this.memoryToolsService ||
+      !runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    runtime.registerSessionToolProvider(
+      sessionId,
+      this.memoryToolsService.createSessionToolProvider(memorySessionIds),
+    );
+  }
+
+  private async cleanupConversationMemorySessions(
+    tenantId: string,
+    memorySessionIds: string[] | undefined,
+  ): Promise<void> {
+    if (!memorySessionIds?.length || !this.memoryResourceProvider) {
+      return;
+    }
+
+    try {
+      const sessions = await runInTenantTransaction(this.db, tenantId, async (dbClient) =>
+        dbClient
+          .select()
+          .from(memorySessions)
+          .where(and(eq(memorySessions.tenantId, tenantId))),
+      );
+      const instances = sessions
+        .filter((session) => memorySessionIds.includes(session.id))
+        .map((session) => this.toMemoryResourceInstance(session, tenantId));
+
+      for (const instance of instances) {
+        await this.memoryResourceProvider.destroy(instance);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to cleanup conversation memory sessions: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private toMemoryResourceInstance(
+    session: MemorySession,
+    tenantId: string,
+  ): MemoryResourceInstance {
+    return {
+      sessionId: session.id,
+      session,
+      memoryInstanceId: session.memoryInstanceId,
+      tenantId,
     };
   }
 
