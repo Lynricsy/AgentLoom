@@ -6,6 +6,8 @@ import { DRIZZLE } from '../../../database/database.module';
 import { executionSteps } from '../../../database/schema/execution-steps.schema';
 import { routingDecisions } from '../../../database/schema/routing-decisions.schema';
 import { LlmService } from '../../llm/llm.service';
+import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
+import { RouterRegistry } from '../core/router-registry';
 import type { QueryRoutingDecisionsDto } from '../dto/query-routing-decisions.dto';
 import {
   type RoutingContext,
@@ -13,6 +15,7 @@ import {
   type RoutingDecisionResult,
   type RoutingStrategy,
 } from '../dto/routing-context.dto';
+import { EmbeddingIntegrationService } from '../embedding/embedding.service';
 import {
   InsufficientModelsException,
   InvalidRoutingStrategyException,
@@ -22,7 +25,10 @@ import { SmartRoutingService } from '../smart-routing.service';
 const {
   createInsertChain,
   createMockDb,
+  createMockCircuitBreakerService,
+  createMockEmbeddingService,
   createMockLlmService,
+  createMockRouterRegistry,
   createSelectChain,
   mockModelConfigs,
 } = vi.hoisted(() => {
@@ -49,9 +55,15 @@ const {
   }
 
   function createInsertChain() {
-    return {
-      values: vi.fn().mockResolvedValue(undefined),
+    const chain = {
+      values: vi.fn(),
+      returning: vi.fn(),
     };
+
+    chain.values.mockReturnValue(chain);
+    chain.returning.mockResolvedValue([{ id: 'routing-decision-1' }]);
+
+    return chain;
   }
 
   return {
@@ -61,9 +73,12 @@ const {
       select: vi.fn(),
       insert: vi.fn(),
     }),
+    createMockCircuitBreakerService: () => ({}),
+    createMockEmbeddingService: () => ({}),
     createMockLlmService: () => ({
       findByIds: vi.fn(),
     }),
+    createMockRouterRegistry: () => ({}),
     mockModelConfigs: [
       { id: 'model-1', modelName: 'gpt-4o', provider: 'openai' },
       {
@@ -90,6 +105,7 @@ function createRoutingDecisionRecord(
   overrides: Partial<RoutingDecisionRecord> = {},
 ): RoutingDecisionRecord {
   return {
+    ...overrides,
     id: '00000000-0000-0000-0000-000000000100',
     executionStepId: EXECUTION_ID,
     tenantId: TENANT_ID,
@@ -108,7 +124,7 @@ function createRoutingDecisionRecord(
     decisionReasoning: '选择了 claude-sonnet-4-20250514',
     routingLatencyMs: 12,
     createdAt: NOW,
-    ...overrides,
+    routerType: overrides.routerType ?? null,
   };
 }
 
@@ -116,7 +132,28 @@ describe('SmartRoutingService', () => {
   let module: TestingModule;
   let service: SmartRoutingService;
   let db: ReturnType<typeof createMockDb>;
+  let mockCircuitBreakerService: ReturnType<typeof createMockCircuitBreakerService>;
+  let mockEmbeddingService: ReturnType<typeof createMockEmbeddingService>;
   let mockLlmService: ReturnType<typeof createMockLlmService>;
+  let mockRouterRegistry: ReturnType<typeof createMockRouterRegistry>;
+
+  type LegacyEvaluateFn = (
+    modelConfigIds: string[],
+    context: RoutingContext,
+    strategy: RoutingStrategy,
+    tenantId: string,
+  ) => Promise<RoutingDecisionResult>;
+
+  const callLegacyEvaluate: LegacyEvaluateFn = (
+    modelConfigIds: string[],
+    context: RoutingContext,
+    strategy: RoutingStrategy,
+    tenantId: string,
+  ) => {
+    const legacyEvaluate = Reflect.get(service as object, 'evaluate') as LegacyEvaluateFn;
+
+    return legacyEvaluate.call(service, modelConfigIds, context, strategy, tenantId);
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -125,13 +162,25 @@ describe('SmartRoutingService', () => {
     vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
 
     db = createMockDb();
+    mockCircuitBreakerService = createMockCircuitBreakerService();
+    mockEmbeddingService = createMockEmbeddingService();
     mockLlmService = createMockLlmService();
+    mockRouterRegistry = createMockRouterRegistry();
 
     module = await Test.createTestingModule({
       providers: [
         SmartRoutingService,
         { provide: DRIZZLE, useValue: db },
         { provide: LlmService, useValue: mockLlmService },
+        { provide: RouterRegistry, useValue: mockRouterRegistry },
+        {
+          provide: CircuitBreakerService,
+          useValue: mockCircuitBreakerService,
+        },
+        {
+          provide: EmbeddingIntegrationService,
+          useValue: mockEmbeddingService,
+        },
       ],
     }).compile();
 
@@ -147,7 +196,7 @@ describe('SmartRoutingService', () => {
   describe('evaluate', () => {
     it('对未知策略抛出 InvalidRoutingStrategyException', async () => {
       await expect(
-        service.evaluate(
+        callLegacyEvaluate(
           ['model-1', 'model-2'],
           { inputTokenCount: 1_000 },
           'UNKNOWN_STRATEGY' as RoutingStrategy,
@@ -160,7 +209,7 @@ describe('SmartRoutingService', () => {
 
     it('在模型配置少于 2 个时抛出 InsufficientModelsException', async () => {
       await expect(
-        service.evaluate(
+        callLegacyEvaluate(
           ['model-1'],
           { inputTokenCount: 1_000 },
           'QUALITY_FIRST',
@@ -175,7 +224,7 @@ describe('SmartRoutingService', () => {
       mockLlmService.findByIds.mockResolvedValue([mockModelConfigs[0]]);
 
       await expect(
-        service.evaluate(
+        callLegacyEvaluate(
           ['model-1', 'model-2'],
           { inputTokenCount: 1_000 },
           'QUALITY_FIRST',
@@ -253,7 +302,7 @@ describe('SmartRoutingService', () => {
     }) => {
       mockLlmService.findByIds.mockResolvedValue(mockModelConfigs);
 
-      const result = await service.evaluate(
+      const result = await callLegacyEvaluate(
         mockModelConfigs.map((config) => config.id),
         context,
         strategy,
@@ -284,7 +333,7 @@ describe('SmartRoutingService', () => {
         mockModelConfigs[1],
       ]);
 
-      const result = await service.evaluate(
+      const result = await callLegacyEvaluate(
         ['model-2', 'model-1', 'model-3'],
         { inputTokenCount: 1_000 },
         'FALLBACK_CHAIN',
@@ -398,7 +447,7 @@ describe('SmartRoutingService', () => {
   });
 
   describe('recordDecision', () => {
-    it('应当向 routingDecisions 表插入正确的基础字段', async () => {
+    it('应当向 routingDecisions 表插入正确的基础字段并返回决策 id', async () => {
       const insertChain = createInsertChain();
       db.insert.mockReturnValueOnce(insertChain);
 
@@ -418,7 +467,12 @@ describe('SmartRoutingService', () => {
         latencyMs: 12,
       };
 
-      await service.recordDecision('step-1', TENANT_ID, 'routing-node-1', decision);
+      const routingDecisionId = await service.recordDecision(
+        'step-1',
+        TENANT_ID,
+        'routing-node-1',
+        decision,
+      );
 
       expect(db.insert).toHaveBeenCalledWith(routingDecisions);
       expect(insertChain.values).toHaveBeenCalledWith(
@@ -430,13 +484,17 @@ describe('SmartRoutingService', () => {
           selectedModelId: 'model-2',
         }),
       );
+      expect(insertChain.returning).toHaveBeenCalledWith({
+        id: routingDecisions.id,
+      });
+      expect(routingDecisionId).toBe('routing-decision-1');
     });
 
-    it('应当完整透传 RoutingDecisionResult 中的所有字段', async () => {
+    it('应当完整透传路由决策字段并持久化 routerType', async () => {
       const insertChain = createInsertChain();
       db.insert.mockReturnValueOnce(insertChain);
 
-      const decision: RoutingDecisionResult = {
+      const decision = {
         selectedModelId: 'model-3',
         strategy: 'COST_OPTIMIZED',
         reasoning: '选择了 gemini-1.5-pro',
@@ -457,6 +515,7 @@ describe('SmartRoutingService', () => {
           },
         ],
         latencyMs: 7,
+        routerType: 'round_robin',
       };
 
       await service.recordDecision('step-2', TENANT_ID, 'routing-node-2', decision);
@@ -485,6 +544,7 @@ describe('SmartRoutingService', () => {
         selectedModelId: 'model-3',
         decisionReasoning: '选择了 gemini-1.5-pro',
         routingLatencyMs: 7,
+        routerType: 'round_robin',
       });
     });
   });

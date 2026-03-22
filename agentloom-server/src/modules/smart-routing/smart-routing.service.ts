@@ -8,6 +8,8 @@ import { executionSteps } from '../../database/schema/execution-steps.schema';
 import { routingDecisions } from '../../database/schema/routing-decisions.schema';
 import { LlmService } from '../llm/llm.service';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
+import { RouterRegistry } from './core/router-registry';
+import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 import {
   tokenOptimized,
   costOptimized,
@@ -17,6 +19,7 @@ import {
   fallbackChain,
 } from './strategies';
 import type { StrategyFn, ModelCandidate } from './strategies';
+import { EmbeddingIntegrationService } from './embedding/embedding.service';
 import type {
   RoutingStrategy,
   RoutingContext,
@@ -38,6 +41,21 @@ const STRATEGY_REGISTRY: Record<RoutingStrategy, StrategyFn> = {
   FALLBACK_CHAIN: fallbackChain,
 };
 
+interface PersistedRoutingDecision {
+  selectedModelId: string | null;
+  strategy: string;
+  reasoning: string;
+  evaluatedModels: Array<{
+    modelId: string;
+    modelName: string;
+    provider: string;
+    score: number;
+    reasoning: string;
+  }>;
+  latencyMs: number;
+  routerType?: string;
+}
+
 @Injectable()
 export class SmartRoutingService {
   private readonly logger = new Logger(SmartRoutingService.name);
@@ -45,7 +63,14 @@ export class SmartRoutingService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly llmService: LlmService,
-  ) {}
+    private readonly routerRegistry: RouterRegistry,
+    private readonly circuitBreakerService: CircuitBreakerService,
+    private readonly embeddingService: EmbeddingIntegrationService,
+  ) {
+    void this.routerRegistry;
+    void this.circuitBreakerService;
+    void this.embeddingService;
+  }
 
   private get tenantDb() {
     return getTenantDb(this.db);
@@ -61,6 +86,12 @@ export class SmartRoutingService {
     }
 
     return and(...conditions);
+  }
+
+  private touchNewRoutingDependencies(): void {
+    void this.routerRegistry;
+    void this.circuitBreakerService;
+    void this.embeddingService;
   }
 
   private isTerminalStepStatus(status: string): boolean {
@@ -290,12 +321,17 @@ export class SmartRoutingService {
     );
   }
 
+  /**
+   * @deprecated 已由 RouterRegistry + BaseRouterStrategy 路径取代，仅保留给旧调用方兼容使用。
+   */
   async evaluate(
     modelConfigIds: string[],
     context: RoutingContext,
     strategy: RoutingStrategy,
     tenantId: string,
   ): Promise<RoutingDecisionResult> {
+    this.touchNewRoutingDependencies();
+
     if (!ROUTING_STRATEGIES.includes(strategy)) {
       throw new InvalidRoutingStrategyException(strategy);
     }
@@ -350,9 +386,13 @@ export class SmartRoutingService {
     executionStepId: string,
     tenantId: string,
     routingNodeId: string,
-    decision: RoutingDecisionResult,
-  ): Promise<void> {
-    await this.tenantDb.insert(routingDecisions).values({
+    decision: PersistedRoutingDecision,
+  ): Promise<string> {
+    this.touchNewRoutingDependencies();
+
+    const [inserted] = await this.tenantDb
+      .insert(routingDecisions)
+      .values({
       executionStepId,
       tenantId,
       routingNodeId,
@@ -367,7 +407,11 @@ export class SmartRoutingService {
       selectedModelId: decision.selectedModelId,
       decisionReasoning: decision.reasoning,
       routingLatencyMs: decision.latencyMs,
-    });
+        routerType: decision.routerType ?? null,
+      })
+      .returning({ id: routingDecisions.id });
+
+    return inserted.id;
   }
 
   async findByExecution(

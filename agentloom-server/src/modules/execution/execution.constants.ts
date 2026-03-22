@@ -49,11 +49,15 @@ export interface ToolPermissionResolution {
 export interface SmartRoutingRuntimeContext {
   routingStepId: string;
   routingNodeId: string;
-  strategy: RoutingStrategy;
+  strategy: RoutingStrategy | string;
   candidateModelIds: string[];
   currentModelIndex: number;
   selectedModelId: string;
   evaluatedModels?: RoutingDecisionResult['evaluatedModels'];
+  routerType?: string;
+  routingDecisionId?: string;
+  queryText?: string;
+  taskCategory?: string;
 }
 
 /**

@@ -36,7 +36,6 @@ import {
 } from './execution.exceptions';
 import type {
   InterventionCheckpointRecord,
-  InterventionDecision,
   InterventionRequiredPayload,
 } from './types/execution-event.types';
 import type {
@@ -55,6 +54,8 @@ import {
 } from './execution.constants';
 import { AllModelsFallbackExhaustedException } from '../smart-routing/smart-routing.exceptions';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import { CircuitBreakerService } from '../smart-routing/circuit-breaker/circuit-breaker.service';
+import { RoutingLearningProducer } from '../smart-routing/learning/routing-learning.producer';
 import { LlmProviderException } from '../llm/llm.exceptions';
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { clampAutonomyModeToCap } from '../agent/autonomy-mode-compat';
@@ -84,7 +85,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly adapterFactory: IAgentAdapterFactory,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly nodeScheduler: NodeSchedulerService,
-    private readonly throttleService: ThrottleService,
+    throttleService: ThrottleService,
     private readonly eventBridge: EventBridgeService,
     private readonly toolCallStateMachine: ToolCallStateMachineService,
     private readonly sessionPersistence: SessionPersistenceService,
@@ -92,11 +93,14 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly notificationService: NotificationService,
     private readonly llmEncryptionService: LlmEncryptionService,
     private readonly smartRoutingService: SmartRoutingService,
+    private readonly circuitBreakerService: CircuitBreakerService,
+    private readonly routingLearningProducer: RoutingLearningProducer,
     private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
   ) {
     super();
+    void throttleService;
   }
 
   private get tenantDb(): DrizzleDB {
@@ -167,6 +171,7 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       nodeData,
     );
+    const llmCallStartedAt = Date.now();
 
     try {
       if (intervention) {
@@ -394,6 +399,16 @@ export class AgentTaskWorker extends WorkerHost {
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
 
+      await this.reportSmartRoutingOutcome({
+        tenantId,
+        stepId,
+        nodeData,
+        smartRouting: job.data.smartRouting,
+        success: true,
+        latencyMs: Date.now() - llmCallStartedAt,
+        tokenCount: this.estimateTokenCount(accumulatedContent),
+      });
+
       this.logger.log(
         `Agent task completed: ${JSON.stringify({ executionId, stepId })}`,
       );
@@ -429,6 +444,18 @@ export class AgentTaskWorker extends WorkerHost {
       const shouldRetry = this.shouldRetry(job);
       const smartRouting = job.data.smartRouting;
       const authenticationFailed = this.isAuthenticationFailure(err);
+
+      await this.reportSmartRoutingOutcome({
+        tenantId,
+        stepId,
+        nodeData,
+        smartRouting,
+        success: false,
+        latencyMs: Date.now() - llmCallStartedAt,
+        tokenCount: this.estimateTokenCount(finalAccumulatedContent),
+        error: err,
+      });
+
       const nextSmartRouting =
         !shouldRetry && !authenticationFailed
           ? this.getNextSmartRoutingContext(smartRouting)
@@ -485,12 +512,28 @@ export class AgentTaskWorker extends WorkerHost {
           allAttempts,
           err,
         );
+        let nextRoutingDecisionId: string | undefined;
 
         await this.withTenantContext(tenantId, async () => {
+          nextRoutingDecisionId = await this.smartRoutingService.recordDecision(
+            smartRouting.routingStepId,
+            tenantId,
+            smartRouting.routingNodeId,
+            fallbackDecision,
+          );
+
           await this.tenantDb
             .update(schema.executionSteps)
             .set({ attemptCount: nextAttempt })
             .where(eq(schema.executionSteps.id, stepId));
+
+          const queuedSmartRouting = {
+            ...nextSmartRouting,
+            routerType: fallbackDecision.routerType,
+            ...(nextRoutingDecisionId
+              ? { routingDecisionId: nextRoutingDecisionId }
+              : {}),
+          };
 
           await this.stepStateMachine.updateStepStatus(
             tenantId,
@@ -512,18 +555,19 @@ export class AgentTaskWorker extends WorkerHost {
               },
               checkpointData: {
                 ...checkpointData,
-                smartRouting: nextSmartRouting,
+                smartRouting: queuedSmartRouting,
               },
             },
           );
-
-          await this.smartRoutingService.recordDecision(
-            smartRouting.routingStepId,
-            tenantId,
-            smartRouting.routingNodeId,
-            fallbackDecision,
-          );
         });
+
+        const queuedSmartRouting = {
+          ...nextSmartRouting,
+          routerType: fallbackDecision.routerType,
+          ...(nextRoutingDecisionId
+            ? { routingDecisionId: nextRoutingDecisionId }
+            : {}),
+        };
 
         this.stepStateMachine.broadcastAgentEvent(
           tenantId,
@@ -558,7 +602,7 @@ export class AgentTaskWorker extends WorkerHost {
             },
             workflowContext: job.data.workflowContext,
             ...(hasSandbox ? { hasSandbox: true } : {}),
-            smartRouting: nextSmartRouting,
+            smartRouting: queuedSmartRouting,
           },
           { attempts: 1 },
         );
@@ -567,8 +611,10 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       const finalError =
-        smartRouting?.strategy === 'FALLBACK_CHAIN' && !authenticationFailed
-          ? new AllModelsFallbackExhaustedException(smartRouting.routingNodeId)
+        this.isFallbackChainStrategy(smartRouting?.strategy) && !authenticationFailed
+          ? new AllModelsFallbackExhaustedException(
+              smartRouting?.routingNodeId ?? step.nodeId,
+            )
           : err;
 
       await this.withTenantContext(tenantId, async () => {
@@ -1615,7 +1661,7 @@ export class AgentTaskWorker extends WorkerHost {
   private getNextSmartRoutingContext(
     smartRouting?: SmartRoutingRuntimeContext,
   ): SmartRoutingRuntimeContext | undefined {
-    if (!smartRouting || smartRouting.strategy !== 'FALLBACK_CHAIN') {
+    if (!smartRouting || !this.isFallbackChainStrategy(smartRouting.strategy)) {
       return undefined;
     }
 
@@ -1651,7 +1697,7 @@ export class AgentTaskWorker extends WorkerHost {
 
     return {
       selectedModelId: nextSmartRouting.selectedModelId,
-      strategy: 'FALLBACK_CHAIN' as const,
+      strategy: currentSmartRouting?.strategy ?? nextSmartRouting.strategy,
       reasoning: `FALLBACK_CHAIN：模型 ${currentSmartRouting?.selectedModelId ?? nextSmartRouting.selectedModelId} 调用失败（${error.message}），已切换到备用模型 ${nextSmartRouting.selectedModelId}。前序失败记录：${attemptsSummary}`,
       evaluatedModels: orderedCandidateIds.map((modelId, index) => {
         const existing = evaluatedModelsById.get(modelId);
@@ -1678,7 +1724,138 @@ export class AgentTaskWorker extends WorkerHost {
         };
       }),
       latencyMs: 0,
+      routerType: currentSmartRouting?.routerType ?? 'fallback_chain',
     };
+  }
+
+  private isFallbackChainStrategy(strategy?: string): boolean {
+    return strategy === 'FALLBACK_CHAIN' || strategy === 'fallback_chain';
+  }
+
+  private async reportSmartRoutingOutcome(params: {
+    tenantId: string;
+    stepId: string;
+    nodeData: Record<string, unknown>;
+    smartRouting?: SmartRoutingRuntimeContext;
+    success: boolean;
+    latencyMs: number;
+    tokenCount: number;
+    error?: Error;
+  }): Promise<void> {
+    const {
+      tenantId,
+      stepId,
+      nodeData,
+      smartRouting,
+      success,
+      latencyMs,
+      tokenCount,
+      error,
+    } = params;
+
+    if (!smartRouting) {
+      return;
+    }
+
+    const selectedModel = await this.resolveSmartRoutingModelInfo(
+      tenantId,
+      nodeData,
+      smartRouting,
+    );
+
+    if (!selectedModel) {
+      return;
+    }
+
+    try {
+      if (success) {
+        await this.circuitBreakerService.recordSuccess(
+          tenantId,
+          selectedModel.provider,
+          selectedModel.modelId,
+        );
+      } else {
+        await this.circuitBreakerService.recordFailure(
+          tenantId,
+          selectedModel.provider,
+          selectedModel.modelId,
+        );
+      }
+    } catch (circuitBreakerError) {
+      this.logger.warn(
+        `Smart routing circuit breaker outcome skipped: ${circuitBreakerError instanceof Error ? circuitBreakerError.message : String(circuitBreakerError)}`,
+        { tenantId, stepId, modelId: selectedModel.modelId },
+      );
+    }
+
+    if (!smartRouting.routingDecisionId) {
+      return;
+    }
+
+    void this.routingLearningProducer
+      .enqueueLearningJob({
+        tenantId,
+        executionStepId: stepId,
+        routingDecisionId: smartRouting.routingDecisionId,
+        selectedModelId: selectedModel.modelId,
+        queryText: smartRouting.queryText ?? '',
+        ...(smartRouting.taskCategory
+          ? { taskCategory: smartRouting.taskCategory }
+          : {}),
+        actualPerformance: {
+          success,
+          latencyMs,
+          tokenCount,
+          ...(error ? { errorType: error.name || 'Error' } : {}),
+        },
+      })
+      .catch((learningError: unknown) => {
+        this.logger.warn(
+          `Smart routing learning enqueue skipped: ${learningError instanceof Error ? learningError.message : String(learningError)}`,
+          { tenantId, stepId, routingDecisionId: smartRouting.routingDecisionId },
+        );
+      });
+  }
+
+  private async resolveSmartRoutingModelInfo(
+    tenantId: string,
+    nodeData: Record<string, unknown>,
+    smartRouting: SmartRoutingRuntimeContext,
+  ): Promise<{ modelId: string; provider: string } | null> {
+    const selectedModelId =
+      smartRouting.selectedModelId ||
+      (typeof nodeData.llmModelConfigId === 'string' ? nodeData.llmModelConfigId : null);
+
+    if (!selectedModelId) {
+      return null;
+    }
+
+    const evaluatedModel = smartRouting.evaluatedModels?.find(
+      (model) => model.modelId === selectedModelId,
+    );
+
+    if (evaluatedModel) {
+      return { modelId: selectedModelId, provider: evaluatedModel.provider };
+    }
+
+    const modelRows = await this.tenantDb
+      .select({ provider: schema.llmModelConfigs.provider })
+      .from(schema.llmModelConfigs)
+      .where(
+        and(
+          eq(schema.llmModelConfigs.tenantId, tenantId),
+          eq(schema.llmModelConfigs.id, selectedModelId),
+        ),
+      )
+      .limit(1);
+
+    const provider = modelRows[0]?.provider;
+    return provider ? { modelId: selectedModelId, provider } : null;
+  }
+
+  private estimateTokenCount(value: unknown): number {
+    const serialized = typeof value === 'string' ? value : JSON.stringify(value ?? {});
+    return Math.max(0, Math.ceil(serialized.length / 4));
   }
 
   private shouldRetry(job: Job<AgentTaskJobData>): boolean {

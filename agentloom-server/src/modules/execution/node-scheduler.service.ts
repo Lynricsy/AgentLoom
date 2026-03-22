@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Script } from 'node:vm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -43,7 +43,12 @@ import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
-import type { RoutingStrategy, RoutingContext } from '../smart-routing/dto/routing-context.dto';
+import { RouterRegistry } from '../smart-routing/core/router-registry';
+import type { RoutingCandidate } from '../smart-routing/core/routing-candidate';
+import type { RoutingContext as SmartRoutingContext } from '../smart-routing/core/routing-context';
+import type { RoutingDecision as RouterDecision } from '../smart-routing/core/routing-decision';
+import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
+import { EmbeddingIntegrationService } from '../smart-routing/embedding/embedding.service';
 import { PluginService } from '../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../plugin/plugin.constants';
 import {
@@ -51,6 +56,7 @@ import {
   type InputPreprocessorConfig,
 } from './node-handlers/input-preprocessor.handler';
 import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
+import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -85,6 +91,9 @@ export class NodeSchedulerService {
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly rbacCacheService: RbacCacheService,
     private readonly smartRoutingService: SmartRoutingService,
+    private readonly routerRegistry: RouterRegistry,
+    private readonly healthMonitorService: HealthMonitorService,
+    private readonly embeddingService: EmbeddingIntegrationService,
     private readonly pluginService: PluginService,
     private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
     @InjectQueue(AGENT_TASK_QUEUE)
@@ -1135,45 +1144,78 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = step.nodeData ?? {};
-      const strategy =
-        (nodeData.strategy as RoutingStrategy | undefined) ?? 'FALLBACK_CHAIN';
+      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const rawStrategy = this.resolveSmartRoutingStrategyValue(nodeData);
+      const strategyName = this.normalizeSmartRoutingStrategyName(rawStrategy);
+      const strategyConfig = this.resolveSmartRoutingStrategyConfig(nodeData);
+      const router = this.routerRegistry.get(strategyName);
 
       const modelConfigIds = this.collectModelConfigIds(nodeData, input);
       const tokenThreshold =
         typeof nodeData.tokenThreshold === 'number' && nodeData.tokenThreshold > 0
           ? nodeData.tokenThreshold
           : 4096;
+      const queryText = this.extractSmartRoutingQueryText(nodeData, input);
+      const taskCategory = this.extractSmartRoutingTaskCategory(nodeData, input);
+      const inputTokenCount = this.estimateTokenCount(input);
       const historicalMetrics =
-        strategy === 'HISTORICAL_BEST'
+        strategyName === 'historical_best'
           ? await this.smartRoutingService.getHistoricalMetrics(tenantId, step.nodeId)
           : undefined;
 
-      const context: RoutingContext = {
-        inputTokenCount: this.estimateTokenCount(input),
-        tokenThreshold,
+      const context: SmartRoutingContext = {
+        inputTokenCount,
+        tenantId,
+        ...(queryText ? { queryText } : {}),
+        ...(taskCategory ? { taskCategory } : {}),
+        ...(strategyConfig ? { strategyConfig } : {}),
         ...(historicalMetrics && Object.keys(historicalMetrics).length > 0
           ? { historicalMetrics }
           : {}),
       };
 
-      const decision = await this.smartRoutingService.evaluate(
-        modelConfigIds,
-        context,
-        strategy,
+      if (router.requiresEmbedding) {
+        const embeddingSource = queryText ?? JSON.stringify(input ?? {});
+        const queryEmbedding = await this.embeddingService.generateEmbedding(
+          embeddingSource,
+          tenantId,
+        );
+
+        if (queryEmbedding) {
+          context.queryEmbedding = queryEmbedding;
+        }
+      }
+
+      const candidates = await this.loadRoutingCandidates(modelConfigIds, tenantId);
+      const healthyCandidates = await this.healthMonitorService.filterHealthyCandidates(
         tenantId,
+        candidates,
       );
 
-      await this.smartRoutingService.recordDecision(
+      const decision = await router.route(healthyCandidates, context);
+
+      if (!decision.selectedModelId) {
+        throw new AgentExecutionException(
+          `Smart routing node ${step.nodeId} 未能选择模型`,
+        );
+      }
+
+      const evaluatedModels = this.mapRoutingDecisionScores(decision);
+      const routingDecisionId = await this.smartRoutingService.recordDecision(
         step.id,
         tenantId,
         step.nodeId,
-        decision,
+        {
+          selectedModelId: decision.selectedModelId,
+          strategy: strategyName,
+          reasoning: decision.reasoning,
+          evaluatedModels,
+          latencyMs: decision.latencyMs,
+          routerType: decision.routerType,
+        },
       );
 
-      const candidateModelIds = decision.evaluatedModels.map(
-        (model) => model.modelId,
-      );
+      const candidateModelIds = evaluatedModels.map((model) => model.modelId);
       const currentModelIndex = Math.max(
         candidateModelIds.indexOf(decision.selectedModelId),
         0,
@@ -1182,16 +1224,20 @@ export class NodeSchedulerService {
       const result = {
         selectedModelId: decision.selectedModelId,
         llmModelConfigId: decision.selectedModelId,
-        strategy: decision.strategy,
+        strategy: rawStrategy,
         reasoning: decision.reasoning,
-        evaluatedModels: decision.evaluatedModels,
+        evaluatedModels,
         latencyMs: decision.latencyMs,
+        routerType: decision.routerType,
+        routingDecisionId,
         routingStepId: step.id,
         routingNodeId: step.nodeId,
         candidateModelIds,
         currentModelIndex,
-        inputTokenCount: context.inputTokenCount,
+        inputTokenCount,
         tokenThreshold,
+        ...(queryText ? { queryText } : {}),
+        ...(taskCategory ? { taskCategory } : {}),
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -1301,10 +1347,266 @@ export class NodeSchedulerService {
         ...(smartRouting ? { smartRouting } : {}),
         ...(hasSandbox ? { hasSandbox } : {}),
       },
-      ...(smartRouting?.strategy === 'FALLBACK_CHAIN'
+      ...(this.isFallbackChainStrategy(smartRouting?.strategy)
         ? { options: { attempts: 1 } }
         : {}),
     };
+  }
+
+  private resolveSmartRoutingStrategyValue(
+    nodeData: Record<string, unknown>,
+  ): string {
+    if (typeof nodeData.strategyName === 'string' && nodeData.strategyName.length > 0) {
+      return nodeData.strategyName;
+    }
+
+    if (typeof nodeData.strategy === 'string' && nodeData.strategy.length > 0) {
+      return nodeData.strategy;
+    }
+
+    return 'FALLBACK_CHAIN';
+  }
+
+  private resolveSmartRoutingStrategyConfig(
+    nodeData: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    if (this.isRecord(nodeData.strategyConfig)) {
+      return nodeData.strategyConfig;
+    }
+
+    if (this.isRecord(nodeData.strategy_config)) {
+      return nodeData.strategy_config;
+    }
+
+    return undefined;
+  }
+
+  private normalizeSmartRoutingStrategyName(strategy: string): string {
+    const normalized = strategy.trim();
+    const strategyAliases: Record<string, string> = {
+      TOKEN_OPTIMIZED: 'token_optimized',
+      COST_OPTIMIZED: 'cost_optimized',
+      QUALITY_FIRST: 'quality_first',
+      LATENCY_FIRST: 'latency_first',
+      HISTORICAL_BEST: 'historical_best',
+      FALLBACK_CHAIN: 'fallback_chain',
+      'memory-bank': 'memory_bank',
+      'wasm-plugin': 'wasm_plugin',
+    };
+
+    return strategyAliases[normalized] ?? normalized.toLowerCase();
+  }
+
+  private isFallbackChainStrategy(strategy?: string): boolean {
+    return Boolean(
+      strategy && this.normalizeSmartRoutingStrategyName(strategy) === 'fallback_chain',
+    );
+  }
+
+  private extractSmartRoutingQueryText(
+    nodeData: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ): string | undefined {
+    return (
+      this.findFirstStringByKeys(nodeData, [
+        'queryText',
+        'query',
+        'promptText',
+        'prompt',
+        'content',
+        'text',
+      ]) ??
+      this.findFirstStringByKeys(input, [
+        'queryText',
+        'query',
+        'promptText',
+        'prompt',
+        'content',
+        'text',
+        'task',
+      ])
+    );
+  }
+
+  private extractSmartRoutingTaskCategory(
+    nodeData: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ): string | undefined {
+    return (
+      this.findFirstStringByKeys(nodeData, ['taskCategory', 'category', 'intent']) ??
+      this.findFirstStringByKeys(input, ['taskCategory', 'category', 'intent'])
+    );
+  }
+
+  private findFirstStringByKeys(
+    value: unknown,
+    keys: string[],
+    seen: Set<object> = new Set<object>(),
+  ): string | undefined {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+
+    if (!this.isRecord(value) && !Array.isArray(value)) {
+      return undefined;
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return undefined;
+      }
+      seen.add(value);
+    }
+
+    if (this.isRecord(value)) {
+      for (const key of keys) {
+        const directValue = value[key];
+        if (typeof directValue === 'string' && directValue.length > 0) {
+          return directValue;
+        }
+      }
+
+      for (const nestedValue of Object.values(value)) {
+        const nestedMatch = this.findFirstStringByKeys(nestedValue, keys, seen);
+        if (nestedMatch) {
+          return nestedMatch;
+        }
+      }
+
+      return undefined;
+    }
+
+    for (const item of value) {
+      const nestedMatch = this.findFirstStringByKeys(item, keys, seen);
+      if (nestedMatch) {
+        return nestedMatch;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async loadRoutingCandidates(
+    modelConfigIds: string[],
+    tenantId: string,
+  ): Promise<RoutingCandidate[]> {
+    if (modelConfigIds.length === 0) {
+      return [];
+    }
+
+    const modelConfigs = await this.tenantDb
+      .select({
+        id: schema.llmModelConfigs.id,
+        name: schema.llmModelConfigs.name,
+        provider: schema.llmModelConfigs.provider,
+        modelName: schema.llmModelConfigs.modelName,
+      })
+      .from(schema.llmModelConfigs)
+      .where(
+        and(
+          eq(schema.llmModelConfigs.tenantId, tenantId),
+          inArray(schema.llmModelConfigs.id, modelConfigIds),
+        ),
+      );
+
+    const routingMetadataRows = await this.tenantDb
+      .select({
+        modelConfigId: schema.routerModels.modelId,
+        providerName: schema.routerModels.providerName,
+        routingMeta: schema.routerModels.routingMeta,
+        eloRating: schema.routerModels.eloRating,
+      })
+      .from(schema.routerModels)
+      .where(
+        and(
+          eq(schema.routerModels.tenantId, tenantId),
+          eq(schema.routerModels.isActive, true),
+          inArray(schema.routerModels.modelId, modelConfigIds),
+        ),
+      );
+
+    const configsById = new Map(modelConfigs.map((config) => [config.id, config]));
+    const routingMetadataById = new Map(
+      routingMetadataRows.map((row) => [row.modelConfigId, row]),
+    );
+
+    const candidates: RoutingCandidate[] = [];
+
+    for (const modelConfigId of modelConfigIds) {
+        const modelConfig = configsById.get(modelConfigId);
+        if (!modelConfig) {
+          continue;
+        }
+
+        const routingMetadata = routingMetadataById.get(modelConfigId);
+        const fallbackMeta = getModelRoutingMeta(
+          modelConfig.provider,
+          modelConfig.modelName,
+        );
+        const rawRoutingMeta = this.isRecord(routingMetadata?.routingMeta)
+          ? routingMetadata.routingMeta
+          : undefined;
+        const rawCosts = this.isRecord(rawRoutingMeta?.costs)
+          ? rawRoutingMeta.costs
+          : undefined;
+
+        candidates.push({
+          id: modelConfig.id,
+          modelConfigId: modelConfig.id,
+          name: modelConfig.name,
+          provider: routingMetadata?.providerName ?? modelConfig.provider,
+          routingMeta: {
+            contextWindow: this.readNumber(
+              rawRoutingMeta?.contextWindow,
+              fallbackMeta.contextWindow,
+            ),
+            costs: {
+              input: this.readNumber(
+                rawCosts?.inputPer1kTokens,
+                fallbackMeta.costPer1kInputTokens,
+              ),
+              output: this.readNumber(
+                rawCosts?.outputPer1kTokens,
+                fallbackMeta.costPer1kOutputTokens,
+              ),
+            },
+            qualityRank: this.readNumber(
+              rawRoutingMeta?.qualityRank,
+              fallbackMeta.qualityRank,
+            ),
+            avgLatencyMs: this.readNumber(
+              rawRoutingMeta?.avgLatencyMs,
+              fallbackMeta.avgLatencyMs,
+            ),
+            maxInputTokens: this.readNumber(
+              rawRoutingMeta?.maxInputTokens,
+              this.readNumber(rawRoutingMeta?.contextWindow, fallbackMeta.contextWindow),
+            ),
+            eloRating: this.readNumber(routingMetadata?.eloRating, 1200),
+          },
+          healthStatus: 'healthy',
+        });
+    }
+
+    return candidates;
+  }
+
+  private mapRoutingDecisionScores(
+    decision: RouterDecision,
+  ): Array<{
+    modelId: string;
+    modelName: string;
+    provider: string;
+    score: number;
+    reasoning: string;
+  }> {
+    return decision.scores.map((score) => ({
+      modelId: score.modelId,
+      modelName: score.modelName,
+      provider: score.provider,
+      score: score.score,
+      reasoning: score.reasoning,
+    }));
   }
 
   private extractSmartRoutingContext(
@@ -1400,6 +1702,21 @@ export class NodeSchedulerService {
       typeof value === 'string' ? value : JSON.stringify(value ?? {});
 
     return Math.max(0, Math.ceil(serialized.length / 4));
+  }
+
+  private readNumber(value: unknown, fallback: number): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return fallback;
   }
 
   // ── 私有辅助 ───────────────────────────────────────────────

@@ -35,6 +35,9 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
+import { RouterRegistry } from '../../smart-routing/core/router-registry';
+import { HealthMonitorService } from '../../smart-routing/circuit-breaker/health-monitor.service';
+import { EmbeddingIntegrationService } from '../../smart-routing/embedding/embedding.service';
 import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import { PluginService } from '../../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
@@ -186,9 +189,17 @@ describe('NodeSchedulerService', () => {
     resolvePolicy: ReturnType<typeof vi.fn>;
   };
   let mockSmartRoutingService: {
-    evaluate: ReturnType<typeof vi.fn>;
     recordDecision: ReturnType<typeof vi.fn>;
     getHistoricalMetrics: ReturnType<typeof vi.fn>;
+  };
+  let mockRouterRegistry: {
+    get: ReturnType<typeof vi.fn>;
+  };
+  let mockHealthMonitorService: {
+    filterHealthyCandidates: ReturnType<typeof vi.fn>;
+  };
+  let mockEmbeddingService: {
+    generateEmbedding: ReturnType<typeof vi.fn>;
   };
   let mockRbacCacheService: {
     getUserRole: ReturnType<typeof vi.fn>;
@@ -263,15 +274,26 @@ describe('NodeSchedulerService', () => {
       }),
     };
     mockSmartRoutingService = {
-      evaluate: vi.fn().mockResolvedValue({
-        selectedModelId: 'model-1',
-        strategy: 'FALLBACK_CHAIN',
-        reasoning: 'mock smart routing decision',
-        evaluatedModels: [],
-        latencyMs: 0,
-      }),
-      recordDecision: vi.fn().mockResolvedValue(undefined),
+      recordDecision: vi.fn().mockResolvedValue('routing-decision-1'),
       getHistoricalMetrics: vi.fn().mockResolvedValue({}),
+    };
+    mockRouterRegistry = {
+      get: vi.fn().mockReturnValue({
+        requiresEmbedding: false,
+        route: vi.fn().mockResolvedValue({
+          selectedModelId: 'model-1',
+          scores: [],
+          reasoning: 'mock smart routing decision',
+          routerType: 'fallback_chain',
+          latencyMs: 0,
+        }),
+      }),
+    };
+    mockHealthMonitorService = {
+      filterHealthyCandidates: vi.fn(async (_tenantId, candidates) => candidates),
+    };
+    mockEmbeddingService = {
+      generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
     };
     mockRbacCacheService = {
       getUserRole: vi.fn().mockResolvedValue('owner'),
@@ -306,6 +328,15 @@ describe('NodeSchedulerService', () => {
           useValue: mockInterventionPolicyService,
         },
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
+        { provide: RouterRegistry, useValue: mockRouterRegistry },
+        {
+          provide: HealthMonitorService,
+          useValue: mockHealthMonitorService,
+        },
+        {
+          provide: EmbeddingIntegrationService,
+          useValue: mockEmbeddingService,
+        },
         { provide: RbacCacheService, useValue: mockRbacCacheService },
         { provide: PluginService, useValue: mockPluginService },
         {
@@ -928,11 +959,9 @@ describe('NodeSchedulerService', () => {
         .spyOn(service, 'onNodeCompleted')
         .mockResolvedValue(undefined);
       db.update.mockReturnValueOnce(createUpdateChainVoid());
-      mockSmartRoutingService.evaluate.mockResolvedValueOnce({
+      const route = vi.fn().mockResolvedValue({
         selectedModelId: 'model-2',
-        strategy: 'FALLBACK_CHAIN',
-        reasoning: 'mock smart routing decision',
-        evaluatedModels: [
+        scores: [
           {
             modelId: 'model-2',
             modelName: 'claude-sonnet-4-20250514',
@@ -948,25 +977,93 @@ describe('NodeSchedulerService', () => {
             reasoning: 'fallback #2',
           },
         ],
+        reasoning: 'mock smart routing decision',
+        routerType: 'fallback_chain',
         latencyMs: 7,
       });
+      mockRouterRegistry.get.mockReturnValueOnce({
+        requiresEmbedding: true,
+        route,
+      });
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: 'model-1',
+              name: 'gpt-4o',
+              provider: 'openai',
+              modelName: 'gpt-4o',
+            },
+            {
+              id: 'model-2',
+              name: 'claude-sonnet-4-20250514',
+              provider: 'anthropic',
+              modelName: 'claude-sonnet-4-20250514',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              modelConfigId: 'model-1',
+              providerName: 'openai',
+              routingMeta: {
+                contextWindow: 128000,
+                costs: { inputPer1kTokens: 0.01, outputPer1kTokens: 0.03 },
+                qualityRank: 88,
+                avgLatencyMs: 600,
+                maxInputTokens: 128000,
+              },
+              eloRating: 1200,
+            },
+            {
+              modelConfigId: 'model-2',
+              providerName: 'anthropic',
+              routingMeta: {
+                contextWindow: 200000,
+                costs: { inputPer1kTokens: 0.02, outputPer1kTokens: 0.04 },
+                qualityRank: 92,
+                avgLatencyMs: 900,
+                maxInputTokens: 200000,
+              },
+              eloRating: 1300,
+            },
+          ]),
+        );
 
       await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
 
-      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
-        ['model-1', 'model-2'],
+      expect(mockRouterRegistry.get).toHaveBeenCalledWith('fallback_chain');
+      expect(mockHealthMonitorService.filterHealthyCandidates).toHaveBeenCalledWith(
+        TENANT_ID,
+        expect.arrayContaining([
+          expect.objectContaining({ modelConfigId: 'model-1' }),
+          expect.objectContaining({ modelConfigId: 'model-2' }),
+        ]),
+      );
+      expect(mockEmbeddingService.generateEmbedding).toHaveBeenCalledWith(
+        expect.any(String),
+        TENANT_ID,
+      );
+      expect(route).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ modelConfigId: 'model-1' }),
+          expect.objectContaining({ modelConfigId: 'model-2' }),
+        ]),
         expect.objectContaining({
           inputTokenCount: expect.any(Number),
-          tokenThreshold: 4096,
+          tenantId: TENANT_ID,
         }),
-        'FALLBACK_CHAIN',
-        TENANT_ID,
       );
       expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
         'step-r',
         TENANT_ID,
         'R',
-        expect.objectContaining({ selectedModelId: 'model-2' }),
+        expect.objectContaining({
+          selectedModelId: 'model-2',
+          strategy: 'fallback_chain',
+          routerType: 'fallback_chain',
+        }),
       );
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
@@ -980,6 +1077,8 @@ describe('NodeSchedulerService', () => {
             routingNodeId: 'R',
             candidateModelIds: ['model-2', 'model-1'],
             currentModelIndex: 0,
+            routerType: 'fallback_chain',
+            routingDecisionId: 'routing-decision-1',
             tokenThreshold: 4096,
             inputTokenCount: expect.any(Number),
           }),
@@ -1018,6 +1117,43 @@ describe('NodeSchedulerService', () => {
       ];
       db.update.mockReturnValueOnce(createUpdateChainVoid());
       vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+      const route = vi.fn().mockResolvedValue({
+        selectedModelId: 'model-1',
+        scores: [
+          {
+            modelId: 'model-1',
+            modelName: 'gpt-4o',
+            provider: 'openai',
+            score: 99,
+            reasoning: 'historical best',
+          },
+        ],
+        reasoning: 'historical best',
+        routerType: 'historical_best',
+        latencyMs: 5,
+      });
+      mockRouterRegistry.get.mockReturnValueOnce({
+        requiresEmbedding: false,
+        route,
+      });
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: 'model-1',
+              name: 'gpt-4o',
+              provider: 'openai',
+              modelName: 'gpt-4o',
+            },
+            {
+              id: 'model-2',
+              name: 'claude-sonnet-4-20250514',
+              provider: 'anthropic',
+              modelName: 'claude-sonnet-4-20250514',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
       mockSmartRoutingService.getHistoricalMetrics.mockResolvedValueOnce({
         'model-1': {
           successRate: 0.9,
@@ -1033,10 +1169,10 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
         'R',
       );
-      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
-        ['model-1', 'model-2'],
+      expect(mockRouterRegistry.get).toHaveBeenCalledWith('historical_best');
+      expect(route).toHaveBeenCalledWith(
+        expect.any(Array),
         expect.objectContaining({
-          tokenThreshold: 8192,
           historicalMetrics: {
             'model-1': {
               successRate: 0.9,
@@ -1045,9 +1181,8 @@ describe('NodeSchedulerService', () => {
               lastUsedAt: '2024-12-31T00:00:00.000Z',
             },
           },
+          tenantId: TENANT_ID,
         }),
-        'HISTORICAL_BEST',
-        TENANT_ID,
       );
     });
 
@@ -1059,6 +1194,8 @@ describe('NodeSchedulerService', () => {
         reasoning: 'mock smart routing decision',
         evaluatedModels: [],
         latencyMs: 7,
+        routerType: 'fallback_chain',
+        routingDecisionId: 'routing-decision-1',
         routingStepId: 'step-r',
         routingNodeId: 'R',
         candidateModelIds: ['model-2', 'model-1'],

@@ -15,6 +15,8 @@ import { NotificationService } from '../../notification/notification.service';
 import { LlmProviderException } from '../../llm/llm.exceptions';
 import { AllModelsFallbackExhaustedException } from '../../smart-routing/smart-routing.exceptions';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
+import { CircuitBreakerService } from '../../smart-routing/circuit-breaker/circuit-breaker.service';
+import { RoutingLearningProducer } from '../../smart-routing/learning/routing-learning.producer';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import {
   AgentExecutionException,
@@ -267,7 +269,16 @@ describe('AgentTaskWorker', () => {
   };
 
   const mockSmartRoutingService = {
-    recordDecision: vi.fn().mockResolvedValue(undefined),
+    recordDecision: vi.fn().mockResolvedValue('routing-decision-2'),
+  };
+
+  const mockCircuitBreakerService = {
+    recordSuccess: vi.fn().mockResolvedValue(undefined),
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const mockRoutingLearningProducer = {
+    enqueueLearningJob: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockOrganizationAutonomyPolicyService: Record<
@@ -283,7 +294,18 @@ describe('AgentTaskWorker', () => {
     mockDb.select.mockReset();
     mockDb.update.mockReset().mockReturnValue(createUpdateChain());
     mockAgentTaskQueue.add.mockReset().mockResolvedValue(undefined);
-    mockSmartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
+    mockSmartRoutingService.recordDecision
+      .mockReset()
+      .mockResolvedValue('routing-decision-2');
+    mockCircuitBreakerService.recordSuccess
+      .mockReset()
+      .mockResolvedValue(undefined);
+    mockCircuitBreakerService.recordFailure
+      .mockReset()
+      .mockResolvedValue(undefined);
+    mockRoutingLearningProducer.enqueueLearningJob
+      .mockReset()
+      .mockResolvedValue(undefined);
     mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
@@ -321,6 +343,14 @@ describe('AgentTaskWorker', () => {
           },
         },
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
+        {
+          provide: CircuitBreakerService,
+          useValue: mockCircuitBreakerService,
+        },
+        {
+          provide: RoutingLearningProducer,
+          useValue: mockRoutingLearningProducer,
+        },
         {
           provide: OrganizationAutonomyPolicyService,
           useValue: mockOrganizationAutonomyPolicyService,
@@ -388,6 +418,74 @@ describe('AgentTaskWorker', () => {
         mockDb,
         TENANT_ID,
         expect.any(Function),
+      );
+    });
+
+    it('smart-routing 成功完成后会记录 circuit breaker success 并异步入队 learning job', async () => {
+      const step = makeStep({
+        nodeData: {
+          agentId: AGENT_ID,
+          llmModelConfigId: 'model-2',
+        },
+      });
+      mockDb.select.mockReturnValue(createSelectChain(step));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '成功结果' } as AgentEvent,
+          { type: 'done', stopReason: 'end_turn' } as AgentEvent,
+        ]),
+      );
+
+      await worker.process(
+        createMockJob({
+          data: {
+            executionId: EXECUTION_ID,
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            nodeData: { agentId: AGENT_ID, llmModelConfigId: 'model-2' },
+            smartRouting: {
+              routingStepId: 'step-routing',
+              routingNodeId: 'routing-node-1',
+              strategy: 'fallback_chain',
+              candidateModelIds: ['model-1', 'model-2'],
+              currentModelIndex: 1,
+              selectedModelId: 'model-2',
+              routerType: 'fallback_chain',
+              routingDecisionId: 'routing-decision-2',
+              queryText: '请总结成功结果',
+              taskCategory: 'summary',
+              evaluatedModels: [
+                {
+                  modelId: 'model-2',
+                  modelName: 'claude-sonnet-4-20250514',
+                  provider: 'anthropic',
+                  score: 95,
+                  reasoning: '备用模型成功',
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      expect(mockCircuitBreakerService.recordSuccess).toHaveBeenCalledWith(
+        TENANT_ID,
+        'anthropic',
+        'model-2',
+      );
+      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          executionStepId: STEP_ID,
+          routingDecisionId: 'routing-decision-2',
+          selectedModelId: 'model-2',
+          queryText: '请总结成功结果',
+          taskCategory: 'summary',
+          actualPerformance: expect.objectContaining({
+            success: true,
+          }),
+        }),
       );
     });
 
@@ -671,6 +769,10 @@ describe('AgentTaskWorker', () => {
               candidateModelIds: ['model-1', 'model-2'],
               currentModelIndex: 0,
               selectedModelId: 'model-1',
+              routerType: 'fallback_chain',
+              routingDecisionId: 'routing-decision-1',
+              queryText: '请总结部分结果',
+              taskCategory: 'summary',
               evaluatedModels: [
                 {
                   modelId: 'model-1',
@@ -700,13 +802,17 @@ describe('AgentTaskWorker', () => {
         'pending',
         expect.objectContaining({
           checkpointData: expect.objectContaining({
-            smartRouting: {
+            smartRouting: expect.objectContaining({
               routingStepId: 'step-routing',
               routingNodeId: 'routing-node-1',
               strategy: 'FALLBACK_CHAIN',
               candidateModelIds: ['model-1', 'model-2'],
               currentModelIndex: 1,
               selectedModelId: 'model-2',
+              routerType: 'fallback_chain',
+              routingDecisionId: 'routing-decision-2',
+              queryText: '请总结部分结果',
+              taskCategory: 'summary',
               evaluatedModels: [
                 {
                   modelId: 'model-1',
@@ -723,10 +829,14 @@ describe('AgentTaskWorker', () => {
                   reasoning: '回退链位置 #2',
                 },
               ],
-            },
+            }),
             attempts: [
               expect.objectContaining({ attempt: 1, error: 'model-1 failed' }),
             ],
+          }),
+          errorMessage: expect.objectContaining({
+            message: 'model-1 failed',
+            nodeId: 'node-1',
           }),
         }),
       );
@@ -756,10 +866,30 @@ describe('AgentTaskWorker', () => {
         expect.objectContaining({
           selectedModelId: 'model-2',
           strategy: 'FALLBACK_CHAIN',
+          routerType: 'fallback_chain',
           reasoning: expect.stringContaining('前序失败记录'),
           evaluatedModels: expect.arrayContaining([
             expect.objectContaining({ modelId: 'model-2', score: 100 }),
           ]),
+        }),
+      );
+      expect(mockCircuitBreakerService.recordFailure).toHaveBeenCalledWith(
+        TENANT_ID,
+        'openai',
+        'model-1',
+      );
+      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          executionStepId: STEP_ID,
+          routingDecisionId: 'routing-decision-1',
+          selectedModelId: 'model-1',
+          queryText: '请总结部分结果',
+          taskCategory: 'summary',
+          actualPerformance: expect.objectContaining({
+            success: false,
+            errorType: 'Error',
+          }),
         }),
       );
       expect(mockAgentTaskQueue.add).toHaveBeenCalledWith(
@@ -776,6 +906,10 @@ describe('AgentTaskWorker', () => {
             candidateModelIds: ['model-1', 'model-2'],
             currentModelIndex: 1,
             selectedModelId: 'model-2',
+            routerType: 'fallback_chain',
+            routingDecisionId: 'routing-decision-2',
+            queryText: '请总结部分结果',
+            taskCategory: 'summary',
             evaluatedModels: [
               {
                 modelId: 'model-1',
@@ -829,6 +963,10 @@ describe('AgentTaskWorker', () => {
                 candidateModelIds: ['model-1', 'model-2'],
                 currentModelIndex: 0,
                 selectedModelId: 'model-1',
+                routerType: 'fallback_chain',
+                routingDecisionId: 'routing-decision-1',
+                queryText: '请总结部分结果',
+                taskCategory: 'summary',
                 evaluatedModels: [
                   {
                     modelId: 'model-1',
@@ -855,6 +993,21 @@ describe('AgentTaskWorker', () => {
 
       expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
       expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockCircuitBreakerService.recordFailure).toHaveBeenCalledWith(
+        TENANT_ID,
+        'openai',
+        'model-1',
+      );
+      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          routingDecisionId: 'routing-decision-1',
+          selectedModelId: 'model-1',
+          actualPerformance: expect.objectContaining({
+            success: false,
+            errorType: 'LlmProviderException',
+          }),
+        }),
+      );
       expect(mockStateMachine.broadcastAgentEvent).not.toHaveBeenCalled();
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -909,6 +1062,8 @@ describe('AgentTaskWorker', () => {
                 candidateModelIds: ['model-1', 'model-2'],
                 currentModelIndex: 1,
                 selectedModelId: 'model-2',
+                routerType: 'fallback_chain',
+                routingDecisionId: 'routing-decision-2',
                 evaluatedModels: [
                   {
                     modelId: 'model-1',
@@ -935,6 +1090,21 @@ describe('AgentTaskWorker', () => {
 
       expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
       expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockCircuitBreakerService.recordFailure).toHaveBeenCalledWith(
+        TENANT_ID,
+        'anthropic',
+        'model-2',
+      );
+      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          routingDecisionId: 'routing-decision-2',
+          selectedModelId: 'model-2',
+          actualPerformance: expect.objectContaining({
+            success: false,
+            errorType: 'Error',
+          }),
+        }),
+      );
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,
@@ -981,6 +1151,8 @@ describe('AgentTaskWorker', () => {
                 candidateModelIds: ['model-1'],
                 currentModelIndex: 0,
                 selectedModelId: 'model-1',
+                routerType: 'quality_first',
+                routingDecisionId: 'routing-decision-3',
                 evaluatedModels: [
                   {
                     modelId: 'model-1',
@@ -1000,6 +1172,21 @@ describe('AgentTaskWorker', () => {
 
       expect(mockAgentTaskQueue.add).not.toHaveBeenCalled();
       expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
+      expect(mockCircuitBreakerService.recordFailure).toHaveBeenCalledWith(
+        TENANT_ID,
+        'openai',
+        'model-1',
+      );
+      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          routingDecisionId: 'routing-decision-3',
+          selectedModelId: 'model-1',
+          actualPerformance: expect.objectContaining({
+            success: false,
+            errorType: 'Error',
+          }),
+        }),
+      );
       expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,
