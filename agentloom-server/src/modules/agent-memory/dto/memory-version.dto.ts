@@ -6,9 +6,9 @@ import { z } from 'zod';
 export const CreateMemoryVersionSchema = z.object({
   content: z.string().min(1, '内容不能为空').optional(),
   mode: z.enum(['create', 'patch', 'append']).default('create'),
-  /** patch 模式下的原始文本 */
+  // patch 模式下的原始文本
   oldString: z.string().optional(),
-  /** patch 模式下的替换文本 */
+  // patch 模式下的替换文本
   newString: z.string().optional(),
 });
 

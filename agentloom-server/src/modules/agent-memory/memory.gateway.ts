@@ -20,16 +20,16 @@ import type { JwtPayload } from '../../common/guards/auth.guard';
 
 // ────────────────────── 常量 ──────────────────────
 
-/** 认证失败的 WebSocket 关闭代码 */
+// 认证失败的 WebSocket 关闭代码
 const WS_CLOSE_AUTH_FAILURE = 4001;
 
-/** 背压队列每个 memory instance 的最大容量 */
+// 背压队列每个 memory instance 的最大容量
 const BACKPRESSURE_QUEUE_LIMIT = 500;
 
-/** 背压队列排空重试间隔 (ms) */
+// 背压队列排空重试间隔 (ms)
 const BACKPRESSURE_DRAIN_INTERVAL_MS = 100;
 
-/** 重连回放缓冲区每个 room 最大事件数 */
+// 重连回放缓冲区每个 room 最大事件数
 const REPLAY_BUFFER_LIMIT = 1000;
 
 // ────────────────────── 事件名称 ──────────────────────
@@ -104,17 +104,17 @@ export class MemoryGateway
   @WebSocketServer()
   server!: Server;
 
-  /** 单调递增事件 ID */
+  // 单调递增事件 ID
   private eventCounter = 0;
 
-  /** 背压事件队列: key = `tenantId:instanceId` */
+  // 背压事件队列: key = `tenantId:instanceId`
   private readonly eventQueue = new Map<string, QueuedEvent[]>();
   private readonly drainTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
   >();
 
-  /** 重连回放缓冲区: key = `tenantId:instanceId` */
+  // 重连回放缓冲区: key = `tenantId:instanceId`
   private readonly replayBuffer = new Map<string, ReplayEntry[]>();
 
   constructor(
@@ -347,10 +347,8 @@ export class MemoryGateway
 
   // ────────── 背压队列管理 ──────────
 
-  /**
-   * 立即排空指定 memory instance 的背压队列。
-   * 在 memory instance 操作到达终态后调用以确保所有事件投递完毕。
-   */
+  // 立即排空指定 memory instance 的背压队列。
+  // 在 memory instance 操作到达终态后调用以确保所有事件投递完毕。
   flushMemoryQueue(tenantId: string, instanceId: string): void {
     const queueKey = `${tenantId}:${instanceId}`;
     const queue = this.eventQueue.get(queueKey);
@@ -370,10 +368,8 @@ export class MemoryGateway
     this.eventQueue.delete(queueKey);
   }
 
-  /**
-   * 清理指定 memory instance 的背压队列。
-   * 用于释放不再需要的内存资源。
-   */
+  // 清理指定 memory instance 的背压队列。
+  // 用于释放不再需要的内存资源。
   clearMemoryQueue(tenantId: string, instanceId: string): void {
     const queueKey = `${tenantId}:${instanceId}`;
     this.eventQueue.delete(queueKey);
@@ -382,10 +378,8 @@ export class MemoryGateway
 
   // ────────── 私有方法 ──────────
 
-  /**
-   * 带背压控制和重连回放缓冲的事件广播。
-   * 所有 memory 事件统一经由此方法发出。
-   */
+  // 带背压控制和重连回放缓冲的事件广播。
+  // 所有 memory 事件统一经由此方法发出。
   private broadcastMemoryEvent(
     tenantId: string,
     instanceId: string,
@@ -545,10 +539,8 @@ export class MemoryGateway
     return `memory:${tenantId}:${instanceId}`;
   }
 
-  /**
-   * 创建带有 close code 4001 的认证错误。
-   * Socket.IO 客户端可通过 `err.data.code` 获取此代码。
-   */
+  // 创建带有 close code 4001 的认证错误。
+  // Socket.IO 客户端可通过 `err.data.code` 获取此代码。
   private createAuthError(message: string): Error & {
     data?: { code: number; reason: string };
   } {

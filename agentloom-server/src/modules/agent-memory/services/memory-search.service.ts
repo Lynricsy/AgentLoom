@@ -5,49 +5,43 @@ import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider'
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { memoryNodes, memoryVersions } from '../../../database/schema';
 
-/** 全文搜索查询选项 */
+// 全文搜索查询选项
 export interface MemorySearchOptions {
-  /** 搜索查询文本 */
+  // 搜索查询文本
   query: string;
-  /** 结果数量上限 (默认 20, 最大 100) */
+  // 结果数量上限 (默认 20, 最大 100)
   limit?: number;
-  /** 分页偏移 (默认 0) */
+  // 分页偏移 (默认 0)
   offset?: number;
-  /** 最大公开等级过滤 (仅返回 disclosureLevel <= minDisclosure 的节点) */
+  // 最大公开等级过滤 (仅返回 disclosureLevel <= minDisclosure 的节点)
   minDisclosure?: number;
 }
 
-/** 全文搜索结果条目 */
+// 全文搜索结果条目
 export interface MemorySearchResult {
-  /** 记忆节点 ID */
+  // 记忆节点 ID
   nodeId: string;
-  /** 版本内容全文 */
+  // 版本内容全文
   content: string;
-  /** PostgreSQL ts_rank 相关性分数 */
+  // PostgreSQL ts_rank 相关性分数
   relevanceScore: number;
-  /** ts_headline 生成的高亮摘要 */
+  // ts_headline 生成的高亮摘要
   snippet: string;
-  /** 节点公开等级 */
+  // 节点公开等级
   disclosureLevel: number;
 }
 
-/**
- * 记忆全文搜索服务
- *
- * 使用 PostgreSQL tsvector/tsquery 实现全文检索，
- * 支持相关性排序、分页和公开等级过滤。
- */
+// 记忆全文搜索服务
+// 使用 PostgreSQL tsvector/tsquery 实现全文检索，
+// 支持相关性排序、分页和公开等级过滤。
 @Injectable()
 export class MemorySearchService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
-  /**
-   * 在指定记忆实例中执行全文搜索
-   *
-   * @param instanceId - 记忆实例 ID
-   * @param options - 搜索选项
-   * @returns 按相关性降序排列的搜索结果
-   */
+  // 在指定记忆实例中执行全文搜索
+  // @param instanceId - 记忆实例 ID
+  // @param options - 搜索选项
+  // @returns 按相关性降序排列的搜索结果
   async search(
     instanceId: string,
     options: MemorySearchOptions,
@@ -100,15 +94,11 @@ export class MemorySearchService {
     return results;
   }
 
-  /**
-   * 清理查询字符串以安全用作 tsquery 输入
-   *
-   * - 移除 tsquery 特殊操作符和语法字符
-   * - 提取有效的字母数字词汇
-   * - 使用 & 连接多个词（AND 语义）
-   *
-   * @returns 清理后的 tsquery 字符串，若无有效词则返回空字符串
-   */
+  // 清理查询字符串以安全用作 tsquery 输入
+  // - 移除 tsquery 特殊操作符和语法字符
+  // - 提取有效的字母数字词汇
+  // - 使用 & 连接多个词（AND 语义）
+  // @returns 清理后的 tsquery 字符串，若无有效词则返回空字符串
   private sanitizeQuery(query: string): string {
     const trimmed = query.trim();
 
