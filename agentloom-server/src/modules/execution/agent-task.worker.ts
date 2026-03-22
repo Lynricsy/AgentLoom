@@ -1,4 +1,4 @@
-import { Inject, Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import * as schema from '../../database/schema';
@@ -93,11 +93,13 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly notificationService: NotificationService,
     private readonly llmEncryptionService: LlmEncryptionService,
     private readonly smartRoutingService: SmartRoutingService,
-    private readonly circuitBreakerService: CircuitBreakerService,
-    private readonly routingLearningProducer: RoutingLearningProducer,
     private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
+    @Optional()
+    private readonly circuitBreakerService: CircuitBreakerService,
+    @Optional()
+    private readonly routingLearningProducer: RoutingLearningProducer,
   ) {
     super();
     void throttleService;
@@ -1767,6 +1769,10 @@ export class AgentTaskWorker extends WorkerHost {
       return;
     }
 
+    if (!this.circuitBreakerService) {
+      return;
+    }
+
     try {
       if (success) {
         await this.circuitBreakerService.recordSuccess(
@@ -1788,7 +1794,7 @@ export class AgentTaskWorker extends WorkerHost {
       );
     }
 
-    if (!smartRouting.routingDecisionId) {
+    if (!smartRouting.routingDecisionId || !this.routingLearningProducer) {
       return;
     }
 

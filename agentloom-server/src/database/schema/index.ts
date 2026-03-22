@@ -354,3 +354,46 @@ export {
   type WorkspaceSnapshot,
   type NewWorkspaceSnapshot,
 } from './workspace-snapshots.schema';
+
+export {
+  agentMemoryInstances,
+  type MemoryInstance,
+  type NewMemoryInstance,
+  type MemoryInstanceConfig,
+  memoryInstanceStatusEnum,
+} from './agent-memory-instances.schema';
+export {
+  memoryNodes,
+  type MemoryNode,
+  type NewMemoryNode,
+  type MemoryNodeMetadata,
+} from './memory-nodes.schema';
+export {
+  memoryVersions,
+  type MemoryVersion,
+  type NewMemoryVersion,
+  memoryReviewStatusEnum,
+} from './memory-versions.schema';
+export {
+  memoryEdges,
+  type MemoryEdge,
+  type NewMemoryEdge,
+} from './memory-edges.schema';
+export {
+  memoryPaths,
+  type MemoryPath,
+  type NewMemoryPath,
+} from './memory-paths.schema';
+export {
+  memoryGlossaryKeywords,
+  type MemoryGlossaryKeyword,
+  type NewMemoryGlossaryKeyword,
+} from './memory-glossary-keywords.schema';
+export {
+  memorySessions,
+  memorySessionRoleEnum,
+  memorySessionStatusEnum,
+  type MemorySession,
+  type NewMemorySession,
+  type MemorySessionConfig,
+} from './memory-sessions.schema';
