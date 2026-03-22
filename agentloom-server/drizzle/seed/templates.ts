@@ -2,6 +2,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
 import * as schema from '../../src/database/schema';
+import { seedRoutingBenchmarks } from '../../src/database/seeds/routing-benchmarks.seed';
 import { seedTemplates } from '../../src/database/seeds/template-seeds';
 
 async function main() {
@@ -17,6 +18,20 @@ async function main() {
   console.log('Seeding workflow templates...');
   await seedTemplates(db);
   console.log('Done — %d templates seeded.', 5);
+
+  console.log('Seeding routing benchmarks...');
+  const routingBenchmarkResult = await seedRoutingBenchmarks(db);
+  console.log(
+    'Done — %d routing benchmark rows synchronized across %d router models.',
+    routingBenchmarkResult.synchronizedCount,
+    routingBenchmarkResult.matchedRouterModelCount,
+  );
+  if (routingBenchmarkResult.unmatchedModelKeys.length > 0) {
+    console.warn(
+      'Skipped unmatched routing benchmark targets: %s',
+      routingBenchmarkResult.unmatchedModelKeys.join(', '),
+    );
+  }
 
   await sql.end();
 }

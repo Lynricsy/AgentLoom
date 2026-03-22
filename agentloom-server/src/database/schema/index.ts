@@ -253,6 +253,28 @@ export {
   type ModelEvaluation,
 } from './routing-decisions.schema';
 export {
+  routerModels,
+  type RouterModelRoutingMeta,
+  type RouterModel,
+  type NewRouterModel,
+} from './router-models.schema';
+export {
+  ROUTING_BENCHMARK_TASK_CATEGORIES,
+  routingBenchmarks,
+  type RoutingBenchmarkTaskCategory,
+  type RoutingBenchmarkMlpLayer,
+  type RoutingBenchmarkMlpWeights,
+  type RoutingBenchmark,
+  type NewRoutingBenchmark,
+} from './routing-benchmarks.schema';
+export {
+  PROVIDER_HEALTH_STATUS_STATES,
+  providerHealthStatus,
+  type ProviderHealthState,
+  type ProviderHealthStatus,
+  type NewProviderHealthStatus,
+} from './provider-health-status.schema';
+export {
   pluginStatusEnum,
   plugins,
   type PluginRecord,

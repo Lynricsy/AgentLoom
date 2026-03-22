@@ -31,6 +31,8 @@ export const routingDecisions = pgTable(
 
     strategy: varchar('strategy', { length: 30 }).notNull(),
 
+    routerType: varchar('router_type', { length: 30 }),
+
     modelsEvaluated: jsonb('models_evaluated')
       .notNull()
       .$type<ModelEvaluation[]>(),
