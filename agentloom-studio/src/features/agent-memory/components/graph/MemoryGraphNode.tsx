@@ -11,7 +11,6 @@ import {
 import { cn } from '@/shared/lib/utils'
 import type { MemoryGraphFlowNode, MemoryNodeType } from './types'
 
-/** 节点类型图标映射 */
 const NODE_TYPE_ICONS: Record<MemoryNodeType, React.ElementType> = {
   root: Network,
   document: FileText,
@@ -20,7 +19,6 @@ const NODE_TYPE_ICONS: Record<MemoryNodeType, React.ElementType> = {
   index: ListTree,
 }
 
-/** 节点类型背景色映射 */
 const NODE_TYPE_COLORS: Record<MemoryNodeType, string> = {
   root: 'bg-violet-500/15',
   document: 'bg-sky-500/15',
@@ -29,7 +27,6 @@ const NODE_TYPE_COLORS: Record<MemoryNodeType, string> = {
   index: 'bg-rose-500/15',
 }
 
-/** 披露等级配色 */
 const DISCLOSURE_COLORS: Record<string, string> = {
   public: 'bg-emerald-500/20 text-emerald-300',
   internal: 'bg-amber-500/20 text-amber-300',

@@ -38,14 +38,12 @@ const edgeTypes: EdgeTypes = {
   memoryGraphEdge: MemoryGraphEdge as EdgeTypes[string],
 }
 
-/** 截取内容摘要 */
 function snippetize(content: string | null, maxLen = 50): string {
   if (!content) return ''
   const trimmed = content.trim()
   return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}…` : trimmed
 }
 
-/** 使用 dagre 对记忆图进行层次布局 */
 function applyDagreLayout(
   nodes: MemoryNode[],
   edges: MemoryEdgeType[],

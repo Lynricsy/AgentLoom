@@ -42,10 +42,6 @@ function serializeBootUris(raw: string): string[] {
     .filter(Boolean)
 }
 
-/**
- * Boot URI 标签输入组件
- * 支持逗号/Enter 添加 + X 删除的标签式交互
- */
 const BootUriTagInput = memo(function BootUriTagInput({
   value,
   onChange,

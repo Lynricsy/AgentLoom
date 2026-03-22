@@ -1,6 +1,3 @@
-/**
- * 审计时间线组件 — 展示记忆变更历史
- */
 import { useMemo } from 'react';
 import type { AuditLogEntry, AuditOperationType, ReviewStatus } from './types';
 

@@ -1,6 +1,3 @@
-/**
- * 版本对比视图 — 使用 diff 库生成统一差异
- */
 import { useMemo } from 'react';
 import { diffLines } from 'diff';
 import type { MemoryVersion } from './types';

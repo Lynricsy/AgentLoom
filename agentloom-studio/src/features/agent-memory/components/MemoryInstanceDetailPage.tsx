@@ -240,7 +240,6 @@ export function MemoryInstanceDetailPage({
   );
 }
 
-/** 统计卡片组件 */
 function StatCard({
   icon,
   label,

@@ -26,14 +26,6 @@ function isMemoryConfigured(config: Record<string, unknown>): boolean {
 
 // -- component --------------------------------------------------------------
 
-/**
- * Canvas node body for "memory" node type.
- * 3-tier LOD based on viewport zoom (mirrors KnowledgeBaseNodeBody pattern).
- *
- * - Low  (zoom < 0.4):  Icon + "Memory" label
- * - Med  (0.4 <= zoom < 0.7):  + instance name
- * - High (zoom >= 0.7):  + role badge + fusion priority
- */
 export const MemoryNodeBody = memo(function MemoryNodeBody({
   config,
 }: {

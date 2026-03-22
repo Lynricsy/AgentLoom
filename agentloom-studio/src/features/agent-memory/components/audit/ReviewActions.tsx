@@ -1,6 +1,3 @@
-/**
- * 审核操作按钮 — 批准/拒绝/回滚
- */
 import { useState, useCallback } from 'react';
 import { Button } from '@/shared/ui/button';
 import { useReview, useRollback } from './api';

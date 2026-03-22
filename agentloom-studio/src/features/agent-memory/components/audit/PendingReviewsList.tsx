@@ -1,6 +1,3 @@
-/**
- * 待审核列表组件
- */
 import { useMemo } from 'react';
 import type { PendingReview, AuditOperationType, ReviewStatus } from './types';
 
