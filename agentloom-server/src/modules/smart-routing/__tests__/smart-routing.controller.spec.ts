@@ -11,6 +11,7 @@ import type {
   SmartRoutingStrategyConfigSchemaResponseDtoType,
 } from '../dto/smart-routing-strategies.dto';
 import { SmartRoutingController } from '../smart-routing.controller';
+import { SmartRoutingService } from '../smart-routing.service';
 
 const { createMockSmartRoutingService } = vi.hoisted(() => ({
   createMockSmartRoutingService: () => ({
@@ -31,7 +32,7 @@ describe('SmartRoutingController', () => {
     vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
 
     mockService = createMockSmartRoutingService();
-    controller = new SmartRoutingController(mockService as any);
+    controller = new SmartRoutingController(mockService as unknown as SmartRoutingService);
   });
 
   afterEach(() => {
