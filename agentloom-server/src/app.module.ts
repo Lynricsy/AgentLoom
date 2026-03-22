@@ -49,6 +49,7 @@ import { AcpGatewayModule } from './modules/acp-gateway/acp-gateway.module';
 import { AgentDefinitionModule } from './modules/agent-definition/agent-definition.module';
 import { AgentConversationModule } from './modules/agent-conversation/agent-conversation.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { AgentMemoryModule } from './modules/agent-memory/agent-memory.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -130,6 +131,7 @@ function createThrottlerOptions(configService: ConfigService) {
     AgentDefinitionModule,
     AgentConversationModule,
     WorkspaceModule,
+    AgentMemoryModule,
   ],
   providers: [
     RbacCacheService,
