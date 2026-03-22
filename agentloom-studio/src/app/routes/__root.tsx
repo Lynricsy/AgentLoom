@@ -31,6 +31,10 @@ import { agentsIndexRoute } from './agents/agents.index'
 import { agentDetailRoute } from './agents/agents.$agentId'
 import { agentNewConversationRoute } from './agents/agents.$agentId.conversations.new'
 import { agentConversationRoute } from './agents/agents.$agentId.conversations.$conversationId'
+import { memoryRoute } from './memory'
+import { memoryDetailRoute } from './memory.$id'
+import { memorySettingsRoute } from './memory.$id.settings'
+import { memoryGraphRoute } from './memory.$id.graph'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -105,6 +109,12 @@ export function RootLayout() {
             >
               收益
             </Link>
+            <Link
+              to="/memory"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              记忆
+            </Link>
           </nav>
           <NotificationBell />
         </div>
@@ -149,4 +159,8 @@ export const routeTree = rootRoute.addChildren([
   agentDetailRoute,
   agentNewConversationRoute,
   agentConversationRoute,
+  memoryRoute,
+  memoryDetailRoute,
+  memorySettingsRoute,
+  memoryGraphRoute,
 ]);
