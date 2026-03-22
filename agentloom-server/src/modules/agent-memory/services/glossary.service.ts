@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import AhoCorasick from 'ahocorasick';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
@@ -28,7 +29,8 @@ interface GlossaryCacheEntry {
 }
 
 interface GlossaryCache {
-  entries: GlossaryCacheEntry[];
+  automaton: AhoCorasick;
+  keywordLookup: Map<string, GlossaryCacheEntry[]>;
   stale: boolean;
   rebuildPromise?: Promise<void>;
 }
@@ -103,7 +105,7 @@ export class GlossaryService {
 
     if (!cache) {
       await this.rebuildAutomaton(instanceId);
-      return this.matchText(this.caches.get(instanceId)?.entries ?? [], text);
+      return this.matchText(this.caches.get(instanceId), text);
     }
 
     if (cache.stale && !cache.rebuildPromise) {
@@ -117,7 +119,7 @@ export class GlossaryService {
         });
     }
 
-    return this.matchText(cache.entries, text);
+    return this.matchText(cache, text);
   }
 
   async rebuildAutomaton(instanceId: string): Promise<void> {
@@ -128,16 +130,24 @@ export class GlossaryService {
       .where(eq(memoryGlossaryKeywords.instanceId, instanceId))
       .orderBy(memoryGlossaryKeywords.keyword);
 
-    const entries = keywords
-      .map((keywordRow) => ({
-        keyword: keywordRow.keyword,
-        normalizedKeyword: keywordRow.keyword.toLowerCase(),
-        nodeId: keywordRow.nodeId,
-      }))
-      .sort((left, right) => right.keyword.length - left.keyword.length);
+    const entries = keywords.map((keywordRow) => ({
+      keyword: keywordRow.keyword,
+      normalizedKeyword: keywordRow.keyword.toLowerCase(),
+      nodeId: keywordRow.nodeId,
+    }));
+
+    const keywordLookup = new Map<string, GlossaryCacheEntry[]>();
+    for (const entry of entries) {
+      const existingEntries = keywordLookup.get(entry.normalizedKeyword) ?? [];
+      existingEntries.push(entry);
+      keywordLookup.set(entry.normalizedKeyword, existingEntries);
+    }
+
+    const automaton = new AhoCorasick([...keywordLookup.keys()]);
 
     this.caches.set(instanceId, {
-      entries,
+      automaton,
+      keywordLookup,
       stale: false,
     });
   }
@@ -179,30 +189,70 @@ export class GlossaryService {
     cache.stale = true;
   }
 
-  private matchText(entries: GlossaryCacheEntry[], text: string): GlossaryMatch[] {
-    if (!text || entries.length === 0) {
+  private matchText(
+    cache: GlossaryCache | undefined,
+    text: string,
+  ): GlossaryMatch[] {
+    if (!text || !cache || cache.keywordLookup.size === 0) {
       return [];
     }
 
     const normalizedText = text.toLowerCase();
+    const matchesByPosition = new Map<number, GlossaryMatch[]>();
+    const matchLengthsByPosition = new Map<number, number>();
+
+    for (const [endIndex, matchedKeywords] of cache.automaton.search(normalizedText)) {
+      for (const matchedKeyword of matchedKeywords) {
+        const entries = cache.keywordLookup.get(matchedKeyword) ?? [];
+
+        for (const entry of entries) {
+          const position = endIndex - entry.normalizedKeyword.length + 1;
+          const currentLongestLength = matchLengthsByPosition.get(position) ?? 0;
+          const currentLength = entry.normalizedKeyword.length;
+
+          if (currentLength < currentLongestLength) {
+            continue;
+          }
+
+          const glossaryMatch = {
+            keyword: entry.keyword,
+            nodeId: entry.nodeId,
+            position,
+          };
+
+          if (currentLength > currentLongestLength) {
+            matchesByPosition.set(position, [glossaryMatch]);
+            matchLengthsByPosition.set(position, currentLength);
+            continue;
+          }
+
+          const existingMatches = matchesByPosition.get(position) ?? [];
+          existingMatches.push(glossaryMatch);
+          matchesByPosition.set(position, existingMatches);
+        }
+      }
+    }
+
     const matches: GlossaryMatch[] = [];
+    let nextAvailablePosition = 0;
 
-    for (let index = 0; index < normalizedText.length; index += 1) {
-      const matchedEntry = entries.find((entry) =>
-        normalizedText.startsWith(entry.normalizedKeyword, index),
-      );
-
-      if (!matchedEntry) {
+    const sortedPositions = [...matchesByPosition.keys()].sort((left, right) => left - right);
+    for (const position of sortedPositions) {
+      if (position < nextAvailablePosition) {
         continue;
       }
 
-      matches.push({
-        keyword: matchedEntry.keyword,
-        nodeId: matchedEntry.nodeId,
-        position: index,
-      });
+      const positionMatches = matchesByPosition.get(position) ?? [];
+      if (positionMatches.length === 0) {
+        continue;
+      }
 
-      index += matchedEntry.keyword.length - 1;
+      matches.push(...positionMatches);
+
+      const longestLength = matchLengthsByPosition.get(position);
+      if (longestLength) {
+        nextAvailablePosition = position + longestLength;
+      }
     }
 
     return matches;
