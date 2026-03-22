@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/api/client'
+import type { JsonSchema, ProviderHealth, StrategyInfo } from '../types'
 
 export interface RoutingDecisionRecord {
   id: string
@@ -30,4 +31,16 @@ export async function fetchRoutingDecisions(params: {
   pageSize?: number
 }): Promise<RoutingDecisionsResponse> {
   return apiClient.get('routing-decisions', { searchParams: params as Record<string, string | number> }).json()
+}
+
+export async function fetchStrategies(): Promise<StrategyInfo[]> {
+  return apiClient.get('smart-routing/strategies').json()
+}
+
+export async function fetchHealthStatus(): Promise<ProviderHealth[]> {
+  return apiClient.get('smart-routing/health').json()
+}
+
+export async function fetchConfigSchema(strategyName: string): Promise<JsonSchema> {
+  return apiClient.get(`smart-routing/strategies/${strategyName}/config-schema`).json()
 }

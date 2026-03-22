@@ -270,16 +270,20 @@ export interface CanvasContextMenuState {
 }
 
 export type RoutingStrategy =
-  | 'TOKEN_OPTIMIZED'
-  | 'COST_OPTIMIZED'
-  | 'QUALITY_FIRST'
-  | 'LATENCY_FIRST'
-  | 'HISTORICAL_BEST'
-  | 'FALLBACK_CHAIN'
+  | 'random'
+  | 'round_robin'
+  | 'rules'
+  | 'llm_as_router'
+  | 'fallback_chain'
+  | 'knn'
+  | 'mlp'
+  | 'elo'
+  | 'memory_bank'
+  | 'wasm_plugin'
 
 export interface SmartRoutingNodeData extends CanvasNodeData {
   strategy: RoutingStrategy
-  tokenThreshold?: number
+  strategyConfig: Record<string, unknown>
   fallbackPriority?: string[]
   modelConfigIds?: string[]
 }

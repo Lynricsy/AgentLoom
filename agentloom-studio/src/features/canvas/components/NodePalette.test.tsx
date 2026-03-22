@@ -100,12 +100,17 @@ describe('NodePalette', () => {
   it('renders all palette groups', () => {
     render(<NodePalette />)
 
-    expect(screen.getByText('Agent')).toBeInTheDocument()
-    expect(screen.getByText('Tool')).toBeInTheDocument()
-    expect(screen.getByText('Trigger')).toBeInTheDocument()
-    expect(screen.getByText('Knowledge')).toBeInTheDocument()
-    expect(screen.getByText('Output')).toBeInTheDocument()
-    expect(screen.getByText('Control')).toBeInTheDocument()
+    const groupHeaders = screen
+      .getAllByRole('button')
+      .filter((btn) => btn.querySelector('.flex-1.text-left'))
+      .map((btn) => btn.querySelector('.flex-1.text-left')?.textContent)
+
+    expect(groupHeaders).toContain('Agent')
+    expect(groupHeaders).toContain('Tool')
+    expect(groupHeaders).toContain('Trigger')
+    expect(groupHeaders).toContain('Knowledge')
+    expect(groupHeaders).toContain('Output')
+    expect(groupHeaders).toContain('Control')
   })
 
   it('switches to the block library tab', async () => {
@@ -129,9 +134,11 @@ describe('NodePalette', () => {
       'chat-agent',
       'llm-model',
       'smart-routing',
+      'agent',
       'http-tool',
       'code-tool',
       'sandbox',
+      'input-preprocessor',
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',
@@ -157,7 +164,9 @@ describe('NodePalette', () => {
     const user = userEvent.setup()
     render(<NodePalette />)
 
-    const agentHeader = screen.getByText('Agent').closest('button')
+    const agentHeader = screen
+      .getAllByRole('button')
+      .find((btn) => btn.querySelector('.flex-1.text-left')?.textContent === 'Agent')
 
     if (!agentHeader) {
       throw new Error('Expected Agent group toggle to exist')

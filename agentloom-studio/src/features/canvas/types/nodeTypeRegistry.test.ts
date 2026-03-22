@@ -34,6 +34,8 @@ describe('nodeTypeRegistry', () => {
       'reusable-block',
       'smart-routing',
       'plugin',
+      'input-preprocessor',
+      'agent',
     ])
   })
 
@@ -160,7 +162,7 @@ describe('nodeTypeRegistry', () => {
     expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual([
       'model-out',
     ])
-    expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('FALLBACK_CHAIN')
+    expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('random')
   })
 
   it('exposes every registry entry through ordered helpers and palette groups', () => {
@@ -174,9 +176,11 @@ describe('nodeTypeRegistry', () => {
       'chat-agent',
       'llm-model',
       'smart-routing',
+      'agent',
       'http-tool',
       'code-tool',
       'sandbox',
+      'input-preprocessor',
       'manual-trigger',
       'schedule-trigger',
       'knowledge-base',

@@ -1,43 +1,206 @@
 import { memo, useCallback, useMemo } from 'react'
-import { GitFork, Plus, Trash2 } from 'lucide-react'
+import {
+  GitFork,
+  Plus,
+  Trash2,
+  Shuffle,
+  RefreshCw,
+  ListChecks,
+  Brain,
+  ArrowDownUp,
+  ScatterChart,
+  Network,
+  Trophy,
+  Database,
+  Puzzle,
+  AlertCircle,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react'
 import type { CanvasNode } from '../../types'
 import type { RoutingStrategy } from '../../types'
 import { useCanvasActions } from '../../stores/canvasStore'
 import { createPort } from '../../types/nodeTypeRegistry'
+import {
+  STRATEGY_META,
+  STRATEGY_CATEGORY_COLORS,
+  STRATEGY_CATEGORY_BG,
+  STRATEGY_CATEGORY_LABELS,
+  STRATEGY_NAMES_BY_CATEGORY,
+} from '@/features/smart-routing'
+import type {
+  StrategyName,
+  StrategyCategory,
+  ProviderHealth,
+  ProviderHealthStatus,
+  JsonSchemaProperty,
+} from '@/features/smart-routing'
+import { useHealthStatus, useConfigSchema } from '@/features/smart-routing'
+import { cn } from '@/shared/lib/utils'
 
-const STRATEGY_OPTIONS: { value: RoutingStrategy; label: string }[] = [
-  { value: 'TOKEN_OPTIMIZED', label: 'Token 优化' },
-  { value: 'COST_OPTIMIZED', label: '成本优化' },
-  { value: 'QUALITY_FIRST', label: '质量优先' },
-  { value: 'LATENCY_FIRST', label: '延迟优先' },
-  { value: 'HISTORICAL_BEST', label: '历史最佳' },
-  { value: 'FALLBACK_CHAIN', label: '回退链' },
-]
-
-const STRATEGY_DESCRIPTIONS: Record<string, string> = {
-  TOKEN_OPTIMIZED: '根据输入 token 数量选择上下文窗口最合适的模型',
-  COST_OPTIMIZED: '选择预估成本最低的模型',
-  QUALITY_FIRST: '选择质量排名最高的模型',
-  LATENCY_FIRST: '选择平均延迟最低的模型',
-  HISTORICAL_BEST: '根据历史执行数据选择表现最佳的模型',
-  FALLBACK_CHAIN: '按优先级依次尝试，失败时切换到下一个模型',
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  Shuffle,
+  RefreshCw,
+  ListChecks,
+  Brain,
+  ArrowDownUp,
+  ScatterChart,
+  Network,
+  Trophy,
+  Database,
+  Puzzle,
 }
 
+const ALL_STRATEGY_NAMES: StrategyName[] = [
+  'random',
+  'round_robin',
+  'rules',
+  'llm_as_router',
+  'fallback_chain',
+  'knn',
+  'mlp',
+  'elo',
+  'memory_bank',
+  'wasm_plugin',
+]
+
 function isRoutingStrategy(value: unknown): value is RoutingStrategy {
-  return STRATEGY_OPTIONS.some((option) => option.value === value)
+  return ALL_STRATEGY_NAMES.includes(value as StrategyName)
 }
 
 const MIN_MODEL_PORTS = 2
 const MAX_MODEL_PORTS = 10
+
+const CATEGORY_ORDER: StrategyCategory[] = ['simple', 'ml', 'rag', 'plugin']
 
 function getNextModelPortIndex(portIds: string[]): number {
   const currentMax = portIds.reduce((max, portId) => {
     const match = /^model-in-(\d+)$/.exec(portId)
     return match ? Math.max(max, Number(match[1])) : max
   }, -1)
-
   return currentMax + 1
 }
+
+const HEALTH_STATUS_STYLES: Record<
+  ProviderHealthStatus,
+  { bg: string; text: string; label: string }
+> = {
+  healthy: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: '正常' },
+  degraded: { bg: 'bg-amber-500/15', text: 'text-amber-400', label: '降级' },
+  open: { bg: 'bg-red-500/15', text: 'text-red-400', label: '断路' },
+}
+
+function computeHealthSummary(healthData: ProviderHealth[]) {
+  const counts: Record<ProviderHealthStatus, number> = { healthy: 0, degraded: 0, open: 0 }
+  for (const h of healthData) {
+    counts[h.status]++
+  }
+  return counts
+}
+
+interface SchemaFieldProps {
+  name: string
+  schema: JsonSchemaProperty
+  value: unknown
+  onChange: (key: string, val: unknown) => void
+}
+
+const SchemaField = memo(function SchemaField({ name, schema, value, onChange }: SchemaFieldProps) {
+  const fieldId = `strategy-param-${name}`
+  const label = schema.title ?? name
+  const description = schema.description
+
+  if (schema.enum && schema.enum.length > 0) {
+    return (
+      <div className="flex flex-col gap-1">
+        <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </label>
+        <select
+          id={fieldId}
+          data-testid={fieldId}
+          value={String(value ?? schema.default ?? '')}
+          onChange={(e) => onChange(name, e.target.value)}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {schema.enum.map((v) => (
+            <option key={String(v)} value={String(v)}>
+              {String(v)}
+            </option>
+          ))}
+        </select>
+        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+      </div>
+    )
+  }
+
+  if (schema.type === 'boolean') {
+    const checked = typeof value === 'boolean' ? value : (schema.default as boolean) ?? false
+    return (
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor={fieldId}
+          className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+        >
+          <input
+            id={fieldId}
+            type="checkbox"
+            data-testid={fieldId}
+            checked={checked}
+            onChange={(e) => onChange(name, e.target.checked)}
+            className="h-4 w-4 rounded border-border accent-primary"
+          />
+          {label}
+        </label>
+        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+      </div>
+    )
+  }
+
+  if (schema.type === 'number' || schema.type === 'integer') {
+    const numVal = typeof value === 'number' ? value : (schema.default as number) ?? undefined
+    return (
+      <div className="flex flex-col gap-1">
+        <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </label>
+        <input
+          id={fieldId}
+          type="number"
+          data-testid={fieldId}
+          value={numVal ?? ''}
+          min={schema.minimum}
+          max={schema.maximum}
+          step={schema.type === 'integer' ? 1 : 0.01}
+          onChange={(e) => {
+            const v = e.target.value === '' ? undefined : Number(e.target.value)
+            onChange(name, v)
+          }}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+      </div>
+    )
+  }
+
+  const strVal = typeof value === 'string' ? value : (schema.default as string) ?? ''
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <input
+        id={fieldId}
+        type="text"
+        data-testid={fieldId}
+        value={strVal}
+        onChange={(e) => onChange(name, e.target.value)}
+        className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+      />
+      {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+    </div>
+  )
+})
 
 interface SmartRoutingConfigPanelProps {
   node: CanvasNode
@@ -50,18 +213,17 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 }: SmartRoutingConfigPanelProps) {
   const { updateNodeData } = useCanvasActions()
 
+  const strategy: RoutingStrategy = isRoutingStrategy(node.data.strategy)
+    ? node.data.strategy
+    : 'random'
+  const strategyConfig = (node.data.strategyConfig as Record<string, unknown>) ?? {}
+  const meta = STRATEGY_META[strategy as StrategyName]
+
   const modelInputPorts = useMemo(
     () => (node.data.inputPorts ?? []).filter((p) => p.dataType === 'model'),
     [node.data.inputPorts],
   )
 
-  const strategy: RoutingStrategy = isRoutingStrategy(node.data.strategy)
-    ? node.data.strategy
-    : 'FALLBACK_CHAIN'
-  const tokenThreshold =
-    typeof node.data.tokenThreshold === 'number' && node.data.tokenThreshold > 0
-      ? node.data.tokenThreshold
-      : 4096
   const fallbackPriority = useMemo(() => {
     const validPortIds = new Set(modelInputPorts.map((port) => port.id))
     const explicitPriority = Array.isArray(node.data.fallbackPriority)
@@ -72,34 +234,41 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     const remainingPortIds = modelInputPorts
       .map((port) => port.id)
       .filter((portId) => !explicitPriority.includes(portId))
-
     return [...explicitPriority, ...remainingPortIds]
   }, [modelInputPorts, node.data.fallbackPriority])
+
   const portLabelById = useMemo(
     () => new Map(modelInputPorts.map((port) => [port.id, port.label])),
     [modelInputPorts],
   )
 
+  const { data: healthData } = useHealthStatus()
+  const { data: configSchema } = useConfigSchema(strategy as StrategyName)
+  const healthList = healthData ?? []
+  const healthSummary = useMemo(() => computeHealthSummary(healthList), [healthList])
+
   const handleStrategyChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const nextStrategy = e.target.value as RoutingStrategy
-      onConfigChange(
-        nextStrategy === 'FALLBACK_CHAIN'
-          ? { strategy: nextStrategy, fallbackPriority }
-          : { strategy: nextStrategy },
-      )
+      const patch: Record<string, unknown> = {
+        strategy: nextStrategy,
+        strategyConfig: {},
+      }
+      if (nextStrategy === 'fallback_chain') {
+        patch.fallbackPriority = fallbackPriority
+      }
+      onConfigChange(patch)
     },
     [fallbackPriority, onConfigChange],
   )
 
-  const handleTokenThresholdChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = parseInt(e.target.value, 10)
-      if (!isNaN(val) && val > 0) {
-        onConfigChange({ tokenThreshold: val })
-      }
+  const handleConfigParamChange = useCallback(
+    (key: string, val: unknown) => {
+      onConfigChange({
+        strategyConfig: { ...strategyConfig, [key]: val },
+      })
     },
-    [onConfigChange],
+    [strategyConfig, onConfigChange],
   )
 
   const handleAddPort = useCallback(() => {
@@ -107,13 +276,9 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     const modelPorts = currentPorts.filter((p) => p.dataType === 'model')
     if (modelPorts.length >= MAX_MODEL_PORTS) return
     const nextIndex = getNextModelPortIndex(modelPorts.map((port) => port.id))
-    const newPort = createPort(
-      `model-in-${nextIndex}`,
-      `模型 ${nextIndex + 1}`,
-      'input',
-      'model',
-      { required: false },
-    )
+    const newPort = createPort(`model-in-${nextIndex}`, `模型 ${nextIndex + 1}`, 'input', 'model', {
+      required: false,
+    })
     const nextInputPorts = [...currentPorts, newPort]
     updateNodeData(node.id, {
       inputPorts: nextInputPorts,
@@ -150,6 +315,9 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     [fallbackPriority, onConfigChange],
   )
 
+  const schemaProperties = configSchema?.properties ?? {}
+  const schemaPropertyEntries = Object.entries(schemaProperties)
+
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="smart-routing-config-panel">
       <div className="flex items-center gap-2">
@@ -168,33 +336,96 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
           onChange={handleStrategyChange}
           className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         >
-          {STRATEGY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
+          {CATEGORY_ORDER.map((cat) => (
+            <optgroup
+              key={cat}
+              label={STRATEGY_CATEGORY_LABELS[cat]}
+              data-testid={`strategy-group-${cat}`}
+            >
+              {STRATEGY_NAMES_BY_CATEGORY[cat].map((name) => {
+                const m = STRATEGY_META[name]
+                return (
+                  <option key={name} value={name}>
+                    {m.displayName}
+                  </option>
+                )
+              })}
+            </optgroup>
           ))}
         </select>
-        <p className="text-xs text-muted-foreground">{STRATEGY_DESCRIPTIONS[strategy]}</p>
+        {meta ? (
+          <div className="flex items-center gap-1.5">
+            {ICON_MAP[meta.icon] ? (
+              (() => {
+                const Icon = ICON_MAP[meta.icon]!
+                return <Icon className={cn('h-3 w-3', STRATEGY_CATEGORY_COLORS[meta.category])} />
+              })()
+            ) : null}
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+                STRATEGY_CATEGORY_BG[meta.category],
+                STRATEGY_CATEGORY_COLORS[meta.category],
+              )}
+            >
+              {STRATEGY_CATEGORY_LABELS[meta.category]}
+            </span>
+          </div>
+        ) : null}
+        <p className="text-xs text-muted-foreground">{meta?.description ?? ''}</p>
       </div>
 
-      {strategy === 'TOKEN_OPTIMIZED' ? (
+      {healthList.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="token-threshold" className="text-xs font-medium text-muted-foreground">
-            Token 阈值
-          </label>
-          <input
-            id="token-threshold"
-            data-testid="token-threshold-input"
-            type="number"
-            min={1}
-            value={tokenThreshold}
-            onChange={handleTokenThresholdChange}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+          <span className="text-xs font-medium text-muted-foreground">Provider 状态</span>
+          <div className="flex items-center gap-2" data-testid="provider-health-summary">
+            {(Object.entries(healthSummary) as [ProviderHealthStatus, number][]).map(
+              ([status, count]) =>
+                count > 0 ? (
+                  <span
+                    key={status}
+                    data-testid={`provider-health-badge-${status}`}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      HEALTH_STATUS_STYLES[status].bg,
+                      HEALTH_STATUS_STYLES[status].text,
+                    )}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                    {count} {HEALTH_STATUS_STYLES[status].label}
+                  </span>
+                ) : null,
+            )}
+          </div>
+          {healthSummary.degraded > 0 || healthSummary.open > 0 ? (
+            <div className="flex items-start gap-1.5 rounded-md bg-amber-500/5 px-2 py-1.5 text-[10px] text-amber-400">
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                {healthSummary.open > 0
+                  ? `${healthSummary.open} 个 Provider 已断路`
+                  : `${healthSummary.degraded} 个 Provider 性能降级`}
+              </span>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {strategy === 'FALLBACK_CHAIN' ? (
+      {schemaPropertyEntries.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          <span className="text-xs font-medium text-muted-foreground">策略参数</span>
+          {schemaPropertyEntries.map(([key, propSchema]) => (
+            <SchemaField
+              key={key}
+              name={key}
+              schema={propSchema}
+              value={strategyConfig[key]}
+              onChange={handleConfigParamChange}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {strategy === 'fallback_chain' ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">回退优先级</span>
           <ul className="flex flex-col gap-1" data-testid="fallback-priority-list">
@@ -211,7 +442,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   onClick={() => handleMovePriority(index, 'up')}
                   className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
-                  ↑
+                  <ChevronUp className="h-3 w-3" />
                 </button>
                 <button
                   type="button"
@@ -219,7 +450,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   onClick={() => handleMovePriority(index, 'down')}
                   className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
-                  ↓
+                  <ChevronDown className="h-3 w-3" />
                 </button>
               </li>
             ))}

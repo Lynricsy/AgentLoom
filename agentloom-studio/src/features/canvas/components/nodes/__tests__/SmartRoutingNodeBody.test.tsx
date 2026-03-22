@@ -1,7 +1,19 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SmartRoutingNodeData } from '../../../types'
 import { SmartRoutingNodeBody } from '../SmartRoutingNodeBody'
+
+const mocks = vi.hoisted(() => ({
+  useHealthStatus: vi.fn().mockReturnValue({ data: undefined }),
+}))
+
+vi.mock('@/features/smart-routing', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return {
+    ...actual,
+    useHealthStatus: mocks.useHealthStatus,
+  }
+})
 
 function createSmartRoutingData(
   overrides: Partial<SmartRoutingNodeData> = {},
@@ -12,7 +24,8 @@ function createSmartRoutingData(
     category: 'agent',
     description: '根据策略从多个 LLM 模型中选择最优模型',
     config: {},
-    strategy: 'FALLBACK_CHAIN',
+    strategy: 'random',
+    strategyConfig: {},
     inputPorts: [
       {
         id: 'model-in-0',
@@ -52,58 +65,139 @@ function createSmartRoutingData(
 }
 
 describe('SmartRoutingNodeBody', () => {
-  it('renders strategy label for FALLBACK_CHAIN by default', () => {
-    render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
-
-    expect(screen.getByText('回退链')).toBeInTheDocument()
+  beforeEach(() => {
+    mocks.useHealthStatus.mockReturnValue({ data: undefined })
   })
 
-  it('renders strategy label for TOKEN_OPTIMIZED', () => {
-    render(<SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'TOKEN_OPTIMIZED' })} />)
+  describe('策略显示', () => {
+    it('renders strategy label for random (default)', () => {
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
-    expect(screen.getByText('Token 优化')).toBeInTheDocument()
+      expect(screen.getByText('随机路由')).toBeInTheDocument()
+    })
+
+    it('renders strategy label for fallback_chain', () => {
+      render(
+        <SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'fallback_chain' })} />,
+      )
+
+      expect(screen.getByText('回退链')).toBeInTheDocument()
+    })
+
+    it('renders strategy label for knn', () => {
+      render(<SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'knn' })} />)
+
+      expect(screen.getByText('KNN 路由')).toBeInTheDocument()
+    })
+
+    it('renders strategy label for elo', () => {
+      render(<SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'elo' })} />)
+
+      expect(screen.getByText('Elo 评分')).toBeInTheDocument()
+    })
+
+    it('renders strategy label for memory_bank', () => {
+      render(
+        <SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'memory_bank' })} />,
+      )
+
+      expect(screen.getByText('记忆库路由')).toBeInTheDocument()
+    })
+
+    it('renders strategy label for wasm_plugin', () => {
+      render(
+        <SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'wasm_plugin' })} />,
+      )
+
+      expect(screen.getByText('WASM 插件')).toBeInTheDocument()
+    })
+
+    it('shows raw strategy value when unrecognized', () => {
+      render(
+        <SmartRoutingNodeBody
+          data={createSmartRoutingData({
+            strategy: 'UNKNOWN_STRATEGY' as SmartRoutingNodeData['strategy'],
+          })}
+        />,
+      )
+
+      expect(screen.getByText('UNKNOWN_STRATEGY')).toBeInTheDocument()
+    })
   })
 
-  it('renders strategy label for HISTORICAL_BEST', () => {
-    render(<SmartRoutingNodeBody data={createSmartRoutingData({ strategy: 'HISTORICAL_BEST' })} />)
+  describe('模型计数', () => {
+    it('prefers connectedModelCount over other sources', () => {
+      render(
+        <SmartRoutingNodeBody
+          data={createSmartRoutingData({ modelConfigIds: ['m1', 'm2', 'm3'] })}
+          connectedModelCount={1}
+        />,
+      )
 
-    expect(screen.getByText('历史最佳')).toBeInTheDocument()
+      expect(screen.getByText('1 个模型')).toBeInTheDocument()
+    })
+
+    it('falls back to modelConfigIds when connectedModelCount is not provided', () => {
+      render(
+        <SmartRoutingNodeBody
+          data={createSmartRoutingData({ modelConfigIds: ['m1', 'm2', 'm3'] })}
+        />,
+      )
+
+      expect(screen.getByText('3 个模型')).toBeInTheDocument()
+    })
+
+    it('shows 0 when no model count sources available', () => {
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
+
+      expect(screen.getByText('0 个模型')).toBeInTheDocument()
+    })
   })
 
-  it('prefers connectedModelCount over other sources', () => {
-    render(
-      <SmartRoutingNodeBody
-        data={createSmartRoutingData({ modelConfigIds: ['m1', 'm2', 'm3'] })}
-        connectedModelCount={1}
-      />,
-    )
+  describe('健康状态摘要', () => {
+    it('shows health summary dots when health data is available', () => {
+      mocks.useHealthStatus.mockReturnValue({
+        data: [
+          { providerName: 'openai', modelId: 'gpt-4', status: 'healthy', failureCount: 0, lastFailureAt: null },
+          { providerName: 'anthropic', modelId: 'claude-3', status: 'degraded', failureCount: 2, lastFailureAt: '2026-01-01' },
+        ],
+      })
 
-    expect(screen.getByText('1 个模型')).toBeInTheDocument()
-  })
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
-  it('falls back to modelConfigIds when connectedModelCount is not provided', () => {
-    render(
-      <SmartRoutingNodeBody
-        data={createSmartRoutingData({ modelConfigIds: ['m1', 'm2', 'm3'] })}
-      />,
-    )
+      const summary = screen.getByTestId('provider-health-summary')
+      expect(summary).toBeInTheDocument()
 
-    expect(screen.getByText('3 个模型')).toBeInTheDocument()
-  })
+      expect(screen.getByTestId('provider-health-badge-healthy')).toHaveTextContent('1')
+      expect(screen.getByTestId('provider-health-badge-degraded')).toHaveTextContent('1')
+    })
 
-  it('does not infer model count from inputPorts anymore', () => {
-    render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
+    it('shows open badge when providers have open circuit', () => {
+      mocks.useHealthStatus.mockReturnValue({
+        data: [
+          { providerName: 'openai', modelId: 'gpt-4', status: 'open', failureCount: 10, lastFailureAt: '2026-01-01' },
+        ],
+      })
 
-    expect(screen.getByText('0 个模型')).toBeInTheDocument()
-  })
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
-  it('shows raw strategy value when unrecognized', () => {
-    render(
-      <SmartRoutingNodeBody
-        data={createSmartRoutingData({ strategy: 'UNKNOWN_STRATEGY' as SmartRoutingNodeData['strategy'] })}
-      />,
-    )
+      expect(screen.getByTestId('provider-health-badge-open')).toHaveTextContent('1')
+    })
 
-    expect(screen.getByText('UNKNOWN_STRATEGY')).toBeInTheDocument()
+    it('does not show health summary when no health data', () => {
+      mocks.useHealthStatus.mockReturnValue({ data: undefined })
+
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
+
+      expect(screen.queryByTestId('provider-health-summary')).not.toBeInTheDocument()
+    })
+
+    it('does not show health summary when health data is empty', () => {
+      mocks.useHealthStatus.mockReturnValue({ data: [] })
+
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
+
+      expect(screen.queryByTestId('provider-health-summary')).not.toBeInTheDocument()
+    })
   })
 })
