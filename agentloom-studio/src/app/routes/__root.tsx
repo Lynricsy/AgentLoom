@@ -35,6 +35,7 @@ import { memoryRoute } from './memory'
 import { memoryDetailRoute } from './memory.$id'
 import { memorySettingsRoute } from './memory.$id.settings'
 import { memoryGraphRoute } from './memory.$id.graph'
+import { memoryAuditRoute } from './memory.$id.audit'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -163,4 +164,5 @@ export const routeTree = rootRoute.addChildren([
   memoryDetailRoute,
   memorySettingsRoute,
   memoryGraphRoute,
+  memoryAuditRoute,
 ]);
