@@ -28,6 +28,8 @@ import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
 import { MemoryConfigPanel } from './MemoryConfigPanel'
+import { SkillConfigPanel } from './SkillConfigPanel'
+import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -325,6 +327,14 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
         config={node.data.config}
         onApply={onConfigChange}
         onValidationChange={onValidationChange}
+      />
+    ),
+  },
+  'skill': {
+    render: ({ node, onConfigChange }) => (
+      <SkillPanel
+        config={node.data.config}
+        onApply={(config) => onConfigChange({ config })}
       />
     ),
   },

@@ -28,6 +28,7 @@ export const NODE_TYPES = [
   'input-preprocessor',
   'memory',
   'agent',
+  'skill',
 ] as const
 
 export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
@@ -237,6 +238,11 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort('memory', 'Memory', 'input', 'json', {
         description: '记忆/历史上下文',
         schema: createJsonSchema('Memory', '历史对话或记忆数据'),
+      }),
+      createPort('skills', 'Skills', 'input', 'skill', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 可加载的技能指令',
       }),
     ],
     outputPorts: [
@@ -636,6 +642,11 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort('context', '上下文', 'input', 'json', {
         description: '附加上下文数据',
       }),
+      createPort('skills', 'Skills', 'input', 'skill', {
+        multiple: true,
+        maxConnections: null,
+        description: 'Agent 可加载的技能指令',
+      }),
     ],
     outputPorts: [
       createPort('agent-output', 'Agent 输出', 'output', 'text', {
@@ -650,6 +661,31 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     configSchema: EMPTY_CONFIG_SCHEMA,
+  },
+  skill: {
+    type: 'skill',
+    category: 'agent',
+    label: 'Skill',
+    icon: 'BookOpenText',
+    description: 'Agent prompt 增强指令',
+    colorToken: 'var(--color-type-skill)',
+    inputPorts: [],
+    outputPorts: [
+      createPort('skill-out', 'Skill', 'output', 'skill', {
+        description: '技能输出，连接到 Agent 的 Skills 端口',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        skillId: createConfigField('string', 'Skill ID', {
+          description: '关联的技能 ID',
+        }),
+        skillName: createConfigField('string', '技能名称'),
+        skillDescription: createConfigField('string', '技能描述'),
+      },
+      required: ['skillId'],
+    },
   },
 }
 

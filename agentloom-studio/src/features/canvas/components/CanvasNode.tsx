@@ -10,6 +10,7 @@ import {
 import {
   AlertTriangle,
   Bot,
+  BookOpenText,
   Brain,
   BrainCircuit,
   Braces,
@@ -67,9 +68,11 @@ import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 import { PluginNodeBody } from './nodes/PluginNodeBody'
 import { AgentNodeBody } from './nodes/AgentNodeBody'
 import { MemoryNodeBody } from './nodes/MemoryNodeBody'
+import { SkillBody } from '../../agent-canvas/components/nodes/SkillBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
+  BookOpenText,
   Brain,
   MessageSquare,
   Globe,
@@ -616,6 +619,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <MemoryNodeBody config={data.config} />
           ) : data.nodeType === 'agent' ? (
             <AgentNodeBody data={data as WorkflowAgentNodeData} />
+          ) : data.nodeType === 'skill' ? (
+            <SkillBody data={data} />
           ) : (
             config.description
           )}

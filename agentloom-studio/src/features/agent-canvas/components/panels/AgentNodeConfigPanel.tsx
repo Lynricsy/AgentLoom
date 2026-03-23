@@ -6,6 +6,7 @@ import {
   useAgentCanvasNodes,
   useAgentCanvasActions,
 } from '../../stores/agent-canvas.store';
+import { SkillPanel } from './SkillPanel';
 
 interface AgentNodeConfigPanelProps {
   className?: string;
@@ -80,6 +81,10 @@ const NodeConfigContent = memo(function NodeConfigContent({
           config={config}
           onConfigChange={onConfigChange}
         />
+      );
+    case 'skill':
+      return (
+        <SkillPanel config={config} onApply={onConfigChange} />
       );
     default:
       return (

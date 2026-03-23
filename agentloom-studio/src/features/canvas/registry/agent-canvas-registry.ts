@@ -56,6 +56,7 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'knowledge-base',
   'sub-agent',
   'input-preprocessor',
+  'skill',
 ] as const satisfies readonly AgentCanvasNodeType[]
 
 export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
@@ -320,6 +321,30 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           outputFormat: createConfigField('string', '输出格式'),
         },
         required: ['transformType', 'expression'],
+      },
+    },
+  ],
+  [
+    'skill',
+    {
+      type: 'skill',
+      category: 'knowledge',
+      label: 'Skill',
+      icon: 'BookOpenText',
+      description: 'Agent prompt 增强指令',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.knowledge,
+      inputPorts: [],
+      outputPorts: [
+        createPort('skill-out', 'Skill', 'output', 'skill'),
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          skillId: createConfigField('string', 'Skill ID'),
+          skillName: createConfigField('string', 'Skill 名称'),
+          skillDescription: createConfigField('string', 'Skill 描述'),
+        },
+        required: ['skillId'],
       },
     },
   ],
