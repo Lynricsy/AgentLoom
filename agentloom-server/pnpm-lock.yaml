@@ -80,6 +80,9 @@ importers:
       '@types/jmespath':
         specifier: ^0.15.2
         version: 0.15.2
+      ahocorasick:
+        specifier: ^1.0.2
+        version: 1.0.2
       ai:
         specifier: ^6.0.116
         version: 6.0.116(zod@4.3.6)
@@ -171,12 +174,18 @@ importers:
       '@openapitools/openapi-generator-cli':
         specifier: ^2.30.2
         version: 2.30.2(@nestjs/websockets@11.1.16)
+      '@sinclair/typebox':
+        specifier: ^0.34.48
+        version: 0.34.48
       '@swc/core':
         specifier: ^1.15.18
         version: 1.15.18
       '@testcontainers/postgresql':
         specifier: ^11.12.0
         version: 11.12.0
+      '@types/ahocorasick':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
@@ -1681,6 +1690,9 @@ packages:
   '@scarf/scarf@1.4.0':
     resolution: {integrity: sha512-xxeapPiUXdZAE3che6f3xogoJPeZgig6omHEy1rIY5WVsB3H2BHNnZH+gHG6x91SCWyQCzWGsuL2Hh3ClO5/qQ==}
 
+  '@sinclair/typebox@0.34.48':
+    resolution: {integrity: sha512-kKJTNuK3AQOrgjjotVxMrCn1sUJwM76wMszfq1kdU4uYVJjvEWuFQ6HgvLt4Xz3fSmZlTOxJ/Ie13KnIcWQXFA==}
+
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
@@ -1812,6 +1824,9 @@ packages:
 
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
+
+  '@types/ahocorasick@1.0.0':
+    resolution: {integrity: sha512-FNLE6B+9Px4LfRX2bZHSSTFa8Du8RznF5fNX915Ovf+K+g0SljmcmO5u7SH+c3LmeCZwP03NgMb7p82c0+Vbrg==}
 
   '@types/caseless@0.12.5':
     resolution: {integrity: sha512-hWtVTC2q7hc7xZ/RLbxapMvDMgUnDvKvMOpKal4DrMyfGBUfB1oKaZlIRr6mJL+If3bAP6sV/QneGzF6tJjZDg==}
@@ -2101,6 +2116,9 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
+
+  ahocorasick@1.0.2:
+    resolution: {integrity: sha512-hCOfMzbFx5IDutmWLAt6MZwOUjIfSM9G9FyVxytmE4Rs/5YDPWQrD/+IR1w+FweD9H2oOZEnv36TmkjhNURBVA==}
 
   ai@6.0.116:
     resolution: {integrity: sha512-7yM+cTmyRLeNIXwt4Vj+mrrJgVQ9RMIW5WO0ydoLoYkewIvsMcvUmqS4j2RJTUXaF1HphwmSKUMQ/HypNRGOmA==}
@@ -6135,6 +6153,8 @@ snapshots:
 
   '@scarf/scarf@1.4.0': {}
 
+  '@sinclair/typebox@0.34.48': {}
+
   '@socket.io/component-emitter@3.1.2': {}
 
   '@socket.io/redis-adapter@8.3.0(socket.io-adapter@2.5.6)':
@@ -6260,6 +6280,8 @@ snapshots:
     optional: true
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
+
+  '@types/ahocorasick@1.0.0': {}
 
   '@types/caseless@0.12.5':
     optional: true
@@ -6642,6 +6664,8 @@ snapshots:
     optional: true
 
   agent-base@7.1.4: {}
+
+  ahocorasick@1.0.2: {}
 
   ai@6.0.116(zod@4.3.6):
     dependencies:
