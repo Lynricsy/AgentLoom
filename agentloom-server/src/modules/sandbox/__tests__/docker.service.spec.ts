@@ -99,6 +99,7 @@ function createExecInspectInfo(
 }
 
 describe('DockerService', () => {
+  delete process.env.ACP_TEST_FAKE_RUNTIME;
   const service = new DockerService();
 
   describe('createContainer', () => {

@@ -16,6 +16,7 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
 }));
 
 describe('AcpTerminalSandboxService', () => {
+  delete process.env.ACP_TEST_FAKE_RUNTIME;
   const tempDirs: string[] = [];
 
   afterEach(async () => {
