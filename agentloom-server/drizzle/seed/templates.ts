@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../../src/database/schema';
 import { seedRoutingBenchmarks } from '../../src/database/seeds/routing-benchmarks.seed';
 import { seedTemplates } from '../../src/database/seeds/template-seeds';
+import { seedSkills } from '../../src/database/seeds/skill-seeds';
 
 async function main() {
   const databaseUrl = process.env.APP_DATABASE_URL;
@@ -32,6 +33,10 @@ async function main() {
       routingBenchmarkResult.unmatchedModelKeys.join(', '),
     );
   }
+
+  console.log('Seeding skills...');
+  await seedSkills(db);
+  console.log('Done — %d skills seeded.', 5);
 
   await sql.end();
 }
