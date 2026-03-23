@@ -1,12 +1,15 @@
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   SandboxCreationException,
   SandboxDestroyException,
 } from '../sandbox.exceptions';
+import type { PiConfigGeneratorService } from '../pi-config-generator.service';
 
 const mockContainer = {
   id: 'container-abc123',
@@ -55,6 +58,14 @@ const DEFAULT_CONFIG: SandboxConfig = {
   timeout: 4,
 };
 
+const mockPiConfigGenerator = {
+  generateConfigBundle: vi.fn().mockReturnValue({
+    settings: '{"model":"claude-sonnet-4-20250514"}',
+    models: '{"models":[]}',
+    systemPrompt: '# System Prompt',
+  }),
+} as unknown as PiConfigGeneratorService;
+
 function createDockerMultiplexedFrame(
   streamType: number,
   message: string,
@@ -100,7 +111,7 @@ function createExecInspectInfo(
 
 describe('DockerService', () => {
   delete process.env.ACP_TEST_FAKE_RUNTIME;
-  const service = new DockerService();
+  const service = new DockerService(mockPiConfigGenerator);
 
   describe('createContainer', () => {
     it('应使用正确的资源映射创建并启动容器', async () => {
@@ -513,6 +524,156 @@ describe('DockerService', () => {
       expect(result.cpuPercent).toBe(40);
       expect(result.memoryUsageMb).toBe(256);
       expect(result.memoryLimitMb).toBe(1024);
+    });
+  });
+
+  describe('createContainer with pi-config', () => {
+    const originalEnv = { ...process.env };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockDocker.createContainer.mockResolvedValue(mockContainer);
+      mockContainer.start.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    it('piContext 未提供时不应挂载 /config 或注入环境变量', async () => {
+      await service.createContainer('session-no-pi', DEFAULT_CONFIG);
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      expect(callArgs.Env).toBeUndefined();
+      expect(callArgs.HostConfig.Binds).toEqual([
+        'sandbox-session-no-pi-workspace:/workspace',
+      ]);
+      expect(callArgs.HostConfig.ExtraHosts).toBeUndefined();
+    });
+
+    it('piConfigInput 提供时应生成配置文件并 bind-mount 到 /config', async () => {
+      const piContext = {
+        piConfigInput: { systemPrompt: 'You are a coding agent' },
+        conversationId: 'conv-123',
+      };
+      process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
+      process.env.APP_PORT = '4000';
+
+      await service.createContainer('session-pi', DEFAULT_CONFIG, piContext);
+
+      expect(mockPiConfigGenerator.generateConfigBundle).toHaveBeenCalledWith(
+        piContext.piConfigInput,
+      );
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+
+      expect(callArgs.Env).toContain('PI_CODING_AGENT_DIR=/config');
+      expect(callArgs.Env).toContain('ANTHROPIC_API_KEY=sk-test-anthropic');
+      expect(callArgs.Env).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('PERMISSION_CALLBACK_URL=http://host.docker.internal:4000/api/v1/agent-conversations/conv-123/tool-permission'),
+        ]),
+      );
+
+      const binds: string[] = callArgs.HostConfig.Binds;
+      expect(binds).toHaveLength(2);
+      expect(binds[0]).toBe('sandbox-session-pi-workspace:/workspace');
+      expect(binds[1]).toMatch(/sandbox-pi-config-session-pi-.*:\/config:ro/);
+
+      expect(callArgs.HostConfig.ExtraHosts).toEqual([
+        'host.docker.internal:host-gateway',
+      ]);
+
+      const tmpDir = binds[1]!.split(':')[0]!;
+      expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'models.json'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'system-prompt.md'))).toBe(true);
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('APP_PORT 未设置时应使用默认端口 3000', async () => {
+      delete process.env.APP_PORT;
+      const piContext = {
+        piConfigInput: { systemPrompt: 'test' },
+        conversationId: 'conv-456',
+      };
+
+      await service.createContainer('session-port', DEFAULT_CONFIG, piContext);
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      expect(callArgs.Env).toEqual(
+        expect.arrayContaining([
+          'PERMISSION_CALLBACK_URL=http://host.docker.internal:3000/api/v1/agent-conversations/conv-456/tool-permission',
+        ]),
+      );
+
+      const binds: string[] = callArgs.HostConfig.Binds;
+      const tmpDir = binds[1]!.split(':')[0]!;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('conversationId 未提供时不应注入 PERMISSION_CALLBACK_URL', async () => {
+      const piContext = {
+        piConfigInput: { systemPrompt: 'test' },
+      };
+
+      await service.createContainer('session-no-conv', DEFAULT_CONFIG, piContext);
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const permUrlEntry = (callArgs.Env as string[]).find((e: string) =>
+        e.startsWith('PERMISSION_CALLBACK_URL='),
+      );
+      expect(permUrlEntry).toBeUndefined();
+
+      const binds: string[] = callArgs.HostConfig.Binds;
+      const tmpDir = binds[1]!.split(':')[0]!;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('仅注入存在的 LLM API 密钥到容器环境', async () => {
+      process.env.OPENAI_API_KEY = 'sk-openai';
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.GOOGLE_API_KEY;
+
+      const piContext = {
+        piConfigInput: { systemPrompt: 'test' },
+      };
+
+      await service.createContainer('session-keys', DEFAULT_CONFIG, piContext);
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const env: string[] = callArgs.Env;
+      expect(env).toContain('OPENAI_API_KEY=sk-openai');
+      expect(env.find((e: string) => e.startsWith('ANTHROPIC_API_KEY='))).toBeUndefined();
+      expect(env.find((e: string) => e.startsWith('GOOGLE_API_KEY='))).toBeUndefined();
+
+      const binds: string[] = callArgs.HostConfig.Binds;
+      const tmpDir = binds[1]!.split(':')[0]!;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('ACP_TEST_FAKE_RUNTIME=1 时应跳过 pi-config 生成', async () => {
+      process.env.ACP_TEST_FAKE_RUNTIME = '1';
+      const fakeService = new DockerService(mockPiConfigGenerator);
+
+      const piContext = {
+        piConfigInput: { systemPrompt: 'test' },
+        conversationId: 'conv-fake',
+      };
+
+      await fakeService.createContainer('session-fake', DEFAULT_CONFIG, piContext);
+
+      expect(mockPiConfigGenerator.generateConfigBundle).not.toHaveBeenCalled();
+
+      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      expect(callArgs.Env).toBeUndefined();
+      expect(callArgs.HostConfig.Binds).toEqual([
+        'sandbox-session-fake-workspace:/workspace',
+      ]);
+      expect(callArgs.HostConfig.ExtraHosts).toBeUndefined();
+
+      delete process.env.ACP_TEST_FAKE_RUNTIME;
     });
   });
 });

@@ -1,14 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { streamText, type LanguageModel, type ToolSet } from 'ai';
-import { and, eq } from 'drizzle-orm';
-import * as schema from '../../database/schema';
+import { Dependencies, Injectable, Logger } from '@nestjs/common';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
 import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
+import { PiAgentCoreAdapter } from './pi-agent-core.adapter';
 import type {
   IAgentRuntime,
   SessionToolProvider,
@@ -16,46 +11,43 @@ import type {
 import type {
   AgentSession,
   CreateSessionParams,
-  SessionContext,
 } from './types/agent-session.types';
-import type { AgentEvent, StopReason } from './types/agent-event.types';
+import type {
+  AgentEvent,
+} from './types/agent-event.types';
 import type { ReplayableAgentEvent } from './types/conversation-history.types';
 import type { ContentBlock } from './types/content-block.types';
-import type { ToolCallEvent } from './types/tool-call-event.types';
 
-/** 轻量级 session 索引，仅保存用于从检查点加载 session 所需的元数据 */
 interface SessionMetadata {
   readonly tenantId: string;
   readonly stepId: string;
 }
 
 @Injectable()
+@Dependencies(
+  DRIZZLE,
+  PiAiAdapter,
+  AgentSessionFactory,
+  SessionPersistenceService,
+)
 export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
   private readonly sessionIndex = new Map<string, SessionMetadata>();
-  private readonly conversationSessions = new Map<string, AgentSession>();
-  private readonly abortControllers = new Map<string, AbortController>();
+  private readonly sessionSnapshots = new Map<string, AgentSession>();
   private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
-  private readonly pendingPermissionResolvers = new Map<
-    string,
-    Map<string, (action: 'approve' | 'deny') => void>
-  >();
+  private readonly runtimeSessionIds = new Map<string, string>();
+  private readonly coreAdapter: PiAgentCoreAdapter;
 
   constructor(
-    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly db: DrizzleDB,
     private readonly piAiAdapter: PiAiAdapter,
     private readonly agentSessionFactory: AgentSessionFactory,
     private readonly sessionPersistence: SessionPersistenceService,
-  ) {}
-
-  private get tenantDb(): DrizzleDB {
-    return getTenantDb(this.db);
+  ) {
+    void this.agentSessionFactory;
+    this.coreAdapter = new PiAgentCoreAdapter(this.db, this.piAiAdapter);
   }
 
-  /**
-   * 为恢复场景注册 session 元数据（进程重启后内存索引丢失时使用）。
-   * Worker 在调用 loadSession 前应先调用此方法注册恢复所需的元数据。
-   */
   registerSessionMetadata(
     sessionId: string,
     tenantId: string,
@@ -69,53 +61,30 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     provider: SessionToolProvider,
   ): void {
     this.sessionToolProviders.set(sessionId, provider);
+
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId);
+    if (runtimeSessionId) {
+      this.coreAdapter.registerSessionToolProvider?.(runtimeSessionId, provider);
+    }
   }
 
   unregisterSessionToolProvider(sessionId: string): void {
     this.sessionToolProviders.delete(sessionId);
+
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId);
+    if (runtimeSessionId) {
+      this.coreAdapter.unregisterSessionToolProvider?.(runtimeSessionId);
+    }
   }
 
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
-    let session: AgentSession;
+    const session = await this.coreAdapter.createSession(params);
+    this.runtimeSessionIds.set(session.id, session.id);
+    this.sessionSnapshots.set(session.id, session);
 
-    if (params.mode === 'workflow' && params.context) {
-      const ctx = params.context;
-      session = this.agentSessionFactory.createWorkflowSession({
-        agentId: params.agentId,
-        executionId: ctx.executionId as string,
-        stepId: ctx.stepId as string,
-        nodeId: ctx.nodeId as string,
-        tenantId: params.tenantId!,
-        llmModelConfigId: params.llmModelConfigId,
-        systemPrompt: params.systemPrompt,
-        autonomyMode: params.autonomyMode,
-        mcpServers: params.mcpServers,
-      });
-    } else {
-      const sessionId = randomUUID();
-      const now = new Date();
-
-      const context: SessionContext = {
-        history: [],
-        cwd: params.cwd,
-        mcpServers: params.mcpServers,
-        serverSandbox: params.serverSandbox,
-        workflowState: params.mode === 'workflow' ? params.context : undefined,
-      };
-
-      session = {
-        id: sessionId,
-        agentId: params.agentId,
-        mode: params.mode,
-        context,
-        status: 'active',
-        tenantId: params.tenantId,
-        llmModelConfigId: params.llmModelConfigId,
-        systemPrompt: params.systemPrompt,
-        autonomyMode: params.autonomyMode,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const provider = this.sessionToolProviders.get(session.id);
+    if (provider) {
+      this.coreAdapter.registerSessionToolProvider?.(session.id, provider);
     }
 
     if (params.mode === 'workflow' && params.tenantId && params.context) {
@@ -130,7 +99,6 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         session,
       );
     } else if (params.mode === 'conversation') {
-      this.conversationSessions.set(session.id, session);
       await this.sessionPersistence.saveConversationSession(session);
     }
 
@@ -141,15 +109,26 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   }
 
   async loadSession(sessionId: string): Promise<AgentSession> {
-    const conversationSession = this.conversationSessions.get(sessionId);
-    if (conversationSession) {
-      return conversationSession;
+    const runtimeSession = await this.tryLoadRuntimeSession(sessionId);
+    if (runtimeSession) {
+      const snapshot = this.syncRuntimeSessionSnapshot(
+        sessionId,
+        runtimeSession,
+        this.sessionSnapshots.get(sessionId),
+      );
+      this.sessionSnapshots.set(sessionId, snapshot);
+      return snapshot;
+    }
+
+    const cached = this.sessionSnapshots.get(sessionId);
+    if (cached) {
+      return cached;
     }
 
     const durableConversationSession =
       await this.sessionPersistence.loadConversationSession(sessionId);
     if (durableConversationSession) {
-      this.conversationSessions.set(sessionId, durableConversationSession);
+      this.sessionSnapshots.set(sessionId, durableConversationSession);
       return durableConversationSession;
     }
 
@@ -168,6 +147,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       );
     }
 
+    this.sessionSnapshots.set(sessionId, session);
     return session;
   }
 
@@ -175,225 +155,70 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     sessionId: string,
     content: ContentBlock[],
   ): AsyncGenerator<AgentEvent> {
-    const session = await this.loadSession(sessionId);
-    const meta = this.sessionIndex.get(sessionId);
-    const isConversationSession = session.mode === 'conversation';
+    const snapshot = await this.loadSession(sessionId);
 
-    const abortController = new AbortController();
-    this.abortControllers.set(sessionId, abortController);
+    if (snapshot.status === 'completed') {
+      yield { type: 'done', stopReason: 'cancelled' } as const;
+      await this.persistSnapshot(sessionId, snapshot);
+      return;
+    }
+
+    if (snapshot.mode === 'conversation' && content.length > 0) {
+      await this.sessionPersistence.appendConversationReplayEntry(snapshot, {
+        kind: 'user_message',
+        content,
+      });
+    }
+
+    const { runtimeSessionId, restored } = await this.ensureRuntimeSession(
+      sessionId,
+      snapshot,
+    );
+    const promptBlocks = restored
+      ? [...snapshot.context.history, ...content]
+      : content;
 
     try {
-      session.context.history.push(...content);
-      session.updatedAt = new Date();
+      for await (const event of this.coreAdapter.prompt(runtimeSessionId, promptBlocks)) {
+        if (snapshot.mode === 'conversation' && this.isReplayableAgentEvent(event)) {
+          await this.sessionPersistence.appendConversationReplayEntry(snapshot, {
+            kind: 'agent_event',
+            event,
+          });
+        }
 
-      if (isConversationSession) {
-        await this.sessionPersistence.appendConversationReplayEntry(session, {
-          kind: 'user_message',
-          content,
-        });
+        yield event;
       }
 
-      if (session.status === 'completed' || abortController.signal.aborted) {
-        yield { type: 'done', stopReason: 'cancelled' } as const;
-        await this.persistConversationSessionAfterTurn(
-          session,
-          '',
-          'cancelled',
-        );
-        return;
-      }
-
-      const modelConfig = await this.resolveModelConfig(session);
-      const model = await this.piAiAdapter.getModel(modelConfig);
-      const promptText = this.serializeContentBlocks(session.context.history);
-      const tools = await this.resolveSessionTools(sessionId);
-      const result = streamText({
-        model: model as LanguageModel,
-        system: session.systemPrompt,
-        prompt: promptText,
-        abortSignal: abortController.signal,
-        ...(tools === undefined ? {} : { tools }),
-      });
-
-      let emittedDone = false;
-      let accumulatedText = '';
-
-      for await (const part of result.fullStream) {
-        if (part.type === 'text-delta') {
-          if (part.text) {
-            accumulatedText += part.text;
-            const event = { type: 'message_chunk', content: part.text } as const;
-            if (isConversationSession) {
-              await this.appendConversationAgentReplayEntry(session, event);
-            }
-            yield event;
-          }
-          continue;
-        }
-
-        if (part.type === 'tool-call') {
-          const event = {
-            type: 'tool_call',
-            call: {
-              id: part.toolCallId,
-              tool: part.toolName,
-              args: this.normalizeToolArgs(part.input),
-              status: 'pending',
-            },
-          } as const;
-          if (isConversationSession) {
-            await this.appendConversationAgentReplayEntry(session, event);
-          }
-          yield event;
-          continue;
-        }
-
-        if (part.type === 'tool-result') {
-          const event = {
-            type: 'tool_call',
-            call: {
-              id: part.toolCallId,
-              tool: part.toolName,
-              args: this.normalizeToolArgs(part.input),
-              status: 'completed',
-              result: part.output,
-            },
-          } as const;
-          if (isConversationSession) {
-            await this.appendConversationAgentReplayEntry(session, event);
-          }
-          yield event;
-          continue;
-        }
-
-        if (part.type === 'tool-error') {
-          const event = {
-            type: 'tool_call',
-            call: {
-              id: part.toolCallId,
-              tool: part.toolName,
-              args: this.normalizeToolArgs(part.input),
-              status: 'failed',
-              error: this.stringifyToolError(part.error),
-            },
-          } as const;
-          if (isConversationSession) {
-            await this.appendConversationAgentReplayEntry(session, event);
-          }
-          yield event;
-          continue;
-        }
-
-        if (part.type === 'finish-step' && part.finishReason === 'tool-calls') {
-          emittedDone = true;
-          yield { type: 'done', stopReason: 'tool_use' } as const;
-          continue;
-        }
-
-        if (part.type === 'abort' || abortController.signal.aborted) {
-          emittedDone = true;
-          yield { type: 'done', stopReason: 'cancelled' } as const;
-          await this.persistConversationSessionAfterTurn(
-            session,
-            accumulatedText,
-            'cancelled',
-          );
-          return;
-        }
-
-        if (part.type === 'error') {
-          throw part.error instanceof Error
-            ? part.error
-            : new Error('LLM 流式输出失败');
-        }
-
-        if (part.type === 'finish') {
-          emittedDone = true;
-          if (session.autonomyMode === 'LLM_SUGGEST') {
-            const event = {
-              type: 'decision',
-              suggestedContent: accumulatedText,
-              autonomyMode: session.autonomyMode,
-              selectedAction: 'request_intervention',
-              alternatives: ['approve', 'modify', 'reject'],
-              confidence: 0.5,
-            } as const;
-            if (isConversationSession) {
-              await this.appendConversationAgentReplayEntry(session, event);
-            }
-            yield event;
-            yield {
-              type: 'done',
-              stopReason: 'intervention_required',
-            } as const;
-            await this.persistConversationSessionAfterTurn(
-              session,
-              accumulatedText,
-              'intervention_required',
-            );
-            return;
-          }
-
-          yield {
-            type: 'done',
-            stopReason: this.mapFinishReason(part.finishReason),
-          } as const;
-          await this.persistConversationSessionAfterTurn(
-            session,
-            accumulatedText,
-            this.mapFinishReason(part.finishReason),
-          );
-          return;
-        }
-      }
-
-      if (!emittedDone) {
-        yield { type: 'done', stopReason: 'end_turn' } as const;
-      }
-      session.status = 'active';
-      session.updatedAt = new Date();
-
-      await this.persistConversationSessionAfterTurn(
-        session,
-        accumulatedText,
-        'end_turn',
+      const runtimeSession = await this.coreAdapter.loadSession(runtimeSessionId);
+      const synced = this.syncRuntimeSessionSnapshot(
+        sessionId,
+        runtimeSession,
+        snapshot,
       );
-
-      if (meta) {
-        await this.sessionPersistence.saveToCheckpoint(
-          meta.tenantId,
-          meta.stepId,
-          session,
-        );
-      }
+      await this.persistSnapshot(sessionId, synced);
     } catch (error) {
-      session.status = 'error';
-      session.updatedAt = new Date();
+      const runtimeSession = await this.tryLoadRuntimeSession(sessionId);
+      const failedSnapshot = runtimeSession
+        ? this.syncRuntimeSessionSnapshot(sessionId, runtimeSession, snapshot)
+        : {
+            ...snapshot,
+            status: 'error' as const,
+            updatedAt: new Date(),
+          };
 
-      await this.persistConversationSessionAfterTurn(
-        session,
-        '',
-        'intervention_required',
-      );
-
-      if (meta) {
-        await this.sessionPersistence.saveToCheckpoint(
-          meta.tenantId,
-          meta.stepId,
-          session,
-        );
-      }
+      await this.persistSnapshot(sessionId, failedSnapshot);
       throw error;
-    } finally {
-      this.abortControllers.delete(sessionId);
     }
   }
 
   async cancel(sessionId: string): Promise<void> {
-    const controller = this.abortControllers.get(sessionId);
-    if (controller) {
-      controller.abort();
-      this.logger.debug(`Session cancelled: ${sessionId}`);
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+
+    try {
+      await this.coreAdapter.cancel(runtimeSessionId);
+      this.coreAdapter.unregisterSessionToolProvider?.(runtimeSessionId);
+    } catch {
     }
 
     const meta = this.sessionIndex.get(sessionId);
@@ -405,22 +230,17 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       if (session) {
         session.status = 'completed';
         session.updatedAt = new Date();
-        await this.sessionPersistence.saveToCheckpoint(
-          meta.tenantId,
-          meta.stepId,
-          session,
-        );
+        await this.persistSnapshot(sessionId, session);
       }
     }
 
-    const conversationSession = this.conversationSessions.get(sessionId);
-    if (conversationSession) {
-      conversationSession.status = 'completed';
-      conversationSession.updatedAt = new Date();
-      await this.sessionPersistence.saveConversationSession(conversationSession);
+    const snapshot = this.sessionSnapshots.get(sessionId);
+    if (snapshot) {
+      snapshot.status = 'completed';
+      snapshot.updatedAt = new Date();
+      await this.persistSnapshot(sessionId, snapshot);
     }
 
-    this.pendingPermissionResolvers.delete(sessionId);
     this.sessionToolProviders.delete(sessionId);
   }
 
@@ -429,173 +249,135 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     toolCallId: string,
     action: 'approve' | 'deny',
   ): Promise<void> {
-    const sessionResolverMap = this.pendingPermissionResolvers.get(sessionId);
-    if (sessionResolverMap === undefined) {
-      throw new Error(
-        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
-      );
-    }
-
-    const sessionResolvers = sessionResolverMap;
-
-    const resolver = sessionResolvers.get(toolCallId);
-    if (!resolver) {
-      throw new Error(
-        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
-      );
-    }
-
-    sessionResolvers.delete(toolCallId);
-    if (sessionResolvers.size === 0) {
-      this.pendingPermissionResolvers.delete(sessionId);
-    }
-
-    resolver(action);
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+    await this.coreAdapter.resolveToolPermission?.(
+      runtimeSessionId,
+      toolCallId,
+      action,
+    );
   }
 
-  private async resolveModelConfig(
-    session: AgentSession,
-  ): Promise<schema.LlmModelConfig> {
-    if (!session.tenantId) {
-      throw new Error(`Session ${session.id} 缺少 tenantId`);
+  private async ensureRuntimeSession(
+    sessionId: string,
+    snapshot: AgentSession,
+  ): Promise<{
+    runtimeSessionId: string;
+    restored: boolean;
+  }> {
+    const existingRuntimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+    const existing = await this.tryLoadRuntimeSession(sessionId);
+    if (existing) {
+      return {
+        runtimeSessionId: existingRuntimeSessionId,
+        restored: false,
+      };
     }
 
-    const tenantId = session.tenantId;
-    const llmModelConfigId = session.llmModelConfigId;
+    const restored = await this.coreAdapter.createSession(
+      this.buildCreateSessionParams(snapshot),
+    );
+    this.runtimeSessionIds.set(sessionId, restored.id);
 
-    return runInTenantTransaction(this.db, tenantId, async () => {
-      if (llmModelConfigId) {
-        const [modelConfig] = await this.tenantDb
-          .select()
-          .from(schema.llmModelConfigs)
-          .where(
-            and(
-              eq(schema.llmModelConfigs.id, llmModelConfigId),
-              eq(schema.llmModelConfigs.tenantId, tenantId),
-            ),
-          );
-
-        if (!modelConfig) {
-          throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
-        }
-
-        return modelConfig;
-      }
-
-      const [modelConfig] = await this.tenantDb
-        .select()
-        .from(schema.llmModelConfigs)
-        .where(
-          and(
-            eq(schema.llmModelConfigs.tenantId, tenantId),
-            eq(schema.llmModelConfigs.isDefault, true),
-          ),
-        );
-
-      if (!modelConfig) {
-        throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
-      }
-
-      session.llmModelConfigId = modelConfig.id;
-      return modelConfig;
-    });
-  }
-
-  private serializeContentBlocks(blocks: ContentBlock[]): string {
-    return blocks
-      .map((block) => {
-        switch (block.type) {
-          case 'text':
-            return block.text;
-          case 'image':
-            return `[image:${block.mimeType}]`;
-          case 'audio':
-            return `[audio:${block.mimeType}]`;
-          case 'resource':
-            return block.text ?? block.blob ?? `[resource:${block.uri}]`;
-          case 'resource_link':
-            return block.title ?? `[resource_link:${block.uri}]`;
-          default:
-            return '';
-        }
-      })
-      .join('\n\n');
-  }
-
-  private async resolveSessionTools(sessionId: string): Promise<ToolSet | undefined> {
     const provider = this.sessionToolProviders.get(sessionId);
-    if (!provider) {
-      return undefined;
+    if (provider) {
+      this.coreAdapter.registerSessionToolProvider?.(restored.id, provider);
     }
 
-    const tools = await provider();
-    return Object.keys(tools).length > 0 ? tools : undefined;
+    return {
+      runtimeSessionId: restored.id,
+      restored: true,
+    };
   }
 
-  private normalizeToolArgs(input: unknown): ToolCallEvent['args'] {
-    return typeof input === 'object' && input !== null && !Array.isArray(input)
-      ? (input as ToolCallEvent['args'])
-      : {};
-  }
+  private async tryLoadRuntimeSession(
+    sessionId: string,
+  ): Promise<AgentSession | null> {
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
 
-  private stringifyToolError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return typeof error === 'string' ? error : '工具执行失败';
-  }
-
-  private mapFinishReason(finishReason: string | undefined): StopReason {
-    switch (finishReason) {
-      case 'length':
-        return 'max_tokens';
-      case 'tool-calls':
-        return 'tool_use';
-      default:
-        return 'end_turn';
+    try {
+      return await this.coreAdapter.loadSession(runtimeSessionId);
+    } catch {
+      return null;
     }
   }
 
-  private async appendConversationAgentReplayEntry(
-    session: AgentSession,
-    event: ReplayableAgentEvent,
+  private buildCreateSessionParams(session: AgentSession): CreateSessionParams {
+    return {
+      agentId: session.agentId,
+      mode: session.mode,
+      ...(session.context.cwd === undefined ? {} : { cwd: session.context.cwd }),
+      ...(session.context.mcpServers === undefined
+        ? {}
+        : { mcpServers: session.context.mcpServers }),
+      ...(session.context.serverSandbox === undefined
+        ? {}
+        : { serverSandbox: session.context.serverSandbox }),
+      ...(session.tenantId === undefined ? {} : { tenantId: session.tenantId }),
+      ...(session.llmModelConfigId === undefined
+        ? {}
+        : { llmModelConfigId: session.llmModelConfigId }),
+      ...(session.systemPrompt === undefined
+        ? {}
+        : { systemPrompt: session.systemPrompt }),
+      ...(session.autonomyMode === undefined
+        ? {}
+        : { autonomyMode: session.autonomyMode }),
+      ...(session.mode === 'workflow' && session.context.workflowState !== undefined
+        ? { context: { ...session.context.workflowState } }
+        : {}),
+    };
+  }
+
+  private syncRuntimeSessionSnapshot(
+    sessionId: string,
+    runtimeSession: AgentSession,
+    existingSnapshot?: AgentSession,
+  ): AgentSession {
+    const snapshot = existingSnapshot ?? runtimeSession;
+    const merged: AgentSession = {
+      ...snapshot,
+      llmModelConfigId: runtimeSession.llmModelConfigId,
+      status: runtimeSession.status,
+      updatedAt: runtimeSession.updatedAt,
+      context: {
+        ...snapshot.context,
+        ...runtimeSession.context,
+        history: [...runtimeSession.context.history],
+      },
+    };
+
+    this.sessionSnapshots.set(sessionId, merged);
+    return merged;
+  }
+
+  private async persistSnapshot(
+    sessionId: string,
+    snapshot: AgentSession,
   ): Promise<void> {
-    if (session.mode !== 'conversation') {
-      return;
+    this.sessionSnapshots.set(sessionId, snapshot);
+
+    if (snapshot.mode === 'conversation') {
+      await this.sessionPersistence.saveConversationSession(snapshot);
     }
 
-    await this.sessionPersistence.appendConversationReplayEntry(session, {
-      kind: 'agent_event',
-      event,
-    });
+    const meta = this.sessionIndex.get(sessionId);
+    if (meta) {
+      await this.sessionPersistence.saveToCheckpoint(
+        meta.tenantId,
+        meta.stepId,
+        snapshot,
+      );
+    }
   }
 
-  private async persistConversationSessionAfterTurn(
-    session: AgentSession,
-    accumulatedText: string,
-    stopReason: StopReason,
-  ): Promise<void> {
-    if (session.mode !== 'conversation') {
-      return;
-    }
-
-    if (accumulatedText.length > 0) {
-      const history = session.context.history;
-      const lastBlock = history.at(-1);
-      if (!(lastBlock?.type === 'text' && lastBlock.text === accumulatedText)) {
-        history.push({
-          type: 'text',
-          text: accumulatedText,
-        });
-      }
-    }
-
-    if (session.status !== 'completed' && session.status !== 'error') {
-      session.status = stopReason === 'cancelled' ? 'completed' : 'active';
-    }
-
-    session.updatedAt = new Date();
-    await this.sessionPersistence.saveConversationSession(session);
+  private isReplayableAgentEvent(
+    event: AgentEvent,
+  ): event is ReplayableAgentEvent {
+    return (
+      event.type === 'plan' ||
+      event.type === 'message_chunk' ||
+      event.type === 'tool_call' ||
+      event.type === 'decision'
+    );
   }
 }

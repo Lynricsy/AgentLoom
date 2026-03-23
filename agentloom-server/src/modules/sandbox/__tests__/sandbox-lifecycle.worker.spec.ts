@@ -121,6 +121,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockDockerService.createContainer).toHaveBeenCalledWith(
         's1',
         DEFAULT_CONFIG,
+        { piConfigInput: undefined, conversationId: undefined },
       );
       expect(mockUpdate).toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(

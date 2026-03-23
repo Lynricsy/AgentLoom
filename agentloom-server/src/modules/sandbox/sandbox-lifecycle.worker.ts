@@ -75,6 +75,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
       const container = await this.dockerService.createContainer(
         sessionId,
         config,
+        {
+          piConfigInput: data.piConfigInput,
+          conversationId: data.agentConversationId,
+        },
       );
       containerId = container.containerId;
 

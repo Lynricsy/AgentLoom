@@ -2,9 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import Docker from 'dockerode';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../database/schema';
+import type { PiConfigInput } from './pi-config-generator.service';
+import { PiConfigGeneratorService } from './pi-config-generator.service';
 import {
   SandboxCreationException,
   SandboxDestroyException,
@@ -31,6 +36,14 @@ export interface DockerExecExitInfo {
   running: boolean;
   exitCode: number | null;
   pid: number | null;
+}
+
+/** 创建容器时可选的 pi-coding-agent 配置上下文 */
+export interface CreateContainerPiContext {
+  /** pi-config 生成所需的输入 */
+  piConfigInput?: PiConfigInput;
+  /** Agent 对话 ID，用于构建 PERMISSION_CALLBACK_URL */
+  conversationId?: string;
 }
 
 interface FakeExecRecord {
@@ -60,7 +73,9 @@ export class DockerService {
   private readonly useFakeExecRuntime: boolean;
   private readonly logger = new Logger(DockerService.name);
 
-  constructor() {
+  constructor(
+    private readonly piConfigGenerator: PiConfigGeneratorService,
+  ) {
     this.docker = new Docker();
     this.useFakeExecRuntime = process.env.ACP_TEST_FAKE_RUNTIME === '1';
   }
@@ -68,8 +83,73 @@ export class DockerService {
   async createContainer(
     sessionId: string,
     config: SandboxConfig,
+    piContext?: CreateContainerPiContext,
   ): Promise<{ containerId: string }> {
+    let configTmpDir: string | undefined;
+
     try {
+      const containerEnv: string[] = [];
+      const extraBinds: string[] = [];
+      const extraHosts: string[] = [];
+
+      if (
+        !this.useFakeExecRuntime &&
+        piContext?.piConfigInput
+      ) {
+        const bundle =
+          this.piConfigGenerator.generateConfigBundle(
+            piContext.piConfigInput,
+          );
+
+        configTmpDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), `sandbox-pi-config-${sessionId}-`),
+        );
+        fs.writeFileSync(
+          path.join(configTmpDir, 'settings.json'),
+          bundle.settings,
+        );
+        fs.writeFileSync(
+          path.join(configTmpDir, 'models.json'),
+          bundle.models,
+        );
+        fs.writeFileSync(
+          path.join(configTmpDir, 'system-prompt.md'),
+          bundle.systemPrompt,
+        );
+
+        extraBinds.push(`${configTmpDir}:/config:ro`);
+        containerEnv.push('PI_CODING_AGENT_DIR=/config');
+
+        const llmKeyMap: Record<string, string> = {
+          ANTHROPIC_API_KEY: 'ANTHROPIC_API_KEY',
+          OPENAI_API_KEY: 'OPENAI_API_KEY',
+          GOOGLE_API_KEY: 'GOOGLE_API_KEY',
+          AZURE_OPENAI_API_KEY: 'AZURE_OPENAI_API_KEY',
+          XAI_API_KEY: 'XAI_API_KEY',
+          GROQ_API_KEY: 'GROQ_API_KEY',
+          OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
+          AWS_ACCESS_KEY_ID: 'AWS_ACCESS_KEY_ID',
+          AWS_SECRET_ACCESS_KEY: 'AWS_SECRET_ACCESS_KEY',
+          AWS_REGION: 'AWS_REGION',
+        };
+
+        for (const [envKey, containerKey] of Object.entries(llmKeyMap)) {
+          const val = process.env[envKey];
+          if (val) {
+            containerEnv.push(`${containerKey}=${val}`);
+          }
+        }
+
+        const appPort = process.env.APP_PORT ?? '3000';
+        if (piContext.conversationId) {
+          containerEnv.push(
+            `PERMISSION_CALLBACK_URL=http://host.docker.internal:${appPort}/api/v1/agent-conversations/${piContext.conversationId}/tool-permission`,
+          );
+        }
+
+        extraHosts.push('host.docker.internal:host-gateway');
+      }
+
       const container = await this.docker.createContainer({
         Image: SANDBOX_IMAGE,
         ExposedPorts: { [SANDBOX_AGENT_PORT]: {} },
@@ -80,6 +160,7 @@ export class DockerService {
           Timeout: HEALTHCHECK_TIMEOUT_NS,
           Retries: HEALTHCHECK_RETRIES,
         },
+        ...(containerEnv.length > 0 ? { Env: containerEnv } : {}),
         name: `sandbox-${sessionId}`,
         Labels: { 'agentloom.session': sessionId },
         HostConfig: {
@@ -89,7 +170,11 @@ export class DockerService {
           NanoCpus: config.cpu * CPU_CORE_TO_NANO,
           Memory: config.memory * MB_TO_BYTES,
           StorageOpt: { size: `${config.disk}G` },
-          Binds: [`sandbox-${sessionId}-workspace:/workspace`],
+          Binds: [
+            `sandbox-${sessionId}-workspace:/workspace`,
+            ...extraBinds,
+          ],
+          ...(extraHosts.length > 0 ? { ExtraHosts: extraHosts } : {}),
         },
       });
 

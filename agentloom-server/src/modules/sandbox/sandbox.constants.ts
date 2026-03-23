@@ -1,4 +1,5 @@
 import type { SandboxConfig } from '../../database/schema';
+import type { PiConfigInput } from './pi-config-generator.service';
 
 export const SANDBOX_LIFECYCLE_QUEUE = 'sandbox-lifecycle';
 
@@ -16,4 +17,5 @@ export interface SandboxLifecycleJobData extends SandboxLifecycleBinding {
   config?: SandboxConfig;
   containerId?: string;
   persistencePath?: string;
+  piConfigInput?: PiConfigInput;
 }

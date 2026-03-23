@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { jsonSchema, streamText, tool } from 'ai';
-import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { InProcessAgentAdapter } from '../in-process-agent.adapter';
 import type {
   AgentSession,
@@ -11,152 +9,210 @@ import type { AgentEvent } from '../types/agent-event.types';
 import type { ConversationReplayEntry } from '../types/conversation-history.types';
 import type { ContentBlock } from '../types/content-block.types';
 
-vi.mock('ai', () => ({
-  jsonSchema: vi.fn().mockImplementation((schema) => schema),
-  streamText: vi.fn(),
-  tool: vi.fn().mockImplementation((definition) => definition),
-}));
+const hoisted = vi.hoisted(() => {
+  let sessionCounter = 0;
+  const runtimeSessions = new Map<string, AgentSession>();
+  const promptBehaviors: Array<{
+    events?: AgentEvent[];
+    error?: Error;
+  }> = [];
 
-vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
-  getTenantDb: vi.fn((db: unknown) => db),
-}));
+  const constructorSpy = vi.fn();
+  const createSession = vi.fn(async (params: CreateSessionParams) => {
+    const id = `runtime-session-${++sessionCounter}`;
+    const now = new Date();
+    const session: AgentSession = {
+      id,
+      agentId: params.agentId,
+      mode: params.mode,
+      context: {
+        history: [],
+        ...(params.cwd === undefined ? {} : { cwd: params.cwd }),
+        ...(params.mcpServers === undefined
+          ? {}
+          : { mcpServers: params.mcpServers }),
+        ...(params.serverSandbox === undefined
+          ? {}
+          : { serverSandbox: params.serverSandbox }),
+        ...(params.mode === 'workflow' && params.context !== undefined
+          ? { workflowState: params.context }
+          : {}),
+      },
+      status: 'active',
+      ...(params.tenantId === undefined ? {} : { tenantId: params.tenantId }),
+      ...(params.llmModelConfigId === undefined
+        ? {}
+        : { llmModelConfigId: params.llmModelConfigId }),
+      ...(params.systemPrompt === undefined
+        ? {}
+        : { systemPrompt: params.systemPrompt }),
+      ...(params.autonomyMode === undefined
+        ? {}
+        : { autonomyMode: params.autonomyMode }),
+      createdAt: now,
+      updatedAt: now,
+    };
+    runtimeSessions.set(id, session);
+    return session;
+  });
+  const loadSession = vi.fn(async (sessionId: string) => {
+    const session = runtimeSessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    return session;
+  });
+  const prompt = vi.fn((sessionId: string, content: ContentBlock[]) =>
+    (async function* () {
+      const session = runtimeSessions.get(sessionId);
+      if (!session) {
+        throw new Error(`Session not found: ${sessionId}`);
+      }
 
-vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
-  runInTenantTransaction: vi.fn(
-    async (
-      db: unknown,
-      _tenantId: string,
-      operation: (tenantDb: unknown) => Promise<unknown>,
-    ) => operation(db),
-  ),
-}));
+      session.context.history.push(...content);
+      const behavior: { events?: AgentEvent[]; error?: Error } =
+        promptBehaviors.shift() ?? {
+        events: [{ type: 'done', stopReason: 'end_turn' } satisfies AgentEvent],
+      };
 
-const mockedStreamText = vi.mocked(streamText);
+      if (behavior.error) {
+        session.status = 'error';
+        session.updatedAt = new Date();
+        throw behavior.error;
+      }
 
-function createSelectChain(result: unknown) {
-  return {
-    from: vi.fn().mockReturnValue({
-      where: vi
-        .fn()
-        .mockResolvedValue(Array.isArray(result) ? result : [result]),
-    }),
-  };
-}
+      let assistantText = '';
+      for (const event of behavior.events ?? []) {
+        if (event.type === 'message_chunk') {
+          assistantText += event.content;
+        }
+        if (event.type === 'done' && event.stopReason === 'cancelled') {
+          session.status = 'completed';
+        }
+        yield event;
+      }
 
-async function* createFullStream(
-  parts: Array<Record<string, unknown>>,
-): AsyncIterable<Record<string, unknown>> {
-  for (const part of parts) {
-    yield part;
+      if (assistantText.length > 0) {
+        session.context.history.push({ type: 'text', text: assistantText });
+      }
+
+      session.updatedAt = new Date();
+    })(),
+  );
+  const cancel = vi.fn(async (sessionId: string) => {
+    const session = runtimeSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+    session.status = 'completed';
+    session.updatedAt = new Date();
+  });
+  const resolveToolPermission = vi.fn(async () => undefined);
+  const registerSessionToolProvider = vi.fn();
+  const unregisterSessionToolProvider = vi.fn();
+
+  class MockPiAgentCoreAdapter {
+    constructor(...args: unknown[]) {
+      constructorSpy(...args);
+    }
+
+    createSession = createSession;
+    loadSession = loadSession;
+    prompt = prompt;
+    cancel = cancel;
+    resolveToolPermission = resolveToolPermission;
+    registerSessionToolProvider = registerSessionToolProvider;
+    unregisterSessionToolProvider = unregisterSessionToolProvider;
   }
+
+  return {
+    MockPiAgentCoreAdapter,
+    constructorSpy,
+    createSession,
+    loadSession,
+    prompt,
+    cancel,
+    resolveToolPermission,
+    registerSessionToolProvider,
+    unregisterSessionToolProvider,
+    queuePromptBehavior: (behavior: { events?: AgentEvent[]; error?: Error }) => {
+      promptBehaviors.push(behavior);
+    },
+    clearRuntimeSessions: () => {
+      runtimeSessions.clear();
+    },
+    setRuntimeSession: (session: AgentSession) => {
+      runtimeSessions.set(session.id, session);
+    },
+    reset: () => {
+      sessionCounter = 0;
+      runtimeSessions.clear();
+      promptBehaviors.length = 0;
+      constructorSpy.mockClear();
+      createSession.mockClear();
+      loadSession.mockClear();
+      prompt.mockClear();
+      cancel.mockClear();
+      resolveToolPermission.mockClear();
+      registerSessionToolProvider.mockClear();
+      unregisterSessionToolProvider.mockClear();
+    },
+  };
+});
+
+vi.mock('../pi-agent-core.adapter', () => ({
+  PiAgentCoreAdapter: hoisted.MockPiAgentCoreAdapter,
+}));
+
+async function collectEvents(
+  iterable: AsyncIterable<AgentEvent>,
+): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
+  for await (const event of iterable) {
+    events.push(event);
+  }
+  return events;
 }
 
-describe('InProcessAgentAdapter', () => {
+  describe('InProcessAgentAdapter', () => {
   let adapter: InProcessAgentAdapter;
-  let mockDb: { select: ReturnType<typeof vi.fn> };
-  let mockPiAiAdapter: { getModel: ReturnType<typeof vi.fn> };
-  let mockAgentSessionFactory: {
-    createWorkflowSession: ReturnType<typeof vi.fn>;
-  };
+  let mockDb: unknown;
+  let mockPiAiAdapter: unknown;
+  let mockAgentSessionFactory: unknown;
   let mockSessionPersistence: {
     saveToCheckpoint: ReturnType<typeof vi.fn>;
     loadFromCheckpoint: ReturnType<typeof vi.fn>;
     saveConversationSession: ReturnType<typeof vi.fn>;
     loadConversationSession: ReturnType<typeof vi.fn>;
     appendConversationReplayEntry: ReturnType<typeof vi.fn>;
-    loadConversationReplay: ReturnType<typeof vi.fn>;
-    serializeSession: ReturnType<typeof vi.fn>;
-    deserializeSession: ReturnType<typeof vi.fn>;
   };
-  const NOW = new Date('2025-01-01T00:00:00.000Z');
-  const defaultModelConfig = {
-    id: 'model-config-001',
-    tenantId: 'tenant-001',
-    provider: 'openai',
-    modelName: 'gpt-4.1-mini',
-    apiKeyId: 'api-key-001',
-    isDefault: true,
-  };
+
+  const NOW = new Date('2026-03-24T10:00:00.000Z');
   const textBlock: ContentBlock = { type: 'text', text: 'Hello, agent!' };
-  const STEP_ID = 'step-001';
-  const EXECUTION_ID = 'exec-001';
-  const NODE_ID = 'node-001';
-
-  function makeWorkflowSession(
-    overrides: Partial<AgentSession> = {},
-  ): AgentSession {
-    return {
-      id: 'session-uuid',
-      agentId: 'agent-001',
-      mode: 'workflow',
-      context: {
-        history: [],
-        workflowState: {
-          executionId: EXECUTION_ID,
-          stepId: STEP_ID,
-          nodeId: NODE_ID,
-        },
-      },
-      status: 'active',
-      tenantId: 'tenant-001',
-      llmModelConfigId: undefined,
-      systemPrompt: undefined,
-      autonomyMode: undefined,
-      createdAt: NOW,
-      updatedAt: NOW,
-      ...overrides,
-    };
-  }
-
-  function workflowCreateParams(
-    overrides: Partial<CreateSessionParams> = {},
-  ): CreateSessionParams {
-    return {
-      agentId: 'agent-001',
-      mode: 'workflow',
-      tenantId: 'tenant-001',
-      context: { executionId: EXECUTION_ID, stepId: STEP_ID, nodeId: NODE_ID },
-      ...overrides,
-    };
-  }
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
-    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    hoisted.reset();
 
-    mockDb = { select: vi.fn() };
-    mockPiAiAdapter = { getModel: vi.fn().mockReturnValue('mock-model') };
-    mockAgentSessionFactory = {
-      createWorkflowSession: vi.fn().mockImplementation((params) =>
-        makeWorkflowSession({
-          llmModelConfigId: params.llmModelConfigId,
-          systemPrompt: params.systemPrompt,
-          autonomyMode: params.autonomyMode,
-        }),
-      ),
-    };
+    mockDb = {};
+    mockPiAiAdapter = { getModel: vi.fn() };
+    mockAgentSessionFactory = { createWorkflowSession: vi.fn() };
     mockSessionPersistence = {
       saveToCheckpoint: vi.fn().mockResolvedValue(undefined),
       loadFromCheckpoint: vi.fn().mockResolvedValue(null),
       saveConversationSession: vi.fn().mockResolvedValue(undefined),
       loadConversationSession: vi.fn().mockResolvedValue(null),
       appendConversationReplayEntry: vi.fn().mockResolvedValue(undefined),
-      loadConversationReplay: vi.fn().mockResolvedValue([]),
-      serializeSession: vi.fn().mockReturnValue({}),
-      deserializeSession: vi.fn(),
     };
-    mockedStreamText.mockReset();
 
-    type AdapterConstructorArgs = ConstructorParameters<
-      typeof InProcessAgentAdapter
-    >;
+    type AdapterArgs = ConstructorParameters<typeof InProcessAgentAdapter>;
     adapter = new InProcessAgentAdapter(
-      mockDb as unknown as AdapterConstructorArgs[0],
-      mockPiAiAdapter as unknown as AdapterConstructorArgs[1],
-      mockAgentSessionFactory as unknown as AdapterConstructorArgs[2],
-      mockSessionPersistence as unknown as AdapterConstructorArgs[3],
+      mockDb as unknown as AdapterArgs[0],
+      mockPiAiAdapter as unknown as AdapterArgs[1],
+      mockAgentSessionFactory as unknown as AdapterArgs[2],
+      mockSessionPersistence as unknown as AdapterArgs[3],
     );
   });
 
@@ -165,49 +221,43 @@ describe('InProcessAgentAdapter', () => {
   });
 
   describe('createSession', () => {
-    it('会保留 workflow 上下文和 runtime 元信息', async () => {
-      const mcpServers = {
-        filesystem: {
-          transportType: 'stdio' as const,
-          command: 'npx',
-          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
-        },
-      } as NonNullable<CreateSessionParams['mcpServers']>;
-      const params = workflowCreateParams({
-        llmModelConfigId: 'model-config-001',
-        systemPrompt: '你是一个专业翻译',
-        autonomyMode: 'LLM_SUGGEST',
-        mcpServers,
-      });
-
-      const session = await adapter.createSession(params);
-
-      expect(
-        mockAgentSessionFactory.createWorkflowSession,
-      ).toHaveBeenCalledWith({
+    it('会委托 PiAgentCoreAdapter 创建 workflow session，并写入 checkpoint', async () => {
+      const params: CreateSessionParams = {
         agentId: 'agent-001',
-        executionId: EXECUTION_ID,
-        stepId: STEP_ID,
-        nodeId: NODE_ID,
+        mode: 'workflow',
         tenantId: 'tenant-001',
         llmModelConfigId: 'model-config-001',
         systemPrompt: '你是一个专业翻译',
         autonomyMode: 'LLM_SUGGEST',
-        mcpServers,
-      });
+        context: {
+          executionId: 'exec-001',
+          stepId: 'step-001',
+          nodeId: 'node-001',
+        },
+      };
+
+      const session = await adapter.createSession(params);
+
+      expect(hoisted.createSession).toHaveBeenCalledWith(params);
+      expect(mockSessionPersistence.saveToCheckpoint).toHaveBeenCalledWith(
+        'tenant-001',
+        'step-001',
+        session,
+      );
       expect(session).toMatchObject({
         agentId: 'agent-001',
         mode: 'workflow',
         llmModelConfigId: 'model-config-001',
         systemPrompt: '你是一个专业翻译',
         autonomyMode: 'LLM_SUGGEST',
-        status: 'active',
+        context: {
+          workflowState: {
+            executionId: 'exec-001',
+            stepId: 'step-001',
+            nodeId: 'node-001',
+          },
+        },
       });
-      expect(mockSessionPersistence.saveToCheckpoint).toHaveBeenCalledWith(
-        'tenant-001',
-        STEP_ID,
-        session,
-      );
     });
 
     it('conversation session 创建后会写入 durable store', async () => {
@@ -219,8 +269,6 @@ describe('InProcessAgentAdapter', () => {
         serverSandbox: {
           executionId: '019391d4-e000-7000-0000-000000000005',
         },
-      } as CreateSessionParams & {
-        serverSandbox: { executionId: string };
       });
 
       expect(mockSessionPersistence.saveConversationSession).toHaveBeenCalledWith(
@@ -229,6 +277,7 @@ describe('InProcessAgentAdapter', () => {
           mode: 'conversation',
           tenantId: 'tenant-001',
           context: expect.objectContaining({
+            cwd: '/workspace/demo',
             serverSandbox: {
               executionId: '019391d4-e000-7000-0000-000000000005',
             },
@@ -245,23 +294,38 @@ describe('InProcessAgentAdapter', () => {
       );
     });
 
-    it('会在 conversation 内存缺失时回退到 durable store', async () => {
-      const durableConversationSession: AgentSession = {
+    it('会在 runtime 缺失时回退到 durable conversation store', async () => {
+      const persisted: AgentSession = {
         id: 'conversation-001',
         agentId: 'agent-001',
         mode: 'conversation',
         context: {
           history: [{ type: 'text', text: '历史消息' }],
           cwd: '/workspace/demo',
-          serverSandbox: {
-            executionId: '019391d4-e000-7000-0000-000000000005',
-          },
-          mcpServers: {
-            docs: {
-              transportType: 'stdio',
-              command: 'node',
-              args: ['mcp.js'],
-            },
+        },
+        status: 'active',
+        tenantId: 'tenant-001',
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      mockSessionPersistence.loadConversationSession.mockResolvedValue(persisted);
+
+      await expect(adapter.loadSession('conversation-001')).resolves.toEqual(
+        persisted,
+      );
+    });
+
+    it('会在 workflow runtime 缺失时回退到 checkpoint', async () => {
+      const persisted: AgentSession = {
+        id: 'workflow-001',
+        agentId: 'agent-001',
+        mode: 'workflow',
+        context: {
+          history: [{ type: 'text', text: '历史消息' }],
+          workflowState: {
+            executionId: 'exec-001',
+            stepId: 'step-001',
+            nodeId: 'node-001',
           },
         },
         status: 'active',
@@ -269,97 +333,36 @@ describe('InProcessAgentAdapter', () => {
         createdAt: NOW,
         updatedAt: NOW,
       };
-      mockSessionPersistence.loadConversationSession.mockResolvedValue(
-        durableConversationSession,
-      );
+      adapter.registerSessionMetadata('workflow-001', 'tenant-001', 'step-001');
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(persisted);
 
-      const loaded = await adapter.loadSession('conversation-001');
-
-      expect(mockSessionPersistence.loadConversationSession).toHaveBeenCalledWith(
-        'conversation-001',
+      await expect(adapter.loadSession('workflow-001')).resolves.toEqual(
+        persisted,
       );
-      expect(loaded).toEqual(durableConversationSession);
     });
   });
 
   describe('prompt', () => {
-    async function createAndSetupSession(
-      overrides: Partial<CreateSessionParams> = {},
-    ): Promise<AgentSession> {
-      const session = await adapter.createSession(
-        workflowCreateParams(overrides),
-      );
-      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
-        makeWorkflowSession({
-          ...session,
-          context: { ...session.context, history: [] },
-        }),
-      );
-      return session;
-    }
-
-    it('conversation 会话创建后可直接 prompt', async () => {
+    it('conversation 会把用户输入与运行时事件追加到 durable replay ledger，并保存新 history', async () => {
+      hoisted.queuePromptBehavior({
+        events: [
+          { type: 'message_chunk', content: '你好，主人' },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      });
       const session = await adapter.createSession({
         agentId: 'agent-001',
         mode: 'conversation',
         tenantId: 'tenant-001',
         systemPrompt: '你是一个聊天助手',
       });
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
+
+      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).resolves.toEqual(
+        [
+          { type: 'message_chunk', content: '你好，主人' },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
       );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'text-delta', text: '你好，主人' },
-          { type: 'finish', finishReason: 'stop' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt(session.id, [textBlock])) {
-        events.push(event);
-      }
-
-      expect(events).toEqual([
-        { type: 'message_chunk', content: '你好，主人' },
-        { type: 'done', stopReason: 'end_turn' },
-      ]);
-    });
-
-    it('conversation prompt 会把用户输入与运行时事件追加到 durable replay ledger', async () => {
-      const session = await adapter.createSession({
-        agentId: 'agent-001',
-        mode: 'conversation',
-        tenantId: 'tenant-001',
-        systemPrompt: '你是一个聊天助手',
-        serverSandbox: {
-          executionId: '019391d4-e000-7000-0000-000000000005',
-        },
-      } as CreateSessionParams & {
-        serverSandbox: { executionId: string };
-      });
-      mockSessionPersistence.loadConversationSession.mockResolvedValue({
-        ...session,
-        context: {
-          history: [],
-          serverSandbox: {
-            executionId: '019391d4-e000-7000-0000-000000000005',
-          },
-        },
-      });
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'text-delta', text: '你好，主人' },
-          { type: 'finish', finishReason: 'stop' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      for await (const _event of adapter.prompt(session.id, [textBlock])) {
-        continue;
-      }
 
       expect(mockSessionPersistence.appendConversationReplayEntry).toHaveBeenCalledWith(
         expect.objectContaining({ id: session.id, mode: 'conversation' }),
@@ -381,365 +384,161 @@ describe('InProcessAgentAdapter', () => {
       expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
-          mode: 'conversation',
           context: {
             history: [textBlock, { type: 'text', text: '你好，主人' }],
-            serverSandbox: {
-              executionId: '019391d4-e000-7000-0000-000000000005',
-            },
           },
         }),
       );
     });
 
-    it('会解析默认模型配置、流式输出 message_chunk，并在 stop finishReason 时结束', async () => {
-      await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'text-delta', text: 'Hello ' },
-          { type: 'text-delta', text: 'world' },
-          { type: 'finish', finishReason: 'stop' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
-        events.push(event);
-      }
-
-      expect(mockPiAiAdapter.getModel).toHaveBeenCalledWith(defaultModelConfig);
-      expect(mockedStreamText).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model: 'mock-model',
-          system: '你是一个总结助手',
-          prompt: 'Hello, agent!',
-        }),
-      );
-      expect(runInTenantTransaction).toHaveBeenCalledWith(
-        mockDb,
-        'tenant-001',
-        expect.any(Function),
-      );
-      expect(events).toEqual([
-        { type: 'message_chunk', content: 'Hello ' },
-        { type: 'message_chunk', content: 'world' },
-        { type: 'done', stopReason: 'end_turn' },
-      ]);
-    });
-
-    it('注册 session-local tool provider 后会把 namespaced MCP tools 注入 streamText', async () => {
-      await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
-      adapter.registerSessionToolProvider('session-uuid', async () => ({
-        'docs/search': tool({
-          description: '搜索 MCP 文档',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              query: {
-                type: 'string',
-              },
-            },
-            required: ['query'],
-            additionalProperties: false,
-          }),
-          execute: vi.fn().mockResolvedValue({
-            hits: [],
-          }),
-        }),
-      }));
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([{ type: 'finish', finishReason: 'stop' }]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      for await (const _event of adapter.prompt('session-uuid', [textBlock])) {
-        continue;
-      }
-
-      const invocation = mockedStreamText.mock.calls[0]?.[0];
-      expect(invocation).toMatchObject({
-        tools: {
-          'docs/search': expect.objectContaining({
-            description: '搜索 MCP 文档',
-          }),
+    it('恢复持久化 session 时会创建新的 runtime，并把完整历史作为首轮 prompt 输入', async () => {
+      const persisted: AgentSession = {
+        id: 'persisted-session',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: {
+          history: [{ type: 'text', text: '上一轮消息' }],
+          cwd: '/workspace/demo',
         },
+        status: 'active',
+        tenantId: 'tenant-001',
+        systemPrompt: '你是一个聊天助手',
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      mockSessionPersistence.loadConversationSession.mockResolvedValue(persisted);
+      hoisted.queuePromptBehavior({
+        events: [{ type: 'done', stopReason: 'end_turn' }],
       });
-    });
 
-    it('注销 session-local tool provider 后不再向 streamText 注入 MCP tools', async () => {
-      await createAndSetupSession({ systemPrompt: '你是一个总结助手' });
-      adapter.registerSessionToolProvider('session-uuid', async () => ({
-        'docs/search': tool({
-          description: '搜索 MCP 文档',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              query: {
-                type: 'string',
-              },
-            },
-            required: ['query'],
-            additionalProperties: false,
-          }),
-          execute: vi.fn().mockResolvedValue({
-            hits: [],
-          }),
-        }),
-      }));
-      adapter.unregisterSessionToolProvider('session-uuid');
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
+      await collectEvents(
+        adapter.prompt('persisted-session', [{ type: 'text', text: '新的输入' }]),
       );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([{ type: 'finish', finishReason: 'stop' }]),
-      } as unknown as ReturnType<typeof streamText>);
 
-      for await (const _event of adapter.prompt('session-uuid', [textBlock])) {
-        continue;
-      }
-
-      const invocation = mockedStreamText.mock.calls[0]?.[0];
-      expect(invocation).not.toHaveProperty('tools');
-    });
-
-    it('在 LLM_SUGGEST 模式下会产出 decision 与 intervention_required', async () => {
-      await createAndSetupSession({ autonomyMode: 'LLM_SUGGEST' });
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'text-delta', text: '建议稿' },
-          { type: 'finish', finishReason: 'stop' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
-        events.push(event);
-      }
-
-      expect(events).toEqual([
-        { type: 'message_chunk', content: '建议稿' },
-        {
-          type: 'decision',
-          suggestedContent: '建议稿',
-          autonomyMode: 'LLM_SUGGEST',
-          selectedAction: 'request_intervention',
-          alternatives: ['approve', 'modify', 'reject'],
-          confidence: 0.5,
-        },
-        { type: 'done', stopReason: 'intervention_required' },
+      expect(hoisted.createSession).toHaveBeenCalledWith({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+        systemPrompt: '你是一个聊天助手',
+        cwd: '/workspace/demo',
+      });
+      expect(hoisted.prompt).toHaveBeenCalledWith('runtime-session-1', [
+        { type: 'text', text: '上一轮消息' },
+        { type: 'text', text: '新的输入' },
       ]);
     });
 
-    it('会把 length finishReason 映射为 max_tokens', async () => {
-      await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'finish', finishReason: 'length' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
-        events.push(event);
-      }
-
-      expect(events).toEqual([{ type: 'done', stopReason: 'max_tokens' }]);
-    });
-
-    it('会把 tool-call 与 finish-step(tool-calls) 映射为 tool_use', async () => {
-      await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          {
-            type: 'tool-call',
-            toolCallId: 'tc-1',
-            toolName: 'search',
-            input: { q: 'test' },
-          },
-          { type: 'finish-step', finishReason: 'tool-calls' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
-        events.push(event);
-      }
-
-      expect(events).toEqual([
-        {
-          type: 'tool_call',
-          call: {
-            id: 'tc-1',
-            tool: 'search',
-            args: { q: 'test' },
-            status: 'pending',
-          },
-        },
-        { type: 'done', stopReason: 'tool_use' },
-      ]);
-    });
-
-    it('会把 tool-result 与 tool-error 映射为 completed/failed', async () => {
-      await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          {
-            type: 'tool-result',
-            toolCallId: 'tc-1',
-            toolName: 'search',
-            input: { q: 'test' },
-            output: { items: ['result'] },
-          },
-          {
-            type: 'tool-error',
-            toolCallId: 'tc-2',
-            toolName: 'lookup',
-            input: { id: 'doc-1' },
-            error: new Error('工具失败'),
-          },
-          { type: 'finish', finishReason: 'stop' },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
-
-      const events: AgentEvent[] = [];
-      for await (const event of adapter.prompt('session-uuid', [textBlock])) {
-        events.push(event);
-      }
-
-      expect(events).toEqual([
-        {
-          type: 'tool_call',
-          call: {
-            id: 'tc-1',
-            tool: 'search',
-            args: { q: 'test' },
-            status: 'completed',
-            result: { items: ['result'] },
-          },
-        },
-        {
-          type: 'tool_call',
-          call: {
-            id: 'tc-2',
-            tool: 'lookup',
-            args: { id: 'doc-1' },
-            status: 'failed',
-            error: '工具失败',
-          },
-        },
-        { type: 'done', stopReason: 'end_turn' },
-      ]);
-    });
-
-    it('缺少 tenantId 时会抛错并将 session 标记为 error', async () => {
-      const conversationSession: AgentSession = {
-        id: 'conv-session',
+    it('已注册的 session-local tool provider 会在恢复 runtime 后重新绑定', async () => {
+      const provider = vi.fn().mockResolvedValue({});
+      adapter.registerSessionToolProvider('persisted-session', provider);
+      mockSessionPersistence.loadConversationSession.mockResolvedValue({
+        id: 'persisted-session',
         agentId: 'agent-001',
         mode: 'conversation',
         context: { history: [] },
         status: 'active',
+        tenantId: 'tenant-001',
         createdAt: NOW,
         updatedAt: NOW,
-      };
+      } satisfies AgentSession);
+      hoisted.queuePromptBehavior({
+        events: [{ type: 'done', stopReason: 'end_turn' }],
+      });
 
-      adapter.registerSessionMetadata('conv-session', '', 'step-conv');
-      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
-        conversationSession,
+      await collectEvents(adapter.prompt('persisted-session', [textBlock]));
+
+      expect(hoisted.registerSessionToolProvider).toHaveBeenCalledWith(
+        'runtime-session-1',
+        provider,
       );
-
-      const collectEvents = async () => {
-        for await (const _event of adapter.prompt('conv-session', [
-          textBlock,
-        ])) {
-          continue;
-        }
-      };
-
-      await expect(collectEvents()).rejects.toThrow(/缺少 tenantId/i);
     });
 
-    it('流式 error 事件会抛错', async () => {
-      await createAndSetupSession();
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
+    it('stream error 会向外抛出并把 session 标记为 error 后持久化', async () => {
+      hoisted.queuePromptBehavior({ error: new Error('模型流失败') });
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+
+      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).rejects.toThrow(
+        '模型流失败',
       );
-      mockedStreamText.mockReturnValue({
-        fullStream: createFullStream([
-          { type: 'error', error: new Error('模型流失败') },
-        ]),
-      } as unknown as ReturnType<typeof streamText>);
 
-      const collectEvents = async () => {
-        for await (const _event of adapter.prompt('session-uuid', [
-          textBlock,
-        ])) {
-          continue;
-        }
-      };
+      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: session.id,
+          status: 'error',
+        }),
+      );
+    });
 
-      await expect(collectEvents()).rejects.toThrow('模型流失败');
+    it('已完成 session 再次 prompt 时会直接返回 cancelled', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+      hoisted.setRuntimeSession({
+        ...(await adapter.loadSession(session.id)),
+        status: 'completed',
+      });
+
+      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).resolves.toEqual([
+        { type: 'done', stopReason: 'cancelled' },
+      ]);
+    });
+  });
+
+  describe('tool provider / permission delegation', () => {
+    it('runtime 已存在时 register/unregister 会直接委托给 PiAgentCoreAdapter', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+      const provider = vi.fn().mockResolvedValue({});
+
+      adapter.registerSessionToolProvider(session.id, provider);
+      adapter.unregisterSessionToolProvider(session.id);
+
+      expect(hoisted.registerSessionToolProvider).toHaveBeenCalledWith(
+        session.id,
+        provider,
+      );
+      expect(hoisted.unregisterSessionToolProvider).toHaveBeenCalledWith(
+        session.id,
+      );
+    });
+
+    it('resolveToolPermission 会把外层 sessionId 映射到恢复后的 runtime sessionId', async () => {
+      mockSessionPersistence.loadConversationSession.mockResolvedValue({
+        id: 'persisted-session',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: { history: [] },
+        status: 'active',
+        tenantId: 'tenant-001',
+        createdAt: NOW,
+        updatedAt: NOW,
+      } satisfies AgentSession);
+      hoisted.queuePromptBehavior({
+        events: [{ type: 'done', stopReason: 'end_turn' }],
+      });
+
+      await collectEvents(adapter.prompt('persisted-session', [textBlock]));
+      await adapter.resolveToolPermission('persisted-session', 'tool-1', 'approve');
+
+      expect(hoisted.resolveToolPermission).toHaveBeenCalledWith(
+        'runtime-session-1',
+        'tool-1',
+        'approve',
+      );
     });
   });
 
   describe('cancel', () => {
-    it('取消后会产出 cancelled done 事件，并把 session 标记为 completed', async () => {
-      const session = await adapter.createSession(workflowCreateParams());
-      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
-        makeWorkflowSession({
-          ...session,
-          context: { ...session.context, history: [] },
-        }),
-      );
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      mockedStreamText.mockImplementation(
-        ({ abortSignal }) =>
-          ({
-            fullStream: (async function* () {
-              await Promise.resolve();
-              if (abortSignal?.aborted) {
-                yield { type: 'abort' };
-                return;
-              }
-              yield { type: 'finish', finishReason: 'stop' };
-            })(),
-          }) as unknown as ReturnType<typeof streamText>,
-      );
-
-      const iterator = adapter.prompt('session-uuid', [textBlock]);
-      await adapter.cancel('session-uuid');
-
-      const events: AgentEvent[] = [];
-      for await (const event of iterator) {
-        events.push(event);
-      }
-
-      expect(events).toContainEqual({ type: 'done', stopReason: 'cancelled' });
-    });
-
-    it('取消不存在的会话也不会抛错', async () => {
-      await expect(adapter.cancel('missing-session')).resolves.not.toThrow();
-    });
-
-    it('conversation 会话 cancel 后会把 completed 状态写回 durable store', async () => {
+    it('conversation cancel 后会把 completed 状态写回 durable store', async () => {
       const session = await adapter.createSession({
         agentId: 'agent-001',
         mode: 'conversation',
@@ -748,13 +547,45 @@ describe('InProcessAgentAdapter', () => {
 
       await adapter.cancel(session.id);
 
+      expect(hoisted.cancel).toHaveBeenCalledWith(session.id);
       expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
-          mode: 'conversation',
           status: 'completed',
         }),
       );
+    });
+
+    it('workflow cancel 后会把 completed 状态写回 checkpoint', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'workflow',
+        tenantId: 'tenant-001',
+        context: {
+          executionId: 'exec-001',
+          stepId: 'step-001',
+          nodeId: 'node-001',
+        },
+      });
+      adapter.registerSessionMetadata(session.id, 'tenant-001', 'step-001');
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(session);
+
+      await adapter.cancel(session.id);
+
+      expect(mockSessionPersistence.saveToCheckpoint).toHaveBeenLastCalledWith(
+        'tenant-001',
+        'step-001',
+        expect.objectContaining({
+          id: session.id,
+          status: 'completed',
+        }),
+      );
+    });
+
+    it('取消不存在的会话也不会抛错', async () => {
+      hoisted.clearRuntimeSessions();
+
+      await expect(adapter.cancel('missing-session')).resolves.not.toThrow();
     });
   });
 });
