@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import type { LanguageModel, ToolSet, CoreMessage } from 'ai';
+import type { LanguageModel, ToolSet } from 'ai';
 import { importPiAi } from './pi-imports';
 
 export type PiCompatContext = {
@@ -33,12 +33,16 @@ type PartialAssistantMessage = {
 };
 
 function makeEmptyPartial(model: LanguageModel): PartialAssistantMessage {
+  const modelRecord = asRecord(model);
+
   return {
     role: 'assistant',
     content: [],
     api: 'vercel-ai',
-    provider: model.provider ?? 'vercel',
-    model: model.modelId ?? 'unknown',
+    provider:
+      typeof modelRecord?.provider === 'string' ? modelRecord.provider : 'vercel',
+    model:
+      typeof modelRecord?.modelId === 'string' ? modelRecord.modelId : 'unknown',
     usage: {
       input: 0,
       output: 0,
@@ -59,7 +63,7 @@ function shallowClonePartial(p: PartialAssistantMessage): PartialAssistantMessag
 export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
   return async (context: PiCompatContext): Promise<unknown> => {
     const piAi = await importPiAi();
-    const stream = new piAi.AssistantMessageEventStream();
+    const stream = piAi.createAssistantMessageEventStream();
 
     const partial = makeEmptyPartial(model);
     stream.push({ type: 'start', partial: shallowClonePartial(partial) });
@@ -69,9 +73,9 @@ export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
     (async () => {
       try {
         const result = streamText({
-          model,
+          model: model as never,
           system: context.systemPrompt,
-          messages: context.messages as CoreMessage[],
+          messages: context.messages as never,
           ...(toolSet && Object.keys(toolSet).length > 0
             ? { tools: toolSet, toolChoice: 'auto' as const }
             : {}),
@@ -211,4 +215,10 @@ export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
 
     return stream;
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
