@@ -371,12 +371,6 @@ export class SkillController {
     tenantId: string,
     skillId: string,
   ): Promise<void> {
-    const fileList = await this.skillStorageService.listSkillFiles(
-      tenantId,
-      skillId,
-    );
-    this.logger.debug(
-      `Skill ${skillId} 文件变更后当前文件数: ${fileList.length}`,
-    );
+    await this.skillService.refreshFileMeta(tenantId, skillId);
   }
 }

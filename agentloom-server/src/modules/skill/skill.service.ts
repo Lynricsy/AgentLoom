@@ -404,4 +404,29 @@ export class SkillService {
     this.logger.log(`Skill archived: ${skillId}`);
     return updated;
   }
+
+  /**
+   * 刷新 Skill 的文件元数据（fileCount, totalSizeBytes）
+   * 在单文件上传/删除后调用，确保 DB 与存储一致
+   */
+  async refreshFileMeta(tenantId: string, skillId: string): Promise<void> {
+    const storedFiles = await this.skillStorageService.listSkillFiles(
+      tenantId,
+      skillId,
+    );
+    const meta = this.computeFileMeta(storedFiles);
+
+    await this.tenantDb
+      .update(schema.skills)
+      .set({
+        fileCount: meta.fileCount,
+        totalSizeBytes: meta.totalSizeBytes,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.skills.id, skillId));
+
+    this.logger.debug(
+      `Skill ${skillId} 文件元数据已刷新: fileCount=${meta.fileCount}, totalSizeBytes=${meta.totalSizeBytes}`,
+    );
+  }
 }
