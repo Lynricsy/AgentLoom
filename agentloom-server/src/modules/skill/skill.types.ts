@@ -36,8 +36,8 @@ export interface SkillSummary {
 }
 
 export interface SkillPromptPayload {
+  id: string;
   name: string;
   description: string;
-  content: string;
-  allowedTools?: string[];
+  content: string | null;
 }
