@@ -796,4 +796,602 @@ describe('PiAgentCoreAdapter', () => {
     );
     expect(hoisted.getTenantDb).toHaveBeenCalledWith(mockDb);
   });
+
+  describe('convertToolSetToPiTools branch coverage', () => {
+    function registerToolProvider(
+      sessionId: string,
+      toolSet: ToolSet,
+    ): void {
+      adapter.registerSessionToolProvider(sessionId, async () => toolSet);
+    }
+
+    it('tool.execute 缺失时返回 "Tool has no execute function"', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      registerToolProvider(session.id, {
+        myTool: {
+          description: 'no-exec',
+          inputSchema: { _type: 'ZodString' } as never,
+        },
+      } as ToolSet);
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          execute: (id: string, params: unknown) => Promise<unknown>;
+        };
+        const result = await piTool.execute('call-no-exec', {});
+        expect(result).toEqual({
+          content: [{ type: 'text', text: 'Tool has no execute function' }],
+          details: null,
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+      );
+    });
+
+    it('tool.execute 返回 null 时 text 为空字符串', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      registerToolProvider(session.id, {
+        myTool: {
+          description: 'null-tool',
+          inputSchema: { _type: 'ZodString' } as never,
+          execute: vi.fn().mockResolvedValue(null),
+        },
+      } as unknown as ToolSet);
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          execute: (id: string, params: unknown) => Promise<unknown>;
+        };
+        const result = await piTool.execute('call-null', {});
+        expect(result).toEqual({
+          content: [{ type: 'text', text: '' }],
+          details: null,
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+      );
+    });
+
+    it('tool.execute 返回 string 时直接使用该 string', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      registerToolProvider(session.id, {
+        myTool: {
+          description: 'str-tool',
+          inputSchema: { _type: 'ZodString' } as never,
+          execute: vi.fn().mockResolvedValue('hello world'),
+        },
+      } as unknown as ToolSet);
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          execute: (id: string, params: unknown) => Promise<unknown>;
+        };
+        const result = await piTool.execute('call-str', {});
+        expect(result).toEqual({
+          content: [{ type: 'text', text: 'hello world' }],
+          details: 'hello world',
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+      );
+    });
+
+    it('tool.execute 返回 object 时 JSON.stringify', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      registerToolProvider(session.id, {
+        myTool: {
+          description: 'obj-tool',
+          inputSchema: { _type: 'ZodString' } as never,
+          execute: vi.fn().mockResolvedValue({ key: 'value' }),
+        },
+      } as unknown as ToolSet);
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          execute: (id: string, params: unknown) => Promise<unknown>;
+        };
+        const result = await piTool.execute('call-obj', {});
+        expect(result).toEqual({
+          content: [{ type: 'text', text: '{"key":"value"}' }],
+          details: { key: 'value' },
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+      );
+    });
+  });
+
+  describe('translatePiEvent branch coverage', () => {
+    it('message_update 非 text_delta 类型时返回空', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        // 非 text_delta 类型
+        agent.emit({
+          type: 'message_update',
+          assistantMessageEvent: { type: 'other_type', delta: 'data' },
+        });
+        // 无 delta string
+        agent.emit({
+          type: 'message_update',
+          assistantMessageEvent: { type: 'text_delta', delta: 123 },
+        });
+        // unknown event type
+        agent.emit({ type: 'something_unknown' });
+        // agent_end
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      // 只有 done 事件，前面的 message_update 和 unknown 都被过滤
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('tool_execution_end isError=true 时使用 stringifyToolError', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'err-call',
+          toolName: 'myTool',
+          result: { details: 'direct error string' },
+          isError: true,
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: {
+          id: 'err-call',
+          tool: 'myTool',
+          args: {},
+          status: 'failed',
+          error: 'direct error string',
+        },
+      });
+    });
+
+    it('tool_execution_end isError=true content 结构错误时使用 fallback', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        // stringifyToolError with content array (text extraction)
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'err-content',
+          toolName: 'myTool',
+          result: {
+            details: {
+              content: [
+                { type: 'text', text: 'error line 1' },
+                { type: 'text', text: 'error line 2' },
+                { type: 'image', data: 'binary' }, // 非 text
+              ],
+            },
+          },
+          isError: true,
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events[0]).toMatchObject({
+        type: 'tool_call',
+        call: {
+          id: 'err-content',
+          status: 'failed',
+          error: 'error line 1\nerror line 2',
+        },
+      });
+    });
+
+    it('tool_execution_end isError=true 空 content 使用 fallback "Tool execution failed"', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        // content 数组全部为空文本
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'err-empty',
+          toolName: 'myTool',
+          result: { details: { content: [{ type: 'text', text: '' }] } },
+          isError: true,
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events[0]).toMatchObject({
+        type: 'tool_call',
+        call: {
+          id: 'err-empty',
+          status: 'failed',
+          error: 'Tool execution failed',
+        },
+      });
+    });
+
+    it('tool_execution_end isError=true 纯数字错误使用 fallback', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'err-num',
+          toolName: 'myTool',
+          result: { details: 42 },
+          isError: true,
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events[0]).toMatchObject({
+        type: 'tool_call',
+        call: { id: 'err-num', status: 'failed', error: 'Tool execution failed' },
+      });
+    });
+
+    it('mapStopReason 处理 tool_use 别名', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'tool_use' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events).toEqual([{ type: 'done', stopReason: 'tool_use' }]);
+    });
+
+    it('tool_execution_start 无 toolCallId/toolName 时使用 fallback', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'tool_execution_start',
+          // 无 toolCallId, toolName
+          args: { data: 1 },
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events[0]).toMatchObject({
+        type: 'tool_call',
+        call: {
+          tool: 'unknown_tool',
+          args: { data: 1 },
+          status: 'in_progress',
+        },
+      });
+      // id should be a UUID (36 chars)
+      expect(
+        (events[0] as { call: { id: string } }).call.id,
+      ).toHaveLength(36);
+    });
+  });
+
+  describe('serializeContentBlocks branch coverage', () => {
+    it('序列化 audio/resource/resource_link/default 类型 content block', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      const blocks: ContentBlock[] = [
+        { type: 'audio', mimeType: 'audio/wav', data: 'base64data' } as ContentBlock,
+        {
+          type: 'resource',
+          uri: 'file://test.txt',
+          text: 'resource-text',
+        } as ContentBlock,
+        {
+          type: 'resource',
+          uri: 'file://blob.bin',
+          blob: 'blob-data',
+        } as ContentBlock,
+        {
+          type: 'resource',
+          uri: 'file://fallback.txt',
+        } as ContentBlock,
+        {
+          type: 'resource_link',
+          uri: 'https://example.com',
+          title: 'Example',
+        } as ContentBlock,
+        {
+          type: 'resource_link',
+          uri: 'https://notitle.com',
+        } as ContentBlock,
+        { type: 'unknown_type' } as unknown as ContentBlock,
+      ];
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        // 验证 prompt 接收到的序列化文本
+        const text = agent.promptInputs[0];
+        expect(text).toContain('[audio:audio/wav]');
+        expect(text).toContain('resource-text');
+        expect(text).toContain('blob-data');
+        expect(text).toContain('[resource:file://fallback.txt]');
+        expect(text).toContain('Example');
+        expect(text).toContain('[resource_link:https://notitle.com]');
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(adapter.prompt(session.id, blocks));
+    });
+  });
+
+  describe('extractResourcePaths branch coverage', () => {
+    it('从数组类型的参数中提取资源路径', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const result = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'call-paths',
+              name: 'multi_file',
+              arguments: {
+                paths: ['/tmp/a.txt', '/tmp/b.txt', '', 42],
+                cwd: '/workspace',
+              },
+            },
+            args: {
+              paths: ['/tmp/a.txt', '/tmp/b.txt', '', 42],
+              cwd: '/workspace',
+            },
+          },
+          agent.abortController.signal,
+        );
+
+        if (!result?.block) {
+          agent.emit({
+            type: 'agent_end',
+            messages: [{ role: 'assistant', stopReason: 'stop' }],
+          });
+        }
+      };
+
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'go' }])
+        [Symbol.asyncIterator]();
+      const first = await iterator.next();
+
+      expect(first.value).toMatchObject({
+        type: 'tool_call',
+        call: {
+          id: 'call-paths',
+          status: 'awaiting_permission',
+          permissionRequest: {
+            resourcePaths: expect.arrayContaining([
+              '/tmp/a.txt',
+              '/tmp/b.txt',
+              '/workspace',
+            ]),
+          },
+        },
+      });
+
+      await adapter.resolveToolPermission(session.id, 'call-paths', 'approve');
+      await collectIteratorRest(iterator);
+    });
+  });
+
+  describe('signal pre-aborted', () => {
+    it('signal 已 aborted 时立即 cancel permission', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        // 先 abort signal
+        agent.abortController.abort();
+
+        const result = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'call-aborted',
+              name: 'fs.read',
+              arguments: { path: '/test' },
+            },
+            args: { path: '/test' },
+          },
+          agent.abortController.signal,
+        );
+
+        // cancelled → block=true
+        expect(result).toEqual({
+          block: true,
+          reason: 'Tool execution cancelled.',
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'aborted' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+      );
+      // 应该有 awaiting_permission + done(cancelled)
+      expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'cancelled' });
+    });
+  });
+
+  describe('prompt error path', () => {
+    it('agent.prompt 抛错时 session 状态变为 error', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async () => {
+        throw new Error('LLM provider failed');
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+        ),
+      ).rejects.toThrow('LLM provider failed');
+      expect((await adapter.loadSession(session.id)).status).toBe('error');
+    });
+  });
+
+  describe('getToolCallId/getToolName fallback', () => {
+    it('从 toolCallId 别名提取 id', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              toolCallId: 'alt-id-123',
+              toolName: 'alt-tool',
+            },
+            args: {},
+          },
+          agent.abortController.signal,
+        );
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'go' }])
+        [Symbol.asyncIterator]();
+      const first = await iterator.next();
+
+      expect(first.value).toMatchObject({
+        type: 'tool_call',
+        call: {
+          id: 'alt-id-123',
+          tool: 'alt-tool',
+          status: 'awaiting_permission',
+        },
+      });
+
+      await adapter.resolveToolPermission(session.id, 'alt-id-123', 'approve');
+      await collectIteratorRest(iterator);
+    });
+
+    it('id/name 均缺失时使用 fallback', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        await agent.options.beforeToolCall?.(
+          {
+            toolCall: {},
+            args: {},
+          },
+          agent.abortController.signal,
+        );
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'go' }])
+        [Symbol.asyncIterator]();
+      const first = await iterator.next();
+
+      const call = (first.value as { call: { id: string; tool: string } }).call;
+      expect(call.id).toHaveLength(36); // UUID
+      expect(call.tool).toBe('unknown_tool');
+
+      await adapter.resolveToolPermission(session.id, call.id, 'approve');
+      await collectIteratorRest(iterator);
+    });
+  });
 });

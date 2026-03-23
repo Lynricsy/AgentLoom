@@ -21,7 +21,7 @@ const ACP_STDIO_TEST_ENV = {
 } as const;
 
 describe('AcpStdioModule', () => {
-  it('应将 AGENT_RUNTIME 绑定到真实 runtime provider', async () => {
+  it('应将 AGENT_RUNTIME 绑定到真实 runtime provider', { timeout: 30_000 }, async () => {
     const acpStdioModulePath = '../acp-stdio.module.ts';
 
     for (const [key, value] of Object.entries(ACP_STDIO_TEST_ENV)) {

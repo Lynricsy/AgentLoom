@@ -273,4 +273,310 @@ describe('createVercelStreamFn()', () => {
       }),
     );
   });
+
+  it('text-delta with unknown id is silently dropped', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'text-delta', id: 'unknown-id', text: 'dropped' },
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain('text_delta');
+    expect(types).toContain('start');
+    expect(types).toContain('done');
+  });
+
+  it('text-end with unknown id is silently dropped', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'text-end', id: 'unknown-id' },
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain('text_end');
+  });
+
+  it('reasoning-delta with unknown id is silently dropped', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'reasoning-delta', id: 'unknown-id', text: 'dropped' },
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain('thinking_delta');
+  });
+
+  it('reasoning-end with unknown id is silently dropped', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'reasoning-end', id: 'unknown-id' },
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain('thinking_end');
+  });
+
+  it('tool-input-delta with unknown id is silently dropped', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'tool-input-delta', id: 'unknown-id', delta: '{"dropped"}' },
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain('toolcall_delta');
+  });
+
+  it('error event with non-Error value stringifies it', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'error', error: 'plain string error' },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const err = events.find((e) => e.type === 'error') as Record<string, unknown>;
+    expect(err).toBeDefined();
+    const errMsg = (err.error as Record<string, unknown>).errorMessage as string;
+    expect(errMsg).toBe('plain string error');
+  });
+
+  it('error event with undefined error uses "Unknown error"', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'error' },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const err = events.find((e) => e.type === 'error') as Record<string, unknown>;
+    const errMsg = (err.error as Record<string, unknown>).errorMessage as string;
+    expect(errMsg).toBe('Unknown error');
+  });
+
+  it('abort without reason defaults to "Request aborted"', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'abort' },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const err = events.find((e) => e.type === 'error') as Record<string, unknown>;
+    expect(err.reason).toBe('aborted');
+    const errMsg = (err.error as Record<string, unknown>).errorMessage as string;
+    expect(errMsg).toBe('Request aborted');
+  });
+
+  it('catch block handles non-Error thrown value', async () => {
+    mockStreamText.mockImplementation(() => ({
+      fullStream: (async function* () {
+        yield* [];
+        throw 'raw string thrown';
+      })(),
+    }));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const err = events.find((e) => e.type === 'error') as Record<string, unknown>;
+    expect(err).toBeDefined();
+    const errMsg = (err.error as Record<string, unknown>).errorMessage as string;
+    expect(errMsg).toBe('raw string thrown');
+  });
+
+  it('model without provider/modelId defaults to "vercel"/"unknown"', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn({} as import('ai').LanguageModel);
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const start = events[0] as Record<string, unknown>;
+    const partial = start.partial as Record<string, unknown>;
+    expect(partial.provider).toBe('vercel');
+    expect(partial.model).toBe('unknown');
+  });
+
+  it('model that is null falls back to "vercel"/"unknown"', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(null as unknown as import('ai').LanguageModel);
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const start = events[0] as Record<string, unknown>;
+    const partial = start.partial as Record<string, unknown>;
+    expect(partial.provider).toBe('vercel');
+    expect(partial.model).toBe('unknown');
+  });
+
+  it('model that is an array falls back to "vercel"/"unknown"', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn([] as unknown as import('ai').LanguageModel);
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const start = events[0] as Record<string, unknown>;
+    const partial = start.partial as Record<string, unknown>;
+    expect(partial.provider).toBe('vercel');
+    expect(partial.model).toBe('unknown');
+  });
+
+  it('finish with unknown finishReason defaults to stop', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'content-filter', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const done = events.find((e) => e.type === 'done') as Record<string, unknown>;
+    expect(done.reason).toBe('stop');
+  });
+
+  it('passes toolSet to streamText when non-empty', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const toolSet = { search: { description: 'search', parameters: {} } } as unknown as import('ai').ToolSet;
+    const fn = createVercelStreamFn(makeMockModel(), toolSet);
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    expect(mockStreamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: toolSet,
+        toolChoice: 'auto',
+      }),
+    );
+  });
+
+  it('does not pass tools when toolSet is empty', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel(), {});
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const call = mockStreamText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.tools).toBeUndefined();
+    expect(call.toolChoice).toBeUndefined();
+  });
+
+  it('finish with missing totalUsage defaults to zero tokens', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'finish', finishReason: 'stop', totalUsage: {} },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const done = events.find((e) => e.type === 'done') as Record<string, unknown>;
+    const msg = done.message as Record<string, unknown>;
+    const usage = msg.usage as Record<string, unknown>;
+    expect(usage.input).toBe(0);
+    expect(usage.output).toBe(0);
+    expect(usage.totalTokens).toBe(0);
+  });
+
+  it('tool-call with null input defaults to empty arguments', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'tool-call', toolCallId: 'tc-null', toolName: 'noop', input: null },
+      { type: 'finish', finishReason: 'tool-calls', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const end = events.find((e) => e.type === 'toolcall_end') as Record<string, unknown>;
+    const toolCall = end.toolCall as Record<string, unknown>;
+    expect(toolCall.arguments).toEqual({});
+  });
+
+  it('unknown event type in fullStream is silently ignored', async () => {
+    mockStreamText.mockReturnValue(makeStreamResult([
+      { type: 'step-start' } as TextStreamPart,
+      { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } },
+    ]));
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of await fn(baseContext) as AsyncIterable<Record<string, unknown>>) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).toEqual(['start', 'done']);
+  });
 });

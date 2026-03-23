@@ -682,4 +682,516 @@ describe('SandboxAgentAdapter', () => {
       await expect(first).resolves.toEqual({ allowed: false });
     });
   });
+
+  describe('SSE event translation branch coverage', () => {
+    async function createSessionAndPromptSse(
+      sseLines: string[],
+      params = defaultParams,
+    ): Promise<AgentEvent[]> {
+      const session = await adapter.createSession(params);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue(createSseResponse(sseLines));
+
+      return collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'test' }]),
+      );
+    }
+
+    it('[DONE] SSE payload yields no events', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: [DONE]\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('raw typed event without jsonrpc is translated', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"text_delta","data":{"delta":"raw"}}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({ type: 'message_chunk', content: 'raw' });
+    });
+
+    it('text_delta with record containing content key', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"content":"via-content"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({ type: 'message_chunk', content: 'via-content' });
+    });
+
+    it('text_delta with raw string data', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":"raw-string"}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({ type: 'message_chunk', content: 'raw-string' });
+    });
+
+    it('text_delta with empty string data yields no event', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":""}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('tool_call_start event produces in_progress tool_call', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t1","toolName":"search","args":{"q":"foo"}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          id: 't1',
+          tool: 'search',
+          args: { q: 'foo' },
+          status: 'in_progress',
+        }),
+      });
+    });
+
+    it('tool_call_end with isError=true produces failed status with fallback message', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t2","toolName":"cmd","isError":true}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          id: 't2',
+          tool: 'cmd',
+          status: 'failed',
+          error: 'Sandbox tool execution failed',
+        }),
+      });
+    });
+
+    it('tool_call_end with error object extracts message', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t3","toolName":"cmd","error":{"message":"boom"}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          status: 'failed',
+          error: 'boom',
+        }),
+      });
+    });
+
+    it('tool_call_end with string error', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t4","toolName":"cmd","error":"string-err"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          status: 'failed',
+          error: 'string-err',
+        }),
+      });
+    });
+
+    it('tool_call_end with error object lacking message uses JSON.stringify', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t5","toolName":"cmd","error":{"code":500}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          status: 'failed',
+          error: '{"code":500}',
+        }),
+      });
+    });
+
+    it('normalizeStopReason aliases', async () => {
+      for (const [input, expected] of [
+        ['cancelled', 'cancelled'],
+        ['aborted', 'cancelled'],
+        ['max_tokens', 'max_tokens'],
+        ['length', 'max_tokens'],
+        ['toolUse', 'tool_use'],
+        ['intervention_required', 'intervention_required'],
+        ['something_else', 'end_turn'],
+      ] as const) {
+        const events = await createSessionAndPromptSse([
+          `data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"${input}"}}}\n\n`,
+        ]);
+
+        const doneEvt = events.find((e) => e.type === 'done');
+        expect(doneEvt).toEqual({ type: 'done', stopReason: expected });
+      }
+    });
+
+    it('normalizeToolArgs reads input field', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t6","toolName":"run","input":{"cmd":"ls"}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+    });
+
+    it('normalizeToolArgs reads arguments field', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t7","toolName":"run","arguments":{"cmd":"ls"}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+    });
+
+    it('normalizeToolArgs returns {} when no candidates match', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t8","toolName":"run"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({});
+    });
+
+    it('normalizeTransitions with valid entries', async () => {
+      const transitions = [
+        { from: 'pending', to: 'in_progress', timestamp: '2025-01-01T00:00:00Z', source: 'worker' },
+        { to: 'completed', source: 'runtime' },
+      ];
+      const events = await createSessionAndPromptSse([
+        `data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t9","toolName":"run","status":"completed","transitions":${JSON.stringify(transitions)}}}}\n\n`,
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const trans = call.transitions as Array<Record<string, unknown>>;
+      expect(trans).toHaveLength(2);
+      expect(trans[0].from).toBe('pending');
+      expect(trans[0].to).toBe('in_progress');
+      expect(trans[0].source).toBe('worker');
+      expect(trans[1].to).toBe('completed');
+    });
+
+    it('normalizeTransitions skips non-record entries and entries without valid to', async () => {
+      const transitions = [
+        'not-an-object',
+        { to: 'invalid_status' },
+        { to: 'completed', source: 'user' },
+      ];
+      const events = await createSessionAndPromptSse([
+        `data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"t10","toolName":"run","status":"completed","transitions":${JSON.stringify(transitions)}}}}\n\n`,
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const trans = call.transitions as Array<Record<string, unknown>>;
+      expect(trans).toHaveLength(1);
+      expect(trans[0].to).toBe('completed');
+      expect(trans[0].source).toBe('user');
+    });
+
+    it('normalizePermissionRequest fallback from data-level fields', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"t11","toolName":"fs/write","description":"写入文件","resourcePaths":["/workspace/x.txt"]}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      expect(call.permissionRequest).toEqual({
+        description: '写入文件',
+        resourcePaths: ['/workspace/x.txt'],
+      });
+    });
+
+    it('normalizePermissionRequest with record value uses default description', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"t12","toolName":"myTool","permissionRequest":{"resourcePaths":["/a"]}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const perm = call.permissionRequest as Record<string, unknown>;
+      expect(perm.description).toContain('myTool');
+      expect(perm.resourcePaths).toEqual(['/a']);
+    });
+
+    it('buildToolCallEvent falls back to data.tool when toolName missing', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t13","tool":"alt_tool"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { tool: string } }).call.tool).toBe('alt_tool');
+    });
+
+    it('buildToolCallEvent falls back to data.id when toolCallId missing', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"id":"alt-id","toolName":"run"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { id: string } }).call.id).toBe('alt-id');
+    });
+
+    it('readToolCallStatus infers awaiting_permission when permissionRequest present', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","data":{"toolCallId":"t14","toolName":"fs/write","permissionRequest":{"description":"允许"}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect((events[0] as { type: 'tool_call'; call: { status: string } }).call.status).toBe('awaiting_permission');
+    });
+
+    it('error event with fallback message from envelope.data', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","data":"string-level error"}}\n\n',
+      ]).catch((err: Error) => err);
+
+      expect(events).toBeInstanceOf(Error);
+      expect((events as Error).message).toBe('string-level error');
+    });
+
+    it('error event with no message uses default', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","data":42}}\n\n',
+      ]).catch((err: Error) => err);
+
+      expect(events).toBeInstanceOf(Error);
+      expect((events as Error).message).toBe('Sandbox agent error');
+    });
+
+    it('unknown container event type yields no events', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"unknown_type","data":{}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('unrecognized parsed SSE data that is not AgentEvent or typed record yields no events', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"foo":"bar"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('isAgentEvent validates plan type requires title and content', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"plan","title":"Plan A","content":"Do things"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'plan',
+        title: 'Plan A',
+        content: 'Do things',
+      });
+    });
+
+    it('isAgentEvent validates decision type requires suggestedContent', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"decision","suggestedContent":"suggest this"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'decision',
+        suggestedContent: 'suggest this',
+      });
+    });
+
+    it('isAgentEvent rejects plan without title', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"plan","content":"missing title"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('isAgentEvent rejects decision without suggestedContent', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"decision","other":"field"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('isAgentEvent validates tool_call type requires record call', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"type":"tool_call","call":"not-a-record"}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+  });
+
+  describe('readSandboxBinding nested serverSandbox', () => {
+    it('reads executionId from nested serverSandbox', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: {
+          serverSandbox: { executionId: 'nested-exec-001' },
+        },
+      });
+
+      expect(session.status).toBe('active');
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
+        'nested-exec-001',
+        'tenant-001',
+      );
+    });
+
+    it('reads agentConversationId from nested serverSandbox', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: {
+          serverSandbox: { agentConversationId: 'nested-conv-001' },
+        },
+      });
+
+      expect(session.status).toBe('active');
+      expect(mockSandboxService.findByConversationId).toHaveBeenCalledWith(
+        'nested-conv-001',
+        'tenant-001',
+      );
+    });
+
+    it('top-level executionId takes precedence over nested', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        context: {
+          executionId: 'top-exec',
+          serverSandbox: { executionId: 'nested-exec' },
+        },
+      });
+
+      expect(session.status).toBe('active');
+      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
+        'top-exec',
+        'tenant-001',
+      );
+    });
+  });
+
+  describe('prompt response edge cases', () => {
+    it('prompt with response.ok=false throws error', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: vi.fn().mockResolvedValue('Bad Gateway'),
+      } as unknown as Response);
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'test' }]),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('prompt with null response body throws error', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: null,
+      } as unknown as Response);
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'test' }]),
+        ),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('cancel edge cases', () => {
+    it('cancel abort failure is swallowed', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('abort network failed'));
+
+      await expect(adapter.cancel(session.id)).resolves.toBeUndefined();
+      const loaded = await adapter.loadSession(session.id);
+      expect(loaded.status).toBe('completed');
+    });
+  });
+
+  describe('resolveSessionIdForConversation via session scan', () => {
+    it('finds session by scanning sessions when conversationSessionIds has no entry', async () => {
+      await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-scan' },
+      });
+
+      const pending = adapter.awaitToolPermission('conv-scan', {
+        toolCallId: 'tool-scan',
+        toolName: 'test',
+      });
+
+      await Promise.resolve();
+      await adapter.resolveConversationToolPermission('conv-scan', 'tool-scan', 'approve');
+
+      await expect(pending).resolves.toEqual({ allowed: true });
+    });
+  });
 });
