@@ -1,0 +1,36 @@
+{
+  "name": "@agentloom/sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Fastify HTTP server wrapping pi-coding-agent AgentSession behind ACP-compatible endpoints",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsup src/server.ts --format esm --target node22 --dts --clean",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fastify": "^5.3.3",
+    "@mariozechner/pi-coding-agent": "file:.pi-tarballs/pi-coding-agent.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "@mariozechner/pi-coding-agent": "file:.pi-tarballs/pi-coding-agent.tgz",
+    "@mariozechner/pi-ai": "file:.pi-tarballs/pi-ai.tgz",
+    "@mariozechner/pi-agent-core": "file:.pi-tarballs/pi-agent-core.tgz",
+    "@mariozechner/pi-tui": "file:.pi-tarballs/pi-tui.tgz"
+  }
+}
