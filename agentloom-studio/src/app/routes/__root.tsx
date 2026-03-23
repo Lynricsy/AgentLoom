@@ -118,7 +118,7 @@ export function RootLayout() {
               记忆
             </Link>
             <Link
-              to="/skills"
+              to="/settings/skills"
               className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
             >
               技能

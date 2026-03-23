@@ -1,46 +1,77 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchSkills,
-  fetchSkillBySlug,
-  enableSkill,
-  disableSkill,
+  fetchSkillById,
+  createSkill,
+  updateSkill,
+  deleteSkill,
+  archiveSkill,
   type ListSkillsParams,
+  type CreateSkillPayload,
+  type UpdateSkillPayload,
 } from './skillApi';
 import { skillKeys } from './skillKeys';
 
-export function useSkills(params: ListSkillsParams = {}) {
+export function useSkillList(params?: ListSkillsParams) {
   return useQuery({
     queryKey: skillKeys.list(params),
     queryFn: () => fetchSkills(params),
-    staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useSkillBySlug(slug: string) {
+export const useSkills = useSkillList;
+
+export function useSkill(id: string, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: skillKeys.detail(slug),
-    queryFn: () => fetchSkillBySlug(slug),
-    enabled: Boolean(slug),
-    staleTime: 5 * 60 * 1000,
+    queryKey: skillKeys.detail(id),
+    queryFn: () => fetchSkillById(id),
+    enabled: options?.enabled ?? Boolean(id),
   });
 }
 
-export function useEnableSkill() {
+export function useCreateSkill() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: enableSkill,
+    mutationFn: (payload: CreateSkillPayload) => createSkill(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: skillKeys.all });
     },
   });
 }
 
-export function useDisableSkill() {
+export function useUpdateSkill() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: disableSkill,
+    mutationFn: ({ id, ...payload }: UpdateSkillPayload & { id: string }) =>
+      updateSkill(id, payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: skillKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.detail(variables.id),
+      });
+    },
+  });
+}
+
+export function useDeleteSkill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteSkill(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: skillKeys.all });
+    },
+  });
+}
+
+export function useArchiveSkill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => archiveSkill(id),
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: skillKeys.all });
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.detail(id),
+      });
     },
   });
 }

@@ -4,6 +4,6 @@ import { rootRoute } from './__root';
 
 export const skillsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/skills',
+  path: '/settings/skills',
   component: SkillBrowsePage,
 });

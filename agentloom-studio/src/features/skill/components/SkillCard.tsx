@@ -1,44 +1,25 @@
-import { Zap } from 'lucide-react';
+import { Zap, Shield } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import type { SkillListItem } from '../types';
-
-const CATEGORY_LABELS: Record<string, string> = {
-  writing: '写作',
-  analysis: '分析',
-  code: '代码',
-  research: '研究',
-  automation: '自动化',
-  communication: '沟通',
-  data: '数据',
-  reasoning: '推理',
-};
-
-const COMPLEXITY_LABELS: Record<string, string> = {
-  beginner: '入门',
-  intermediate: '进阶',
-  advanced: '高级',
-};
+import type { Skill } from '../types';
 
 interface SkillCardProps {
-  skill: SkillListItem;
-  onClick: (skill: SkillListItem) => void;
+  skill: Skill;
+  onClick: (skill: Skill) => void;
 }
 
 export function SkillCard({ skill, onClick }: SkillCardProps) {
   const isActive = skill.status === 'active';
-  const isDeprecated = skill.status === 'deprecated';
-  const complexity = skill.metadata.complexity;
+  const isArchived = skill.status === 'archived';
 
   return (
     <button
       type="button"
       className={cn(
-        'group relative flex w-full flex-col gap-3 rounded-lg border p-4 text-left transition-all',
+        'group relative flex w-full flex-col gap-3 rounded-lg border p-4 text-left transition-all cursor-pointer',
         'bg-card hover:bg-card/90',
         isActive
           ? 'border-border hover:border-primary/50 hover:shadow-sm hover:shadow-primary/10'
           : 'border-border/60 opacity-70',
-        isDeprecated && 'opacity-50',
       )}
       onClick={() => onClick(skill)}
     >
@@ -52,21 +33,35 @@ export function SkillCard({ skill, onClick }: SkillCardProps) {
           >
             <Zap className="h-4 w-4" />
           </div>
-          <span className="truncate text-sm font-semibold leading-snug">
-            {skill.name}
-          </span>
+          <div className="min-w-0">
+            <span className="truncate text-sm font-semibold leading-snug block">
+              {skill.name}
+            </span>
+            {skill.slug && (
+              <span className="text-[11px] text-muted-foreground/70 truncate block">
+                {skill.slug}
+              </span>
+            )}
+          </div>
         </div>
 
-        <span
-          className={cn(
-            'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none',
-            isActive && 'bg-green-500/15 text-green-400',
-            skill.status === 'inactive' && 'bg-muted text-muted-foreground',
-            isDeprecated && 'bg-yellow-500/15 text-yellow-500',
+        <div className="flex items-center gap-1.5 shrink-0">
+          {skill.isBuiltin && (
+            <span className="flex items-center gap-0.5 rounded-full bg-purple-500/15 px-2 py-0.5 text-[11px] font-medium leading-none text-purple-400">
+              <Shield className="h-3 w-3" />
+              内置
+            </span>
           )}
-        >
-          {isActive ? '已启用' : isDeprecated ? '已弃用' : '未启用'}
-        </span>
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[11px] font-medium leading-none',
+              isActive && 'bg-green-500/15 text-green-400',
+              isArchived && 'bg-yellow-500/15 text-yellow-500',
+            )}
+          >
+            {isActive ? '活跃' : '已归档'}
+          </span>
+        </div>
       </div>
 
       {skill.description ? (
@@ -77,40 +72,10 @@ export function SkillCard({ skill, onClick }: SkillCardProps) {
         <p className="text-xs italic text-muted-foreground/50">暂无描述</p>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {CATEGORY_LABELS[skill.category] ?? skill.category}
-          </span>
-          {complexity && (
-            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {COMPLEXITY_LABELS[complexity] ?? complexity}
-            </span>
-          )}
-        </div>
-
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {skill.usageCount.toLocaleString()} 次使用
-        </span>
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>{skill.fileCount} 个文件</span>
+        <span>v{skill.version}</span>
       </div>
-
-      {skill.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {skill.tags.slice(0, 4).map((tag) => (
-            <span
-              key={tag}
-              className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-            >
-              {tag}
-            </span>
-          ))}
-          {skill.tags.length > 4 && (
-            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              +{skill.tags.length - 4}
-            </span>
-          )}
-        </div>
-      )}
     </button>
   );
 }

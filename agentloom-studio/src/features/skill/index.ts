@@ -1,29 +1,31 @@
 export type {
-  SkillCategory,
+  Skill,
   SkillStatus,
   SkillListItem,
-  SkillDetail,
-  SkillParameterSchema,
-  SkillMetadata,
+  SkillFrontmatter,
 } from './types';
 
-export { SKILL_CATEGORIES } from './types';
-
-export type { ListSkillsParams } from './api/skillApi';
+export type { ListSkillsParams, CreateSkillPayload, UpdateSkillPayload } from './api/skillApi';
 export {
   fetchSkills,
-  fetchSkillBySlug,
-  enableSkill,
-  disableSkill,
+  fetchSkillById,
+  createSkill,
+  updateSkill,
+  deleteSkill,
+  archiveSkill,
 } from './api/skillApi';
 export { skillKeys } from './api/skillKeys';
 export {
+  useSkillList,
   useSkills,
-  useSkillBySlug,
-  useEnableSkill,
-  useDisableSkill,
+  useSkill,
+  useCreateSkill,
+  useUpdateSkill,
+  useDeleteSkill,
+  useArchiveSkill,
 } from './api/skillQueries';
 
 export { SkillBrowsePage } from './components/SkillBrowsePage';
 export { SkillCard } from './components/SkillCard';
 export { SkillDetailDialog } from './components/SkillDetailDialog';
+export { CreateSkillDialog } from './components/CreateSkillDialog';

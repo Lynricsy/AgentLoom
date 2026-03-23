@@ -1,55 +1,32 @@
-export const SKILL_CATEGORIES = [
-  'writing',
-  'analysis',
-  'code',
-  'research',
-  'automation',
-  'communication',
-  'data',
-  'reasoning',
-] as const;
+export type SkillStatus = 'active' | 'archived';
 
-export type SkillCategory = (typeof SKILL_CATEGORIES)[number];
-
-export type SkillStatus = 'active' | 'inactive' | 'deprecated';
-
-export interface SkillParameterSchema {
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+export interface SkillFrontmatter {
+  name?: string;
   description?: string;
-  required?: boolean;
-  default?: unknown;
-  enum?: string[];
+  license?: string;
+  compatibility?: string;
+  metadata?: Record<string, unknown>;
+  allowedTools?: string[];
+  disableModelInvocation?: boolean;
 }
 
-export interface SkillMetadata {
-  author?: string;
-  version?: string;
-  complexity?: 'beginner' | 'intermediate' | 'advanced';
-  estimatedTokens?: number;
-  requiredModels?: string[];
-  compatibleNodeTypes?: string[];
-  [key: string]: unknown;
-}
-
-export interface SkillListItem {
+export interface Skill {
   id: string;
-  slug: string;
+  tenantId: string;
   name: string;
+  slug: string;
   description: string | null;
-  category: SkillCategory;
+  content: string | null;
+  frontmatter: SkillFrontmatter | null;
+  isBuiltin: boolean;
   status: SkillStatus;
-  tags: string[];
-  iconUrl: string | null;
-  usageCount: number;
-  metadata: SkillMetadata;
+  fileCount: number;
+  totalSizeBytes: number;
+  version: number;
+  createdBy: string | null;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SkillDetail extends SkillListItem {
-  systemPrompt: string | null;
-  inputSchema: Record<string, SkillParameterSchema>;
-  outputSchema: Record<string, SkillParameterSchema>;
-  exampleInputs: Record<string, unknown>[];
-  changelog: string | null;
-}
+export type SkillListItem = Skill;

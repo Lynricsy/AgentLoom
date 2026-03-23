@@ -1,73 +1,57 @@
-import { useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Zap, Loader2 } from 'lucide-react';
+import { X, Zap, FileText, ShieldCheck, Calendar, Hash } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import { Button } from '@/shared/ui/button';
-import { useSkillBySlug, useEnableSkill, useDisableSkill } from '../api/skillQueries';
-
-const CATEGORY_LABELS: Record<string, string> = {
-  writing: '写作',
-  analysis: '分析',
-  code: '代码',
-  research: '研究',
-  automation: '自动化',
-  communication: '沟通',
-  data: '数据',
-  reasoning: '推理',
-};
-
-const COMPLEXITY_LABELS: Record<string, string> = {
-  beginner: '入门',
-  intermediate: '进阶',
-  advanced: '高级',
-};
+import type { Skill } from '../types';
 
 interface SkillDetailDialogProps {
-  skillSlug: string | null;
+  skill: Skill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-function SchemaFieldRow({ name, schema }: { name: string; schema: { type: string; description?: string; required?: boolean } }) {
+function formatTimestamp(value?: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function MetaItem({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Calendar;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-medium text-foreground">{name}</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {schema.type}
-          </span>
-          {schema.required && (
-            <span className="text-[10px] font-medium text-red-400">必填</span>
-          )}
-        </div>
-        {schema.description && (
-          <p className="mt-1 text-xs text-muted-foreground">{schema.description}</p>
-        )}
-      </div>
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="shrink-0">{label}</span>
+      <span className="text-foreground">{value}</span>
     </div>
   );
 }
 
-export function SkillDetailDialog({ skillSlug, open, onOpenChange }: SkillDetailDialogProps) {
-  const { data: skill, isLoading, isError } = useSkillBySlug(skillSlug ?? '');
-  const enableMutation = useEnableSkill();
-  const disableMutation = useDisableSkill();
+export function SkillDetailDialog({
+  skill,
+  open,
+  onOpenChange,
+}: SkillDetailDialogProps) {
+  if (!skill) return null;
 
-  const isActionPending = enableMutation.isPending || disableMutation.isPending;
-  const isActive = skill?.status === 'active';
-
-  const handleToggleStatus = useCallback(() => {
-    if (!skill) return;
-    if (isActive) {
-      disableMutation.mutate(skill.id);
-    } else {
-      enableMutation.mutate(skill.id);
-    }
-  }, [skill, isActive, enableMutation, disableMutation]);
-
-  const inputEntries = Object.entries(skill?.inputSchema ?? {});
-  const outputEntries = Object.entries(skill?.outputSchema ?? {});
+  const isActive = skill.status === 'active';
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -79,121 +63,79 @@ export function SkillDetailDialog({ skillSlug, open, onOpenChange }: SkillDetail
             <span className="sr-only">关闭</span>
           </Dialog.Close>
 
-          {isLoading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : isError || !skill ? (
-            <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
-              <Zap className="h-10 w-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">技能详情加载失败</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-6 p-6">
-              <div className="flex items-start gap-4">
-                <div
-                  className={cn(
-                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
-                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  <Zap className="h-6 w-6" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <Dialog.Title className="text-lg font-bold leading-tight">
-                    {skill.name}
-                  </Dialog.Title>
-                  {skill.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{skill.description}</p>
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                      {CATEGORY_LABELS[skill.category] ?? skill.category}
-                    </span>
-                    {skill.metadata.complexity && (
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                        {COMPLEXITY_LABELS[skill.metadata.complexity] ?? skill.metadata.complexity}
-                      </span>
-                    )}
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-xs font-medium',
-                        isActive && 'bg-green-500/15 text-green-400',
-                        skill.status === 'inactive' && 'bg-muted text-muted-foreground',
-                        skill.status === 'deprecated' && 'bg-yellow-500/15 text-yellow-500',
-                      )}
-                    >
-                      {isActive ? '已启用' : skill.status === 'deprecated' ? '已弃用' : '未启用'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {skill.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {skill.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded bg-muted/60 px-2 py-1 text-xs text-muted-foreground"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {skill.systemPrompt && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold">系统提示词</h3>
-                  <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
-                    {skill.systemPrompt}
-                  </pre>
-                </div>
-              )}
-
-              {inputEntries.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold">输入参数</h3>
-                  <div className="space-y-2">
-                    {inputEntries.map(([name, schema]) => (
-                      <SchemaFieldRow key={name} name={name} schema={schema} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {outputEntries.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold">输出参数</h3>
-                  <div className="space-y-2">
-                    {outputEntries.map(([name, schema]) => (
-                      <SchemaFieldRow key={name} name={name} schema={schema} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between border-t border-border pt-4">
-                <div className="text-xs text-muted-foreground">
-                  {skill.usageCount.toLocaleString()} 次使用
-                  {skill.metadata.version && (
-                    <span className="ml-2">v{skill.metadata.version}</span>
-                  )}
-                </div>
-                {skill.status !== 'deprecated' && (
-                  <Button
-                    variant={isActive ? 'outline' : 'default'}
-                    size="sm"
-                    disabled={isActionPending}
-                    onClick={handleToggleStatus}
-                  >
-                    {isActionPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                    {isActive ? '禁用技能' : '启用技能'}
-                  </Button>
+          <div className="flex flex-col gap-5 p-6">
+            <div className="flex items-start gap-4">
+              <div
+                className={cn(
+                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
+                  isActive
+                    ? 'bg-primary/15 text-primary'
+                    : 'bg-muted text-muted-foreground',
                 )}
+              >
+                <Zap className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <Dialog.Title className="text-lg font-bold leading-tight">
+                  {skill.name}
+                </Dialog.Title>
+                {skill.description && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {skill.description}
+                  </p>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      isActive
+                        ? 'bg-green-500/15 text-green-400'
+                        : 'bg-yellow-500/15 text-yellow-500',
+                    )}
+                  >
+                    {isActive ? '活跃' : '已归档'}
+                  </span>
+                  {skill.isBuiltin && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
+                      <ShieldCheck className="h-3 w-3" />
+                      内置
+                    </span>
+                  )}
+                  {skill.slug && (
+                    <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {skill.slug}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          )}
+
+            {skill.content && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">技能内容</h3>
+                <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
+                  {skill.content}
+                </pre>
+              </div>
+            )}
+
+            {skill.frontmatter && Object.keys(skill.frontmatter).length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">Frontmatter</h3>
+                <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
+                  {JSON.stringify(skill.frontmatter, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/20 p-4">
+              <MetaItem icon={FileText} label="文件数" value={`${skill.fileCount} 个`} />
+              <MetaItem icon={Hash} label="大小" value={formatBytes(skill.totalSizeBytes)} />
+              <MetaItem icon={Hash} label="版本" value={`v${skill.version}`} />
+              <MetaItem icon={Calendar} label="创建于" value={formatTimestamp(skill.createdAt)} />
+              <MetaItem icon={Calendar} label="更新于" value={formatTimestamp(skill.updatedAt)} />
+            </div>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
