@@ -50,6 +50,7 @@ import { AgentDefinitionModule } from './modules/agent-definition/agent-definiti
 import { AgentConversationModule } from './modules/agent-conversation/agent-conversation.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AgentMemoryModule } from './modules/agent-memory/agent-memory.module';
+import { SkillModule } from './modules/skill/skill.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -132,6 +133,7 @@ function createThrottlerOptions(configService: ConfigService) {
     AgentConversationModule,
     WorkspaceModule,
     AgentMemoryModule,
+    SkillModule,
   ],
   providers: [
     RbacCacheService,
