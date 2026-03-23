@@ -36,6 +36,7 @@ import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryResourceProvider, type MemoryResourceInstance } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
+import { SkillResolverService } from '../skill/skill-resolver.service';
 import {
   AGENT_CONVERSATION_EXECUTION_JOB,
   AGENT_CONVERSATION_EXECUTION_QUEUE,
@@ -63,6 +64,8 @@ type ConversationExecutionContext = {
   };
   runtimeConfig: AgentRuntimeConfig;
   systemPrompt?: string;
+  canvasNodes: AgentVersionSnapshot['nodes'];
+  canvasEdges: AgentVersionSnapshot['edges'];
   hasSandbox: boolean;
   memoryInstanceIds: string[];
   executionMetadata: ConversationExecutionMetadata;
@@ -110,6 +113,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly memoryToolsService?: MemoryToolsService,
     private readonly memoryFusionService?: MemoryFusionService,
     private readonly memoryResourceProvider?: MemoryResourceProvider,
+    private readonly skillResolverService?: SkillResolverService,
   ) {
     super();
   }
@@ -350,6 +354,8 @@ export class AgentExecutionWorker extends WorkerHost {
           id: agentDefinitions.id,
           publishedVersionId: agentDefinitions.publishedVersionId,
           systemPrompt: agentDefinitions.systemPrompt,
+          nodes: agentDefinitions.nodes,
+          edges: agentDefinitions.edges,
           sandboxConfig: agentDefinitions.sandboxConfig,
           metadata: agentDefinitions.metadata,
         })
@@ -405,6 +411,8 @@ export class AgentExecutionWorker extends WorkerHost {
         conversation,
         runtimeConfig,
         systemPrompt,
+        canvasNodes: snapshot?.nodes ?? definition.nodes ?? [],
+        canvasEdges: snapshot?.edges ?? definition.edges ?? [],
         hasSandbox: Boolean(runtimeConfig.sandboxConfig),
         memoryInstanceIds,
         executionMetadata: this.readExecutionMetadata(conversation.metadata),
@@ -448,9 +456,11 @@ export class AgentExecutionWorker extends WorkerHost {
       }
     }
 
+    const baseSystemPrompt = await this.resolveConversationSkillPrompt(context);
+
     const systemPrompt = await this.resolveConversationSystemPrompt(
       memorySessionIds,
-      context.systemPrompt,
+      baseSystemPrompt,
     );
 
     const session = await runtime.createSession({
@@ -894,6 +904,99 @@ export class AgentExecutionWorker extends WorkerHost {
       );
       return baseSystemPrompt;
     }
+  }
+
+  private async resolveConversationSkillPrompt(
+    context: ConversationExecutionContext,
+  ): Promise<string | undefined> {
+    if (!this.skillResolverService) {
+      return context.systemPrompt;
+    }
+
+    const skillIds = this.extractConversationSkillIds(
+      context.canvasNodes,
+      context.canvasEdges,
+    );
+
+    if (!skillIds.length) {
+      return context.systemPrompt;
+    }
+
+    try {
+      const skills = await this.skillResolverService.resolveSkillsForAgent(
+        context.conversation.tenantId,
+        skillIds,
+      );
+
+      if (!skills.length) {
+        return context.systemPrompt;
+      }
+
+      const augmentedPrompt = this.skillResolverService
+        .buildSkillAugmentedPrompt(context.systemPrompt ?? '', skills)
+        .trim();
+
+      return augmentedPrompt || undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve skills for agent ${context.conversation.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return context.systemPrompt;
+    }
+  }
+
+  private extractConversationSkillIds(
+    nodes: AgentVersionSnapshot['nodes'],
+    edges: AgentVersionSnapshot['edges'],
+  ): string[] {
+    const skillNodes = nodes.filter((node) => node.type === 'skill');
+    if (!skillNodes.length) {
+      return [];
+    }
+
+    const connectedNodeIds = new Set<string>();
+    for (const edge of edges) {
+      if (typeof edge.source === 'string') {
+        connectedNodeIds.add(edge.source);
+      }
+      if (typeof edge.target === 'string') {
+        connectedNodeIds.add(edge.target);
+      }
+    }
+
+    const connectedSkillNodes = skillNodes.filter((node) =>
+      connectedNodeIds.has(node.id),
+    );
+    const activeSkillNodes = connectedSkillNodes.length
+      ? connectedSkillNodes
+      : skillNodes;
+
+    return [...new Set(activeSkillNodes.map((node) => this.extractSkillId(node)))].filter(
+      (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0,
+    );
+  }
+
+  private extractSkillId(node: AgentVersionSnapshot['nodes'][number]): string | null {
+    const nodeData =
+      node.data && typeof node.data === 'object' && !Array.isArray(node.data)
+        ? (node.data as Record<string, unknown>)
+        : null;
+    const config =
+      nodeData?.config &&
+      typeof nodeData.config === 'object' &&
+      !Array.isArray(nodeData.config)
+        ? (nodeData.config as Record<string, unknown>)
+        : null;
+
+    if (typeof config?.skillId === 'string' && config.skillId.trim()) {
+      return config.skillId.trim();
+    }
+
+    if (typeof nodeData?.skillId === 'string' && nodeData.skillId.trim()) {
+      return nodeData.skillId.trim();
+    }
+
+    return null;
   }
 
   private buildMemoryBootPrompt(

@@ -23,6 +23,8 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
+import { SkillModule } from '../skill/skill.module';
+import { SkillResolverService } from '../skill/skill-resolver.service';
 import {
   AGENT_CONVERSATION_EXECUTION_QUEUE,
   AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -58,6 +60,7 @@ const agentExecutionWorkerProvider: Provider = {
     memoryToolsService?: MemoryToolsService,
     memoryFusionService?: MemoryFusionService,
     memoryResourceProvider?: MemoryResourceProvider,
+    skillResolverService?: SkillResolverService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -70,6 +73,7 @@ const agentExecutionWorkerProvider: Provider = {
       memoryToolsService,
       memoryFusionService,
       memoryResourceProvider,
+      skillResolverService,
     ),
   inject: [
     DRIZZLE,
@@ -82,6 +86,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: MemoryToolsService, optional: true },
     { token: MemoryFusionService, optional: true },
     { token: MemoryResourceProvider, optional: true },
+    { token: SkillResolverService, optional: true },
   ],
 };
 
@@ -118,6 +123,7 @@ const agentConversationGatewayProvider: Provider = {
     AgentDefinitionModule,
     ExecutionModule,
     SandboxModule,
+    SkillModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
