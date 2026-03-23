@@ -88,6 +88,30 @@ describe('SandboxAgentAdapter', () => {
     return events;
   }
 
+  function createSseResponse(chunks: string[]): Response {
+    const encoder = new TextEncoder();
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => {
+          let index = 0;
+          return {
+            read: vi.fn(async () => {
+              if (index >= chunks.length) {
+                return { done: true, value: undefined };
+              }
+
+              const value = encoder.encode(chunks[index]);
+              index += 1;
+              return { done: false, value };
+            }),
+          };
+        },
+      },
+    } as unknown as Response;
+  }
+
   describe('createSession', () => {
     it('应创建具有 sandbox 工作区路径的会话', async () => {
       const session = await adapter.createSession(defaultParams);
@@ -293,6 +317,71 @@ describe('SandboxAgentAdapter', () => {
       globalThis.fetch = originalFetch;
     });
 
+    it('应把容器 JSON-RPC SSE 事件翻译为规范 AgentEvent', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        createSseResponse([
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"hello"}}}\n\n',
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","input":{"path":"/workspace/a.txt"},"status":"awaiting_permission","permissionRequest":{"description":"允许写入文件","resourcePaths":["/workspace/a.txt"]}}}}\n\n',
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","status":"completed","result":{"ok":true}}}}\n\n',
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"tool_use"}}}\n\n',
+        ]),
+      );
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
+
+      expect(events).toEqual([
+        { type: 'message_chunk', content: 'hello' },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tool-1',
+            tool: 'fs/write_text_file',
+            args: { path: '/workspace/a.txt' },
+            status: 'awaiting_permission',
+            permissionRequest: {
+              description: '允许写入文件',
+              resourcePaths: ['/workspace/a.txt'],
+            },
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tool-1',
+            tool: 'fs/write_text_file',
+            args: {},
+            status: 'completed',
+            result: { ok: true },
+          },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ]);
+    });
+
+    it('容器 error 事件应抛给上层', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        createSseResponse([
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","data":{"message":"sandbox exploded"}}}\n\n',
+        ]),
+      );
+
+      await expect(
+        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hello' }])),
+      ).rejects.toThrow('sandbox exploded');
+    });
+
     it('缺失 sandbox binding 时应抛出错误', async () => {
       const session = await adapter.createSession({
         ...defaultParams,
@@ -450,8 +539,36 @@ describe('SandboxAgentAdapter', () => {
   });
 
   describe('cancel', () => {
+    it('应调用容器 /v1/abort', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+      await adapter.cancel(session.id);
+
+      expect(globalThis.fetch).toHaveBeenLastCalledWith(
+        'http://127.0.0.1:49123/v1/abort',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ sessionId: session.id }),
+        }),
+      );
+    });
+
     it('应将会话状态设为 completed', async () => {
       const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
       await adapter.cancel(session.id);
 
       const loaded = await adapter.loadSession(session.id);
@@ -460,6 +577,109 @@ describe('SandboxAgentAdapter', () => {
 
     it('不存在的会话取消不应抛出异常', async () => {
       await expect(adapter.cancel('non-existent')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('tool permission gate', () => {
+    it('应等待 resolveConversationToolPermission 后允许工具执行', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-001' },
+      });
+
+      const pending = adapter.awaitToolPermission('conv-001', {
+        toolCallId: 'tool-1',
+        toolName: 'fs/write_text_file',
+        input: { path: '/workspace/a.txt' },
+      });
+
+      await Promise.resolve();
+      await adapter.resolveConversationToolPermission(
+        'conv-001',
+        'tool-1',
+        'approve',
+      );
+
+      await expect(pending).resolves.toEqual({ allowed: true });
+      await expect(
+        adapter.resolveToolPermission(session.id, 'tool-1', 'approve'),
+      ).rejects.toThrow('has no pending tool permission');
+    });
+
+    it('deny 时应返回 allowed=false', async () => {
+      await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-001' },
+      });
+
+      const pending = adapter.awaitToolPermission('conv-001', {
+        toolCallId: 'tool-2',
+        toolName: 'fs/write_text_file',
+      });
+
+      await Promise.resolve();
+      await adapter.resolveConversationToolPermission('conv-001', 'tool-2', 'deny');
+
+      await expect(pending).resolves.toEqual({ allowed: false });
+    });
+
+    it('30 秒超时后应默认 deny', async () => {
+      vi.useFakeTimers();
+
+      try {
+        await adapter.createSession({
+          ...defaultParams,
+          mode: 'conversation',
+          context: { agentConversationId: 'conv-001' },
+        });
+
+        const pending = adapter.awaitToolPermission('conv-001', {
+          toolCallId: 'tool-timeout',
+          toolName: 'fs/write_text_file',
+        });
+
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        await expect(pending).resolves.toEqual({ allowed: false });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('缺少 conversation session 映射时应抛错', async () => {
+      await expect(
+        adapter.awaitToolPermission('missing-conversation', {
+          toolCallId: 'tool-1',
+          toolName: 'fs/write_text_file',
+        }),
+      ).rejects.toThrow('Sandbox conversation session not found');
+    });
+
+    it('重复挂起同一 toolCallId 时应抛错', async () => {
+      await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-001' },
+      });
+
+      const first = adapter.awaitToolPermission('conv-001', {
+        toolCallId: 'tool-dup',
+        toolName: 'fs/write_text_file',
+      });
+
+      await Promise.resolve();
+
+      await expect(
+        adapter.awaitToolPermission('conv-001', {
+          toolCallId: 'tool-dup',
+          toolName: 'fs/write_text_file',
+        }),
+      ).rejects.toThrow('already has pending tool permission');
+
+      await adapter.resolveConversationToolPermission('conv-001', 'tool-dup', 'deny');
+      await expect(first).resolves.toEqual({ allowed: false });
     });
   });
 });

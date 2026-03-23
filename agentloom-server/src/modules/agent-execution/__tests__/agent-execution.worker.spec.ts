@@ -4,6 +4,7 @@ import { AgentExecutionWorker } from '../agent-execution.worker';
 
 const {
   mockRuntime,
+  mockSandboxRuntime,
   mockAdapterFactory,
   mockExecutionService,
   mockEventBridge,
@@ -14,6 +15,14 @@ const {
   mockMemoryResourceProvider,
 } = vi.hoisted(() => ({
   mockRuntime: {
+    prompt: vi.fn(),
+    cancel: vi.fn(),
+    createSession: vi.fn(),
+    loadSession: vi.fn(),
+    registerSessionToolProvider: vi.fn(),
+    unregisterSessionToolProvider: vi.fn(),
+  },
+  mockSandboxRuntime: {
     prompt: vi.fn(),
     cancel: vi.fn(),
     createSession: vi.fn(),
@@ -107,6 +116,7 @@ function makeActiveContext(
     systemPrompt: 'system',
     hasSandbox: false,
     executionMetadata: {},
+    memoryInstanceIds: [],
     ...overrides,
   };
 }
@@ -172,7 +182,7 @@ describe('AgentExecutionWorker', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockAdapterFactory.selectAdapter.mockReturnValue(mockRuntime);
+    mockAdapterFactory.selectAdapter.mockReturnValue(mockSandboxRuntime);
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockMemoryResourceProvider.create.mockReset();
@@ -572,6 +582,72 @@ describe('AgentExecutionWorker', () => {
         'memory-session-1',
         'memory-session-2',
       ]);
+    });
+  });
+
+  describe('prepareRuntimeSession() — runtime routing', () => {
+    it('sandbox 配置存在时应选择 SandboxAgentAdapter', async () => {
+      const runtimeSessionWorker = worker as unknown as {
+        prepareRuntimeSession: (
+          context: Record<string, unknown>,
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{ runtime: typeof mockSandboxRuntime; session: ReturnType<typeof makeSession> }>;
+      };
+
+      mockSandboxRuntime.createSession.mockResolvedValue(makeSession({ id: 'sandbox-session-1' }));
+
+      const result = await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          runtimeConfig: {
+            sandboxConfig: { image: 'agentloom/sandbox:latest' },
+            modelConfig: { modelId: 'model-1' },
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
+      expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'agent-1',
+          mode: 'conversation',
+          tenantId: 'tenant-1',
+        }),
+      );
+      expect(mockRuntime.createSession).not.toHaveBeenCalled();
+      expect(result.runtime).toBe(mockSandboxRuntime);
+    });
+
+    it('无 sandbox 配置时应保留 in-process runtime', async () => {
+      const runtimeSessionWorker = worker as unknown as {
+        prepareRuntimeSession: (
+          context: Record<string, unknown>,
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{ runtime: typeof mockRuntime; session: ReturnType<typeof makeSession> }>;
+      };
+
+      mockRuntime.createSession.mockResolvedValue(makeSession({ id: 'in-process-session-1' }));
+
+      const result = await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          runtimeConfig: { modelConfig: { modelId: 'model-1' } },
+        }),
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(mockAdapterFactory.selectAdapter).not.toHaveBeenCalled();
+      expect(mockRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'agent-1',
+          mode: 'conversation',
+          tenantId: 'tenant-1',
+        }),
+      );
+      expect(result.runtime).toBe(mockRuntime);
     });
   });
 

@@ -425,9 +425,7 @@ export class AgentExecutionWorker extends WorkerHost {
     conversationId: string,
     tenantId: string,
   ): Promise<RuntimeSessionContext> {
-    const runtime = context.hasSandbox
-      ? this.adapterFactory.selectAdapter(true)
-      : this.agentRuntime;
+    const runtime = this.resolveConversationRuntime(context);
     const memorySessionIds = await this.ensureConversationMemorySessions(
       context,
       conversationId,
@@ -481,6 +479,14 @@ export class AgentExecutionWorker extends WorkerHost {
     this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
 
     return { runtime, session, memorySessionIds };
+  }
+
+  private resolveConversationRuntime(
+    context: ConversationExecutionContext,
+  ): IAgentRuntime {
+    return context.runtimeConfig.sandboxConfig
+      ? this.adapterFactory.selectAdapter(true)
+      : this.agentRuntime;
   }
 
   private async loadPendingUserMessages(

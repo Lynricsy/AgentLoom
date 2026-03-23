@@ -12,14 +12,18 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
+import { ResolveConversationToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ToolPermissionCallbackDto } from './dto/tool-permission-callback.dto';
 
 @ApiTags('Agent Conversations')
 @Controller()
@@ -27,6 +31,7 @@ export class AgentConversationController {
   constructor(
     private readonly conversationService: AgentConversationService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
+    private readonly sandboxAgentAdapter: SandboxAgentAdapter,
   ) {}
 
   @Post('agent-definitions/:agentId/conversations')
@@ -90,6 +95,44 @@ export class AgentConversationController {
   @ApiResponse({ status: 200, description: 'Conversation cancelled' })
   async cancel(@Param('id', ParseUUIDPipe) id: string) {
     return this.conversationService.cancel(id);
+  }
+
+  @Post('agent-conversations/:id/tool-permission')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '接收沙箱容器的工具权限回调请求' })
+  @ApiResponse({ status: 200, description: '返回是否允许工具执行' })
+  async requestToolPermission(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ToolPermissionCallbackDto,
+  ) {
+    return this.sandboxAgentAdapter.awaitToolPermission(id, dto);
+  }
+
+  @Post('agent-conversations/:id/tool-permissions/:toolCallId/resolve')
+  @Roles('operator', 'creator', 'admin', 'owner')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '解析对话沙箱中的工具权限（批准/拒绝）' })
+  @ApiResponse({ status: 202, description: '对话工具权限解析已接受' })
+  async resolveToolPermission(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('toolCallId') toolCallId: string,
+    @Body() dto: ResolveConversationToolPermissionDto,
+    @CurrentTenant() _tenantId: string,
+  ) {
+    await this.sandboxAgentAdapter.resolveConversationToolPermission(
+      id,
+      toolCallId,
+      dto.action,
+    );
+
+    return {
+      data: {
+        conversationId: id,
+        toolCallId,
+        status: 'permission_resolved',
+      },
+    };
   }
 
   @Delete('agent-conversations/:id')

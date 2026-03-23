@@ -3,6 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentConversationController } from './agent-conversation.controller';
+import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 
@@ -18,6 +19,11 @@ const mockService = {
 const mockWorkspaceIntegrationService = {
   getFileTree: vi.fn(),
   getFileContent: vi.fn(),
+};
+
+const mockSandboxAgentAdapter = {
+  awaitToolPermission: vi.fn(),
+  resolveConversationToolPermission: vi.fn(),
 };
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -37,6 +43,7 @@ describe('AgentConversationController', () => {
       providers: [
         { provide: AgentConversationService, useValue: mockService },
         { provide: WorkspaceIntegrationService, useValue: mockWorkspaceIntegrationService },
+        { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
       ],
     }).compile();
 
@@ -170,6 +177,54 @@ describe('AgentConversationController', () => {
       ).resolves.toBeUndefined();
 
       expect(mockService.end).toHaveBeenCalledWith(CONVERSATION_ID);
+    });
+  });
+
+  describe('requestToolPermission', () => {
+    it('应调用 sandbox adapter 等待权限结果', async () => {
+      mockSandboxAgentAdapter.awaitToolPermission.mockResolvedValueOnce({
+        allowed: true,
+      });
+
+      const dto = {
+        toolCallId: 'tool-1',
+        toolName: 'fs/write_text_file',
+        input: { path: '/workspace/a.txt' },
+      };
+
+      const result = await controller.requestToolPermission(CONVERSATION_ID, dto);
+
+      expect(mockSandboxAgentAdapter.awaitToolPermission).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        dto,
+      );
+      expect(result).toEqual({ allowed: true });
+    });
+  });
+
+  describe('resolveToolPermission', () => {
+    it('应调用 sandbox adapter 解析权限并返回 accepted payload', async () => {
+      mockSandboxAgentAdapter.resolveConversationToolPermission.mockResolvedValueOnce(
+        undefined,
+      );
+
+      const result = await controller.resolveToolPermission(
+        CONVERSATION_ID,
+        'tool-1',
+        { action: 'approve' } as any,
+        TENANT_ID,
+      );
+
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).toHaveBeenCalledWith(CONVERSATION_ID, 'tool-1', 'approve');
+      expect(result).toEqual({
+        data: {
+          conversationId: CONVERSATION_ID,
+          toolCallId: 'tool-1',
+          status: 'permission_resolved',
+        },
+      });
     });
   });
 });

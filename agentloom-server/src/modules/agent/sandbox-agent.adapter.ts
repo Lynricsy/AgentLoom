@@ -13,12 +13,24 @@ import type {
   ContentBlock,
   CreateSessionParams,
 } from './types';
+import type {
+  StopReason,
+  ToolCallEvent,
+  ToolCallStatus,
+  ToolPermissionRequest,
+} from './types';
+import type {
+  ToolCallTransitionRecord,
+  ToolCallTransitionSource,
+} from './types/tool-call-event.types';
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 300_000;
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
+const ABORT_REQUEST_TIMEOUT_MS = 5_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
+const TOOL_PERMISSION_TIMEOUT_MS = 30_000;
 const RETRYABLE_SESSION_INIT_STATUSES = new Set([
   404, 408, 425, 429, 500, 502, 503, 504,
 ]);
@@ -37,11 +49,36 @@ type SandboxBinding = {
   agentConversationId?: string;
 };
 
+type PendingPermissionAction = 'approve' | 'deny' | 'cancelled';
+
+type PendingPermissionGate = {
+  resolve: (action: PendingPermissionAction) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type ContainerEventEnvelope = {
+  type?: unknown;
+  data?: unknown;
+};
+
+export type SandboxToolPermissionCallback = {
+  sessionId?: string;
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
+  permissionRequest?: ToolPermissionRequest;
+};
+
 @Injectable()
 export class SandboxAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(SandboxAgentAdapter.name);
   private readonly sessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
+  private readonly pendingPermissionResolvers = new Map<
+    string,
+    Map<string, PendingPermissionGate>
+  >();
+  private readonly conversationSessionIds = new Map<string, string>();
 
   constructor(
     private readonly sandboxService: SandboxService,
@@ -74,6 +111,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const workflowState = params.context ?? {};
     const sandboxBinding = this.readSandboxBinding(workflowState);
     const tenantId = params.tenantId ?? null;
+
+    if (sandboxBinding.agentConversationId) {
+      this.conversationSessionIds.set(
+        sandboxBinding.agentConversationId,
+        session.id,
+      );
+    }
 
     if (tenantId && this.hasSandboxBinding(sandboxBinding)) {
       try {
@@ -183,16 +227,22 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         buffer = frames.pop() ?? '';
 
         for (const frame of frames) {
-          const event = this.parseServerSentEvent(frame);
-          if (event) {
+          const parsed = this.parseServerSentEvent(sessionId, frame);
+          if (parsed.error) {
+            throw parsed.error;
+          }
+          for (const event of parsed.events) {
             yield event;
           }
         }
 
         if (done) {
-          const finalEvent = this.parseServerSentEvent(buffer);
-          if (finalEvent) {
-            yield finalEvent;
+          const finalEvent = this.parseServerSentEvent(sessionId, buffer);
+          if (finalEvent.error) {
+            throw finalEvent.error;
+          }
+          for (const event of finalEvent.events) {
+            yield event;
           }
           break;
         }
@@ -208,6 +258,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         error instanceof Error ? error.stack : undefined,
       );
       throw error;
+    } finally {
+      this.clearPendingPermissions(sessionId, 'cancelled');
     }
   }
 
@@ -219,19 +271,71 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
     const session = this.sessions.get(sessionId);
     if (session) {
+      const workflowState = session.context.workflowState ?? {};
+      const sandboxBinding = this.readSandboxBinding(workflowState);
+      const tenantId =
+        typeof workflowState['tenantId'] === 'string'
+          ? workflowState['tenantId']
+          : (session.tenantId ?? null);
+
+      if (tenantId && this.hasSandboxBinding(sandboxBinding)) {
+        await this.abortContainerPrompt(sessionId, sandboxBinding, tenantId);
+      }
+
       session.status = 'completed';
       session.updatedAt = new Date();
+
+      if (sandboxBinding.agentConversationId) {
+        this.conversationSessionIds.delete(sandboxBinding.agentConversationId);
+      }
     }
+
+    this.clearPendingPermissions(sessionId, 'cancelled');
 
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
   }
 
   async resolveToolPermission(
-    _sessionId: string,
-    _toolCallId: string,
-    _action: 'approve' | 'deny',
+    sessionId: string,
+    toolCallId: string,
+    action: 'approve' | 'deny',
   ): Promise<void> {
-    throw new Error('SandboxAgentAdapter 尚未实现工具权限恢复');
+    const sessionResolvers = this.pendingPermissionResolvers.get(sessionId);
+    const gate = sessionResolvers?.get(toolCallId);
+
+    if (!gate) {
+      throw new Error(
+        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+      );
+    }
+
+    clearTimeout(gate.timer);
+    sessionResolvers?.delete(toolCallId);
+    if (sessionResolvers?.size === 0) {
+      this.pendingPermissionResolvers.delete(sessionId);
+    }
+
+    gate.resolve(action);
+  }
+
+  async awaitToolPermission(
+    conversationId: string,
+    callback: SandboxToolPermissionCallback,
+  ): Promise<{ allowed: boolean }> {
+    const sessionId =
+      callback.sessionId ?? this.resolveSessionIdForConversation(conversationId);
+    const action = await this.waitForPermission(sessionId, callback.toolCallId);
+
+    return { allowed: action === 'approve' };
+  }
+
+  async resolveConversationToolPermission(
+    conversationId: string,
+    toolCallId: string,
+    action: 'approve' | 'deny',
+  ): Promise<void> {
+    const sessionId = this.resolveSessionIdForConversation(conversationId);
+    await this.resolveToolPermission(sessionId, toolCallId, action);
   }
 
   private async waitForSandboxReady(
@@ -425,7 +529,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     );
   }
 
-  private parseServerSentEvent(frame: string): AgentEvent | null {
+  private parseServerSentEvent(
+    sessionId: string,
+    frame: string,
+  ): { events: AgentEvent[]; error?: Error } {
     const payload = frame
       .split('\n')
       .map((line) => line.trim())
@@ -434,10 +541,425 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       .join('\n');
 
     if (!payload || payload === '[DONE]') {
+      return { events: [] };
+    }
+
+    const parsed = JSON.parse(payload) as unknown;
+    if (this.isAgentEvent(parsed)) {
+      return { events: [parsed] };
+    }
+
+    if (
+      this.isRecord(parsed) &&
+      parsed.jsonrpc === '2.0' &&
+      parsed.method === 'event' &&
+      this.isRecord(parsed.params)
+    ) {
+      return this.translateContainerEvent(
+        sessionId,
+        parsed.params as ContainerEventEnvelope,
+      );
+    }
+
+    if (this.isRecord(parsed) && typeof parsed.type === 'string') {
+      return this.translateContainerEvent(sessionId, parsed as ContainerEventEnvelope);
+    }
+
+    return { events: [] };
+  }
+
+  private translateContainerEvent(
+    sessionId: string,
+    envelope: ContainerEventEnvelope,
+  ): { events: AgentEvent[]; error?: Error } {
+    const eventType = typeof envelope.type === 'string' ? envelope.type : null;
+    const data = this.isRecord(envelope.data) ? envelope.data : null;
+
+    switch (eventType) {
+      case 'text_delta': {
+        const content = this.readTextDelta(envelope.data);
+        if (!content) {
+          return { events: [] };
+        }
+        return { events: [{ type: 'message_chunk', content }] };
+      }
+
+      case 'tool_call_start':
+        return {
+          events: [
+            {
+              type: 'tool_call',
+              call: this.buildToolCallEvent(data, 'in_progress'),
+            },
+          ],
+        };
+
+      case 'tool_call_update':
+        return {
+          events: [
+            {
+              type: 'tool_call',
+              call: this.buildToolCallEvent(data, 'awaiting_permission'),
+            },
+          ],
+        };
+
+      case 'tool_call_end':
+        return {
+          events: [
+            {
+              type: 'tool_call',
+              call: this.buildToolCallEvent(
+                data,
+                this.readBoolean(data?.isError) || data?.error
+                  ? 'failed'
+                  : 'completed',
+              ),
+            },
+          ],
+        };
+
+      case 'done':
+        return {
+          events: [
+            {
+              type: 'done',
+              stopReason: this.normalizeStopReason(data?.stopReason),
+            },
+          ],
+        };
+
+      case 'error': {
+        const message =
+          this.readString(data?.message) ?? this.readString(envelope.data) ?? 'Sandbox agent error';
+        this.clearPendingPermissions(sessionId, 'deny');
+        return { events: [], error: new Error(message) };
+      }
+
+      default:
+        return { events: [] };
+    }
+  }
+
+  private buildToolCallEvent(
+    data: Record<string, unknown> | null,
+    fallbackStatus: ToolCallStatus,
+  ): ToolCallEvent {
+    const tool = this.readString(data?.toolName) ?? this.readString(data?.tool) ?? 'unknown_tool';
+    const permissionRequest = this.normalizePermissionRequest(
+      data?.permissionRequest,
+      tool,
+      data,
+    );
+    const status = this.readToolCallStatus(
+      data?.status,
+      permissionRequest,
+      fallbackStatus,
+    ) ?? fallbackStatus;
+
+    return {
+      id: this.readString(data?.toolCallId) ?? this.readString(data?.id) ?? randomUUID(),
+      tool,
+      args: this.normalizeToolArgs(data),
+      status,
+      ...(this.normalizeTransitions(data?.transitions)
+        ? { transitions: this.normalizeTransitions(data?.transitions) }
+        : {}),
+      ...(data && 'result' in data ? { result: data.result } : {}),
+      ...(this.readToolError(data) ? { error: this.readToolError(data) ?? undefined } : {}),
+      ...(permissionRequest ? { permissionRequest } : {}),
+    };
+  }
+
+  private normalizeToolArgs(
+    data: Record<string, unknown> | null,
+  ): Record<string, unknown> {
+    const candidates = [data?.args, data?.input, data?.arguments];
+    for (const candidate of candidates) {
+      if (this.isRecord(candidate)) {
+        return candidate;
+      }
+    }
+
+    return {};
+  }
+
+  private normalizeTransitions(
+    value: unknown,
+  ): ToolCallEvent['transitions'] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    const transitions: ToolCallTransitionRecord[] = value.flatMap((entry) => {
+      if (!this.isRecord(entry)) {
+        return [];
+      }
+
+      const to = this.readToolCallStatus(entry.to, undefined, undefined);
+      const timestamp = this.readString(entry.timestamp) ?? new Date().toISOString();
+      const source: ToolCallTransitionSource =
+        entry.source === 'runtime' || entry.source === 'worker' || entry.source === 'user'
+          ? entry.source
+          : 'runtime';
+
+      return to
+        ? [
+            {
+              ...(this.readToolCallStatus(entry.from, undefined, undefined)
+                ? { from: this.readToolCallStatus(entry.from, undefined, undefined) }
+                : {}),
+              to,
+              timestamp,
+              source,
+            } satisfies ToolCallTransitionRecord,
+          ]
+        : [];
+    });
+
+    return transitions.length > 0 ? transitions : undefined;
+  }
+
+  private normalizePermissionRequest(
+    value: unknown,
+    toolName: string,
+    data: Record<string, unknown> | null,
+  ): ToolPermissionRequest | undefined {
+    if (this.isRecord(value)) {
+      const description =
+        this.readString(value.description) ?? `允许工具 ${toolName} 执行`;
+      const resourcePaths = this.readStringArray(value.resourcePaths);
+      return {
+        description,
+        ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+      };
+    }
+
+    const description = this.readString(data?.description);
+    const resourcePaths = this.readStringArray(data?.resourcePaths);
+    if (!description && resourcePaths.length === 0) {
+      return undefined;
+    }
+
+    return {
+      description: description ?? `允许工具 ${toolName} 执行`,
+      ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+    };
+  }
+
+  private normalizeStopReason(value: unknown): StopReason {
+    switch (value) {
+      case 'cancelled':
+      case 'aborted':
+        return 'cancelled';
+      case 'max_tokens':
+      case 'length':
+        return 'max_tokens';
+      case 'tool_use':
+      case 'toolUse':
+        return 'tool_use';
+      case 'intervention_required':
+        return 'intervention_required';
+      default:
+        return 'end_turn';
+    }
+  }
+
+  private readToolCallStatus(
+    value: unknown,
+    permissionRequest?: ToolPermissionRequest,
+    fallback?: ToolCallStatus,
+  ): ToolCallStatus | undefined {
+    switch (value) {
+      case 'pending':
+      case 'awaiting_permission':
+      case 'denied':
+      case 'in_progress':
+      case 'completed':
+      case 'failed':
+        return value;
+      default:
+        if (permissionRequest) {
+          return 'awaiting_permission';
+        }
+
+        return fallback;
+    }
+  }
+
+  private readTextDelta(value: unknown): string | null {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+
+    if (!this.isRecord(value)) {
       return null;
     }
 
-    return JSON.parse(payload) as AgentEvent;
+    return this.readString(value.delta) ?? this.readString(value.content) ?? null;
+  }
+
+  private readToolError(data: Record<string, unknown> | null): string | undefined {
+    const errorValue = data?.error;
+    if (typeof errorValue === 'string' && errorValue.length > 0) {
+      return errorValue;
+    }
+
+    if (this.isRecord(errorValue)) {
+      return this.readString(errorValue.message) ?? JSON.stringify(errorValue);
+    }
+
+    if (this.readBoolean(data?.isError)) {
+      return this.readString(data?.message) ?? 'Sandbox tool execution failed';
+    }
+
+    return undefined;
+  }
+
+  private readString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  }
+
+  private readBoolean(value: unknown): boolean {
+    return value === true;
+  }
+
+  private readStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  }
+
+  private async waitForPermission(
+    sessionId: string,
+    toolCallId: string,
+  ): Promise<PendingPermissionAction> {
+    const session = await this.loadSession(sessionId);
+    const controller = this.abortControllers.get(sessionId);
+    const signal = controller?.signal;
+    const sessionResolvers =
+      this.pendingPermissionResolvers.get(sessionId) ?? new Map<string, PendingPermissionGate>();
+
+    if (sessionResolvers.has(toolCallId)) {
+      throw new Error(
+        `Session ${sessionId} already has pending tool permission for ${toolCallId}`,
+      );
+    }
+
+    this.pendingPermissionResolvers.set(sessionId, sessionResolvers);
+
+    return await new Promise<PendingPermissionAction>((resolve) => {
+      const finish = (action: PendingPermissionAction) => {
+        clearTimeout(timer);
+        sessionResolvers.delete(toolCallId);
+        if (sessionResolvers.size === 0) {
+          this.pendingPermissionResolvers.delete(sessionId);
+        }
+        signal?.removeEventListener('abort', onAbort);
+        resolve(action);
+      };
+
+      const onAbort = () => finish('cancelled');
+      const timer = setTimeout(() => finish('deny'), TOOL_PERMISSION_TIMEOUT_MS);
+
+      sessionResolvers.set(toolCallId, {
+        resolve: finish,
+        timer,
+      });
+
+      if (signal?.aborted || session.status !== 'active') {
+        finish('cancelled');
+        return;
+      }
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  private clearPendingPermissions(
+    sessionId: string,
+    action: PendingPermissionAction,
+  ): void {
+    const sessionResolvers = this.pendingPermissionResolvers.get(sessionId);
+    if (!sessionResolvers) {
+      return;
+    }
+
+    this.pendingPermissionResolvers.delete(sessionId);
+    for (const gate of sessionResolvers.values()) {
+      clearTimeout(gate.timer);
+      gate.resolve(action);
+    }
+  }
+
+  private resolveSessionIdForConversation(conversationId: string): string {
+    const mappedSessionId = this.conversationSessionIds.get(conversationId);
+    if (mappedSessionId && this.sessions.has(mappedSessionId)) {
+      return mappedSessionId;
+    }
+
+    for (const [sessionId, session] of this.sessions.entries()) {
+      const binding = this.readSandboxBinding(session.context.workflowState ?? {});
+      if (binding.agentConversationId === conversationId) {
+        this.conversationSessionIds.set(conversationId, sessionId);
+        return sessionId;
+      }
+    }
+
+    throw new Error(`Sandbox conversation session not found for ${conversationId}`);
+  }
+
+  private async abortContainerPrompt(
+    sessionId: string,
+    sandboxBinding: SandboxBinding,
+    tenantId: string,
+  ): Promise<void> {
+    try {
+      const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+      const promptUrl = await this.dockerService.getPromptUrl(sandboxSession.containerId);
+      const abortUrl = new URL(promptUrl);
+      abortUrl.pathname = '/v1/abort';
+
+      const response = await fetch(abortUrl.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+        signal: AbortSignal.timeout(ABORT_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Sandbox abort 请求失败: session=${sessionId}, status=${response.status}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Sandbox abort 请求异常: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private isAgentEvent(value: unknown): value is AgentEvent {
+    if (!this.isRecord(value) || typeof value.type !== 'string') {
+      return false;
+    }
+
+    switch (value.type) {
+      case 'plan':
+        return typeof value.title === 'string' && typeof value.content === 'string';
+      case 'message_chunk':
+        return typeof value.content === 'string';
+      case 'tool_call':
+        return this.isRecord(value.call);
+      case 'decision':
+        return typeof value.suggestedContent === 'string';
+      case 'done':
+        return typeof value.stopReason === 'string';
+      default:
+        return false;
+    }
   }
 
   private async delay(ms: number): Promise<void> {
