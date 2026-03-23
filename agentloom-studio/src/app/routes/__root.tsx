@@ -36,6 +36,7 @@ import { memoryDetailRoute } from './memory.$id'
 import { memorySettingsRoute } from './memory.$id.settings'
 import { memoryGraphRoute } from './memory.$id.graph'
 import { memoryAuditRoute } from './memory.$id.audit'
+import { skillsRoute } from './skills'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -116,6 +117,12 @@ export function RootLayout() {
             >
               记忆
             </Link>
+            <Link
+              to="/skills"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
+            >
+              技能
+            </Link>
           </nav>
           <NotificationBell />
         </div>
@@ -165,4 +172,5 @@ export const routeTree = rootRoute.addChildren([
   memorySettingsRoute,
   memoryGraphRoute,
   memoryAuditRoute,
+  skillsRoute,
 ]);

@@ -16,6 +16,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/developer-console/earnings` | DeveloperEarningsPage | 开发者收益仪表盘：汇总卡片 + 月度趋势图 + 插件使用排名 + 结算历史 |
 | `/marketplace` | MarketplaceBrowsePage | 公开市场浏览：Tabs + 搜索 + 排序 + 详情/安装/评价对话框 |
 | `/marketplace/my-listings` | MyMarketplaceListingsPage | Marketplace 发布者自助管理页 |
+| `/skills` | SkillBrowsePage | 技能库浏览/管理：分类 Tabs + 搜索 + 启用状态筛选 + 卡片网格 + 详情/启停对话框 |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
 | `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 |
 | `/settings/tool-library` | ToolLibraryPage | MCP imported tools 管理工作台，与 NodePalette 共享查询键 |
@@ -58,6 +59,7 @@ src/
 │   ├── developer-console/ # 开发者收益仪表盘（api/components/pages），recharts 月度趋势图
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   ├── plugin/      # 插件 API 层（types/api/queries/keys），供画布 NodePalette 动态加载已安装插件
+│   ├── skill/       # 技能库浏览/管理（types/api/components）：SkillBrowsePage + SkillCard + SkillDetailDialog，`/skills` 路由
 │   ├── llm/          # LLM 模型配置
 │   ├── share/        # 工作流分享链接管理（types/api/hooks）
 │   ├── trigger/      # 工作流触发器管理 cron/webhook/api_event（types/api/hooks/components）

@@ -3,10 +3,12 @@ import 'package:go_router/go_router.dart';
 
 /// 导航壳 — ShellRoute 的 scaffold
 ///
-/// 包含 BottomNavigationBar，三个标签页:
+/// 包含 BottomNavigationBar，五个标签页:
 /// - Dashboard (index 0)
 /// - Workflows (index 1)
-/// - Settings (index 2)
+/// - Agents (index 2)
+/// - Skills (index 3)
+/// - Settings (index 4)
 class ShellScaffold extends StatelessWidget {
   const ShellScaffold({required this.navigationShell, super.key});
 
@@ -36,6 +38,11 @@ class ShellScaffold extends StatelessWidget {
             icon: Icon(Icons.smart_toy_outlined),
             selectedIcon: Icon(Icons.smart_toy),
             label: 'Agents',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'Skills',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
