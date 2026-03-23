@@ -8,7 +8,7 @@ import '../../../routes/route_names.dart';
 import '../providers/skill_provider.dart';
 import '../widgets/skill_card.dart';
 
-/// Skill 列表页面（Marketplace 浏览）
+/// Skill 列表页面 — T20 将重写此页面内容
 class SkillListScreen extends ConsumerStatefulWidget {
   const SkillListScreen({super.key});
 
@@ -40,69 +40,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
     final skillState = ref.watch(skillListProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Skills'),
-        actions: [
-          // 排序按钮
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.sort),
-            tooltip: 'Sort by',
-            onSelected: (sort) {
-              ref.read(skillListProvider.notifier).setSortBy(sort);
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'popular',
-                child: Row(
-                  children: [
-                    if (skillState.value?.sortBy == 'popular')
-                      Icon(
-                        Icons.check,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    if (skillState.value?.sortBy == 'popular')
-                      const SizedBox(width: 8),
-                    const Text('Popular'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'rating',
-                child: Row(
-                  children: [
-                    if (skillState.value?.sortBy == 'rating')
-                      Icon(
-                        Icons.check,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    if (skillState.value?.sortBy == 'rating')
-                      const SizedBox(width: 8),
-                    const Text('Highest Rated'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'newest',
-                child: Row(
-                  children: [
-                    if (skillState.value?.sortBy == 'newest')
-                      Icon(
-                        Icons.check,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                    if (skillState.value?.sortBy == 'newest')
-                      const SizedBox(width: 8),
-                    const Text('Newest'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Skills')),
       body: Column(
         children: [
           // 搜索栏
@@ -125,7 +63,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
             ),
           ),
 
-          // 分类筛选 Chips
+          // 状态筛选 Chips
           SizedBox(
             height: 40,
             child: ListView(
@@ -134,50 +72,26 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
               children: [
                 _FilterChip(
                   label: 'All',
-                  selected: skillState.value?.categoryFilter == null,
+                  selected: skillState.value?.statusFilter == null,
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
-                      .setCategoryFilter(null),
+                      .setStatusFilter(null),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Analysis',
-                  selected: skillState.value?.categoryFilter == 'analysis',
+                  label: 'Active',
+                  selected: skillState.value?.statusFilter == 'active',
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
-                      .setCategoryFilter('analysis'),
+                      .setStatusFilter('active'),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Content',
-                  selected: skillState.value?.categoryFilter == 'content',
+                  label: 'Archived',
+                  selected: skillState.value?.statusFilter == 'archived',
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
-                      .setCategoryFilter('content'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Development',
-                  selected: skillState.value?.categoryFilter == 'development',
-                  onSelected: (_) => ref
-                      .read(skillListProvider.notifier)
-                      .setCategoryFilter('development'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Automation',
-                  selected: skillState.value?.categoryFilter == 'automation',
-                  onSelected: (_) => ref
-                      .read(skillListProvider.notifier)
-                      .setCategoryFilter('automation'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Reporting',
-                  selected: skillState.value?.categoryFilter == 'reporting',
-                  onSelected: (_) => ref
-                      .read(skillListProvider.notifier)
-                      .setCategoryFilter('reporting'),
+                      .setStatusFilter('archived'),
                 ),
               ],
             ),
@@ -218,7 +132,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.extension_outlined,
+                          Icons.auto_awesome_outlined,
                           size: 64,
                           color: theme.colorScheme.onSurfaceVariant.withValues(
                             alpha: 0.5,

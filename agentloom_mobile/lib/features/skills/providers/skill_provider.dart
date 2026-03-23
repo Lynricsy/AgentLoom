@@ -2,14 +2,51 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/models/paginated_response.dart';
 import '../api/skill_api.dart';
-import '../models/skill_listing_dto.dart';
+import '../models/skill_dto.dart';
 
-/// Skill 列表 Notifier（手动 AsyncNotifier，不使用 riverpod_generator）
+/// 技能列表状态
+class SkillListState {
+  final List<SkillDto> skills;
+  final PaginationMeta? meta;
+  final String? statusFilter;
+  final String? searchQuery;
+  final bool isLoadingMore;
+
+  const SkillListState({
+    this.skills = const [],
+    this.meta,
+    this.statusFilter,
+    this.searchQuery,
+    this.isLoadingMore = false,
+  });
+
+  SkillListState copyWith({
+    List<SkillDto>? skills,
+    PaginationMeta? meta,
+    String? statusFilter,
+    String? searchQuery,
+    bool? isLoadingMore,
+    bool clearStatusFilter = false,
+    bool clearSearchQuery = false,
+  }) {
+    return SkillListState(
+      skills: skills ?? this.skills,
+      meta: meta ?? this.meta,
+      statusFilter: clearStatusFilter
+          ? null
+          : (statusFilter ?? this.statusFilter),
+      searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    );
+  }
+}
+
+/// 技能列表 Notifier（手动 AsyncNotifier，不使用 riverpod_generator）
 class SkillListNotifier extends AsyncNotifier<SkillListState> {
-  String? _categoryFilter;
+  String? _statusFilter;
   String? _searchQuery;
-  String _sortBy = 'popular';
 
   @override
   Future<SkillListState> build() async {
@@ -18,26 +55,23 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
 
   Future<SkillListState> _fetchSkills({int page = 1}) async {
     final api = ref.read(skillApiProvider);
-    final result = await api.browseSkills(
+    final result = await api.listSkills(
       page: page,
-      category: _categoryFilter,
+      status: _statusFilter,
       search: _searchQuery,
-      sort: _sortBy,
     );
 
     return SkillListState(
       skills: result.data,
-      currentPage: result.page,
-      hasMore: result.page < result.totalPages,
-      categoryFilter: _categoryFilter,
+      meta: result.meta,
+      statusFilter: _statusFilter,
       searchQuery: _searchQuery,
-      sortBy: _sortBy,
     );
   }
 
-  /// 设置分类过滤器并重新加载
-  Future<void> setCategoryFilter(String? category) async {
-    _categoryFilter = category;
+  /// 设置状态过滤器并重新加载
+  Future<void> setStatusFilter(String? status) async {
+    _statusFilter = status;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchSkills());
   }
@@ -45,13 +79,6 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   /// 设置搜索关键词并重新加载
   Future<void> setSearchQuery(String? query) async {
     _searchQuery = (query != null && query.isEmpty) ? null : query;
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
-  }
-
-  /// 设置排序方式并重新加载
-  Future<void> setSortBy(String sort) async {
-    _sortBy = sort;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchSkills());
   }
@@ -66,17 +93,18 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   Future<void> loadMore() async {
     final currentState = state.value;
     if (currentState == null || currentState.isLoadingMore) return;
-    if (!currentState.hasMore) return;
+
+    final meta = currentState.meta;
+    if (meta == null || meta.page >= meta.totalPages) return;
 
     state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
 
     try {
       final api = ref.read(skillApiProvider);
-      final result = await api.browseSkills(
-        page: currentState.currentPage + 1,
-        category: _categoryFilter,
+      final result = await api.listSkills(
+        page: meta.page + 1,
+        status: _statusFilter,
         search: _searchQuery,
-        sort: _sortBy,
       );
 
       if (!ref.mounted) return;
@@ -84,11 +112,9 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
       state = AsyncValue.data(
         SkillListState(
           skills: [...currentState.skills, ...result.data],
-          currentPage: result.page,
-          hasMore: result.page < result.totalPages,
-          categoryFilter: _categoryFilter,
+          meta: result.meta,
+          statusFilter: _statusFilter,
           searchQuery: _searchQuery,
-          sortBy: _sortBy,
         ),
       );
     } catch (e, st) {
@@ -99,17 +125,17 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   }
 }
 
-/// Skill 列表 Provider
+/// 技能列表 Provider
 final skillListProvider =
     AsyncNotifierProvider<SkillListNotifier, SkillListState>(
       SkillListNotifier.new,
     );
 
-/// Skill 详情 Provider（按 ID 获取单个 Skill）
-final skillDetailProvider = FutureProvider.family<SkillListingDto, String>((
+/// 技能详情 Provider（按 ID 获取单个技能）
+final skillDetailProvider = FutureProvider.family<SkillDto, String>((
   ref,
   id,
 ) async {
   final api = ref.read(skillApiProvider);
-  return api.getSkillDetail(id);
+  return api.getSkill(id);
 });
