@@ -28,7 +28,6 @@ import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
 import { MemoryConfigPanel } from './MemoryConfigPanel'
-import { SkillConfigPanel } from './SkillConfigPanel'
 import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
