@@ -1,0 +1,19 @@
+{
+  "name": "agentloom-type-engine",
+  "type": "module",
+  "description": "AgentLoom Type Engine - WASM-powered type compatibility checker",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "agentloom_type_engine_bg.wasm",
+    "agentloom_type_engine.js",
+    "agentloom_type_engine_bg.js",
+    "agentloom_type_engine.d.ts"
+  ],
+  "main": "agentloom_type_engine.js",
+  "types": "agentloom_type_engine.d.ts",
+  "sideEffects": [
+    "./agentloom_type_engine.js",
+    "./snippets/*"
+  ]
+}
