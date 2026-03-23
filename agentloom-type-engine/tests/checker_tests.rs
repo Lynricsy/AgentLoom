@@ -190,3 +190,50 @@ fn build_generated_object_schema(prefix: &str, count: usize) -> TypeSchema {
         nullable: false,
     })
 }
+
+#[test]
+fn skill_to_skill_is_exact() {
+    let source = build_port("source", PortDataType::Skill, None);
+    let target = build_port("target", PortDataType::Skill, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Exact);
+    assert_eq!(result.reason, None);
+    assert!(result.missing_fields.is_empty());
+    assert!(result.candidate_mappings.is_empty());
+}
+
+#[test]
+fn skill_to_text_is_transform() {
+    let source = build_port("source", PortDataType::Skill, None);
+    let target = build_port("target", PortDataType::Text, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Transform);
+    assert_eq!(result.reason.as_deref(), Some("skill_to_text_degrade"));
+    assert_eq!(result.transform_fn.as_deref(), Some("extract_skill_text"));
+}
+
+#[test]
+fn text_to_skill_is_incompatible() {
+    let source = build_port("source", PortDataType::Text, None);
+    let target = build_port("target", PortDataType::Skill, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
+}
+
+#[test]
+fn skill_to_json_is_incompatible() {
+    let source = build_port("source", PortDataType::Skill, None);
+    let target = build_port("target", PortDataType::Json, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
+}

@@ -90,6 +90,12 @@ impl Default for CompatibilityChecker {
                     reason_key: "json_to_text_stringify",
                     transform_fn: "stringify_json",
                 },
+                TransformRule {
+                    source_kind: PortDataType::Skill,
+                    target_kind: PortDataType::Text,
+                    reason_key: "skill_to_text_degrade",
+                    transform_fn: "extract_skill_text",
+                },
             ],
         }
     }
