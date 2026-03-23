@@ -1,0 +1,208 @@
+import { requestPermission } from './event-stream.js';
+import type { PermissionCallbackRequest } from './types.js';
+
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute?: (params: Record<string, unknown>) => Promise<unknown>;
+}
+
+export interface AgentLoomExtensionOptions {
+  mcpTools?: McpToolDefinition[];
+  permissionCallbackUrl?: string;
+  sessionId: string;
+  onEvent?: (event: AgentLoomExtensionEvent) => void;
+}
+
+export type AgentLoomExtensionEvent =
+  | {
+      type: 'tool_execution_start';
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }
+  | {
+      type: 'tool_execution_end';
+      toolCallId: string;
+      toolName: string;
+      result: unknown;
+      isError: boolean;
+    }
+  | {
+      type: 'tool_permission_denied';
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    };
+
+/**
+ * Structural compatibility with pi-coding-agent ExtensionAPI.
+ * Uses structural typing instead of hard import to avoid tight coupling.
+ */
+export interface PiExtensionAPI {
+  registerTool(tool: PiToolDefinition): void;
+  on(
+    event: 'tool_call',
+    handler: (
+      event: PiToolCallEvent,
+      ctx: unknown,
+    ) => PiToolCallEventResult | Promise<PiToolCallEventResult | void> | void,
+  ): void;
+  on(
+    event: 'tool_execution_start',
+    handler: (event: PiToolExecutionStartEvent, ctx: unknown) => void,
+  ): void;
+  on(
+    event: 'tool_execution_end',
+    handler: (event: PiToolExecutionEndEvent, ctx: unknown) => void,
+  ): void;
+}
+
+export interface PiToolDefinition {
+  name: string;
+  label: string;
+  description: string;
+  parameters: unknown;
+  execute: (
+    toolCallId: string,
+    params: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    onUpdate: unknown,
+    ctx: unknown,
+  ) => Promise<PiAgentToolResult>;
+}
+
+export interface PiAgentToolResult {
+  resultForAssistant: string;
+  details?: unknown;
+  state?: unknown;
+}
+
+export interface PiToolCallEvent {
+  type: 'tool_call';
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
+export interface PiToolCallEventResult {
+  block?: boolean;
+  reason?: string;
+}
+
+export interface PiToolExecutionStartEvent {
+  type: 'tool_execution_start';
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+}
+
+export interface PiToolExecutionEndEvent {
+  type: 'tool_execution_end';
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  isError: boolean;
+}
+
+export type ExtensionFactory = (pi: PiExtensionAPI) => void | Promise<void>;
+
+export function createAgentLoomExtension(
+  options: AgentLoomExtensionOptions,
+): ExtensionFactory {
+  const { mcpTools = [], permissionCallbackUrl, sessionId, onEvent } = options;
+
+  return (pi: PiExtensionAPI): void => {
+    for (const tool of mcpTools) {
+      const executeFn = tool.execute;
+
+      pi.registerTool({
+        name: `mcp_${tool.name}`,
+        label: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        execute: async (
+          toolCallId: string,
+          params: Record<string, unknown>,
+        ): Promise<PiAgentToolResult> => {
+          if (executeFn) {
+            try {
+              const result = await executeFn(params);
+              return {
+                resultForAssistant:
+                  typeof result === 'string'
+                    ? result
+                    : JSON.stringify(result, null, 2),
+              };
+            } catch (err) {
+              const message =
+                err instanceof Error ? err.message : String(err);
+              return { resultForAssistant: `Error: ${message}` };
+            }
+          }
+          return {
+            resultForAssistant: `MCP tool "${tool.name}" has no execute handler`,
+          };
+        },
+      });
+    }
+
+    if (permissionCallbackUrl) {
+      pi.on(
+        'tool_call',
+        async (
+          event: PiToolCallEvent,
+        ): Promise<PiToolCallEventResult | void> => {
+          const payload: PermissionCallbackRequest = {
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            input: event.input,
+            sessionId,
+          };
+
+          const allowed = await requestPermission(
+            permissionCallbackUrl,
+            payload,
+          );
+
+          if (!allowed) {
+            onEvent?.({
+              type: 'tool_permission_denied',
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              input: event.input,
+            });
+            return { block: true, reason: 'Permission denied by AgentLoom' };
+          }
+
+          return { block: false };
+        },
+      );
+    }
+
+    if (onEvent) {
+      pi.on(
+        'tool_execution_start',
+        (event: PiToolExecutionStartEvent): void => {
+          onEvent({
+            type: 'tool_execution_start',
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            args: event.args,
+          });
+        },
+      );
+
+      pi.on('tool_execution_end', (event: PiToolExecutionEndEvent): void => {
+        onEvent({
+          type: 'tool_execution_end',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          result: event.result,
+          isError: event.isError,
+        });
+      });
+    }
+  };
+}
