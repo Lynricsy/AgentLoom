@@ -1,7 +1,7 @@
-const portDataTypes = ['model', 'text', 'json', 'image', 'audio', 'tool', 'sandbox', 'knowledge'] as const;
+const portDataTypes = ['model', 'text', 'json', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill'] as const;
 
 /**
- * Canonical 8 个端口数据类型，必须与 server/studio/type-engine 保持同步。
+ * Canonical 9 个端口数据类型，必须与 server/studio/type-engine 保持同步。
  */
 export type PortDataType =
   | 'model'
@@ -11,7 +11,8 @@ export type PortDataType =
   | 'audio'
   | 'tool'
   | 'sandbox'
-  | 'knowledge';
+  | 'knowledge'
+  | 'skill';
 
 /**
  * 所有合法的 {@link PortDataType} 值。
