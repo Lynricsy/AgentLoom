@@ -38,6 +38,8 @@
     "@extism/extism": "2.0.0-rc13",
     "@fastify/multipart": "^9.4.0",
     "@fastify/static": "^9.0.0",
+    "@mariozechner/pi-agent-core": "file:../../../GitHub/pi-mono/packages/agent",
+    "@mariozechner/pi-ai": "file:../../../GitHub/pi-mono/packages/ai",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/bullmq": "^11.0.4",
