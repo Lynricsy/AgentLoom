@@ -62,6 +62,8 @@ import { clampAutonomyModeToCap } from '../agent/autonomy-mode-compat';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
+import { SkillResolverService } from '../skill/skill-resolver.service';
+import type { SkillPromptPayload } from '../skill/skill.types';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -107,6 +109,9 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly memoryToolsService?: MemoryToolsService,
     @Optional()
     private readonly memoryFusionService?: MemoryFusionService,
+    @Optional()
+    @Inject(SkillResolverService)
+    private readonly skillResolverService?: SkillResolverService,
   ) {
     super();
     void throttleService;
@@ -257,11 +262,29 @@ export class AgentTaskWorker extends WorkerHost {
         });
 
         if (!sessionId) {
-          const systemPrompt = await this.resolveWorkflowSystemPrompt(
-            memorySessionIds,
+          const upstreamSkills = this.extractUpstreamSkills(input);
+          let enrichedBasePrompt =
             typeof nodeData.systemPrompt === 'string'
               ? nodeData.systemPrompt
-              : undefined,
+              : undefined;
+
+          if (upstreamSkills.length > 0 && this.skillResolverService) {
+            try {
+              enrichedBasePrompt =
+                this.skillResolverService.buildSkillAugmentedPrompt(
+                  enrichedBasePrompt || '',
+                  upstreamSkills,
+                );
+            } catch (error) {
+              this.logger.warn(
+                `Failed to inject upstream skills into workflow agent prompt: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
+
+          const systemPrompt = await this.resolveWorkflowSystemPrompt(
+            memorySessionIds,
+            enrichedBasePrompt,
           );
           const session = await runtime.createSession({
             agentId: nodeData.agentId as string,
@@ -841,6 +864,41 @@ export class AgentTaskWorker extends WorkerHost {
 
   private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
     return [{ type: 'text', text: JSON.stringify(input) }];
+  }
+
+  private extractUpstreamSkills(
+    input: Record<string, unknown>,
+  ): SkillPromptPayload[] {
+    const skills: SkillPromptPayload[] = [];
+
+    for (const value of Object.values(input)) {
+      const record = this.asRecord(value);
+      if (record && Array.isArray(record.skills)) {
+        for (const skill of record.skills) {
+          const skillRecord = this.asRecord(skill);
+          if (
+            skillRecord &&
+            typeof skillRecord.id === 'string' &&
+            typeof skillRecord.name === 'string'
+          ) {
+            skills.push({
+              id: skillRecord.id,
+              name: skillRecord.name,
+              description:
+                typeof skillRecord.description === 'string'
+                  ? skillRecord.description
+                  : '',
+              content:
+                typeof skillRecord.content === 'string'
+                  ? skillRecord.content
+                  : null,
+            });
+          }
+        }
+      }
+    }
+
+    return skills;
   }
 
   private resolveMemorySessionIds(value: unknown): string[] {

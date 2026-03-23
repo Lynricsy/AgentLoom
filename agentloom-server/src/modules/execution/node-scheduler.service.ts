@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -62,6 +62,7 @@ import {
 } from './node-handlers/input-preprocessor.handler';
 import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
+import { SkillResolverService } from '../skill/skill-resolver.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -106,6 +107,9 @@ export class NodeSchedulerService {
     private readonly agentTaskQueue: Queue,
     @InjectQueue(PLUGIN_EXECUTION_QUEUE)
     private readonly pluginQueue: Queue,
+    @Optional()
+    @Inject(SkillResolverService)
+    private readonly skillResolverService?: SkillResolverService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -316,6 +320,10 @@ export class NodeSchedulerService {
 
       case 'input-preprocessor':
         await this.executeInputPreprocessor(step, input, tenantId, executionId);
+        break;
+
+      case 'skill':
+        await this.executeSkillNode(step, input, tenantId, executionId);
         break;
 
       case 'sub-agent':
@@ -1033,6 +1041,121 @@ export class NodeSchedulerService {
         { result },
       );
 
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeSkillNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    void input;
+
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+      const skillId =
+        typeof config.skillId === 'string' && config.skillId.trim().length > 0
+          ? config.skillId.trim()
+          : undefined;
+
+      if (!skillId) {
+        this.logger.warn(`Skill node ${step.nodeId} has no skillId configured`);
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'completed',
+          {
+            result: { warning: 'No skillId configured', skills: [] },
+          },
+        );
+        await this.onNodeCompleted(executionId, step.id, tenantId);
+        return;
+      }
+
+      if (!this.skillResolverService) {
+        this.logger.warn(
+          `SkillResolverService unavailable for skill node ${step.nodeId}`,
+        );
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'completed',
+          {
+            result: { warning: 'Skill resolver unavailable', skills: [] },
+          },
+        );
+        await this.onNodeCompleted(executionId, step.id, tenantId);
+        return;
+      }
+
+      const skills = await this.skillResolverService.resolveSkillsForAgent(
+        tenantId,
+        [skillId],
+      );
+
+      if (skills.length === 0) {
+        this.logger.warn(
+          `Skill ${skillId} not found or not active for tenant ${tenantId}`,
+        );
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'completed',
+          {
+            result: {
+              warning: `Skill ${skillId} not found or inactive`,
+              skills: [],
+            },
+          },
+        );
+        await this.onNodeCompleted(executionId, step.id, tenantId);
+        return;
+      }
+
+      const skillPayloads = skills.map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description || '',
+        content: skill.content,
+      }));
+
+      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'completed', {
+        result: { skills: skillPayloads },
+      });
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (

@@ -17,6 +17,7 @@ import { PluginModule } from '../plugin/plugin.module';
 import { OrganizationModule } from '../organization/organization.module';
 import { ResourceGovernanceModule } from '../resource-governance/resource-governance.module';
 import { SharedResourcesModule } from '../shared-resources/shared-resources.module';
+import { SkillModule } from '../skill/skill.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
@@ -53,6 +54,7 @@ import {
     OrganizationModule,
     ResourceGovernanceModule,
     SharedResourcesModule,
+    SkillModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
