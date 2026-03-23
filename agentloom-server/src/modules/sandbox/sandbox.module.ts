@@ -7,6 +7,7 @@ import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import { SandboxLifecycleWorker } from './sandbox-lifecycle.worker';
 import { SandboxController } from './sandbox.controller';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
+import { PiConfigGeneratorService } from './pi-config-generator.service';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
     DockerService,
     SandboxLifecycleProducer,
     SandboxLifecycleWorker,
+    PiConfigGeneratorService,
   ],
-  exports: [SandboxService, DockerService, SandboxLifecycleProducer],
+  exports: [SandboxService, DockerService, SandboxLifecycleProducer, PiConfigGeneratorService],
 })
 export class SandboxModule {}
