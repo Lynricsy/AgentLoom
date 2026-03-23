@@ -878,6 +878,18 @@ body {
   background: hsl(from var(--color-muted) h s l / 0.2);
 }
 
+/* ─── Skill Editor: YAML Frontmatter ─────────────────── */
+.skill-frontmatter-line {
+  background-color: rgba(139, 92, 246, 0.08);
+  border-left: 2px solid var(--color-type-skill);
+}
+.skill-frontmatter-glyph {
+  background-color: var(--color-type-skill);
+  border-radius: 2px;
+  margin-left: 3px;
+  width: 3px !important;
+}
+
 /* ─── 无障碍 & reduced-motion ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .smart-edge-particle--running { animation: none; opacity: 0; }

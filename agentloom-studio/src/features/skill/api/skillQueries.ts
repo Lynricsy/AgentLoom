@@ -6,6 +6,9 @@ import {
   updateSkill,
   deleteSkill,
   archiveSkill,
+  fetchSkillFiles,
+  uploadSkillFile,
+  deleteSkillFile,
   type ListSkillsParams,
   type CreateSkillPayload,
   type UpdateSkillPayload,
@@ -71,6 +74,46 @@ export function useArchiveSkill() {
       void queryClient.invalidateQueries({ queryKey: skillKeys.all });
       void queryClient.invalidateQueries({
         queryKey: skillKeys.detail(id),
+      });
+    },
+  });
+}
+
+export function useSkillFiles(id: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: skillKeys.files(id),
+    queryFn: () => fetchSkillFiles(id),
+    enabled: options?.enabled ?? Boolean(id),
+  });
+}
+
+export function useUploadSkillFile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      uploadSkillFile(id, file),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.files(variables.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.detail(variables.id),
+      });
+    },
+  });
+}
+
+export function useDeleteSkillFile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, fileName }: { id: string; fileName: string }) =>
+      deleteSkillFile(id, fileName),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.files(variables.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: skillKeys.detail(variables.id),
       });
     },
   });

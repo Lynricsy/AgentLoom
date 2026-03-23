@@ -80,3 +80,45 @@ export async function archiveSkill(id: string): Promise<Skill> {
     .patch(`${BASE_PATH}/${id}/archive`)
     .json<Skill>();
 }
+
+// ---------- File Management ----------
+
+export interface SkillFileInfo {
+  fileName: string;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
+export async function fetchSkillFiles(id: string): Promise<SkillFileInfo[]> {
+  return apiClient.get(`${BASE_PATH}/${id}/files`).json<SkillFileInfo[]>();
+}
+
+export async function uploadSkillFile(
+  id: string,
+  file: File,
+): Promise<SkillFileInfo> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiClient
+    .post(`${BASE_PATH}/${id}/files`, { body: formData })
+    .json<SkillFileInfo>();
+}
+
+export async function downloadSkillFile(
+  id: string,
+  fileName: string,
+): Promise<Blob> {
+  return apiClient
+    .get(`${BASE_PATH}/${id}/files/${encodeURIComponent(fileName)}`)
+    .blob();
+}
+
+export async function deleteSkillFile(
+  id: string,
+  fileName: string,
+): Promise<void> {
+  await apiClient.delete(
+    `${BASE_PATH}/${id}/files/${encodeURIComponent(fileName)}`,
+  );
+}

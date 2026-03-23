@@ -5,7 +5,12 @@ export type {
   SkillFrontmatter,
 } from './types';
 
-export type { ListSkillsParams, CreateSkillPayload, UpdateSkillPayload } from './api/skillApi';
+export type {
+  ListSkillsParams,
+  CreateSkillPayload,
+  UpdateSkillPayload,
+  SkillFileInfo,
+} from './api/skillApi';
 export {
   fetchSkills,
   fetchSkillById,
@@ -13,6 +18,10 @@ export {
   updateSkill,
   deleteSkill,
   archiveSkill,
+  fetchSkillFiles,
+  uploadSkillFile,
+  downloadSkillFile,
+  deleteSkillFile,
 } from './api/skillApi';
 export { skillKeys } from './api/skillKeys';
 export {
@@ -23,6 +32,9 @@ export {
   useUpdateSkill,
   useDeleteSkill,
   useArchiveSkill,
+  useSkillFiles,
+  useUploadSkillFile,
+  useDeleteSkillFile,
 } from './api/skillQueries';
 
 export { SkillBrowsePage } from './components/SkillBrowsePage';
