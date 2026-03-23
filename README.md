@@ -8,13 +8,14 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 
 ## ✨ 核心特性
 
-- **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，16 种节点类型，实时端口类型兼容性检查（Rust WASM）
+- **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，17 种节点类型，实时端口类型兼容性检查（Rust WASM）
 - **🤖 多模型智能路由** — 6 种路由策略（Token 优化 / 成本优化 / 质量优先 / 延迟优先 / 历史最优 / 容错链），支持自动 Fallback
 - **⚡ DAG 调度引擎** — 状态机驱动的工作流执行，BullMQ 分布式任务队列，支持断点续跑与人工介入
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
 - **🧠 知识库 RAG** — 文档解析 → 分块 → Qdrant 向量化，支持知识增强的 Agent 推理
+- **📖 Skill 管理** — SKILL.md 格式 Agent 行为指导文件，`SkillResolverService` 将 `<available_skills>` XML 注入 Agent 对话与工作流执行系统提示，Monaco 编辑器 Web 编辑，5 个内置 Skill
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
 - **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
 - **🧾 审计日志与保留归档** — evidence 域统一采集管理/执行关键事件，提供 owner/admin 审计查询页、资源级事件序列与 hot/archive 回查
@@ -189,6 +190,7 @@ AgentLoom/
 | `/marketplace` | 工作流/插件市场 |
 | `/settings/knowledge-bases` | 知识库管理 |
 | `/settings/tool-library` | MCP 工具库 |
+| `/settings/skills` | Skill 管理（分类/搜索/启停/SKILL.md 编辑） |
 | `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板 |
 | `/settings/audit-logs` | 审计日志查询页 |
 | `/settings/resource-quotas` | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
@@ -198,9 +200,9 @@ AgentLoom/
 </details>
 
 <details>
-<summary>🎨 画布节点类型（16 种）</summary>
+<summary>🎨 画布节点类型（17 种）</summary>
 
-`agent` · `llm` · `input` · `output` · `conditional` · `loop` · `parallel` · `merge` · `transform` · `api-call` · `code-executor` · `knowledge-retrieval` · `mcp-tool` · `smart-routing` · `sandbox` · `plugin` (自定义插件节点)
+`agent` · `llm` · `input` · `output` · `conditional` · `loop` · `parallel` · `merge` · `transform` · `api-call` · `code-executor` · `knowledge-retrieval` · `mcp-tool` · `smart-routing` · `sandbox` · `plugin` (自定义插件节点) · `skill`
 
 </details>
 

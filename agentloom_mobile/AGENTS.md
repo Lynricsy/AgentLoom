@@ -21,6 +21,7 @@ AgentLoom Flutter 移动端应用：
 - 工作流启动链路：`WorkflowDetailScreen` FAB → `/workflows/:workflowId/launch` → 参数提交 → `/executions/:executionId`
 - Agent 管理：Agent 列表/详情/对话三屏，4th shell branch (Agents tab)
 - Agent 对话：`AgentConversationScreen` 全屏路由（非 shell 内），Socket.IO `/agent-conversation` 实时消息推送
+- Skill 管理：Skill 列表/详情/编辑三屏，仅支持 name/description 编辑（SKILL.md 内容编辑仅在 Studio Web 端）
 
 ## 目录约定
 
@@ -67,6 +68,11 @@ lib/
 │       ├── providers/   # AgentListNotifier, agentDetailProvider, AgentConversationNotifier
 │       ├── screens/     # AgentListScreen, AgentDetailScreen, AgentConversationScreen (全屏对话)
 │       └── widgets/     # AgentCard, AgentStatusChip, ConversationBubble, MessageInput
+│   └── skills/
+│       ├── api/         # SkillApi (list/get/update) + skillApiProvider
+│       ├── models/      # Freezed: SkillDto (id/name/slug/description/status/isBuiltin)
+│       ├── providers/   # SkillListNotifier, skillDetailProvider
+│       └── screens/     # SkillListScreen, SkillDetailScreen, SkillEditScreen (仅 name/description，不含 SKILL.md 内容编辑)
 ├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 与 /agents/:agentId/conversations/:conversationId 顶层路由) 与路由名
 └── shared/
     ├── interceptors/    # AuthInterceptor (QueuedInterceptorsWrapper, 401 刷新 + 重试)

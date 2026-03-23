@@ -49,6 +49,9 @@ AgentLoomAUTO/
 | 修改全局中间件/守卫 | `agentloom-server/src/common/` | guards/interceptors/middleware/filters |
 | 管理 ACP stdio server 与协议适配层 | `agentloom-server/src/modules/acp-gateway/` + `agentloom-server/src/acp-stdio.ts` | initialize/authenticate、`session/new` / `session/prompt` / `session/cancel` / `session/load` / `session/update`、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy + server-sandbox surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` server-sandbox surface、canonical `readTextFile` / `writeTextFile` 与仅在 client 同时启用 `terminal.create` / `terminal.output` 时暴露的 `terminal: { create: true }` capability negotiation（兼容 initialize legacy alias）、写入前官方 `session/request_permission` request/response、基于 `sandbox_sessions` 的 ACP-local sandbox workspace 解析、`/workspace/` 边界 + `realpath` / symlink / traversal / oversize / binary guardrails、session-bound terminal registry + durable continuity metadata、默认 1MB ring buffer / 5 并发 / 300s lifetime timeout kill、spawn 前危险 command/pattern/path/cwd 拒绝与正式审计、per-request `outputByteLimit` bounded retrieval、exited/killed terminal output stable error、manual kill 与 cleanup kill 审计、`session/cancel` 与 stdio 连接关闭 cleanup、cold-recovery `session/load` fail-closed、conversation-session 级工具权限恢复、JSON-RPC 2.0 错误映射、连接状态、独立 stdio 入口 |
 | 管理服务端插件注册与生态 | `agentloom-server/src/modules/plugin/` | `.alp` multipart 注册 + canonical archive RSA-PSS 验签、`plugins`/`plugin_developer_keys`/`plugin_usage_records`/`plugin_earnings` 表、`PluginSandboxService`（Extism WASM 沙箱）、开发者密钥管理 API、`plugin-execution`/`earnings-settlement` 队列、插件市场 CRUD、使用量记录、收益结算 |
+| 管理 Skill 定义与内容 | `agentloom-server/src/modules/skill/` | `SkillModule`: Skill CRUD + MinIO 存储 + `SkillStorageService`（SKILL.md 上传/下载/解析）+ `SkillResolverService`（生成 `<available_skills>` XML 注入 agent/workflow 系统提示）+ REST API、5 个内置种子 Skill |
+| 管理 Studio Skill 功能 | `agentloom-studio/src/features/skill/` | Skill 管理页面 `/settings/skills`（分类 Tabs + 搜索 + 启停）+ 画布 `skill` 节点 + `SkillBody`/`SkillPanel`/`SkillConfigPanel`/`CreateSkillDialog`（Monaco 编辑器懒加载） |
+| 管理 Mobile Skill 功能 | `agentloom_mobile/lib/features/skills/` | Skill 列表/详情/编辑屏（仅 name/description，无 SKILL.md 编辑）+ Riverpod providers + API 层 |
 | 管理 Agent 配置优化建议闭环 | `agentloom-server/src/modules/optimization-suggestion/` + `agentloom-studio/src/features/optimization-suggestion/` | 周期分析 `agent_execution_records`、生成/应用/忽略建议、采纳率统计、Studio live Agent Config 建议面板 |
 | 管理审计日志与保留归档 | `agentloom-server/src/modules/evidence/` + `agentloom-studio/src/features/audit-log/` | evidence 域统一审计写入、组织级 `audit-logs` 查询 API、按资源序列回放、hot/archive merged recall、`audit-log-retention` 单例归档调度、Studio `/settings/audit-logs` 查询页 |
 | 管理资源配额与异常执行治理 | `agentloom-server/src/modules/resource-governance/` + `agentloom-studio/src/features/resource-governance/` | `tenant_quotas` / `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 限流/日配额、治理操作审计/通知、Studio `/settings/resource-quotas` 管理页 |
@@ -95,6 +98,7 @@ Agent 与 Workflow 为两个并行顶层概念:
   Agent:    独立配置 → /agent-conversation namespace → agent_conversations/agent_messages
   桥接:     WorkflowAgentAdapter 允许 Agent 作为工作流 `agent` 节点执行
   沙箱共享: sandbox_sessions 双 FK (execution_id OR agent_conversation_id, CHECK 至少一个非空)
+  Skill 注入: SkillResolverService 生成 <available_skills> XML，在 agent 对话与 workflow 执行启动时注入系统提示
 ```
 
 **类型共享**: 无共享包。通过约定/手动镜像同步（有漂移风险）。
@@ -124,7 +128,7 @@ pnpm test:e2e                     # E2E (需 Docker)
 pnpm test:cov                     # 覆盖率 (80% 阈值)
 pnpm db:generate                  # 生成 Drizzle 迁移
 pnpm db:migrate                   # 执行迁移
-pnpm db:seed                      # 种子数据 (5 个预置模板)
+pnpm db:seed                      # 种子数据 (5 个预置模板 + 5 个内置 Skill)
 pnpm db:studio                    # Drizzle Studio UI
 pnpm openapi:export               # 导出 OpenAPI 3.0 spec 到 sdk/openapi.json
 pnpm sdk:generate                 # 顺序执行 spec 导出 + TS/Python SDK 生成
@@ -182,6 +186,7 @@ pnpm lint:md                      # Markdown lint
 - **E2EE**: `TenantKeyModule` 管理 RSA-4096 公钥，`LlmEncryptionService` 执行 hybrid RSA-OAEP + AES-256-GCM 加密。`AgentTaskWorker` 在完成路径加密 LLM 输出，`EvidenceService` 加密 `agent_decision`/`tool_output` 证据。`tenant_encryption_keys` 为 append-only 历史模型（`organization_id + key_fingerprint` 唯一 + 单 active partial unique index）。Studio 私钥以 PKCS8 二进制存入 IndexedDB，解密时导入 non-extractable CryptoKey
 - **Smart Routing**: `SmartRoutingModule` 提供 6 种路由策略（TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN）。`FALLBACK_CHAIN` 支持非认证失败时自动切换模型重试。`routing_decisions.selected_model_id` 为 nullable。Studio 端 `smart-routing` 节点 canonical 端口为 `model-in-0` / `model-in-1` / `model-out`，默认策略为 `FALLBACK_CHAIN`
 - **PortDataType**: Rust / Studio / Server 统一使用 canonical 9 值 `model|text|json|image|audio|tool|sandbox|knowledge|skill`，Studio `mcpToolMapping` 兼容 legacy `number`/`boolean -> json` 回退
+- **SkillModule**: `SkillModule` 提供 Skill CRUD REST API（`/skills`）、`SkillStorageService`（SKILL.md 上传/下载/MinIO 存储 + YAML frontmatter 解析）和 `SkillResolverService`（按 tenant 查询 enabled skills 并生成 `<available_skills>` XML 片段注入 agent 对话系统提示与工作流执行系统提示）。5 个内置 Skill（code-review/documentation/test-generation/refactoring/debugging）由 `pnpm db:seed` 通过 `seedSkills()` upsert 到 `skills` 表（slug-based 幂等），sentinel UUID `00000000-0000-0000-0000-000000000000` 标记系统内置记录，`isBuiltin=true` 不可删除。`skill` 画布节点在 `node-scheduler` 中有 `case 'skill':` 分支，Agent 执行前通过 `SkillResolverService` 注入上游 skill 内容
 - **Socket.IO `/execution` 协议**: typed `ExecutionEvent<T>` 信封（含 monotonic eventId），`execution:subscribe`/`execution:unsubscribe` + ACK，事件名 `execution.node.*` + `execution.status.changed`。Gateway 含背压队列（500 cap, 100ms drain），断线重连支持 `lastEventId` 增量回放。`/knowledge` namespace 仍为隐式契约
 - **Workflow Session**: 持久化到 `execution_steps.checkpointData.session`；工具权限端点 `/executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve`；`awaiting_permission` 是 tool-level 状态且 step 保持 `running`
 - **ShareModule**: 管理端 `/workflow-shares` RBAC + 公开只读 `/s/:token`。分享创建要求 `publishedVersionId` 非空，公开读取从 snapshot 返回 `nodes/edges/viewport`，原子递增 `view_count/copy_count`
