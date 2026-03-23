@@ -243,7 +243,7 @@ describe('SkillBrowsePage', () => {
     it('状态筛选有全部状态/活跃/已归档选项', () => {
       render(<SkillBrowsePage />);
       const selects = screen.getAllByRole('combobox');
-      const statusSelect = selects[0];
+      const statusSelect = selects[0]!;
 
       const options = statusSelect.querySelectorAll('option');
       const values = Array.from(options).map((o) => o.textContent);
@@ -253,7 +253,7 @@ describe('SkillBrowsePage', () => {
     it('类型筛选有全部类型/内置技能/自定义技能选项', () => {
       render(<SkillBrowsePage />);
       const selects = screen.getAllByRole('combobox');
-      const builtinSelect = selects[1];
+      const builtinSelect = selects[1]!;
 
       const options = builtinSelect.querySelectorAll('option');
       const values = Array.from(options).map((o) => o.textContent);
@@ -263,7 +263,7 @@ describe('SkillBrowsePage', () => {
     it('更改状态筛选会将 status 参数传入 hook', () => {
       render(<SkillBrowsePage />);
       const selects = screen.getAllByRole('combobox');
-      fireEvent.change(selects[0], { target: { value: 'active' } });
+      fireEvent.change(selects[0]!, { target: { value: 'active' } });
 
       expect(useSkillListMock).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'active' }),
@@ -273,7 +273,7 @@ describe('SkillBrowsePage', () => {
     it('更改类型筛选会将 isBuiltin 参数传入 hook', () => {
       render(<SkillBrowsePage />);
       const selects = screen.getAllByRole('combobox');
-      fireEvent.change(selects[1], { target: { value: 'builtin' } });
+      fireEvent.change(selects[1]!, { target: { value: 'builtin' } });
 
       expect(useSkillListMock).toHaveBeenCalledWith(
         expect.objectContaining({ isBuiltin: true }),
@@ -324,7 +324,7 @@ describe('SkillBrowsePage', () => {
         const svg = b.querySelector('svg');
         return svg && b.textContent === '';
       });
-      await userEvent.click(moreButtons[moreButtons.length - 1]);
+      await userEvent.click(moreButtons[moreButtons.length - 1]!);
 
       await waitFor(() => {
         expect(screen.getByText('查看详情')).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe('SkillBrowsePage', () => {
         const svg = b.querySelector('svg');
         return svg && b.textContent === '';
       });
-      await userEvent.click(moreButtons[moreButtons.length - 1]);
+      await userEvent.click(moreButtons[moreButtons.length - 1]!);
 
       await waitFor(() => {
         expect(screen.getByText('查看详情')).toBeInTheDocument();
@@ -363,7 +363,7 @@ describe('SkillBrowsePage', () => {
         const svg = b.querySelector('svg');
         return svg && b.textContent === '';
       });
-      await userEvent.click(moreButtons[moreButtons.length - 1]);
+      await userEvent.click(moreButtons[moreButtons.length - 1]!);
 
       await waitFor(() => {
         expect(screen.getByText('删除')).toBeInTheDocument();

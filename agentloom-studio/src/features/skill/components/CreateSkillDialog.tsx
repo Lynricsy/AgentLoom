@@ -31,7 +31,10 @@ import {
 } from '../api/skillQueries';
 import { downloadSkillFile, type SkillFileInfo } from '../api/skillApi';
 import type { Skill } from '../types';
-import type { editor } from 'monaco-editor';
+import type { OnMount } from '@monaco-editor/react';
+
+/** Monaco editor instance — extracted from @monaco-editor/react OnMount callback */
+type IStandaloneCodeEditor = Parameters<OnMount>[0];
 
 /** 5 MB per file */
 const SKILL_FILE_MAX_SIZE = 5_242_880;
@@ -214,7 +217,7 @@ function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
  * Uses deltaDecorations with line-level className, re-applied on content change.
  */
 function applyFrontmatterDecorations(
-  editorInstance: editor.IStandaloneCodeEditor,
+  editorInstance: IStandaloneCodeEditor,
 ) {
   const model = editorInstance.getModel();
   if (!model) return;
@@ -233,7 +236,7 @@ function applyFrontmatterDecorations(
   const startLine = 1;
   const endLine = model.getPositionAt(match[0].length).lineNumber;
 
-  const newDecorations: editor.IModelDeltaDecoration[] = [
+  const newDecorations = [
     {
       range: {
         startLineNumber: startLine,
@@ -276,7 +279,7 @@ export function CreateSkillDialog({
   const [fileError, setFileError] = useState('');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<IStandaloneCodeEditor | null>(null);
 
   const createMutation = useCreateSkill();
   const updateMutation = useUpdateSkill();
@@ -316,7 +319,7 @@ export function CreateSkillDialog({
 
 
   const handleEditorMount = useCallback(
-    (editor: editor.IStandaloneCodeEditor) => {
+    (editor: IStandaloneCodeEditor) => {
       editorRef.current = editor;
       applyFrontmatterDecorations(editor);
     },
