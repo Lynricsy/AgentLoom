@@ -37,6 +37,7 @@ describe('nodeTypeRegistry', () => {
       'input-preprocessor',
       'memory',
       'agent',
+      'skill',
     ])
   })
 
@@ -178,6 +179,7 @@ describe('nodeTypeRegistry', () => {
       'llm-model',
       'smart-routing',
       'agent',
+      'skill',
       'http-tool',
       'code-tool',
       'sandbox',

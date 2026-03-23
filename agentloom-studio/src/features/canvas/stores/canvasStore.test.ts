@@ -124,7 +124,7 @@ describe('canvasStore', () => {
     }
 
     expect(state.nodes).toHaveLength(1)
-    expect(node.data.inputPorts).toHaveLength(9)
+    expect(node.data.inputPorts).toHaveLength(10)
     expect(node.data.outputPorts).toHaveLength(4)
     expect(node.data.config).toEqual({})
     expect(state.isDirty).toBe(true)
@@ -277,7 +277,7 @@ describe('canvasStore', () => {
     }
 
     expect(hydratedNode.data.config).toEqual({})
-    expect(hydratedNode.data.inputPorts).toHaveLength(9)
+    expect(hydratedNode.data.inputPorts).toHaveLength(10)
     expect(hydratedNode.data.outputPorts).toHaveLength(4)
     expect(hydratedNode.data.modelConfig).toEqual({ connectedModelNodeId: null })
     expect(hydratedNode.data.autonomyConfig).toEqual(

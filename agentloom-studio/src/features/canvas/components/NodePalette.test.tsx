@@ -136,6 +136,7 @@ describe('NodePalette', () => {
       'llm-model',
       'smart-routing',
       'agent',
+      'skill',
       'http-tool',
       'code-tool',
       'sandbox',

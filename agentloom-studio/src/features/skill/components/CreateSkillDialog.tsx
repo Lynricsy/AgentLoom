@@ -31,7 +31,7 @@ import {
 } from '../api/skillQueries';
 import { downloadSkillFile, type SkillFileInfo } from '../api/skillApi';
 import type { Skill } from '../types';
-
+import type { editor } from 'monaco-editor';
 
 /** 5 MB per file */
 const SKILL_FILE_MAX_SIZE = 5_242_880;
@@ -214,7 +214,7 @@ function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
  * Uses deltaDecorations with line-level className, re-applied on content change.
  */
 function applyFrontmatterDecorations(
-  editorInstance: any,
+  editorInstance: editor.IStandaloneCodeEditor,
 ) {
   const model = editorInstance.getModel();
   if (!model) return;
@@ -233,7 +233,7 @@ function applyFrontmatterDecorations(
   const startLine = 1;
   const endLine = model.getPositionAt(match[0].length).lineNumber;
 
-  const newDecorations: any[] = [
+  const newDecorations: editor.IModelDeltaDecoration[] = [
     {
       range: {
         startLineNumber: startLine,
@@ -244,6 +244,7 @@ function applyFrontmatterDecorations(
       options: {
         isWholeLine: true,
         className: 'skill-frontmatter-line',
+        // 行号侧也加一个标记
         glyphMarginClassName: 'skill-frontmatter-glyph',
       },
     },
@@ -275,7 +276,7 @@ export function CreateSkillDialog({
   const [fileError, setFileError] = useState('');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   const createMutation = useCreateSkill();
   const updateMutation = useUpdateSkill();
@@ -315,7 +316,7 @@ export function CreateSkillDialog({
 
 
   const handleEditorMount = useCallback(
-    (editor: any) => {
+    (editor: editor.IStandaloneCodeEditor) => {
       editorRef.current = editor;
       applyFrontmatterDecorations(editor);
     },
@@ -428,6 +429,7 @@ export function CreateSkillDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-background shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]">
           <div className="flex flex-col gap-5 p-6">
+            {/* 标题 */}
             <div className="flex items-center justify-between">
               <Dialog.Title className="text-lg font-bold">
                 {isEditing ? '编辑技能' : '新建技能'}
@@ -438,6 +440,7 @@ export function CreateSkillDialog({
               </Dialog.Close>
             </div>
 
+            {/* 基础信息 */}
             <div className="flex flex-col gap-4">
               <div className="space-y-1.5">
                 <Label>名称 *</Label>
@@ -467,6 +470,7 @@ export function CreateSkillDialog({
               </div>
             </div>
 
+            {/* Tabs: 内容编辑器 / 文件管理 */}
             <Tabs defaultValue="content" className="space-y-3">
               <TabsList>
                 <TabsTrigger value="content">内容编辑</TabsTrigger>
@@ -475,6 +479,7 @@ export function CreateSkillDialog({
                 </TabsTrigger>
               </TabsList>
 
+              {/* --- 内容编辑 Tab --- */}
               <TabsContent value="content" className="space-y-1.5">
                 <Label>SKILL.md 内容</Label>
                 <div className="overflow-hidden rounded-md border border-border">
@@ -509,6 +514,7 @@ export function CreateSkillDialog({
                 </p>
               </TabsContent>
 
+              {/* --- 文件管理 Tab --- */}
               <TabsContent value="files" className="space-y-3">
                 {!isEditing ? (
                   <div className="rounded-md border border-border bg-muted/20 px-4 py-8 text-center">
@@ -518,11 +524,13 @@ export function CreateSkillDialog({
                   </div>
                 ) : (
                   <>
+                    {/* 上传区域 */}
                     <DropZone
                       onFilesSelected={handleFilesSelected}
                       disabled={uploadMutation.isPending}
                     />
 
+                    {/* 错误信息 */}
                     {fileError && (
                       <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
                         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
@@ -530,6 +538,7 @@ export function CreateSkillDialog({
                       </div>
                     )}
 
+                    {/* 上传进度 */}
                     {uploadMutation.isPending && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -537,6 +546,7 @@ export function CreateSkillDialog({
                       </div>
                     )}
 
+                    {/* 文件列表 */}
                     {filesQuery.isLoading ? (
                       <div className="flex items-center justify-center py-6">
                         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -562,6 +572,7 @@ export function CreateSkillDialog({
                       </div>
                     )}
 
+                    {/* 总量信息 */}
                     {files.length > 0 && (
                       <p className="text-xs text-muted-foreground">
                         共 {files.length} 个文件，总计{' '}
@@ -574,6 +585,7 @@ export function CreateSkillDialog({
               </TabsContent>
             </Tabs>
 
+            {/* 底部操作栏 */}
             <div className="flex justify-end gap-2 border-t border-border pt-4">
               <Button
                 variant="outline"
