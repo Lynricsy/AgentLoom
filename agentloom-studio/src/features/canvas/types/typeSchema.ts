@@ -7,6 +7,7 @@ export const PORT_DATA_TYPES = [
   'tool',
   'sandbox',
   'knowledge',
+  'skill',
 ] as const
 
 export type PortDataType = (typeof PORT_DATA_TYPES)[number]
