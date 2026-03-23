@@ -20,6 +20,7 @@ import '../features/agents/screens/agent_detail_screen.dart';
 import '../features/agents/screens/agent_conversation_screen.dart';
 import '../features/skills/screens/skill_list_screen.dart';
 import '../features/skills/screens/skill_detail_screen.dart';
+import '../features/skills/screens/skill_edit_screen.dart';
 import '../features/memory/models/memory_audit_entry.dart';
 import '../features/memory/providers/memory_providers.dart';
 import '../features/memory/screens/memory_audit_detail_screen.dart';
@@ -266,6 +267,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                       final skillId = state.pathParameters['skillId']!;
                       return SkillDetailScreen(skillId: skillId);
                     },
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        name: RouteNames.skillEdit,
+                        builder: (context, state) {
+                          final skillId = state.pathParameters['skillId']!;
+                          return SkillEditScreen(skillId: skillId);
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -8,7 +8,7 @@ import '../../../routes/route_names.dart';
 import '../providers/skill_provider.dart';
 import '../widgets/skill_card.dart';
 
-/// Skill 列表页面 — T20 将重写此页面内容
+/// Skill 列表页面 — 搜索 + 类型筛选 + 状态筛选 + 下拉刷新 + 无限滚动
 class SkillListScreen extends ConsumerStatefulWidget {
   const SkillListScreen({super.key});
 
@@ -45,13 +45,24 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
         children: [
           // 搜索栏
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: TextField(
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search skills...',
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          ref
+                              .read(skillListProvider.notifier)
+                              .setSearchQuery('');
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -63,7 +74,42 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
             ),
           ),
 
-          // 状态筛选 Chips
+          // 类型筛选 Chips (全部 / 内置 / 自定义)
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _FilterChip(
+                  label: '全部',
+                  selected: skillState.value?.isBuiltinFilter == null,
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setIsBuiltinFilter(null),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '内置',
+                  selected: skillState.value?.isBuiltinFilter == true,
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setIsBuiltinFilter(true),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '自定义',
+                  selected: skillState.value?.isBuiltinFilter == false,
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setIsBuiltinFilter(false),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // 状态筛选 Chips (All / Active / Archived)
           SizedBox(
             height: 40,
             child: ListView(
@@ -98,63 +144,17 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
           ),
           const SizedBox(height: 8),
 
-          // 列表
+          // 列表区域
           Expanded(
             child: skillState.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 48,
-                      color: theme.colorScheme.error,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to load skills',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () =>
-                          ref.read(skillListProvider.notifier).refresh(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              error: (error, _) => _ErrorView(
+                theme: theme,
+                onRetry: () => ref.read(skillListProvider.notifier).refresh(),
               ),
               data: (state) {
                 if (state.skills.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome_outlined,
-                          size: 64,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No skills found',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Try adjusting your search or filters',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
+                  return _EmptyView(theme: theme);
                 }
 
                 return RefreshIndicator(
@@ -169,6 +169,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
                       return false;
                     },
                     child: ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 16),
                       itemCount:
                           state.skills.length + (state.isLoadingMore ? 1 : 0),
                       itemBuilder: (context, index) {
@@ -202,6 +203,8 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
   }
 }
 
+// -- 私有子组件 --
+
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -220,6 +223,65 @@ class _FilterChip extends StatelessWidget {
       selected: selected,
       onSelected: onSelected,
       showCheckmark: false,
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final ThemeData theme;
+  final VoidCallback onRetry;
+
+  const _ErrorView({required this.theme, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+          const SizedBox(height: 16),
+          Text('Failed to load skills', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyView extends StatelessWidget {
+  final ThemeData theme;
+
+  const _EmptyView({required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 64,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No skills found',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Try adjusting your search or filters',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

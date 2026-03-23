@@ -2,12 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../models/skill_dto.dart';
 
-/// Skill 卡片（列表页用）— T20 将重写此组件内容
+/// Skill 卡片（列表页用）
 class SkillCard extends StatelessWidget {
   final SkillDto skill;
   final VoidCallback? onTap;
 
   const SkillCard({super.key, required this.skill, this.onTap});
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays == 0) return 'Today';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${date.month}/${date.day}/${date.year}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,12 +44,16 @@ class SkillCard extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.tertiaryContainer,
+                      color: skill.isBuiltin
+                          ? theme.colorScheme.secondaryContainer
+                          : theme.colorScheme.tertiaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      Icons.auto_awesome,
-                      color: theme.colorScheme.onTertiaryContainer,
+                      skill.isBuiltin ? Icons.verified : Icons.auto_awesome,
+                      color: skill.isBuiltin
+                          ? theme.colorScheme.onSecondaryContainer
+                          : theme.colorScheme.onTertiaryContainer,
                       size: 22,
                     ),
                   ),
@@ -51,53 +70,38 @@ class SkillCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: skill.status == 'active'
-                                    ? theme.colorScheme.primaryContainer
-                                    : theme.colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                skill.status,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: skill.status == 'active'
-                                      ? theme.colorScheme.onPrimaryContainer
-                                      : theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
+                            _StatusBadge(
+                              label: skill.status,
+                              color: skill.status == 'active'
+                                  ? theme.colorScheme.primaryContainer
+                                  : theme.colorScheme.surfaceContainerHighest,
+                              textColor: skill.status == 'active'
+                                  ? theme.colorScheme.onPrimaryContainer
+                                  : theme.colorScheme.onSurfaceVariant,
                             ),
                             if (skill.isBuiltin) ...[
                               const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.secondaryContainer,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  'Built-in',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color:
-                                        theme.colorScheme.onSecondaryContainer,
-                                  ),
-                                ),
+                              _StatusBadge(
+                                label: 'Built-in',
+                                color: theme.colorScheme.secondaryContainer,
+                                textColor:
+                                    theme.colorScheme.onSecondaryContainer,
                               ),
                             ],
                           ],
                         ),
                       ],
                     ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.5,
+                    ),
+                    size: 20,
                   ),
                 ],
               ),
@@ -113,9 +117,79 @@ class SkillCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.6,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatDate(skill.createdAt),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.6,
+                      ),
+                    ),
+                  ),
+                  if (skill.fileCount > 0) ...[
+                    const SizedBox(width: 12),
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.6,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${skill.fileCount} files',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 状态徽章
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color textColor;
+
+  const _StatusBadge({
+    required this.label,
+    required this.color,
+    required this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: textColor),
       ),
     );
   }

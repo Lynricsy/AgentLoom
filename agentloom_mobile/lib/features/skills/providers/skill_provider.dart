@@ -11,6 +11,7 @@ class SkillListState {
   final List<SkillDto> skills;
   final PaginationMeta? meta;
   final String? statusFilter;
+  final bool? isBuiltinFilter;
   final String? searchQuery;
   final bool isLoadingMore;
 
@@ -18,6 +19,7 @@ class SkillListState {
     this.skills = const [],
     this.meta,
     this.statusFilter,
+    this.isBuiltinFilter,
     this.searchQuery,
     this.isLoadingMore = false,
   });
@@ -26,9 +28,11 @@ class SkillListState {
     List<SkillDto>? skills,
     PaginationMeta? meta,
     String? statusFilter,
+    bool? isBuiltinFilter,
     String? searchQuery,
     bool? isLoadingMore,
     bool clearStatusFilter = false,
+    bool clearIsBuiltinFilter = false,
     bool clearSearchQuery = false,
   }) {
     return SkillListState(
@@ -37,6 +41,9 @@ class SkillListState {
       statusFilter: clearStatusFilter
           ? null
           : (statusFilter ?? this.statusFilter),
+      isBuiltinFilter: clearIsBuiltinFilter
+          ? null
+          : (isBuiltinFilter ?? this.isBuiltinFilter),
       searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
@@ -46,6 +53,7 @@ class SkillListState {
 /// 技能列表 Notifier（手动 AsyncNotifier，不使用 riverpod_generator）
 class SkillListNotifier extends AsyncNotifier<SkillListState> {
   String? _statusFilter;
+  bool? _isBuiltinFilter;
   String? _searchQuery;
 
   @override
@@ -58,6 +66,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
     final result = await api.listSkills(
       page: page,
       status: _statusFilter,
+      isBuiltin: _isBuiltinFilter,
       search: _searchQuery,
     );
 
@@ -65,6 +74,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
       skills: result.data,
       meta: result.meta,
       statusFilter: _statusFilter,
+      isBuiltinFilter: _isBuiltinFilter,
       searchQuery: _searchQuery,
     );
   }
@@ -72,6 +82,13 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   /// 设置状态过滤器并重新加载
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _fetchSkills());
+  }
+
+  /// 设置内置/自定义过滤器并重新加载
+  Future<void> setIsBuiltinFilter(bool? isBuiltin) async {
+    _isBuiltinFilter = isBuiltin;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchSkills());
   }
@@ -104,6 +121,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
       final result = await api.listSkills(
         page: meta.page + 1,
         status: _statusFilter,
+        isBuiltin: _isBuiltinFilter,
         search: _searchQuery,
       );
 
@@ -114,6 +132,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
           skills: [...currentState.skills, ...result.data],
           meta: result.meta,
           statusFilter: _statusFilter,
+          isBuiltinFilter: _isBuiltinFilter,
           searchQuery: _searchQuery,
         ),
       );

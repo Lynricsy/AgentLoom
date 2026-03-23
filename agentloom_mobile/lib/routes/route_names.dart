@@ -26,6 +26,7 @@ class RouteNames {
   /// Skill 路由
   static const String skills = 'skills';
   static const String skillDetail = 'skillDetail';
+  static const String skillEdit = 'skillEdit';
 
   /// Memory 路由
   static const String memoryList = 'memoryList';
