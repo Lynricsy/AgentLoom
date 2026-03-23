@@ -77,6 +77,10 @@ AgentLoomAUTO/
 | 修改移动端路由 | `agentloom_mobile/lib/routes/` | GoRouter + StatefulShellRoute |
 | 移动端共享组件 | `agentloom_mobile/lib/shared/` | providers/models/widgets |
 | 环境变量 | `agentloom-server/.env.example` / `agentloom-studio/.env.example` / `agentloom_mobile/.env.*` | |
+| 管理沙箱容器镜像与 HTTP 适配 | `agentloom-deploy/sandbox/` | Fastify HTTP + pi-coding-agent 运行时 |
+| 管理 pi-agent-core 适配器 | `agentloom-server/src/modules/agent/pi-agent-core.adapter.ts` | InProcessAgent 委托运行时 |
+| 管理 pi 配置生成 | `agentloom-server/src/modules/sandbox/pi-config-generator.service.ts` | Agent 定义 → pi 配置文件 |
+| 管理工具 schema 转换 | `agentloom-server/src/modules/agent/tool-schema-converter.ts` | Zod ↔ TypeBox 边界转换 |
 | 添加/编辑文档 | `agentloom-docs/zh/` / `agentloom-docs/en/` | VitePress 2，中英双语，prebuild 同步 OpenAPI spec |
 
 ## 跨包架构
@@ -92,6 +96,16 @@ mobile (Flutter) ──HTTP REST──→ server (/api/v1)
               ──Socket.IO──→ server (/execution, /agent-conversation namespace, JWT auth)
 
 server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + MinIO
+
+pi-mono (外部仓库，提供两个核心包):
+  pi-coding-agent: 完整编码 Agent 运行时，用作沙箱容器 AI 引擎
+  pi-agent-core:   Agent 生命周期管理库，InProcessAgentAdapter 通过 PiAgentCoreAdapter 委托
+  沙箱容器:        agentloom/sandbox:latest (archlinux + pi-coding-agent + Fastify HTTP)
+                   暴露 POST /v1/session、POST /v1/prompt (SSE)、POST /v1/abort、GET /health
+  服务端集成:      InProcessAgentAdapter 委托 PiAgentCoreAdapter 处理 live runtime 操作
+                   SandboxAgentAdapter 通过 HTTP POST + SSE 流与容器化 Agent 通信
+                   PiConfigGeneratorService 从 Agent 定义生成 pi 配置文件挂载到容器 /config/
+                   tool-schema-converter.ts 在 Zod ↔ TypeBox 集成边界做双向转换
 
 Agent 与 Workflow 为两个并行顶层概念:
   Workflow: DAG 编排 → /execution namespace → workflow_executions/execution_steps
@@ -179,6 +193,11 @@ cd agentloom-docs
 pnpm install && pnpm dev          # 开发 (VitePress)
 pnpm build                        # 生产构建
 pnpm lint:md                      # Markdown lint
+
+# Sandbox Container
+cd agentloom-deploy/sandbox
+bash build.sh                      # 构建 agentloom/sandbox:latest 镜像
+npm test                           # 容器 HTTP 适配层测试
 ```
 
 ## 注意事项
@@ -209,3 +228,7 @@ pnpm lint:md                      # Markdown lint
 - **Socket.IO `/agent-conversation` 协议**: 与 `/execution` namespace 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 `.wasm` 文件
+- **沙箱容器运行时 (pi-coding-agent)**: `agentloom/sandbox:latest` 基于 archlinux 镜像，内嵌 `pi-coding-agent` + Fastify HTTP 适配层。容器暴露 `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答，兼容 JSON-RPC 2.0 envelope 与直接 AgentEvent 两种格式）、`POST /v1/abort`（取消）、`GET /health`（健康检查）。LLM API Key 通过环境变量注入。`PiConfigGeneratorService` 从 Agent 定义生成 pi 配置文件挂载到容器 `/config/`
+- **InProcessAgentAdapter (pi-agent-core)**: `InProcessAgentAdapter` 作为持久化包装层，将 live runtime 操作委托给 `PiAgentCoreAdapter`（基于 `pi-agent-core` 的 `Agent` 类），自身维护 workflow checkpoint、conversation durable snapshot、replay ledger。`streamFn` 适配器桥接 Vercel AI SDK `streamText()` 与 pi-agent-core 的 `StreamFn` 接口。工具 schema 通过 `tool-schema-converter.ts` 在 Zod ↔ TypeBox 之间转换
+- **ESM 动态导入**: pi-mono 包为纯 ESM，NestJS (CommonJS) 侧通过 `await import()` 动态导入。`pi-imports.ts` 提供统一的惰性导入入口（`getPiAgentCore()`、`getPiCodingAgent()`、`getPiAi()`）
+- **沙箱工具权限**: `SandboxAgentAdapter` 实现 Promise gate 工具权限机制，容器通过 `POST /agent-conversations/:id/tool-permission` 回调通知权限请求，30s 超时默认拒绝

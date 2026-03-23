@@ -67,6 +67,13 @@ AgentLoom/
                                               ▼
                                             MinIO
                                           (对象存储)
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  Docker: agentloom/sandbox:latest                                    │
+│  (archlinux + pi-coding-agent + Fastify HTTP)                        │
+│  POST /v1/session · POST /v1/prompt (SSE) · POST /v1/abort          │
+│  ◀── HTTP + SSE ── server (SandboxAgentAdapter)                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -83,6 +90,7 @@ AgentLoom/
 | 向量库 | Qdrant |
 | 对象存储 | MinIO |
 | AI SDK | Vercel AI SDK (@ai-sdk/openai, anthropic, google) |
+| Agent 运行时 | pi-agent-core (Agent 生命周期) + pi-coding-agent (沙箱容器 AI 引擎) |
 | 实时通信 | Socket.IO (Redis Adapter) |
 | 推送通知 | Firebase Cloud Messaging |
 | 测试 | Vitest + SWC (80% 覆盖率阈值) |
@@ -370,7 +378,17 @@ pnpm start:dev                # 启动开发服务器 (watch mode)
 
 API 文档: `http://localhost:<APP_PORT>/docs` (Swagger UI)
 
-### 3. 启动前端
+### 3. 构建沙箱容器镜像（可选）
+
+```bash
+# 构建沙箱容器镜像 (sandbox/build.sh)
+cd agentloom-deploy/sandbox
+bash build.sh                 # 构建 agentloom/sandbox:latest
+```
+
+> 沙箱容器内嵌 pi-coding-agent 运行时，用于 Agent 隔离执行。不使用沙箱功能可跳过。
+
+### 4. 启动前端
 
 ```bash
 cd agentloom-studio
@@ -379,7 +397,7 @@ pnpm install
 pnpm dev                      # 启动 Vite 开发服务器
 ```
 
-### 4. 移动端（可选）
+### 5. 移动端（可选）
 
 ```bash
 cd agentloom_mobile
@@ -443,6 +461,14 @@ cd agentloom-plugin-cli && pnpm build && pnpm test
 
 # Template
 cd agentloom-plugin-template && pnpm build && pnpm test
+```
+
+### Sandbox Container
+
+```bash
+cd agentloom-deploy/sandbox
+bash build.sh                 # 构建 agentloom/sandbox:latest 镜像
+npm test                      # 容器 HTTP 适配层测试
 ```
 
 ### Mobile

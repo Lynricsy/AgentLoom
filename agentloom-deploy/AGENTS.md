@@ -24,6 +24,37 @@ agentloom-deploy/
 │   ├── values.yaml                    # 默认 values
 │   ├── values.private.yaml            # 生产 overlay（2 副本、TLS、大容量 PVC）
 │   └── templates/                     # 15 个模板（含 BYOD fail() 守卫的 _helpers.tpl）
+├── sandbox/                           # 沙箱容器镜像与 HTTP 适配层
+│   ├── build.sh                       # 构建 agentloom/sandbox:latest 镜像
+│   ├── Dockerfile                     # archlinux + pi-coding-agent + Fastify HTTP
+│   ├── src/                           # Fastify v5 HTTP 适配层（server.ts, acp-adapter.ts, event-stream.ts, extension-factory.ts）
+│   └── test/                          # 容器 HTTP 适配层测试
+├── scripts/
+│   ├── init-db.sh                     # 数据库初始化（Supabase 兼容角色 bootstrap + migrate + seed）
+│   ├── backup-postgres.sh             # pg_dump -Fc + sha256 校验 + 结构验证
+│   ├── backup-minio.sh               # mc mirror 对象备份
+│   └── restore.sh                     # PG + MinIO 恢复（含前置校验与烟雾测试）
+├── systemd/                           # 备份定时任务（4 个 unit 文件）
+├── backups/                           # 备份输出目录（PG + MinIO）
+└── README.md                          # 私有部署手册
+```
+agentloom-deploy/
+├── .env.template                      # 根环境变量模板（Compose/Helm 共用契约）
+├── docker-compose.yml                 # 根 Compose 入口（8 服务）
+├── nginx.conf                         # 反向代理配置
+├── docker/
+│   ├── docker-compose.prod.yml        # Compose 变体（与根 Compose 存在重复）
+│   ├── server.Dockerfile              # server/worker 共用镜像
+│   └── studio.Dockerfile              # Studio 静态资源镜像（运行时 sed 注入 VITE_*）
+├── envs/
+│   ├── .env.shared.example            # 共享变量拆分视图
+│   ├── .env.server.example            # Server 专属变量
+│   └── .env.studio.example            # Studio 专属变量
+├── kubernetes/helm/agentloom/         # Helm Chart
+│   ├── Chart.yaml
+│   ├── values.yaml                    # 默认 values
+│   ├── values.private.yaml            # 生产 overlay（2 副本、TLS、大容量 PVC）
+│   └── templates/                     # 15 个模板（含 BYOD fail() 守卫的 _helpers.tpl）
 ├── scripts/
 │   ├── init-db.sh                     # 数据库初始化（Supabase 兼容角色 bootstrap + migrate + seed）
 │   ├── backup-postgres.sh             # pg_dump -Fc + sha256 校验 + 结构验证
@@ -101,3 +132,15 @@ PG 备份完成后自动执行 `pg_restore --list` 结构校验，避免产生�
 - systemd timer 仅适用于单机 Compose 部署；Kubernetes 环境需另行配置 CronJob
 - `docker/docker-compose.prod.yml` 与根 `docker-compose.yml` 存在重复，根文件为主入口
 - private 模式下 `APP_SUPABASE_*` 三个变量遵循"全空或全填"契约，全空时 Supabase 相关认证链路不可用
+
+## 沙箱容器 (sandbox/)
+
+`sandbox/` 子目录包含独立的 Agent 沙箱容器镜像构建与 HTTP 适配层：
+
+- **镜像**: `agentloom/sandbox:latest`，基于 archlinux，内嵌 `pi-coding-agent` 运行时 + Fastify v5 HTTP 适配层
+- **构建**: `bash sandbox/build.sh` 执行 Docker build
+- **端点**: `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答）、`POST /v1/abort`（取消）、`GET /health`（健康检查）
+- **配置挂载**: Server 通过 `PiConfigGeneratorService` 生成 `settings.json`、`models.json`、`system-prompt.md`，bind-mount 到容器 `/config/`
+- **LLM API Key**: 通过容器环境变量注入（ANTHROPIC_API_KEY、OPENAI_API_KEY 等）
+- **工具权限**: 容器通过 `PERMISSION_CALLBACK_URL`（`http://host.docker.internal:{APP_PORT}/api/v1/agent-conversations/{id}/tool-permission`）回调 Server 请求权限，30s 超时默认拒绝
+- **测试**: `npm test` 运行 Vitest 单元测试（mock session factory，无需真实 pi-coding-agent）
