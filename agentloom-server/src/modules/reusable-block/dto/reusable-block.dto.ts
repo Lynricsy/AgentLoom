@@ -24,6 +24,7 @@ export const ReusableBlockPortDataTypeSchema = z.enum([
   'tool',
   'sandbox',
   'knowledge',
+  'skill',
 ]);
 
 const ReusableBlockNodeSchema = z.object({ id: z.string().min(1) }).passthrough();

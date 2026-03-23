@@ -46,6 +46,13 @@ describe('execution.exceptions', () => {
         expect(isPortTypeCompatible(sourceType, targetType)).toBe(false);
       },
     );
+
+    it('should return true for skill to skill', () =>
+      expect(isPortTypeCompatible('skill', 'skill')).toBe(true));
+    it('should return true for skill to text', () =>
+      expect(isPortTypeCompatible('skill', 'text')).toBe(true));
+    it('should return false for text to skill', () =>
+      expect(isPortTypeCompatible('text', 'skill')).toBe(false));
   });
 
   describe('NodeTypeMismatchException', () => {

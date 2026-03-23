@@ -230,5 +230,6 @@ export function isPortTypeCompatible(
 ): boolean {
   if (sourceType === targetType) return true;
   if (targetType === 'json') return true;
+  if (sourceType === 'skill' && targetType === 'text') return true;
   return false;
 }
