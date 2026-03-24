@@ -23,6 +23,13 @@ import type {
 import type { ContentBlock } from './types/content-block.types';
 import type { ToolCallEvent, ToolPermissionRequest } from './types/tool-call-event.types';
 
+const PERMISSION_EXEMPT_TOOLS = new Set([
+  'call_subagent',
+  'spawn_subagent',
+  'wait_for_subagents',
+  'get_subagent_status',
+]);
+
 type PiToolCallShape = {
   id?: string;
   toolCallId?: string;
@@ -437,6 +444,11 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
   ): Promise<{ block: boolean; reason?: string } | undefined> {
     const toolCallId = this.getToolCallId(context);
     const toolName = this.getToolName(context);
+
+    if (PERMISSION_EXEMPT_TOOLS.has(toolName)) {
+      return undefined;
+    }
+
     const args = this.normalizeToolArgs(context.args ?? context.toolCall?.arguments);
 
     const permissionRequest: ToolPermissionRequest = {

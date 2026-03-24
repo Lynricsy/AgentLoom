@@ -319,18 +319,17 @@ export class WorkflowAgentAdapter {
 
     for (const subAgent of subAgents) {
       const nextVisited = new Set(params.visitedIds);
-      const resolved = await resolveSubAgent(
-        {
-          agentDefinitionId: subAgent.agentDefinitionId,
-          ...(subAgent.agentVersionId
-            ? { agentVersionId: subAgent.agentVersionId }
-            : {}),
-        },
-        this.dependencies.db,
-        params.tenantId,
-        params.currentDepth + 1,
-        nextVisited,
-      );
+      const resolved = await resolveSubAgent({
+        agentDefinitionId: subAgent.agentDefinitionId,
+        ...(subAgent.agentVersionId
+          ? { agentVersionId: subAgent.agentVersionId }
+          : {}),
+        tenantId: params.tenantId,
+        currentDepth: params.currentDepth + 1,
+        maxDepth: MAX_SUB_AGENT_DEPTH,
+        visitedIds: nextVisited,
+        agentDefinitionService: this.dependencies.agentDefinitionService,
+      });
 
       if (!resolved.versionSnapshot?.snapshot) {
         throw new Error(
