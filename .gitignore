@@ -71,7 +71,7 @@ $RECYCLE.BIN/
 AgentLogs/
 .autobmad-logs/
 .autobmad-state.json
-.sisyphus/
+
 
 # ──────────────────────────────────────────────
 # 日志与调试 (Logs & Debug)
