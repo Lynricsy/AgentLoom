@@ -1,0 +1,42 @@
+# Build context: project root. Call with: -f agentloom-deploy/docker/docs.Dockerfile .
+# scripts/sync-openapi.mjs falls back to a stub spec when agentloom-server/sdk/openapi.json
+# is absent — no COPY needed for the build to succeed.
+
+FROM node:22-bookworm-slim AS build
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV CI=true
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /workspace
+
+COPY agentloom-docs ./agentloom-docs
+
+WORKDIR /workspace/agentloom-docs
+RUN pnpm install --frozen-lockfile
+
+RUN pnpm build
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2: Runtime
+# ─────────────────────────────────────────────────────────────────────────────
+FROM openresty/openresty:alpine
+
+COPY --from=build /workspace/agentloom-docs/.vitepress/dist /usr/local/openresty/nginx/html/documentation
+
+RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
+  'server {' \
+  '  listen 8081;' \
+  '  server_name _;' \
+  '' \
+  '  location /documentation/ {' \
+  '    root /usr/local/openresty/nginx/html;' \
+  '    try_files $uri $uri/ /documentation/index.html;' \
+  '  }' \
+  '}' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 8081
+
+CMD ["openresty", "-g", "daemon off;"]

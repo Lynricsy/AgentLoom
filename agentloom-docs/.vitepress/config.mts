@@ -5,6 +5,7 @@ export default withMermaid(
   defineConfig({
     title: 'AgentLoom',
     description: '多智能体工作流编排平台 — 文档中心',
+    base: '/documentation/',
     srcDir: '.',
     srcExclude: ['AGENTS.md', '_bmad/**', 'node_modules/**'],
     cleanUrls: true,
