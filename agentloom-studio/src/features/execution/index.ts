@@ -3,6 +3,7 @@ export type {
   ListExecutionsParams,
 } from './api/executionApi'
 export { executionKeys } from './api/executionKeys'
+export { ptyKeys, fetchPtySessions, fetchPtyBufferDump, sendPtyWrite } from './api/pty'
 export { useRunWorkflow, useCancelExecution } from './api/executionMutations'
 export { useExecutionList, useExecution } from './hooks/useExecutionList'
 export { RunCard } from './components/RunCard'
@@ -39,6 +40,10 @@ export { useExecutionMonitor } from './hooks/useExecutionMonitor'
 export { useExecutionSocket } from './hooks/useExecutionSocket'
 export { useTimelineData } from './hooks/useTimelineData'
 export type { TimelineData } from './hooks/useTimelineData'
+export { usePtyTerminals } from './hooks/usePtyTerminals'
+export type { UsePtyTerminalsOptions, UsePtyTerminalsResult } from './hooks/usePtyTerminals'
+export { usePtyBufferDump } from './hooks/usePtyBufferDump'
+export { usePtySessions } from './hooks/usePtySessions'
 
 export type {
   ClientToServerEvents,
@@ -80,6 +85,18 @@ export type {
   ToolCallAgentEvent,
   ToolCallEventData,
   ToolCallStatus,
+} from './types'
+export type {
+  PtyBufferDumpResponse,
+  PtyEvent,
+  PtyExitEvent,
+  PtyKilledEvent,
+  PtyOutputEvent,
+  PtySessionInfo,
+  PtySessionState,
+  PtySessionStatus,
+  PtySpawnedEvent,
+  PtyWriteResponse,
 } from './types'
 export {
   useExecutionId,

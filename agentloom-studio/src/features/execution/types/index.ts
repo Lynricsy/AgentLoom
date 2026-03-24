@@ -52,6 +52,19 @@ export type {
   ToolPermissionResolvedPayload,
 } from './agentEvent.types'
 
+export type {
+  PtyBufferDumpResponse,
+  PtyEvent,
+  PtyExitEvent,
+  PtyKilledEvent,
+  PtyOutputEvent,
+  PtySessionInfo,
+  PtySessionState,
+  PtySessionStatus,
+  PtySpawnedEvent,
+  PtyWriteResponse,
+} from './pty'
+
 export type ExecutionStepStatus =
   | 'pending'
   | 'queued'
