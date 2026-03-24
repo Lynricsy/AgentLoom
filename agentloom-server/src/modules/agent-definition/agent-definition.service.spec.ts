@@ -930,6 +930,54 @@ describe('AgentDefinitionService', () => {
 
       expect(config.routingConfig!.strategy).toBe('FALLBACK_CHAIN');
     });
+
+    it('子代理别名重复时应抛出错误', () => {
+      const nodes = [
+        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'helper' } },
+        { id: 'n2', type: 'sub-agent', data: { agentDefinitionId: 'agent-b', alias: 'helper' } },
+      ];
+
+      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('子代理别名重复: helper');
+    });
+
+    it('子代理别名格式非法（数字开头）时应抛出错误', () => {
+      const nodes = [
+        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: '123abc' } },
+      ];
+
+      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('子代理别名格式非法: 123abc');
+    });
+
+    it('子代理别名格式合法时不应抛出错误', () => {
+      const nodes = [
+        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'my-agent_1' } },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+
+      expect(config.subAgents![0].alias).toBe('my-agent_1');
+    });
+
+    it('子代理引用自身时应抛出错误', () => {
+      const nodes = [
+        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'current-agent', alias: 'self' } },
+      ];
+
+      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('不能将自身作为子代理引用');
+    });
+
+    it('子代理引用合法且别名唯一时应正常编译', () => {
+      const nodes = [
+        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'workerA' } },
+        { id: 'n2', type: 'sub-agent', data: { agentDefinitionId: 'agent-b', alias: 'workerB' } },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+
+      expect(config.subAgents).toHaveLength(2);
+      expect(config.subAgents![0].alias).toBe('workerA');
+      expect(config.subAgents![1].alias).toBe('workerB');
+    });
   });
 
   // ─── compileCanvas ────────────────────────────────────────

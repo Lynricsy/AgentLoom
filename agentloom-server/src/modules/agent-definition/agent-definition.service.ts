@@ -352,12 +352,13 @@ export class AgentDefinitionService {
 
   async compileCanvas(agentId: string): Promise<AgentRuntimeConfig> {
     const detail = await this.findDetailById(agentId);
-    return this.buildRuntimeConfigFromNodes(detail.nodes, detail.edges);
+    return this.buildRuntimeConfigFromNodes(detail.nodes, detail.edges, agentId);
   }
 
   buildRuntimeConfigFromNodes(
     nodes: any[],
     _edges: any[],
+    agentDefinitionId?: string,
   ): AgentRuntimeConfig {
     const config: AgentRuntimeConfig = {};
 
@@ -412,12 +413,46 @@ export class AgentDefinitionService {
       }
     }
 
+    if (agentDefinitionId && subAgents.length > 0) {
+      this.validateSubAgentRefs(subAgents, agentDefinitionId);
+    }
+
     if (tools.length > 0) config.tools = tools;
     if (knowledgeBindings.length > 0) config.knowledgeBindings = knowledgeBindings;
     if (subAgents.length > 0) config.subAgents = subAgents;
     if (inputPreprocessors.length > 0) config.inputPreprocessors = inputPreprocessors;
 
     return config;
+  }
+
+  private validateSubAgentRefs(
+    refs: AgentSubAgentRef[],
+    currentAgentId: string,
+  ): void {
+    const seen = new Set<string>();
+    for (const ref of refs) {
+      if (seen.has(ref.alias)) {
+        throw new Error(`子代理别名重复: ${ref.alias}`);
+      }
+      seen.add(ref.alias);
+    }
+
+    const aliasRegex = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+    for (const ref of refs) {
+      if (!aliasRegex.test(ref.alias)) {
+        throw new Error(
+          `子代理别名格式非法: ${ref.alias}，必须以字母开头，只能包含字母、数字、下划线、-字符`,
+        );
+      }
+    }
+
+    for (const ref of refs) {
+      if (ref.agentDefinitionId === currentAgentId) {
+        throw new Error('不能将自身作为子代理引用');
+      }
+    }
+
+    // TODO: 深度循环引用检测在运行时由 resolveSubAgent() 处理
   }
 
   async createVersion(
