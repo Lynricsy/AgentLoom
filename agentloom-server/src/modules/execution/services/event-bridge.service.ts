@@ -26,6 +26,8 @@ import {
   type LegacyEventName,
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
+import type { AgentEvent } from '../../agent/types/agent-event.types';
+import type { SubAgentEventEnvelope } from '../../agent-execution/subagent';
 
 const EVENT_BUFFER_CAPACITY = 500;
 const TERMINAL_EVENT_RETENTION_MS = 30_000;
@@ -286,6 +288,20 @@ export class EventBridgeService implements OnModuleDestroy {
     );
     this.broadcast(tenantId, executionId, envelope);
     return envelope;
+  }
+
+  emitSubAgentConversationEvent(
+    conversationId: string,
+    tenantId: string,
+    event: AgentEvent,
+    envelope: SubAgentEventEnvelope,
+  ): void {
+    this.eventEmitter?.emit('conversation.subagent.event', {
+      conversationId,
+      tenantId,
+      event,
+      subagent: envelope,
+    });
   }
 
   /** 获取当前执行实例的最后一个 eventId（用于回放起点追踪） */

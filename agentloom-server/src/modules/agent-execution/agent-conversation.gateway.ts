@@ -34,6 +34,8 @@ import type {
 } from '../execution/types/execution-event.types';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { AgentExecutionService } from './agent-execution.service';
+import type { AgentEvent } from '../agent/types/agent-event.types';
+import type { SubAgentEventEnvelope } from './subagent';
 
 export const ConversationEventName = {
   AGENT_MESSAGE_CHUNK: 'conversation.agent.message_chunk',
@@ -565,6 +567,55 @@ export class AgentConversationGateway
       payload.tenantId,
       payload.conversationId,
       ConversationEventName.SANDBOX_FILE_CHANGE,
+      envelope,
+    );
+  }
+
+  @OnEvent('conversation.subagent.event')
+  handleSubAgentEvent(payload: {
+    conversationId: string;
+    tenantId: string;
+    event: AgentEvent;
+    subagent: SubAgentEventEnvelope;
+  }): void {
+    if (!this.hasSubscribers(payload.conversationId)) return;
+
+    const eventType = payload.event.type;
+    let conversationEvent: ConversationEventName;
+
+    switch (eventType) {
+      case 'plan':
+        conversationEvent = ConversationEventName.AGENT_THINKING;
+        break;
+      case 'message_chunk':
+        conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
+        break;
+      case 'tool_call':
+        conversationEvent = ConversationEventName.AGENT_TOOL_CALL;
+        break;
+      case 'decision':
+        conversationEvent = ConversationEventName.AGENT_THINKING;
+        break;
+      case 'done':
+        conversationEvent = ConversationEventName.AGENT_DONE;
+        break;
+      default:
+        conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
+        break;
+    }
+
+    const envelope = this.buildEventPayload(
+      payload.conversationId,
+      payload.tenantId,
+      {
+        event: payload.event,
+        subagent: payload.subagent,
+      } as unknown as Record<string, unknown>,
+    );
+    this.broadcastConversationEvent(
+      payload.tenantId,
+      payload.conversationId,
+      conversationEvent,
       envelope,
     );
   }
