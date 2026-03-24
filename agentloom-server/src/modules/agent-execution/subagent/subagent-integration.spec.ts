@@ -401,14 +401,12 @@ describe('Sub-Agent Integration Tests', () => {
           role: 'user',
           contentType: 'text',
           content: expect.stringContaining('[Sub-Agent: Researcher Agent] Completed:'),
-          metadata: {
-            notice: expect.objectContaining({
-              type: 'subagent_completion',
-              handle,
-              alias: 'researcher',
-              status: SubAgentRunStatus.COMPLETED,
-            }),
-          },
+          metadata: expect.objectContaining({
+            type: 'subagent_completion_notice',
+            handle,
+            alias: 'researcher',
+            status: SubAgentRunStatus.COMPLETED,
+          }),
         }),
       );
     });

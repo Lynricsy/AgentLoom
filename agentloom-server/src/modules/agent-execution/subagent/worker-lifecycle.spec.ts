@@ -269,13 +269,11 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
         role: 'user',
         contentType: 'text',
         content: '[Sub-Agent: Child Agent] Completed: sub-agent summary',
-        metadata: {
-          notice: expect.objectContaining({
-            type: 'subagent_completion',
-            handle: subAgentHandle,
-            alias: 'researcher',
-          }),
-        },
+        metadata: expect.objectContaining({
+          type: 'subagent_completion_notice',
+          handle: subAgentHandle,
+          alias: 'researcher',
+        }),
       }),
     );
   });

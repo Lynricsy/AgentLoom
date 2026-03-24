@@ -80,7 +80,7 @@ export interface SubAgentParentContext {
 
 /** 子代理完成通知 (注入到父对话的轻量消息) */
 export interface SubAgentCompletionNotice {
-  type: 'subagent_completion';
+  type: 'subagent_completion_notice';
   handle: SubAgentHandle;
   alias: string;
   status: SubAgentRunStatus;

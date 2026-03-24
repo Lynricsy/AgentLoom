@@ -1460,7 +1460,13 @@ export class AgentExecutionWorker extends WorkerHost {
         role: 'user',
         contentType: 'text',
         content: `[Sub-Agent: ${agentName}] Completed: ${summary}`,
-        metadata: { notice },
+        metadata: {
+          type: 'subagent_completion_notice' as const,
+          handle,
+          alias,
+          status: notice.status,
+          ...(notice.error ? { error: notice.error } : {}),
+        },
       });
     } catch (injectError) {
       this.logger.warn(
