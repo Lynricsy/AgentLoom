@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# VitePress build output & cache
+.vitepress/dist/
+.vitepress/cache/
+
+# Environment files
+.env*
+
+# Git
+.git/
+.gitignore

@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env*
+
+# Documentation & markdown
+*.md
+
+# Tests
+src/**/*.test.*
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# Dev-only assets
+public/mockServiceWorker.js

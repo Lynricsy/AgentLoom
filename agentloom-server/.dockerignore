@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env*
+
+# Documentation & markdown
+*.md
+
+# Tests
+src/**/*.spec.ts
+src/**/*.test.ts
+test/
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose*
+Dockerfile*
