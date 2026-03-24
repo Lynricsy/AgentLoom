@@ -2,6 +2,12 @@ export { AgentConversationPage } from './components/AgentConversationPage';
 export { MessageList } from './components/MessageList';
 export { SandboxComputerPanel } from './components/SandboxComputerPanel';
 export { WorkspaceFileTree } from './components/WorkspaceFileTree';
+export {
+  SubAgentStreamView,
+  SubAgentCompletionNotice,
+} from './components/SubAgentStreamView';
+
+export { useConversationEventRouter } from './useConversationEventRouter';
 
 export {
   useAgentConversationStore,
@@ -14,6 +20,7 @@ export {
   useSandboxStatus,
   useSelectedFilePath,
   useAgentName,
+  useSubAgentStreams,
 } from './stores/agent-conversation.store';
 
 export type {
@@ -26,4 +33,11 @@ export type {
   FileTreeNode,
   FileChange,
   SandboxStatus,
+  SubAgentHandle,
+  SubAgentRunStatus,
+  SubAgentEventEnvelope,
+  SubAgentCompletionNotice as SubAgentCompletionNoticeType,
+  SubAgentEvent,
+  SubAgentStream,
+  ConversationMessageMetadata,
 } from './types';

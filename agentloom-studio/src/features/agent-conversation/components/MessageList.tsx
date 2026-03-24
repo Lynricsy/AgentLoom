@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -20,9 +21,16 @@ import {
 import { cn } from '@/shared/lib/utils';
 import type {
   ConversationMessage,
+  SubAgentHandle,
+  SubAgentRunStatus,
   ToolCall,
   ToolCallStatus,
 } from '../types';
+import { useSubAgentStreams } from '../stores/agent-conversation.store';
+import {
+  SubAgentStreamView,
+  SubAgentCompletionNotice,
+} from './SubAgentStreamView';
 
 function ToolStatusIcon({ status }: { status: ToolCallStatus }) {
   switch (status) {
@@ -70,6 +78,22 @@ function CollapsibleSection({
   );
 }
 
+const SUB_AGENT_TOOL_NAMES = new Set(['call_subagent', 'spawn_subagent']);
+
+function isSubAgentToolCall(toolCall: ToolCall): boolean {
+  return SUB_AGENT_TOOL_NAMES.has(toolCall.name);
+}
+
+function extractSubAgentHandle(toolCall: ToolCall): string | null {
+  if (!toolCall.args) return null;
+  try {
+    const parsed = JSON.parse(toolCall.args);
+    return parsed.handle ?? parsed.subagentHandle ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const ToolCallItem = memo(function ToolCallItem({
   toolCall,
 }: {
@@ -97,6 +121,23 @@ const ToolCallItem = memo(function ToolCallItem({
   );
 });
 
+const SubAgentToolCallItem = memo(function SubAgentToolCallItem({
+  toolCall,
+  subAgentStreams,
+}: {
+  toolCall: ToolCall;
+  subAgentStreams: Record<string, import('../types').SubAgentStream>;
+}) {
+  const handle = extractSubAgentHandle(toolCall);
+  const stream = handle ? subAgentStreams[handle] : undefined;
+
+  if (!stream) {
+    return <ToolCallItem toolCall={toolCall} />;
+  }
+
+  return <SubAgentStreamView stream={stream} />;
+});
+
 function formatToolArgs(args: string): string {
   try {
     return JSON.stringify(JSON.parse(args), null, 2);
@@ -117,18 +158,38 @@ function TypingIndicator() {
 
 const MessageBubble = memo(function MessageBubble({
   message,
+  subAgentStreams,
 }: {
   message: ConversationMessage;
+  subAgentStreams: Record<string, import('../types').SubAgentStream>;
 }) {
   const isUser = message.role === 'user';
-  const hasToolCalls = message.toolCalls.length > 0;
   const hasThinking = !!message.thinking;
-  const runningTools = message.toolCalls.filter(
-    (tc) => tc.status === 'running',
-  );
-  const completedTools = message.toolCalls.filter(
-    (tc) => tc.status !== 'running',
-  );
+
+  const { regularTools, subAgentTools, runningCount, completedCount } =
+    useMemo(() => {
+      const regular: ToolCall[] = [];
+      const subAgent: ToolCall[] = [];
+      let running = 0;
+      let completed = 0;
+
+      for (const tc of message.toolCalls) {
+        if (isSubAgentToolCall(tc)) {
+          subAgent.push(tc);
+        } else {
+          regular.push(tc);
+        }
+        if (tc.status === 'running') running++;
+        else completed++;
+      }
+
+      return {
+        regularTools: regular,
+        subAgentTools: subAgent,
+        runningCount: running,
+        completedCount: completed,
+      };
+    }, [message.toolCalls]);
 
   return (
     <div
@@ -181,18 +242,30 @@ const MessageBubble = memo(function MessageBubble({
           </CollapsibleSection>
         )}
 
-        {!isUser && hasToolCalls && (
+        {!isUser && regularTools.length > 0 && (
           <CollapsibleSection
-            title={`Tool calls (${completedTools.length}/${message.toolCalls.length})`}
+            title={`Tool calls (${completedCount}/${message.toolCalls.length})`}
             icon={<Wrench className="size-3" />}
-            defaultOpen={runningTools.length > 0}
+            defaultOpen={runningCount > 0}
           >
             <div className="space-y-1">
-              {message.toolCalls.map((tc) => (
+              {regularTools.map((tc) => (
                 <ToolCallItem key={tc.id} toolCall={tc} />
               ))}
             </div>
           </CollapsibleSection>
+        )}
+
+        {!isUser && subAgentTools.length > 0 && (
+          <div className="mt-2 w-full space-y-2">
+            {subAgentTools.map((tc) => (
+              <SubAgentToolCallItem
+                key={tc.id}
+                toolCall={tc}
+                subAgentStreams={subAgentStreams}
+              />
+            ))}
+          </div>
         )}
 
         <span className="px-1 text-[10px] text-muted-foreground/60">
@@ -211,6 +284,10 @@ function formatTime(ts: number): string {
   });
 }
 
+function isCompletionNotice(message: ConversationMessage): boolean {
+  return message.metadata?.type === 'subagent_completion_notice';
+}
+
 export interface MessageListProps {
   messages: ConversationMessage[];
   isExecuting: boolean;
@@ -221,6 +298,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const prevMessageCount = useRef(messages.length);
+  const subAgentStreams = useSubAgentStreams();
 
   if (messages.length !== prevMessageCount.current) {
     prevMessageCount.current = messages.length;
@@ -255,9 +333,28 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
         </div>
       ) : (
         <div className="space-y-1 py-4">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
+          {messages.map((msg) =>
+            isCompletionNotice(msg) ? (
+              <SubAgentCompletionNotice
+                key={msg.id}
+                handle={
+                  ((msg.metadata?.subagentHandle as string) ?? 'sa_unknown') as SubAgentHandle
+                }
+                alias={(msg.metadata?.subagentAlias as string) ?? 'Sub-Agent'}
+                status={
+                  (msg.metadata?.subagentStatus as SubAgentRunStatus) ??
+                  'completed'
+                }
+                error={msg.metadata?.subagentError as string | undefined}
+              />
+            ) : (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                subAgentStreams={subAgentStreams}
+              />
+            ),
+          )}
           {isExecuting &&
             !messages.some(
               (m) => m.role === 'agent' && m.isStreaming,

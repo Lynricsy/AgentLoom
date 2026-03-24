@@ -20,6 +20,7 @@ export interface ConversationMessage {
   toolCalls: ToolCall[];
   isStreaming: boolean;
   createdAt: number;
+  metadata?: ConversationMessageMetadata;
 }
 
 export type SandboxStatus = 'idle' | 'running' | 'error';
@@ -56,12 +57,14 @@ export interface MessageChunkPayload {
   conversationId: string;
   messageId: string;
   chunk: string;
+  subagent?: SubAgentEventEnvelope;
 }
 
 export interface ThinkingPayload {
   conversationId: string;
   messageId: string;
   content: string;
+  subagent?: SubAgentEventEnvelope;
 }
 
 export interface ToolCallPayload {
@@ -70,6 +73,7 @@ export interface ToolCallPayload {
   toolCallId: string;
   name: string;
   args?: string;
+  subagent?: SubAgentEventEnvelope;
 }
 
 export interface ToolResultPayload {
@@ -78,11 +82,13 @@ export interface ToolResultPayload {
   toolCallId: string;
   result: string;
   status: 'completed' | 'failed';
+  subagent?: SubAgentEventEnvelope;
 }
 
 export interface AgentDonePayload {
   conversationId: string;
   messageId: string;
+  subagent?: SubAgentEventEnvelope;
 }
 
 export interface TerminalOutputPayload {
@@ -102,4 +108,72 @@ export interface FileChangePayload {
 export interface StatusChangedPayload {
   conversationId: string;
   status: 'executing' | 'idle' | 'error';
+}
+
+/** 子代理句柄，格式 sa_xxx */
+export type SubAgentHandle = `sa_${string}`;
+
+/** 子代理运行状态 */
+export type SubAgentRunStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'timeout'
+  | 'cancelled';
+
+/** 子代理事件信封（Socket.IO 每条事件附加） */
+export interface SubAgentEventEnvelope {
+  handle: SubAgentHandle;
+  alias: string;
+  depth: number;
+  parentToolCallId: string;
+}
+
+/** 子代理完成通知（注入到主消息列表的系统通知） */
+export interface SubAgentCompletionNotice {
+  type: 'subagent_completion';
+  handle: SubAgentHandle;
+  alias: string;
+  status: SubAgentRunStatus;
+  error?: string;
+}
+
+/** 子代理事件条目（路由后存储在 SubAgentStream.events 中） */
+export interface SubAgentEvent {
+  id: string;
+  type:
+    | 'message_chunk'
+    | 'thinking'
+    | 'tool_call'
+    | 'tool_result'
+    | 'done'
+    | 'status_changed';
+  payload: unknown;
+  timestamp: number;
+  /** 嵌套子代理信封（递归嵌套时存在） */
+  subagent?: SubAgentEventEnvelope;
+}
+
+/** 单个子代理的实时流状态 */
+export interface SubAgentStream {
+  handle: SubAgentHandle;
+  alias: string;
+  depth: number;
+  parentToolCallId: string;
+  status: SubAgentRunStatus;
+  events: SubAgentEvent[];
+  startedAt: number;
+  completedAt?: number;
+  error?: string;
+}
+
+/** 带可选元数据的消息扩展（用于 subagent_completion_notice 等系统消息） */
+export interface ConversationMessageMetadata {
+  type?: string;
+  subagentHandle?: SubAgentHandle;
+  subagentAlias?: string;
+  subagentStatus?: SubAgentRunStatus;
+  subagentError?: string;
+  [key: string]: unknown;
 }

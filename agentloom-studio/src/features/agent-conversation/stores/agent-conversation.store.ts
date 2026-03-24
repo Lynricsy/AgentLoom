@@ -19,6 +19,10 @@ import type {
   TerminalOutputPayload,
   FileChangePayload,
   StatusChangedPayload,
+  SubAgentStream,
+  SubAgentEventEnvelope,
+  SubAgentRunStatus,
+  SubAgentEvent,
 } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1').replace(
@@ -63,6 +67,7 @@ interface AgentConversationState {
   fileTree: FileTreeNode[];
   fileChanges: FileChange[];
   selectedFilePath: string | null;
+  subAgentStreams: Record<string, SubAgentStream>;
 
   connectionError: string | null;
   lastEventId: number;
@@ -97,12 +102,53 @@ function createInitialState(): AgentConversationState {
     fileTree: [],
     fileChanges: [],
     selectedFilePath: null,
+    subAgentStreams: {},
     connectionError: null,
     lastEventId: 0,
   };
 }
 
 let socketInstance: Socket | null = null;
+
+function ensureSubAgentStream(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+): SubAgentStream {
+  const existing = streams[envelope.handle];
+  if (existing) return existing;
+
+  const stream: SubAgentStream = {
+    handle: envelope.handle,
+    alias: envelope.alias,
+    depth: envelope.depth,
+    parentToolCallId: envelope.parentToolCallId,
+    status: 'running',
+    events: [],
+    startedAt: Date.now(),
+  };
+  streams[envelope.handle] = stream;
+  return stream;
+}
+
+function pushSubAgentEvent(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+  eventType: SubAgentEvent['type'],
+  payload: unknown,
+): void {
+  const stream = ensureSubAgentStream(streams, envelope);
+  stream.events.push({
+    id: crypto.randomUUID(),
+    type: eventType,
+    payload,
+    timestamp: Date.now(),
+  });
+
+  if (eventType === 'done' && stream.status === 'running') {
+    stream.status = 'completed';
+    stream.completedAt = Date.now();
+  }
+}
 
 export const useAgentConversationStore = create<
   AgentConversationState & AgentConversationActions
@@ -177,6 +223,10 @@ export const useAgentConversationStore = create<
               'conversation.agent.message_chunk',
               (payload: MessageChunkPayload) => {
                 set((s) => {
+                  if (payload.subagent) {
+                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'message_chunk', payload);
+                    return;
+                  }
                   const msg = s.messages.find(
                     (m) => m.id === payload.messageId,
                   );
@@ -200,6 +250,10 @@ export const useAgentConversationStore = create<
               'conversation.agent.thinking',
               (payload: ThinkingPayload) => {
                 set((s) => {
+                  if (payload.subagent) {
+                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'thinking', payload);
+                    return;
+                  }
                   const msg = s.messages.find(
                     (m) => m.id === payload.messageId,
                   );
@@ -215,6 +269,10 @@ export const useAgentConversationStore = create<
               'conversation.agent.tool_call',
               (payload: ToolCallPayload) => {
                 set((s) => {
+                  if (payload.subagent) {
+                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'tool_call', payload);
+                    return;
+                  }
                   const msg = s.messages.find(
                     (m) => m.id === payload.messageId,
                   );
@@ -236,6 +294,10 @@ export const useAgentConversationStore = create<
               'conversation.agent.tool_result',
               (payload: ToolResultPayload) => {
                 set((s) => {
+                  if (payload.subagent) {
+                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'tool_result', payload);
+                    return;
+                  }
                   const msg = s.messages.find(
                     (m) => m.id === payload.messageId,
                   );
@@ -257,6 +319,10 @@ export const useAgentConversationStore = create<
               'conversation.agent.done',
               (payload: AgentDonePayload) => {
                 set((s) => {
+                  if (payload.subagent) {
+                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'done', payload);
+                    return;
+                  }
                   const msg = s.messages.find(
                     (m) => m.id === payload.messageId,
                   );
@@ -328,6 +394,48 @@ export const useAgentConversationStore = create<
                   } else {
                     s.status = 'connected';
                     s.sandboxStatus = 'idle';
+                  }
+                });
+              },
+            );
+
+            socket.on(
+              'conversation.subagent.event',
+              (payload: {
+                subagent: SubAgentEventEnvelope;
+                eventType: SubAgentEvent['type'];
+                data: unknown;
+              }) => {
+                set((s) => {
+                  pushSubAgentEvent(
+                    s.subAgentStreams,
+                    payload.subagent,
+                    payload.eventType,
+                    payload.data,
+                  );
+                });
+              },
+            );
+
+            socket.on(
+              'conversation.subagent.status',
+              (payload: {
+                handle: string;
+                status: SubAgentRunStatus;
+                error?: string;
+              }) => {
+                set((s) => {
+                  const stream = s.subAgentStreams[payload.handle];
+                  if (!stream) return;
+                  stream.status = payload.status;
+                  if (payload.error) stream.error = payload.error;
+                  if (
+                    payload.status === 'completed' ||
+                    payload.status === 'failed' ||
+                    payload.status === 'timeout' ||
+                    payload.status === 'cancelled'
+                  ) {
+                    stream.completedAt ??= Date.now();
                   }
                 });
               },
@@ -501,3 +609,6 @@ export const useSelectedFilePath = () =>
 
 export const useAgentName = () =>
   useAgentConversationStore((s) => s.agentName);
+
+export const useSubAgentStreams = () =>
+  useAgentConversationStore((s) => s.subAgentStreams);
