@@ -71,6 +71,9 @@ $RECYCLE.BIN/
 AgentLogs/
 .autobmad-logs/
 .autobmad-state.json
+.opencode/
+.claude/
+.bmad-opencode/
 
 
 # ──────────────────────────────────────────────
