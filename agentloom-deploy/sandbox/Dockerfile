@@ -4,7 +4,7 @@ FROM archlinux:latest
 # git/python: required by pi-coding-agent internals
 # ripgrep/fd: pi-coding-agent built-in file search tools
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm nodejs npm git python ripgrep fd curl && \
+    pacman -S --noconfirm nodejs npm git python ripgrep fd curl make gcc && \
     pacman -Scc --noconfirm
 
 # /workspace is the agent working dir; healthcheck verifies its existence

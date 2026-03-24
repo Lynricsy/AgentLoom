@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "fastify": "^5.3.3",
-    "@mariozechner/pi-coding-agent": "^0.62.0"
+    "@mariozechner/pi-coding-agent": "^0.62.0",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.18",
