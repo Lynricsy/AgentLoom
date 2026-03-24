@@ -15,6 +15,9 @@ graph TB
         Workflows["workflows/<br/>列表 · 详情 · 参数启动"]
         Execution["execution/<br/>Socket.IO 实时监控"]
         Notifications["notifications/<br/>FCM 推送 · 深链"]
+        Agents["agents/<br/>Agent 对话 · 实时推送"]
+        Memory["memory/<br/>记忆管理 · 5 屏"]
+        Skills["skills/<br/>Skill 管理"]
         Settings["settings/<br/>设置（占位）"]
     end
 
@@ -27,7 +30,7 @@ graph TB
 
     subgraph External["外部服务"]
         Server["agentloom-server<br/>REST /api/v1"]
-        SocketIO["Socket.IO<br/>/execution namespace"]
+        SocketIO["Socket.IO<br/>/execution, /agent-conversation"]
         FCM["Firebase Cloud Messaging"]
     end
 
@@ -43,6 +46,10 @@ graph TB
     Execution --> ApiClient
     Notifications --> FCM
     Notifications --> ApiClient
+    Agents --> ApiClient
+    Agents --> SocketIO
+    Memory --> ApiClient
+    Skills --> ApiClient
 
     ApiClient --> AuthInterceptor
     ApiClient --> Env
@@ -79,6 +86,22 @@ lib/
 │   │   ├── models/      # Freezed: PushNotificationPayload
 │   │   ├── services/    # NotificationService (FCM init/permission/token/foreground)
 │   │   └── providers/   # PushNotificationNotifier (initializeAfterAuth/cleanupOnLogout)
+│   ├── agents/
+│   │   ├── api/         # AgentApi (对话 CRUD、消息历史)
+│   │   ├── models/      # Freezed: AgentDefinitionDto, AgentConversationDto, AgentMessageDto
+│   │   ├── providers/   # AgentListNotifier, agentDetailProvider, AgentConversationNotifier
+│   │   ├── screens/     # AgentListScreen, AgentDetailScreen, AgentConversationScreen
+│   │   └── widgets/     # AgentCard, MessageBubble, ConversationInput
+│   ├── memory/
+│   │   ├── api/         # MemoryApi (记忆实例 CRUD、审计日志)
+│   │   ├── models/      # Freezed: MemoryInstanceDto, MemoryNodeDto, MemoryAuditLogDto
+│   │   ├── providers/   # MemoryListNotifier, memoryDetailProvider, memoryAuditProvider
+│   │   └── screens/     # MemoryListScreen, MemoryDetailScreen, MemoryEditScreen, MemoryAuditScreen, MemoryNodeDetailScreen
+│   ├── skills/
+│   │   ├── api/         # SkillApi (Skill CRUD)
+│   │   ├── models/      # Freezed: SkillDto
+│   │   ├── providers/   # SkillListNotifier, skillDetailProvider
+│   │   └── screens/     # SkillListScreen, SkillDetailScreen, SkillEditScreen
 │   ├── settings/
 │   │   └── screens/     # SettingsScreen (占位)
 │   └── workflows/
@@ -95,7 +118,7 @@ lib/
     └── widgets/         # 共享组件（预留）
 ```
 
-## 六大功能模块
+## 九大功能模块
 
 ### auth — 认证模块
 
@@ -181,6 +204,42 @@ FCM 推送全链路管理。
 **深链跳转:** 前台通知点击、后台通知点击、终止态冷启动恢复，都能导航到 `/executions/:executionId`。
 
 **Firebase 优雅降级:** 应用在无 Firebase 配置文件（`google-services.json` / `GoogleService-Info.plist`）时仍可正常运行，推送功能自动跳过。
+
+### agents — Agent 对话模块
+
+Agent 列表/详情/配置查看与对话功能，通过 Socket.IO `/agent-conversation` namespace 接收实时消息推送，支持 OAuth (Google/GitHub) + url_launcher 原生 MFA TOTP 屏幕。
+
+**核心类:**
+
+- **AgentApi** — Agent 定义列表/详情、对话生命周期 CRUD、消息历史查询
+- **AgentConversationNotifier** — Riverpod AsyncNotifier，管理对话消息流与 Socket.IO 事件监听
+- **AgentConversationScreen** — 实时对话界面，消息气泡 + 流式输入
+
+**通信协议:** 与 `/execution` namespace 对称，复用 EventBridge 模式，支持 JWT + MFA 认证。
+
+### memory — Agent 记忆模块
+
+Agent 记忆实例管理（5 屏：列表/详情/编辑/审计/节点详情），Riverpod providers，RESTful API 层。
+
+**页面:**
+
+| 页面                   | 功能                       |
+| ---------------------- | -------------------------- |
+| MemoryListScreen       | 记忆实例列表，搜索与筛选   |
+| MemoryDetailScreen     | 记忆实例详情与关联节点     |
+| MemoryEditScreen       | 记忆实例编辑（名称/描述）  |
+| MemoryAuditScreen      | 记忆变更审计日志           |
+| MemoryNodeDetailScreen | 单个记忆节点详情查看       |
+
+### skills — Skill 管理模块
+
+Skill 列表/详情/编辑屏（仅 name/description 基础字段编辑，无 SKILL.md 内容编辑），Riverpod providers，API 层。
+
+**核心类:**
+
+- **SkillApi** — Skill CRUD REST 接口
+- **SkillListNotifier** — Skill 列表状态管理
+- **SkillEditScreen** — 仅编辑 name/description 基础字段，不支持 SKILL.md 内容编辑（Web Studio 专属功能）
 
 ### settings — 设置模块
 

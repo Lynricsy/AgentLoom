@@ -54,6 +54,34 @@ stateDiagram-v2
 
 每个执行实例包含多个**执行步骤**（Execution Steps），对应各节点的运行记录。步骤内的 `checkpointData` 保存了会话上下文，支持断点续传。
 
+## Agent：独立顶层概念
+
+Agent 与 Workflow 是 AgentLoom 中两个**并行的顶层概念**。Agent 拥有独立的定义、版本、对话、执行体系，不依赖工作流即可独立运行。
+
+```mermaid
+flowchart LR
+    subgraph AgentSystem["Agent 体系"]
+        AD["Agent 定义<br/>+ 版本管理"]
+        AC["Agent 对话<br/>(独立会话)"]
+        AE["Agent 执行<br/>(实时推送)"]
+    end
+
+    subgraph WorkflowSystem["Workflow 体系"]
+        WD["工作流定义"]
+        WE["工作流执行"]
+    end
+
+    AD --> AC --> AE
+    WD --> WE
+
+    AD -->|"WorkflowAgentAdapter"| WE
+```
+
+- **独立对话** — Agent 可直接与用户进行多轮对话，通过 `/agent-conversation` Socket.IO namespace 实时推送
+- **工作流桥接** — 通过 `WorkflowAgentAdapter`，Agent 可作为工作流中的 `agent` 节点执行
+- **沙箱共享** — `sandbox_sessions` 表使用双 FK（`execution_id` OR `agent_conversation_id`），在工作流与 Agent 对话间复用沙箱会话
+- **记忆系统** — Agent Memory 提供图拓扑记忆存储与检索，通过 `/memory` Socket.IO namespace 实时操作
+
 ## 节点类型
 
 AgentLoom 提供 **17 种节点类型**，按功能归为 **7 大类别**：
@@ -62,6 +90,7 @@ AgentLoom 提供 **17 种节点类型**，按功能归为 **7 大类别**：
 flowchart TB
     subgraph AI["AI 智能体"]
         LLMAgent["llm-agent<br/>LLM 对话代理"]
+        Agent["agent<br/>独立 Agent 节点"]
     end
 
     subgraph DataFlow["数据流"]
@@ -94,6 +123,7 @@ flowchart TB
         Plugin["plugin<br/>WASM 插件"]
         Sandbox["sandbox<br/>沙箱执行"]
         ReusableBlock["reusable-block<br/>可复用模块"]
+        Skill["skill<br/>Skill 注入"]
     end
 ```
 
@@ -112,9 +142,9 @@ flowchart TB
 
 每个节点通过**端口**（Port）与其他节点交换数据。端口分为输入端口和输出端口，每个端口携带一个**数据类型**标签。
 
-### 八种规范数据类型
+### 九种规范数据类型
 
-AgentLoom 定义了 **8 种规范端口数据类型**，在 Type Engine（Rust）、Studio（React）和 Server（NestJS）三端统一使用：
+AgentLoom 定义了 **9 种规范端口数据类型**，在 Type Engine（Rust）、Studio（React）和 Server（NestJS）三端统一使用：
 
 ```mermaid
 flowchart LR
@@ -127,6 +157,7 @@ flowchart LR
         tool["tool<br/>工具定义"]
         sandbox["sandbox<br/>沙箱会话"]
         knowledge["knowledge<br/>知识库引用"]
+        skill["skill<br/>Skill 注入"]
     end
 ```
 
@@ -140,6 +171,7 @@ flowchart LR
 | `tool`      | MCP 工具定义                          | mcp-tool → llm-agent            |
 | `sandbox`   | 沙箱会话引用                          | sandbox → llm-agent             |
 | `knowledge` | 知识库引用或检索结果                  | knowledge-retrieval → llm-agent |
+| `skill`     | Skill 行为指导注入                    | skill → llm-agent               |
 
 ### 类型兼容性
 
@@ -291,6 +323,37 @@ Smart Routing 节点提供 **6 种模型选择策略**，根据不同维度动�
 - 超时处理 — 支持 `approve` / `reject` / `escalate` 三种超时动作
 - 逐级升级 — 最大升级次数为 3 次（`MAX_ESCALATION_ATTEMPTS = 3`）
 - 执行步骤在等待权限时保持 `running` 状态，工具调用处于 `awaiting_permission` 状态
+
+## Skill 系统
+
+Skill 是 Agent 的行为指导文件，采用 **SKILL.md** 格式（YAML frontmatter + Markdown 正文）。`SkillResolverService` 按租户查询已启用的 Skill，生成 `<available_skills>` XML 片段，注入到 Agent 对话和工作流执行的系统提示中。
+
+- 平台内置 **5 个 Skill**（code-review / documentation / test-generation / refactoring / debugging），通过 `pnpm db:seed` 幂等 upsert
+- 画布中的 `skill` 节点在调度器中有独立分支，执行前将上游 Skill 内容注入 Agent 上下文
+- Studio 提供 `/settings/skills` 管理页（分类 Tabs + 搜索 + 启停 + Monaco 编辑器）
+
+## Sub-agent 双模式
+
+Agent 节点内部支持两种子代理调用模式：
+
+| 模式 | 行为 | 适用场景 |
+| --- | --- | --- |
+| `call_subagent` | 同步阻塞，等待子代理返回结果 | 需要子代理结果才能继续推理 |
+| `spawn_subagent` | 异步 fire-and-return，立即返回 | 后台任务、不阻塞主流程 |
+
+最大嵌套深度为 **5 层**，防止无限递归。
+
+## 企业级能力
+
+AgentLoom 内置多项企业级运维和治理能力：
+
+| 能力 | 说明 |
+| --- | --- |
+| **资源治理** | 7 个配额字段（并发/日执行量/API 限流/存储/沙箱 CPU 与内存等），超限返回 429（限流）或 409（治理阻断） |
+| **审计日志** | hot/archive 双表架构，append-only 写入，支持保留归档与资源级事件序列回放 |
+| **监控仪表板** | 15m / 1h / 24h 时间窗口，执行趋势、队列快照、告警热点 |
+| **优化建议** | 4 类建议（模型降级 / 超时调整 / 工具精简 / 自主性升级），应用时复用工作流 OCC 保护 |
+| **Agent Memory** | 图拓扑记忆系统，d3-force + dagre 可视化，`/memory` namespace 实时操作 |
 
 ## 下一步
 

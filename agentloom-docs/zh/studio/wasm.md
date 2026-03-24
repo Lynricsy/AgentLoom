@@ -108,7 +108,7 @@ sequenceDiagram
 | `PARTIAL`      | 部分兼容     | 提示标记     |
 | `INCOMPATIBLE` | 不可连接     | 红色错误     |
 
-8 种端口数据类型（`model` / `text` / `json` / `image` / `audio` / `tool` / `sandbox` / `knowledge`）的完整兼容性矩阵详见 [类型引擎 — 架构与兼容性规则](/zh/type-engine/architecture)。
+9 种端口数据类型（`model` / `text` / `json` / `image` / `audio` / `tool` / `sandbox` / `knowledge` / `skill`）的完整兼容性矩阵详见 [类型引擎 — 架构与兼容性规则](/zh/type-engine/architecture)。
 
 ## 与画布的协作
 
@@ -119,6 +119,6 @@ sequenceDiagram
 ## 相关文档
 
 - [类型引擎](/zh/type-engine/) — Rust WASM 端口兼容性检查器
-- [端口数据类型与架构](/zh/type-engine/architecture) — 8 种 canonical 类型定义与兼容性矩阵
+- [端口数据类型与架构](/zh/type-engine/architecture) — 9 种 canonical 类型定义与兼容性矩阵
 - [WASM API 参考](/zh/type-engine/api) — 导出函数签名与调用示例
 - [画布编辑器](./canvas) — 端口与连线的视觉交互

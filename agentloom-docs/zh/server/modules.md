@@ -1,6 +1,6 @@
 # 模块架构
 
-AgentLoom 服务端包含 **30 个 NestJS 模块**，按职责划分为 7 个领域。每个模块遵循标准 NestJS 结构：`controller` → `service` → `dto (Zod)` → `Drizzle schema`。
+AgentLoom 服务端包含 **37 个 NestJS 模块**，按职责划分为 8 个领域。每个模块遵循标准 NestJS 结构：`controller` → `service` → `dto (Zod)` → `Drizzle schema`。
 
 ## 核心工作流
 
@@ -11,7 +11,8 @@ AgentLoom 服务端包含 **30 个 NestJS 模块**，按职责划分为 7 个领
 | **workflow-definition** | 工作流 CRUD、版本管理 (OCC)、发布、JSON 导入导出        | `POST /workflow-definitions`、`PUT /:id/versions`、`POST /:id/run` |
 | **workflow**            | 工作流画布节点/边操作、模板克隆                         | `PATCH /workflows/:id/nodes`、`POST /from-template`                |
 | **execution**           | DAG 执行引擎、Socket.IO `/execution` 事件流、检查点恢复 | `POST /executions`、`WS execution:subscribe`                       |
-| **execution-record**    | 执行历史查询与统计                                      | `GET /execution-records`、`GET /:id/timeline`                      |
+| **execution-record**    | Agent 执行遥测自动记录：步骤完成/失败事件监听 → `agent_execution_records` 表 | `GET /execution-records`                                |
+| **workspace**           | Workspace 持久化服务，`workspace_snapshots` 表           | 内部使用                                                           |
 
 **补充模块：**
 
@@ -29,13 +30,18 @@ AgentLoom 服务端包含 **30 个 NestJS 模块**，按职责划分为 7 个领
 
 封装 LLM 调用、Agent 编排和工具集成。
 
-| 模块              | 职责                                                                                                               | 关键端点                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| **agent**         | Agent 配置管理、自主性模式设置                                                                                     | `POST /agents`、`PUT /:id/config`                     |
-| **llm**           | LLM 提供商管理、`LlmEncryptionService` E2EE 加密                                                                   | `GET /llm/providers`、`POST /llm/chat`                |
-| **mcp**           | MCP 工具发现与调用、端口 `mcpToolMapping`                                                                          | `GET /mcp/tools`、`POST /mcp/call`                    |
-| **smart-routing** | 6 种路由策略 (TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN) | `POST /smart-routing/route`                           |
-| **knowledge**     | 知识库管理、文档向量化、Qdrant RAG 检索                                                                            | `POST /knowledge/documents`、`POST /knowledge/search` |
+| 模块                      | 职责                                                                                                               | 关键端点                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| **agent**                 | 六边形架构 (ports/AgentRuntime → InProcess\|Sandbox 适配器)；`PiAgentCoreAdapter` 封装 pi-agent-core 运行时，`SandboxAgentAdapter` 通过 HTTP + SSE 与沙箱容器通信；`tool-schema-converter.ts` Zod ↔ TypeBox 双向转换 | 内部使用（由 execution/agent-execution 调用）         |
+| **agent-definition**      | Agent 定义 CRUD + 版本管理 + canvas 保存 + 发布/归档；`agent_definitions`/`agent_versions` 表；compile pipeline 含 sub-agent 节点验证（别名唯一性、格式正则、自引用禁止） | `POST /agent-definitions`、`PUT /:id/versions`        |
+| **agent-conversation**    | Agent 对话生命周期：创建/列表/消息历史/发送消息 API；`agent_conversations`/`agent_messages` 表 | `POST /agent-conversations`、`GET /:id/messages`      |
+| **agent-execution**       | Agent 对话执行引擎：`AgentExecutionWorker` + Socket.IO `/agent-conversation` gateway + `WorkflowAgentAdapter`（桥接工作流 `agent` 节点）+ `SubAgentToolsProvider`（4 个子代理工具，最大并发 10，最大嵌套深度 5） | `WS conversation:subscribe`                           |
+| **agent-memory**          | 图拓扑 Agent 记忆系统：7 张表，25 REST 端点，Socket.IO `/memory` namespace，7 个 Agent 工具，纯 PostgreSQL FTS | `GET /memory-instances`、`POST /:id/nodes`            |
+| **llm**                   | LLM 提供商管理、`LlmEncryptionService` E2EE 加密                                                                   | `GET /llm/providers`、`POST /llm/chat`                |
+| **mcp**                   | MCP 工具发现与调用、端口 `mcpToolMapping`                                                                          | `GET /mcp/tools`、`POST /mcp/call`                    |
+| **smart-routing**         | 6 种路由策略 (TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN) | `POST /smart-routing/route`                           |
+| **knowledge**             | 知识库管理、文档向量化、Qdrant RAG 检索                                                                            | `POST /knowledge/documents`、`POST /knowledge/search` |
+| **shared-resources**      | 通用共享资源注册表：`SharedResourceProvider<TConfig, TInstance>` 接口，sandbox 与 memory 为已注册 provider | 内部使用                                              |
 
 ### 智能路由策略
 
@@ -161,11 +167,11 @@ AgentLoom 服务端包含 **30 个 NestJS 模块**，按职责划分为 7 个领
 
 ### 触发器类型
 
-| 类型        | 说明                   | 状态                        |
-| ----------- | ---------------------- | --------------------------- |
-| `cron`      | Cron 表达式定时触发    | 正式                        |
-| `webhook`   | Webhook URL + 签名验证 | 正式                        |
-| `api_event` | API 事件触发           | Preview（仅查看，不可创建） |
+| 类型        | 说明                   | 状态                                          |
+| ----------- | ---------------------- | --------------------------------------------- |
+| `cron`      | Cron 表达式定时触发    | 正式                                          |
+| `webhook`   | Webhook URL + 签名验证 | 正式                                          |
+| `api_event` | API 事件触发           | 正式（`EventSourceAdapterRegistry` + fan-out） |
 
 ## 模块依赖关系
 
@@ -177,14 +183,20 @@ graph TB
         EX[execution]
         ER[execution-record]
         RB[reusable-block]
+        WS[workspace]
     end
 
     subgraph AI 服务
         AG[agent]
+        AD[agent-definition]
+        AC[agent-conversation]
+        AE[agent-execution]
+        AM[agent-memory]
         LLM[llm]
         MCP[mcp]
         SR[smart-routing]
         KN[knowledge]
+        SHR[shared-resources]
     end
 
     subgraph 平台服务
@@ -209,4 +221,9 @@ graph TB
     EX --> EV
     EX --> ER
     AUTH --> ORG
+    AD --> WS
+    AC --> AD
+    AE --> AG
+    AE --> AC
+    AM --> SHR
 ```

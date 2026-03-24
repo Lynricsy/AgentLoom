@@ -1,14 +1,16 @@
 # 实时通信协议
 
-AgentLoom 使用 **Socket.IO** 实现服务端到客户端的实时事件推送，涵盖工作流执行进度、通知推送和知识库更新三个命名空间。
+AgentLoom 使用 **Socket.IO** 实现服务端到客户端的实时事件推送，涵盖工作流执行、Agent 对话、通知推送、Agent 记忆和知识库更新五个命名空间。
 
 ## 命名空间概览
 
-| 命名空间        | 认证                      | 用途                | 状态     |
-| --------------- | ------------------------- | ------------------- | -------- |
-| `/execution`    | WsJwtGuard + MFA + 黑名单 | 执行进度推送        | 正式协议 |
-| `/notification` | JWT 认证                  | 通知推送 + 未读计数 | 正式协议 |
-| `/knowledge`    | 无                        | 知识库更新          | 隐式契约 |
+| 命名空间                 | 认证                      | 用途                    | 状态     |
+| ------------------------ | ------------------------- | ----------------------- | -------- |
+| `/execution`             | WsJwtGuard + MFA + 黑名单 | 工作流执行进度推送      | 正式协议 |
+| `/agent-conversation`    | WsJwtGuard + MFA + 黑名单 | Agent 对话实时事件推送  | 正式协议 |
+| `/notification`          | JWT 认证                  | 通知推送 + 未读计数     | 正式协议 |
+| `/memory`                | WsJwtGuard + MFA + 黑名单 | Agent 记忆图拓扑事件    | 正式协议 |
+| `/knowledge`             | 无                        | 知识库更新              | 隐式契约 |
 
 ---
 
@@ -214,6 +216,137 @@ tenant:{tenantId}:user:{userId}
 
 ---
 
+## /agent-conversation 命名空间
+
+Agent 对话的实时事件推送通道，与 `/execution` namespace 对称，复用 EventBridge 模式实现对话级事件分发。
+
+### /agent-conversation 认证
+
+| 层级     | 机制                    |
+| -------- | ----------------------- |
+| 连接认证 | `WsJwtGuard` — JWT 验证 |
+| MFA 校验 | 多因素认证检查          |
+| 黑名单   | 令牌撤销检查            |
+| 认证失败 | 关闭连接，code `4001`   |
+
+### /agent-conversation 事件信封
+
+复用 typed `ExecutionEvent<T>` 信封结构，包含单调递增 `eventId`，支持断线重连回放。
+
+### /agent-conversation 订阅协议
+
+```typescript
+// 订阅对话事件
+socket.emit(
+  "conversation:subscribe",
+  {
+    conversationId: "uuid-xxx",
+    lastEventId: 0, // 可选，断线续传
+  },
+  (ack: { success: boolean; error?: string }) => {
+    // ACK 回调确认
+  },
+);
+
+// 取消订阅
+socket.emit(
+  "conversation:unsubscribe",
+  {
+    conversationId: "uuid-xxx",
+  },
+  (ack: { success: boolean }) => {
+    // ACK 回调确认
+  },
+);
+```
+
+### /agent-conversation 事件类型
+
+| 事件名                                     | 说明                                      |
+| ------------------------------------------ | ----------------------------------------- |
+| `conversation.message.created`             | 新消息（用户或 Agent）                    |
+| `conversation.agent.status-changed`        | Agent 状态变更（thinking/responding 等）  |
+| `conversation.agent.output-chunk`          | Agent 流式输出分块                        |
+| `conversation.agent.tool-call`             | Agent 工具调用事件                        |
+| `conversation.subagent.event`              | 子代理事件路由                            |
+
+### 子代理事件路由
+
+`AgentConversationGateway` 通过 `handleSubAgentEvent()` 将子代理执行事件路由到父对话房间。当工作流 `agent` 节点通过 `WorkflowAgentAdapter` 桥接执行时，子 Agent 产生的实时事件会同时推送到对应的父级对话订阅者。
+
+---
+
+## /memory 命名空间
+
+Agent 记忆系统的实时事件推送通道，用于图拓扑节点、边和版本的 CRUD 操作通知。
+
+### /memory 认证
+
+| 层级     | 机制                    |
+| -------- | ----------------------- |
+| 连接认证 | `WsJwtGuard` — JWT 验证 |
+| MFA 校验 | 多因素认证检查          |
+| 黑名单   | 令牌撤销检查            |
+| 认证失败 | 关闭连接，code `4001`   |
+
+### /memory 房间模型
+
+```text
+memory:{tenantId}:{instanceId}
+```
+
+每个记忆实例拥有独立的 room，客户端订阅特定记忆实例的变更事件。
+
+### /memory 订阅协议
+
+```typescript
+// 订阅记忆实例事件
+socket.emit(
+  "memory:subscribe",
+  {
+    instanceId: "uuid-xxx",
+    lastEventId: 0, // 可选，断线续传
+  },
+  (ack: { success: boolean; error?: string }) => {
+    // ACK 回调确认
+  },
+);
+
+// 取消订阅
+socket.emit(
+  "memory:unsubscribe",
+  {
+    instanceId: "uuid-xxx",
+  },
+  (ack: { success: boolean }) => {
+    // ACK 回调确认
+  },
+);
+```
+
+### /memory 事件类型
+
+| 事件名                      | 说明                          |
+| --------------------------- | ----------------------------- |
+| `memory.node.created`       | 记忆节点创建                  |
+| `memory.node.updated`       | 记忆节点内容更新              |
+| `memory.node.deleted`       | 记忆节点删除                  |
+| `memory.version.created`    | 节点新版本创建                |
+| `memory.version.rollback`   | 节点版本回滚                  |
+| `memory.review.submitted`   | 版本审核状态提交              |
+
+### /memory 背压与断线回放
+
+| 参数             | 值               | 说明                        |
+| ---------------- | ---------------- | --------------------------- |
+| 队列上限         | 500 事件/实例    | per-instance 背压队列       |
+| 排水间隔         | 100ms            | drain interval              |
+| 最大回放         | 1000 事件/实例   | 断线重连 `lastEventId` 回放 |
+
+服务层在操作终态后通过 `flushMemoryQueue()` 立即排空队列，确保终态事件不被延迟。
+
+---
+
 ## 客户端集成
 
 ### Studio 集成示例
@@ -275,13 +408,17 @@ Flutter 客户端通过 `socket_io_client` 包连接 `/execution` 命名空间�
 flowchart LR
     subgraph Server
         EG[ExecutionGateway]
+        ACG[AgentConversationGateway]
         NG[NotificationGateway]
+        MG[MemoryGateway]
         KG[KnowledgeGateway]
     end
 
     subgraph Namespaces
         E["/execution<br/>JWT+MFA+黑名单"]
+        AC["/agent-conversation<br/>JWT+MFA+黑名单"]
         N["/notification<br/>JWT 认证"]
+        M["/memory<br/>JWT+MFA+黑名单"]
         K["/knowledge<br/>隐式契约"]
     end
 
@@ -291,12 +428,17 @@ flowchart LR
     end
 
     EG --> E
+    ACG --> AC
     NG --> N
+    MG --> M
     KG --> K
 
     E -->|"ExecutionEvent&lt;T&gt;"| Studio
     E -->|"ExecutionEvent&lt;T&gt;"| Mobile
+    AC -->|"对话事件"| Studio
+    AC -->|"对话事件"| Mobile
     N -->|"notification.new"| Studio
     N -->|"notification.new"| Mobile
+    M -->|"memory.*"| Studio
     K -->|"知识库更新"| Studio
 ```

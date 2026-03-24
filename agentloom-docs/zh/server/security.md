@@ -185,20 +185,84 @@ owner → admin → creator → operator → viewer
 
 ### 默认限制
 
-| 维度          | 默��值                  | 超限响应                                                  |
+| 维度          | 默认值                  | 超限响应                                                  |
 | ------------- | ----------------------- | --------------------------------------------------------- |
 | 每分钟请求数  | 100 req/min             | `429 Too Many Requests` + `Retry-After` + `X-RateLimit-*` |
 | 每日 API 调用 | 由 `tenant_quotas` 配置 | `409 Conflict`（治理阻断）                                |
 
 ### 租户级覆盖
 
-组织管理员可通过 [资源治理](/zh/server/modules#资源治理-7-维度) 自定义限流配额，覆盖默认��。
+组织管理员可通过 [资源治理](/zh/server/modules#资源治理-7-维度) 自定义限流配额，覆盖默认值。
 
 ### 追踪键优先级
 
 1. `apikey:{prefix}` — API Key 请求
 2. `jwt:{sub}` — JWT 认证请求
 3. `req.ip` — 未认证请求
+
+## MFA 多因素认证
+
+AgentLoom 支持 TOTP（基于时间的一次性密码）作为第二认证因子，由 Supabase Auth 底层驱动。
+
+### TOTP 生命周期
+
+| 阶段     | 说明                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------- |
+| 注册     | 用户通过 `MfaEnrollDialog` 扫描 QR 码并输入验证码确认绑定                                           |
+| 验证     | 登录时若账户已启用 MFA，弹出 `MfaVerifyDialog` 要求输入当前 TOTP 码                                 |
+| 撤销     | 在 `/settings/security` 页面解除 TOTP 绑定                                                         |
+
+### WebSocket MFA 校验
+
+`WsJwtGuard` 在 Socket.IO 连接建立时不仅校验 JWT 签名，还会验证 MFA 状态。若用户已启用 MFA 但连接握手未携带有效的 MFA 会话凭证，连接将被拒绝。
+
+## OAuth 第三方登录
+
+### 支持的 Provider
+
+| Provider | 回调处理                                            |
+| -------- | --------------------------------------------------- |
+| Google   | Supabase Auth PKCE 流程，`/auth/callback` 处理回调  |
+| GitHub   | Supabase Auth PKCE 流程，`/auth/callback` 处理回调  |
+
+### 移动端重定向
+
+移动端 OAuth 请求携带 `?platform=mobile` 参数，认证完成后重定向至深链：
+
+```text
+agentloom://auth/callback?access_token=...&refresh_token=...
+```
+
+移动端通过 `url_launcher` 发起 OAuth，通过深链接收回调 token。
+
+## 会话管理
+
+### 会话列表
+
+用户可在 `/settings/security` 页面查看当前所有活跃会话（包括设备信息、IP 地址、最后活跃时间）。
+
+### 会话撤销
+
+| 操作           | 说明                                           |
+| -------------- | ---------------------------------------------- |
+| 撤销指定会话   | 主动踢出特定设备的登录状态                     |
+| 撤销全部会话   | 登出所有设备（当前设备除外）                   |
+| 密码修改后撤销 | 修改密码后自动撤销其它所有会话                 |
+
+## JWT 黑名单
+
+### 机制
+
+用户登出或会话被撤销时，对应 JWT 的 `jti`（JWT ID）被加入 Redis 黑名单。`AuthGuard` 在验证 JWT 签名后额外检查黑名单，命中则拒绝请求。
+
+### 存储
+
+| 属性       | 说明                                    |
+| ---------- | --------------------------------------- |
+| 存储后端   | Redis                                   |
+| Key 格式   | `jwt:blacklist:{jti}`                   |
+| TTL        | 与 JWT 剩余有效期一致（到期后自动清除） |
+| 写入时机   | 登出、会话撤销、密码修改                |
 
 ## 执行治理准入
 

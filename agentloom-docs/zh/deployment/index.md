@@ -37,7 +37,7 @@ AgentLoom 支持多种部署模式，适用于从开发调试到企业级生产�
 
 ## 服务架构
 
-AgentLoom 私有化部署包含 8 个核心服务：
+AgentLoom 私有化部署包含 9 个核心服务：
 
 ```mermaid
 graph TD
@@ -74,6 +74,7 @@ graph TD
 | **redis**         | `redis:7-alpine`        | 缓存与消息队列 (BullMQ)            |
 | **minio**         | `minio/minio:latest`    | S3 兼容对象存储                    |
 | **qdrant**        | `qdrant/qdrant:v1.14.0` | 向量数据库（知识库 RAG）           |
+| **sandbox**       | `agentloom/sandbox:latest` | 沙箱容器：archlinux + pi-coding-agent + Fastify HTTP，Agent 隔离执行环境 |
 
 ::: info Server 与 Worker 的关系
 Server 和 Worker 使用**完全相同的 Docker 镜像和启动命令**，仅通过拓扑分离实现职责划分。这种设计简化了构建流程并确保代码一致性。

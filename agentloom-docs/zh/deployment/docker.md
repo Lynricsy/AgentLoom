@@ -118,6 +118,21 @@ Worker 使用**与 Server 完全相同的镜像和启动命令**。两者通过 
 | **minio**    | `minio/minio:latest`    | `minio_data`    | 控制台绑定 `127.0.0.1:9001`         |
 | **qdrant**   | `qdrant/qdrant:v1.14.0` | `qdrant_data`   | 绑定 `127.0.0.1:6333`，仅内网可访问 |
 
+### 沙箱容器 (sandbox)
+
+Agent 隔离执行环境，基于 `agentloom/sandbox:latest`（archlinux + pi-coding-agent + Fastify HTTP）。
+
+| 项目     | 说明                                              |
+| -------- | ------------------------------------------------- |
+| 镜像     | `agentloom/sandbox:latest`                        |
+| 构建     | `cd agentloom-deploy/sandbox && bash build.sh`    |
+| 端口     | 内部服务，由 Server 通过 HTTP + SSE 调用          |
+| 环境变量 | LLM API Key 通过环境变量注入                      |
+
+::: tip
+沙箱��器不对外暴露端口，仅由 Server（`SandboxAgentAdapter`）通过内网 HTTP + SSE 协议调用。不使用沙箱功能的部署可跳过此服务。
+:::
+
 ## Dockerfile 解析
 
 ### server.Dockerfile

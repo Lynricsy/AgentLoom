@@ -49,7 +49,8 @@ interface PortDefinition {
     | "audio"
     | "tool"
     | "sandbox"
-    | "knowledge";
+    | "knowledge"
+    | "skill";
   description?: string;
   required?: boolean;
   multiple?: boolean;
@@ -155,7 +156,7 @@ function checkSchemaCompatibility(
 type TypeSchema = ScalarTypeSchema | ObjectTypeSchema | ArrayTypeSchema;
 
 interface ScalarTypeSchema {
-  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge";
+  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill";
   format?: string;
   examples?: string[];
   title?: string;

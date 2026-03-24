@@ -119,7 +119,7 @@ pnpm db:generate
 # 执行迁移
 pnpm db:migrate
 
-# （可选）填充种子数据，包含 5 个预置工作流模板
+# （可选）填充种子数据，包含 5 个预置工作流模板 + 5 个内置 Skill
 pnpm db:seed
 ```
 
@@ -183,6 +183,7 @@ pnpm dev
 ```bash
 cd agentloom-server
 pnpm start:dev          # 开发模式（watch）
+pnpm start:acp:stdio    # ACP stdio 独立入口
 pnpm test               # 单元测试
 pnpm test:e2e           # E2E 测试（需 Docker）
 pnpm test:cov           # 覆盖率报告（80% 阈值）
@@ -191,6 +192,7 @@ pnpm db:migrate         # 执行迁移
 pnpm db:seed            # 填充种子数据
 pnpm db:studio          # Drizzle Studio
 pnpm openapi:export     # 导出 OpenAPI 3.0 规范
+pnpm sdk:generate       # 生成 TypeScript + Python SDK
 ```
 
 ### 前端工作台
@@ -210,6 +212,13 @@ cd agentloom-type-engine
 cargo test              # 运行测试
 cargo bench             # 性能基准测试
 wasm-pack build --target bundler --release  # 构建 WASM 产物
+```
+
+### 沙箱容器镜像
+
+```bash
+cd agentloom-deploy/sandbox
+bash build.sh           # 构建 agentloom/sandbox:latest 沙箱容器镜像
 ```
 
 ### 移动端（需 Flutter 3.41.2）

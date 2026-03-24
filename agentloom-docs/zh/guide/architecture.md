@@ -15,7 +15,7 @@ flowchart TB
     subgraph Server["服务端层"]
         NestJS["AgentLoom Server<br/>(NestJS v11 + Fastify v5)"]
         Workers["BullMQ Workers<br/>(13 个异步处理器)"]
-        SocketIO["Socket.IO Gateway<br/>(3 个命名空间)"]
+        SocketIO["Socket.IO Gateway<br/>(5 个命名空间)"]
     end
 
     subgraph Infra["基础设施层"]
@@ -65,6 +65,8 @@ flowchart LR
         W1["/execution<br/>执行事件推送"]
         W2["/knowledge<br/>知识库同步"]
         W3["/notification<br/>通知推送"]
+        W4["/agent-conversation<br/>Agent 对话推送"]
+        W5["/memory<br/>记忆图谱操作"]
     end
 
     Client["客户端"] --> REST
@@ -77,6 +79,8 @@ flowchart LR
 | **Socket.IO** `/execution`    | 执行状态实时推送，支持 `lastEventId` 断线续传 | JWT                         |
 | **Socket.IO** `/knowledge`    | 知识库操作同步                                | JWT                         |
 | **Socket.IO** `/notification` | 通知 fan-out（完成 / 失败 / 需介入）          | JWT                         |
+| **Socket.IO** `/agent-conversation` | Agent 对话实时推送，与 `/execution` 对称 | JWT + MFA                   |
+| **Socket.IO** `/memory`       | Agent 记忆图谱实时操作                        | JWT                         |
 
 > Socket.IO `/execution` 使用 typed `ExecutionEvent<T>` 信封，含单调递增 `eventId`，支持断线后按 `lastEventId` 增量回放。详见 [服务端 Socket.IO 协议](/zh/server/)。
 

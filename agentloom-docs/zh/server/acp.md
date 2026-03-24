@@ -64,7 +64,7 @@ pnpm start:acp:stdio
 
 ## 方法列表
 
-ACP 共提供 **12 个** JSON-RPC 方法，分为 4 组：
+ACP 共提供 **15 个** JSON-RPC 方法，分为 4 组：
 
 ### 连接管理
 
@@ -103,6 +103,10 @@ ACP 共提供 **12 个** JSON-RPC 方法，分为 4 组：
   "id": 1
 }
 ```
+
+::: tip `initialized` 通知
+部分客户端在完成 `initialize` 请求后会发送一个 `initialized` 通知（无 `id` 字段的 JSON-RPC 消息）。服务端收到后静默处理（no-op），不会报错也不会返回响应。
+:::
 
 #### `authenticate`
 
@@ -199,6 +203,13 @@ Cold-recovery 失败时 **fail-closed**（拒绝恢复而非给出不完整状�
 #### `terminal/wait_for_exit`
 
 等待终端进程退出。
+
+::: info 双重超时语义
+`terminal/wait_for_exit` 存在两种不同的超时行为：
+
+- **request-local `timeoutMs`**：请求级等待超时。超时后返回 `terminal_wait_timeout` 错误，但**不会主动 kill 进程**，进程继续运行。
+- **server lifetime timeout**（300s）：服务端全局存活超时。超时后返回 `terminal_timeout` 错误，**会 kill 进程**。
+:::
 
 #### `terminal/kill`
 

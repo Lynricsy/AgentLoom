@@ -13,7 +13,7 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 
 ## Schema 文件总览
 
-`agentloom-server/src/database/schema/` 下共有 **44 个** schema 定义文件，按业务域划分为 6 个领域：
+`agentloom-server/src/database/schema/` 下共有 **55 个** schema 定义文件，按业务域划分为 6 个领域：
 
 ### 核心工作流域
 
@@ -98,6 +98,26 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 | `knowledge_bases` | 知识库             |
 | `document_chunks` | 文档分块（向量化） |
 
+### Agent 记忆域
+
+| 表名                       | 说明                                                                   |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `agent_memory_instances`   | 记忆实例（name/description/config/status/occ_version, direct-tenant RLS） |
+| `memory_nodes`             | 记忆图节点（instance_id/content_type/metadata/disclosure_level）       |
+| `memory_edges`             | 记忆图边（instance_id/parent_node_id/child_node_id/name/priority, 循环检测） |
+| `memory_paths`             | URI 路径绑定（instance_id/domain/path_string/node_id）                 |
+| `memory_node_versions`     | 节点版本历史（node_id/content/mode: create\|patch\|append/review_status） |
+| `memory_sessions`          | 记忆会话（双 FK: execution_id OR agent_conversation_id + CHECK, 对齐 sandbox_sessions） |
+| `memory_glossary_keywords` | 词汇表关键词（Aho-Corasick 自动标注）                                  |
+
+### Skill 与执行遥测域
+
+| 表名                       | 说明                                                              |
+| -------------------------- | ----------------------------------------------------------------- |
+| `skills`                   | Skill 定义（tenantId/slug/name/description/content/frontmatter/isBuiltin/status, sentinel UUID 标记内置） |
+| `workspace_snapshots`      | 工作区快照（文件状态快照，支持 Agent 对话与工作流执行）           |
+| `agent_execution_records`  | Agent 执行遥测（step_telemetry/execution_summary 两类记录，payload check 互斥） |
+
 ### ACP 会话域
 
 | 表名                        | 说明           |
@@ -109,7 +129,7 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 
 ## ER 关系图
 
-为保证可读性，按业务域拆分为 5 个 ER 图。
+为保证可读性，按业务域拆分为 6 个 ER 图。
 
 ### 1. 核心工作流域
 
@@ -414,6 +434,78 @@ erDiagram
     workflow_triggers }o--|| workflow_definitions : "triggers"
 ```
 
+### 6. Agent 记忆域
+
+```mermaid
+erDiagram
+    agent_memory_instances {
+        uuid id PK
+        uuid tenant_id
+        varchar name
+        text description
+        jsonb config
+        enum status "active|archived"
+        int occ_version
+    }
+
+    memory_nodes {
+        uuid id PK
+        uuid instance_id FK
+        varchar content_type
+        jsonb metadata
+        enum disclosure_level "public|internal|confidential"
+    }
+
+    memory_edges {
+        uuid id PK
+        uuid instance_id FK
+        uuid parent_node_id FK
+        uuid child_node_id FK
+        varchar name
+        int priority "循环检测"
+    }
+
+    memory_paths {
+        uuid id PK
+        uuid instance_id FK
+        varchar domain
+        text path_string
+        uuid node_id FK
+    }
+
+    memory_node_versions {
+        uuid id PK
+        uuid node_id FK
+        jsonb content
+        enum mode "create|patch|append"
+        enum review_status "pending|approved|rejected"
+    }
+
+    memory_sessions {
+        uuid id PK
+        uuid instance_id FK
+        uuid execution_id FK "nullable"
+        uuid agent_conversation_id FK "nullable, CHECK 至少一个非空"
+    }
+
+    memory_glossary_keywords {
+        uuid id PK
+        uuid instance_id FK
+        varchar keyword
+        text description "Aho-Corasick 自动标注"
+    }
+
+    agent_memory_instances ||--o{ memory_nodes : "has nodes"
+    agent_memory_instances ||--o{ memory_edges : "has edges"
+    agent_memory_instances ||--o{ memory_paths : "has paths"
+    agent_memory_instances ||--o{ memory_sessions : "has sessions"
+    agent_memory_instances ||--o{ memory_glossary_keywords : "has keywords"
+    memory_nodes ||--o{ memory_node_versions : "has versions"
+    memory_nodes ||--o{ memory_paths : "bound to"
+    memory_nodes ||--o{ memory_edges : "parent"
+    memory_nodes ||--o{ memory_edges : "child"
+```
+
 ---
 
 ## 行级安全策略 (RLS)
@@ -497,7 +589,7 @@ pnpm db:generate
 # 2. 执行迁移
 pnpm db:migrate
 
-# 3. 填充种子数据（5 个预置模板，基于 slug upsert）
+# 3. 填充种子数据（5 个预置模板 + 5 个内置 Skill，基于 slug upsert）
 pnpm db:seed
 
 # 可视化 Schema 浏览
@@ -513,7 +605,7 @@ flowchart LR
     C --> D["pnpm db:migrate"]
     D --> E["应用到 PostgreSQL"]
     E --> F["pnpm db:seed"]
-    F --> G["upsert 5 个预置模板"]
+    F --> G["upsert 5 个预置模板 + 5 个内置 Skill"]
 ```
 
 ### 注意事项

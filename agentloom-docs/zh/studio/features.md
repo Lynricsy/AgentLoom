@@ -1,6 +1,6 @@
 # 功能模块
 
-Studio 包含 26 个 Feature Slice，按领域划分为 7 大类别。本页详细介绍各功能模块的职责与关键实现。
+Studio 包含 31 个 Feature Slice，按领域划分为 8 大类别。本页详细介绍各功能模块的职责与关键实现。
 
 ## 核心画布
 
@@ -34,6 +34,59 @@ DAG 工作流的可视化编辑器，基于 `@xyflow/react` v12，支持 17 种�
 ### block-library — 可复用节点块库
 
 管理可复用的节点块（Reusable Block），对应画布中的 `reusable-block` 节点类型。
+
+## Agent 体系
+
+### agent — Agent 管理
+
+Agent 定义的 CRUD 页面，位于 `/agents`：
+
+- **AgentListPage**：Agent 列表，支持搜索与状态筛选
+- `agentApi.ts` 封装 Agent 定义与版本 REST API
+- `agentKeys.ts` 提供 TanStack Query key factory
+- Query hooks：`useAgentList` / `useAgentDetail`
+- Mutations：`useCreateAgent` / `useUpdateAgent` / `usePublishAgent`
+
+### agent-canvas — Agent 配置画布
+
+Agent 配置编辑器画布，位于 `/agents/$agentId`，基于 ReactFlow：
+
+- 使用 `AGENT_CANVAS_NODE_REGISTRY` 子集节点（CPU / memory / timeout / lifecycle 等运行时参数）
+- **非执行 DAG**，仅用于参数编辑，不执行工作流调度
+- `agentCanvasStore`（Zustand）管理画布状态：nodes / edges / viewport / dirty
+- 支持自动保存到 `agent_versions`
+- sub-agent 节点类型 + `SubAgentConfigPanel`（Agent picker + version dropdown + alias validation + timeout slider）
+
+### agent-conversation — Agent 对话
+
+Agent 独立对话 UI，位于 `/agents/$agentId/conversations/$conversationId`：
+
+- **三列布局**：对话列表 / 消息流 / 上下文面板
+- `agentConversationStore`（Zustand）管理消息列表与流式状态
+- 通过 Socket.IO `/agent-conversation` namespace 实现实时消息推送与 mid-stream injection
+- sub-agent stream rendering（`SubAgentStreamView` 递归嵌套）
+- completion notice routing
+- 支持多轮对话与文件上下文
+
+### agent-memory — Agent 记忆
+
+Agent 记忆系统管理（35 files），位于 Agent 详情页内：
+
+- **记忆图谱可视化**：d3-force + dagre 布局 + ReactFlow 渲染
+- 记忆检索 / 创建 / 编辑
+- Socket.IO `/memory` namespace 实时反馈
+- 审计日志集成
+
+### skill — Skill 管理
+
+Skill 定义的管理功能，位于 `/settings/skills`：
+
+- **SkillBrowsePage**：分类 Tabs + 搜索 + 启用状态筛选 + 卡片网格
+- `SkillCard`：单个 Skill 卡片展示
+- `SkillDetailDialog`：Skill 详情与启停操作
+- `CreateSkillDialog`：创建 Skill，内置 Monaco 编辑器懒加载 SKILL.md 内容编辑
+- `skill` 画布节点：同时出现在工作流画布与 agent-canvas 中
+- `SkillBody` / `SkillPanel` / `SkillConfigPanel`：画布节点的 body 与配置面板组件
 
 ## 执行与监控
 
@@ -138,6 +191,13 @@ MCP（Model Context Protocol）工具管理，对应画布中的 `mcp-tool` 节�
 
 组织级别的 Agent 自主性策略管理，控制 Agent 在无人干预下的操作范围。
 
+- 入口：`/settings/security/autonomy-policy`，仅 `owner` 可访问
+- 通过 auth token 解析 `organizationId` 后调用组织自治策略 API
+- 支持上限查看 / 更新，以及 `downgrade-preview` + `downgrade-confirm` 两段式收紧流程
+- 策略卡片展示 `organizationId`、`version`、`updatedAt`、`updatedBy` 元信息
+- 共享 `autonomyModePolicy.ts` 提供 `AUTONOMY_MODES`、mode label/description、cap 比较和格式化 helper
+- 供 settings 页、`LlmAgentConfigPanel` 与优化建议阻断 UI 复用
+
 ## 生态与市场
 
 ### marketplace — 工作流与插件市场
@@ -220,11 +280,38 @@ RSA-4096 公钥管理。`tenant_encryption_keys` 为 append-only 历史模型（
 
 API Key 管理入口（`al_` prefix + SHA-256 hash），位于 `/developer-console`。
 
-### auth — 认证占位
+### auth — 认证与安全
 
-::: warning 占位状态
-`auth` 当前仅包含 `useAuthToken` hook，使用 `localStorage('auth_token')` + `useSyncExternalStore`。标记 `TODO(auth)` 待替换为真实认证。Studio **没有** Supabase 客户端。
-:::
+Supabase Auth PKCE 流程集成，依赖 `@supabase/supabase-js`，Supabase client 初始化在 `shared/lib/supabase.ts`。
+
+**状态管理**：`auth.store.ts`（Zustand）管理 `session` / `user` / `loading` / `initialized` 四个状态字段。
+
+**Hooks**：
+
+| Hook | 职责 |
+| --- | --- |
+| `useAuth` | signIn / signUp / signOut / signInWithOAuth |
+| `useAuthToken` | 后向兼容的 token 访问（从 Supabase session 读取 access token） |
+| `useMfa` | TOTP 注册 / 验证 / 撤销 |
+
+**HTTP 认证链路**：ky HTTP 客户端注入 `Bearer` token，401 时通过 `supabase.auth.refreshSession()` 自动刷新重试，刷新失败触发自动 signOut。
+
+**OAuth**：支持 Google + GitHub，通过 `OAuthButtons` 组件提供入口。
+
+**MFA**：TOTP 双因素认证，`MfaEnrollDialog`（QR 码注册 + 验证）和 `MfaVerifyDialog`（验证码输入）。
+
+**路由**：
+
+| 路由 | 页面 | 说明 |
+| --- | --- | --- |
+| `/login` | LoginPage | 邮箱密码登录 + OAuth + 注册链接 |
+| `/register` | RegisterPage | 邮箱密码注册 + OAuth + 登录链接 |
+| `/auth/callback` | AuthCallbackPage | Supabase OAuth PKCE 回调处理 |
+| `/settings/security` | SecuritySettingsPage | 密码修改 / MFA 管理 / 会话列表 |
+
+**Auth Guard**：`__root.tsx` 包含全局 auth guard，未认证用户重定向到 `/login`。
+
+**组件**：`AuthLayout`（居中卡片布局）、`OAuthButtons`、`PasswordInput`（带可见性切换）、`SecuritySettings`。
 
 ## 复杂度热点
 

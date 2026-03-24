@@ -35,7 +35,7 @@ Studio 采用 [Feature-Slice Design](https://feature-sliced.design/) 组织代�
 src/
 ├── app/              # 应用入口、Provider、路由定义
 │   └── routes/       # TanStack Router 路由文件
-├── features/         # 功能切片（26 个 feature）
+├── features/         # 功能切片（31 个 feature）
 │   ├── canvas/       # 画布编辑器
 │   ├── execution/    # 执行引擎
 │   ├── workflow/     # 工作流管理
@@ -47,13 +47,13 @@ src/
     └── types/        # 全局类型
 ```
 
-### 26 个功能切片
+### 31 个功能切片
 
-Studio 包含 26 个 feature 目录，按领域分为 7 大类别：
+Studio 包含 31 个 feature 目录，按领域分为 7 大类别：
 
 | 类别           | Feature                        | 说明                            |
 | -------------- | ------------------------------ | ------------------------------- |
-| **核心画布**   | `canvas`                       | DAG 画布编辑器，支持 17 种节点  |
+| **核心画布**   | `canvas`                       | DAG 画布编辑器，支持 21 种节点  |
 |                | `workflow`                     | 工作流 CRUD、版本管理、发布     |
 |                | `workflow-input-schema`        | 工作流输入参数 schema 定义      |
 |                | `block-library`                | 可复用节点块库                  |
@@ -65,6 +65,11 @@ Studio 包含 26 个 feature 目录，按领域分为 7 大类别：
 |                | `optimization-suggestion`      | Agent 配置优化建议              |
 |                | `knowledge`                    | 知识库 RAG 管理                 |
 |                | `mcp`                          | MCP 工具集成                    |
+|                | `skill`                        | Skill 管理                      |
+| **Agent**      | `agent`                        | Agent 列表/创建/设置            |
+|                | `agent-canvas`                 | Agent 配置编辑器画布            |
+|                | `agent-conversation`           | Agent 三列对话 UI               |
+|                | `agent-memory`                 | Agent 记忆图谱可视化            |
 | **触发与介入** | `trigger`                      | Cron / Webhook / API 事件触发器 |
 |                | `intervention-policy`          | 人机介入策略配置                |
 |                | `organization-autonomy-policy` | 组织级自主性策略                |
@@ -78,15 +83,15 @@ Studio 包含 26 个 feature 目录，按领域分为 7 大类别：
 |                | `audit-log`                    | 审计日志查询                    |
 |                | `notification`                 | 通知管理                        |
 | **开发者**     | `developer-console`            | 开发者控制台                    |
-|                | `auth`                         | 认证占位（`TODO(auth)`）        |
+|                | `auth`                         | Supabase Auth PKCE 认证         |
 
 ::: tip 关于 auth
-`auth` feature 当前仅包含 `useAuthToken` hook，使用 `localStorage('auth_token')` + `useSyncExternalStore` 实现。标记为 `TODO(auth)`，待接入真实认证系统。Studio 目前**没有** Supabase 客户端。
+`auth` feature 集成 Supabase Auth（PKCE 流程），`auth.store.ts`（Zustand）管理会话/用户/loading 状态，`useAuth` hook 提供 signIn/signUp/signOut/OAuth 操作，`useAuthToken` hook 保持后向兼容。ky HTTP 客户端注入 `Bearer` token、401 时自动刷新重试。支持 TOTP MFA 注册与验证。
 :::
 
 ## 路由结构
 
-Studio 使用 TanStack Router 管理路由，包含 17 个路由页面：
+Studio 使用 TanStack Router 管理路由，包含 27 个路由页面：
 
 | 路由                                 | 页面         | 说明              |
 | ------------------------------------ | ------------ | ----------------- |
@@ -100,6 +105,16 @@ Studio 使用 TanStack Router 管理路由，包含 17 个路由页面：
 | `/marketplace/my-listings`           | 我的上架     | 已发布内容管理    |
 | `/share/:token`                      | 分享页       | 公开只读分享      |
 | `/developer-console`                 | 开发者控制台 | API Key 管理      |
+| `/agents`                            | AgentListPage | Agent 列表/创建入口 |
+| `/agents/$agentId`                   | AgentCanvasPage | Agent 配置编辑器画布 |
+| `/agents/$agentId/conversations/new` | AgentConversationPage | 创建新对话 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话 UI |
+| `/login`                             | LoginPage    | 邮箱密码登录 + OAuth |
+| `/register`                          | RegisterPage | 邮箱密码注册 + OAuth |
+| `/auth/callback`                     | AuthCallbackPage | Supabase OAuth PKCE 回调 |
+| `/settings/security`                 | SecuritySettingsPage | 密码修改/MFA 管理/会话列表 |
+| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | 组织自治策略设置（owner-only） |
+| `/settings/skills`                   | SkillBrowsePage | Skill 管理页 |
 | `/settings/...`                      | 设置页组     | 组织级管理        |
 
 ## 共享 UI 层
@@ -117,5 +132,5 @@ Studio 使用 TanStack Router 管理路由，包含 17 个路由页面：
 
 - [画布编辑器](./canvas) — 节点、连线、LOD 与交互
 - [状态���理](./state) — Zustand 状态、TanStack Query、表单
-- [功能模块](./features) — 26 个 feature 详解
+- [功能模块](./features) — 31 个 feature 详解
 - [WASM 集成](./wasm) — 类型引擎 Web Worker 架构

@@ -11,7 +11,7 @@ AgentLoom 服务端基于 **NestJS v11 + Fastify v5** 构建，采用模块化�
 | ORM        | Drizzle ORM               | 类型安全 SQL 构建器（非 TypeORM）                    |
 | 数据库     | PostgreSQL (Supabase)     | 多租户 RLS + 行级安全                                |
 | 缓存/队列  | Redis + BullMQ            | 限流、缓存、异步任务队列                             |
-| 实时通信   | Socket.IO (Redis Adapter) | `/execution`、`/knowledge`、`/notification` 命名空间 |
+| 实时通信   | Socket.IO (Redis Adapter) | `/execution`、`/knowledge`、`/notification`、`/agent-conversation`、`/memory` 命名空间 |
 | 向量数据库 | Qdrant                    | 知识库 RAG 语义检索                                  |
 | 对象存储   | MinIO                     | 文件、WASM bundle 存储                               |
 | 校验       | Zod                       | DTO 校验（非 class-validator）                       |
@@ -33,7 +33,7 @@ agentloom-server/src/
 │   └── adapters/              # RedisIoAdapter (Socket.IO)
 ├── database/
 │   └── schema/                # Drizzle 表定义
-├── modules/                   # 30 个业务模块
+├── modules/                   # 37 个业务模块
 │   ├── workflow-definition/   # 工作流定义
 │   ├── execution/             # 执行引擎
 │   ├── agent/                 # Agent 配置
@@ -44,7 +44,7 @@ agentloom-server/src/
 
 ## 模块分类一览
 
-服务端的 30 个 NestJS 模块按职责划分为 7 个领域：
+服务端的 37 个 NestJS 模块按职责划分为 7 个领域：
 
 | 领域                                        | 模块数 | 说明                                     |
 | ------------------------------------------- | ------ | ---------------------------------------- |
@@ -83,7 +83,7 @@ agentloom-server/src/
 
 ## 异步任务队列
 
-服务端使用 BullMQ 管理 11 个任务队列：
+服务端使用 BullMQ 管理 12 个任务队列：
 
 | 队列                        | 用途                             |
 | --------------------------- | -------------------------------- |
@@ -98,14 +98,17 @@ agentloom-server/src/
 | `sandbox-lifecycle-queue`   | 沙箱生命周期管理                 |
 | `document-processing-queue` | 文档处理                         |
 | `document-indexing-queue`   | 文档向量化索引                   |
+| `agent-conversation-queue`  | Agent 对话任务处理               |
 
 ## 实时通信
 
-Socket.IO 使用 Redis Adapter 提供三个命名空间：
+Socket.IO 使用 Redis Adapter 提供五个命名空间：
 
 - **`/execution`**：工作流执行事件流，typed `ExecutionEvent<T>` 信封 + monotonic `eventId`，支持断线 `lastEventId` 增量回放
 - **`/knowledge`**：知识库实时更新
 - **`/notification`**：通知推送
+- **`/agent-conversation`**：Agent 对话实时事件推送，与 `/execution` 对称，复用 EventBridge 模式
+- **`/memory`**：Agent 记忆图谱实时更新
 
 ## 开发命令
 
@@ -116,6 +119,6 @@ pnpm test:e2e                     # E2E 测试 (需 Docker)
 pnpm test:cov                     # 覆盖率 (80% 阈值)
 pnpm db:generate                  # 生成 Drizzle 迁移
 pnpm db:migrate                   # 执行迁移
-pnpm db:seed                      # 种子数据 (5 个预置模板)
+pnpm db:seed                      # 种子数据 (5 个预置模板 + 5 个内置 Skill)
 pnpm openapi:export               # 导出 OpenAPI 3.0 spec
 ```

@@ -176,8 +176,28 @@ TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 J
 
 ## 常用装饰器
 
-| 装饰器                     | 说明                   |
-| -------------------------- | ---------------------- |
-| `@CurrentUser()`           | 注入当前认证用户对象   |
-| `@Roles('admin', 'owner')` | 声明端点所需最低角色   |
-| `@Public()`                | 标记公开端点，跳过认证 |
+| 装饰器                                      | 说明                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| `@CurrentUser()`                            | 注入当前认证用户对象                                                 |
+| `@Roles('admin', 'owner')`                  | 声明端点所需最低角色                                                 |
+| `@Public()`                                 | 标记公开端点，跳过认证                                               |
+| `@SkipThrottle({ default: true })`          | 跳过限流（v6 语法：`Record<string, boolean>`），用于 HealthController 等 |
+| `@CaptureAuditLog(config)`                  | Opt-in HTTP 请求审计捕获，将请求/响应写入审计日志                    |
+
+## WebSocket 守卫
+
+### WsJwtGuard
+
+**位置**：`src/common/guards/ws-jwt.guard.ts`
+
+Socket.IO WebSocket 连接的 JWT + MFA 认证守卫。在连接握手阶段执行：
+
+| 步骤 | 说明                                                         |
+| ---- | ------------------------------------------------------------ |
+| 1    | 从握手 `auth.token` 或 query 参数提取 JWT                    |
+| 2    | 验证 JWT 签名有效性                                          |
+| 3    | 检查 JWT 黑名单（Redis）                                     |
+| 4    | 若用户已启用 MFA，校验 MFA 会话凭证                          |
+| 5    | 通过后将 `user` 和 `tenantId` 附加到 socket `data`           |
+
+所有 Socket.IO namespace（`/execution`、`/agent-conversation`、`/notification`、`/knowledge`、`/memory`）均使用此守卫。

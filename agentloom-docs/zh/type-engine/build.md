@@ -61,7 +61,7 @@ cargo test wasm::bindings::tests
 
 | 测试模块                  | 覆盖范围                                      |
 | ------------------------- | --------------------------------------------- |
-| `compatibility::tests`    | 8 种类型两两兼容性、Schema 递归比较、转换规则 |
+| `compatibility::tests`    | 9 种类型两两兼容性、Schema 递归比较、转换规则 |
 | `schema_validator::tests` | 合法/非法 Schema、深度限制、约束校验          |
 | `bindings::tests`         | WASM 绑定序列化/反序列化、错误处理            |
 

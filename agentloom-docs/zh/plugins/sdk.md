@@ -41,7 +41,7 @@ SDK 通过根入口导出四个子模块：
 
 ### 端口类型 — `PortDataType`
 
-平台统一的 8 种端口数据类型：
+平台统一的 9 种端口数据类型：
 
 ```typescript
 type PortDataType =
@@ -52,7 +52,8 @@ type PortDataType =
   | "audio"
   | "tool"
   | "sandbox"
-  | "knowledge";
+  | "knowledge"
+  | "skill";
 ```
 
 ### 端口定义 — `PortDefinition`

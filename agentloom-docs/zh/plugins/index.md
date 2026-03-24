@@ -43,7 +43,7 @@ flowchart LR
 
 - **清单（Manifest）** — 元数据描述：id、版本、权限、签名信息
 - **自定义节点（Custom Node）** — 画布中可使用的新节点类型，定义输入/输出端口和执行逻辑
-- **端口类型（Port Data Type）** — 平台统一的 8 种数据类型：`model | text | json | image | audio | tool | sandbox | knowledge`
+- **端口类型（Port Data Type）** — 平台统一的 9 种数据类型：`model | text | json | image | audio | tool | sandbox | knowledge | skill`
 
 ### 权限模型
 

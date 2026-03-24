@@ -18,6 +18,10 @@ graph TB
         ES[executionStore<br/>执行状态]
         EVS[evidenceUiStore<br/>证据 UI 状态]
         NS[notificationStore<br/>通知状态]
+        AS[authStore<br/>认证状态]
+        AGS[agentStore<br/>Agent 状态]
+        ACS[agentCanvasStore<br/>Agent 画布状态]
+        ACVS[agentConversationStore<br/>对话状态]
     end
 
     subgraph 服务端缓存 - TanStack Query
@@ -51,7 +55,7 @@ graph TB
 
 ## Zustand Stores
 
-Studio 使用 **4 个 Zustand Store**，均配置 `immer` + `devtools` + `subscribeWithSelector` 中间件：
+Studio 使用 **8 个 Zustand Store**，均配置 `immer` + `devtools` + `subscribeWithSelector` 中间件：
 
 ### canvasStore（~535 行）
 
@@ -98,6 +102,45 @@ VersionToolbar [Run]
 ### notificationStore
 
 全局通知管理，与 Socket.IO `/notification` namespace 联动。维护未读数、通知列表和实时推送。
+
+### authStore
+
+Supabase Auth PKCE 认证状态管理，位于 `features/auth/stores/`。
+
+| 状态          | 说明                              |
+| ------------- | --------------------------------- |
+| session       | Supabase Session 对象             |
+| user          | 当前用户信息                      |
+| loading       | 认证操作进行中                    |
+| initialized   | 初始化完成标记                    |
+
+提供 `signIn` / `signUp` / `signOut` / `OAuth` 操作，ky HTTP 客户端自动注入 `Bearer` token，401 时通过 `supabase.auth.refreshSession()` 刷新重试。
+
+### agentStore
+
+Agent 列表与选择状态管理，位于 `features/agent/stores/`。管理 Agent 列表数据与当前选中 Agent。
+
+### agentCanvasStore
+
+Agent 配置画布状态管理，位于 `features/agent-canvas/stores/`。
+
+| 状态          | 说明                              |
+| ------------- | --------------------------------- |
+| nodes         | Agent 配置画布节点数组            |
+| edges         | Agent 配置画布连线数组            |
+| viewport      | 画布视口 `{ x, y, zoom }`        |
+| isDirty       | 未保存修改标记                    |
+
+### agentConversationStore
+
+Agent 对话状态管理，位于 `features/agent-conversation/stores/`。
+
+| 状态                  | 说明                        |
+| --------------------- | --------------------------- |
+| messages              | 当前对话消息列表            |
+| streaming             | 是否正在流式接收            |
+| conversationList      | 对话列表                    |
+| activeConversationId  | 当前活跃对话 ID             |
 
 ## TanStack Query
 
@@ -159,7 +202,7 @@ const form = useForm({
 
 ## Socket.IO 实时通信
 
-Studio 连接 3 个 Socket.IO namespace：
+Studio 连接 4 个 Socket.IO namespace：
 
 ### `/execution` — 执行追踪
 
@@ -177,6 +220,14 @@ Studio 连接 3 个 Socket.IO namespace：
 ### `/knowledge` — 知识库
 
 知识库操作实时反馈（隐式契约）。
+
+### `/agent-conversation` — Agent 对话
+
+Agent 对话实时消息通道，与 `/execution` namespace 对称，复用 EventBridge 模式：
+
+- **认证**: JWT + MFA 双重认证
+- **事件**: typed events，支持 sub-agent event routing
+- **联动**: `agentConversationStore` 订阅对话级实时事件推送
 
 ## 样式系统
 

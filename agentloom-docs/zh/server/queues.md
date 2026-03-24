@@ -30,6 +30,8 @@ flowchart TB
         Q9[sandbox-lifecycle-queue]
         Q10[document-processing-queue]
         Q11[document-indexing-queue]
+        Q12[agent-conversation-queue]
+        Q13[smart-routing-learning]
     end
 
     subgraph Workers ["消费者"]
@@ -44,6 +46,8 @@ flowchart TB
         W9[SandboxLifecycleWorker]
         W10[DocumentProcessingWorker]
         W11[DocumentIndexingWorker]
+        W12[AgentConversationWorker]
+        W13[SmartRoutingLearningWorker]
     end
 
     ES --> Q1 --> W1
@@ -57,6 +61,8 @@ flowchart TB
     SS --> Q9 --> W9
     KS --> Q10 --> W10
     KS --> Q11 --> W11
+    ES --> Q12 --> W12
+    SS --> Q13 --> W13
 ```
 
 ## 队列详情
@@ -211,6 +217,26 @@ flowchart TB
 | Worker | `DocumentIndexingWorker`      |
 | 职责   | 将文档分块向量化并写入 Qdrant |
 
+### 12. agent-conversation-queue（Agent 对话执行）
+
+| 属性   | 值                                                 |
+| ------ | -------------------------------------------------- |
+| Worker | `AgentConversationWorker`                          |
+| 重试   | 3 次，指数退避（2s base）                          |
+| 职责   | Agent 对话消息执行（独立于 agent-task-queue 工作流节点执行） |
+
+Agent 对话场景与工作流节点执行分离，拥有独立队列和 Worker。通过 `/agent-conversation` Socket.IO namespace 推送实时事件。
+
+### 13. smart-routing-learning（智能路由学习）
+
+| 属性   | 值                                             |
+| ------ | ---------------------------------------------- |
+| Worker | `SmartRoutingLearningWorker`                   |
+| 重试   | 1 次                                           |
+| 职责   | 处理路由决策反馈，更新 MLP/Elo/KNN 在线学习模型 |
+
+异步处理执行完成后的路由决策评分反馈，供 `SmartRoutingModule` 的 `learning/` 子模块进行在线模型训练。
+
 ---
 
 ## 重试与死信队列
@@ -228,6 +254,8 @@ flowchart TB
 | optimization-analysis | 1        | —        | —        |
 | audit-log-retention   | 1        | —        | —        |
 | sandbox-lifecycle     | 3        | 指数退避 | —        |
+| agent-conversation    | 3        | 指数退避 | 2s       |
+| smart-routing-learning| 1        | —        | —        |
 
 ### 死信队列 (DLQ)
 

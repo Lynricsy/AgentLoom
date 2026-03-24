@@ -45,7 +45,7 @@ FCM token 生命周期管理、前台本地通知转发、后台/终止态深链
 
 ## 功能模块
 
-应用包含 6 个 feature 模块：
+应用包含 9 个 feature 模块：
 
 | 模块            | 路径                      | 职责                               |
 | --------------- | ------------------------- | ---------------------------------- |
@@ -54,6 +54,9 @@ FCM token 生命周期管理、前台本地通知转发、后台/终止态深链
 | `workflows`     | `features/workflows/`     | 列表搜索/详情/参数化启动           |
 | `execution`     | `features/execution/`     | Socket.IO 实时监控 + REST 轮询降级 |
 | `notifications` | `features/notifications/` | FCM 推送 + 本地通知 + 深链跳转     |
+| `agents`        | `features/agents/`        | Agent 列表/详情/配置查看 + 对话屏（Socket.IO /agent-conversation 实时消息推送） |
+| `memory`        | `features/memory/`        | 记忆实例管理（列表/详情/编辑）+ 审计日志 + Riverpod providers + API 层 |
+| `skills`        | `features/skills/`        | Skill 列表/详情/编辑屏（仅 name/description，无 SKILL.md 编辑）+ Riverpod providers + API 层 |
 | `settings`      | `features/settings/`      | 设置页（占位）                     |
 
 ## 导航结构
