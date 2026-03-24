@@ -82,9 +82,15 @@ Server 和 Worker 使用**完全相同的 Docker 镜像和启动命令**，仅�
 
 ## 环境配置模板
 
-AgentLoom 提供 `.env.template` 模板文件（75 行），分为 4 个配置区域：
+AgentLoom 使用 `envs/` 目录管理分层环境变量模板：
 
-### 1. 基础设置
+| 模板文件 | 用途 |
+|----------|------|
+| `.env.shared.example` | 基础设施（端口、镜像标签、数据库、Redis、MinIO、Qdrant） |
+| `.env.server.example` | Server/Worker 专用（`APP_*` 前缀应用配置 + Supabase + Firebase） |
+| `.env.studio.example` | Studio 前端（`VITE_*` 前缀构建时注入） |
+
+### 1. 基础设置 (.env.shared)
 
 ```bash
 # 对外暴露端口
@@ -95,56 +101,82 @@ SERVER_IMAGE=agentloom/server:latest
 STUDIO_IMAGE=agentloom/studio:latest
 ```
 
-### 2. 共享基础设施
+### 2. 共享基础设施 (.env.shared)
 
 ```bash
-# PostgreSQL
+# PostgreSQL（容器初始化用）
 POSTGRES_USER=agentloom
 POSTGRES_PASSWORD=<你的数据库密码>
 POSTGRES_DB=agentloom
-DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 
-# Redis
+# Redis（容器初始化用）
 REDIS_PASSWORD=<你的 Redis 密码>
-REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
 
-# MinIO
+# MinIO（容器初始化用）
 MINIO_ROOT_USER=agentloom
 MINIO_ROOT_PASSWORD=<你的 MinIO 密码>
-MINIO_ENDPOINT=http://minio:9000
-MINIO_BUCKET=agentloom
-
-# Qdrant
-QDRANT_URL=http://qdrant:6333
-QDRANT_API_KEY=<你的 Qdrant API Key>
 ```
 
-### 3. Server 专用配置
+### 3. Server 专用配置 (.env.server)
+
+Server/Worker 共享同一份配置，所有应用级变量使用 **`APP_` 前缀**：
 
 ```bash
+# 数据库连接（APP_ 前缀）
+APP_DATABASE_URL=postgresql://agentloom:<密码>@postgres:5432/agentloom
+APP_REDIS_URL=redis://:<密码>@redis:6379/0
+
+# MinIO 对象存储
+APP_MINIO_ENDPOINT=minio
+APP_MINIO_PORT=9000
+APP_MINIO_ACCESS_KEY=agentloom
+APP_MINIO_SECRET_KEY=<你的 MinIO 密码>
+APP_MINIO_USE_SSL=false
+APP_MINIO_BUCKET=agentloom
+
+# Qdrant 向量数据库
+APP_QDRANT_URL=http://qdrant:6333
+
 # JWT 与加密
-JWT_SECRET=<你的 JWT 密钥>
-ENCRYPTION_KEY=<你的加密密钥>
+APP_JWT_SECRET=<你的 JWT 密钥>
+APP_MASTER_ENCRYPTION_KEY=<你的加密密钥>
+
+# 部署模式
+APP_DEPLOYMENT_MODE=private
+APP_FRONTEND_URL=http://localhost:8080
+APP_OAUTH_REDIRECT_URL=http://localhost:8080/auth/callback
 
 # Supabase (可选，私有部署可全部留空)
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
+# Firebase 推送通知 (可选)
+FIREBASE_SERVICE_ACCOUNT=
+
 # 私有部署 License
 APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY=<RSA 公钥>
 ```
 
-### 4. Studio 前端配置
+### 4. Studio 前端配置 (.env.studio)
 
 ```bash
 # 运行时注入的环境变量
-VITE_API_URL=http://localhost:8080
+VITE_API_BASE_URL=http://localhost:8080
 VITE_WS_URL=ws://localhost:8080
+VITE_SUPABASE_URL=<你的 Supabase URL>
+VITE_SUPABASE_ANON_KEY=<你的 Supabase Anon Key>
+VITE_AUTOSAVE_DEBOUNCE_MS=1000
 ```
 
 ::: warning Supabase 配置约束
 私有部署模式下，Supabase 相关配置要么**全部提供**，要么**全部留空**。不支持部分配置。
+:::
+
+::: tip 环境变量命名规范
+- 基础设施容器初始化变量：直接使用服务名前缀（如 `POSTGRES_*`、`REDIS_*`、`MINIO_*`）
+- Server/Worker 应用配置：统一使用 `APP_` 前缀
+- Studio 前端配置：统一使用 `VITE_` 前缀
 :::
 
 ## 运维文档导航

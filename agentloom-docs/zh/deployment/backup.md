@@ -218,6 +218,57 @@ graph TD
 - 恢复前建议先备份当前数据作为回退点
   :::
 
+## 恢复演练 (Drill Runbook)
+
+定期执行恢复演练可验证备份的有效性并确认 RPO/RTO 指标。建议**每月**至少执行一次。
+
+### 演练步骤
+
+1. **准备隔离环境** — 使用独立的 Docker Compose 实例（不同端口或 project name），避免影响生产环境
+
+2. **PostgreSQL 恢复验证**
+   ```bash
+   # 1) 选择最近一次备份
+   BACKUP_FILE=$(ls -t backups/postgres/*.dump | head -1)
+
+   # 2) 校验 SHA-256 完整性
+   sha256sum -c "${BACKUP_FILE}.sha256"
+
+   # 3) 恢复到隔离实例
+   bash scripts/restore-postgres.sh "$BACKUP_FILE"
+
+   # 4) 验证关键表行数
+   docker compose exec postgres psql -U agentloom -c \
+     "SELECT 'workflow_definitions' AS t, count(*) FROM workflow_definitions
+      UNION ALL
+      SELECT 'agent_definitions', count(*) FROM agent_definitions
+      UNION ALL
+      SELECT 'organizations', count(*) FROM organizations;"
+   ```
+
+3. **MinIO 恢复验证**
+   ```bash
+   # 1) 恢复到隔离实例
+   bash scripts/restore-minio.sh backups/minio/latest/
+
+   # 2) 验证 bucket 文件数
+   docker compose exec minio mc ls --recursive local/agentloom | wc -l
+   ```
+
+4. **冒烟测试** — 启动 Server，确认 `GET /api/health` 返回 200 且能正常登录
+
+5. **记录结果** — 记录恢复耗时（验证 RTO）和备份时间点（验证 RPO），存档以备审计
+
+### 演练结果模板
+
+| 指标 | 目标 | 实际 |
+|------|------|------|
+| RPO (数据丢失窗口) | ≤ 1 小时 | ______ |
+| RTO (恢复耗时) | ≤ 30 分钟 | ______ |
+| PostgreSQL 恢复 | 成功 | ______ |
+| MinIO 恢复 | 成功 | ______ |
+| 冒烟测试 | 通过 | ______ |
+
 ## 备份策略建议
 
 ### 生产环境推荐

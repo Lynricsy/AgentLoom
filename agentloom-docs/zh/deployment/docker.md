@@ -109,6 +109,14 @@ Studio 使用 **构建时占位符 + 运行时 sed 替换** 策略：
 Worker 使用**与 Server 完全相同的镜像和启动命令**。两者通过 Docker Compose 的服务名实现拓扑分离，而非运行时差异。这种设计确保代码一致性并简化 CI/CD 流程。
 :::
 
+::: details Worker 运维注意事项
+
+1. **无独立 Worker 运行时** — 不存在仅启动队列消费者的模式，Worker 进程同时监听 HTTP 端口（健康检查需要）
+2. **Server 同时消费队列** — Server 进程也会消费 BullMQ 队列，Worker 是水平扩展补充而非必需组件
+3. **Worker 不应对外暴露** — Worker 的 HTTP 端口仅用于健康检查（`/api/health`），reverse-proxy 不应转发流量到 Worker
+4. **认证依赖 Supabase 配置** — Server 和 Worker 共享同一 Supabase 连接，认证行为由 Supabase 项目配置决定
+:::
+
 ### 基础设施服务
 
 | 服务         | 镜像                    | 持久化卷        | 说明                                |
