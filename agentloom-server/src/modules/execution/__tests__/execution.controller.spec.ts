@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -7,6 +8,7 @@ import { NodeSchedulerService } from '../node-scheduler.service';
 import { CheckpointService } from '../checkpoint.service';
 import { EXECUTION_QUEUE } from '../execution.constants';
 import { InterventionPermissionDeniedException } from '../execution.exceptions';
+import { SandboxAgentAdapter } from '../../agent/sandbox-agent.adapter';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -58,6 +60,12 @@ const mockExecutionQueue: Record<string, ReturnType<typeof vi.fn>> = {
   add: vi.fn(),
 };
 
+const mockSandboxAgentAdapter: Record<string, ReturnType<typeof vi.fn>> = {
+  listPtySessions: vi.fn(),
+  ptyBufferDump: vi.fn(),
+  ptyWrite: vi.fn(),
+};
+
 function createMockReply() {
   return {
     code: vi.fn().mockReturnThis(),
@@ -80,6 +88,7 @@ describe('ExecutionController', () => {
           provide: getQueueToken(EXECUTION_QUEUE),
           useValue: mockExecutionQueue,
         },
+        { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
       ],
     }).compile();
 
@@ -423,6 +432,151 @@ describe('ExecutionController', () => {
         TENANT_ID,
         'job-1',
       );
+    });
+  });
+
+  describe('listPtySessions', () => {
+    it('应代理获取 PTY 会话列表并返回 { data }', async () => {
+      const sessions = [{ id: 'pty-1', title: 'bash' }];
+      mockSandboxAgentAdapter.listPtySessions.mockResolvedValue(sessions);
+
+      const result = await controller.listPtySessions(EXECUTION_ID, TENANT_ID);
+
+      expect(result).toEqual({ data: sessions });
+      expect(mockSandboxAgentAdapter.listPtySessions).toHaveBeenCalledWith(
+        { executionId: EXECUTION_ID },
+        TENANT_ID,
+      );
+    });
+
+    it('沙箱不可用时应抛出 503', async () => {
+      mockSandboxAgentAdapter.listPtySessions.mockRejectedValue(
+        new Error('sandbox connection failed'),
+      );
+
+      await expect(
+        controller.listPtySessions(EXECUTION_ID, TENANT_ID),
+      ).rejects.toThrow(HttpException);
+
+      try {
+        await controller.listPtySessions(EXECUTION_ID, TENANT_ID);
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect((e as HttpException).getResponse()).toEqual({
+          error: 'SANDBOX_UNAVAILABLE',
+          message: 'sandbox connection failed',
+        });
+      }
+    });
+
+    it('沙箱会话未找到时应抛出 404', async () => {
+      mockSandboxAgentAdapter.listPtySessions.mockRejectedValue(
+        new Error('sandbox session not found'),
+      );
+
+      try {
+        await controller.listPtySessions(EXECUTION_ID, TENANT_ID);
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
+        expect((e as HttpException).getResponse()).toEqual({
+          error: 'SANDBOX_NOT_FOUND',
+          message: 'sandbox session not found',
+        });
+      }
+    });
+  });
+
+  describe('ptyBufferDump', () => {
+    it('应代理获取 PTY buffer 数据并返回 { data }', async () => {
+      const bufferData = { lines: ['$ echo hello', 'hello'], totalLines: 2 };
+      mockSandboxAgentAdapter.ptyBufferDump.mockResolvedValue(bufferData);
+
+      const body = { sessionId: 'pty-1', offset: 0, limit: 100 };
+      const result = await controller.ptyBufferDump(EXECUTION_ID, body, TENANT_ID);
+
+      expect(result).toEqual({ data: bufferData });
+      expect(mockSandboxAgentAdapter.ptyBufferDump).toHaveBeenCalledWith(
+        { executionId: EXECUTION_ID },
+        TENANT_ID,
+        'pty-1',
+        { offset: 0, limit: 100 },
+      );
+    });
+
+    it('应支持 pattern 参数', async () => {
+      const bufferData = { lines: ['error: crash'], totalLines: 1 };
+      mockSandboxAgentAdapter.ptyBufferDump.mockResolvedValue(bufferData);
+
+      const body = { sessionId: 'pty-1', pattern: 'error' };
+      const result = await controller.ptyBufferDump(EXECUTION_ID, body, TENANT_ID);
+
+      expect(result).toEqual({ data: bufferData });
+      expect(mockSandboxAgentAdapter.ptyBufferDump).toHaveBeenCalledWith(
+        { executionId: EXECUTION_ID },
+        TENANT_ID,
+        'pty-1',
+        { pattern: 'error' },
+      );
+    });
+
+    it('沙箱不可用时应抛出 503', async () => {
+      mockSandboxAgentAdapter.ptyBufferDump.mockRejectedValue(
+        new Error('container unavailable'),
+      );
+
+      await expect(
+        controller.ptyBufferDump(EXECUTION_ID, { sessionId: 'pty-1' }, TENANT_ID),
+      ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe('ptyWrite', () => {
+    it('应代理向 PTY 写入数据并返回 { data }', async () => {
+      const writeResult = { success: true };
+      mockSandboxAgentAdapter.ptyWrite.mockResolvedValue(writeResult);
+
+      const body = { sessionId: 'pty-1', data: 'ls -la\n' };
+      const result = await controller.ptyWrite(EXECUTION_ID, body, TENANT_ID);
+
+      expect(result).toEqual({ data: writeResult });
+      expect(mockSandboxAgentAdapter.ptyWrite).toHaveBeenCalledWith(
+        { executionId: EXECUTION_ID },
+        TENANT_ID,
+        'pty-1',
+        'ls -la\n',
+      );
+    });
+
+    it('沙箱未找到时应抛出 404', async () => {
+      mockSandboxAgentAdapter.ptyWrite.mockRejectedValue(
+        new Error('sandbox session not found for execution'),
+      );
+
+      try {
+        await controller.ptyWrite(
+          EXECUTION_ID,
+          { sessionId: 'pty-1', data: 'cmd' },
+          TENANT_ID,
+        );
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
+      }
+    });
+
+    it('沙箱不可用时应抛出 503', async () => {
+      mockSandboxAgentAdapter.ptyWrite.mockRejectedValue(
+        new Error('container timeout'),
+      );
+
+      try {
+        await controller.ptyWrite(
+          EXECUTION_ID,
+          { sessionId: 'pty-1', data: 'cmd' },
+          TENANT_ID,
+        );
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      }
     });
   });
 });

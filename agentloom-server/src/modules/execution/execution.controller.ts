@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -18,6 +19,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
+import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { ExecutionService } from './execution.service';
 import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
@@ -47,6 +49,7 @@ export class ExecutionController {
     private readonly executionService: ExecutionService,
     private readonly nodeScheduler: NodeSchedulerService,
     private readonly checkpointService: CheckpointService,
+    private readonly sandboxAgentAdapter: SandboxAgentAdapter,
     @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
   ) {}
 
@@ -256,6 +259,92 @@ export class ExecutionController {
   ) {
     await this.executionService.discardDeadLetterJob(tenantId, jobId);
     return { data: { jobId, status: 'discarded' } };
+  }
+
+  // ── PTY 代理端点 ──
+
+  @Get('executions/:executionId/pty/sessions')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '获取执行关联沙箱的 PTY 会话列表' })
+  @ApiResponse({ status: 200, description: 'PTY 会话列表' })
+  @ApiResponse({ status: 503, description: '沙箱不可用' })
+  async listPtySessions(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    try {
+      const data = await this.sandboxAgentAdapter.listPtySessions(
+        { executionId },
+        tenantId,
+      );
+      return { data };
+    } catch (error) {
+      throw this.mapPtyError(error);
+    }
+  }
+
+  @Post('executions/:executionId/pty/buffer-dump')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '获取执行关联沙箱的 PTY buffer 数据' })
+  @ApiResponse({ status: 200, description: 'PTY buffer 数据' })
+  @ApiResponse({ status: 503, description: '沙箱不可用' })
+  async ptyBufferDump(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Body() body: { sessionId: string; offset?: number; limit?: number; pattern?: string },
+    @CurrentTenant() tenantId: string,
+  ) {
+    try {
+      const { sessionId, ...options } = body;
+      const data = await this.sandboxAgentAdapter.ptyBufferDump(
+        { executionId },
+        tenantId,
+        sessionId,
+        options,
+      );
+      return { data };
+    } catch (error) {
+      throw this.mapPtyError(error);
+    }
+  }
+
+  @Post('executions/:executionId/pty/write')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '向执行关联沙箱的 PTY 会话写入数据' })
+  @ApiResponse({ status: 200, description: 'PTY 写入成功' })
+  @ApiResponse({ status: 503, description: '沙箱不可用' })
+  async ptyWrite(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Body() body: { sessionId: string; data: string },
+    @CurrentTenant() tenantId: string,
+  ) {
+    try {
+      const result = await this.sandboxAgentAdapter.ptyWrite(
+        { executionId },
+        tenantId,
+        body.sessionId,
+        body.data,
+      );
+      return { data: result };
+    } catch (error) {
+      throw this.mapPtyError(error);
+    }
+  }
+
+  private mapPtyError(error: unknown): HttpException {
+    const message = error instanceof Error ? error.message : 'PTY 代理失败';
+    if (message.includes('not found')) {
+      return new HttpException(
+        { error: 'SANDBOX_NOT_FOUND', message },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return new HttpException(
+      { error: 'SANDBOX_UNAVAILABLE', message },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 
   private serializeExecution<

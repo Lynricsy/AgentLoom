@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -169,5 +170,39 @@ export class AgentConversationController {
       tenantId,
       filePath,
     );
+  }
+
+  @Post('agent-conversations/:id/pty/write')
+  @HttpCode(HttpStatus.OK)
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '向对话关联沙箱的 PTY 会话写入数据' })
+  @ApiResponse({ status: 200, description: 'PTY 写入成功' })
+  @ApiResponse({ status: 503, description: '沙箱不可用' })
+  async ptyWrite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { sessionId: string; data: string },
+    @CurrentTenant() tenantId: string,
+  ) {
+    try {
+      const result = await this.sandboxAgentAdapter.ptyWrite(
+        { agentConversationId: id },
+        tenantId,
+        body.sessionId,
+        body.data,
+      );
+      return { data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'PTY 代理失败';
+      if (message.includes('not found')) {
+        throw new HttpException(
+          { error: 'SANDBOX_NOT_FOUND', message },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      throw new HttpException(
+        { error: 'SANDBOX_UNAVAILABLE', message },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,6 +24,7 @@ const mockWorkspaceIntegrationService = {
 const mockSandboxAgentAdapter = {
   awaitToolPermission: vi.fn(),
   resolveConversationToolPermission: vi.fn(),
+  ptyWrite: vi.fn(),
 };
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -225,6 +226,64 @@ describe('AgentConversationController', () => {
           status: 'permission_resolved',
         },
       });
+    });
+  });
+
+  describe('ptyWrite', () => {
+    it('应代理向对话关联沙箱的 PTY 写入数据并返回 { data }', async () => {
+      const writeResult = { success: true };
+      mockSandboxAgentAdapter.ptyWrite.mockResolvedValue(writeResult);
+
+      const body = { sessionId: 'pty-1', data: 'ls -la\n' };
+      const result = await controller.ptyWrite(CONVERSATION_ID, body, TENANT_ID);
+
+      expect(result).toEqual({ data: writeResult });
+      expect(mockSandboxAgentAdapter.ptyWrite).toHaveBeenCalledWith(
+        { agentConversationId: CONVERSATION_ID },
+        TENANT_ID,
+        'pty-1',
+        'ls -la\n',
+      );
+    });
+
+    it('沙箱会话未找到时应抛出 404', async () => {
+      mockSandboxAgentAdapter.ptyWrite.mockRejectedValue(
+        new Error('sandbox session not found'),
+      );
+
+      try {
+        await controller.ptyWrite(
+          CONVERSATION_ID,
+          { sessionId: 'pty-1', data: 'cmd' },
+          TENANT_ID,
+        );
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
+        expect((e as HttpException).getResponse()).toEqual({
+          error: 'SANDBOX_NOT_FOUND',
+          message: 'sandbox session not found',
+        });
+      }
+    });
+
+    it('沙箱不可用时应抛出 503', async () => {
+      mockSandboxAgentAdapter.ptyWrite.mockRejectedValue(
+        new Error('container timeout'),
+      );
+
+      try {
+        await controller.ptyWrite(
+          CONVERSATION_ID,
+          { sessionId: 'pty-1', data: 'cmd' },
+          TENANT_ID,
+        );
+      } catch (e) {
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect((e as HttpException).getResponse()).toEqual({
+          error: 'SANDBOX_UNAVAILABLE',
+          message: 'container timeout',
+        });
+      }
     });
   });
 });
