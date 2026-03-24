@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
+import type { PTYManager } from './pty/pty-manager.js';
 import type {
   CreateSessionRequest,
   PromptRequest,
@@ -13,10 +14,11 @@ export interface SandboxServerOptions {
   host?: string;
   port?: number;
   sessionFactory: SessionFactory;
+  ptyManager?: PTYManager | null;
 }
 
 export async function createSandboxServer(options: SandboxServerOptions) {
-  const { host = '0.0.0.0', port = 8080, sessionFactory } = options;
+  const { host = '0.0.0.0', port = 8080, sessionFactory, ptyManager = null } = options;
 
   const app = Fastify({ logger: true });
   const adapter = new AcpAdapter(sessionFactory);
@@ -91,6 +93,49 @@ export async function createSandboxServer(options: SandboxServerOptions) {
       return reply.code(200).send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Abort failed';
+      return reply.code(404).send({ error: message });
+    }
+  });
+
+  // --- PTY endpoints ---
+
+  app.post<{ Body: { sessionId?: string } }>('/v1/pty/buffer-dump', async (request, reply) => {
+    const { sessionId } = request.body ?? {};
+    if (!sessionId) {
+      return reply.code(400).send({ error: 'sessionId is required' });
+    }
+    if (!ptyManager) {
+      return reply.code(503).send({ error: 'PTY manager not available' });
+    }
+    const session = ptyManager.getSession(sessionId);
+    if (!session) {
+      return reply.code(404).send({ error: `PTY session '${sessionId}' not found` });
+    }
+    const content = ptyManager.getBufferDump(sessionId);
+    const lines = content ? content.split('\n') : [];
+    return reply.code(200).send({ lines, totalLines: lines.length });
+  });
+
+  app.get('/v1/pty/sessions', async (_request, reply) => {
+    if (!ptyManager) {
+      return reply.code(200).send([]);
+    }
+    return reply.code(200).send(ptyManager.list());
+  });
+
+  app.post<{ Body: { sessionId?: string; data?: string } }>('/v1/pty/write', async (request, reply) => {
+    const { sessionId, data } = request.body ?? {};
+    if (!sessionId || !data) {
+      return reply.code(400).send({ error: 'sessionId and data are required' });
+    }
+    if (!ptyManager) {
+      return reply.code(503).send({ error: 'PTY manager not available' });
+    }
+    try {
+      ptyManager.write(sessionId, data);
+      return reply.code(200).send({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Write failed';
       return reply.code(404).send({ error: message });
     }
   });

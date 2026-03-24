@@ -39,6 +39,30 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
         toolCallId: event.toolCallId,
         result: event.result,
       };
+    case 'pty_spawned':
+      return {
+        type: 'pty_spawned',
+        sessionId: event.sessionId,
+        info: event.info,
+      };
+    case 'pty_output':
+      return {
+        type: 'pty_output',
+        sessionId: event.sessionId,
+        data: event.data,
+      };
+    case 'pty_exit':
+      return {
+        type: 'pty_exit',
+        sessionId: event.sessionId,
+        exitCode: event.exitCode,
+        exitSignal: event.exitSignal,
+      };
+    case 'pty_killed':
+      return {
+        type: 'pty_killed',
+        sessionId: event.sessionId,
+      };
     case 'agent_end':
       return { type: 'done' };
     default:
