@@ -6,6 +6,10 @@ import { ReadonlyCanvas } from './ReadonlyCanvas'
 import { ExecutionTimelineVertical } from './timeline'
 import { useTimelineData } from '../hooks/useTimelineData'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
+import { TerminalTab } from './TerminalTab'
+import { usePtySessions } from '../hooks/usePtySessions'
+import { sendPtyWrite } from '../api/pty'
+import type { PtySessionState } from '../types/pty'
 import {
   executionStatusMeta,
   formatExecutionDateTime,
@@ -34,9 +38,9 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const navigate = useNavigate()
   const { data: execution, isLoading, error } = useExecution(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'debug' | 'provenance'>('debug')
+  const [activeTab, setActiveTab] = useState<'debug' | 'provenance' | 'terminals'>('debug')
   const handleTabChange = useCallback((value: string) => {
-    setActiveTab(value as 'debug' | 'provenance')
+    setActiveTab(value as 'debug' | 'provenance' | 'terminals')
   }, [])
   const { timelineData } = useTimelineData(
     executionId,
@@ -46,6 +50,32 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const [rightWidth, setRightWidth] = useState(28)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const activeHandleRef = useRef<ActiveHandle>(null)
+
+  const { data: ptySessions } = usePtySessions({ executionId })
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null)
+
+  const terminalSessions: PtySessionState[] = useMemo(
+    () =>
+      (ptySessions ?? []).map((info) => ({
+        info,
+        outputBuffer: [],
+      })),
+    [ptySessions],
+  )
+
+  useEffect(() => {
+    const first = terminalSessions[0]
+    if (first && activeTerminalId === null) {
+      setActiveTerminalId(first.info.sessionId)
+    }
+  }, [terminalSessions, activeTerminalId])
+
+  const handleTerminalInput = useCallback(
+    (sessionId: string, data: string) => {
+      void sendPtyWrite(executionId, sessionId, data)
+    },
+    [executionId],
+  )
 
   useEffect(() => {
     if (!execution) {
@@ -187,6 +217,14 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
           <TabsList>
             <TabsTrigger value="debug" data-testid="execution-debug-tab-debug">调试面板</TabsTrigger>
             <TabsTrigger value="provenance" data-testid="execution-debug-tab-provenance">溯源图</TabsTrigger>
+            <TabsTrigger value="terminals" data-testid="execution-debug-tab-terminals">
+              终端
+              {terminalSessions.length > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
+                  {terminalSessions.length}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -258,6 +296,16 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
 
         <TabsContent value="provenance" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-provenance-tab">
           <EvidenceGraphView executionId={executionId} />
+        </TabsContent>
+
+        <TabsContent value="terminals" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-terminals-tab">
+          <TerminalTab
+            executionId={executionId}
+            sessions={terminalSessions}
+            activeSessionId={activeTerminalId}
+            onSelectSession={setActiveTerminalId}
+            onInput={handleTerminalInput}
+          />
         </TabsContent>
       </Tabs>
 

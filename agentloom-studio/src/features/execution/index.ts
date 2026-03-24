@@ -12,6 +12,7 @@ export { ReadonlyCanvas } from './components/ReadonlyCanvas'
 export { ExecutionTimeline } from './components/ExecutionTimeline'
 export { ExecutionNodeDetail } from './components/ExecutionNodeDetail'
 export { ExecutionDebugView } from './components/ExecutionDebugView'
+export { TerminalTab, TerminalInstance, TerminalSessionList } from './components/TerminalTab'
 export {
   ExecutionTimelineVertical,
   TimelineEntry,
