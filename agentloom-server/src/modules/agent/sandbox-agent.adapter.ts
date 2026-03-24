@@ -12,6 +12,7 @@ import type {
   AgentSession,
   ContentBlock,
   CreateSessionParams,
+  PtySessionInfo,
 } from './types';
 import type {
   StopReason,
@@ -44,7 +45,7 @@ const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
-type SandboxBinding = {
+export type SandboxBinding = {
   executionId?: string;
   agentConversationId?: string;
 };
@@ -636,6 +637,58 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         return { events: [], error: new Error(message) };
       }
 
+      case 'pty_spawned': {
+        const ptySessionId = this.readString(data?.sessionId);
+        if (!ptySessionId) return { events: [] };
+        return {
+          events: [
+            {
+              type: 'pty.spawned' as const,
+              sessionId: ptySessionId,
+              info: (data?.info ?? {}) as PtySessionInfo,
+            },
+          ],
+        };
+      }
+
+      case 'pty_output': {
+        const ptySessionId = this.readString(data?.sessionId);
+        const ptyData = this.readString(data?.data);
+        if (!ptySessionId || ptyData == null) return { events: [] };
+        return {
+          events: [{ type: 'pty.output' as const, sessionId: ptySessionId, data: ptyData }],
+        };
+      }
+
+      case 'pty_exit': {
+        const ptySessionId = this.readString(data?.sessionId);
+        if (!ptySessionId) return { events: [] };
+        const exitCode =
+          typeof data?.exitCode === 'number' ? data.exitCode : undefined;
+        const exitSignal =
+          typeof data?.exitSignal === 'number' || typeof data?.exitSignal === 'string'
+            ? data.exitSignal
+            : undefined;
+        return {
+          events: [
+            {
+              type: 'pty.exit' as const,
+              sessionId: ptySessionId,
+              ...(exitCode !== undefined && { exitCode }),
+              ...(exitSignal !== undefined && { exitSignal }),
+            },
+          ],
+        };
+      }
+
+      case 'pty_killed': {
+        const ptySessionId = this.readString(data?.sessionId);
+        if (!ptySessionId) return { events: [] };
+        return {
+          events: [{ type: 'pty.killed' as const, sessionId: ptySessionId }],
+        };
+      }
+
       default:
         return { events: [] };
     }
@@ -911,6 +964,76 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     throw new Error(`Sandbox conversation session not found for ${conversationId}`);
   }
 
+  async listPtySessions(
+    sandboxBinding: SandboxBinding,
+    tenantId: string,
+  ): Promise<unknown> {
+    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
+
+    const response = await fetch(`${baseUrl}/v1/pty/sessions`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`PTY sessions 查询失败: status=${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async ptyBufferDump(
+    sandboxBinding: SandboxBinding,
+    tenantId: string,
+    ptySessionId: string,
+    options?: { offset?: number; limit?: number; pattern?: string },
+  ): Promise<unknown> {
+    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
+
+    const response = await fetch(`${baseUrl}/v1/pty/buffer-dump`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: ptySessionId, ...options }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`PTY buffer-dump 失败: status=${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async ptyWrite(
+    sandboxBinding: SandboxBinding,
+    tenantId: string,
+    ptySessionId: string,
+    data: string,
+  ): Promise<unknown> {
+    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
+
+    const response = await fetch(`${baseUrl}/v1/pty/write`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: ptySessionId, data }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`PTY write 失败: status=${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  private async getContainerBaseUrl(containerId: string): Promise<string> {
+    const promptUrl = await this.dockerService.getPromptUrl(containerId);
+    return promptUrl.replace(/\/v1\/prompt$/, '');
+  }
+
   private async abortContainerPrompt(
     sessionId: string,
     sandboxBinding: SandboxBinding,
@@ -957,6 +1080,14 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         return typeof value.suggestedContent === 'string';
       case 'done':
         return typeof value.stopReason === 'string';
+      case 'pty.spawned':
+        return typeof value.sessionId === 'string';
+      case 'pty.output':
+        return typeof value.sessionId === 'string' && typeof value.data === 'string';
+      case 'pty.exit':
+        return typeof value.sessionId === 'string';
+      case 'pty.killed':
+        return typeof value.sessionId === 'string';
       default:
         return false;
     }

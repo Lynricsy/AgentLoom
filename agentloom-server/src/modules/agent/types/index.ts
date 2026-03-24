@@ -31,11 +31,18 @@ export {
   type MessageChunkEvent,
   type ToolCallAgentEvent,
   type DoneEvent,
+  type PtySessionInfo,
+  type PtySpawnedEvent,
+  type PtyOutputEvent,
+  type PtyExitEvent,
+  type PtyKilledEvent,
+  type PtyEvent,
   type AgentEvent,
   isPlanEvent,
   isMessageChunkEvent,
   isToolCallEvent,
   isDoneEvent,
+  isPtyEvent,
 } from './agent-event.types';
 
 export {

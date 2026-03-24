@@ -855,7 +855,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
     });
 
     it('normalizeToolArgs reads arguments field', async () => {
@@ -864,7 +864,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
     });
 
     it('normalizeToolArgs returns {} when no candidates match', async () => {
@@ -873,7 +873,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({});
+      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({});
     });
 
     it('normalizeTransitions with valid entries', async () => {
@@ -886,7 +886,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
       const trans = call.transitions as Array<Record<string, unknown>>;
       expect(trans).toHaveLength(2);
       expect(trans[0].from).toBe('pending');
@@ -906,7 +906,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
       const trans = call.transitions as Array<Record<string, unknown>>;
       expect(trans).toHaveLength(1);
       expect(trans[0].to).toBe('completed');
@@ -919,7 +919,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
       expect(call.permissionRequest).toEqual({
         description: '写入文件',
         resourcePaths: ['/workspace/x.txt'],
@@ -932,7 +932,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
       const perm = call.permissionRequest as Record<string, unknown>;
       expect(perm.description).toContain('myTool');
       expect(perm.resourcePaths).toEqual(['/a']);
@@ -944,7 +944,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { tool: string } }).call.tool).toBe('alt_tool');
+      expect((events[0] as unknown as { type: 'tool_call'; call: { tool: string } }).call.tool).toBe('alt_tool');
     });
 
     it('buildToolCallEvent falls back to data.id when toolCallId missing', async () => {
@@ -953,7 +953,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { id: string } }).call.id).toBe('alt-id');
+      expect((events[0] as unknown as { type: 'tool_call'; call: { id: string } }).call.id).toBe('alt-id');
     });
 
     it('readToolCallStatus infers awaiting_permission when permissionRequest present', async () => {
@@ -962,7 +962,7 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as { type: 'tool_call'; call: { status: string } }).call.status).toBe('awaiting_permission');
+      expect((events[0] as unknown as { type: 'tool_call'; call: { status: string } }).call.status).toBe('awaiting_permission');
     });
 
     it('error event with fallback message from envelope.data', async () => {
@@ -1051,6 +1051,357 @@ describe('SandboxAgentAdapter', () => {
       ]);
 
       expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+  });
+
+  describe('PTY SSE 事件翻译', () => {
+    async function createSessionAndPromptSsePty(
+      sseLines: string[],
+      params = defaultParams,
+    ): Promise<AgentEvent[]> {
+      const session = await adapter.createSession(params);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi.fn().mockResolvedValue(createSseResponse(sseLines));
+
+      return collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'test' }]),
+      );
+    }
+
+    it('pty_spawned SSE 事件翻译为 pty.spawned AgentEvent', async () => {
+      const ptyInfo = {
+        id: 'pty-001',
+        pid: 1234,
+        command: '/bin/bash',
+        args: ['-l'],
+        cwd: '/workspace',
+        status: 'running',
+        createdAt: '2026-03-25T00:00:00Z',
+        lastActivityAt: '2026-03-25T00:00:00Z',
+        title: 'bash',
+        notifyOnExit: false,
+        cols: 80,
+        rows: 24,
+        lineCount: 0,
+      };
+      const events = await createSessionAndPromptSsePty([
+        `data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_spawned","data":{"sessionId":"pty-001","info":${JSON.stringify(ptyInfo)}}}}\n\n`,
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.spawned',
+        sessionId: 'pty-001',
+        info: ptyInfo,
+      });
+      expect(events[1]).toEqual({ type: 'done', stopReason: 'end_turn' });
+    });
+
+    it('pty_spawned 缺少 sessionId 时静默忽略', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_spawned","data":{"info":{}}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('pty_output SSE 事件翻译为 pty.output AgentEvent', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_output","data":{"sessionId":"pty-002","data":"hello world\\r\\n"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.output',
+        sessionId: 'pty-002',
+        data: 'hello world\r\n',
+      });
+    });
+
+    it('pty_output 缺少 sessionId 或 data 时静默忽略', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_output","data":{"sessionId":"pty-003"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_output","data":{"data":"orphan"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('pty_exit SSE 事件翻译为 pty.exit AgentEvent（含 exitCode/exitSignal）', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_exit","data":{"sessionId":"pty-004","exitCode":0,"exitSignal":"SIGTERM"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.exit',
+        sessionId: 'pty-004',
+        exitCode: 0,
+        exitSignal: 'SIGTERM',
+      });
+    });
+
+    it('pty_exit 无 exitCode/exitSignal 时省略可选字段', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_exit","data":{"sessionId":"pty-005"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.exit',
+        sessionId: 'pty-005',
+      });
+    });
+
+    it('pty_exit 缺少 sessionId 时静默忽略', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_exit","data":{"exitCode":1}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('pty_killed SSE 事件翻译为 pty.killed AgentEvent', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_killed","data":{"sessionId":"pty-006"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.killed',
+        sessionId: 'pty-006',
+      });
+    });
+
+    it('pty_killed 缺少 sessionId 时静默忽略', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_killed","data":{}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+    });
+
+    it('pty_exit exitCode 为数字 0 时保留', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_exit","data":{"sessionId":"pty-zero","exitCode":0}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.exit',
+        sessionId: 'pty-zero',
+        exitCode: 0,
+      });
+    });
+
+    it('pty_exit exitSignal 为数字时保留', async () => {
+      const events = await createSessionAndPromptSsePty([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"pty_exit","data":{"sessionId":"pty-sig","exitSignal":9}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'pty.exit',
+        sessionId: 'pty-sig',
+        exitSignal: 9,
+      });
+    });
+  });
+
+  describe('PTY proxy 方法', () => {
+    async function setupSandboxProxy() {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+      return session;
+    }
+
+    it('listPtySessions 代理 GET 到容器', async () => {
+      await setupSandboxProxy();
+      const mockResult = [{ id: 'pty-001', status: 'running' }];
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(mockResult),
+      } as unknown as Response);
+
+      const result = await adapter.listPtySessions(
+        { executionId: 'exec-001' },
+        'tenant-001',
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/pty/sessions',
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+
+    it('listPtySessions 容器返回非 ok 时抛出错误', async () => {
+      await setupSandboxProxy();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      } as unknown as Response);
+
+      await expect(
+        adapter.listPtySessions({ executionId: 'exec-001' }, 'tenant-001'),
+      ).rejects.toThrow('PTY sessions 查询失败');
+    });
+
+    it('ptyBufferDump 代理 POST 到容器', async () => {
+      await setupSandboxProxy();
+      const mockResult = { lines: [{ lineNo: 1, text: 'hello' }], totalLines: 1 };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(mockResult),
+      } as unknown as Response);
+
+      const result = await adapter.ptyBufferDump(
+        { executionId: 'exec-001' },
+        'tenant-001',
+        'pty-001',
+        { offset: 0, limit: 100 },
+      );
+
+      expect(result).toEqual(mockResult);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/pty/buffer-dump',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ sessionId: 'pty-001', offset: 0, limit: 100 }),
+        }),
+      );
+    });
+
+    it('ptyBufferDump 含 pattern 选项', async () => {
+      await setupSandboxProxy();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ lines: [], totalLines: 0 }),
+      } as unknown as Response);
+
+      await adapter.ptyBufferDump(
+        { executionId: 'exec-001' },
+        'tenant-001',
+        'pty-001',
+        { pattern: 'error' },
+      );
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/pty/buffer-dump',
+        expect.objectContaining({
+          body: JSON.stringify({ sessionId: 'pty-001', pattern: 'error' }),
+        }),
+      );
+    });
+
+    it('ptyBufferDump 容器返回非 ok 时抛出错误', async () => {
+      await setupSandboxProxy();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+      } as unknown as Response);
+
+      await expect(
+        adapter.ptyBufferDump({ executionId: 'exec-001' }, 'tenant-001', 'pty-001'),
+      ).rejects.toThrow('PTY buffer-dump 失败');
+    });
+
+    it('ptyWrite 代理 POST 到容器', async () => {
+      await setupSandboxProxy();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ success: true }),
+      } as unknown as Response);
+
+      const result = await adapter.ptyWrite(
+        { executionId: 'exec-001' },
+        'tenant-001',
+        'pty-001',
+        'ls -la\n',
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49123/v1/pty/write',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ sessionId: 'pty-001', data: 'ls -la\n' }),
+        }),
+      );
+    });
+
+    it('ptyWrite 容器返回非 ok 时抛出错误', async () => {
+      await setupSandboxProxy();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+      } as unknown as Response);
+
+      await expect(
+        adapter.ptyWrite({ executionId: 'exec-001' }, 'tenant-001', 'pty-001', 'x'),
+      ).rejects.toThrow('PTY write 失败');
+    });
+
+    it('ptyWrite 使用 agentConversationId 绑定', async () => {
+      await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-001' },
+      });
+      mockSandboxService.findByConversationId.mockResolvedValue({
+        id: 'sandbox-conv',
+        status: 'ready',
+        containerId: 'conv-container',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49456/v1/prompt',
+      );
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ success: true }),
+      } as unknown as Response);
+
+      await adapter.ptyWrite(
+        { agentConversationId: 'conv-001' },
+        'tenant-001',
+        'pty-conv',
+        'echo hi\n',
+      );
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:49456/v1/pty/write',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ sessionId: 'pty-conv', data: 'echo hi\n' }),
+        }),
+      );
     });
   });
 
