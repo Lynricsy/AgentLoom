@@ -28,7 +28,16 @@ export type SandboxAgentEvent =
       type: 'tool_execution_end';
       toolCallId: string;
       result?: unknown;
-    };
+    }
+  | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
+  | { type: 'pty_output'; sessionId: string; data: string }
+  | {
+      type: 'pty_exit';
+      sessionId: string;
+      exitCode?: number;
+      exitSignal?: number | string;
+    }
+  | { type: 'pty_killed'; sessionId: string };
 
 export type AgentEventListener = (event: SandboxAgentEvent) => void;
 
@@ -85,7 +94,16 @@ export type SseEventParams =
   | { type: 'tool_call_update'; toolCallId: string; content?: string }
   | { type: 'tool_call_end'; toolCallId: string; result?: unknown }
   | { type: 'done' }
-  | { type: 'error'; message: string; code?: string };
+  | { type: 'error'; message: string; code?: string }
+  | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
+  | { type: 'pty_output'; sessionId: string; data: string }
+  | {
+      type: 'pty_exit';
+      sessionId: string;
+      exitCode?: number;
+      exitSignal?: number | string;
+    }
+  | { type: 'pty_killed'; sessionId: string };
 
 /** 容器 → AgentLoom 服务器的权限请求（POST 到 permissionCallbackUrl） */
 export interface PermissionCallbackRequest {
