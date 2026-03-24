@@ -28,7 +28,12 @@ export interface AgentKnowledgeBinding {
 export interface AgentSubAgentRef {
   agentDefinitionId: string;
   agentVersionId?: string;
-  alias?: string;
+  /** 必填唯一别名，用于工具名称中的标识 */
+  alias: string;
+  /** 画布端配置的最大超时时间 (ms)，默认 300_000 (5分钟) */
+  maxTimeoutMs?: number;
+  /** 子代理描述，用于工具 description 生成 */
+  description?: string;
 }
 
 export interface AgentInputPreprocessor {

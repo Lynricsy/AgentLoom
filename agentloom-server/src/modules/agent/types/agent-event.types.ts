@@ -1,4 +1,5 @@
 import type { ToolCallEvent } from './tool-call-event.types';
+import type { SubAgentEventEnvelope } from '../../agent-execution/subagent';
 
 export type StopReason =
   | 'end_turn'
@@ -67,4 +68,9 @@ export function isDecisionEvent(event: AgentEvent): event is DecisionEvent {
 
 export function isDoneEvent(event: AgentEvent): event is DoneEvent {
   return event.type === 'done';
+}
+
+export interface ConversationAgentEvent {
+  event: AgentEvent;
+  subagent?: SubAgentEventEnvelope;
 }

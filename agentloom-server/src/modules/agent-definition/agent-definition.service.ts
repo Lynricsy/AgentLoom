@@ -636,7 +636,9 @@ export class AgentDefinitionService {
     return {
       agentDefinitionId: defId,
       agentVersionId: data.agentVersionId ?? data.agent_version_id,
-      alias: data.alias,
+      alias: data.alias || (defId as string).slice(0, 8),
+      maxTimeoutMs: data.maxTimeoutMs ?? data.max_timeout_ms,
+      description: data.description,
     };
   }
 
