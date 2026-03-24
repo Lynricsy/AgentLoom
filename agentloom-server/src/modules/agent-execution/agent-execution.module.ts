@@ -25,6 +25,7 @@ import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { SubAgentToolsProvider } from './subagent';
 import {
   AGENT_CONVERSATION_EXECUTION_QUEUE,
   AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -61,6 +62,7 @@ const agentExecutionWorkerProvider: Provider = {
     memoryFusionService?: MemoryFusionService,
     memoryResourceProvider?: MemoryResourceProvider,
     skillResolverService?: SkillResolverService,
+    subAgentToolsProvider?: SubAgentToolsProvider,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -74,6 +76,7 @@ const agentExecutionWorkerProvider: Provider = {
       memoryFusionService,
       memoryResourceProvider,
       skillResolverService,
+      subAgentToolsProvider,
     ),
   inject: [
     DRIZZLE,
@@ -87,6 +90,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: MemoryFusionService, optional: true },
     { token: MemoryResourceProvider, optional: true },
     { token: SkillResolverService, optional: true },
+    { token: SubAgentToolsProvider, optional: true },
   ],
 };
 
@@ -133,6 +137,7 @@ const agentConversationGatewayProvider: Provider = {
     agentExecutionServiceProvider,
     agentExecutionWorkerProvider,
     agentConversationGatewayProvider,
+    SubAgentToolsProvider,
   ],
   exports: [AgentExecutionService],
 })

@@ -38,6 +38,14 @@ import { MemoryFusionService } from '../agent-memory/services/memory-fusion.serv
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import {
+  type ExecuteSubAgentParams,
+  type SubAgentCompletionNotice,
+  type SubAgentHandle,
+  type SubAgentResult,
+  SubAgentRunStatus,
+  SubAgentToolsProvider,
+} from './subagent';
+import {
   AGENT_CONVERSATION_EXECUTION_JOB,
   AGENT_CONVERSATION_EXECUTION_QUEUE,
   AGENT_CONVERSATION_IDLE_WAIT_MS,
@@ -83,6 +91,10 @@ type RuntimeSessionContext = {
   memorySessionIds: string[];
 };
 
+type SubAgentExecutionTracker = {
+  abortControllers: Map<SubAgentHandle, AbortController>;
+};
+
 const DEFAULT_MEMORY_BOOT_URIS = [
   'system://boot',
   'system://index',
@@ -114,6 +126,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly memoryFusionService?: MemoryFusionService,
     private readonly memoryResourceProvider?: MemoryResourceProvider,
     private readonly skillResolverService?: SkillResolverService,
+    private readonly subAgentToolsProvider?: SubAgentToolsProvider,
   ) {
     super();
   }
@@ -159,6 +172,9 @@ export class AgentExecutionWorker extends WorkerHost {
     let terminalStatus: 'completed' | 'cancelled' | 'failed' = 'completed';
     let conversationStatus: 'active' | 'paused' | 'ended' | 'failed' = 'active';
     let memorySessionIds: string[] = [];
+    const subAgentTracker: SubAgentExecutionTracker = {
+      abortControllers: new Map(),
+    };
 
     try {
       const context = await this.loadConversationExecutionContext(
@@ -184,6 +200,9 @@ export class AgentExecutionWorker extends WorkerHost {
         context,
         conversationId,
         tenantId,
+        abort.signal,
+        subAgentTracker,
+        context.conversation.agentDefinitionId,
       );
       runtime = runtimeSessionContext.runtime;
       session = runtimeSessionContext.session;
@@ -203,9 +222,14 @@ export class AgentExecutionWorker extends WorkerHost {
         }
       };
 
+      const cancelSubAgents = () => {
+        this.abortTrackedSubAgents(subAgentTracker, abort.signal.reason);
+      };
+
       abort.signal.addEventListener('abort', () => {
+        cancelSubAgents();
         void cancelRuntime();
-      });
+      }, { once: true });
 
       executionMetadata = await this.updateExecutionMetadata(
         tenantId,
@@ -424,6 +448,9 @@ export class AgentExecutionWorker extends WorkerHost {
     context: ConversationExecutionContext,
     conversationId: string,
     tenantId: string,
+    parentAbortSignal: AbortSignal,
+    subAgentTracker: SubAgentExecutionTracker,
+    currentAgentDefinitionId: string,
   ): Promise<RuntimeSessionContext> {
     const runtime = this.resolveConversationRuntime(context);
     const memorySessionIds = await this.ensureConversationMemorySessions(
@@ -446,6 +473,17 @@ export class AgentExecutionWorker extends WorkerHost {
       try {
         const session = await runtime.loadSession(sessionId);
         this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+        this.registerSubAgentToolsProvider({
+          runtime,
+          sessionId: session.id,
+          runtimeConfig: context.runtimeConfig,
+          conversationId,
+          tenantId,
+          parentAbortSignal,
+          currentAgentDefinitionId,
+          currentDepth: 0,
+          subAgentTracker,
+        });
         return { runtime, session, memorySessionIds };
       } catch (error) {
         this.logger.debug(
@@ -477,6 +515,17 @@ export class AgentExecutionWorker extends WorkerHost {
     });
 
     this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+    this.registerSubAgentToolsProvider({
+      runtime,
+      sessionId: session.id,
+      runtimeConfig: context.runtimeConfig,
+      conversationId,
+      tenantId,
+      parentAbortSignal,
+      currentAgentDefinitionId,
+      currentDepth: 0,
+      subAgentTracker,
+    });
 
     return { runtime, session, memorySessionIds };
   }
@@ -872,12 +921,24 @@ export class AgentExecutionWorker extends WorkerHost {
       return existingSessionIds;
     }
 
-    if (!this.memoryResourceProvider) {
+    return this.ensureAttachedMemorySessions(
+      context.memoryInstanceIds,
+      conversationId,
+      tenantId,
+    );
+  }
+
+  private async ensureAttachedMemorySessions(
+    memoryInstanceIds: string[],
+    conversationId: string,
+    tenantId: string,
+  ): Promise<string[]> {
+    if (!memoryInstanceIds.length || !this.memoryResourceProvider) {
       return [];
     }
 
     const createdSessions: string[] = [];
-    for (const [index, memoryInstanceId] of context.memoryInstanceIds.entries()) {
+    for (const [index, memoryInstanceId] of memoryInstanceIds.entries()) {
       const instance = await this.memoryResourceProvider.create({
         memoryInstanceId,
         role: index === 0 ? 'primary' : 'readonly',
@@ -915,39 +976,52 @@ export class AgentExecutionWorker extends WorkerHost {
   private async resolveConversationSkillPrompt(
     context: ConversationExecutionContext,
   ): Promise<string | undefined> {
+    return this.resolveSkillAugmentedPrompt({
+      tenantId: context.conversation.tenantId,
+      agentDefinitionId: context.conversation.agentDefinitionId,
+      nodes: context.canvasNodes,
+      edges: context.canvasEdges,
+      baseSystemPrompt: context.systemPrompt,
+    });
+  }
+
+  private async resolveSkillAugmentedPrompt(params: {
+    tenantId: string;
+    agentDefinitionId: string;
+    nodes: AgentVersionSnapshot['nodes'];
+    edges: AgentVersionSnapshot['edges'];
+    baseSystemPrompt?: string;
+  }): Promise<string | undefined> {
     if (!this.skillResolverService) {
-      return context.systemPrompt;
+      return params.baseSystemPrompt;
     }
 
-    const skillIds = this.extractConversationSkillIds(
-      context.canvasNodes,
-      context.canvasEdges,
-    );
+    const skillIds = this.extractConversationSkillIds(params.nodes, params.edges);
 
     if (!skillIds.length) {
-      return context.systemPrompt;
+      return params.baseSystemPrompt;
     }
 
     try {
       const skills = await this.skillResolverService.resolveSkillsForAgent(
-        context.conversation.tenantId,
+        params.tenantId,
         skillIds,
       );
 
       if (!skills.length) {
-        return context.systemPrompt;
+        return params.baseSystemPrompt;
       }
 
       const augmentedPrompt = this.skillResolverService
-        .buildSkillAugmentedPrompt(context.systemPrompt ?? '', skills)
+        .buildSkillAugmentedPrompt(params.baseSystemPrompt ?? '', skills)
         .trim();
 
       return augmentedPrompt || undefined;
     } catch (error) {
       this.logger.warn(
-        `Failed to resolve skills for agent ${context.conversation.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to resolve skills for agent ${params.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return context.systemPrompt;
+      return params.baseSystemPrompt;
     }
   }
 
@@ -1056,6 +1130,354 @@ export class AgentExecutionWorker extends WorkerHost {
     );
 
     return sections.length ? sections.join('\n\n') : undefined;
+  }
+
+  private registerSubAgentToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string;
+    runtimeConfig: AgentRuntimeConfig;
+    conversationId: string;
+    tenantId: string;
+    parentAbortSignal: AbortSignal;
+    currentAgentDefinitionId: string;
+    currentDepth: number;
+    visitedAgentIds?: Set<string>;
+    subAgentTracker: SubAgentExecutionTracker;
+  }): void {
+    if (
+      !params.runtimeConfig.subAgents?.length
+      || !this.subAgentToolsProvider
+      || !params.runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    params.runtime.registerSessionToolProvider(
+      params.sessionId,
+      this.subAgentToolsProvider.createSessionToolProvider(
+        params.runtimeConfig.subAgents,
+        {
+          conversationId: params.conversationId,
+          depth: params.currentDepth,
+          tenantId: params.tenantId,
+          parentAbortSignal: params.parentAbortSignal,
+          visitedAgentIds: new Set([
+            ...(params.visitedAgentIds ?? []),
+            params.currentAgentDefinitionId,
+          ]),
+        },
+        (subAgentParams) => this.executeSubAgent(subAgentParams, params.subAgentTracker),
+      ),
+    );
+  }
+
+  private async executeSubAgent(
+    params: ExecuteSubAgentParams,
+    subAgentTracker: SubAgentExecutionTracker,
+  ): Promise<SubAgentResult> {
+    const trackedAbort = new AbortController();
+    subAgentTracker.abortControllers.set(params.handle, trackedAbort);
+
+    const linkedAbort = this.combineAbortSignals([
+      params.abortSignal,
+      trackedAbort.signal,
+    ]);
+
+    let runtime: IAgentRuntime | null = null;
+    let session: AgentSession | null = null;
+
+    try {
+      const versionSnapshot = params.versionSnapshot?.snapshot;
+      const runtimeConfig = versionSnapshot
+        ? this.agentDefinitionService.buildRuntimeConfigFromNodes(
+            versionSnapshot.nodes,
+            versionSnapshot.edges,
+            params.agentDefinition.id,
+          )
+        : await this.agentDefinitionService.compileCanvas(params.agentDefinition.id);
+
+      runtimeConfig.sandboxConfig =
+        versionSnapshot?.sandboxConfig
+        ?? runtimeConfig.sandboxConfig
+        ?? params.agentDefinition.sandboxConfig
+        ?? undefined;
+
+      const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
+      const memorySessionIds = await this.ensureAttachedMemorySessions(
+        memoryInstanceIds,
+        params.parentContext.conversationId,
+        params.parentContext.tenantId,
+      );
+
+      runtime = runtimeConfig.sandboxConfig
+        ? this.adapterFactory.selectAdapter(true)
+        : this.agentRuntime;
+
+      if (runtimeConfig.sandboxConfig) {
+        await this.sandboxService.createSandboxSession({
+          sandboxNodeId: null,
+          config: runtimeConfig.sandboxConfig,
+          tenantId: params.parentContext.tenantId,
+          agentConversationId: params.parentContext.conversationId,
+        });
+      }
+
+      const baseSystemPrompt = await this.resolveSkillAugmentedPrompt({
+        tenantId: params.parentContext.tenantId,
+        agentDefinitionId: params.agentDefinition.id,
+        nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
+        edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
+        baseSystemPrompt:
+          versionSnapshot?.systemPrompt ?? params.agentDefinition.systemPrompt ?? undefined,
+      });
+      const systemPrompt = await this.resolveConversationSystemPrompt(
+        memorySessionIds,
+        baseSystemPrompt,
+      );
+
+      session = await runtime.createSession({
+        agentId: params.agentDefinition.id,
+        mode: 'conversation',
+        tenantId: params.parentContext.tenantId,
+        llmModelConfigId: runtimeConfig.modelConfig?.modelId,
+        systemPrompt,
+        serverSandbox: {
+          agentConversationId: params.parentContext.conversationId,
+        },
+        context: {
+          tenantId: params.parentContext.tenantId,
+          agentConversationId: params.parentContext.conversationId,
+          serverSandbox: {
+            agentConversationId: params.parentContext.conversationId,
+          },
+          ...(memorySessionIds.length ? { memorySessionIds } : {}),
+        },
+      });
+
+      this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+      this.registerSubAgentToolsProvider({
+        runtime,
+        sessionId: session.id,
+        runtimeConfig,
+        conversationId: params.parentContext.conversationId,
+        tenantId: params.parentContext.tenantId,
+        parentAbortSignal: linkedAbort.signal,
+        currentAgentDefinitionId: params.agentDefinition.id,
+        currentDepth: params.depth,
+        visitedAgentIds: params.parentContext.visitedAgentIds,
+        subAgentTracker,
+      });
+
+      const activeSession: AgentSession = session;
+
+      linkedAbort.signal.addEventListener(
+        'abort',
+        () => {
+          if (runtime && activeSession) {
+            void runtime.cancel(activeSession.id).catch((error) => {
+              this.logger.warn(
+                `Failed to cancel sub-agent session ${activeSession.id}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            });
+          }
+        },
+        { once: true },
+      );
+
+      const result = await this.runSubAgentPrompt(
+        runtime,
+        session,
+        params.task,
+        params.context,
+        params.eventProxy,
+      );
+
+      if (params.invocationMode === 'spawn') {
+        await this.injectSubAgentCompletionNotice(
+          params.parentContext.conversationId,
+          params.agentDefinition.name,
+          params.handle,
+          params.alias,
+          'completed',
+          result,
+        );
+      }
+
+      return result;
+    } catch (error) {
+      if (params.invocationMode === 'spawn' && !linkedAbort.signal.aborted) {
+        await this.injectSubAgentCompletionNotice(
+          params.parentContext.conversationId,
+          params.agentDefinition.name,
+          params.handle,
+          params.alias,
+          'failed',
+          undefined,
+          error,
+        );
+      }
+      throw error;
+    } finally {
+      linkedAbort.cleanup();
+      subAgentTracker.abortControllers.delete(params.handle);
+    }
+  }
+
+  private async runSubAgentPrompt(
+    runtime: IAgentRuntime,
+    session: AgentSession,
+    task: string,
+    context: string | undefined,
+    eventProxy?: ExecuteSubAgentParams['eventProxy'],
+  ): Promise<SubAgentResult> {
+    let assistantText = '';
+    let decision: DecisionEvent | undefined;
+    let stopReason: StopReason = 'end_turn';
+    let promptBlocks: ContentBlock[] = [
+      {
+        type: 'text',
+        text: this.buildSubAgentPrompt(task, context),
+      } satisfies TextContentBlock,
+    ];
+
+    while (true) {
+      for await (const event of runtime.prompt(session.id, promptBlocks)) {
+        eventProxy?.emitEvent(event);
+
+        if (event.type === 'message_chunk') {
+          assistantText += event.content;
+          continue;
+        }
+
+        if (event.type === 'decision') {
+          decision = event;
+          continue;
+        }
+
+        if (event.type === 'done') {
+          stopReason = event.stopReason;
+        }
+      }
+
+      if (stopReason !== 'tool_use') {
+        break;
+      }
+
+      promptBlocks = [];
+    }
+
+    return {
+      content: assistantText,
+      stopReason,
+      ...(decision ? { decision: { ...decision } } : {}),
+    };
+  }
+
+  private buildSubAgentPrompt(task: string, context?: string): string {
+    if (!context?.trim()) {
+      return task;
+    }
+
+    return ['任务：', task.trim(), '', '额外上下文：', context.trim()].join('\n');
+  }
+
+  private abortTrackedSubAgents(
+    subAgentTracker: SubAgentExecutionTracker,
+    reason?: unknown,
+  ): void {
+    for (const abortController of subAgentTracker.abortControllers.values()) {
+      if (!abortController.signal.aborted) {
+        abortController.abort(reason);
+      }
+    }
+  }
+
+  private combineAbortSignals(
+    signals: Array<AbortSignal | undefined>,
+  ): { signal: AbortSignal; cleanup: () => void } {
+    const controller = new AbortController();
+    const listeners = new Map<AbortSignal, () => void>();
+
+    const abortWith = (signal: AbortSignal) => {
+      if (!controller.signal.aborted) {
+        controller.abort(signal.reason);
+      }
+    };
+
+    for (const signal of signals) {
+      if (!signal) {
+        continue;
+      }
+
+      if (signal.aborted) {
+        abortWith(signal);
+        break;
+      }
+
+      const listener = () => abortWith(signal);
+      listeners.set(signal, listener);
+      signal.addEventListener('abort', listener, { once: true });
+    }
+
+    return {
+      signal: controller.signal,
+      cleanup: () => {
+        for (const [signal, listener] of listeners) {
+          signal.removeEventListener('abort', listener);
+        }
+      },
+    };
+  }
+
+  private async injectSubAgentCompletionNotice(
+    conversationId: string,
+    agentName: string,
+    handle: SubAgentHandle,
+    alias: string,
+    status: 'completed' | 'failed',
+    result?: SubAgentResult,
+    error?: unknown,
+  ): Promise<void> {
+    const summary =
+      status === 'completed'
+        ? this.summarizeSubAgentText(result?.content)
+        : this.summarizeSubAgentText(
+            error instanceof Error ? error.message : String(error ?? 'unknown error'),
+          );
+    const notice: SubAgentCompletionNotice = {
+      type: 'subagent_completion',
+      handle,
+      alias,
+      status:
+        status === 'completed'
+          ? SubAgentRunStatus.COMPLETED
+          : SubAgentRunStatus.FAILED,
+      ...(status === 'failed' && summary ? { error: summary } : {}),
+    };
+
+    try {
+      await this.executionService.injectMessage(conversationId, {
+        role: 'user',
+        contentType: 'text',
+        content: `[Sub-Agent: ${agentName}] Completed: ${summary}`,
+        metadata: { notice },
+      });
+    } catch (injectError) {
+      this.logger.warn(
+        `Failed to inject sub-agent completion notice for ${handle}: ${injectError instanceof Error ? injectError.message : String(injectError)}`,
+      );
+    }
+  }
+
+  private summarizeSubAgentText(content: string | undefined): string {
+    const normalized = (content ?? '').replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return 'No summary available';
+    }
+
+    return normalized.length > 160
+      ? `${normalized.slice(0, 157).trimEnd()}...`
+      : normalized;
   }
 
   private registerMemoryToolsProvider(

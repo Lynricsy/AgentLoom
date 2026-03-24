@@ -466,6 +466,9 @@ describe('AgentExecutionWorker', () => {
         expect.objectContaining({ hasSandbox: true }),
         'c-1',
         't-1',
+        expect.any(AbortSignal),
+        expect.objectContaining({ abortControllers: expect.any(Map) }),
+        'agent-1',
       );
     });
   });
@@ -492,6 +495,9 @@ describe('AgentExecutionWorker', () => {
         contextWithSession,
         'c-1',
         't-1',
+        expect.any(AbortSignal),
+        expect.objectContaining({ abortControllers: expect.any(Map) }),
+        'agent-1',
       );
     });
   });
@@ -504,6 +510,9 @@ describe('AgentExecutionWorker', () => {
           context: Record<string, unknown>,
           conversationId: string,
           tenantId: string,
+          parentAbortSignal: AbortSignal,
+          subAgentTracker: { abortControllers: Map<string, AbortController> },
+          currentAgentDefinitionId: string,
         ) => Promise<{
           runtime: typeof mockRuntime;
           session: ReturnType<typeof makeSession>;
@@ -541,6 +550,9 @@ describe('AgentExecutionWorker', () => {
         }),
         'conversation-1',
         'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
       );
 
       expect(mockMemoryResourceProvider.create).toHaveBeenNthCalledWith(1, {
@@ -592,6 +604,9 @@ describe('AgentExecutionWorker', () => {
           context: Record<string, unknown>,
           conversationId: string,
           tenantId: string,
+          parentAbortSignal: AbortSignal,
+          subAgentTracker: { abortControllers: Map<string, AbortController> },
+          currentAgentDefinitionId: string,
         ) => Promise<{ runtime: typeof mockSandboxRuntime; session: ReturnType<typeof makeSession> }>;
       };
 
@@ -606,6 +621,9 @@ describe('AgentExecutionWorker', () => {
         }),
         'conversation-1',
         'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
       );
 
       expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
@@ -626,6 +644,9 @@ describe('AgentExecutionWorker', () => {
           context: Record<string, unknown>,
           conversationId: string,
           tenantId: string,
+          parentAbortSignal: AbortSignal,
+          subAgentTracker: { abortControllers: Map<string, AbortController> },
+          currentAgentDefinitionId: string,
         ) => Promise<{ runtime: typeof mockRuntime; session: ReturnType<typeof makeSession> }>;
       };
 
@@ -637,6 +658,9 @@ describe('AgentExecutionWorker', () => {
         }),
         'conversation-1',
         'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
       );
 
       expect(mockAdapterFactory.selectAdapter).not.toHaveBeenCalled();

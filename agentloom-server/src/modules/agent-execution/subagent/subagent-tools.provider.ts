@@ -27,6 +27,7 @@ const MAX_RUNNING_SUBAGENTS = 10;
 
 export interface ExecuteSubAgentParams {
   handle: SubAgentHandle;
+  invocationMode: 'call' | 'spawn';
   alias: string;
   task: string;
   context?: string;
@@ -101,14 +102,15 @@ export class SubAgentToolsProvider {
               parentToolCallId: options.toolCallId,
             });
 
-            void this.runSubAgent({
-              ref,
-              record,
-              task: input.task,
-              context: input.context,
-              parentContext,
-              executeSubAgent,
-            });
+              void this.runSubAgent({
+                ref,
+                record,
+                task: input.task,
+                context: input.context,
+                parentContext,
+                executeSubAgent,
+                invocationMode: 'call',
+              });
 
             const result = await record.completionPromise;
             return JSON.stringify(result);
@@ -134,14 +136,15 @@ export class SubAgentToolsProvider {
               parentToolCallId: options.toolCallId,
             });
 
-            void this.runSubAgent({
-              ref,
-              record,
-              task: input.task,
-              context: input.context,
-              parentContext,
-              executeSubAgent,
-            });
+              void this.runSubAgent({
+                ref,
+                record,
+                task: input.task,
+                context: input.context,
+                parentContext,
+                executeSubAgent,
+                invocationMode: 'spawn',
+              });
 
             return {
               handle: record.handle,
@@ -244,6 +247,7 @@ export class SubAgentToolsProvider {
     context?: string;
     parentContext: SubAgentParentContext;
     executeSubAgent: ExecuteSubAgent;
+    invocationMode: 'call' | 'spawn';
   }): Promise<void> {
     try {
       const resolved = await resolveSubAgent({
@@ -271,6 +275,7 @@ export class SubAgentToolsProvider {
       try {
         const result = await params.executeSubAgent({
           handle: params.record.handle,
+          invocationMode: params.invocationMode,
           alias: params.record.alias,
           task: params.task,
           context: params.context,
