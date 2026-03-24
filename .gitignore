@@ -90,6 +90,7 @@ lerna-debug.log*
 # Docker (agentloom-deploy 预留)
 # ──────────────────────────────────────────────
 .docker/
+agentloom-deploy/docker/.pi-tarballs/
 
 # ──────────────────────────────────────────────
 # 杂项 (Miscellaneous)
