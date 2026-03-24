@@ -274,10 +274,14 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       configSchema: {
         type: 'object',
         properties: {
-          agentId: createConfigField('string', 'Agent ID'),
-          timeout: createConfigField('number', '超时（秒）', { default: 60 }),
+          agentDefinitionId: createConfigField('string', 'Agent 定义 ID'),
+          agentVersionId: createConfigField('string', '版本 ID'),
+          alias: createConfigField('string', '别名'),
+          maxTimeoutMs: createConfigField('number', '最大超时（毫秒）', {
+            default: 300_000,
+          }),
         },
-        required: ['agentId'],
+        required: ['agentDefinitionId', 'alias'],
       },
     },
   ],

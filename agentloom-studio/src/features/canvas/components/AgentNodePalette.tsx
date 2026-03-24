@@ -65,7 +65,7 @@ const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
     label: '高级',
     icon: NODE_CATEGORIES.agent.icon,
     color: NODE_CATEGORIES.agent.color,
-    items: resolveNodes(['sub-agent', 'input-preprocessor']),
+    items: resolveNodes(['sub-agent', 'input-preprocessor', 'skill']),
   },
 ]
 
