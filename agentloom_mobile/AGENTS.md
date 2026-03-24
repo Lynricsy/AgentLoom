@@ -5,7 +5,7 @@
 AgentLoom Flutter 移动端应用：
 
 - Riverpod ProviderScope 启动入口
-- GoRouter + `StatefulShellRoute.indexedStack` 四标签导航 (Dashboard / Workflows / Agents / Settings)
+- GoRouter + `StatefulShellRoute.indexedStack` 五标签导航 (Dashboard / Workflows / Agents / Skills / Settings)
 - Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
 - dotenv 环境切换（dev / staging / prod）
 - 完整认证链路：LoginScreen → AuthApi → AuthNotifier → TokenStorage (flutter_secure_storage)
@@ -22,6 +22,8 @@ AgentLoom Flutter 移动端应用：
 - Agent 管理：Agent 列表/详情/对话三屏，4th shell branch (Agents tab)
 - Agent 对话：`AgentConversationScreen` 全屏路由（非 shell 内），Socket.IO `/agent-conversation` 实时消息推送
 - Skill 管理：Skill 列表/详情/编辑三屏，仅支持 name/description 编辑（SKILL.md 内容编辑仅在 Studio Web 端）
+- Memory 管理：Memory 列表/详情/连接/配置/图谱五屏，19 个文件，位于 `features/memory/`
+- `collectionMode != 'form'` 时统一走 `ConversationModePrompt` Web-first fallback（对话收集需使用 Web 端）
 
 ## 目录约定
 
@@ -73,6 +75,11 @@ lib/
 │       ├── models/      # Freezed: SkillDto (id/name/slug/description/status/isBuiltin)
 │       ├── providers/   # SkillListNotifier, skillDetailProvider
 │       └── screens/     # SkillListScreen, SkillDetailScreen, SkillEditScreen (仅 name/description，不含 SKILL.md 内容编辑)
+│   └── memory/
+│       ├── api/         # MemoryApi + memoryApiProvider
+│       ├── models/      # Freezed: Memory DTOs
+│       ├── providers/   # MemoryListNotifier, memoryDetailProvider
+│       └── screens/     # MemoryListScreen, MemoryDetailScreen, MemoryConnectionScreen, MemoryConfigScreen, MemoryGraphScreen
 ├── routes/              # go_router 配置 (含 AuthRouteNotifier redirect guard, /executions/:executionId 与 /agents/:agentId/conversations/:conversationId 顶层路由) 与路由名
 └── shared/
     ├── interceptors/    # AuthInterceptor (QueuedInterceptorsWrapper, 401 刷新 + 重试)

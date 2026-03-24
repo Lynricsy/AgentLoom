@@ -72,7 +72,8 @@ src/
 │   ├── block-library/ # 可复用块库管理
 │   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
 │   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
-│   └── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送
+│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送
+│   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
 │   ├── components/   # Pagination 等通用组件
@@ -85,7 +86,7 @@ src/
 
 ## 状态管理
 
-**4 个 Zustand stores + 2 个 Agent stores** (immer + devtools + subscribeWithSelector):
+**6 个 Zustand stores + 2 个 Agent stores** (immer + devtools + subscribeWithSelector):
 
 | Store | 路径 | 职责 |
 |-------|------|------|
@@ -93,6 +94,8 @@ src/
 | executionStore | `features/execution/stores/` | executionId/status/nodes(output/error/retry/streaming/intervention)/recentEvents(cap 50) |
 | evidenceUiStore | `features/evidence/stores/` | isOpen/panelExecutionId/panelNodeId/panelNodeName/selectedEvidenceId/highlightUntil/documentViewer |
 | notificationStore | `features/notification/stores/` | notifications/unreadCount/isDropdownOpen，socket 增量插入与已读乐观更新 |
+| authStore | `features/auth/stores/` | session/user/loading/initialized，Supabase PKCE 认证状态 |
+| agentStore | `features/agent/stores/` | Agent 列表与选择状态 |
 | agentCanvasStore | `features/agent-canvas/stores/` | Agent 配置画布状态：nodes/edges/viewport/dirty，AGENT_CANVAS_NODE_REGISTRY 子集节点类型 |
 | agentConversationStore | `features/agent-conversation/stores/` | 对话状态：messages/streaming/conversationList/activeConversationId，Socket.IO `/agent-conversation` 事件驱动 |
 
@@ -217,7 +220,7 @@ react-hook-form + @hookform/resolvers + Zod v4
 - `WorkflowCanvas.tsx` (728L) — 5 overlays + connection validation + DAG preview
 - `KnowledgeBaseDetailPage.tsx` (700L) — WebSocket + form + pagination + upload
 - `LlmModelConfigPanel.tsx` (678L) — 多模型配置面板
-- `nodeTypeRegistry.ts` (590L) — 17 种节点类型配置 (纯数据，含 smart-routing)
+- `nodeTypeRegistry.ts` (590L) — 21 种节点类型配置 (纯数据，含 smart-routing/input-preprocessor/memory/agent/skill)
 - `canvasStore.ts` (535L) — 画布完整状态管理
 
 ## 环境变量

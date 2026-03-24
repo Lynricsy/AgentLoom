@@ -29,7 +29,7 @@ AgentLoomAUTO/
 ├── agentloom-docs/           # VitePress 2 文档站 (中英双语 + OpenAPI + Mermaid) (见子 AGENTS.md)
 ├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
 ├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output) (见子 AGENTS.md)
-├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令)
+├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令) (见子 AGENTS.md)
 ├── agentloom-plugin-template/ # 示例插件模板 (text-to-uppercase)
 ├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio) (见子 AGENTS.md)
 ├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
@@ -60,6 +60,8 @@ AgentLoomAUTO/
 | 管理 Agent 定义与版本 | `agentloom-server/src/modules/agent-definition/` | Agent CRUD + 版本管理 + canvas 保存 + 发布/归档，`agent_definitions`/`agent_versions` 表 |
 | 管理 Agent 对话 | `agentloom-server/src/modules/agent-conversation/` + `agentloom-studio/src/features/agent-conversation/` + `agentloom_mobile/lib/features/agents/` | 对话生命周期 CRUD、消息历史 API、`agent_conversations`/`agent_messages` 表、Studio 三列对话 UI、Mobile 对话屏 |
 | 管理 Agent 执行引擎 | `agentloom-server/src/modules/agent-execution/` | 对话执行 worker + Socket.IO `/agent-conversation` gateway + workspace 文件集成、`WorkflowAgentAdapter` 桥接工作流 `agent` 节点 |
+| 管理 Agent Memory | `agentloom-server/src/modules/agent-memory/` + `agentloom-studio/src/features/agent-memory/` + `agentloom_mobile/lib/features/memory/` | Agent 记忆系统：图谱存储/检索/可视化，Socket.IO `/memory` namespace，Studio 图谱可视化（d3-force + dagre），Mobile 5 屏管理 |
+| 管理可复用块 | `agentloom-server/src/modules/reusable-block/` + `agentloom-studio/src/features/block-library/` | 可复用工作流块的 CRUD + 版本管理，画布 `reusable-block` 节点封装/展开 |
 | 管理 Agent 配置画布 | `agentloom-studio/src/features/agent-canvas/` | Agent 配置编辑器画布（CPU/memory/timeout/lifecycle 参数，非执行 DAG），使用 ReactFlow + `AGENT_CANVAS_NODE_REGISTRY` 子集 |
 | 管理 Agent CRUD 页面 | `agentloom-studio/src/features/agent/` | Agent 列表/创建/设置页面，query hooks，mutations |
 | 管理共享资源注册表 | `agentloom-server/src/modules/shared-resources/` | `SharedResourceRegistry` 通用 provider 接口（type/create/destroy/share），sandbox 为首个实现 |
@@ -90,7 +92,7 @@ type-engine (Rust/WASM)
   └── studio（TypeEngineService + Web Worker/WASM runtime + 受控 fallback）
 
 studio (React) ──HTTP REST──→ server (/api/v1)
-              ──Socket.IO──→ server (/execution, /agent-conversation, /knowledge, /notification)
+              ──Socket.IO──→ server (/execution, /agent-conversation, /knowledge, /notification, /memory)
 
 mobile (Flutter) ──HTTP REST──→ server (/api/v1)
               ──Socket.IO──→ server (/execution, /agent-conversation namespace, JWT auth)
@@ -203,7 +205,7 @@ npm test                           # 容器 HTTP 适配层测试
 ## 注意事项
 
 - **E2EE**: `TenantKeyModule` 管理 RSA-4096 公钥，`LlmEncryptionService` 执行 hybrid RSA-OAEP + AES-256-GCM 加密。`AgentTaskWorker` 在完成路径加密 LLM 输出，`EvidenceService` 加密 `agent_decision`/`tool_output` 证据。`tenant_encryption_keys` 为 append-only 历史模型（`organization_id + key_fingerprint` 唯一 + 单 active partial unique index）。Studio 私钥以 PKCS8 二进制存入 IndexedDB，解密时导入 non-extractable CryptoKey
-- **Smart Routing**: `SmartRoutingModule` 提供 6 种路由策略（TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN）。`FALLBACK_CHAIN` 支持非认证失败时自动切换模型重试。`routing_decisions.selected_model_id` 为 nullable。Studio 端 `smart-routing` 节点 canonical 端口为 `model-in-0` / `model-in-1` / `model-out`，默认策略为 `FALLBACK_CHAIN`
+- **Smart Routing**: `SmartRoutingModule` 提供 6 种服务端策略纯函数（TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN）+ `learning/` 子模块（MLP 在线训练 / Elo rating / KNN）。Studio 端 `RoutingStrategy` type 定义 10 种 UI 选项（含 random / round_robin / rules / llm_as_router / knn / mlp / elo / memory_bank / wasm_plugin / fallback_chain）。`FALLBACK_CHAIN` 支持非认证失败时自动切换模型重试。`routing_decisions.selected_model_id` 为 nullable。Studio 端 `smart-routing` 节点 canonical 端口为 `model-in-0` / `model-in-1` / `model-out`，默认策略为 `FALLBACK_CHAIN`
 - **PortDataType**: Rust / Studio / Server 统一使用 canonical 9 值 `model|text|json|image|audio|tool|sandbox|knowledge|skill`，Studio `mcpToolMapping` 兼容 legacy `number`/`boolean -> json` 回退
 - **SkillModule**: `SkillModule` 提供 Skill CRUD REST API（`/skills`）、`SkillStorageService`（SKILL.md 上传/下载/MinIO 存储 + YAML frontmatter 解析）和 `SkillResolverService`（按 tenant 查询 enabled skills 并生成 `<available_skills>` XML 片段注入 agent 对话系统提示与工作流执行系统提示）。5 个内置 Skill（code-review/documentation/test-generation/refactoring/debugging）由 `pnpm db:seed` 通过 `seedSkills()` upsert 到 `skills` 表（slug-based 幂等），sentinel UUID `00000000-0000-0000-0000-000000000000` 标记系统内置记录，`isBuiltin=true` 不可删除。`skill` 画布节点在 `node-scheduler` 中有 `case 'skill':` 分支，Agent 执行前通过 `SkillResolverService` 注入上游 skill 内容
 - **Socket.IO `/execution` 协议**: typed `ExecutionEvent<T>` 信封（含 monotonic eventId），`execution:subscribe`/`execution:unsubscribe` + ACK，事件名 `execution.node.*` + `execution.status.changed`。Gateway 含背压队列（500 cap, 100ms drain），断线重连支持 `lastEventId` 增量回放。`/knowledge` namespace 仍为隐式契约

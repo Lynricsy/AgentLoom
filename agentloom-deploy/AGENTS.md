@@ -55,10 +55,15 @@ agentloom-deploy/
 │   ├── values.yaml                    # 默认 values
 │   ├── values.private.yaml            # 生产 overlay（2 副本、TLS、大容量 PVC）
 │   └── templates/                     # 15 个模板（含 BYOD fail() 守卫的 _helpers.tpl）
+├── sandbox/                           # 沙箱容器镜像与 HTTP 适配层（Node ≥22）
+│   ├── build.sh                       # 构建 agentloom/sandbox:latest 镜像
+│   ├── Dockerfile                     # archlinux + pi-coding-agent + Fastify HTTP
+│   ├── src/                           # Fastify v5 HTTP 适配层（server.ts, acp-adapter.ts, event-stream.ts, extension-factory.ts）
+│   └── test/                          # 容器 HTTP 适配层测试
 ├── scripts/
 │   ├── init-db.sh                     # 数据库初始化（Supabase 兼容角色 bootstrap + migrate + seed）
 │   ├── backup-postgres.sh             # pg_dump -Fc + sha256 校验 + 结构验证
-│   ├── backup-minio.sh                # mc mirror 对象备份
+│   ├── backup-minio.sh               # mc mirror 对象备份
 │   └── restore.sh                     # PG + MinIO 恢复（含前置校验与烟雾测试）
 ├── systemd/                           # 备份定时任务（4 个 unit 文件）
 ├── backups/                           # 备份输出目录（PG + MinIO）

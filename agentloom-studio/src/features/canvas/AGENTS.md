@@ -1,20 +1,24 @@
 # CANVAS FEATURE 知识库
 
-工作流可视化编辑器。基于 @xyflow/react (ReactFlow)，支持 17 种节点类型和端口兼容性检查。
+工作流可视化编辑器。基于 @xyflow/react (ReactFlow)，支持 21 种节点类型和端口兼容性检查。
 
 ## 节点类型体系
 
-7 大类 17 种节点，注册在 `types/nodeTypeRegistry.ts`:
+9 大类 21 种节点，注册在 `types/nodeTypeRegistry.ts`:
 
 | 分类 | 节点类型 | 说明 |
 |------|----------|------|
-| Agent | llm-agent, chat-agent, llm-model | AI 智能体 |
+| Agent | llm-agent, chat-agent, llm-model, agent | AI 智能体（`agent` 为独立 Agent 定义节点） |
 | Tool | http-tool, code-tool, mcp-tool, sandbox | 工具节点 |
 | Trigger | manual-trigger, schedule-trigger | 触发器 |
 | Knowledge | knowledge-base | 知识库检索 |
 | Output | text-output, json-output | 输出节点 |
 | Control | condition, loop, reusable-block | 流程控制 / 可复用块 |
+| Routing | smart-routing | 智能路由（多策略模型选择） |
 | Plugin | plugin | 插件扩展节点 |
+| Preprocessing | input-preprocessor | 输��预处理 |
+| Memory | memory | Agent 记忆节点 |
+| Skill | skill | Skill 注入节点 |
 
 **添加新节点**: 注册 `NODE_TYPE_REGISTRY` → 创建 `nodes/XxxBody.tsx` → 创建 `panels/XxxPanel.tsx`
 **动态节点补充**: `reusable-block`、`mcp-tool`、`plugin` 属于 dynamic-only node type，不会作为静态内置节点直接出现在 palette。`plugin` 节点通过 `useActivePlugins()` 查询已安装的活跃插件，动态生成 Plugins 分组显示在 NodePalette 中。

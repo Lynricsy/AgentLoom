@@ -75,6 +75,7 @@ pnpm lint:md                 # Markdown lint (仅 zh/)
 
 ## 注意事项
 
+- **英文文档为 stub 状态**: `en/` 目录仅有 `index.md` 首页，其余章节均无英文内容
 - OpenAPI 同步脚本 (`scripts/sync-openapi.mjs`) 在构建前从 server 拉取最新 spec 写入 `public/openapi.json`；若 server 不可达则使用已有静态文件
 - `vitepress-openapi` 通过 `theme/index.ts` 注册，使用 `public/openapi.json` 静态导入渲染 API 参考页
 - `vitepress-plugin-mermaid` 在 `config.mts` 的 `markdown.config` 中注册，支持文档内嵌 Mermaid 图表
