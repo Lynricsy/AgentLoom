@@ -132,7 +132,7 @@ export interface SubAgentEventEnvelope {
 
 /** 子代理完成通知（注入到主消息列表的系统通知） */
 export interface SubAgentCompletionNotice {
-  type: 'subagent_completion';
+  type: 'subagent_completion_notice';
   handle: SubAgentHandle;
   alias: string;
   status: SubAgentRunStatus;
@@ -171,6 +171,10 @@ export interface SubAgentStream {
 /** 带可选元数据的消息扩展（用于 subagent_completion_notice 等系统消息） */
 export interface ConversationMessageMetadata {
   type?: string;
+  handle?: SubAgentHandle;
+  alias?: string;
+  status?: SubAgentRunStatus;
+  error?: string;
   subagentHandle?: SubAgentHandle;
   subagentAlias?: string;
   subagentStatus?: SubAgentRunStatus;

@@ -338,14 +338,13 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
               <SubAgentCompletionNotice
                 key={msg.id}
                 handle={
-                  ((msg.metadata?.subagentHandle as string) ?? 'sa_unknown') as SubAgentHandle
+                  ((msg.metadata?.handle ?? msg.metadata?.subagentHandle ?? 'sa_unknown') as string) as SubAgentHandle
                 }
-                alias={(msg.metadata?.subagentAlias as string) ?? 'Sub-Agent'}
+                alias={((msg.metadata?.alias ?? msg.metadata?.subagentAlias ?? 'Sub-Agent') as string)}
                 status={
-                  (msg.metadata?.subagentStatus as SubAgentRunStatus) ??
-                  'completed'
+                  ((msg.metadata?.status ?? msg.metadata?.subagentStatus ?? 'completed') as SubAgentRunStatus)
                 }
-                error={msg.metadata?.subagentError as string | undefined}
+                error={(msg.metadata?.error ?? msg.metadata?.subagentError) as string | undefined}
               />
             ) : (
               <MessageBubble
