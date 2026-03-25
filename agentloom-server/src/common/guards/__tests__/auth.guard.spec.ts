@@ -6,10 +6,12 @@ import * as jwt from 'jsonwebtoken';
 import { AuthGuard } from '../auth.guard';
 import { DomainException } from '../../exceptions/domain.exception';
 import { TokenBlacklistService } from '../../services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../services/user-identity-resolver.service';
 import { PlatformApiTokenService } from '../../../modules/platform-api-token/platform-api-token.service';
 
 const TEST_JWT_SECRET = 'test-secret-key-for-unit-tests';
 const TEST_USER_SUB = 'user-uuid-12345';
+const TEST_APP_USER_ID = 'app-user-uuid-67890';
 const TEST_USER_EMAIL = 'test@example.com';
 const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_API_KEY = 'al_test_platform_api_key';
@@ -129,6 +131,7 @@ describe('AuthGuard', () => {
   let reflector: Reflector;
   let tokenBlacklist: TokenBlacklistService;
   let platformApiTokenService: PlatformApiTokenService;
+  let userIdentityResolver: { resolveAppUserId: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -159,6 +162,12 @@ describe('AuthGuard', () => {
             updateLastUsedAt: vi.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: UserIdentityResolverService,
+          useValue: {
+            resolveAppUserId: vi.fn().mockResolvedValue(TEST_APP_USER_ID),
+          },
+        },
       ],
     }).compile();
 
@@ -166,6 +175,7 @@ describe('AuthGuard', () => {
     reflector = module.get(Reflector);
     tokenBlacklist = module.get(TokenBlacklistService);
     platformApiTokenService = module.get(PlatformApiTokenService);
+    userIdentityResolver = module.get(UserIdentityResolverService);
   });
 
   it('有効なトークンでアクセスを許可し、request.user を設定する', async () => {
@@ -176,9 +186,10 @@ describe('AuthGuard', () => {
 
     expect(result).toBe(true);
     expect(request.user).toBeDefined();
-    const user = request.user as { sub: string; email: string };
-    expect(user.sub).toBe(TEST_USER_SUB);
+    const user = request.user as { sub: string; email: string; supabaseUserId?: string };
+    expect(user.sub).toBe(TEST_APP_USER_ID);
     expect(user.email).toBe(TEST_USER_EMAIL);
+    expect(user.supabaseUserId).toBe(TEST_USER_SUB);
   });
 
   it('snake_case claims を request.user の camelCase に正規化する', async () => {
@@ -192,9 +203,11 @@ describe('AuthGuard', () => {
 
     expect(result).toBe(true);
     const user = request.user as {
+      sub?: string;
       tenantId?: string;
       tenantRole?: string;
     };
+    expect(user.sub).toBe(TEST_APP_USER_ID);
     expect(user.tenantId).toBe(TEST_TENANT_ID);
     expect(user.tenantRole).toBe('owner');
   });
@@ -265,6 +278,50 @@ describe('AuthGuard', () => {
       const de = error as DomainException;
       expect(de.getStatus()).toBe(401);
       expect(de.type).toBe('https://agentloom.dev/errors/token-revoked');
+    }
+  });
+
+  it('JWT認証: resolveAppUserId でアプリケーションユーザーIDに変換する', async () => {
+    const token = createValidToken();
+    const { context, request } = createMockExecutionContext(`Bearer ${token}`);
+
+    const result = await authGuard.canActivate(context as never);
+
+    expect(result).toBe(true);
+    const user = request.user as { sub: string; supabaseUserId: string };
+    expect(user.sub).toBe(TEST_APP_USER_ID);
+    expect(user.supabaseUserId).toBe(TEST_USER_SUB);
+  });
+
+  it('JWT認証: ユーザーが見つからない場合は 401 を返す', async () => {
+    userIdentityResolver.resolveAppUserId.mockResolvedValueOnce(null);
+    const token = createValidToken();
+    const { context } = createMockExecutionContext(`Bearer ${token}`);
+
+    try {
+      await authGuard.canActivate(context as never);
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DomainException);
+      const de = error as DomainException;
+      expect(de.getStatus()).toBe(401);
+      expect(de.type).toBe('https://agentloom.dev/errors/token-invalid');
+    }
+  });
+
+  it('JWT認証: UserIdentityResolverService が例外を投げた場合は 401 を返す', async () => {
+    userIdentityResolver.resolveAppUserId.mockRejectedValueOnce(new Error('DB error'));
+    const token = createValidToken();
+    const { context } = createMockExecutionContext(`Bearer ${token}`);
+
+    try {
+      await authGuard.canActivate(context as never);
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DomainException);
+      const de = error as DomainException;
+      expect(de.getStatus()).toBe(401);
+      expect(de.type).toBe('https://agentloom.dev/errors/token-invalid');
     }
   });
 

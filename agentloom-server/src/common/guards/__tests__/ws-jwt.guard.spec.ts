@@ -4,6 +4,7 @@ import * as jwt from 'jsonwebtoken';
 import { WsException } from '@nestjs/websockets';
 import { WsJwtGuard } from '../ws-jwt.guard';
 import { TokenBlacklistService } from '../../services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../services/user-identity-resolver.service';
 
 // vi.hoisted mock factory — required because ESM namespace exports are read-only
 const { mockVerify } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ vi.mock('jsonwebtoken', async (importOriginal) => {
 });
 
 const JWT_SECRET = 'ws-jwt-test-secret';
+const TEST_APP_USER_ID = 'app-user-uuid-67890';
 
 function createToken(payload: Record<string, unknown>): string {
   return jwt.sign(
@@ -51,6 +53,7 @@ function createExecutionContext(client: Record<string, unknown>) {
 describe('WsJwtGuard', () => {
   let guard: WsJwtGuard;
   let tokenBlacklist: { isBlacklisted: ReturnType<typeof vi.fn> };
+  let userIdentityResolver: { resolveAppUserId: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,9 +62,14 @@ describe('WsJwtGuard', () => {
       isBlacklisted: vi.fn().mockResolvedValue(false),
     };
 
+    userIdentityResolver = {
+      resolveAppUserId: vi.fn().mockResolvedValue(TEST_APP_USER_ID),
+    };
+
     guard = new WsJwtGuard(
       { get: vi.fn().mockReturnValue(JWT_SECRET) } as unknown as ConfigService,
       tokenBlacklist as unknown as TokenBlacklistService,
+      userIdentityResolver as unknown as UserIdentityResolverService,
     );
   });
 
@@ -204,10 +212,44 @@ describe('WsJwtGuard', () => {
       guard.canActivate(createExecutionContext(client) as never),
     ).resolves.toBe(true);
     expect(client.data.user).toMatchObject({
-      sub: 'user-1',
+      sub: TEST_APP_USER_ID,
       email: 'u@example.com',
       tenantId: 'tenant-1',
       tenantRole: 'owner',
+      supabaseUserId: 'user-1',
     });
+  });
+
+  it('有効なToken: supabaseUserId→appUserIdマッピングを実行する', async () => {
+    const client = createClient({
+      handshake: {
+        auth: {
+          token: createToken({ sub: 'user-1', email: 'u@example.com' }),
+        },
+        headers: {},
+      },
+    });
+
+    await guard.canActivate(createExecutionContext(client) as never);
+
+    const user = client.data.user as { sub: string; supabaseUserId: string };
+    expect(user.sub).toBe(TEST_APP_USER_ID);
+    expect(user.supabaseUserId).toBe('user-1');
+  });
+
+  it('ユーザーが見つからない場合は WsException を投げる', async () => {
+    userIdentityResolver.resolveAppUserId.mockResolvedValueOnce(null);
+    const client = createClient({
+      handshake: {
+        auth: {
+          token: createToken({ sub: 'user-1', email: 'u@example.com' }),
+        },
+        headers: {},
+      },
+    });
+
+    await expect(
+      guard.canActivate(createExecutionContext(client) as never),
+    ).rejects.toThrowError(new WsException('User account not found'));
   });
 });

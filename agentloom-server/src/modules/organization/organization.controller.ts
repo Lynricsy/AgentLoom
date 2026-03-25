@@ -43,7 +43,7 @@ export class OrganizationController {
     @Req() request: AuthenticatedRequest,
   ) {
     const result = await this.organizationService.createOrganization(
-      request.user.sub,
+      request.user.supabaseUserId ?? request.user.sub,
       dto,
     );
     return { data: result };

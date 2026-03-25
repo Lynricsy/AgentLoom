@@ -80,6 +80,7 @@ vi.mock('jsonwebtoken', async (importOriginal) => {
 import * as jwt from 'jsonwebtoken';
 import { MemoryGateway } from '../../memory.gateway';
 import { TokenBlacklistService } from '../../../../common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../../../common/services/user-identity-resolver.service';
 
 const JWT_SECRET = 'test-jwt-secret';
 
@@ -113,6 +114,12 @@ describe('MemoryGateway', () => {
         {
           provide: TokenBlacklistService,
           useValue: mockTokenBlacklistService,
+        },
+        {
+          provide: UserIdentityResolverService,
+          useValue: {
+            resolveAppUserId: vi.fn().mockResolvedValue('app-user-id'),
+          },
         },
       ],
     }).compile();

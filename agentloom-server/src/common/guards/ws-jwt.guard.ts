@@ -9,6 +9,7 @@ import { WsException } from '@nestjs/websockets';
 import * as jwt from 'jsonwebtoken';
 import { Socket } from 'socket.io';
 import { TokenBlacklistService } from '../services/token-blacklist.service';
+import { UserIdentityResolverService } from '../services/user-identity-resolver.service';
 import type { JwtPayload } from './auth.guard';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class WsJwtGuard implements CanActivate {
   constructor(
     private readonly configService: ConfigService,
     private readonly tokenBlacklist: TokenBlacklistService,
+    private readonly userIdentityResolver: UserIdentityResolverService,
   ) {
     this.jwtSecret = this.configService.get<string>('APP_JWT_SECRET')!;
   }
@@ -54,6 +56,18 @@ export class WsJwtGuard implements CanActivate {
       }
 
       const payload = this.normalizePayload(verified);
+
+      const supabaseUserId = payload.sub;
+      const appUserId =
+        await this.userIdentityResolver.resolveAppUserId(supabaseUserId);
+
+      if (!appUserId) {
+        throw new WsException('User account not found');
+      }
+
+      payload.supabaseUserId = supabaseUserId;
+      payload.sub = appUserId;
+
       client.data = { ...client.data, user: payload };
       return true;
     } catch (error) {

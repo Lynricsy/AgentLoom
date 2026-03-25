@@ -12,12 +12,14 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { MfaRequiredException } from '../exceptions/auth.exceptions';
 import { DomainException } from '../exceptions/domain.exception';
 import { TokenBlacklistService } from '../services/token-blacklist.service';
+import { UserIdentityResolverService } from '../services/user-identity-resolver.service';
 import { PlatformApiTokenService } from '../../modules/platform-api-token/platform-api-token.service';
 
 export type AuthMethod = 'jwt' | 'api_key';
 
 export interface JwtPayload {
   sub: string;
+  supabaseUserId?: string;
   email: string;
   aud: string | string[];
   exp: number;
@@ -41,6 +43,7 @@ export class AuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
   private platformApiTokenService?: PlatformApiTokenService;
+  private userIdentityResolver?: UserIdentityResolverService;
 
   constructor(
     private readonly reflector: Reflector,
@@ -59,6 +62,16 @@ export class AuthGuard implements CanActivate {
       );
     }
     return this.platformApiTokenService;
+  }
+
+  private getUserIdentityResolver(): UserIdentityResolverService {
+    if (!this.userIdentityResolver) {
+      this.userIdentityResolver = this.moduleRef.get(
+        UserIdentityResolverService,
+        { strict: false },
+      );
+    }
+    return this.userIdentityResolver;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -120,6 +133,23 @@ export class AuthGuard implements CanActivate {
       }
 
       const payload = this.normalizePayload(verified);
+
+      const supabaseUserId = payload.sub;
+      const resolver = this.getUserIdentityResolver();
+      const appUserId = await resolver.resolveAppUserId(supabaseUserId);
+
+      if (!appUserId) {
+        this.logger.warn(
+          `No application user found for Supabase auth ID: ${supabaseUserId}`,
+        );
+        throw this.createInvalidTokenException(
+          'User account not found in application',
+        );
+      }
+
+      payload.supabaseUserId = supabaseUserId;
+      payload.sub = appUserId;
+
       this.setRequestAuth(request, payload, 'jwt');
       return true;
     } catch (error) {

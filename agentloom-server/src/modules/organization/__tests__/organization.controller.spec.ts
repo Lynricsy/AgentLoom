@@ -14,6 +14,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { TenantGuard } from '../../../common/guards/tenant.guard';
 import { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
 import { OrganizationController } from '../organization.controller';
 import { OrganizationAutonomyPolicyService } from '../organization-autonomy-policy.service';
 import { OrganizationService } from '../organization.service';
@@ -133,6 +134,12 @@ async function createTestingApp() {
       {
         provide: RbacCacheService,
         useValue: rbacCacheService,
+      },
+      {
+        provide: UserIdentityResolverService,
+        useValue: {
+          resolveAppUserId: vi.fn().mockImplementation((id: string) => Promise.resolve(id)),
+        },
       },
       {
         provide: APP_GUARD,
