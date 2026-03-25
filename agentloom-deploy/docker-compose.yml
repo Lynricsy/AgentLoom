@@ -58,7 +58,7 @@ x-studio-app: &studio-app
 
 services:
   reverse-proxy:
-    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    image: ${NGINX_IMAGE:-openresty/openresty:alpine}
     restart: unless-stopped
     depends_on:
       server:
@@ -70,7 +70,7 @@ services:
     ports:
       - '${NGINX_HTTP_PORT:-8080}:80'
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     networks:
       - frontend_net
     deploy:
