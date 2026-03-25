@@ -1445,7 +1445,7 @@ export class AgentExecutionWorker extends WorkerHost {
             error instanceof Error ? error.message : String(error ?? 'unknown error'),
           );
     const notice: SubAgentCompletionNotice = {
-      type: 'subagent_completion',
+      type: 'subagent_completion_notice',
       handle,
       alias,
       status:

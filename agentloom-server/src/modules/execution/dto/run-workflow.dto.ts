@@ -25,7 +25,8 @@ type PublicRunWorkflowInput = z.infer<typeof runWorkflowSchema>;
 export type InternalLaunchSource =
   | NonNullable<PublicRunWorkflowInput['launchSource']>
   | 'cron-trigger'
-  | 'webhook-trigger';
+  | 'webhook-trigger'
+  | 'api-event-trigger';
 
 export type ExecutionTriggerType = 'manual' | 'api' | 'webhook' | 'system';
 

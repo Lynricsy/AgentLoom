@@ -26,7 +26,8 @@ export interface BlockPort {
     | 'audio'
     | 'tool'
     | 'sandbox'
-    | 'knowledge';
+    | 'knowledge'
+    | 'skill';
   sourceNodeId?: string;
   sourcePortId?: string;
 }

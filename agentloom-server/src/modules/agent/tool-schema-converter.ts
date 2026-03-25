@@ -83,7 +83,7 @@ export function zodToTypeBox(schema: ZodAny): TSchema {
       const enumDef = def as ZodEnumDef;
       const values = Object.keys(enumDef.entries);
       const literals = values.map((v) => Type.Literal(v));
-      return Type.Union(literals as [TSchema, ...TSchema[]], opts);
+      return Type.Union(literals as unknown as [TSchema, ...TSchema[]], opts);
     }
 
     case 'object': {
@@ -167,7 +167,7 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
 
     if (TypeGuard.IsUnionLiteral(schema)) {
       const values = unionSchema.anyOf.map((item) => {
-        const lit = item as { const: string };
+        const lit = item as unknown as { const: string };
         if (typeof lit.const !== 'string') {
           throw new Error(
             `typeBoxToZod: union literal enum only supports string literals, got "${typeof lit.const}"`,

@@ -196,9 +196,9 @@ function parseBackup(value: unknown): WorkflowMigrationBackup | null {
     originalUpdatedBy,
     ...(isRecord(value.originalPublishedVersionSnapshot) ||
     Array.isArray(value.originalPublishedVersionSnapshot)
-      ? {
+        ? {
           originalPublishedVersionSnapshot: cloneJson(
-            value.originalPublishedVersionSnapshot as WorkflowVersionSnapshot,
+            value.originalPublishedVersionSnapshot as unknown as WorkflowVersionSnapshot,
           ),
         }
       : {}),

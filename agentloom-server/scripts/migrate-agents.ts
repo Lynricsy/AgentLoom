@@ -44,6 +44,8 @@ const CONTEXT_INPUT_HANDLES = new Set<string>([
 ]);
 
 type JsonRecord = Record<string, unknown>;
+type ScriptDb = ReturnType<typeof drizzle>;
+type ScriptTransaction = Parameters<Parameters<ScriptDb['transaction']>[0]>[0];
 
 interface ScriptArgs {
   help: boolean;
@@ -370,9 +372,7 @@ function analyzeWorkflowCandidates(
 }
 
 async function ensureUniqueAgentSlug(
-  tx: ReturnType<ReturnType<typeof drizzle>['transaction']> extends Promise<infer T>
-    ? T
-    : never,
+  tx: ScriptTransaction,
   tenantId: string,
   baseSlug: string,
 ): Promise<string> {
@@ -596,6 +596,7 @@ function buildUpdatedPublishedSnapshot(
   transform: WorkflowTransformResult,
 ): WorkflowVersionSnapshot {
   const metadata = toRecord(snapshot.metadata);
+  const createdFromVersion = readNumber(metadata, 'createdFromVersion') ?? 1;
 
   return {
     ...cloneJson(snapshot),
@@ -605,14 +606,13 @@ function buildUpdatedPublishedSnapshot(
       ...metadata,
       nodeCount: transform.nodes.length,
       edgeCount: transform.edges.length,
+      createdFromVersion,
     },
   };
 }
 
 async function createMigratedAgent(
-  tx: ReturnType<ReturnType<typeof drizzle>['transaction']> extends Promise<infer T>
-    ? T
-    : never,
+  tx: ScriptTransaction,
   workflow: typeof workflowDefinitions.$inferSelect,
   candidate: MigrationCandidate,
 ): Promise<CreatedAgentMigration> {

@@ -61,6 +61,14 @@ export function mapAgentEventToAcpSessionUpdate(
         },
         options,
       );
+    default:
+      return applyReplayFlag(
+        {
+          type: 'agent_message_chunk',
+          content: '',
+        },
+        options,
+      );
   }
 }
 

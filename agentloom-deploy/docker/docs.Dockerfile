@@ -8,6 +8,8 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
 ENV CI=true
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
 WORKDIR /workspace
@@ -17,6 +19,9 @@ COPY agentloom-docs ./agentloom-docs
 WORKDIR /workspace/agentloom-docs
 RUN pnpm install --frozen-lockfile
 
+# git is installed but .git is excluded by .dockerignore — init a dummy repo
+# so VitePress lastUpdated doesn't crash on missing git
+RUN git init && git add -A && git -c user.name=build -c user.email=build@local commit -m "build" --allow-empty
 RUN pnpm build
 
 # ─────────────────────────────────────────────────────────────────────────────

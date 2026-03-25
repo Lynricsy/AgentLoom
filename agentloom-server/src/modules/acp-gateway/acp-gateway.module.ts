@@ -5,7 +5,7 @@ import { DatabaseModule } from '../../database/database.module';
 import { AuditLogService } from '../evidence/audit-log.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import { McpModule } from '../mcp/mcp.module';
-import { DockerService } from '../sandbox/docker.service';
+import { SandboxModule } from '../sandbox/sandbox.module';
 import { AcpAuthenticationService } from './acp-authentication.service';
 import { AcpGatewayService } from './acp-gateway.service';
 import { AcpMessageRouter } from './acp-message-router';
@@ -24,7 +24,7 @@ import { AcpTerminalProxyService } from './services/acp-terminal-proxy.service';
 import { AcpTerminalSandboxService } from './services/acp-terminal-sandbox.service';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, TokenBlacklistModule, McpModule],
+  imports: [ConfigModule, DatabaseModule, TokenBlacklistModule, McpModule, SandboxModule],
   providers: [
     AcpAuthenticationService,
     SessionPersistenceService,
@@ -35,7 +35,6 @@ import { AcpTerminalSandboxService } from './services/acp-terminal-sandbox.servi
     SessionLoadHandler,
     SessionPromptHandler,
     SessionCancelHandler,
-    DockerService,
     AcpFilesystemSandboxService,
     AcpFilesystemProxyService,
     AcpSessionMcpRegistryService,

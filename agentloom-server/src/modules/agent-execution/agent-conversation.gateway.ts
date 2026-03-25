@@ -435,7 +435,7 @@ export class AgentConversationGateway
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
-    const eventType = payload.event?.type;
+    const eventType = payload.event?.type as string | undefined;
     let conversationEvent: ConversationEventName;
 
     switch (eventType) {
@@ -731,7 +731,7 @@ export class AgentConversationGateway
   private buildEventPayload(
     conversationId: string,
     tenantId: string,
-    data: Record<string, unknown>,
+    data: object,
   ): Record<string, unknown> {
     return {
       conversationId,
@@ -740,7 +740,7 @@ export class AgentConversationGateway
       eventId:
         this.eventBridgeService.getLastEventId(conversationId) ?? 0,
       ...data,
-    };
+    } as Record<string, unknown>;
   }
 
   private buildRoom(tenantId: string, conversationId: string): string {

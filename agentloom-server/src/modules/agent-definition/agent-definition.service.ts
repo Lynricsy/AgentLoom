@@ -117,6 +117,7 @@ export class AgentDefinitionService {
         const [created] = await this.tenantDb
           .insert(schema.agentDefinitions)
           .values({
+            tenantId: sql<string>`current_setting('app.current_tenant')::uuid`,
             name: dto.name,
             slug,
             description: dto.description ?? null,

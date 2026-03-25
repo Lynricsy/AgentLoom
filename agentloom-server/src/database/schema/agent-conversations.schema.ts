@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  foreignKey,
   pgTable,
   pgEnum,
   uuid,
@@ -118,15 +119,17 @@ export const agentMessages = pgTable(
       .notNull()
       .default({}),
 
-    parentMessageId: uuid('parent_message_id').references(
-      () => agentMessages.id,
-    ),
+    parentMessageId: uuid('parent_message_id'),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.parentMessageId],
+      foreignColumns: [table.id],
+    }),
     index('idx_agent_messages_conversation_id').on(table.conversationId),
     index('idx_agent_messages_tenant_created').on(
       table.tenantId,

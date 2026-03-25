@@ -37,24 +37,39 @@ FROM deps AS builder
 COPY agentloom-server/src/         ./src/
 COPY agentloom-server/drizzle/     ./drizzle/
 COPY agentloom-server/scripts/     ./scripts/
-COPY agentloom-server/tsconfig*.json agentloom-server/nest-cli.json ./
+COPY agentloom-server/tsconfig*.json agentloom-server/nest-cli.json agentloom-server/drizzle.config.ts ./
 
 RUN pnpm build
 
-RUN pnpm prune --prod --config.node-linker=hoisted
+# ── Stage 2b: migrator (has devDeps like drizzle-kit) ────────────
+FROM builder AS migrator
 
-# ── Stage 3: production ──────────────────────────────────────────
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV COREPACK_ENABLE_AUTO_INSTALL=1
+
+WORKDIR /build/server
+CMD ["pnpm", "db:migrate"]
+
+# ── Stage 3: production (pruned, no devDeps) ─────────────────────
+FROM builder AS builder-pruned
+RUN pnpm prune --prod --config.node-linker=hoisted
 FROM node:22-bookworm-slim AS production
 
 ENV NODE_ENV=production
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV COREPACK_ENABLE_AUTO_INSTALL=1
+
+RUN corepack enable
 
 WORKDIR /app
 
-COPY --from=builder /build/server/dist/        ./dist/
-COPY --from=builder /build/server/drizzle/     ./drizzle/
-COPY --from=builder /build/server/scripts/     ./scripts/
-COPY --from=builder /build/server/node_modules/ ./node_modules/
-COPY --from=builder /build/server/package.json  ./
+COPY --from=builder-pruned /build/server/dist/        ./dist/
+COPY --from=builder-pruned /build/server/drizzle/     ./drizzle/
+COPY --from=builder-pruned /build/server/scripts/     ./scripts/
+COPY --from=builder-pruned /build/server/node_modules/ ./node_modules/
+COPY --from=builder-pruned /build/server/package.json  ./
 
 USER node
 
