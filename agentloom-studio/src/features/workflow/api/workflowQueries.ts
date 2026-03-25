@@ -4,6 +4,9 @@ import type { ApiResponse } from '../../../shared/types/api'
 import type { WorkflowDefinition, WorkflowInputSchema } from '../types'
 import { workflowKeys } from './workflowKeys'
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function useWorkflow(id: string) {
   return useQuery({
     queryKey: workflowKeys.detail(id),
@@ -13,7 +16,7 @@ export function useWorkflow(id: string) {
         .json<ApiResponse<WorkflowDefinition>>()
       return response.data
     },
-    enabled: !!id,
+    enabled: !!id && UUID_RE.test(id),
   })
 }
 
