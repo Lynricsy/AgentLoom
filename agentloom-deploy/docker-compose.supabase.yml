@@ -33,6 +33,8 @@ services:
       GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${SUPABASE_GITHUB_CLIENT_ID:-}
       GOTRUE_EXTERNAL_GITHUB_SECRET: ${SUPABASE_GITHUB_SECRET:-}
       GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: ${SUPABASE_GOTRUE_EXTERNAL_URL:-http://localhost:8000}/auth/v1/callback
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/public/custom_access_token_hook
     networks:
       - supabase_net
     depends_on:

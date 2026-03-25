@@ -42,15 +42,20 @@ export class OrganizationService {
   ) {}
 
   async createOrganization(userId: string, dto: CreateOrganizationDto) {
+    // userId 来自 JWT sub（auth.users.id），需要解析为 public.users.id
+    // 新注册用户可能还没有 public.users 行（通过 Supabase GoTrue 直接注册时）
+    const localUser = await this.resolveOrBackfillUser(userId);
+
     let slug = generateSlug(dto.name);
 
-    const existingOrg = await this.tenantDb.query.organizations.findFirst({
+    // 使用 base DB 而非 tenantDb，因为新用户还没有 tenant 上下文
+    const existingOrg = await this.db.query.organizations.findFirst({
       where: eq(organizations.slug, slug),
     });
 
     if (existingOrg) {
       slug = appendSlugSuffix(slug);
-      const stillExists = await this.tenantDb.query.organizations.findFirst({
+      const stillExists = await this.db.query.organizations.findFirst({
         where: eq(organizations.slug, slug),
       });
       if (stillExists) {
@@ -58,20 +63,20 @@ export class OrganizationService {
       }
     }
 
-    return await this.tenantDb.transaction(async (tx) => {
+    return await this.db.transaction(async (tx) => {
       const [org] = await tx
         .insert(organizations)
         .values({
           name: dto.name,
           slug,
-          ownerId: userId,
+          ownerId: localUser.id,
           description: dto.description,
         })
         .returning();
 
       await tx.insert(organizationMembers).values({
         organizationId: org.id,
-        userId,
+        userId: localUser.id,
         role: 'owner',
         invitedBy: null,
       });
@@ -79,9 +84,36 @@ export class OrganizationService {
       await tx
         .update(users)
         .set({ currentOrganizationId: org.id })
-        .where(eq(users.id, userId));
+        .where(eq(users.id, localUser.id));
 
       return org;
+    });
+  }
+
+  private async resolveOrBackfillUser(supabaseUserId: string) {
+    const existing = await this.db.query.users.findFirst({
+      where: eq(users.supabaseUserId, supabaseUserId),
+    });
+    if (existing) return existing;
+
+    const [authRow] = await this.db.execute<{ email: string }>(
+      sql`SELECT email FROM auth.users WHERE id = ${supabaseUserId}`,
+    );
+    if (!authRow) {
+      throw new OrganizationNotFoundException();
+    }
+
+    const [inserted] = await this.db
+      .insert(users)
+      .values({
+        supabaseUserId,
+        email: authRow.email,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    return inserted ?? await this.db.query.users.findFirst({
+      where: eq(users.supabaseUserId, supabaseUserId),
     });
   }
 
