@@ -73,6 +73,7 @@ services:
       - ./nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     networks:
       - frontend_net
+      - supabase_net
     deploy:
       resources:
         limits:
