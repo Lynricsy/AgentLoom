@@ -41,7 +41,7 @@ COPY agentloom-server/tsconfig*.json agentloom-server/nest-cli.json ./
 
 RUN pnpm build
 
-RUN pnpm prune --prod --config.node-linker=hoisted || true
+RUN pnpm prune --prod --config.node-linker=hoisted
 
 # ── Stage 3: production ──────────────────────────────────────────
 FROM node:22-bookworm-slim AS production
@@ -51,9 +51,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY --from=builder /build/server/dist/        ./dist/
+COPY --from=builder /build/server/drizzle/     ./drizzle/
+COPY --from=builder /build/server/scripts/     ./scripts/
 COPY --from=builder /build/server/node_modules/ ./node_modules/
 COPY --from=builder /build/server/package.json  ./
-COPY --from=builder /build/plugin-sdk/dist/     ./plugin-sdk-dist/
 
 USER node
 

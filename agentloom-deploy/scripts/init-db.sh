@@ -34,13 +34,28 @@ wait_for_postgres() {
   return 1
 }
 
+check_pi_tarballs() {
+  local pi_tarballs_dir="$DEPLOY_DIR/docker/.pi-tarballs"
+  if [[ ! -d "$pi_tarballs_dir" ]] || [[ -z "$(ls -A "$pi_tarballs_dir" 2>/dev/null)" ]]; then
+    printf '⚠ .pi-tarballs 目录不存在或为空: %s\n' "$pi_tarballs_dir"
+    if [[ -f "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh" ]]; then
+      printf '  正在运行 prepare-pi-tarballs.sh ...\n'
+      bash "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh"
+    else
+      printf '  跳过 pi-tarballs 准备（脚本不存在）。Server 构建可能失败。\n'
+    fi
+  else
+    printf '✓ .pi-tarballs 目录存在且非空\n'
+  fi
+}
+
 bootstrap_auth_prerequisites() {
   printf '为 vanilla PostgreSQL 初始化 Supabase 兼容角色、auth schema 与 auth.users ...\n'
   compose exec -T postgres sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<"SQL"
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''supabase_auth_admin'\'') THEN
-    CREATE ROLE supabase_auth_admin NOLOGIN;
+    CREATE ROLE supabase_auth_admin LOGIN;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''authenticated'\'') THEN
     CREATE ROLE authenticated NOLOGIN;
@@ -48,15 +63,29 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''anon'\'') THEN
     CREATE ROLE anon NOLOGIN;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''service_role'\'') THEN
+    CREATE ROLE service_role NOLOGIN;
+  END IF;
 END
 $$;
 
-CREATE SCHEMA IF NOT EXISTS auth;
+GRANT ALL ON DATABASE '"$POSTGRES_DB"' TO supabase_auth_admin;
+
+CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
+GRANT USAGE ON SCHEMA auth TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+
 CREATE TABLE IF NOT EXISTS auth.users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid()
 );
+
+GRANT SELECT, DELETE ON auth.sessions TO '"$POSTGRES_USER"';
 SQL'
 }
+
+check_pi_tarballs
 
 printf '构建 server 镜像（server/worker 共用镜像）...\n'
 compose build server

@@ -1,0 +1,86 @@
+# ============================================
+# AgentLoom Docker Build Context Filter
+# Build context = 项目根目录 (..)
+# 仅保留 Dockerfile 实际 COPY 的子目录
+# ============================================
+
+# ── 全局排除 ────────────────────────────────
+**/.git
+**/.gitignore
+**/.DS_Store
+**/.env
+**/.env.*
+!**/.env.example
+**/.env.template
+**/node_modules
+**/dist
+**/coverage
+**/target
+**/.cache
+**/.tmp
+**/.temp
+**/*.log
+**/*.pid
+**/*.swp
+**/*.swo
+**/*~
+
+# ── IDE / Agent ─────────────────────────────
+.idea/
+.vscode/
+.claude/
+.opencode/
+.sisyphus/
+AgentLogs/
+.autobmad-logs/
+.autobmad-state.json
+.bmad-opencode/
+
+# ── 非构建用子项目 ──────────────────────────
+# Flutter 移动端（不参与 Docker 构建）
+agentloom_mobile/
+
+# BMAD agent 系统（不参与 Docker 构建）
+_bmad/
+_bmad-output/
+
+# 部署目录本身不进入子包构建（nginx.conf 通过 volume mount）
+agentloom-deploy/backups/
+agentloom-deploy/systemd/
+agentloom-deploy/kubernetes/
+agentloom-deploy/envs/
+
+# 沙箱镜像独立构建
+agentloom-deploy/sandbox/
+
+# Pi tarballs 在 .gitignore 中已忽略，确保不泄漏
+# （实际构建前需要 prepare-pi-tarballs.sh 生成）
+
+# ── 文档与设计资产 ──────────────────────────
+*.md
+!agentloom-docs/**/*.md
+!agentloom-server/README.md
+design_pic/
+*.png
+*.jpg
+*.jpeg
+
+# ── 测试文件（不进入生产镜像）──────────────
+**/*.spec.ts
+**/*.test.ts
+**/*.e2e-spec.ts
+**/test/
+**/tests/
+**/vitest.config.*
+**/__mocks__/
+
+# ── Rust 构建产物（仅保留 pkg/ WASM）──────
+agentloom-type-engine/src/
+agentloom-type-engine/benches/
+agentloom-type-engine/Cargo.toml
+agentloom-type-engine/Cargo.lock
+agentloom-type-engine/target/
+
+# ── Plugin CLI / Template（不参与核心构建）──
+agentloom-plugin-cli/
+agentloom-plugin-template/

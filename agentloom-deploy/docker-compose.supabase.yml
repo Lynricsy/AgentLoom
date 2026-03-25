@@ -1,0 +1,103 @@
+name: agentloom-supabase
+
+services:
+  supabase-auth:
+    image: supabase/gotrue:v2.175.0
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_GOTRUE_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_SITE_URL: ${SUPABASE_SITE_URL:-http://localhost:8080}
+      GOTRUE_URI_ALLOW_LIST: ${SUPABASE_ADDITIONAL_REDIRECT_URLS:-}
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_SECRET: ${SUPABASE_JWT_SECRET:?SUPABASE_JWT_SECRET is required}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://${POSTGRES_USER:-agentloom}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-agentloom}?search_path=auth
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_SMS_AUTOCONFIRM: "false"
+      GOTRUE_MFA_ENABLED: "true"
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${SUPABASE_GOOGLE_CLIENT_ID:+true}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${SUPABASE_GOOGLE_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${SUPABASE_GOOGLE_SECRET:-}
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SUPABASE_GOTRUE_EXTERNAL_URL:-http://localhost:8000}/auth/v1/callback
+      GOTRUE_EXTERNAL_GITHUB_ENABLED: ${SUPABASE_GITHUB_CLIENT_ID:+true}
+      GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${SUPABASE_GITHUB_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GITHUB_SECRET: ${SUPABASE_GITHUB_SECRET:-}
+      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: ${SUPABASE_GOTRUE_EXTERNAL_URL:-http://localhost:8000}/auth/v1/callback
+    networks:
+      - supabase_net
+    depends_on:
+      supabase-db-ready:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9999/health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  supabase-kong:
+    image: kong:3.9
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      KONG_LOG_LEVEL: warn
+    ports:
+      - '${SUPABASE_KONG_PORT:-8000}:8000'
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
+    networks:
+      - supabase_net
+    depends_on:
+      supabase-auth:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ['CMD', 'kong', 'health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  supabase-db-ready:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until pg_isready -h postgres -U "${POSTGRES_USER:-agentloom}" -d "${POSTGRES_DB:-agentloom}"; do
+          echo "Waiting for postgres..."
+          sleep 2
+        done
+        echo "Postgres is ready"
+    networks:
+      - supabase_net
+
+networks:
+  supabase_net:
+    name: ${SUPABASE_NETWORK:-supabase-shared}
+    external: true

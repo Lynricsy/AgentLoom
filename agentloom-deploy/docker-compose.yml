@@ -31,6 +31,7 @@ x-server-app: &server-app
   networks:
     - frontend_net
     - app_net
+    - supabase_net
   depends_on:
     postgres:
       condition: service_healthy
@@ -39,7 +40,7 @@ x-server-app: &server-app
     minio:
       condition: service_healthy
     qdrant:
-      condition: service_started
+      condition: service_healthy
 
 x-studio-app: &studio-app
   image: ${STUDIO_IMAGE:-agentloom/studio:private-local}
@@ -50,12 +51,14 @@ x-studio-app: &studio-app
   environment: &studio-env
     VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     VITE_AUTOSAVE_DEBOUNCE_MS: ${VITE_AUTOSAVE_DEBOUNCE_MS:-500}
+    VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+    VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
   networks:
     - frontend_net
 
 services:
   reverse-proxy:
-    image: ${NGINX_IMAGE:-openresty/openresty:alpine}
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
     restart: unless-stopped
     depends_on:
       server:
@@ -67,9 +70,14 @@ services:
     ports:
       - '${NGINX_HTTP_PORT:-8080}:80'
     volumes:
-      - ./nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - frontend_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test:
         [
@@ -83,6 +91,11 @@ services:
 
   studio:
     <<: *studio-app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test:
         [
@@ -102,6 +115,11 @@ services:
     restart: unless-stopped
     networks:
       - frontend_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test:
         [
@@ -118,6 +136,11 @@ services:
     command: ['node', 'dist/src/main.js']
     expose:
       - '3000'
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
     healthcheck:
       test:
         [
@@ -136,6 +159,11 @@ services:
     command: ['node', 'dist/src/main.js']
     networks:
       - app_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
     healthcheck:
       test:
         [
@@ -161,6 +189,12 @@ services:
     networks:
       - app_net
       - data_net
+      - supabase_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
@@ -178,6 +212,11 @@ services:
       - redis_data:/data
     networks:
       - app_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG >/dev/null || exit 1']
       interval: 10s
@@ -186,7 +225,7 @@ services:
       start_period: 10s
 
   minio:
-    image: ${MINIO_IMAGE:-minio/minio:latest}
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-02-28T09-55-16Z}
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
     environment:
@@ -198,6 +237,11 @@ services:
       - minio_data:/data
     networks:
       - app_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     healthcheck:
       test:
         [
@@ -218,6 +262,11 @@ services:
       - qdrant_data:/qdrant/storage
     networks:
       - app_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     healthcheck:
       test:
         [
@@ -230,7 +279,7 @@ services:
       start_period: 10s
 
   createbuckets:
-    image: ${MC_IMAGE:-minio/mc:latest}
+    image: ${MC_IMAGE:-minio/mc:RELEASE.2025-02-21T04-10-25Z}
     depends_on:
       minio:
         condition: service_healthy
@@ -264,3 +313,6 @@ networks:
   data_net:
     name: agentloom-data
     internal: true
+  supabase_net:
+    name: ${SUPABASE_NETWORK:-supabase-shared}
+    external: true

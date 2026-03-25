@@ -8,17 +8,25 @@ RUN corepack enable
 
 WORKDIR /workspace
 
+# 先复制依赖清单（利用 Docker 层缓存）
 COPY agentloom-type-engine/pkg ./agentloom-type-engine/pkg
-COPY agentloom-studio ./agentloom-studio
+COPY agentloom-studio/package.json agentloom-studio/pnpm-lock.yaml ./agentloom-studio/
 
 WORKDIR /workspace/agentloom-studio
 RUN pnpm install --frozen-lockfile --config.node-linker=hoisted
 
+# 再复制源码（源码变更不会破坏依赖缓存）
+COPY agentloom-studio/ ./
+
 ARG VITE_API_BASE_URL=__VITE_API_BASE_URL__
 ARG VITE_AUTOSAVE_DEBOUNCE_MS=__VITE_AUTOSAVE_DEBOUNCE_MS__
+ARG VITE_SUPABASE_URL=__VITE_SUPABASE_URL__
+ARG VITE_SUPABASE_ANON_KEY=__VITE_SUPABASE_ANON_KEY__
 
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_AUTOSAVE_DEBOUNCE_MS=${VITE_AUTOSAVE_DEBOUNCE_MS}
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 
 RUN pnpm build
 
@@ -48,8 +56,15 @@ RUN printf '%s\n' \
   '' \
   'api_base_url=$(escape_sed "${VITE_API_BASE_URL:-/api/v1}")' \
   'autosave_debounce=$(escape_sed "${VITE_AUTOSAVE_DEBOUNCE_MS:-500}")' \
+  'supabase_url=$(escape_sed "${VITE_SUPABASE_URL:-}")' \
+  'supabase_anon_key=$(escape_sed "${VITE_SUPABASE_ANON_KEY:-}")' \
   '' \
-  'find /usr/share/nginx/html -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" \) -exec sed -i -e "s/__VITE_API_BASE_URL__/${api_base_url}/g" -e "s/__VITE_AUTOSAVE_DEBOUNCE_MS__/${autosave_debounce}/g" {} +' \
+  'find /usr/share/nginx/html -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" \) -exec sed -i \' \
+  '  -e "s/__VITE_API_BASE_URL__/${api_base_url}/g" \' \
+  '  -e "s/__VITE_AUTOSAVE_DEBOUNCE_MS__/${autosave_debounce}/g" \' \
+  '  -e "s/__VITE_SUPABASE_URL__/${supabase_url}/g" \' \
+  '  -e "s/__VITE_SUPABASE_ANON_KEY__/${supabase_anon_key}/g" \' \
+  '  {} +' \
   > /docker-entrypoint.d/40-runtime-env.sh && chmod +x /docker-entrypoint.d/40-runtime-env.sh
 
 EXPOSE 8080

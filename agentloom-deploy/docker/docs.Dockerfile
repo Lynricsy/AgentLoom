@@ -8,7 +8,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
 ENV CI=true
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
 WORKDIR /workspace
 
@@ -20,11 +20,11 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 2: Runtime
+# Stage 2: Runtime (轻量 nginx 替代 openresty)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM openresty/openresty:alpine
+FROM nginx:1.27-alpine
 
-COPY --from=build /workspace/agentloom-docs/.vitepress/dist /usr/local/openresty/nginx/html/documentation
+COPY --from=build /workspace/agentloom-docs/.vitepress/dist /usr/share/nginx/html/documentation
 
 RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
   'server {' \
@@ -32,11 +32,11 @@ RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
   '  server_name _;' \
   '' \
   '  location /documentation/ {' \
-  '    root /usr/local/openresty/nginx/html;' \
+  '    root /usr/share/nginx/html;' \
   '    try_files $uri $uri/ /documentation/index.html;' \
   '  }' \
   '}' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 8081
 
-CMD ["openresty", "-g", "daemon off;"]
+CMD ["nginx", "-g", "daemon off;"]
