@@ -372,6 +372,13 @@
       "when": 1774259025733,
       "tag": "0052_jazzy_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1774684800000,
+      "tag": "0053_grant_authenticated_missing_tables",
+      "breakpoints": true
     }
   ]
 }
