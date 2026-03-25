@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 
 import { cn } from '@/shared/lib/utils';
+import { useAuthStore } from '@/features/auth/stores/auth.store';
+
+import { createOrganization } from '../api';
 
 import { OrgSetupStep } from './OrgSetupStep';
 import { PreferencesStep } from './PreferencesStep';
@@ -36,32 +40,57 @@ function StepIndicator({ current }: { current: Step }) {
 export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orgError, setOrgError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   function handleGetStarted() {
     setCurrentStep(2);
   }
 
-  function handleOrgSubmit(_orgName: string) {
+  async function handleOrgSubmit(orgName: string) {
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setOrgError(null);
+
+    try {
+      await createOrganization(orgName);
+
+      const { success, tenantId } =
+        await useAuthStore.getState().refreshAndCheckTenant();
+
+      if (!success) {
+        setOrgError('会话刷新失败，请重新登录后重试');
+        return;
+      }
+
+      if (!tenantId) {
+        setOrgError('组织创建成功但租户信息尚未生效，请稍后重试');
+        return;
+      }
+
       setCurrentStep(3);
-    }, 600);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : '组织创建失败，请稍后重试';
+      setOrgError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleBackToWelcome() {
     setCurrentStep(1);
+    setOrgError(null);
   }
 
-  function handlePreferencesComplete(prefs: {
+  function handlePreferencesComplete(_prefs: {
     language: string;
     notifications: boolean;
   }) {
-    console.log('[OnboardingWizard] complete', prefs);
+    navigate({ to: '/' });
   }
 
   function handlePreferencesSkip() {
-    console.log('[OnboardingWizard] skipped preferences');
+    navigate({ to: '/' });
   }
 
   return (
@@ -83,11 +112,16 @@ export function OnboardingWizard() {
             <WelcomeStep onGetStarted={handleGetStarted} />
           )}
           {currentStep === 2 && (
-            <OrgSetupStep
-              onSubmit={handleOrgSubmit}
-              onBack={handleBackToWelcome}
-              isSubmitting={isSubmitting}
-            />
+            <>
+              <OrgSetupStep
+                onSubmit={handleOrgSubmit}
+                onBack={handleBackToWelcome}
+                isSubmitting={isSubmitting}
+              />
+              {orgError && (
+                <p className="mt-3 text-xs text-red-400">{orgError}</p>
+              )}
+            </>
           )}
           {currentStep === 3 && (
             <PreferencesStep

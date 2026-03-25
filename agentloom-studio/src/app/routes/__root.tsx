@@ -2,6 +2,7 @@ import { Outlet, createRootRoute, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
+import { useAuthStore } from "@/features/auth/stores/auth.store";
 import {
   NotificationBell,
   useNotificationSocket,
@@ -27,6 +28,7 @@ import { securitySettingsRoute } from './settings/security'
 import { authCallbackRoute } from './auth/callback'
 import { loginRoute } from './auth/login'
 import { registerRoute } from './auth/register'
+import { onboardingRoute } from './onboarding'
 import { agentsIndexRoute } from './agents/agents.index'
 import { agentDetailRoute } from './agents/agents.$agentId'
 import { agentNewConversationRoute } from './agents/agents.$agentId.conversations.new'
@@ -44,6 +46,7 @@ export function RootLayout() {
   const authToken = useAuthToken();
   const isAuthenticated = useIsAuthenticated();
   const isLoading = useAuthLoading();
+  const needsOnboarding = useAuthStore((state) => state.needsOnboarding);
 
   useNotificationSocket({ authToken });
 
@@ -51,6 +54,7 @@ export function RootLayout() {
   const isPublicRoute =
     PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith('/s/');
+  const isOnboardingRoute = pathname.startsWith('/onboarding');
 
   if (isLoading && !isPublicRoute) {
     return (
@@ -65,7 +69,19 @@ export function RootLayout() {
     return null;
   }
 
-  if (isPublicRoute) {
+  // 认证用户需要完成 onboarding → 重定向到 /onboarding
+  if (isAuthenticated && needsOnboarding && !isOnboardingRoute) {
+    window.location.href = '/onboarding';
+    return null;
+  }
+
+  // 已完成 onboarding 的用户不应停留在 /onboarding
+  if (isAuthenticated && !needsOnboarding && isOnboardingRoute) {
+    window.location.href = '/';
+    return null;
+  }
+
+  if (isPublicRoute || isOnboardingRoute) {
     return <Outlet />;
   }
 
@@ -163,6 +179,7 @@ export const routeTree = rootRoute.addChildren([
   authCallbackRoute,
   loginRoute,
   registerRoute,
+  onboardingRoute,
   agentsIndexRoute,
   agentDetailRoute,
   agentNewConversationRoute,
