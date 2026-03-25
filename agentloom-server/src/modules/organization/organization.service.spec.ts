@@ -103,6 +103,7 @@ interface MockDb {
   update: MockFunction;
   delete: MockFunction;
   select: MockFunction;
+  execute: MockFunction;
   from: MockFunction;
   set: MockFunction;
   values: MockFunction;
@@ -140,6 +141,7 @@ interface SelectChain {
 }
 
 const NOW = new Date('2026-01-01T00:00:00.000Z');
+const SUPABASE_USER_ID = 'supabase-user-1';
 const USER_ID = 'user-1';
 const TARGET_USER_ID = 'user-2';
 const ORG_ID = 'org-1';
@@ -159,6 +161,7 @@ function createMockDb(): MockDb {
     update: vi.fn(),
     delete: vi.fn(),
     select: vi.fn(),
+    execute: vi.fn(),
     from: vi.fn(),
     set: vi.fn(),
     values: vi.fn(),
@@ -310,6 +313,21 @@ function setupCreateOrganizationTransaction(
   return { tx, orgInsertChain, memberInsertChain, userUpdateChain };
 }
 
+/** Consumes the first db.query.users.findFirst call for resolveOrBackfillUser */
+function setupResolveUser(
+  db: MockDb,
+  localUserId: string = USER_ID,
+  supabaseId: string = SUPABASE_USER_ID,
+) {
+  const localUser = createUserRecord({
+    id: localUserId,
+    supabaseUserId: supabaseId,
+    email: 'owner@example.com',
+  });
+  db.query.users.findFirst.mockResolvedValueOnce(localUser);
+  return localUser;
+}
+
 function setupAcceptInvitationTransaction(
   db: MockDb,
   member: OrganizationMemberRecord,
@@ -366,10 +384,11 @@ describe('OrganizationService', () => {
   describe('createOrganization', () => {
     it('正常创建组织并返回组织信息', async () => {
       const org = createOrganizationRecord({ description: '新的组织' });
+      setupResolveUser(db);
       const { orgInsertChain } = setupCreateOrganizationTransaction(db, org);
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
-      const result = await service.createOrganization(USER_ID, {
+      const result = await service.createOrganization(SUPABASE_USER_ID, {
         name: 'Acme Team',
         description: '新的组织',
       });
@@ -387,12 +406,13 @@ describe('OrganizationService', () => {
 
     it('slug 冲突时使用 appendSlugSuffix', async () => {
       const org = createOrganizationRecord({ slug: 'acme-team-abcd' });
+      setupResolveUser(db);
       const { orgInsertChain } = setupCreateOrganizationTransaction(db, org);
       db.query.organizations.findFirst
         .mockResolvedValueOnce(createOrganizationRecord())
         .mockResolvedValueOnce(undefined);
 
-      const result = await service.createOrganization(USER_ID, {
+      const result = await service.createOrganization(SUPABASE_USER_ID, {
         name: 'Acme Team',
         description: '冲突重试',
       });
@@ -409,6 +429,7 @@ describe('OrganizationService', () => {
     });
 
     it('slug 冲突且后缀也冲突时抛出 OrganizationSlugConflictException', async () => {
+      setupResolveUser(db);
       db.query.organizations.findFirst
         .mockResolvedValueOnce(createOrganizationRecord())
         .mockResolvedValueOnce(
@@ -416,7 +437,7 @@ describe('OrganizationService', () => {
         );
 
       await expect(
-        service.createOrganization(USER_ID, {
+        service.createOrganization(SUPABASE_USER_ID, {
           name: 'Acme Team',
           description: '重复 slug',
         }),
@@ -428,13 +449,14 @@ describe('OrganizationService', () => {
 
     it('创建时同时创建 owner 成员记录', async () => {
       const org = createOrganizationRecord();
+      setupResolveUser(db);
       const { tx, memberInsertChain } = setupCreateOrganizationTransaction(
         db,
         org,
       );
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
-      await service.createOrganization(USER_ID, {
+      await service.createOrganization(SUPABASE_USER_ID, {
         name: 'Acme Team',
         description: '成员写入',
       });
@@ -451,13 +473,14 @@ describe('OrganizationService', () => {
 
     it('创建时设置 currentOrganizationId', async () => {
       const org = createOrganizationRecord();
+      setupResolveUser(db);
       const { tx, userUpdateChain } = setupCreateOrganizationTransaction(
         db,
         org,
       );
       db.query.organizations.findFirst.mockResolvedValue(undefined);
 
-      await service.createOrganization(USER_ID, {
+      await service.createOrganization(SUPABASE_USER_ID, {
         name: 'Acme Team',
         description: '更新当前组织',
       });
