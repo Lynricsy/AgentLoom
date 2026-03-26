@@ -7,8 +7,8 @@ import {
 } from '../types/nodeTypeRegistry'
 import type { NodeCategory } from '../types'
 
-// Agent canvas extends base NodeType with 'sub-agent', which is exclusive to the agent editor
-export type AgentCanvasNodeType = NodeType | 'sub-agent'
+// Agent canvas extends base NodeType with 'sub-agent' and 'agent-main', exclusive to the agent editor
+export type AgentCanvasNodeType = NodeType | 'sub-agent' | 'agent-main'
 
 /**
  * Agent node config mirrors NodeTypeConfig but uses AgentCanvasNodeType and supports maxInstances.
@@ -48,6 +48,7 @@ const EMPTY_AGENT_CONFIG_SCHEMA: NodeConfigSchema = {
 }
 
 export const AGENT_CANVAS_NODE_TYPES = [
+  'agent-main',
   'llm-model',
   'smart-routing',
   'http-tool',
@@ -69,7 +70,6 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       icon: 'Brain',
       description: '配置 LLM provider 和模型参数，为 Agent 提供模型能力',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
-      maxInstances: 1,
       inputPorts: [
         createPort('model-in', '模型输入', 'input', 'model', {
           required: true,
@@ -350,6 +350,61 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         },
         required: ['skillId'],
       },
+    },
+  ],
+  [
+    'agent-main',
+    {
+      type: 'agent-main',
+      category: 'agent',
+      label: 'Agent Main',
+      icon: 'BrainCircuit',
+      description: 'Central agent configuration node',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
+      maxInstances: 1,
+      inputPorts: [
+        createPort('model-in', '模型', 'input', 'model', {
+          description: '来自 LLM 模型节点的模型配置',
+        }),
+        createPort('tools-in', '工具', 'input', 'tool', {
+          multiple: true,
+          maxConnections: null,
+          description: '来自 HTTP/代码/MCP 工具节点的工具集',
+        }),
+        createPort('knowledge-in', '知识库', 'input', 'knowledge', {
+          multiple: true,
+          maxConnections: null,
+          description: '来自知识库节点的知识源',
+        }),
+        createPort('sandbox-in', '沙箱', 'input', 'sandbox', {
+          maxConnections: 1,
+          description: '专属沙箱环境（独占连接）',
+        }),
+        createPort('skills-in', 'Skills', 'input', 'skill', {
+          multiple: true,
+          maxConnections: null,
+          description: '来自 Skill 节点的技能指令',
+        }),
+        createPort('memory-in', '记忆', 'input', 'knowledge', {
+          multiple: true,
+          maxConnections: null,
+          description: '来自记忆/知识节点的记忆数据',
+        }),
+        createPort('system-prompt-in', '系统提示词', 'input', 'text', {
+          maxConnections: 1,
+          description: '系统提示词（独占连接）',
+        }),
+        createPort('sub-agents-in', '子 Agent', 'input', 'agent', {
+          multiple: true,
+          maxConnections: null,
+          description: '来自子 Agent 节点的 Agent 引用',
+        }),
+        createPort('input-preprocessor-in', '输入预处理', 'input', 'json', {
+          description: '来自输入预处理节点的预处理数据',
+        }),
+      ],
+      outputPorts: [],
+      configSchema: EMPTY_AGENT_CONFIG_SCHEMA,
     },
   ],
 ])
