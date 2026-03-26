@@ -80,7 +80,7 @@ describe('useExecutionList', () => {
               id: 'node-1',
               type: 'agent',
               position: { x: 0, y: 0 },
-              data: { label: 'Agent Node', nodeType: 'llm-agent' },
+              data: { label: 'Agent Node', nodeType: 'chat-agent' },
             },
           ],
           edges: [],
@@ -90,7 +90,7 @@ describe('useExecutionList', () => {
             id: 'step-1',
             executionId: 'exec-001',
             nodeId: 'node-1',
-            nodeType: 'llm-agent',
+            nodeType: 'chat-agent',
             nodeData: { prompt: 'hello' },
             result: { text: 'world' },
             checkpointData: {
@@ -123,7 +123,7 @@ describe('useExecutionList', () => {
     expect(result.current.data?.steps[0]).toEqual(
       expect.objectContaining({
         nodeName: 'Agent Node',
-        nodeType: 'llm-agent',
+        nodeType: 'chat-agent',
         status: 'waiting_for_intervention',
         retryCount: 1,
       }),

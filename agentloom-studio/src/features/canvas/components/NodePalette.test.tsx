@@ -131,7 +131,6 @@ describe('NodePalette', () => {
       .map((config) => config.type)
 
     expect(paletteTypes).toEqual([
-      'llm-agent',
       'chat-agent',
       'llm-model',
       'smart-routing',
@@ -160,7 +159,7 @@ describe('NodePalette', () => {
     await user.type(screen.getByPlaceholderText('搜索节点...'), 'schedule')
 
     expect(screen.getByText('Schedule')).toBeInTheDocument()
-    expect(screen.queryByText('LLM Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
   })
 
   it('collapses and expands groups', async () => {
@@ -176,17 +175,17 @@ describe('NodePalette', () => {
     }
 
     await user.click(agentHeader)
-    expect(screen.queryByText('LLM Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
 
     await user.click(agentHeader)
-    expect(screen.getByText('LLM Agent')).toBeInTheDocument()
+    expect(screen.getByText('Chat Agent')).toBeInTheDocument()
   })
 
   it('writes drag payloads using the expected transfer type', async () => {
     render(<NodePalette />)
 
     const setData = vi.fn()
-    const dragTarget = screen.getByText('LLM Agent').closest('button')
+    const dragTarget = screen.getByText('Chat Agent').closest('button')
 
     if (!dragTarget) {
       throw new Error('Expected draggable palette item to exist')
@@ -199,7 +198,7 @@ describe('NodePalette', () => {
       } as unknown as DataTransfer,
     })
 
-    expect(setData).toHaveBeenCalledWith(DRAG_TRANSFER_TYPE, expect.stringContaining('llm-agent'))
+    expect(setData).toHaveBeenCalledWith(DRAG_TRANSFER_TYPE, expect.stringContaining('chat-agent'))
   })
 
   describe('MCP tool integration', () => {
@@ -303,7 +302,7 @@ describe('NodePalette', () => {
       await user.type(screen.getByPlaceholderText('搜索节点...'), 'search')
 
       expect(screen.getByText('Search Tool')).toBeInTheDocument()
-      expect(screen.queryByText('LLM Agent')).not.toBeInTheDocument()
+      expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
     })
 
     it('filters MCP tools by raw tool name even when title exists', async () => {

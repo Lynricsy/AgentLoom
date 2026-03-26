@@ -64,7 +64,7 @@ function createSelectedAgentNode(
   config: Record<string, unknown> = {},
   dataOverride: Partial<CanvasNode['data']> = {},
 ): CanvasNode {
-  const llmAgentType = getNodeTypeConfig('llm-agent')
+  const llmAgentType = getNodeTypeConfig('chat-agent')
   const defaultAgentData = createDefaultAgentNodeData()
   const baseData: CanvasNode['data'] = {
     label: llmAgentType.label,
@@ -114,7 +114,7 @@ function StoreBackedLlmAgentConfigPanel() {
     state.selectedNodeId ? state.nodes.find((node) => node.id === state.selectedNodeId) ?? null : null,
   )
 
-  if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+  if (!selectedNode) {
     return null
   }
 

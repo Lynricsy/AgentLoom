@@ -116,7 +116,7 @@ function makeValidFile() {
             nodes: [
               {
                 id: 'node-1',
-                type: 'llm-agent',
+                type: 'chat-agent',
                 position: { x: 0, y: 0 },
                 data: { label: '节点 1' },
               },
@@ -273,7 +273,7 @@ describe('BlockImportDialog', () => {
           nodes: [
             {
               id: 'node-1',
-              type: 'llm-agent',
+              type: 'chat-agent',
               position: { x: 0, y: 0 },
               data: { label: '节点 1' },
             },

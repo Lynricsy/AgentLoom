@@ -74,7 +74,7 @@ const compatibleNodes: CanvasNode[] = [
     position: { x: 0, y: 0 },
     data: {
       label: 'Source',
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       category: 'agent',
       config: {},
       inputPorts: [],
@@ -127,7 +127,7 @@ const mixedTargetNodes: CanvasNode[] = [
     position: { x: 320, y: 180 },
     data: {
       label: 'Model Target',
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       category: 'agent',
       config: {},
       inputPorts: [
@@ -499,8 +499,8 @@ describe('WorkflowCanvas', () => {
 
   it('在创建前阻止循环依赖连线并提示固定错误文案', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const nodeA = createNode('a', 'llm-agent')
-    const nodeB = createNode('b', 'llm-agent')
+    const nodeA = createNode('a', 'chat-agent')
+    const nodeB = createNode('b', 'chat-agent')
 
     useCanvasStore.setState((state) => ({
       ...state,
@@ -549,7 +549,7 @@ describe('WorkflowCanvas', () => {
   })
 
   it('超过并行路径建议上限时只告警不阻止创建', async () => {
-    const hub = createNode('hub', 'llm-agent')
+    const hub = createNode('hub', 'chat-agent')
     const existingTargets = Array.from({ length: 10 }, (_, index) => createNode(`target-${index}`, 'text-output'))
     const nextTarget = createNode('target-10', 'text-output')
 

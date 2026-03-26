@@ -338,7 +338,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
     }
 
     const selectedNode = state.nodes.find((node) => node.id === selectedNodeId)
-    if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+    if (!selectedNode) {
       return null
     }
 
@@ -351,7 +351,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
     }
 
     const selectedNode = state.nodes.find((node) => node.id === selectedNodeId)
-    if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+    if (!selectedNode) {
       return null
     }
 
@@ -364,7 +364,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
     }
 
     const selectedNode = state.nodes.find((node) => node.id === selectedNodeId)
-    if (!selectedNode || selectedNode.data.nodeType !== 'llm-agent') {
+    if (!selectedNode) {
       return null
     }
 

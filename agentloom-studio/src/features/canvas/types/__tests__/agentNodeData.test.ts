@@ -86,7 +86,7 @@ describe('createDefaultAgentNodeData', () => {
 })
 
 describe('llm-agent 端口定义', () => {
-  const agentType = getNodeTypeConfig('llm-agent')
+  const agentType = getNodeTypeConfig('chat-agent')
 
   it('包含 10 个输入端口和 4 个输出端口', () => {
     expect(agentType.inputPorts).toHaveLength(10)

@@ -46,7 +46,7 @@ function createDeferred<T>() {
 
 const mockAddNodeInput: AddNodeInput = {
   id: 'node-1',
-  nodeType: 'llm-agent',
+  nodeType: 'chat-agent',
   category: 'agent',
   position: { x: 100, y: 200 },
   label: 'Test Agent',
@@ -94,7 +94,7 @@ function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
     position: { x: 0, y: 0 },
     data: {
       label: 'Server Node',
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       category: 'agent',
       description: '来自服务端',
       config: {},
@@ -256,7 +256,7 @@ describe('canvasStore', () => {
       ...createNode(),
       data: {
         label: 'Hydrated Node',
-        nodeType: 'llm-agent',
+        nodeType: 'chat-agent',
         category: 'agent',
         description: 'Hydrated',
       },
@@ -297,7 +297,7 @@ describe('canvasStore', () => {
     const snapshotNode = createNode({
       data: {
         label: 'Existing Ports',
-        nodeType: 'llm-agent',
+        nodeType: 'chat-agent',
         category: 'agent',
         description: 'Keep my ports',
         config: { retries: 3 },
@@ -512,7 +512,7 @@ describe('canvasStore', () => {
     const node = createNode({
       data: {
         label: 'Dirty Node',
-        nodeType: 'llm-agent',
+        nodeType: 'chat-agent',
         category: 'agent',
         description: 'Dirty',
         config: {},

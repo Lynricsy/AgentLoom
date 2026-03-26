@@ -48,7 +48,7 @@ function createTimelineData(overrides: Partial<TimelineData> = {}): TimelineData
       executionId: 'exec-1',
       nodeId: 'node-1',
       nodeName: 'Test Node',
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       status: 'completed',
         input: { prompt: 'hello' },
         nodeData: null,

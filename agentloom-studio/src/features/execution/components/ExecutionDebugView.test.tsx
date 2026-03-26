@@ -71,7 +71,7 @@ function createExecutionDetail(): ExecutionDetail {
         executionId: 'exec-001',
         nodeId: 'node-1',
         nodeName: 'Node One',
-        nodeType: 'llm-agent',
+        nodeType: 'chat-agent',
         status: 'completed',
         input: null,
         output: null,

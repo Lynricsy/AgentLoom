@@ -11,7 +11,7 @@ function createNode(id: string): CanvasNode {
     position: { x: 0, y: 0 },
     data: {
       label: id,
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       category: 'agent',
       description: id,
       config: {},

@@ -7,7 +7,7 @@ import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasDrop } from './useCanvasDrop'
 
 const mockPaletteNode: PaletteNodeItem = {
-  type: 'llm-agent',
+  type: 'chat-agent',
   label: 'LLM Agent',
   category: 'agent',
   icon: 'Bot',
@@ -86,7 +86,7 @@ describe('useCanvasDrop', () => {
     const state = useCanvasStore.getState()
     expect(state.nodes).toHaveLength(1)
     expect(state.nodes[0]?.type).toBe('agent')
-    expect(state.nodes[0]?.data.nodeType).toBe('llm-agent')
+    expect(state.nodes[0]?.data.nodeType).toBe('chat-agent')
     expect(state.nodes[0]?.data.inputPorts.length).toBeGreaterThan(0)
     expect(state.nodes[0]?.data.outputPorts.length).toBeGreaterThan(0)
     expect(state.nodes[0]?.data.config).toBeDefined()

@@ -28,7 +28,7 @@ import type { NodeType } from '../types/nodeTypeRegistry'
 
 enableMapSet()
 
-const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['llm-agent', 'chat-agent'])
+const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['chat-agent'])
 function isAgentNodeType(nodeType: string): boolean {
   return AGENT_NODE_TYPES.has(nodeType as NodeType)
 }

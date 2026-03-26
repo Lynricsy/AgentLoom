@@ -13,7 +13,7 @@ vi.mock('@xyflow/react', () => ({
 }))
 
 function createNode(): CanvasNode {
-  const config = getNodeTypeConfig('llm-agent')
+  const config = getNodeTypeConfig('chat-agent')
 
   return {
     id: 'node-1',

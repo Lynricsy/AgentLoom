@@ -17,7 +17,7 @@ function createNode(overrides: Partial<CanvasNode>): CanvasNode {
     position: { x: 0, y: 0 },
     data: {
       label: 'Node',
-      nodeType: 'llm-agent',
+      nodeType: 'chat-agent',
       category: 'agent',
       config: {},
       inputPorts: [],

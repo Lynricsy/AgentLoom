@@ -1,7 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import {
-  Bot,
   Globe,
   Wrench,
   GitBranch,
@@ -12,7 +11,6 @@ import { cn } from '@/shared/lib/utils'
 import type { AgentGraphNode as AgentGraphNodeData } from '../types'
 
 const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
-  'llm-agent': Bot,
   'http-tool': Globe,
   'mcp-tool': Wrench,
   'conditional-branch': GitBranch,

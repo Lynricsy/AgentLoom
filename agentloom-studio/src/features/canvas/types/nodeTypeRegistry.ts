@@ -8,7 +8,6 @@ import type {
 } from './typeSchema'
 
 export const NODE_TYPES = [
-  'llm-agent',
   'chat-agent',
   'llm-model',
   'http-tool',
@@ -194,92 +193,6 @@ const EMPTY_CONFIG_SCHEMA: NodeConfigSchema = {
 }
 
 export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
-  'llm-agent': {
-    type: 'llm-agent',
-    category: 'agent',
-    label: 'LLM Agent',
-    icon: 'Bot',
-    description: '大语言模型 Agent 节点',
-    colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [
-      createPort('tools', 'Tools', 'input', 'tool', {
-        multiple: true,
-        maxConnections: null,
-        description: 'Agent 可调用的工具',
-      }),
-      createPort('knowledge', 'Knowledge', 'input', 'knowledge', {
-        multiple: true,
-        maxConnections: null,
-        description: 'Agent 可检索的知识源',
-      }),
-      createPort('sandbox', 'Sandbox', 'input', 'sandbox', {
-        description: 'Agent 代码执行沙箱',
-      }),
-      createPort('model', 'Model', 'input', 'model', {
-        required: true,
-        description: 'LLM 模型配置',
-      }),
-      createPort('context', 'Context', 'input', 'json', {
-        description: '上下文数据',
-        schema: createJsonSchema('Context', '输入上下文'),
-      }),
-      createPort('system-prompt', 'System Prompt', 'input', 'text', {
-        description: '系统提示词',
-      }),
-      createPort('tool-results', 'Tool Results', 'input', 'json', {
-        multiple: true,
-        maxConnections: null,
-        description: '工具执行结果回传',
-        schema: createJsonSchema('Tool Results', '工具返回的执行结果'),
-      }),
-      createPort('trigger-payload', 'Trigger Payload', 'input', 'json', {
-        description: '触发器负载',
-        schema: createJsonSchema('Trigger Payload', '触发器传入的负载数据'),
-      }),
-      createPort('memory', 'Memory', 'input', 'json', {
-        description: '记忆/历史上下文',
-        schema: createJsonSchema('Memory', '历史对话或记忆数据'),
-      }),
-      createPort('skills', 'Skills', 'input', 'skill', {
-        multiple: true,
-        maxConnections: null,
-        description: 'Agent 可加载的技能指令',
-      }),
-    ],
-    outputPorts: [
-      createPort('final-output', 'Final Output', 'output', 'text', {
-        multiple: true,
-        maxConnections: null,
-        description: 'Agent 最终输出',
-      }),
-      createPort('structured-output', 'Structured Output', 'output', 'json', {
-        multiple: true,
-        maxConnections: null,
-        description: '结构化输出',
-        schema: createJsonSchema('Structured Output', 'Agent 结构化输出'),
-      }),
-      createPort('telemetry', 'Telemetry', 'output', 'json', {
-        multiple: true,
-        maxConnections: null,
-        description: '遥测数据',
-        schema: createJsonSchema('Telemetry', 'Agent 运行遥测数据'),
-      }),
-      createPort('evidence-requests', 'Evidence Requests', 'output', 'json', {
-        multiple: true,
-        maxConnections: null,
-        description: '证据请求',
-        schema: createJsonSchema('Evidence Requests', 'Agent 发出的证据收集请求'),
-      }),
-    ],
-    configSchema: {
-      type: 'object',
-      properties: {
-        systemPrompt: createConfigField('string', 'System Prompt'),
-        outputSchemaTitle: createConfigField('string', 'Output Schema Title'),
-      },
-      required: [],
-    },
-  },
   'chat-agent': {
     type: 'chat-agent',
     category: 'agent',

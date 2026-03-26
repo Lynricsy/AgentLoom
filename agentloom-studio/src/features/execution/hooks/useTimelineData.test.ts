@@ -19,7 +19,7 @@ function createStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
     executionId: 'exec-1',
     nodeId: 'node-1',
     nodeName: 'Test Node',
-    nodeType: 'llm-agent',
+    nodeType: 'chat-agent',
     status: 'completed',
     input: null,
     output: null,

@@ -87,7 +87,7 @@ function createExecutionState(
   }
 }
 
-function createMockNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0] = 'llm-agent'): CanvasNodeData {
+function createMockNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0] = 'chat-agent'): CanvasNodeData {
   const config = getNodeTypeConfig(nodeType)
 
   return {
@@ -142,7 +142,7 @@ describe('CanvasNodeShell', () => {
     expect(node).toHaveAttribute('data-selected', 'false')
     expect(within(node).getByText('LLM Agent')).toBeInTheDocument()
     expect(within(node).getByText('Agent')).toBeInTheDocument()
-    expect(within(node).getByText('llm-agent')).toBeInTheDocument()
+    expect(within(node).getByText('chat-agent')).toBeInTheDocument()
     expect(within(node).getByText('手动确认')).toBeInTheDocument()
     expect(within(node).getByText('关键输入需人工确认')).toBeInTheDocument()
     expect(node.querySelector('[data-slot="header"]')).not.toBeNull()

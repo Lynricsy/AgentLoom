@@ -7,7 +7,7 @@ import type { CanvasEdge, CanvasNode } from '../types'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { AUTOSAVE_DEBOUNCE_MS, useAutoSave } from './useAutoSave'
 
-const llmAgentConfig = getNodeTypeConfig('llm-agent')
+const llmAgentConfig = getNodeTypeConfig('chat-agent')
 
 const mutateMock = vi.fn()
 
@@ -21,7 +21,7 @@ const mockNode: CanvasNode = {
   position: { x: 120, y: 240 },
   data: {
     label: 'Agent',
-    nodeType: 'llm-agent',
+    nodeType: 'chat-agent',
     category: 'agent',
     description: llmAgentConfig.description,
     config: {},

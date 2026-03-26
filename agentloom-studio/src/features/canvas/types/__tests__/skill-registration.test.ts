@@ -84,21 +84,6 @@ describe('skill 注册验证', () => {
     });
   });
 
-  describe('NODE_TYPE_REGISTRY — llm-agent 节点', () => {
-    it('llm-agent 节点存在', () => {
-      expect(NODE_TYPE_REGISTRY).toHaveProperty('llm-agent');
-    });
-
-    it('llm-agent 节点有 skills 输入端口', () => {
-      const skillsPort = NODE_TYPE_REGISTRY['llm-agent'].inputPorts.find(
-        (p) => p.id === 'skills',
-      );
-      expect(skillsPort).toBeDefined();
-      expect(skillsPort!.dataType).toBe('skill');
-      expect(skillsPort!.multiple).toBe(true);
-    });
-  });
-
   describe('NODE_TYPE_REGISTRY — agent 节点', () => {
     it('agent 节点存在', () => {
       expect(NODE_TYPE_REGISTRY).toHaveProperty('agent');

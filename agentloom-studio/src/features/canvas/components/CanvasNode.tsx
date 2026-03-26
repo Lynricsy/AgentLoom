@@ -41,12 +41,6 @@ import {
 } from '@/features/llm'
 import { useNodeExecutionState } from '@/features/execution/stores/executionStore'
 import type { StepStatus } from '@/features/execution/types'
-import {
-  DEFAULT_AUTONOMY_CONFIG,
-  type AutonomyConfig,
-  type AutonomyMode,
-  type FallbackStrategy,
-} from '../autonomy.types'
 import type { CanvasNode, PluginNodeData, SmartRoutingNodeData } from '../types'
 import type { AgentNodeData as WorkflowAgentNodeData } from '@/features/agent/types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
@@ -139,89 +133,6 @@ const COMPACT_STATUS_META: Record<StepStatus | 'idle', { label: string; classNam
   },
 }
 
-const AUTONOMY_MODE_LABELS: Record<AutonomyMode, string> = {
-  MANUAL_CONFIRM: '手动确认',
-  RULE_BASED: '规则补全',
-  LLM_SUGGEST: 'LLM 建议',
-}
-
-const FALLBACK_STRATEGY_LABELS: Record<FallbackStrategy, string> = {
-  REQUIRE_CONFIRMATION: '需要确认',
-  USE_DEFAULT: '使用默认',
-  SKIP_FIELD: '跳过字段',
-  ABORT_EXECUTION: '失败终止',
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isAutonomyMode(value: unknown): value is AutonomyMode {
-  return value === 'MANUAL_CONFIRM' || value === 'RULE_BASED' || value === 'LLM_SUGGEST'
-}
-
-function isFallbackStrategy(value: unknown): value is FallbackStrategy {
-  return (
-    value === 'REQUIRE_CONFIRMATION' ||
-    value === 'USE_DEFAULT' ||
-    value === 'SKIP_FIELD' ||
-    value === 'ABORT_EXECUTION'
-  )
-}
-
-function parseNodeAutonomyConfig(data: CanvasNode['data']): AutonomyConfig {
-  const rawAutonomyConfig =
-    isRecord(data) && 'autonomyConfig' in data && isRecord(data.autonomyConfig)
-      ? data.autonomyConfig
-      : null
-
-  if (!rawAutonomyConfig) {
-    return { ...DEFAULT_AUTONOMY_CONFIG }
-  }
-
-  return {
-    mode: isAutonomyMode(rawAutonomyConfig.mode)
-      ? rawAutonomyConfig.mode
-      : DEFAULT_AUTONOMY_CONFIG.mode,
-    allowedInferenceFields: Array.isArray(rawAutonomyConfig.allowedInferenceFields)
-      ? rawAutonomyConfig.allowedInferenceFields.filter(
-          (field): field is string => typeof field === 'string' && field.trim().length > 0,
-        )
-      : [...DEFAULT_AUTONOMY_CONFIG.allowedInferenceFields],
-    confirmationThreshold:
-      typeof rawAutonomyConfig.confirmationThreshold === 'number' &&
-      Number.isFinite(rawAutonomyConfig.confirmationThreshold)
-        ? rawAutonomyConfig.confirmationThreshold
-        : DEFAULT_AUTONOMY_CONFIG.confirmationThreshold,
-    fallbackStrategy: isFallbackStrategy(rawAutonomyConfig.fallbackStrategy)
-      ? rawAutonomyConfig.fallbackStrategy
-      : DEFAULT_AUTONOMY_CONFIG.fallbackStrategy,
-  }
-}
-
-function formatThreshold(value: number): string {
-  return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
-}
-
-const LlmAgentNodeBody = memo(function LlmAgentNodeBody({ data }: { data: CanvasNode['data'] }) {
-  const autonomyConfig = parseNodeAutonomyConfig(data)
-  const modeLabel = AUTONOMY_MODE_LABELS[autonomyConfig.mode]
-
-  const detail = autonomyConfig.mode === 'MANUAL_CONFIRM'
-    ? '关键输入需人工确认'
-    : autonomyConfig.mode === 'RULE_BASED'
-      ? autonomyConfig.allowedInferenceFields.length > 0
-        ? `${autonomyConfig.allowedInferenceFields.length} 个字段 · ${FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]}`
-        : FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]
-      : `阈值 ${formatThreshold(autonomyConfig.confirmationThreshold)} · ${FALLBACK_STRATEGY_LABELS[autonomyConfig.fallbackStrategy]}`
-
-  return (
-    <div className="space-y-1" data-testid="canvas-node-llm-agent-summary-body">
-      <p className="font-medium text-foreground">{modeLabel}</p>
-      <p className="text-xs text-muted-foreground">{detail}</p>
-    </div>
-  )
-})
 
 function getNodeColorToken(
   nodeType: CanvasNode['data']['nodeType'],
@@ -598,8 +509,6 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
           {data.nodeType === 'llm-model' ? (
             <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
-          ) : data.nodeType === 'llm-agent' ? (
-            <LlmAgentNodeBody data={data} />
           ) : data.nodeType === 'mcp-tool' ? (
             <McpToolNodeBody data={data} />
           ) : data.nodeType === 'knowledge-base' ? (

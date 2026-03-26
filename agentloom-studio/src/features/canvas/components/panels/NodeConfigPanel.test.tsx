@@ -261,29 +261,6 @@ describe('NodeConfigPanel', () => {
     expect(screen.queryByText(/^Dynamic Form:/)).not.toBeInTheDocument()
   })
 
-  it('integrates optimization suggestions into the llm-agent config panel using workflowId from the canvas store', () => {
-    mocks.node = createNode('llm-agent')
-
-    render(<NodeConfigPanel />)
-
-    expect(screen.getByText('LLM Agent Panel')).toBeInTheDocument()
-    expect(screen.getByTestId('optimization-suggestions-panel-mock')).toHaveTextContent(
-      'Optimization Suggestions Panel wf-1:node-1',
-    )
-  })
-
-  it('does not render optimization suggestions for llm-agent nodes when workflowId is missing', () => {
-    mocks.workflowId = null
-    mocks.node = createNode('llm-agent')
-
-    render(<NodeConfigPanel />)
-
-    expect(screen.getByText('LLM Agent Panel')).toBeInTheDocument()
-    expect(
-      screen.queryByTestId('optimization-suggestions-panel-mock'),
-    ).not.toBeInTheDocument()
-  })
-
   it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {
     mocks.node = createNode('code-tool')
 
@@ -302,10 +279,10 @@ describe('NodeConfigPanel', () => {
 
   it('forwards validation state changes from custom config panels to the canvas store', async () => {
     const user = userEvent.setup()
-    mocks.node = createNode('llm-agent')
+    mocks.node = createNode('http-tool')
 
     render(<NodeConfigPanel />)
-    await user.click(screen.getByRole('button', { name: '触发 LLM Agent 校验' }))
+    await user.click(screen.getByRole('button', { name: '触发 HTTP 校验' }))
 
     expect(mocks.setNodeValidationError).toHaveBeenCalledWith('node-1', true)
   })
