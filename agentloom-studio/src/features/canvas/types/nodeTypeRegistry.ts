@@ -6,6 +6,7 @@ import type {
   ScalarTypeSchema,
   TypeSchema,
 } from './typeSchema'
+import { AGENT_CANVAS_NODE_REGISTRY } from '../registry/agent-canvas-registry'
 
 export const NODE_TYPES = [
   'chat-agent',
@@ -620,6 +621,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
 export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
   const config = NODE_TYPE_REGISTRY[type]
   if (!config) {
+    const agentConfig = AGENT_CANVAS_NODE_REGISTRY.get(type as string)
+    if (agentConfig) return agentConfig as unknown as NodeTypeConfig
     throw new Error(`Unknown node type: ${type}`)
   }
 
@@ -627,7 +630,11 @@ export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
 }
 
 export function getNodeTypeConfigOrNull(type: string): NodeTypeConfig | null {
-  return NODE_TYPE_REGISTRY[type as NodeType] ?? null
+  return (
+    NODE_TYPE_REGISTRY[type as NodeType] ??
+    (AGENT_CANVAS_NODE_REGISTRY.get(type) as unknown as NodeTypeConfig) ??
+    null
+  )
 }
 
 export function getAllNodeTypes(): NodeTypeConfig[] {
