@@ -23,6 +23,7 @@ const SCHEMA_TYPE_LABELS: Record<Exclude<PortDataType, 'json'>, string> = {
   sandbox: '沙箱',
   knowledge: '知识',
   skill: '技能',
+  agent: 'Agent',
 }
 
 function toCodePoints(value: string): string[] {

@@ -42,6 +42,7 @@ const BACKEND_TO_FRONTEND_DATA_TYPE: Record<BackendPortDataType, PortDataType> =
   sandbox: 'sandbox',
   knowledge: 'knowledge',
   skill: 'skill',
+  agent: 'agent',
 }
 
 export function mapBackendDataType(backendType: BackendPortDataType): PortDataType {
