@@ -115,6 +115,7 @@ export class WorkflowAgentAdapter {
       tenantId: params.tenantId,
       llmModelConfigId: compiledDefinition.runtimeConfig.modelConfig?.modelId,
       systemPrompt: compiledDefinition.systemPrompt,
+      runtimeConfig: compiledDefinition.runtimeConfig,
       ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
       context: {
         executionId: params.executionId,

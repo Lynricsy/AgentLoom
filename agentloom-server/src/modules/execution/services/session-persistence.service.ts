@@ -9,6 +9,7 @@ import type {
   AgentSession,
   ServerSandboxBinding,
 } from '../../agent/types/agent-session.types';
+import type { AgentRuntimeConfig } from '../../agent-definition/agent-runtime-config.interface';
 import {
   ContentBlockArraySchema,
   ContentBlockSchema,
@@ -41,6 +42,7 @@ interface SerializedSession {
   llmModelConfigId?: string;
   systemPrompt?: string;
   autonomyMode?: string;
+  runtimeConfig?: AgentRuntimeConfig;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +126,7 @@ const SerializedSessionSchema = z
     llmModelConfigId: z.string().optional(),
     systemPrompt: z.string().optional(),
     autonomyMode: z.string().optional(),
+    runtimeConfig: z.object({}).catchall(z.unknown()).optional(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -259,6 +262,7 @@ export class SessionPersistenceService {
       llmModelConfigId: session.llmModelConfigId,
       systemPrompt: session.systemPrompt,
       autonomyMode: session.autonomyMode,
+      runtimeConfig: session.runtimeConfig,
       createdAt: session.createdAt.toISOString(),
       updatedAt: session.updatedAt.toISOString(),
     };
@@ -290,6 +294,7 @@ export class SessionPersistenceService {
       llmModelConfigId: raw.llmModelConfigId,
       systemPrompt: raw.systemPrompt,
       autonomyMode: raw.autonomyMode,
+      runtimeConfig: raw.runtimeConfig as AgentRuntimeConfig | undefined,
       createdAt: new Date(raw.createdAt),
       updatedAt: new Date(raw.updatedAt),
     };

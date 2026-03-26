@@ -70,6 +70,7 @@ const hoisted = vi.hoisted(() => {
       tag: 'mock-stream-fn',
     })),
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
+    typeBoxToZod: vi.fn((schema: unknown) => ({ typeBoxConverted: schema })),
     zodToTypeBox: vi.fn((schema: unknown) => ({ converted: schema })),
     getTenantDb: vi.fn((db: unknown) => db),
   };
@@ -98,6 +99,7 @@ vi.mock('../stream-fn.adapter', () => ({
 }));
 
 vi.mock('../tool-schema-converter', () => ({
+  typeBoxToZod: hoisted.typeBoxToZod,
   zodToTypeBox: hoisted.zodToTypeBox,
 }));
 
@@ -138,6 +140,11 @@ describe('PiAgentCoreAdapter', () => {
   let adapter: PiAgentCoreAdapter;
   let mockDb: { select: ReturnType<typeof vi.fn> };
   let mockPiAiAdapter: { getModel: ReturnType<typeof vi.fn> };
+  let mockMcpService: {
+    resolveRuntimeConnection: ReturnType<typeof vi.fn>;
+    callRuntimeTool: ReturnType<typeof vi.fn>;
+  };
+  let mockRagService: { search: ReturnType<typeof vi.fn> };
 
   const NOW = new Date('2026-03-23T10:00:00.000Z');
   const defaultModelConfig = {
@@ -170,16 +177,39 @@ describe('PiAgentCoreAdapter', () => {
     hoisted.MockPiAgent.reset();
     hoisted.streamFnFactory.mockClear();
     hoisted.importPiAgentCore.mockClear();
+    hoisted.typeBoxToZod.mockClear();
     hoisted.zodToTypeBox.mockClear();
     hoisted.getTenantDb.mockClear();
 
     mockDb = { select: vi.fn() };
     mockPiAiAdapter = { getModel: vi.fn().mockResolvedValue('mock-language-model') };
+    mockMcpService = {
+      resolveRuntimeConnection: vi.fn().mockResolvedValue({
+        transportType: 'streamable_http',
+        url: 'https://example.com/mcp',
+      }),
+      callRuntimeTool: vi.fn().mockResolvedValue({ hits: ['doc-1'] }),
+    };
+    mockRagService = {
+      search: vi.fn().mockResolvedValue([
+        {
+          chunkId: 'chunk-1',
+          score: 0.91,
+          content: 'AgentLoom 文档',
+          location: null,
+          documentId: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          chunkIndex: 0,
+        },
+      ]),
+    };
 
     type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
     adapter = new PiAgentCoreAdapter(
       mockDb as unknown as AdapterArgs[0],
       mockPiAiAdapter as unknown as AdapterArgs[1],
+      mockMcpService as unknown as AdapterArgs[2],
+      mockRagService as unknown as AdapterArgs[3],
     );
   });
 
@@ -272,6 +302,30 @@ describe('PiAgentCoreAdapter', () => {
         ),
       ).rejects.toThrow(/缺少 tenantId/i);
     });
+
+    it('会保留 runtimeConfig 到 session 快照', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const runtimeConfig = {
+        tools: [
+          {
+            toolId: 'http-tool-1',
+            toolType: 'http' as const,
+            name: 'search_docs',
+            url: 'https://example.com/search',
+            method: 'GET' as const,
+            enabled: true,
+          },
+        ],
+      };
+
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig,
+        }),
+      );
+
+      expect(session.runtimeConfig).toEqual(runtimeConfig);
+    });
   });
 
   describe('loadSession', () => {
@@ -349,6 +403,194 @@ describe('PiAgentCoreAdapter', () => {
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenCalledWith([]);
       expect(hoisted.zodToTypeBox).not.toHaveBeenCalled();
+    });
+
+    it('会把 runtimeConfig 的 MCP 工具与额外 provider 一起注入 prompt', async () => {
+      mockDb.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              mcpServerConfigId: 'mcp-server-1',
+              name: 'searchDocs',
+              title: '搜索文档',
+              description: '从 MCP 文档源中检索内容',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  query: { type: 'string' },
+                },
+                required: ['query'],
+              },
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      hoisted.typeBoxToZod.mockReturnValueOnce({ type: 'mcp-zod' });
+
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [
+              {
+                toolId: 'mcp-tool-1',
+                toolType: 'mcp',
+                name: 'search_docs',
+                description: '搜索产品文档',
+                enabled: true,
+                mcpToolDefinitionId: 'tool-def-1',
+                parameterOverrides: { locale: 'zh-CN' },
+              },
+            ],
+          },
+        }),
+      );
+      adapter.registerSessionToolProvider(
+        session.id,
+        () =>
+          ({
+            manual_tool: {
+              description: '手工注册工具',
+              inputSchema: { type: 'manual-schema' },
+              execute: vi.fn().mockResolvedValue({ ok: true }),
+            },
+          }) as unknown as ToolSet,
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]));
+
+      const agent = hoisted.MockPiAgent.instances[0];
+      expect(agent.setTools).toHaveBeenLastCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'search_docs' }),
+          expect.objectContaining({ name: 'manual_tool' }),
+        ]),
+      );
+      const injectedTools = agent.setTools.mock.lastCall?.[0] as Array<{
+        name: string;
+        execute: (toolCallId: string, params: unknown) => Promise<{ details: unknown }>;
+      }>;
+      const runtimeTool = injectedTools.find((tool) => tool.name === 'search_docs');
+      await expect(
+        runtimeTool?.execute('call-mcp', { query: 'AgentLoom' }),
+      ).resolves.toMatchObject({
+        details: { hits: ['doc-1'] },
+      });
+      expect(hoisted.typeBoxToZod).toHaveBeenCalledWith({
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+        },
+        required: ['query'],
+      });
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
+        'mcp-server-1',
+        'tenant-001',
+      );
+      expect(mockMcpService.callRuntimeTool).toHaveBeenCalledWith(
+        {
+          transportType: 'streamable_http',
+          url: 'https://example.com/mcp',
+        },
+        'searchDocs',
+        {
+          query: 'AgentLoom',
+          locale: 'zh-CN',
+        },
+      );
+    });
+
+    it('会把 knowledgeBindings 注入为可调用检索工具', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            knowledgeBindings: [
+              {
+                knowledgeBaseId: 'kb-1',
+                topK: 5,
+                similarityThreshold: 0.42,
+                enabled: true,
+              },
+            ],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const knowledgeTool = agent.tools.find(
+          (tool) =>
+            (tool as { name?: string }).name === 'searchKnowledge_kb-1',
+        ) as {
+          execute: (toolCallId: string, params: unknown) => Promise<{
+            details: unknown;
+          }>;
+        };
+
+        await expect(
+          knowledgeTool.execute('call-kb', { query: 'AgentLoom', topK: 2 }),
+        ).resolves.toMatchObject({
+          details: {
+            knowledgeBaseId: 'kb-1',
+            total: 1,
+            results: expect.any(Array),
+          },
+        });
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'search' }]));
+
+      const agent = hoisted.MockPiAgent.instances[0];
+      expect(agent.setTools).toHaveBeenLastCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'searchKnowledge_kb-1' }),
+        ]),
+      );
+      expect(mockRagService.search).toHaveBeenCalledWith('AgentLoom', 'tenant-001', {
+        knowledgeBaseId: 'kb-1',
+        limit: 2,
+        scoreThreshold: 0.42,
+      });
+    });
+
+    it('runtimeConfig 的空 tools 与空 knowledgeBindings 不会破坏 session 创建', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [],
+            knowledgeBindings: [],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        expect(agent.tools).toEqual([]);
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'noop' }]));
+
+      const agent = hoisted.MockPiAgent.instances[0];
+      expect(agent.setTools).toHaveBeenLastCalledWith([]);
+      expect(hoisted.typeBoxToZod).not.toHaveBeenCalled();
+      expect(mockMcpService.resolveRuntimeConnection).not.toHaveBeenCalled();
+      expect(mockRagService.search).not.toHaveBeenCalled();
     });
   });
 

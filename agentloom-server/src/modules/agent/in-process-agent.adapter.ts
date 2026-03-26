@@ -1,8 +1,10 @@
-import { Dependencies, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
 import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
+import { RagService } from '../knowledge/services/rag.service';
+import { McpService } from '../mcp/mcp.service';
 import { PiAgentCoreAdapter } from './pi-agent-core.adapter';
 import type {
   IAgentRuntime,
@@ -24,17 +26,11 @@ interface SessionMetadata {
 }
 
 @Injectable()
-@Dependencies(
-  DRIZZLE,
-  PiAiAdapter,
-  AgentSessionFactory,
-  SessionPersistenceService,
-)
 export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
   private readonly sessionIndex = new Map<string, SessionMetadata>();
   private readonly sessionSnapshots = new Map<string, AgentSession>();
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
+  private readonly sessionToolProviders = new Map<string, SessionToolProvider[]>();
   private readonly runtimeSessionIds = new Map<string, string>();
   private readonly coreAdapter: PiAgentCoreAdapter;
 
@@ -43,9 +39,16 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     private readonly piAiAdapter: PiAiAdapter,
     private readonly agentSessionFactory: AgentSessionFactory,
     private readonly sessionPersistence: SessionPersistenceService,
+    @Optional() private readonly mcpService?: McpService,
+    @Optional() private readonly ragService?: RagService,
   ) {
     void this.agentSessionFactory;
-    this.coreAdapter = new PiAgentCoreAdapter(this.db, this.piAiAdapter);
+    this.coreAdapter = new PiAgentCoreAdapter(
+      this.db,
+      this.piAiAdapter,
+      this.mcpService,
+      this.ragService,
+    );
   }
 
   registerSessionMetadata(
@@ -60,7 +63,9 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     sessionId: string,
     provider: SessionToolProvider,
   ): void {
-    this.sessionToolProviders.set(sessionId, provider);
+    const providers = this.sessionToolProviders.get(sessionId) ?? [];
+    providers.push(provider);
+    this.sessionToolProviders.set(sessionId, providers);
 
     const runtimeSessionId = this.runtimeSessionIds.get(sessionId);
     if (runtimeSessionId) {
@@ -82,8 +87,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     this.runtimeSessionIds.set(session.id, session.id);
     this.sessionSnapshots.set(session.id, session);
 
-    const provider = this.sessionToolProviders.get(session.id);
-    if (provider) {
+    const providers = this.sessionToolProviders.get(session.id) ?? [];
+    for (const provider of providers) {
       this.coreAdapter.registerSessionToolProvider?.(session.id, provider);
     }
 
@@ -278,8 +283,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     );
     this.runtimeSessionIds.set(sessionId, restored.id);
 
-    const provider = this.sessionToolProviders.get(sessionId);
-    if (provider) {
+    const providers = this.sessionToolProviders.get(sessionId) ?? [];
+    for (const provider of providers) {
       this.coreAdapter.registerSessionToolProvider?.(restored.id, provider);
     }
 
@@ -322,6 +327,9 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       ...(session.autonomyMode === undefined
         ? {}
         : { autonomyMode: session.autonomyMode }),
+      ...(session.runtimeConfig === undefined
+        ? {}
+        : { runtimeConfig: session.runtimeConfig }),
       ...(session.mode === 'workflow' && session.context.workflowState !== undefined
         ? { context: { ...session.context.workflowState } }
         : {}),
@@ -339,6 +347,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       llmModelConfigId: runtimeSession.llmModelConfigId,
       status: runtimeSession.status,
       updatedAt: runtimeSession.updatedAt,
+      runtimeConfig: runtimeSession.runtimeConfig,
       context: {
         ...snapshot.context,
         ...runtimeSession.context,

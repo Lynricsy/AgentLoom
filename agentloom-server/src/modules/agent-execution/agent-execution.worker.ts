@@ -505,6 +505,7 @@ export class AgentExecutionWorker extends WorkerHost {
       tenantId,
       llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
       systemPrompt,
+      runtimeConfig: context.runtimeConfig,
       serverSandbox: { agentConversationId: conversationId },
       context: {
         tenantId,
@@ -1241,6 +1242,7 @@ export class AgentExecutionWorker extends WorkerHost {
         tenantId: params.parentContext.tenantId,
         llmModelConfigId: runtimeConfig.modelConfig?.modelId,
         systemPrompt,
+        runtimeConfig,
         serverSandbox: {
           agentConversationId: params.parentContext.conversationId,
         },

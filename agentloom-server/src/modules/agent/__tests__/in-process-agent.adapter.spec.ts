@@ -49,6 +49,9 @@ const hoisted = vi.hoisted(() => {
       ...(params.autonomyMode === undefined
         ? {}
         : { autonomyMode: params.autonomyMode }),
+      ...(params.runtimeConfig === undefined
+        ? {}
+        : { runtimeConfig: params.runtimeConfig }),
       createdAt: now,
       updatedAt: now,
     };
@@ -179,6 +182,8 @@ async function collectEvents(
   let mockDb: unknown;
   let mockPiAiAdapter: unknown;
   let mockAgentSessionFactory: unknown;
+  let mockMcpService: unknown;
+  let mockRagService: unknown;
   let mockSessionPersistence: {
     saveToCheckpoint: ReturnType<typeof vi.fn>;
     loadFromCheckpoint: ReturnType<typeof vi.fn>;
@@ -199,6 +204,8 @@ async function collectEvents(
     mockDb = {};
     mockPiAiAdapter = { getModel: vi.fn() };
     mockAgentSessionFactory = { createWorkflowSession: vi.fn() };
+    mockMcpService = { resolveRuntimeConnection: vi.fn(), callRuntimeTool: vi.fn() };
+    mockRagService = { search: vi.fn() };
     mockSessionPersistence = {
       saveToCheckpoint: vi.fn().mockResolvedValue(undefined),
       loadFromCheckpoint: vi.fn().mockResolvedValue(null),
@@ -213,6 +220,8 @@ async function collectEvents(
       mockPiAiAdapter as unknown as AdapterArgs[1],
       mockAgentSessionFactory as unknown as AdapterArgs[2],
       mockSessionPersistence as unknown as AdapterArgs[3],
+      mockMcpService as unknown as AdapterArgs[4],
+      mockRagService as unknown as AdapterArgs[5],
     );
   });
 

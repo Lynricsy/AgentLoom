@@ -1,19 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { LanguageModel, ToolSet } from 'ai';
+import { jsonSchema, tool, type LanguageModel, type ToolSet } from 'ai';
 import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import * as schema from '../../database/schema';
 import { type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import type {
+  AgentCodeToolBinding,
+  AgentHttpToolBinding,
+  AgentKnowledgeBinding,
+  AgentMcpToolBinding,
+  AgentRuntimeConfig,
+  AgentToolBinding,
+} from '../agent-definition/agent-runtime-config.interface';
+import { RagService } from '../knowledge/services/rag.service';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
+import { McpService } from '../mcp/mcp.service';
 import type {
   IAgentRuntime,
   SessionToolProvider,
 } from './ports/agent-runtime.port';
 import { importPiAgentCore } from './pi-imports';
 import { createVercelStreamFn } from './stream-fn.adapter';
-import { zodToTypeBox } from './tool-schema-converter';
+import { typeBoxToZod, zodToTypeBox } from './tool-schema-converter';
 import type { AgentEvent, StopReason } from './types/agent-event.types';
 import type {
   AgentSession,
@@ -92,6 +103,62 @@ interface RuntimeSession {
   readonly model: LanguageModel;
   activeSink?: AsyncAgentEventSink;
 }
+
+type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0];
+
+type McpRuntimeToolDescriptor = {
+  toolName: string;
+  description: string;
+  inputSchema?: Record<string, unknown>;
+  mcpServerConfigId: string;
+};
+
+const HTTP_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'object',
+      description: '可选 query 参数，会自动附加到 URL',
+      additionalProperties: true,
+    },
+    headers: {
+      type: 'object',
+      description: '可选请求头，值必须为字符串',
+      additionalProperties: { type: 'string' },
+    },
+    body: {
+      description: '非 GET/HEAD 请求时发送的 body；对象会默认序列化为 JSON',
+    },
+  },
+  additionalProperties: true,
+} satisfies AiJsonSchemaInput;
+
+const CODE_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    input: {
+      description: '传入代码工具的结构化输入',
+    },
+  },
+  additionalProperties: true,
+} satisfies AiJsonSchemaInput;
+
+const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'string',
+      description: '用于知识检索的查询词',
+    },
+    topK: {
+      type: 'integer',
+      minimum: 1,
+      description: '可选覆盖返回条数',
+    },
+  },
+  required: ['query'],
+  additionalProperties: false,
+} satisfies AiJsonSchemaInput;
 
 class AsyncAgentEventSink implements AsyncIterable<AgentEvent> {
   private readonly buffer: AgentEvent[] = [];
@@ -173,7 +240,7 @@ class AsyncAgentEventSink implements AsyncIterable<AgentEvent> {
 @Injectable()
 export class PiAgentCoreAdapter implements IAgentRuntime {
   private readonly sessions = new Map<string, RuntimeSession>();
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
+  private readonly sessionToolProviders = new Map<string, SessionToolProvider[]>();
   private readonly pendingPermissionResolvers = new Map<
     string,
     Map<string, PendingPermissionGate>
@@ -183,6 +250,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
   constructor(
     private readonly db: DrizzleDB,
     private readonly piAiAdapter: PiAiAdapter,
+    @Optional() private readonly mcpService?: McpService,
+    @Optional() private readonly ragService?: RagService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -200,9 +269,18 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       llmModelConfigId: params.llmModelConfigId,
       systemPrompt: params.systemPrompt,
       autonomyMode: params.autonomyMode,
+      runtimeConfig: params.runtimeConfig,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    const runtimeConfigProvider = this.createRuntimeConfigToolProvider(
+      session,
+      params.runtimeConfig,
+    );
+    if (runtimeConfigProvider) {
+      this.registerSessionToolProvider(session.id, runtimeConfigProvider);
+    }
 
     const toolSet = await this.resolveSessionTools(session.id);
     const modelConfig = await this.resolveModelConfig(session);
@@ -241,7 +319,9 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     sessionId: string,
     provider: SessionToolProvider,
   ): void {
-    this.sessionToolProviders.set(sessionId, provider);
+    const providers = this.sessionToolProviders.get(sessionId) ?? [];
+    providers.push(provider);
+    this.sessionToolProviders.set(sessionId, providers);
   }
 
   unregisterSessionToolProvider(sessionId: string): void {
@@ -374,14 +454,442 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     return runtimeSession;
   }
 
+  private createRuntimeConfigToolProvider(
+    session: AgentSession,
+    runtimeConfig?: AgentRuntimeConfig,
+  ): SessionToolProvider | null {
+    if (!runtimeConfig) {
+      return null;
+    }
+
+    const hasCanvasTools = (runtimeConfig.tools?.length ?? 0) > 0;
+    const hasKnowledgeBindings = (runtimeConfig.knowledgeBindings?.length ?? 0) > 0;
+    if (!hasCanvasTools && !hasKnowledgeBindings) {
+      return null;
+    }
+
+    let cachedToolSetPromise: Promise<ToolSet> | null = null;
+    return () => {
+      cachedToolSetPromise ??= this.buildRuntimeConfigToolSet(session, runtimeConfig);
+      return cachedToolSetPromise;
+    };
+  }
+
+  private async buildRuntimeConfigToolSet(
+    session: AgentSession,
+    runtimeConfig: AgentRuntimeConfig,
+  ): Promise<ToolSet> {
+    const toolSet: ToolSet = {};
+
+    for (const binding of runtimeConfig.tools ?? []) {
+      if (binding.enabled === false) {
+        continue;
+      }
+
+      const normalizedBinding = this.normalizeToolBinding(binding);
+      if (!normalizedBinding) {
+        continue;
+      }
+
+      if (normalizedBinding.toolType === 'mcp') {
+        const mcpEntry = await this.buildMcpToolEntry(session, normalizedBinding);
+        if (mcpEntry) {
+          toolSet[mcpEntry.name] = mcpEntry.tool;
+        }
+        continue;
+      }
+
+      if (normalizedBinding.toolType === 'http') {
+        const httpEntry = this.buildHttpToolEntry(normalizedBinding);
+        toolSet[httpEntry.name] = httpEntry.tool;
+        continue;
+      }
+
+      const codeEntry = this.buildCodeToolEntry(normalizedBinding);
+      toolSet[codeEntry.name] = codeEntry.tool;
+    }
+
+    for (const binding of runtimeConfig.knowledgeBindings ?? []) {
+      if (binding.enabled === false) {
+        continue;
+      }
+
+      const knowledgeEntry = this.buildKnowledgeToolEntry(session, binding);
+      if (knowledgeEntry) {
+        toolSet[knowledgeEntry.name] = knowledgeEntry.tool;
+      }
+    }
+
+    return toolSet;
+  }
+
+  private normalizeToolBinding(
+    binding: AgentToolBinding,
+  ): AgentMcpToolBinding | AgentHttpToolBinding | AgentCodeToolBinding | null {
+    if (
+      binding.toolType === 'mcp' ||
+      (typeof binding.mcpToolDefinitionId === 'string' && binding.mcpToolDefinitionId.length > 0) ||
+      ((binding as Partial<AgentMcpToolBinding>).mcpServerConfigId !== undefined &&
+        (binding as Partial<AgentMcpToolBinding>).toolName !== undefined)
+    ) {
+      return {
+        ...binding,
+        toolType: 'mcp',
+      } as AgentMcpToolBinding;
+    }
+
+    if (
+      binding.toolType === 'http' ||
+      (typeof (binding as Partial<AgentHttpToolBinding>).url === 'string' &&
+        (binding as Partial<AgentHttpToolBinding>).url!.length > 0)
+    ) {
+      const url = (binding as Partial<AgentHttpToolBinding>).url;
+      if (typeof url !== 'string' || url.length === 0) {
+        return null;
+      }
+
+      return {
+        ...binding,
+        toolType: 'http',
+        url,
+        method: (binding as Partial<AgentHttpToolBinding>).method,
+      } as AgentHttpToolBinding;
+    }
+
+    if (
+      binding.toolType === 'code' ||
+      typeof (binding as Partial<AgentCodeToolBinding>).language === 'string'
+    ) {
+      const language = (binding as Partial<AgentCodeToolBinding>).language;
+      if (
+        language !== 'typescript' &&
+        language !== 'javascript' &&
+        language !== 'python' &&
+        language !== 'bash'
+      ) {
+        return null;
+      }
+
+      return {
+        ...binding,
+        toolType: 'code',
+        language,
+        code: (binding as Partial<AgentCodeToolBinding>).code,
+      } as AgentCodeToolBinding;
+    }
+
+    return null;
+  }
+
+  private async buildMcpToolEntry(
+    session: AgentSession,
+    binding: AgentMcpToolBinding,
+  ): Promise<{ name: string; tool: ToolSet[string] } | null> {
+    const descriptor = await this.resolveMcpToolDescriptor(session, binding);
+    if (!descriptor) {
+      return null;
+    }
+
+    const toolName = this.sanitizeToolName(
+      binding.name || descriptor.toolName,
+      descriptor.toolName,
+    );
+    const inputSchema = this.resolveMcpInputSchema(
+      descriptor.inputSchema ?? binding.inputSchema,
+    );
+
+    return {
+      name: toolName,
+      tool: tool({
+        description: binding.description ?? descriptor.description,
+        inputSchema,
+        execute: async (input) => {
+          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          const connection = await this.mcpService!.resolveRuntimeConnection(
+            descriptor.mcpServerConfigId,
+            session.tenantId!,
+          );
+          const result = await this.mcpService!.callRuntimeTool(
+            connection,
+            descriptor.toolName,
+            args,
+          );
+
+          return result;
+        },
+      }),
+    };
+  }
+
+  private async resolveMcpToolDescriptor(
+    session: AgentSession,
+    binding: AgentMcpToolBinding,
+  ): Promise<McpRuntimeToolDescriptor | null> {
+    if (!session.tenantId || !this.mcpService) {
+      return null;
+    }
+
+    if (binding.mcpToolDefinitionId) {
+      const storedTool = await runInTenantTransaction(
+        this.db,
+        session.tenantId,
+        async () => {
+          const [record] = await this.tenantDb
+            .select({
+              mcpServerConfigId: schema.toolDefinitions.mcpServerConfigId,
+              name: schema.toolDefinitions.name,
+              title: schema.toolDefinitions.title,
+              description: schema.toolDefinitions.description,
+              inputSchema: schema.toolDefinitions.inputSchema,
+            })
+            .from(schema.toolDefinitions)
+            .where(
+              and(
+                eq(schema.toolDefinitions.id, binding.mcpToolDefinitionId),
+                eq(schema.toolDefinitions.tenantId, session.tenantId),
+                eq(schema.toolDefinitions.isActive, true),
+              ),
+            );
+
+          return record;
+        },
+      );
+
+      if (storedTool?.mcpServerConfigId && storedTool.name) {
+        return {
+          mcpServerConfigId: storedTool.mcpServerConfigId,
+          toolName: storedTool.name,
+          description:
+            binding.description ??
+            storedTool.description ??
+            storedTool.title ??
+            binding.name,
+          inputSchema: this.asRecord(storedTool.inputSchema) ?? undefined,
+        };
+      }
+    }
+
+    if (binding.mcpServerConfigId && binding.toolName) {
+      return {
+        mcpServerConfigId: binding.mcpServerConfigId,
+        toolName: binding.toolName,
+        description: binding.description ?? binding.name,
+        inputSchema: binding.inputSchema,
+      };
+    }
+
+    return null;
+  }
+
+  private buildHttpToolEntry(binding: AgentHttpToolBinding): {
+    name: string;
+    tool: ToolSet[string];
+  } {
+    const name = this.sanitizeToolName(binding.name, `http_${binding.toolId}`);
+    const method = binding.method ?? 'GET';
+
+    return {
+      name,
+      tool: tool({
+        description: binding.description ?? `通过 ${method} ${binding.url} 调用 HTTP 接口`,
+        inputSchema: jsonSchema(HTTP_TOOL_INPUT_SCHEMA),
+        execute: async (input) => {
+          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          const response = await this.executeHttpToolRequest(binding, args);
+          return response;
+        },
+      }),
+    };
+  }
+
+  private buildCodeToolEntry(binding: AgentCodeToolBinding): {
+    name: string;
+    tool: ToolSet[string];
+  } {
+    const name = this.sanitizeToolName(binding.name, `code_${binding.toolId}`);
+
+    return {
+      name,
+      tool: tool({
+        description:
+          binding.description ?? `调用 ${binding.language} 代码片段工具（当前为受限占位执行）`,
+        inputSchema: jsonSchema(CODE_TOOL_INPUT_SCHEMA),
+        execute: async (input) => {
+          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          return {
+            success: false,
+            message: `In-process runtime 当前不会直接执行 ${binding.language} 代码工具，请改用沙箱运行时。`,
+            toolId: binding.toolId,
+            language: binding.language,
+            code: binding.code ?? '',
+            input: args,
+          };
+        },
+      }),
+    };
+  }
+
+  private buildKnowledgeToolEntry(
+    session: AgentSession,
+    binding: AgentKnowledgeBinding,
+  ): { name: string; tool: ToolSet[string] } | null {
+    if (!session.tenantId || !this.ragService) {
+      return null;
+    }
+
+    const name = this.sanitizeToolName(
+      `searchKnowledge_${binding.knowledgeBaseId}`,
+      `searchKnowledge_${randomUUID()}`,
+    );
+
+    return {
+      name,
+      tool: tool({
+        description: `在知识库 ${binding.knowledgeBaseId} 中检索相关内容`,
+        inputSchema: jsonSchema(KNOWLEDGE_TOOL_INPUT_SCHEMA),
+        execute: async (input) => {
+          const args = this.normalizeExecuteArgs(input);
+          const query = typeof args.query === 'string' ? args.query : '';
+          const topK =
+            typeof args.topK === 'number' && Number.isFinite(args.topK)
+              ? Math.max(1, Math.trunc(args.topK))
+              : binding.topK;
+
+          const results = await this.ragService!.search(query, session.tenantId!, {
+            knowledgeBaseId: binding.knowledgeBaseId,
+            ...(topK === undefined ? {} : { limit: topK }),
+            ...(binding.similarityThreshold === undefined
+              ? {}
+              : { scoreThreshold: binding.similarityThreshold }),
+          });
+
+          return {
+            knowledgeBaseId: binding.knowledgeBaseId,
+            total: results.length,
+            results,
+          };
+        },
+      }),
+    };
+  }
+
+  private resolveMcpInputSchema(
+    inputSchema?: Record<string, unknown>,
+  ): z.ZodTypeAny {
+    if (!inputSchema) {
+      return z.object({}).passthrough();
+    }
+
+    try {
+      return typeBoxToZod(inputSchema as Parameters<typeof typeBoxToZod>[0]);
+    } catch {
+      return z.object({}).passthrough();
+    }
+  }
+
+  private normalizeExecuteArgs(
+    input: unknown,
+    parameterOverrides?: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const normalized = this.isRecord(input) ? input : {};
+    return parameterOverrides ? { ...normalized, ...parameterOverrides } : normalized;
+  }
+
+  private async executeHttpToolRequest(
+    binding: AgentHttpToolBinding,
+    input: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const method = binding.method ?? 'GET';
+    const url = new URL(binding.url);
+    const query = this.asRecord(input.query);
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (value === undefined || value === null) {
+          continue;
+        }
+
+        url.searchParams.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+      }
+    }
+
+    const headers = this.extractStringHeaders(input.headers);
+    let body: BodyInit | undefined;
+    if (method !== 'GET' && method !== 'HEAD' && 'body' in input) {
+      const rawBody = input.body;
+      if (typeof rawBody === 'string') {
+        body = rawBody;
+      } else if (rawBody !== undefined) {
+        headers['content-type'] ??= 'application/json';
+        body = JSON.stringify(rawBody);
+      }
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body }),
+    });
+
+    const responseBody = await this.parseHttpResponseBody(response);
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      url: response.url,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: responseBody,
+    };
+  }
+
+  private async parseHttpResponseBody(response: Response): Promise<unknown> {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType.includes('application/json')) {
+      return await response.json();
+    }
+
+    return await response.text();
+  }
+
+  private extractStringHeaders(input: unknown): Record<string, string> {
+    const headers = this.asRecord(input);
+    if (!headers) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(headers).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+  }
+
+  private sanitizeToolName(rawName: string | undefined, fallback: string): string {
+    const candidate = (rawName ?? fallback).trim();
+    const sanitized = candidate.replace(/[^a-zA-Z0-9_/-]+/g, '_');
+    if (sanitized.length === 0) {
+      return fallback;
+    }
+
+    return /^[a-zA-Z_]/.test(sanitized) ? sanitized : `tool_${sanitized}`;
+  }
+
   private async resolveSessionTools(sessionId: string): Promise<ToolSet | undefined> {
-    const provider = this.sessionToolProviders.get(sessionId);
-    if (!provider) {
+    const providers = this.sessionToolProviders.get(sessionId);
+    if (!providers?.length) {
       return undefined;
     }
 
-    const tools = await provider();
-    return Object.keys(tools).length > 0 ? tools : undefined;
+    const mergedTools: ToolSet = {};
+    for (const provider of providers) {
+      const tools = await provider();
+      if (!tools || Object.keys(tools).length === 0) {
+        continue;
+      }
+
+      Object.assign(mergedTools, tools);
+    }
+
+    return Object.keys(mergedTools).length > 0 ? mergedTools : undefined;
   }
 
   private convertToolSetToPiTools(toolSet?: ToolSet): PiAgentTool[] {

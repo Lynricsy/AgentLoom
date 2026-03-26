@@ -1,4 +1,5 @@
 import type { ContentBlock } from './content-block.types';
+import type { AgentRuntimeConfig } from '../../agent-definition/agent-runtime-config.interface';
 
 export type McpTransportType = 'stdio' | 'sse' | 'streamable_http';
 
@@ -64,6 +65,7 @@ export interface AgentSession {
   llmModelConfigId?: string;
   readonly systemPrompt?: string;
   readonly autonomyMode?: string;
+  readonly runtimeConfig?: AgentRuntimeConfig;
   readonly createdAt: Date;
   updatedAt: Date;
 }
@@ -78,6 +80,7 @@ export interface CreateSessionParams {
   readonly llmModelConfigId?: string;
   readonly systemPrompt?: string;
   readonly autonomyMode?: string;
+  readonly runtimeConfig?: AgentRuntimeConfig;
   /** 初始上下文数据（在 workflow 模式下映射为 SessionContext.workflowState） */
   readonly context?: Record<string, unknown>;
 }

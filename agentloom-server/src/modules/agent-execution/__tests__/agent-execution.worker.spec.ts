@@ -576,6 +576,7 @@ describe('AgentExecutionWorker', () => {
         mode: 'conversation',
         tenantId: 'tenant-1',
         llmModelConfigId: 'model-1',
+        runtimeConfig: { modelConfig: { modelId: 'model-1' } },
         systemPrompt:
           'memory-system-prompt\n\n## Memory Boot\nmemory-boot\n\n## Memory Index\n- core://profile/name\n\n## Memory Glossary\n- fox -> node:node-1\n\nagent-system-prompt',
         serverSandbox: { agentConversationId: 'conversation-1' },

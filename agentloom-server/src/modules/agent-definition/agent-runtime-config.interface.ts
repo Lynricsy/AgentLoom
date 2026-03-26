@@ -10,13 +10,53 @@ export interface AgentModelConfig {
   customParameters?: Record<string, unknown>;
 }
 
-export interface AgentToolBinding {
+export interface AgentToolBindingBase {
   toolId: string;
   name: string;
   description?: string;
   parameterOverrides?: Record<string, unknown>;
   enabled: boolean;
 }
+
+export interface AgentMcpToolBinding extends AgentToolBindingBase {
+  toolType: 'mcp';
+  mcpToolDefinitionId?: string;
+  mcpServerConfigId?: string;
+  toolName?: string;
+  inputSchema?: Record<string, unknown>;
+  portMapping?: Record<string, unknown>;
+}
+
+export interface AgentHttpToolBinding extends AgentToolBindingBase {
+  toolType: 'http';
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+}
+
+export interface AgentCodeToolBinding extends AgentToolBindingBase {
+  toolType: 'code';
+  language: 'typescript' | 'javascript' | 'python' | 'bash';
+  code?: string;
+}
+
+export type LegacyAgentToolBinding = AgentToolBindingBase & {
+  toolType?: undefined;
+  mcpToolDefinitionId?: string;
+  mcpServerConfigId?: string;
+  toolName?: string;
+  inputSchema?: Record<string, unknown>;
+  portMapping?: Record<string, unknown>;
+  url?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  language?: 'typescript' | 'javascript' | 'python' | 'bash';
+  code?: string;
+};
+
+export type AgentToolBinding =
+  | AgentMcpToolBinding
+  | AgentHttpToolBinding
+  | AgentCodeToolBinding
+  | LegacyAgentToolBinding;
 
 export interface AgentKnowledgeBinding {
   knowledgeBaseId: string;

@@ -708,13 +708,90 @@ export class AgentDefinitionService {
     nodeType: string,
   ): AgentToolBinding | null {
     const toolId = data.toolId ?? data.tool_id ?? nodeId;
-    return {
+    const baseBinding = {
       toolId,
       name: data.name ?? data.label ?? nodeType,
       description: data.description,
       parameterOverrides: data.parameterOverrides ?? data.parameter_overrides,
       enabled: data.enabled !== false,
+    } satisfies AgentToolBinding;
+
+    if (nodeType === 'mcp-tool') {
+      const mcpToolDefinitionId =
+        data.mcpToolDefinitionId ?? data.mcp_tool_definition_id;
+      const mcpServerConfigId =
+        data.mcpServerConfigId ?? data.mcp_server_config_id;
+      const toolName = data.toolName ?? data.tool_name;
+      const inputSchema =
+        data.inputSchema && typeof data.inputSchema === 'object' && !Array.isArray(data.inputSchema)
+          ? data.inputSchema
+          : undefined;
+      const portMapping =
+        data.portMapping && typeof data.portMapping === 'object' && !Array.isArray(data.portMapping)
+          ? data.portMapping
+          : undefined;
+
+      if (mcpToolDefinitionId || (mcpServerConfigId && toolName)) {
+        return {
+          ...baseBinding,
+          toolType: 'mcp',
+          ...(mcpToolDefinitionId === undefined ? {} : { mcpToolDefinitionId }),
+          ...(mcpServerConfigId === undefined ? {} : { mcpServerConfigId }),
+          ...(toolName === undefined ? {} : { toolName }),
+          ...(inputSchema === undefined ? {} : { inputSchema }),
+          ...(portMapping === undefined ? {} : { portMapping }),
+        };
+      }
+
+      return {
+        ...baseBinding,
+        ...(mcpToolDefinitionId === undefined ? {} : { mcpToolDefinitionId }),
+        ...(mcpServerConfigId === undefined ? {} : { mcpServerConfigId }),
+        ...(toolName === undefined ? {} : { toolName }),
+        ...(inputSchema === undefined ? {} : { inputSchema }),
+        ...(portMapping === undefined ? {} : { portMapping }),
+      };
     };
+
+    if (nodeType === 'http-tool') {
+      const url = data.url;
+      const method = data.method;
+      if (typeof url === 'string' && url.length > 0) {
+        return {
+          ...baseBinding,
+          toolType: 'http',
+          url,
+          ...(typeof method === 'string' && method.length > 0 ? { method } : {}),
+        };
+      }
+
+      return {
+        ...baseBinding,
+        ...(typeof url === 'string' && url.length > 0 ? { url } : {}),
+        ...(typeof method === 'string' && method.length > 0 ? { method } : {}),
+      };
+    }
+
+    if (nodeType === 'code-tool') {
+      const language = data.language;
+      const code = data.code;
+      if (typeof language === 'string' && language.length > 0) {
+        return {
+          ...baseBinding,
+          toolType: 'code',
+          language,
+          ...(typeof code === 'string' ? { code } : {}),
+        };
+      }
+
+      return {
+        ...baseBinding,
+        ...(typeof language === 'string' && language.length > 0 ? { language } : {}),
+        ...(typeof code === 'string' ? { code } : {}),
+      };
+    }
+
+    return baseBinding;
   }
 
   private extractKnowledgeBinding(
