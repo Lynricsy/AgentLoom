@@ -4,6 +4,8 @@ import { immer } from 'zustand/middleware/immer';
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 import { apiClient } from '@/shared/api/client';
+import { useAuthStore } from '@/features/auth/stores/auth.store';
+import type { PaginatedResponse } from '@/shared/types/api';
 import type {
   ConversationMessage,
   ConversationStatus,
@@ -191,7 +193,7 @@ export const useAgentConversationStore = create<
                 s.connectionError = null;
               });
 
-              const tenantId = '';
+              const tenantId = useAuthStore.getState().tenantId ?? '';
               socket.emit(
                 'conversation:subscribe',
                 { conversationId, tenantId },
@@ -500,12 +502,12 @@ export const useAgentConversationStore = create<
 
           loadHistory: async (conversationId) => {
             try {
-              const data = await apiClient
+              const response = await apiClient
                 .get(`agent-conversations/${conversationId}/messages`)
-                .json<ConversationMessage[]>();
+                .json<PaginatedResponse<ConversationMessage>>();
 
               set((s) => {
-                s.messages = data.map((m) => ({
+                s.messages = response.data.map((m) => ({
                   ...m,
                   toolCalls: m.toolCalls ?? [],
                   isStreaming: false,

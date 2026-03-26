@@ -13,7 +13,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { apiClient } from '@/shared/api/client';
-import type { ApiResponse } from '@/shared/types/api';
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
