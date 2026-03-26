@@ -326,6 +326,10 @@ export class NodeSchedulerService {
         await this.executeSkillNode(step, input, tenantId, executionId);
         break;
 
+      case 'mcp-tool':
+        await this.executeMcpToolNode(step, input, tenantId, executionId);
+        break;
+
       case 'sub-agent':
         await this.stepStateMachine.updateStepStatus(
           tenantId,
@@ -1155,6 +1159,104 @@ export class NodeSchedulerService {
 
       await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'completed', {
         result: { skills: skillPayloads },
+      });
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  /** 内联处理 MCP 工具节点：同步完成，输出工具描述符供下游 agent 节点消费。 */
+  async executeMcpToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    void input;
+
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+
+      const mcpServerConfigId =
+        typeof config.mcpServerConfigId === 'string' && config.mcpServerConfigId.trim().length > 0
+          ? config.mcpServerConfigId.trim()
+          : typeof nodeData.mcpServerConfigId === 'string' && nodeData.mcpServerConfigId.trim().length > 0
+            ? nodeData.mcpServerConfigId.trim()
+            : undefined;
+
+      const toolName =
+        typeof config.toolName === 'string' && config.toolName.trim().length > 0
+          ? config.toolName.trim()
+          : typeof nodeData.toolName === 'string' && nodeData.toolName.trim().length > 0
+            ? nodeData.toolName.trim()
+            : undefined;
+
+      const portMapping =
+        this.isRecord(config.portMapping)
+          ? config.portMapping
+          : this.isRecord(nodeData.portMapping)
+            ? nodeData.portMapping
+            : undefined;
+
+      if (!mcpServerConfigId || !toolName) {
+        this.logger.warn(
+          `MCP tool node ${step.nodeId} missing mcpServerConfigId or toolName`,
+        );
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'completed',
+          {
+            result: {
+              warning: 'MCP tool node missing mcpServerConfigId or toolName',
+              type: 'mcp-tool',
+            },
+          },
+        );
+        await this.onNodeCompleted(executionId, step.id, tenantId);
+        return;
+      }
+
+      const descriptor: Record<string, unknown> = {
+        type: 'mcp-tool',
+        mcpServerConfigId,
+        toolName,
+        ...(portMapping !== undefined ? { portMapping } : {}),
+      };
+
+      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'completed', {
+        result: descriptor,
       });
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {

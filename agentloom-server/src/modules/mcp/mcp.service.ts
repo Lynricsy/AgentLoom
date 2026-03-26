@@ -956,8 +956,8 @@ export class McpService {
 
     const outputs: PortMapping[] = [
       {
-        name: 'result',
-        dataType: 'text' as const,
+        name: 'tool-output',
+        dataType: 'tool' as const,
         description: '工具执行结果',
       },
     ];

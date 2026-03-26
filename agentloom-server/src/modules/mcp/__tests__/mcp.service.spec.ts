@@ -858,8 +858,8 @@ describe('McpService', () => {
         ],
         outputs: [
           {
-            name: 'result',
-            dataType: 'text',
+            name: 'tool-output',
+            dataType: 'tool',
             description: '工具执行结果',
           },
         ],

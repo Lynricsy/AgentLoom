@@ -1468,6 +1468,86 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
       );
     });
+
+    it('mcp-tool 节点会同步完成并产出工具描述符，不入队 agent-task', async () => {
+      const snapshot = makeSnapshot([makeNode('M', 'mcp-tool')], []);
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'mcp-tool',
+          nodeData: {
+            mcpServerConfigId: 'mcp-server-001',
+            toolName: 'get_weather',
+            portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'completed',
+        {
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: 'mcp-server-001',
+            toolName: 'get_weather',
+            portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-m',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('mcp-tool 节点缺少 mcpServerConfigId 或 toolName 时应降级完成并带 warning', async () => {
+      const snapshot = makeSnapshot([makeNode('M', 'mcp-tool')], []);
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'mcp-tool',
+          nodeData: { toolName: 'get_weather' },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({ warning: expect.any(String), type: 'mcp-tool' }),
+        }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(EXECUTION_ID, 'step-m', TENANT_ID);
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
   });
 
   describe('onNodeCompleted', () => {
