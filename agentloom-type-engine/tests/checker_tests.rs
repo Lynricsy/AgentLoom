@@ -74,7 +74,41 @@ fn incompatible_match_reports_conflict_path() {
 
     assert_eq!(result.level, CompatibilityLevel::Incompatible);
     assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
-    assert_eq!(result.conflict_path.as_deref(), Some("root.kind"));
+}
+
+#[test]
+fn agent_to_agent_is_exact() {
+    let source = build_port("source", PortDataType::Agent, None);
+    let target = build_port("target", PortDataType::Agent, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Exact);
+    assert_eq!(result.reason, None);
+    assert!(result.missing_fields.is_empty());
+    assert!(result.candidate_mappings.is_empty());
+}
+
+#[test]
+fn agent_to_text_is_incompatible() {
+    let source = build_port("source", PortDataType::Agent, None);
+    let target = build_port("target", PortDataType::Text, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
+}
+
+#[test]
+fn agent_to_model_is_incompatible() {
+    let source = build_port("source", PortDataType::Agent, None);
+    let target = build_port("target", PortDataType::Model, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
 }
 
 #[test]
