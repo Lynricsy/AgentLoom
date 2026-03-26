@@ -132,6 +132,53 @@ function createEdgeId(): string {
   return crypto?.randomUUID?.() ?? `edge-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function generateNodeId(): string {
+  return crypto?.randomUUID?.() ?? `node-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createRequiredNode(
+  nodeType: AgentCanvasNodeType,
+  position: { x: number; y: number },
+): AgentCanvasNode | null {
+  const config = AGENT_CANVAS_NODE_REGISTRY.get(nodeType);
+  if (!config) return null;
+  return {
+    id: generateNodeId(),
+    type: config.category,
+    position,
+    data: {
+      label: config.label,
+      nodeType: nodeType as CanvasNodeData['nodeType'],
+      category: config.category,
+      description: config.description,
+      config: {},
+      inputPorts: config.inputPorts ? [...config.inputPorts] : [],
+      outputPorts: config.outputPorts ? [...config.outputPorts] : [],
+    },
+  };
+}
+
+const AGENT_MAIN_DEFAULT_POSITION = { x: 400, y: 300 };
+const SANDBOX_DEFAULT_POSITION = { x: 600, y: 300 };
+
+function ensureRequiredNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
+  const hasAgentMain = nodes.some((n) => (n.data?.nodeType as string) === 'agent-main');
+  if (hasAgentMain) return nodes;
+
+  const agentMainNode = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
+  if (!agentMainNode) return nodes;
+  return [...nodes, agentMainNode];
+}
+
+function createInitialNodes(): AgentCanvasNode[] {
+  const result: AgentCanvasNode[] = [];
+  const agentMain = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
+  if (agentMain) result.push(agentMain);
+  const sandbox = createRequiredNode('sandbox', SANDBOX_DEFAULT_POSITION);
+  if (sandbox) result.push(sandbox);
+  return result;
+}
+
 export function canAddNodeType(
   nodeType: string,
   currentNodes: AgentCanvasNode[],
@@ -180,6 +227,25 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           },
 
           createConnection: (connection) => {
+            const currentState = get();
+            const sourceNode = currentState.nodes.find((n) => n.id === connection.source);
+            const targetNode = currentState.nodes.find((n) => n.id === connection.target);
+
+            const sourceNodeType = sourceNode?.data?.nodeType as string | undefined;
+            const targetNodeType = targetNode?.data?.nodeType as string | undefined;
+
+            if (
+              sourceNodeType === 'sub-agent' &&
+              targetNodeType === 'agent-main' &&
+              currentState.agentId
+            ) {
+              const subAgentDefId = (sourceNode?.data?.config as Record<string, unknown> | undefined)?.agentDefinitionId;
+              if (subAgentDefId && subAgentDefId === currentState.agentId) {
+                console.warn('[AgentCanvasStore] 阻止循环引用: sub-agent 引用了当前 Agent 自身');
+                return;
+              }
+            }
+
             set((state) => {
               const newEdge: AgentCanvasEdge = {
                 ...connection,
@@ -310,7 +376,11 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
 
           applyServerSnapshot: (data) => {
             set((state) => {
-              state.nodes = (data.nodes as AgentCanvasNode[]) ?? [];
+              const rawNodes = (data.nodes as AgentCanvasNode[]) ?? [];
+              const isNewCanvas = rawNodes.length === 0;
+              state.nodes = isNewCanvas
+                ? createInitialNodes()
+                : ensureRequiredNodes(rawNodes);
               state.edges = (data.edges as AgentCanvasEdge[]) ?? [];
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
               state.globalSandboxConfig = data.sandboxConfig ?? { ...DEFAULT_SANDBOX_CONFIG };
@@ -318,7 +388,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               state.memoryInstanceIds = data.memoryInstanceIds ?? [];
               state.version = data.version ?? 0;
               state.agentName = data.name ?? '';
-              state.isDirty = false;
+              state.isDirty = isNewCanvas || rawNodes.length !== state.nodes.length;
               state.lastSavedAt = Date.now();
             });
           },

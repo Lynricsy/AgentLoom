@@ -9,6 +9,9 @@ import {
 } from '../registry/agent-canvas-registry'
 import type { NodeCategory } from '../types'
 
+/** 自动创建的节点类型 — 新画布初始化时自动放置，不可从面板拖入 */
+const AUTO_CREATED_NODE_TYPES = new Set<string>(['agent-main', 'sandbox'])
+
 interface AgentPaletteNodeItem {
   type: AgentCanvasNodeType
   label: string
@@ -16,6 +19,8 @@ interface AgentPaletteNodeItem {
   icon: string
   description: string
   searchText?: string
+  /** 标记为自动创建的节点 — 面板中禁用拖拽，仅作信息展示 */
+  isAutoCreated?: boolean
 }
 
 interface AgentPaletteGroup {
@@ -32,6 +37,7 @@ function buildAgentPaletteItem(config: AgentNodeTypeConfig): AgentPaletteNodeIte
     category: config.category,
     icon: config.icon,
     description: config.description,
+    isAutoCreated: AUTO_CREATED_NODE_TYPES.has(config.type),
   }
 }
 
@@ -45,6 +51,12 @@ function resolveNodes(types: readonly string[]): AgentPaletteNodeItem[] {
 const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
   {
     label: '核心',
+    icon: NODE_CATEGORIES.agent.icon,
+    color: NODE_CATEGORIES.agent.color,
+    items: resolveNodes(['agent-main']),
+  },
+  {
+    label: '模型',
     icon: NODE_CATEGORIES.agent.icon,
     color: NODE_CATEGORIES.agent.color,
     items: resolveNodes(['llm-model', 'smart-routing']),
@@ -66,6 +78,12 @@ const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
     icon: NODE_CATEGORIES.agent.icon,
     color: NODE_CATEGORIES.agent.color,
     items: resolveNodes(['sub-agent', 'input-preprocessor', 'skill']),
+  },
+  {
+    label: '环境',
+    icon: NODE_CATEGORIES.tool.icon,
+    color: NODE_CATEGORIES.tool.color,
+    items: resolveNodes(['sandbox']),
   },
 ]
 
@@ -96,6 +114,10 @@ export const AgentNodePalette = memo(function AgentNodePalette({
   }, [])
 
   const onDragStart = useCallback((event: DragEvent, item: AgentPaletteNodeItem) => {
+    if (item.isAutoCreated) {
+      event.preventDefault()
+      return
+    }
     event.dataTransfer.setData(DRAG_TRANSFER_TYPE, JSON.stringify(item))
     event.dataTransfer.effectAllowed = 'move'
   }, [])
@@ -184,13 +206,30 @@ const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
             <button
               type="button"
               key={item.type}
-              draggable
+              draggable={!item.isAutoCreated}
               onDragStart={(e) => onDragStart(e, item)}
-              className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"
+              className={cn(
+                'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                item.isAutoCreated
+                  ? 'cursor-default text-muted-foreground/50'
+                  : 'cursor-grab text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing',
+              )}
               title={item.description}
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-xs font-medium text-foreground">{item.label}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className={cn(
+                    'text-xs font-medium',
+                    item.isAutoCreated ? 'text-muted-foreground/50' : 'text-foreground',
+                  )}>
+                    {item.label}
+                  </span>
+                  {item.isAutoCreated && (
+                    <span className="inline-flex rounded bg-surface-elevated px-1 py-0.5 text-[10px] leading-none text-muted-foreground/60">
+                      自动创建
+                    </span>
+                  )}
+                </span>
                 {item.description ? (
                   <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
                     {item.description}
