@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
 import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
@@ -35,7 +35,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly coreAdapter: PiAgentCoreAdapter;
 
   constructor(
-    private readonly db: DrizzleDB,
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly piAiAdapter: PiAiAdapter,
     private readonly agentSessionFactory: AgentSessionFactory,
     private readonly sessionPersistence: SessionPersistenceService,

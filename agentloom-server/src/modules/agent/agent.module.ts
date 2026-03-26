@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { DatabaseModule } from '../../database/database.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { LlmModule } from '../llm/llm.module';
 import { McpModule } from '../mcp/mcp.module';
@@ -18,7 +19,7 @@ import { AgentSessionFactory } from '../execution/services/agent-session-factory
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 
 @Module({
-  imports: [LlmModule, SandboxModule, McpModule, KnowledgeModule],
+  imports: [DatabaseModule, LlmModule, SandboxModule, McpModule, KnowledgeModule],
   providers: [
     AutonomyResolverService,
     OutputFormatService,
