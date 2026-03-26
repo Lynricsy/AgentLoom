@@ -526,11 +526,13 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
   private normalizeToolBinding(
     binding: AgentToolBinding,
   ): AgentMcpToolBinding | AgentHttpToolBinding | AgentCodeToolBinding | null {
+    const mcpBinding = binding as Partial<AgentMcpToolBinding>;
+
     if (
-      binding.toolType === 'mcp' ||
-      (typeof binding.mcpToolDefinitionId === 'string' && binding.mcpToolDefinitionId.length > 0) ||
-      ((binding as Partial<AgentMcpToolBinding>).mcpServerConfigId !== undefined &&
-        (binding as Partial<AgentMcpToolBinding>).toolName !== undefined)
+      (typeof mcpBinding.mcpToolDefinitionId === 'string' &&
+        mcpBinding.mcpToolDefinitionId.length > 0) ||
+      (mcpBinding.mcpServerConfigId !== undefined && mcpBinding.toolName !== undefined) ||
+      binding.toolType === 'mcp'
     ) {
       return {
         ...binding,
@@ -625,14 +627,15 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     session: AgentSession,
     binding: AgentMcpToolBinding,
   ): Promise<McpRuntimeToolDescriptor | null> {
-    if (!session.tenantId || !this.mcpService) {
+    const tenantId = session.tenantId;
+    if (!tenantId || !this.mcpService) {
       return null;
     }
 
     if (binding.mcpToolDefinitionId) {
       const storedTool = await runInTenantTransaction(
         this.db,
-        session.tenantId,
+        tenantId,
         async () => {
           const [record] = await this.tenantDb
             .select({
@@ -644,11 +647,11 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
             })
             .from(schema.toolDefinitions)
             .where(
-              and(
-                eq(schema.toolDefinitions.id, binding.mcpToolDefinitionId),
-                eq(schema.toolDefinitions.tenantId, session.tenantId),
-                eq(schema.toolDefinitions.isActive, true),
-              ),
+                and(
+                  eq(schema.toolDefinitions.id, binding.mcpToolDefinitionId!),
+                  eq(schema.toolDefinitions.tenantId, tenantId),
+                  eq(schema.toolDefinitions.isActive, true),
+                ),
             );
 
           return record;
@@ -814,7 +817,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
     const headers = this.extractStringHeaders(input.headers);
     let body: BodyInit | undefined;
-    if (method !== 'GET' && method !== 'HEAD' && 'body' in input) {
+    if (method !== 'GET' && 'body' in input) {
       const rawBody = input.body;
       if (typeof rawBody === 'string') {
         body = rawBody;

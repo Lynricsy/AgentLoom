@@ -499,8 +499,8 @@ describe('WorkflowCanvas', () => {
 
   it('在创建前阻止循环依赖连线并提示固定错误文案', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const nodeA = createNode('a', 'chat-agent')
-    const nodeB = createNode('b', 'chat-agent')
+    const nodeA = createNode('a', 'agent')
+    const nodeB = createNode('b', 'agent')
 
     useCanvasStore.setState((state) => ({
       ...state,
@@ -549,7 +549,7 @@ describe('WorkflowCanvas', () => {
   })
 
   it('超过并行路径建议上限时只告警不阻止创建', async () => {
-    const hub = createNode('hub', 'chat-agent')
+    const hub = createNode('hub', 'agent')
     const existingTargets = Array.from({ length: 10 }, (_, index) => createNode(`target-${index}`, 'text-output'))
     const nextTarget = createNode('target-10', 'text-output')
 
@@ -561,7 +561,7 @@ describe('WorkflowCanvas', () => {
         type: 'smart',
         source: 'hub',
         target: target.id,
-        sourceHandle: 'final-output',
+        sourceHandle: 'agent-output',
         targetHandle: 'content',
         data: createDefaultEdgeData(),
       })),
@@ -582,7 +582,7 @@ describe('WorkflowCanvas', () => {
       await onConnect({
         source: 'hub',
         target: 'target-10',
-        sourceHandle: 'final-output',
+        sourceHandle: 'agent-output',
         targetHandle: 'content',
       })
     })

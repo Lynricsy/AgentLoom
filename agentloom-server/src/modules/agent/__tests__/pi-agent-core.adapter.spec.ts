@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolSet } from 'ai';
 import { Logger } from '@nestjs/common';
+import { z } from 'zod';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { PiAgentCoreAdapter } from '../pi-agent-core.adapter';
 import type { AgentEvent } from '../types/agent-event.types';
@@ -425,7 +426,9 @@ describe('PiAgentCoreAdapter', () => {
           ]),
         )
         .mockReturnValueOnce(createSelectChain([defaultModelConfig]));
-      hoisted.typeBoxToZod.mockReturnValueOnce({ type: 'mcp-zod' });
+      hoisted.typeBoxToZod.mockImplementationOnce(
+        () => z.object({ query: z.string() }) as never,
+      );
 
       const session = await adapter.createSession(
         createParams({

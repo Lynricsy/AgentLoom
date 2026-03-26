@@ -6,6 +6,8 @@ import type { ExecutionDetail } from '../types'
 const mocks = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   useExecutionMock: vi.fn(),
+  usePtySessionsMock: vi.fn(),
+  sendPtyWriteMock: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -14,6 +16,20 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../hooks/useExecutionList', () => ({
   useExecution: (...args: unknown[]) => mocks.useExecutionMock(...args),
+}))
+
+vi.mock('../hooks/usePtySessions', () => ({
+  usePtySessions: (...args: unknown[]) => mocks.usePtySessionsMock(...args),
+}))
+
+vi.mock('../api/pty', () => ({
+  sendPtyWrite: (...args: unknown[]) => mocks.sendPtyWriteMock(...args),
+}))
+
+vi.mock('./TerminalTab', () => ({
+  TerminalTab: ({ activeSessionId }: { activeSessionId: string | null }) => (
+    <div data-testid="mock-terminal-tab">{activeSessionId ?? 'no-session'}</div>
+  ),
 }))
 
 vi.mock('./ReadonlyCanvas', () => ({
@@ -110,6 +126,11 @@ describe('ExecutionDebugView', () => {
     vi.clearAllMocks()
     mocks.useExecutionMock.mockReturnValue({
       data: createExecutionDetail(),
+      isLoading: false,
+      error: null,
+    })
+    mocks.usePtySessionsMock.mockReturnValue({
+      data: [],
       isLoading: false,
       error: null,
     })

@@ -1,8 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import type { NodeProps } from '@xyflow/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_AUTONOMY_CONFIG } from '../autonomy.types'
-import { createDefaultAgentNodeData } from '../types'
 import { useCanvasStore } from '../stores/canvasStore'
 import { useExecutionStore, type NodeExecutionState } from '@/features/execution/stores/executionStore'
 import { CanvasNodeShell } from './CanvasNode'
@@ -140,11 +138,11 @@ describe('CanvasNodeShell', () => {
     const node = screen.getByTestId('canvas-node-node-1')
 
     expect(node).toHaveAttribute('data-selected', 'false')
-    expect(within(node).getByText('LLM Agent')).toBeInTheDocument()
+    expect(within(node).getByText('Chat Agent')).toBeInTheDocument()
     expect(within(node).getByText('Agent')).toBeInTheDocument()
     expect(within(node).getByText('chat-agent')).toBeInTheDocument()
-    expect(within(node).getByText('手动确认')).toBeInTheDocument()
-    expect(within(node).getByText('关键输入需人工确认')).toBeInTheDocument()
+    expect(within(node).getByText('执行多步推理')).toBeInTheDocument()
+    expect(within(node).getByText('对话型 Agent 节点')).toBeInTheDocument()
     expect(node.querySelector('[data-slot="header"]')).not.toBeNull()
     expect(node.querySelector('[data-slot="inputs"]')).not.toBeNull()
     expect(node.querySelector('[data-slot="body"]')).not.toBeNull()
@@ -179,56 +177,6 @@ describe('CanvasNodeShell', () => {
 
     expect(screen.getByText('执行多步推理')).toBeInTheDocument()
     expect(screen.getByText('chat-agent')).toBeInTheDocument()
-  })
-
-  it('renders llm-agent autonomy summary from node.data.autonomyConfig mode', () => {
-    const { rerender } = renderNode(
-      {
-        ...createMockNodeData(),
-        ...createDefaultAgentNodeData(),
-        autonomyConfig: {
-          ...DEFAULT_AUTONOMY_CONFIG,
-          mode: 'RULE_BASED',
-          allowedInferenceFields: ['context.topic'],
-          fallbackStrategy: 'USE_DEFAULT',
-        },
-      },
-      { id: 'llm-agent-summary' },
-    )
-
-    const node = screen.getByTestId('canvas-node-llm-agent-summary')
-
-    expect(within(node).getByText('规则补全')).toBeInTheDocument()
-
-    rerender(
-      <CanvasNodeShell
-        id="llm-agent-summary"
-        type="agent"
-        data={{
-          ...createMockNodeData(),
-          ...createDefaultAgentNodeData(),
-          autonomyConfig: {
-            ...DEFAULT_AUTONOMY_CONFIG,
-            mode: 'LLM_SUGGEST',
-            allowedInferenceFields: ['context.topic'],
-            confirmationThreshold: 0.65,
-            fallbackStrategy: 'ABORT_EXECUTION',
-          },
-        }}
-        selected={false}
-        dragging={false}
-        zIndex={0}
-        selectable
-        deletable
-        draggable
-        isConnectable
-        positionAbsoluteX={0}
-        positionAbsoluteY={0}
-      />,
-    )
-
-    expect(within(node).getByText('LLM 建议')).toBeInTheDocument()
-    expect(within(node).getByText('阈值 0.65 · 失败终止')).toBeInTheDocument()
   })
 
   it('renders mcp-tool nodes with MCP badge and dynamic port labels', () => {
@@ -523,8 +471,10 @@ describe('CanvasNodeShell', () => {
     expect(node.querySelector('[data-slot="outputs"]')).toBeNull()
     expect(node.querySelector('[data-slot="body"]')).toBeNull()
     expect(node.querySelectorAll('.port-row')).toHaveLength(0)
-    expect(screen.getByTestId('port-node-minimal-tools-input')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-final-output-output')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-messages-input')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-model-input')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-reply-output')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-structured-output')).toBeInTheDocument()
   })
 
   it('shows a single validation warning badge outside minimal mode', () => {

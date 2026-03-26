@@ -424,7 +424,7 @@ describe('EvidenceGraph components', () => {
       expect(screen.getByTestId('evidence-badge')).toHaveTextContent('3')
       expect(screen.getByTestId('handle-target')).toBeInTheDocument()
       expect(screen.getByTestId('handle-source')).toBeInTheDocument()
-      expect(screen.getByTestId('icon-bot')).toBeInTheDocument()
+      expect(screen.getByTestId('icon-workflow')).toBeInTheDocument()
     })
 
     it('evidenceCount 为 0 时隐藏证据徽章', () => {

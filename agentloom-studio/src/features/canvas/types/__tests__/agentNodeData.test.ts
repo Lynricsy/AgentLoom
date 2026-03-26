@@ -85,99 +85,45 @@ describe('createDefaultAgentNodeData', () => {
   })
 })
 
-describe('llm-agent 端口定义', () => {
+describe('chat-agent 端口定义', () => {
   const agentType = getNodeTypeConfig('chat-agent')
 
-  it('包含 10 个输入端口和 4 个输出端口', () => {
-    expect(agentType.inputPorts).toHaveLength(10)
-    expect(agentType.outputPorts).toHaveLength(4)
+  it('包含 2 个输入端口和 2 个输出端口', () => {
+    expect(agentType.inputPorts).toHaveLength(2)
+    expect(agentType.outputPorts).toHaveLength(2)
   })
 
   describe('输入端口', () => {
-    it('tools 端口: tool 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.inputPorts, 'tools')
-      expect(port.dataType).toBe('tool')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
+    it('messages 端口: json 类型, 单连接', () => {
+      const port = findPort(agentType.inputPorts, 'messages')
+      expect(port.dataType).toBe('json')
+      expect(port.multiple).toBe(false)
+      expect(port.maxConnections).toBe(1)
       expect(port.required).toBe(false)
     })
 
-    it('knowledge 端口: knowledge 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.inputPorts, 'knowledge')
-      expect(port.dataType).toBe('knowledge')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
-    })
-
-    it('sandbox 端口: sandbox 类型, 单连接', () => {
-      const port = findPort(agentType.inputPorts, 'sandbox')
-      expect(port.dataType).toBe('sandbox')
-      expect(port.multiple).toBe(false)
-      expect(port.maxConnections).toBe(1)
-    })
-
-    it('model 端口: model 类型, required', () => {
+    it('model 端口: model 类型, 单连接', () => {
       const port = findPort(agentType.inputPorts, 'model')
       expect(port.dataType).toBe('model')
-      expect(port.required).toBe(true)
+      expect(port.multiple).toBe(false)
       expect(port.maxConnections).toBe(1)
-    })
-
-    it('context 端口: json 类型', () => {
-      const port = findPort(agentType.inputPorts, 'context')
-      expect(port.dataType).toBe('json')
-    })
-
-    it('system-prompt 端口: text 类型', () => {
-      const port = findPort(agentType.inputPorts, 'system-prompt')
-      expect(port.dataType).toBe('text')
-    })
-
-    it('tool-results 端口: json 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.inputPorts, 'tool-results')
-      expect(port.dataType).toBe('json')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
-    })
-
-    it('trigger-payload 端口: json 类型', () => {
-      const port = findPort(agentType.inputPorts, 'trigger-payload')
-      expect(port.dataType).toBe('json')
-    })
-
-    it('memory 端口: json 类型', () => {
-      const port = findPort(agentType.inputPorts, 'memory')
-      expect(port.dataType).toBe('json')
+      expect(port.required).toBe(false)
     })
   })
 
   describe('输出端口', () => {
-    it('final-output 端口: text 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.outputPorts, 'final-output')
+    it('reply 端口: text 类型, 单连接', () => {
+      const port = findPort(agentType.outputPorts, 'reply')
       expect(port.dataType).toBe('text')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
+      expect(port.multiple).toBe(false)
+      expect(port.maxConnections).toBe(1)
     })
 
-    it('structured-output 端口: json 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.outputPorts, 'structured-output')
+    it('structured 端口: json 类型, 单连接', () => {
+      const port = findPort(agentType.outputPorts, 'structured')
       expect(port.dataType).toBe('json')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
-    })
-
-    it('telemetry 端口: json 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.outputPorts, 'telemetry')
-      expect(port.dataType).toBe('json')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
-    })
-
-    it('evidence-requests 端口: json 类型, multiple, 无连接上限', () => {
-      const port = findPort(agentType.outputPorts, 'evidence-requests')
-      expect(port.dataType).toBe('json')
-      expect(port.multiple).toBe(true)
-      expect(port.maxConnections).toBeNull()
+      expect(port.multiple).toBe(false)
+      expect(port.maxConnections).toBe(1)
     })
   })
 

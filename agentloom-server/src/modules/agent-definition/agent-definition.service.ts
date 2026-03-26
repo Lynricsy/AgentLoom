@@ -31,6 +31,8 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 import type {
+  AgentCodeToolBinding,
+  AgentHttpToolBinding,
   AgentRuntimeConfig,
   AgentToolBinding,
   AgentKnowledgeBinding,
@@ -761,14 +763,18 @@ export class AgentDefinitionService {
           ...baseBinding,
           toolType: 'http',
           url,
-          ...(typeof method === 'string' && method.length > 0 ? { method } : {}),
+          ...(typeof method === 'string' && method.length > 0
+            ? { method: method as AgentHttpToolBinding['method'] }
+            : {}),
         };
       }
 
       return {
         ...baseBinding,
         ...(typeof url === 'string' && url.length > 0 ? { url } : {}),
-        ...(typeof method === 'string' && method.length > 0 ? { method } : {}),
+        ...(typeof method === 'string' && method.length > 0
+          ? { method: method as AgentHttpToolBinding['method'] }
+          : {}),
       };
     }
 
@@ -779,14 +785,16 @@ export class AgentDefinitionService {
         return {
           ...baseBinding,
           toolType: 'code',
-          language,
+          language: language as AgentCodeToolBinding['language'],
           ...(typeof code === 'string' ? { code } : {}),
         };
       }
 
       return {
         ...baseBinding,
-        ...(typeof language === 'string' && language.length > 0 ? { language } : {}),
+        ...(typeof language === 'string' && language.length > 0
+          ? { language: language as AgentCodeToolBinding['language'] }
+          : {}),
         ...(typeof code === 'string' ? { code } : {}),
       };
     }
