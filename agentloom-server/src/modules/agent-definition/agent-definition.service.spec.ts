@@ -811,6 +811,152 @@ describe('AgentDefinitionService', () => {
       expect(config.inputPreprocessors).toBeUndefined();
     });
 
+    it('应仅编译通过 agent-main 连接的节点', () => {
+      const nodes = [
+        { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+        {
+          id: 'model-connected',
+          type: 'agent',
+          data: { nodeType: 'llm-model', config: { modelId: 'gpt-4.1', temperature: 0.2 } },
+        },
+        {
+          id: 'tool-connected',
+          type: 'tool',
+          data: { nodeType: 'http-tool', label: 'HTTP 请求', config: { name: 'search' } },
+        },
+        {
+          id: 'tool-orphan',
+          type: 'tool',
+          data: { nodeType: 'code-tool', config: { toolId: 'code-orphan', name: 'orphan' } },
+        },
+        {
+          id: 'tool-wrong-handle',
+          type: 'tool',
+          data: { nodeType: 'mcp-tool', config: { toolId: 'mcp-wrong', name: 'wrong-handle' } },
+        },
+        {
+          id: 'kb-connected',
+          type: 'knowledge',
+          data: { nodeType: 'knowledge-base', config: { knowledgeBaseId: 'kb-1', topK: 5 } },
+        },
+        {
+          id: 'sub-connected',
+          type: 'agent',
+          data: { nodeType: 'sub-agent', config: { agentDefinitionId: 'child-1', alias: 'writer' } },
+        },
+        {
+          id: 'pre-connected',
+          type: 'tool',
+          data: { nodeType: 'input-preprocessor', config: { preprocessorType: 'jmespath', config: { foo: 'bar' } } },
+        },
+        {
+          id: 'routing-connected',
+          type: 'agent',
+          data: { nodeType: 'smart-routing', config: { strategy: 'QUALITY_FIRST' } },
+        },
+        {
+          id: 'sandbox-connected',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            config: { enabled: true, cpuLimit: 2, memoryLimitMb: 1024, timeoutSeconds: 600 },
+          },
+        },
+      ];
+
+      const edges = [
+        { id: 'e1', source: 'model-connected', target: 'main', targetHandle: 'model-in' },
+        { id: 'e2', source: 'tool-connected', target: 'main', targetHandle: 'tools-in' },
+        { id: 'e3', source: 'tool-wrong-handle', target: 'main', targetHandle: 'knowledge-in' },
+        { id: 'e4', source: 'kb-connected', target: 'main', targetHandle: 'knowledge-in' },
+        { id: 'e5', source: 'sub-connected', target: 'main', targetHandle: 'sub-agents-in' },
+        { id: 'e6', source: 'pre-connected', target: 'main', targetHandle: 'input-preprocessor-in' },
+        { id: 'e7', source: 'routing-connected', target: 'main', targetHandle: 'model-in' },
+        { id: 'e8', source: 'sandbox-connected', target: 'main', targetHandle: 'sandbox-in' },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes as any[], edges);
+
+      expect(config.modelConfig).toMatchObject({ modelId: 'gpt-4.1', temperature: 0.2 });
+      expect(config.tools).toEqual([
+        expect.objectContaining({ name: 'search' }),
+      ]);
+      expect(config.knowledgeBindings).toEqual([
+        expect.objectContaining({ knowledgeBaseId: 'kb-1', topK: 5 }),
+      ]);
+      expect(config.subAgents).toEqual([
+        expect.objectContaining({ agentDefinitionId: 'child-1', alias: 'writer' }),
+      ]);
+      expect(config.inputPreprocessors).toEqual([
+        expect.objectContaining({ type: 'jmespath', config: { foo: 'bar' } }),
+      ]);
+      expect(config.routingConfig).toEqual(
+        expect.objectContaining({ strategy: 'QUALITY_FIRST' }),
+      );
+      expect(config.sandboxConfig).toEqual({
+        cpu: 2,
+        memory: 1024,
+        disk: 1,
+        timeout: 600,
+        lifecycleMode: undefined,
+        persistencePath: undefined,
+        restoreWorkspaceId: undefined,
+        persistenceExpiryHours: undefined,
+      });
+    });
+
+    it('旧画布缺少 agent-main 时应回退为全量节点编译', () => {
+      const nodes = [
+        {
+          id: 'model-legacy',
+          type: 'agent',
+          data: { nodeType: 'llm-model', config: { modelId: 'claude-3-7-sonnet' } },
+        },
+        {
+          id: 'tool-legacy',
+          type: 'tool',
+          data: { nodeType: 'http-tool', config: { name: 'legacy-search' } },
+        },
+        {
+          id: 'sandbox-legacy',
+          type: 'tool',
+          data: { nodeType: 'sandbox', config: { enabled: true, cpuLimit: 1.5, memoryLimitMb: 768, timeoutSeconds: 120 } },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes as any[], []);
+
+      expect(config.modelConfig).toMatchObject({ modelId: 'claude-3-7-sonnet' });
+      expect(config.tools).toEqual([
+        expect.objectContaining({ name: 'legacy-search' }),
+      ]);
+      expect(config.sandboxConfig).toEqual(
+        expect.objectContaining({ cpu: 1.5, memory: 768, timeout: 120, disk: 1 }),
+      );
+    });
+
+    it('extractConversationSkillIds 应仅返回连接到 agent-main 的 skill', () => {
+      const nodes = [
+        { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+        {
+          id: 'skill-connected',
+          type: 'knowledge',
+          data: { nodeType: 'skill', config: { skillId: 'skill-1' } },
+        },
+        {
+          id: 'skill-orphan',
+          type: 'knowledge',
+          data: { nodeType: 'skill', config: { skillId: 'skill-2' } },
+        },
+      ];
+
+      const skillIds = (service as any).extractConversationSkillIds(nodes, [
+        { source: 'skill-connected', target: 'main', targetHandle: 'skills-in' },
+      ]);
+
+      expect(skillIds).toEqual(['skill-1']);
+    });
+
     it('knowledge-base 无 knowledgeBaseId 时应被忽略', () => {
       const nodes = [
         { id: 'n1', type: 'knowledge-base', data: {} },

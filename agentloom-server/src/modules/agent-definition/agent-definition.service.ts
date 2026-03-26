@@ -358,7 +358,7 @@ export class AgentDefinitionService {
 
   buildRuntimeConfigFromNodes(
     nodes: any[],
-    _edges: any[],
+    edges: any[],
     agentDefinitionId?: string,
   ): AgentRuntimeConfig {
     const config: AgentRuntimeConfig = {};
@@ -368,49 +368,117 @@ export class AgentDefinitionService {
     const subAgents: AgentSubAgentRef[] = [];
     const inputPreprocessors: AgentInputPreprocessor[] = [];
 
-    for (const node of nodes) {
-      const nodeType = node.type as string;
-      const data = (node.data ?? {}) as Record<string, any>;
+    const agentMainNode = nodes.find(
+      (node) => this.resolveNodeType(node) === 'agent-main',
+    );
+    const nodesById = new Map(
+      nodes
+        .filter((node) => typeof node?.id === 'string')
+        .map((node) => [node.id as string, node]),
+    );
+
+    const relevantEdges = agentMainNode
+      ? edges.filter(
+          (edge) =>
+            edge &&
+            typeof edge.source === 'string' &&
+            edge.target === agentMainNode.id,
+        )
+      : nodes
+          .filter((node) => typeof node?.id === 'string')
+          .map((node) => ({ source: node.id }));
+
+    const compiledNodeIds = new Set<string>();
+    this.extractConversationSkillIds(nodes, relevantEdges);
+
+    for (const edge of relevantEdges) {
+      const sourceNode = nodesById.get(edge.source) ?? edge;
+      const nodeId = typeof sourceNode?.id === 'string' ? sourceNode.id : undefined;
+      if (nodeId && compiledNodeIds.has(`${nodeId}:${edge.targetHandle ?? '*'}`)) {
+        continue;
+      }
+
+      const nodeType = this.resolveNodeType(sourceNode);
+      const data = this.resolveNodeData(sourceNode);
+      const targetHandle =
+        typeof edge?.targetHandle === 'string' ? edge.targetHandle : undefined;
 
       switch (nodeType) {
         case 'llm-model': {
-          config.modelConfig = this.extractModelConfig(data);
+          if (!agentMainNode || targetHandle === 'model-in') {
+            config.modelConfig = this.extractModelConfig(data);
+          }
           break;
         }
 
         case 'http-tool':
         case 'code-tool':
         case 'mcp-tool': {
-          const tool = this.extractToolBinding(node.id, data, nodeType);
-          if (tool) tools.push(tool);
+          if (!agentMainNode || targetHandle === 'tools-in') {
+            const tool = this.extractToolBinding(
+              nodeId ?? nodeType,
+              data,
+              nodeType,
+            );
+            if (tool) tools.push(tool);
+          }
           break;
         }
 
         case 'knowledge-base': {
-          const kb = this.extractKnowledgeBinding(data);
-          if (kb) knowledgeBindings.push(kb);
+          if (!agentMainNode || targetHandle === 'knowledge-in') {
+            const kb = this.extractKnowledgeBinding(data);
+            if (kb) knowledgeBindings.push(kb);
+          }
           break;
         }
 
         case 'sub-agent': {
-          const ref = this.extractSubAgentRef(data);
-          if (ref) subAgents.push(ref);
+          if (!agentMainNode || targetHandle === 'sub-agents-in') {
+            const ref = this.extractSubAgentRef(data);
+            if (ref) subAgents.push(ref);
+          }
           break;
         }
 
         case 'input-preprocessor': {
-          const preprocessor = this.extractInputPreprocessor(data);
-          if (preprocessor) inputPreprocessors.push(preprocessor);
+          if (!agentMainNode || targetHandle === 'input-preprocessor-in') {
+            const preprocessor = this.extractInputPreprocessor(data);
+            if (preprocessor) inputPreprocessors.push(preprocessor);
+          }
           break;
         }
 
         case 'smart-routing': {
-          config.routingConfig = this.extractRoutingConfig(data);
+          if (!agentMainNode || targetHandle === 'model-in') {
+            config.routingConfig = this.extractRoutingConfig(data);
+          }
+          break;
+        }
+
+        case 'sandbox': {
+          if (!agentMainNode || targetHandle === 'sandbox-in') {
+            const sandboxConfig = this.extractSandboxConfig(data);
+            if (sandboxConfig) {
+              config.sandboxConfig = sandboxConfig;
+            }
+          }
+          break;
+        }
+
+        case 'skill': {
+          if (!agentMainNode || targetHandle === 'skills-in') {
+            this.extractSkillId(sourceNode);
+          }
           break;
         }
 
         default:
           break;
+      }
+
+      if (nodeId) {
+        compiledNodeIds.add(`${nodeId}:${targetHandle ?? '*'}`);
       }
     }
 
@@ -681,12 +749,25 @@ export class AgentDefinitionService {
   private extractInputPreprocessor(
     data: Record<string, any>,
   ): AgentInputPreprocessor | null {
-    const type = data.preprocessorType ?? data.type;
+    const type = data.preprocessorType ?? data.transformType ?? data.type;
     if (!type) return null;
+
+    const nestedConfig =
+      data.config && typeof data.config === 'object' && !Array.isArray(data.config)
+        ? (data.config as Record<string, any>)
+        : null;
+    const resolvedConfig =
+      data.preprocessorConfig ??
+      (nestedConfig &&
+      (nestedConfig.preprocessorType !== undefined ||
+        nestedConfig.transformType !== undefined ||
+        nestedConfig.type !== undefined)
+        ? nestedConfig.config ?? nestedConfig.preprocessorConfig
+        : data.config);
 
     return {
       type,
-      config: data.config ?? data.preprocessorConfig,
+      config: resolvedConfig,
     };
   }
 
@@ -697,6 +778,89 @@ export class AgentDefinitionService {
       strategy: data.strategy ?? 'FALLBACK_CHAIN',
       candidateModelIds: data.candidateModelIds ?? data.candidate_model_ids,
       fallbackModelId: data.fallbackModelId ?? data.fallback_model_id,
+    };
+  }
+
+  private resolveNodeType(node: any): string {
+    const nodeType = node?.data?.nodeType;
+    if (typeof nodeType === 'string' && nodeType.length > 0) {
+      return nodeType;
+    }
+
+    return typeof node?.type === 'string' ? node.type : '';
+  }
+
+  private resolveNodeData(node: any): Record<string, any> {
+    const data =
+      node?.data && typeof node.data === 'object' && !Array.isArray(node.data)
+        ? (node.data as Record<string, any>)
+        : {};
+    const config =
+      data.config && typeof data.config === 'object' && !Array.isArray(data.config)
+        ? (data.config as Record<string, any>)
+        : {};
+
+    return {
+      ...config,
+      ...data,
+    };
+  }
+
+  private extractConversationSkillIds(nodes: any[], edges: any[]): string[] {
+    const skillNodes = nodes.filter(
+      (node) => this.resolveNodeType(node) === 'skill',
+    );
+    if (!skillNodes.length) {
+      return [];
+    }
+
+    const connectedNodeIds = new Set<string>();
+    for (const edge of edges) {
+      if (typeof edge?.source === 'string') {
+        connectedNodeIds.add(edge.source);
+      }
+      if (typeof edge?.target === 'string') {
+        connectedNodeIds.add(edge.target);
+      }
+    }
+
+    const connectedSkillNodes = skillNodes.filter((node) =>
+      connectedNodeIds.has(node.id),
+    );
+    const activeSkillNodes = connectedSkillNodes.length
+      ? connectedSkillNodes
+      : skillNodes;
+
+    return [...new Set(activeSkillNodes.map((node) => this.extractSkillId(node)))].filter(
+      (skillId): skillId is string =>
+        typeof skillId === 'string' && skillId.length > 0,
+    );
+  }
+
+  private extractSkillId(node: any): string | null {
+    const data = this.resolveNodeData(node);
+    const skillId = data.skillId ?? data.skill_id;
+    return typeof skillId === 'string' && skillId.trim().length > 0
+      ? skillId.trim()
+      : null;
+  }
+
+  private extractSandboxConfig(
+    data: Record<string, any>,
+  ): AgentRuntimeConfig['sandboxConfig'] | null {
+    if (data.enabled === false) {
+      return null;
+    }
+
+    return {
+      cpu: data.cpu ?? data.cpuLimit ?? 1,
+      memory: data.memory ?? data.memoryLimitMb ?? 512,
+      disk: data.disk ?? 1,
+      timeout: data.timeout ?? data.timeoutSeconds ?? 300,
+      lifecycleMode: data.lifecycleMode,
+      persistencePath: data.persistencePath,
+      restoreWorkspaceId: data.restoreWorkspaceId,
+      persistenceExpiryHours: data.persistenceExpiryHours,
     };
   }
 }
