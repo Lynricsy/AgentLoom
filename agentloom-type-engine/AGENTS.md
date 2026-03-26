@@ -8,7 +8,7 @@ Rust WASM 端口兼容性检查器。判断工作流画布中两个节点的端�
 src/
 ├── lib.rs              # 入口, pub mod 声明, #![deny(clippy::unwrap_used)]
 ├── types/
-│   ├── port.rs         # PortDataType (9 variants), PortDirection, PortDefinition
+│   ├── port.rs         # PortDataType (10 variants), PortDirection, PortDefinition
 │   ├── schema.rs       # TypeSchema = Scalar|Object|Array (custom serde)
 │   └── constraint.rs   # TypeConstraint (6 variants) — 已定义但未在 checker 中强制执行
 ├── checker/
@@ -37,7 +37,7 @@ src/
 - **PARTIAL**: 部分字段匹配 (字段相似度阈值 0.55/0.85，最多 6 候选)
 - **INCOMPATIBLE**: 无法连接
 
-`ComparisonState` 防循环引用。`PortDataType` 9 种: model/text/json/image/audio/tool/sandbox/knowledge/skill。
+`ComparisonState` 防循环引用。`PortDataType` 10 种: model/text/json/image/audio/tool/sandbox/knowledge/skill/agent。
 
 ## 构建
 
@@ -58,7 +58,7 @@ wasm-pack build --target bundler --release
 
 ## 测试
 
-- `tests/` — 10 checker + 7 validator + 5 WASM browser tests
+- `tests/` — 13 checker + 7 validator + 5 WASM browser tests
 - `benches/` — criterion 基准测试 (compatibility_bench)
 - WASM 测试: `wasm-bindgen-test`
 
@@ -72,7 +72,7 @@ wasm-pack build --target bundler --release
 
 ## 对齐约束
 
-4 级兼容性结果与 9 种 PortDataType 为 canonical 定义，在以下 4 处独立维护，存在漂移风险：
+4 级兼容性结果与 10 种 PortDataType 为 canonical 定义，在以下 4 处独立维护，存在漂移风险：
 
 1. **Rust type-engine** — `src/types/port.rs`
 2. **Server schema** — Drizzle enum + Zod
