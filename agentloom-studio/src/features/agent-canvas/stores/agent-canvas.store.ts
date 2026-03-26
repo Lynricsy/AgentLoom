@@ -13,6 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { apiClient } from '@/shared/api/client';
+import type { ApiResponse } from '@/shared/types/api';
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
@@ -352,9 +353,10 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
 
           loadAgent: async (agentId) => {
             try {
-              const agent = await apiClient
+              const response = await apiClient
                 .get(`agent-definitions/${agentId}`)
-                .json<AgentDefinition>();
+                .json<ApiResponse<AgentDefinition>>();
+              const agent = response.data;
               get().actions.applyServerSnapshot({
                 nodes: agent.nodes,
                 edges: agent.edges,
@@ -441,7 +443,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
 
             try {
               await apiClient
-                .post(`agent-definitions/${agentId}/compile`)
+                .post(`agent-definitions/${agentId}/compile`, { json: {} })
                 .json();
 
               set((state) => {
