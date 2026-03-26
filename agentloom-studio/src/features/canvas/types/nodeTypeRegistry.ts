@@ -561,6 +561,20 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         maxConnections: null,
         description: 'Agent 可加载的技能指令',
       }),
+      createPort('tools-in', '扩展工具', 'input', 'tool', {
+        multiple: true,
+        maxConnections: null,
+        description: '外部工具扩展（合并到 Agent 工具集）',
+      }),
+      createPort('sub-agents-in', '子 Agent', 'input', 'agent', {
+        multiple: true,
+        maxConnections: null,
+        description: '委托子 Agent（可被主 Agent 调度）',
+      }),
+      createPort('schema-in', '输出 Schema', 'input', 'json', {
+        maxConnections: 1,
+        description: '结构化输出 Schema（连接后 Agent 输出为 JSON）',
+      }),
     ],
     outputPorts: [
       createPort('agent-output', 'Agent 输出', 'output', 'text', {

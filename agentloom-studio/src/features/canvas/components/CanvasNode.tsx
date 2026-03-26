@@ -294,6 +294,16 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     ).length
   }, [canvasEdges, data.nodeType, id, inputPorts])
 
+  const hasSchemaConnection = useMemo(() => {
+    if (data.nodeType !== 'agent') {
+      return false
+    }
+
+    return canvasEdges.some(
+      (edge) => edge.target === id && edge.targetHandle === 'schema-in',
+    )
+  }, [canvasEdges, data.nodeType, id])
+
   const { setHoveredNodeId } = useCanvasActions()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -527,7 +537,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           ) : data.nodeType === 'memory' ? (
             <MemoryNodeBody config={data.config} />
           ) : data.nodeType === 'agent' ? (
-            <AgentNodeBody data={data as WorkflowAgentNodeData} />
+            <AgentNodeBody data={data as WorkflowAgentNodeData} hasSchemaConnection={hasSchemaConnection} />
           ) : data.nodeType === 'skill' ? (
             <SkillBody data={data} />
           ) : (

@@ -1,12 +1,13 @@
 import { memo } from 'react'
-import { Brain, Container } from 'lucide-react'
+import { Brain, Braces, Container, Type } from 'lucide-react'
 import type { AgentNodeData } from '@/features/agent/types'
 
 interface AgentNodeBodyProps {
   data: AgentNodeData
+  hasSchemaConnection?: boolean
 }
 
-export const AgentNodeBody = memo(function AgentNodeBody({ data }: AgentNodeBodyProps) {
+export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnection = false }: AgentNodeBodyProps) {
   const agentName = typeof data.config?.agentName === 'string'
     ? data.config.agentName
     : null
@@ -34,6 +35,19 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data }: AgentNodeBody
           <span>Sandbox 已连接</span>
         </div>
       )}
+      <div className="flex items-center gap-1 text-[10px]">
+        {hasSchemaConnection ? (
+          <>
+            <Braces className="h-3 w-3 text-emerald-400" />
+            <span className="text-emerald-400 font-medium">JSON 输出模式</span>
+          </>
+        ) : (
+          <>
+            <Type className="h-3 w-3 text-muted-foreground" />
+            <span className="text-muted-foreground">文本输出模式</span>
+          </>
+        )}
+      </div>
     </div>
   )
 })
