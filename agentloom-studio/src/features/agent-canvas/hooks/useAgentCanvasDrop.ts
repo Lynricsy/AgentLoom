@@ -1,11 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, type MutableRefObject } from 'react';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { DRAG_TRANSFER_TYPE } from '@/features/canvas/components/NodePalette';
 import type { PaletteNodeItem, CanvasNodeData } from '@/features/canvas/types';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
 import {
   useAgentCanvasActions,
-  useAgentCanvasNodes,
+  useAgentCanvasStore,
   canAddNodeType,
 } from '../stores/agent-canvas.store';
 
@@ -13,9 +13,8 @@ function generateNodeId(): string {
   return crypto?.randomUUID?.() ?? `node-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function useAgentCanvasDrop(reactFlowInstance: ReactFlowInstance<any, any> | null) {
+export function useAgentCanvasDrop(reactFlowRef: MutableRefObject<ReactFlowInstance<any, any> | null>) {
   const { addNode } = useAgentCanvasActions();
-  const nodes = useAgentCanvasNodes();
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -27,7 +26,8 @@ export function useAgentCanvasDrop(reactFlowInstance: ReactFlowInstance<any, any
       event.preventDefault();
 
       const raw = event.dataTransfer.getData(DRAG_TRANSFER_TYPE);
-      if (!raw || !reactFlowInstance) return;
+      const instance = reactFlowRef.current;
+      if (!raw || !instance) return;
 
       let item: PaletteNodeItem;
       try {
@@ -39,9 +39,10 @@ export function useAgentCanvasDrop(reactFlowInstance: ReactFlowInstance<any, any
       const config = getAgentNodeTypeConfig(item.type);
       if (!config) return;
 
+      const nodes = useAgentCanvasStore.getState().nodes;
       if (!canAddNodeType(item.type, nodes)) return;
 
-      const position = reactFlowInstance.screenToFlowPosition({
+      const position = instance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
@@ -63,7 +64,7 @@ export function useAgentCanvasDrop(reactFlowInstance: ReactFlowInstance<any, any
         data: nodeData,
       });
     },
-    [reactFlowInstance, nodes, addNode],
+    [reactFlowRef, addNode],
   );
 
   return { onDragOver, onDrop };

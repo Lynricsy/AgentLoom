@@ -14,7 +14,6 @@ import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
   useAgentCanvasActions,
-  useAgentCanvasStore,
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
 import { AgentGlobalConfigBar } from './AgentGlobalConfigBar';
@@ -54,7 +53,7 @@ export const AgentCanvas = memo(function AgentCanvas({
   } = useAgentCanvasActions();
 
   const reactFlowRef = useRef<ReactFlowInstance<any, any> | null>(null);
-  const { onDragOver, onDrop } = useAgentCanvasDrop(reactFlowRef.current);
+  const { onDragOver, onDrop } = useAgentCanvasDrop(reactFlowRef);
 
   useEffect(() => {
     void loadAgent(agentId);
@@ -93,7 +92,7 @@ export const AgentCanvas = memo(function AgentCanvas({
     [setViewport],
   );
 
-  const defaultViewport = useAgentCanvasStore((s) => s.viewport);
+  const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
   return (
     <div className={cn('relative h-full w-full', className)}>

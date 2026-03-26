@@ -9,6 +9,7 @@ import type {
 } from '@xyflow/react';
 import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { apiClient } from '@/shared/api/client';
@@ -153,14 +154,28 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           onNodesChange: (changes) => {
             set((state) => {
               state.nodes = applyNodeChanges(changes, state.nodes);
-              state.isDirty = true;
+              // 仅对实质修改标脏：新增/删除/拖拽结束，排除 dimension/select 等内部事件
+              const isDirtyChange = changes.some(
+                (c) =>
+                  c.type === 'remove' ||
+                  c.type === 'add' ||
+                  (c.type === 'position' && c.dragging === false),
+              );
+              if (isDirtyChange) {
+                state.isDirty = true;
+              }
             });
           },
 
           onEdgesChange: (changes) => {
             set((state) => {
               state.edges = applyEdgeChanges(changes, state.edges);
-              state.isDirty = true;
+              const isDirtyChange = changes.some(
+                (c) => c.type === 'remove' || c.type === 'add',
+              );
+              if (isDirtyChange) {
+                state.isDirty = true;
+              }
             });
           },
 
@@ -379,7 +394,9 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           },
 
           reset: () => {
-            set(createInitialState());
+            set((state) => {
+              Object.assign(state, createInitialState());
+            });
           },
         },
       })),
@@ -401,11 +418,13 @@ export const useAgentCanvasSelectedNodeId = () =>
   useAgentCanvasStore((s) => s.selectedNodeId);
 
 export const useAgentCanvasSaveStatus = () =>
-  useAgentCanvasStore((s) => ({
-    isDirty: s.isDirty,
-    isSaving: s.isSaving,
-    lastSavedAt: s.lastSavedAt,
-  }));
+  useAgentCanvasStore(
+    useShallow((s) => ({
+      isDirty: s.isDirty,
+      isSaving: s.isSaving,
+      lastSavedAt: s.lastSavedAt,
+    })),
+  );
 
 export const useAgentGlobalSandboxConfig = () =>
   useAgentCanvasStore((s) => s.globalSandboxConfig);
