@@ -1,3 +1,0 @@
-Total messages: 1 (Errors: 0, Warnings: 1)
-
-[WARNING] [@tanstack/router-devtools] This package has moved to @tanstack/react-router-devtools. Please switch to the new package at your earliest convenience, as this package will be dropped in the next major version release. @ http://localhost:8080/assets/index-DZdbtfh5.js:55
