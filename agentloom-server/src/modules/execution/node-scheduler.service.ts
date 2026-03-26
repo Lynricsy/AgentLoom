@@ -63,6 +63,8 @@ import {
 import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { McpService } from '../mcp/mcp.service';
+import type { McpRuntimeConnection } from '../mcp/mcp.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -110,6 +112,8 @@ export class NodeSchedulerService {
     @Optional()
     @Inject(SkillResolverService)
     private readonly skillResolverService?: SkillResolverService,
+    @Optional()
+    private readonly mcpService?: McpService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -283,7 +287,7 @@ export class NodeSchedulerService {
           'queued',
         );
         {
-          const { data, options } = this.buildAgentTaskJobData({
+          const { data, options } = await this.buildAgentTaskJobData({
             executionId,
             tenantId,
             step,
@@ -337,7 +341,7 @@ export class NodeSchedulerService {
           'queued',
         );
         {
-          const { data, options } = this.buildAgentTaskJobData({
+          const { data, options } = await this.buildAgentTaskJobData({
             executionId,
             tenantId,
             step,
@@ -355,7 +359,7 @@ export class NodeSchedulerService {
           'queued',
         );
         {
-          const { data, options } = this.buildAgentTaskJobData({
+          const { data, options } = await this.buildAgentTaskJobData({
             executionId,
             tenantId,
             step,
@@ -1554,16 +1558,16 @@ export class NodeSchedulerService {
     return ids;
   }
 
-  private buildAgentTaskJobData(params: {
+  private async buildAgentTaskJobData(params: {
     executionId: string;
     tenantId: string;
     step: ExecutionStep;
     input: Record<string, unknown>;
     hasSandbox?: boolean;
-  }): {
+  }): Promise<{
     data: AgentTaskJobData;
     options?: { attempts: number };
-  } {
+  }> {
     const { executionId, tenantId, step, input, hasSandbox } = params;
     const smartRouting = this.extractSmartRoutingContext(input);
     const nodeData = { ...(step.nodeData ?? {}) };
@@ -1571,6 +1575,8 @@ export class NodeSchedulerService {
     if (smartRouting) {
       nodeData.llmModelConfigId = smartRouting.selectedModelId;
     }
+
+    const mcpServers = await this.resolveMcpServersFromInput(input, tenantId);
 
     return {
       data: {
@@ -1581,11 +1587,61 @@ export class NodeSchedulerService {
         nodeData,
         ...(smartRouting ? { smartRouting } : {}),
         ...(hasSandbox ? { hasSandbox } : {}),
+        ...(mcpServers ? { workflowContext: { mcpServers } } : {}),
       },
       ...(this.isFallbackChainStrategy(smartRouting?.strategy)
         ? { options: { attempts: 1 } }
         : {}),
     };
+  }
+
+  private async resolveMcpServersFromInput(
+    input: Record<string, unknown>,
+    tenantId: string,
+  ): Promise<Record<string, McpRuntimeConnection> | undefined> {
+    if (!this.mcpService) return undefined;
+
+    const configIds = this.extractMcpServerConfigIds(input);
+    if (configIds.length === 0) return undefined;
+
+    const servers: Record<string, McpRuntimeConnection> = {};
+
+    for (const configId of configIds) {
+      try {
+        servers[configId] = await this.mcpService.resolveRuntimeConnection(
+          configId,
+          tenantId,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve MCP server config ${configId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return Object.keys(servers).length > 0 ? servers : undefined;
+  }
+
+  private extractMcpServerConfigIds(
+    input: Record<string, unknown>,
+  ): string[] {
+    const ids = new Set<string>();
+
+    for (const value of Object.values(input)) {
+      const record = this.isRecord(value) ? value : null;
+      if (!record) continue;
+
+      if (record.type === 'mcp-tool' && typeof record.mcpServerConfigId === 'string') {
+        ids.add(record.mcpServerConfigId);
+        continue;
+      }
+
+      if (this.isRecord(record.result) && record.result.type === 'mcp-tool' && typeof record.result.mcpServerConfigId === 'string') {
+        ids.add(record.result.mcpServerConfigId);
+      }
+    }
+
+    return [...ids];
   }
 
   private resolveSmartRoutingStrategyValue(

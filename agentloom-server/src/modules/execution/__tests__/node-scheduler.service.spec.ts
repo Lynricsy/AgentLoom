@@ -43,6 +43,7 @@ import { PluginService } from '../../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import { SharedResourceRegistry } from '../../shared-resources/shared-resource-registry';
+import { McpService } from '../../mcp/mcp.service';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -2493,6 +2494,388 @@ describe('NodeSchedulerService', () => {
 
       expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
       expect(mockStateMachine.markExecutionFailed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('MCP server injection', () => {
+    const MCP_CONFIG_ID_1 = '019577a0-0000-7000-8000-mcp000000001';
+    const MCP_CONFIG_ID_2 = '019577a0-0000-7000-8000-mcp000000002';
+
+    const mockMcpConnection1 = {
+      transportType: 'sse' as const,
+      url: 'https://mcp-server-1.example.com/sse',
+      headers: { Authorization: 'Bearer token1' },
+    };
+    const mockMcpConnection2 = {
+      transportType: 'stdio' as const,
+      command: '/usr/bin/mcp-server',
+      args: ['--port', '3000'],
+    };
+
+    let mcpService: NodeSchedulerService;
+    let mcpDb: Record<string, ReturnType<typeof vi.fn>>;
+    let mcpMockQueue: { add: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> };
+    let mcpMockStateMachine: {
+      updateStepStatus: ReturnType<typeof vi.fn>;
+      updateExecutionStatus: ReturnType<typeof vi.fn>;
+      broadcastAgentEvent: ReturnType<typeof vi.fn>;
+      markExecutionFailed: ReturnType<typeof vi.fn>;
+    };
+    let mockMcpService: {
+      resolveRuntimeConnection: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(async () => {
+      mcpDb = {
+        select: vi.fn(),
+        insert: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        execute: vi.fn(),
+      };
+      mcpMockQueue = {
+        add: vi.fn().mockResolvedValue(undefined),
+        getJob: vi.fn().mockResolvedValue(null),
+      };
+      mcpMockStateMachine = {
+        updateStepStatus: vi.fn().mockResolvedValue(undefined),
+        updateExecutionStatus: vi.fn().mockResolvedValue(undefined),
+        broadcastAgentEvent: vi.fn(),
+        markExecutionFailed: vi.fn().mockResolvedValue(undefined),
+      };
+      mockMcpService = {
+        resolveRuntimeConnection: vi.fn(),
+      };
+
+      const module = await Test.createTestingModule({
+        providers: [
+          NodeSchedulerService,
+          { provide: DRIZZLE, useValue: mcpDb },
+          { provide: DagResolverService, useValue: { resolveDag: vi.fn() } },
+          { provide: StepStateMachineService, useValue: mcpMockStateMachine },
+          { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mcpMockQueue },
+          { provide: getQueueToken(PLUGIN_EXECUTION_QUEUE), useValue: { add: vi.fn(), getJob: vi.fn() } },
+          { provide: SandboxService, useValue: { createSandboxSession: vi.fn(), getSandboxSession: vi.fn(), destroySandbox: vi.fn() } },
+          { provide: CheckpointService, useValue: { saveCheckpoint: vi.fn() } },
+          { provide: EventBridgeService, useValue: { emitInterventionResolved: vi.fn(), emitToolPermissionResolved: vi.fn() } },
+          { provide: InterventionPolicyService, useValue: { resolvePolicy: vi.fn() } },
+          { provide: SmartRoutingService, useValue: { recordDecision: vi.fn(), getHistoricalMetrics: vi.fn() } },
+          { provide: RouterRegistry, useValue: { get: vi.fn() } },
+          { provide: HealthMonitorService, useValue: { filterHealthyCandidates: vi.fn() } },
+          { provide: EmbeddingIntegrationService, useValue: { generateEmbedding: vi.fn() } },
+          { provide: RbacCacheService, useValue: { getUserRole: vi.fn() } },
+          { provide: PluginService, useValue: { findActiveByPluginId: vi.fn() } },
+          { provide: AgentAdapterFactory, useValue: { createFromAgentDefinition: vi.fn() } },
+          { provide: SharedResourceRegistry, useValue: { createResource: vi.fn() } },
+          { provide: McpService, useValue: mockMcpService },
+        ],
+      }).compile();
+
+      mcpService = module.get(NodeSchedulerService);
+    });
+
+    it('agent 节点的 input 包含 MCP tool 描述符时注入 mcpServers', async () => {
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-001' },
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
+        MCP_CONFIG_ID_1,
+        TENANT_ID,
+      );
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          workflowContext: {
+            mcpServers: {
+              [MCP_CONFIG_ID_1]: mockMcpConnection1,
+            },
+          },
+        }),
+        undefined,
+      );
+    });
+
+    it('nested result 结构的 MCP 描述符也能正确提取', async () => {
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: {
+            result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'fetch' },
+          },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {},
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
+        MCP_CONFIG_ID_1,
+        TENANT_ID,
+      );
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          workflowContext: {
+            mcpServers: {
+              [MCP_CONFIG_ID_1]: mockMcpConnection1,
+            },
+          },
+        }),
+        undefined,
+      );
+    });
+
+    it('多个 MCP 工具引用同一 configId 时去重', async () => {
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp-1',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+        }),
+        makeStep({
+          id: 'step-mcp-2',
+          nodeId: 'mcp-2',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'fetch' },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {},
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      // resolveRuntimeConnection 仅被调用一次（去重）
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledTimes(1);
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          workflowContext: {
+            mcpServers: {
+              [MCP_CONFIG_ID_1]: mockMcpConnection1,
+            },
+          },
+        }),
+        undefined,
+      );
+    });
+
+    it('多个不同 configId 的 MCP 工具都被解析', async () => {
+      mockMcpService.resolveRuntimeConnection
+        .mockResolvedValueOnce(mockMcpConnection1)
+        .mockResolvedValueOnce(mockMcpConnection2);
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp-1',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+        }),
+        makeStep({
+          id: 'step-mcp-2',
+          nodeId: 'mcp-2',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_2, toolName: 'exec' },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {},
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledTimes(2);
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          workflowContext: {
+            mcpServers: {
+              [MCP_CONFIG_ID_1]: mockMcpConnection1,
+              [MCP_CONFIG_ID_2]: mockMcpConnection2,
+            },
+          },
+        }),
+        undefined,
+      );
+    });
+
+    it('input 中没有 MCP 工具描述符时不注入 workflowContext', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B')],
+        [makeEdge('A', 'B')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { answer: 'hello' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-b' },
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, steps);
+
+      expect(mockMcpService.resolveRuntimeConnection).not.toHaveBeenCalled();
+      const jobData = mcpMockQueue.add.mock.calls[0]?.[1];
+      expect(jobData).not.toHaveProperty('workflowContext');
+    });
+
+    it('MCP 配置解析失败时优雅降级（跳过该服务器、记录警告）', async () => {
+      mockMcpService.resolveRuntimeConnection.mockRejectedValue(
+        new Error('MCP server config not found'),
+      );
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {},
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      // 即使解析失败也不会阻止 agent 任务入队
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.not.objectContaining({ workflowContext: expect.anything() }),
+        undefined,
+      );
+    });
+
+    it('部分 MCP 配置解析失败时，成功的仍然注入', async () => {
+      mockMcpService.resolveRuntimeConnection
+        .mockResolvedValueOnce(mockMcpConnection1)
+        .mockRejectedValueOnce(new Error('Config not found'));
+
+      const snapshot = makeSnapshot(
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-mcp-1',
+          nodeId: 'mcp-1',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+        }),
+        makeStep({
+          id: 'step-mcp-2',
+          nodeId: 'mcp-2',
+          status: 'completed',
+          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_2, toolName: 'exec' },
+        }),
+        makeStep({
+          id: 'step-agent',
+          nodeId: 'agent-1',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {},
+        }),
+      ];
+
+      mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+
+      // 只成功解析的 config 被注入
+      expect(mcpMockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          workflowContext: {
+            mcpServers: {
+              [MCP_CONFIG_ID_1]: mockMcpConnection1,
+            },
+          },
+        }),
+        undefined,
+      );
     });
   });
 });

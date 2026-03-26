@@ -78,6 +78,21 @@ export class McpService {
     return getTenantDb(this.db);
   }
 
+  /**
+   * 根据已保存的 MCP 服务器配置 ID 解析出运行时连接信息（含解密凭证）。
+   * 供 NodeSchedulerService 在构建 agent task job data 时注入 mcpServers。
+   */
+  async resolveRuntimeConnection(
+    mcpServerConfigId: string,
+    tenantId: string,
+  ): Promise<McpRuntimeConnection> {
+    const config = await this.getSavedConfigOrThrow(
+      mcpServerConfigId,
+      tenantId,
+    );
+    return this.buildConnectionFromSavedConfig(config);
+  }
+
   async testConnection(
     dto: TestMcpConnectionDto,
   ): Promise<TestMcpConnectionResponse> {
