@@ -58,6 +58,7 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'sub-agent',
   'input-preprocessor',
   'skill',
+  'sandbox',
 ] as const satisfies readonly AgentCanvasNodeType[]
 
 export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
@@ -77,9 +78,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('text-out', '文本输出', 'output', 'text', {
-          multiple: true,
-          description: 'LLM 生成的文本响应',
+        createPort('model-output', '模型输出', 'output', 'model', {
+          description: '模型配置输出，连接到 Agent Main',
         }),
       ],
       configSchema: EMPTY_AGENT_CONFIG_SCHEMA,
@@ -138,8 +138,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('result-out', '响应结果', 'output', 'json', {
-          description: 'HTTP 响应数据',
+        createPort('tool-output', '工具输出', 'output', 'tool', {
+          description: 'HTTP 工具执行结果',
         }),
       ],
       configSchema: {
@@ -173,11 +173,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('text-output', '文本输出', 'output', 'text', {
-          description: '文本格式执行结果',
-        }),
-        createPort('json-output', 'JSON 输出', 'output', 'json', {
-          description: 'JSON 格式执行结果',
+        createPort('tool-output', '工具输出', 'output', 'tool', {
+          description: '代码执行工具结果',
         }),
       ],
       configSchema: {
@@ -208,11 +205,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('text-result', '文本结果', 'output', 'text', {
-          description: '工具执行文本输出',
-        }),
-        createPort('json-result', 'JSON 结果', 'output', 'json', {
-          description: '工具执行 JSON 输出',
+        createPort('tool-output', '工具输出', 'output', 'tool', {
+          description: 'MCP 工具执行结果',
         }),
       ],
       configSchema: EMPTY_AGENT_CONFIG_SCHEMA,
@@ -234,7 +228,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('results-out', '检索结果', 'output', 'json', {
+        createPort('knowledge-output', '知识输出', 'output', 'knowledge', {
           description: '检索到的知识条目',
         }),
       ],
@@ -266,9 +260,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('output', '输出', 'output', 'text', {
-          multiple: true,
-          description: '子 Agent 执行结果',
+        createPort('agent-output', 'Agent 输出', 'output', 'agent', {
+          description: '子 Agent 引用输出',
         }),
       ],
       configSchema: {
@@ -303,15 +296,8 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
       ],
       outputPorts: [
-        createPort('text-output', '文本输出', 'output', 'text', {
-          multiple: true,
-          maxConnections: null,
-          description: '文本格式转换结果',
-        }),
         createPort('json-output', 'JSON 输出', 'output', 'json', {
-          multiple: true,
-          maxConnections: null,
-          description: 'JSON 格式转换结果',
+          description: '预处理转换结果',
         }),
       ],
       configSchema: {
