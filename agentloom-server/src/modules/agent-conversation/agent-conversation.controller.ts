@@ -76,6 +76,22 @@ export class AgentConversationController {
     );
   }
 
+  @Get('agent-conversations/:id/messages')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'List messages for a conversation' })
+  @ApiResponse({ status: 200, description: 'Paginated message list' })
+  async listMessages(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.conversationService.listMessages(
+      id,
+      page ? parseInt(page, 10) : undefined,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+  }
+
   @Post('agent-conversations/:id/messages')
   @Roles('operator', 'creator', 'admin', 'owner')
   @HttpCode(HttpStatus.CREATED)

@@ -49,6 +49,7 @@ import { PrivateDeploymentModule } from './modules/private-deployment/private-de
 import { AcpGatewayModule } from './modules/acp-gateway/acp-gateway.module';
 import { AgentDefinitionModule } from './modules/agent-definition/agent-definition.module';
 import { AgentConversationModule } from './modules/agent-conversation/agent-conversation.module';
+import { AgentExecutionModule } from './modules/agent-execution/agent-execution.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AgentMemoryModule } from './modules/agent-memory/agent-memory.module';
 import { SkillModule } from './modules/skill/skill.module';
@@ -133,6 +134,7 @@ function createThrottlerOptions(configService: ConfigService) {
     AcpGatewayModule,
     AgentDefinitionModule,
     AgentConversationModule,
+    AgentExecutionModule,
     WorkspaceModule,
     AgentMemoryModule,
     SkillModule,

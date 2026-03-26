@@ -110,6 +110,50 @@ export class AgentConversationService {
     };
   }
 
+  async listMessages(
+    conversationId: string,
+    page = 1,
+    limit = 50,
+  ) {
+    const [conversation] = await this.tenantDb
+      .select({ id: agentConversations.id })
+      .from(agentConversations)
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found`,
+      );
+    }
+
+    const offset = (page - 1) * limit;
+
+    const [messages, [{ total }]] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(agentMessages)
+        .where(eq(agentMessages.conversationId, conversationId))
+        .orderBy(agentMessages.createdAt)
+        .limit(limit)
+        .offset(offset),
+      this.tenantDb
+        .select({ total: sql<number>`count(*)::int` })
+        .from(agentMessages)
+        .where(eq(agentMessages.conversationId, conversationId)),
+    ]);
+
+    return {
+      data: messages.map(serializeMessage),
+      meta: {
+        total,
+        page,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   async getDetail(
     conversationId: string,
     messagesPage = 1,
@@ -204,6 +248,12 @@ export class AgentConversationService {
     this.logger.log(
       `Message ${message.id} sent to conversation ${conversationId}`,
     );
+
+    this.eventEmitter.emit('agent-conversation.message-sent', {
+      conversationId,
+      tenantId,
+      messageId: message.id,
+    });
 
     return { data: serializeMessage(message) };
   }

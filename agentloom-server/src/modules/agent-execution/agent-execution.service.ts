@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
 
@@ -60,6 +61,21 @@ export class AgentExecutionService {
     private readonly executionQueue: Queue,
     private readonly conversationService: AgentConversationService,
   ) {}
+
+  @OnEvent('agent-conversation.message-sent')
+  async handleMessageSent(payload: {
+    conversationId: string;
+    tenantId: string;
+    messageId: string;
+  }): Promise<void> {
+    this.logger.debug(
+      `Received message-sent event for conversation ${payload.conversationId}, dispatching execution`,
+    );
+    await this.dispatchConversationExecution(
+      payload.conversationId,
+      payload.tenantId,
+    );
+  }
 
   async startConversation(
     conversationId: string,
