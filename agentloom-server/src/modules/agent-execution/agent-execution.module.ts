@@ -94,31 +94,6 @@ const agentExecutionWorkerProvider: Provider = {
   ],
 };
 
-const agentConversationGatewayProvider: Provider = {
-  provide: AgentConversationGateway,
-  useFactory: (
-    configService: ConfigService,
-    throttleService: ThrottleService,
-    eventBridge: EventBridgeService,
-    tokenBlacklistService: TokenBlacklistService,
-    agentExecutionService: AgentExecutionService,
-  ) =>
-    new AgentConversationGateway(
-      configService,
-      throttleService,
-      eventBridge,
-      tokenBlacklistService,
-      agentExecutionService,
-    ),
-  inject: [
-    ConfigService,
-    ThrottleService,
-    EventBridgeService,
-    TokenBlacklistService,
-    AgentExecutionService,
-  ],
-};
-
 @Module({
   imports: [
     ConfigModule,
@@ -136,7 +111,7 @@ const agentConversationGatewayProvider: Provider = {
   providers: [
     agentExecutionServiceProvider,
     agentExecutionWorkerProvider,
-    agentConversationGatewayProvider,
+    AgentConversationGateway,
     SubAgentToolsProvider,
   ],
   exports: [AgentExecutionService],
