@@ -1,0 +1,14 @@
+[GET] http://localhost:8080/socket.io/?EIO=4&transport=polling&t=h4rso9o6 => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[POST] http://localhost:8080/api/v1/agent-definitions/019d2a34-5d4c-7825-8c15-46c8868f1d01/conversations => [201] Created
+[POST] http://localhost:8080/socket.io/?EIO=4&transport=polling&t=h4runicn&sid=etHnKmoV0gahasESAAAG => [200] OK
+[GET] http://localhost:8080/socket.io/?EIO=4&transport=polling&t=h4ruo3cy&sid=etHnKmoV0gahasESAAAG => [200] OK
+[GET] http://localhost:8080/socket.io/?EIO=4&transport=polling&t=h4ry6e87&sid=etHnKmoV0gahasESAAAG => [200] OK
+[POST] http://localhost:8080/socket.io/?EIO=4&transport=polling&t=h4ry710c&sid=etHnKmoV0gahasESAAAG => [200] OK
+[GET] http://localhost:8080/api/v1/agent-conversations/019d2a35-82e9-763d-a45a-1dbc61c4d3a7/messages => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
+[GET] http://localhost:8080/api/v1/notifications/unread-count => [200] OK
