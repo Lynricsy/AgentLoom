@@ -105,3 +105,9 @@ api-page-check.png
 api-page-v2.png
 design_pic/
 studio-*.png
+node-compile-cache/
+/qa-*.png
+/qa-*.txt
+/qa-*.md
+/scenario-*.txt
+/agent-conversation-qa-*.png
