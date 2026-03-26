@@ -1124,6 +1124,325 @@ describe('AgentDefinitionService', () => {
       expect(config.subAgents![0].alias).toBe('workerA');
       expect(config.subAgents![1].alias).toBe('workerB');
     });
+
+    it('相同节点通过相同 targetHandle 重复连接到 agent-main 时只编译一次（compiledNodeIds 去重）', () => {
+      const nodes = [
+        { id: 'main', type: 'agent-main', data: {} },
+        { id: 'tool-1', type: 'http-tool', data: { url: 'https://api.example.com', method: 'GET' } },
+      ];
+      const edges = [
+        { source: 'tool-1', target: 'main', targetHandle: 'tools-in' },
+        { source: 'tool-1', target: 'main', targetHandle: 'tools-in' },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.tools).toHaveLength(1);
+      expect(config.tools![0].toolId).toBe('tool-1');
+    });
+
+    it('agent-main 存在但无任何连接边时应返回空配置（不触发 legacy fallback）', () => {
+      const nodes = [
+        { id: 'main', type: 'agent-main', data: {} },
+        { id: 'orphan', type: 'llm-model', data: { modelId: 'gpt-4' } },
+      ];
+      const edges: any[] = [];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.modelConfig).toBeUndefined();
+      expect(config.tools).toBeUndefined();
+      expect(config.knowledgeBindings).toBeUndefined();
+      expect(config.subAgents).toBeUndefined();
+    });
+
+    it('MCP 工具提供 mcpToolDefinitionId 时应生成 toolType: mcp 判别联合', () => {
+      const nodes = [
+        {
+          id: 'mcp-1',
+          type: 'mcp-tool',
+          data: {
+            mcpToolDefinitionId: 'def-123',
+            mcpServerConfigId: 'cfg-456',
+            toolName: 'search',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.mcpToolDefinitionId).toBe('def-123');
+      expect(tool.mcpServerConfigId).toBe('cfg-456');
+      expect(tool.toolName).toBe('search');
+      expect(tool.inputSchema).toEqual({ type: 'object', properties: {} });
+    });
+
+    it('MCP 工具仅提供 mcpServerConfigId + toolName 也应生成 toolType: mcp', () => {
+      const nodes = [
+        {
+          id: 'mcp-2',
+          type: 'mcp-tool',
+          data: { mcpServerConfigId: 'cfg-789', toolName: 'execute' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.mcpServerConfigId).toBe('cfg-789');
+      expect(tool.toolName).toBe('execute');
+    });
+
+    it('MCP 工具缺少关键字段时不应设置 toolType（退化为基础 binding）', () => {
+      const nodes = [
+        {
+          id: 'mcp-3',
+          type: 'mcp-tool',
+          data: { mcpServerConfigId: 'cfg-only' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBeUndefined();
+      expect(tool.mcpServerConfigId).toBe('cfg-only');
+    });
+
+    it('HTTP 工具提供 url + method 时应生成 toolType: http 判别联合', () => {
+      const nodes = [
+        {
+          id: 'http-1',
+          type: 'http-tool',
+          data: { url: 'https://api.example.com/users', method: 'POST' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('http');
+      expect(tool.url).toBe('https://api.example.com/users');
+      expect(tool.method).toBe('POST');
+    });
+
+    it('HTTP 工具 url 为空字符串时不应设置 toolType', () => {
+      const nodes = [
+        { id: 'http-2', type: 'http-tool', data: { url: '', method: 'GET' } },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBeUndefined();
+    });
+
+    it('代码工具提供 language + code 时应生成 toolType: code 判别联合', () => {
+      const nodes = [
+        {
+          id: 'code-1',
+          type: 'code-tool',
+          data: { language: 'javascript', code: 'return 42;' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('code');
+      expect(tool.language).toBe('javascript');
+      expect(tool.code).toBe('return 42;');
+    });
+
+    it('代码工具 language 为空字符串时不应设置 toolType', () => {
+      const nodes = [
+        { id: 'code-2', type: 'code-tool', data: { language: '', code: 'x' } },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBeUndefined();
+    });
+
+    it('子代理无 alias 时应使用 defId 前 8 字符作为默认别名', () => {
+      const nodes = [
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'abcdefgh-1234-5678-9abc-def012345678' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+
+      expect(config.subAgents).toHaveLength(1);
+      expect(config.subAgents![0].alias).toBe('abcdefgh');
+      expect(config.subAgents![0].agentDefinitionId).toBe('abcdefgh-1234-5678-9abc-def012345678');
+    });
+
+    it('沙箱 enabled=false 时不应设置 sandboxConfig', () => {
+      const nodes = [
+        { id: 'sb-1', type: 'sandbox', data: { enabled: false, cpu: 4, memory: 2048 } },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.sandboxConfig).toBeUndefined();
+    });
+
+    it('沙箱 enabled 未设置时应使用默认值编译', () => {
+      const nodes = [
+        { id: 'sb-2', type: 'sandbox', data: {} },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.sandboxConfig).toBeDefined();
+      expect(config.sandboxConfig!.cpu).toBe(1);
+      expect(config.sandboxConfig!.memory).toBe(512);
+      expect(config.sandboxConfig!.disk).toBe(1);
+      expect(config.sandboxConfig!.timeout).toBe(300);
+    });
+
+    it('skill 节点通过 skills-in 连接到 agent-main 时应被编译', () => {
+      const nodes = [
+        { id: 'main', type: 'agent-main', data: {} },
+        { id: 'sk-1', type: 'skill', data: { skillId: 'skill-abc' } },
+        { id: 'orphan-sk', type: 'skill', data: { skillId: 'skill-orphan' } },
+      ];
+      const edges = [
+        { source: 'sk-1', target: 'main', targetHandle: 'skills-in' },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.tools).toBeUndefined();
+      expect(config.modelConfig).toBeUndefined();
+    });
+
+    it('同一节点通过不同 targetHandle 连接到 agent-main 时应各自编译', () => {
+      const nodes = [
+        { id: 'main', type: 'agent-main', data: {} },
+        { id: 'model-1', type: 'llm-model', data: { modelId: 'gpt-4' } },
+        { id: 'routing-1', type: 'smart-routing', data: { strategy: 'QUALITY_FIRST' } },
+      ];
+      const edges = [
+        { source: 'model-1', target: 'main', targetHandle: 'model-in' },
+        { source: 'routing-1', target: 'main', targetHandle: 'model-in' },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.modelConfig).toBeDefined();
+      expect(config.modelConfig!.modelId).toBe('gpt-4');
+      expect(config.routingConfig).toBeDefined();
+      expect(config.routingConfig!.strategy).toBe('QUALITY_FIRST');
+    });
+
+    it('MCP 工具支持 portMapping 对象', () => {
+      const nodes = [
+        {
+          id: 'mcp-pm',
+          type: 'mcp-tool',
+          data: {
+            mcpToolDefinitionId: 'def-pm',
+            portMapping: { input: 'text', output: 'json' },
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.portMapping).toEqual({ input: 'text', output: 'json' });
+    });
+
+    it('MCP 工具 portMapping 为数组时应被忽略', () => {
+      const nodes = [
+        {
+          id: 'mcp-arr',
+          type: 'mcp-tool',
+          data: {
+            mcpToolDefinitionId: 'def-arr',
+            portMapping: ['not', 'valid'],
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.portMapping).toBeUndefined();
+    });
+
+    it('MCP 工具 inputSchema 为数组时应被忽略', () => {
+      const nodes = [
+        {
+          id: 'mcp-is',
+          type: 'mcp-tool',
+          data: {
+            mcpToolDefinitionId: 'def-is',
+            inputSchema: [1, 2, 3],
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.inputSchema).toBeUndefined();
+    });
+
+    it('通过 data.config 嵌套配置应被正确解析（resolveNodeData 合并）', () => {
+      const nodes = [
+        {
+          id: 'n1',
+          type: 'llm-model',
+          data: {
+            config: { modelId: 'inner-model', temperature: 0.5 },
+            label: 'outer-label',
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.modelConfig).toBeDefined();
+      expect(config.modelConfig!.modelId).toBe('inner-model');
+    });
+
+    it('data.nodeType 优先于 node.type 作为节点类型', () => {
+      const nodes = [
+        {
+          id: 'n1',
+          type: 'unknown-type',
+          data: { nodeType: 'llm-model', modelId: 'gpt-4-turbo' },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.modelConfig).toBeDefined();
+      expect(config.modelConfig!.modelId).toBe('gpt-4-turbo');
+    });
   });
 
   // ─── compileCanvas ────────────────────────────────────────
