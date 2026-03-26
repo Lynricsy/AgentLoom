@@ -339,6 +339,34 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
     },
   ],
   [
+    'sandbox',
+    {
+      type: 'sandbox',
+      category: 'tool',
+      label: '沙箱环境',
+      icon: 'Container',
+      description: '为 Agent 提供隔离的代码执行沙箱环境',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
+      maxInstances: 1,
+      inputPorts: [],
+      outputPorts: [
+        createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
+          description: '沙箱环境输出，连接到 Agent Main',
+        }),
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          enabled: createConfigField('boolean', '启用沙箱', { default: true }),
+          cpuLimit: createConfigField('number', 'CPU 限制（核）', { default: 1 }),
+          memoryLimitMb: createConfigField('number', '内存限制（MB）', { default: 512 }),
+          timeoutSeconds: createConfigField('number', '超时时间（秒）', { default: 300 }),
+        },
+        required: [],
+      },
+    },
+  ],
+  [
     'agent-main',
     {
       type: 'agent-main',

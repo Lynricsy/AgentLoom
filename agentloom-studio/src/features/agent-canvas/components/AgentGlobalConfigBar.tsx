@@ -1,6 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { BrainCircuit } from 'lucide-react';
-import { Slider } from '@/shared/ui/slider';
+import { BrainCircuit, Container } from 'lucide-react';
 import { Switch } from '@/shared/ui/switch';
 import { Select } from '@/shared/ui/select';
 import { Button } from '@/shared/ui/button';
@@ -8,7 +7,6 @@ import { cn } from '@/shared/lib/utils';
 import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances';
 import {
   useAgentCanvasActions,
-  useAgentGlobalSandboxConfig,
   useAgentSandboxLifecycle,
   useAgentWorkspaceId,
   useAgentInputSchema,
@@ -21,49 +19,6 @@ const WORKSPACE_OPTIONS = [
   { value: '__none__', label: '(None)' },
   { value: 'default', label: 'Default Workspace' },
 ];
-
-const CPU_LIMITS = { min: 0.5, max: 8, step: 0.5 };
-const MEMORY_LIMITS = { min: 128, max: 8192, step: 128 };
-const TIMEOUT_LIMITS = { min: 30, max: 3600, step: 30 };
-
-interface ConfigSliderProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  onChange: (value: number) => void;
-}
-
-const ConfigSlider = memo(function ConfigSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  unit,
-  onChange,
-}: ConfigSliderProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-400">{label}</span>
-        <span className="text-xs font-mono text-neutral-300">
-          {value}
-          {unit}
-        </span>
-      </div>
-      <Slider
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={(vals) => onChange(vals[0] ?? value)}
-      />
-    </div>
-  );
-});
 
 const InputSchemaEditor = memo(function InputSchemaEditor({
   schema,
@@ -148,14 +103,12 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
 }: {
   className?: string;
 }) {
-  const sandboxConfig = useAgentGlobalSandboxConfig();
   const lifecycle = useAgentSandboxLifecycle();
   const workspaceId = useAgentWorkspaceId();
   const inputSchema = useAgentInputSchema();
   const memoryInstanceIds = useAgentMemoryInstanceIds();
   const { isDirty, isSaving } = useAgentCanvasSaveStatus();
   const {
-    setGlobalSandboxConfig,
     setSandboxLifecycle,
     setWorkspaceId,
     setInputSchema,
@@ -207,47 +160,15 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
       {isExpanded && (
         <>
           <div className="flex flex-col gap-2 border-b border-neutral-700 pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Container className="h-3.5 w-3.5 text-teal-400" />
               <span className="text-xs font-medium text-neutral-300">
                 Sandbox
               </span>
-              <Switch
-                checked={sandboxConfig.enabled ?? true}
-                onCheckedChange={(checked) =>
-                  setGlobalSandboxConfig({ enabled: checked })
-                }
-              />
             </div>
-
-            {sandboxConfig.enabled !== false && (
-              <>
-                <ConfigSlider
-                  label="CPU"
-                  value={sandboxConfig.cpuLimit ?? 1}
-                  {...CPU_LIMITS}
-                  unit=" cores"
-                  onChange={(v) => setGlobalSandboxConfig({ cpuLimit: v })}
-                />
-                <ConfigSlider
-                  label="Memory"
-                  value={sandboxConfig.memoryLimitMb ?? 512}
-                  {...MEMORY_LIMITS}
-                  unit=" MB"
-                  onChange={(v) =>
-                    setGlobalSandboxConfig({ memoryLimitMb: v })
-                  }
-                />
-                <ConfigSlider
-                  label="Timeout"
-                  value={sandboxConfig.timeoutSeconds ?? 300}
-                  {...TIMEOUT_LIMITS}
-                  unit="s"
-                  onChange={(v) =>
-                    setGlobalSandboxConfig({ timeoutSeconds: v })
-                  }
-                />
-              </>
-            )}
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              沙箱配置已迁移到画布沙箱节点，请在画布中添加「沙箱环境」节点并连接至 Agent 进行配置。
+            </p>
           </div>
 
           <div className="flex flex-col gap-2 border-b border-neutral-700 pb-3">
