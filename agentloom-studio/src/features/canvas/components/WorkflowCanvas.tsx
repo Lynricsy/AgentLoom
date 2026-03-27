@@ -30,8 +30,10 @@ import {
 import { CanvasSearch } from './toolbar/CanvasSearch'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import {
+  arePortDataTypesCompatible,
   evaluateConnection,
   getCachedConnectionEvaluation,
+  resolveConnectionPorts,
 } from '../lib/connectionCompatibility'
 import { validateDag } from '../lib/dagValidator'
 import {
@@ -48,6 +50,7 @@ import {
   type CanvasEdgeData,
   type CanvasNode,
 } from '../types'
+import type { PortDataType } from '../types/typeSchema'
 
 interface WorkflowCanvasProps {
   className?: string
@@ -565,6 +568,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
+      const sourcePortType = sourceElement.dataset.portType as PortDataType | undefined
+
       const compatibleTargets: OverlayHandleSnapshot[] = []
       const incompatibleTargets: OverlayHandleSnapshot[] = []
       const pendingTargets: Array<{
@@ -595,6 +600,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           }, edges)
 
           if (!cachedEvaluation) {
+            // 同步 dataType 预筛：不兼容的直接标记，无需等待 WASM
+            const targetPortType = element.dataset.portType as PortDataType | undefined
+            if (
+              sourcePortType
+              && targetPortType
+              && !arePortDataTypesCompatible(sourcePortType, targetPortType)
+            ) {
+              incompatibleTargets.push(snapshot)
+              return
+            }
+
             pendingTargets.push({
               snapshot,
               targetNodeId,
@@ -731,6 +747,20 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       const cachedEvaluation = getCachedConnectionEvaluation(nodes, connectionOrEdge, edges)
       if (cachedEvaluation && !cachedEvaluation.compatible) {
         return false
+      }
+
+      // 缓存未命中时，同步检查端口 dataType 兼容性
+      if (!cachedEvaluation) {
+        const resolved = resolveConnectionPorts(nodes, connectionOrEdge)
+        if (
+          resolved
+          && !arePortDataTypesCompatible(
+            resolved.source.port.dataType,
+            resolved.target.port.dataType,
+          )
+        ) {
+          return false
+        }
       }
 
       const validationPreview = previewDagValidation(

@@ -6,6 +6,7 @@ import {
   type FieldMapping,
 } from '../types'
 import type { PortDefinition } from '../types/nodeTypeRegistry'
+import type { PortDataType } from '../types/typeSchema'
 import type { TypeEngineCompatibilityResult } from './typeEngine/contracts'
 import { flattenSchemaFields } from './typeEngine/fallback'
 import { getTypeEngineService } from './typeEngine/service'
@@ -291,4 +292,27 @@ export async function evaluateConnection(
     compatible: result.level !== 'INCOMPATIBLE',
     edgeData: adaptCompatibilityToEdgeData(result, source.port, target.port),
   }
+}
+
+// 已知的端口类型变换对（与 WASM Rust 端 + JS fallback 保持一致）
+const SYNC_TRANSFORM_PAIRS: ReadonlySet<string> = new Set([
+  'text->json',
+  'json->text',
+  'skill->text',
+])
+
+/**
+ * 同步端口 dataType 级别兼容性检查。
+ * 用于 ReactFlow 的 isValidConnection 同步回调，在 WASM 缓存未命中时
+ * 提供即时的跨类型拦截，避免不兼容连接获得"有效"视觉反馈。
+ */
+export function arePortDataTypesCompatible(
+  sourceType: PortDataType,
+  targetType: PortDataType,
+): boolean {
+  if (sourceType === targetType) {
+    return true
+  }
+
+  return SYNC_TRANSFORM_PAIRS.has(`${sourceType}->${targetType}`)
 }

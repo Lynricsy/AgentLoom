@@ -19,6 +19,7 @@ import {
   getNodeTypeConfigOrNull,
 } from '../types/nodeTypeRegistry'
 import {
+  arePortDataTypesCompatible,
   evaluateConnection,
   mergeEdgeDataWithStoredMappings,
   resolveConnectionPorts,
@@ -211,7 +212,36 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
 
           onEdgesChange: (changes) =>
             set((state) => {
-              const removedIds = changes
+              // 拦截不兼容端口类型的 add 变更（v12 通过 onEdgesChange 自动添加边）
+              const filteredChanges = changes.filter((c) => {
+                if (c.type !== 'add') {
+                  return true
+                }
+
+                const edge = c.item
+                const sourceNode = state.nodes.find((n) => n.id === edge.source)
+                const targetNode = state.nodes.find((n) => n.id === edge.target)
+                if (!sourceNode || !targetNode) {
+                  return true
+                }
+
+                const sourcePort = sourceNode.data.outputPorts.find(
+                  (p) => p.id === edge.sourceHandle,
+                )
+                const targetPort = targetNode.data.inputPorts.find(
+                  (p) => p.id === edge.targetHandle,
+                )
+                if (!sourcePort || !targetPort) {
+                  return true
+                }
+
+                return arePortDataTypesCompatible(
+                  sourcePort.dataType,
+                  targetPort.dataType,
+                )
+              })
+
+              const removedIds = filteredChanges
                 .filter((c): c is EdgeChange<CanvasEdge> & { type: 'remove' } => c.type === 'remove')
                 .map((c) => c.id)
 
@@ -240,8 +270,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 }
               }
 
-              state.edges = applyEdgeChanges(changes, state.edges)
-              const isDirtyChange = changes.some(
+              state.edges = applyEdgeChanges(filteredChanges, state.edges)
+              const isDirtyChange = filteredChanges.some(
                 (c) => c.type === 'remove' || c.type === 'add'
               )
               if (isDirtyChange) {

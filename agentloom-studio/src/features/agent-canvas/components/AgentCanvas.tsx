@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -10,10 +11,12 @@ import { cn } from '@/shared/lib/utils';
 import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';
 import { SmartEdge } from '@/features/canvas/components/edges/SmartEdge';
 import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette';
+import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
 import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
   useAgentCanvasActions,
+  type AgentCanvasEdge,
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
 import { AgentGlobalConfigBar } from './AgentGlobalConfigBar';
@@ -92,6 +95,25 @@ export const AgentCanvas = memo(function AgentCanvas({
     [setViewport],
   );
 
+  const isValidConnection = useCallback(
+    (connection: Connection | AgentCanvasEdge) => {
+      const sourceNode = nodes.find((n) => n.id === connection.source);
+      const targetNode = nodes.find((n) => n.id === connection.target);
+      if (!sourceNode || !targetNode) return false;
+
+      const sourcePort = sourceNode.data.outputPorts.find(
+        (p) => p.id === (connection.sourceHandle ?? undefined),
+      );
+      const targetPort = targetNode.data.inputPorts.find(
+        (p) => p.id === (connection.targetHandle ?? undefined),
+      );
+      if (!sourcePort || !targetPort) return false;
+
+      return arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType);
+    },
+    [nodes],
+  );
+
   const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
   return (
@@ -104,6 +126,7 @@ export const AgentCanvas = memo(function AgentCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={createConnection}
+        isValidConnection={isValidConnection}
         onInit={onInit}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}

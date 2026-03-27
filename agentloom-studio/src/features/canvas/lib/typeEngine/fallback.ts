@@ -49,6 +49,12 @@ const TRANSFORM_RULES: TransformRule[] = [
     reason: 'json_to_text_stringify',
     transformFn: 'stringify_json',
   },
+  {
+    sourceKind: 'skill',
+    targetKind: 'text',
+    reason: 'skill_to_text_degrade',
+    transformFn: 'extract_skill_text',
+  },
 ]
 
 function normalizeSegment(value: string): string {

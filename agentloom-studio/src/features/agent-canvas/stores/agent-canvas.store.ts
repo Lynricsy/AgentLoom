@@ -21,6 +21,7 @@ import type {
 import type { CanvasNodeData, CanvasEdgeData } from '@/features/canvas/types';
 import type { AgentCanvasNodeType } from '@/features/canvas/registry/agent-canvas-registry';
 import { AGENT_CANVAS_NODE_REGISTRY } from '@/features/canvas/registry/agent-canvas-registry';
+import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
 
 enableMapSet();
 
@@ -217,8 +218,25 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
 
           onEdgesChange: (changes) => {
             set((state) => {
-              state.edges = applyEdgeChanges(changes, state.edges);
-              const isDirtyChange = changes.some(
+              // 拦截不兼容端口类型的 add 变更
+              const filteredChanges = changes.filter((c) => {
+                if (c.type !== 'add') return true;
+                const edge = c.item;
+                const sourceNode = state.nodes.find((n) => n.id === edge.source);
+                const targetNode = state.nodes.find((n) => n.id === edge.target);
+                if (!sourceNode || !targetNode) return true;
+                const sourcePort = sourceNode.data.outputPorts.find(
+                  (p) => p.id === edge.sourceHandle,
+                );
+                const targetPort = targetNode.data.inputPorts.find(
+                  (p) => p.id === edge.targetHandle,
+                );
+                if (!sourcePort || !targetPort) return true;
+                return arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType);
+              });
+
+              state.edges = applyEdgeChanges(filteredChanges, state.edges);
+              const isDirtyChange = filteredChanges.some(
                 (c) => c.type === 'remove' || c.type === 'add',
               );
               if (isDirtyChange) {
@@ -231,6 +249,23 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
             const currentState = get();
             const sourceNode = currentState.nodes.find((n) => n.id === connection.source);
             const targetNode = currentState.nodes.find((n) => n.id === connection.target);
+
+            // 端口类型兼容性检查
+            if (sourceNode && targetNode) {
+              const sourcePort = sourceNode.data.outputPorts.find(
+                (p) => p.id === connection.sourceHandle,
+              );
+              const targetPort = targetNode.data.inputPorts.find(
+                (p) => p.id === connection.targetHandle,
+              );
+              if (
+                sourcePort
+                && targetPort
+                && !arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType)
+              ) {
+                return;
+              }
+            }
 
             const sourceNodeType = sourceNode?.data?.nodeType as string | undefined;
             const targetNodeType = targetNode?.data?.nodeType as string | undefined;
