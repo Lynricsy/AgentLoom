@@ -36,9 +36,11 @@ const PROVIDER_BASE_URL_MAP: Record<string, string> = {
   anthropic: 'https://api.anthropic.com',
   openai: 'https://api.openai.com/v1',
   google: 'https://generativelanguage.googleapis.com',
+  'azure-openai': 'https://openai.azure.com',
   xai: 'https://api.x.ai/v1',
   groq: 'https://api.groq.com/openai/v1',
   openrouter: 'https://openrouter.ai/api/v1',
+  bedrock: 'https://bedrock-runtime.us-east-1.amazonaws.com',
 };
 
 /**
@@ -117,11 +119,9 @@ export class PiConfigGeneratorService {
     const providerEntry: Record<string, unknown> = {
       api,
       apiKey: apiKeyEnv,
+      baseUrl,
       models: [{ id: modelCfg.model, name: modelCfg.model }],
     };
-    if (baseUrl) {
-      providerEntry.baseUrl = baseUrl;
-    }
 
     return JSON.stringify(
       { providers: { [modelCfg.provider]: providerEntry } },
