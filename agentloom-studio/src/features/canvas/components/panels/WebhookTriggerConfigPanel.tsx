@@ -1,5 +1,5 @@
 import { memo, useCallback, useState, type ChangeEvent } from 'react'
-import { Copy, ExternalLink, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
+import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
 import { useCanvasStore } from '../../stores/canvasStore'
 import { useTriggers, isWebhookConfig, hasWebhookSecret } from '@/features/trigger'
 import { buildWebhookUrl } from '@/features/trigger/components/WebhookSecretDisplay'
