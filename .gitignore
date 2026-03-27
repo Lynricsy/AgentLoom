@@ -73,6 +73,8 @@ AgentLogs/
 .autobmad-state.json
 .opencode/
 .claude/
+.cursor/
+.omc/
 .bmad-opencode/
 
 
