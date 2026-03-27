@@ -51,8 +51,6 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'agent-main',
   'llm-model',
   'smart-routing',
-  'http-tool',
-  'code-tool',
   'mcp-tool',
   'knowledge-base',
   'sub-agent',
@@ -120,73 +118,6 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           }),
         },
         required: ['strategy'],
-      },
-    },
-  ],
-  [
-    'http-tool',
-    {
-      type: 'http-tool',
-      category: 'tool',
-      label: 'HTTP 请求',
-      icon: 'Globe',
-      description: '通过 HTTP 请求调用外部 API',
-      colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
-      inputPorts: [
-        createPort('config-in', '配置输入', 'input', 'json', {
-          description: '请求配置（URL / 方法 / 参数）',
-        }),
-      ],
-      outputPorts: [
-        createPort('tool-output', '工具输出', 'output', 'tool', {
-          description: 'HTTP 工具执行结果',
-        }),
-      ],
-      configSchema: {
-        type: 'object',
-        properties: {
-          url: createConfigField('string', 'URL'),
-          method: createConfigField('string', '请求方法', {
-            enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-            default: 'GET',
-          }),
-        },
-        required: ['url', 'method'],
-      },
-    },
-  ],
-  [
-    'code-tool',
-    {
-      type: 'code-tool',
-      category: 'tool',
-      label: '代码执行器',
-      icon: 'Code',
-      description: '执行自定义代码片段',
-      colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
-      inputPorts: [
-        createPort('text-input', '文本输入', 'input', 'text', {
-          description: '文本格式输入数据',
-        }),
-        createPort('json-input', 'JSON 输入', 'input', 'json', {
-          description: 'JSON 格式输入数据',
-        }),
-      ],
-      outputPorts: [
-        createPort('tool-output', '工具输出', 'output', 'tool', {
-          description: '代码执行工具结果',
-        }),
-      ],
-      configSchema: {
-        type: 'object',
-        properties: {
-          language: createConfigField('string', '编程语言', {
-            enum: ['typescript', 'javascript', 'python', 'bash'],
-            default: 'python',
-          }),
-          code: createConfigField('string', '代码'),
-        },
-        required: ['language'],
       },
     },
   ],
@@ -288,15 +219,15 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
       inputPorts: [
-        createPort('text-input', '文本输入', 'input', 'text', {
+        createPort('text-input', '文本', 'input', 'text', {
           description: '文本格式输入数据',
         }),
-        createPort('json-input', 'JSON 输入', 'input', 'json', {
+        createPort('json-input', 'JSON', 'input', 'json', {
           description: 'JSON 格式输入数据',
         }),
       ],
       outputPorts: [
-        createPort('json-output', 'JSON 输出', 'output', 'json', {
+        createPort('json-output', 'JSON', 'output', 'json', {
           description: '预处理转换结果',
         }),
       ],
@@ -383,7 +314,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         createPort('tools-in', '工具', 'input', 'tool', {
           multiple: true,
           maxConnections: null,
-          description: '来自 HTTP/代码/MCP 工具节点的工具集',
+          description: '来自 MCP 工具节点的工具集',
         }),
         createPort('knowledge-in', '知识库', 'input', 'knowledge', {
           multiple: true,

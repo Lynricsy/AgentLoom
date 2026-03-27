@@ -142,6 +142,8 @@ describe('NodePalette', () => {
       'input-preprocessor',
       'manual-trigger',
       'schedule-trigger',
+      'webhook-trigger',
+      'api-event-trigger',
       'knowledge-base',
       'memory',
       'text-output',
