@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-03-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~220 | Active |
+| `journal-1.md` | ~252 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 5 | 2026-03-27 | 工作流列表页 + Agent 管理增强 | `f551f5c` |
 | 4 | 2026-03-27 | code-tool 节点完整实现 + exec 端口类型系统 | `ca2b309` |
 | 3 | 2026-03-27 | Canvas 节点功能实现（第一批：部分实现节点） | `4c88b73` |
 | 2 | 2026-03-27 | feat: Sandbox MCP Client Extension | `5715215` |

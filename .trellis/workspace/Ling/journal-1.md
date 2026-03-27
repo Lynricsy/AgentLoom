@@ -218,3 +218,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 工作流列表页 + Agent 管理增强
+
+**Date**: 2026-03-27
+**Task**: 工作流列表页 + Agent 管理增强
+
+### Summary
+
+新增工作流列表页(/workflows)、创建对话框、API hooks；增强 Agent 列表页卡片操作(归档/删除)、改进创建对话框；统一响应式卡片布局和批量操作；新增 DropdownMenu/Checkbox/AlertDialog 共享组件；修复 exec port type 旧错
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f551f5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
