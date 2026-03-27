@@ -70,3 +70,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: feat: Sandbox MCP Client Extension
+
+**Date**: 2026-03-27
+**Task**: feat: Sandbox MCP Client Extension
+
+### Summary
+
+在 sandbox 容器内实现原生 MCP 客户端，支持 stdio/SSE/streamable_http，通过 pi-coding-agent Extension API 注册工具，容器内本地执行
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5715215` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
