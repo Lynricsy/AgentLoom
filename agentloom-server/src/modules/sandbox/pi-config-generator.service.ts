@@ -41,6 +41,22 @@ const PROVIDER_BASE_URL_MAP: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
 };
 
+/**
+ * Maps provider name → environment variable name for API key.
+ * pi-mono's resolveConfigValue() looks up process.env[value] first,
+ * so these match the env vars injected by DockerService.createContainer().
+ */
+const PROVIDER_API_KEY_ENV_MAP: Record<string, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GOOGLE_API_KEY',
+  'azure-openai': 'AZURE_OPENAI_API_KEY',
+  xai: 'XAI_API_KEY',
+  groq: 'GROQ_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  bedrock: 'AWS_ACCESS_KEY_ID',
+};
+
 @Injectable()
 export class PiConfigGeneratorService {
   /**
@@ -94,9 +110,13 @@ export class PiConfigGeneratorService {
       PROVIDER_BASE_URL_MAP[modelCfg.provider] ??
       undefined;
 
+    const apiKeyEnv =
+      PROVIDER_API_KEY_ENV_MAP[modelCfg.provider] ??
+      `${modelCfg.provider.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+
     const providerEntry: Record<string, unknown> = {
       api,
-      // apiKey intentionally omitted — injected as ANTHROPIC_API_KEY / OPENAI_API_KEY etc.
+      apiKey: apiKeyEnv,
       models: [{ id: modelCfg.model, name: modelCfg.model }],
     };
     if (baseUrl) {
