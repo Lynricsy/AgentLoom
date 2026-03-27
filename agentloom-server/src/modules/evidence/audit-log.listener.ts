@@ -17,7 +17,11 @@ type InterventionResolvedAuditPayload = InterventionResolvedPayload & {
   executionId: string;
 };
 
-const CRITICAL_EXECUTION_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const CRITICAL_EXECUTION_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

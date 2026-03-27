@@ -30,14 +30,12 @@ describe('EventSourceAdapterRegistry', () => {
 
     it('should throw for unknown adapter name', () => {
       expect(() => registry.getAdapter('unknown')).toThrow(
-        '未找到事件源适配器 \'unknown\'',
+        "未找到事件源适配器 'unknown'",
       );
     });
 
     it('should include available adapter names in error message', () => {
-      expect(() => registry.getAdapter('slack')).toThrow(
-        /github, generic/,
-      );
+      expect(() => registry.getAdapter('slack')).toThrow(/github, generic/);
     });
   });
 

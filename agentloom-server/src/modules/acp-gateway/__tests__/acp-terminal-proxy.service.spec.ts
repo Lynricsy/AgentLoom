@@ -26,29 +26,26 @@ describe('AcpTerminalProxyService', () => {
     };
   }
 
-  function createService(overrides?: {
-    runtimeSession?: AgentSession;
-  }) {
+  function createService(overrides?: { runtimeSession?: AgentSession }) {
     const auditLogService = {
       record: vi.fn().mockResolvedValue(undefined),
     } satisfies Pick<AuditLogService, 'record'>;
-    const runtimeSession: AgentSession =
-      overrides?.runtimeSession ?? {
-        id: 'session-001',
-        agentId: 'agent-001',
-        mode: 'conversation',
-        context: {
-          history: [],
-          cwd: '/workspace/demo',
-          serverSandbox: {
-            executionId: '019391d4-e000-7000-0000-000000000005',
-          },
+    const runtimeSession: AgentSession = overrides?.runtimeSession ?? {
+      id: 'session-001',
+      agentId: 'agent-001',
+      mode: 'conversation',
+      context: {
+        history: [],
+        cwd: '/workspace/demo',
+        serverSandbox: {
+          executionId: '019391d4-e000-7000-0000-000000000005',
         },
-        status: 'active',
-        tenantId: 'tenant-1',
-        createdAt: new Date('2025-01-01T00:00:00.000Z'),
-        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
-      };
+      },
+      status: 'active',
+      tenantId: 'tenant-1',
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    };
     const runtime = {
       loadSession: vi.fn().mockResolvedValue(runtimeSession),
     };
@@ -80,8 +77,12 @@ describe('AcpTerminalProxyService', () => {
   }
 
   it('应创建 terminal、挂接输出采集，并以纯轮询方式返回增量输出', async () => {
-    const { service, sandboxTerminalService, sessionPersistence, runtimeSession } =
-      createService();
+    const {
+      service,
+      sandboxTerminalService,
+      sessionPersistence,
+      runtimeSession,
+    } = createService();
     const trackedSession = createTrackedSession();
     sandboxTerminalService.createTerminal.mockResolvedValue({
       execId: 'exec-1',
@@ -151,7 +152,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在高风险命令被拒绝时返回稳定错误并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -181,7 +183,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在路径化 shell 命令绕过 denylist 前被拒绝并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -210,7 +213,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 spawn 前拒绝危险破坏性参数并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -240,7 +244,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 spawn 前拒绝越界 cwd 并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -270,7 +275,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 spawn 前拒绝 shell 注入风格参数并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -300,7 +306,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 spawn 前拒绝赋值式越界路径参数并写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
 
     await expect(
       service.createTerminal(
@@ -337,7 +344,9 @@ describe('AcpTerminalProxyService', () => {
       execId: 'exec-2',
       cwd: '/workspace/demo',
     });
-    sandboxTerminalService.attachOutput.mockRejectedValue(new Error('attach failed'));
+    sandboxTerminalService.attachOutput.mockRejectedValue(
+      new Error('attach failed'),
+    );
 
     await expect(
       service.createTerminal(
@@ -352,13 +361,20 @@ describe('AcpTerminalProxyService', () => {
       message: 'ACP terminal creation failed',
     });
 
-    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith('exec-2', 'TERM');
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-2',
+      'TERM',
+    );
     expect(trackedSession.terminalIds).toBeUndefined();
   });
 
   it('应在 continuity 持久化失败时回滚 terminal registry、session terminalIds 与内存 continuity', async () => {
-    const { service, sandboxTerminalService, sessionPersistence, runtimeSession } =
-      createService();
+    const {
+      service,
+      sandboxTerminalService,
+      sessionPersistence,
+      runtimeSession,
+    } = createService();
     const trackedSession = createTrackedSession();
     let execCounter = 0;
 
@@ -387,7 +403,10 @@ describe('AcpTerminalProxyService', () => {
       message: 'ACP terminal creation failed',
     });
 
-    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith('exec-1', 'TERM');
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-1',
+      'TERM',
+    );
     expect(trackedSession.terminalIds).toBeUndefined();
     expect(runtimeSession.context).not.toHaveProperty('terminalContinuity');
 
@@ -407,7 +426,9 @@ describe('AcpTerminalProxyService', () => {
 
     expect(createdTerminalIds).toHaveLength(5);
     expect(trackedSession.terminalIds).toEqual(createdTerminalIds);
-    expect(runtimeSession.context.terminalContinuity?.terminals).toHaveLength(5);
+    expect(runtimeSession.context.terminalContinuity?.terminals).toHaveLength(
+      5,
+    );
   });
 
   it('应在超过每 session 最大并发 terminal 数时 fail-closed', async () => {
@@ -646,7 +667,8 @@ describe('AcpTerminalProxyService', () => {
       ),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP terminal output is unavailable because terminal is not running',
+      message:
+        'ACP terminal output is unavailable because terminal is not running',
       data: {
         reason: 'terminal_output_unavailable',
         status: 'exited',
@@ -688,7 +710,8 @@ describe('AcpTerminalProxyService', () => {
       ),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP terminal output is unavailable because terminal is not running',
+      message:
+        'ACP terminal output is unavailable because terminal is not running',
       data: {
         reason: 'terminal_output_unavailable',
         status: 'killed',
@@ -697,8 +720,12 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 wait_for_exit 后返回退出状态并持久化 continuity 元数据', async () => {
-    const { service, sandboxTerminalService, runtimeSession, sessionPersistence } =
-      createService();
+    const {
+      service,
+      sandboxTerminalService,
+      runtimeSession,
+      sessionPersistence,
+    } = createService();
     const trackedSession = createTrackedSession();
     sandboxTerminalService.createTerminal.mockResolvedValue({
       execId: 'exec-wait',
@@ -757,7 +784,9 @@ describe('AcpTerminalProxyService', () => {
       cwd: '/workspace/demo',
     });
     sandboxTerminalService.attachOutput.mockResolvedValue(undefined);
-    sandboxTerminalService.waitForExit.mockReturnValue(new Promise(() => undefined));
+    sandboxTerminalService.waitForExit.mockReturnValue(
+      new Promise(() => undefined),
+    );
 
     const createResult = await service.createTerminal(
       {
@@ -789,7 +818,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在服务端 lifetime timeout 后对 wait_for_exit 返回稳定 timeout error', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
     const trackedSession = createTrackedSession();
     sandboxTerminalService.createTerminal.mockResolvedValue({
       execId: 'exec-server-timeout',
@@ -811,7 +841,11 @@ describe('AcpTerminalProxyService', () => {
       throw new Error('handleTerminalTimeout 不可用');
     }
 
-    await handleTerminalTimeout.call(service, createResult.terminalId, trackedSession);
+    await handleTerminalTimeout.call(
+      service,
+      createResult.terminalId,
+      trackedSession,
+    );
 
     await expect(
       service.waitForTerminalExit(
@@ -867,7 +901,10 @@ describe('AcpTerminalProxyService', () => {
     ).resolves.toEqual({
       success: true,
     });
-    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith('exec-kill', 'TERM');
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-kill',
+      'TERM',
+    );
 
     await expect(
       service.waitForTerminalExit(
@@ -884,7 +921,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 manual terminal/kill 时写入正式审计', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
     const trackedSession = createTrackedSession();
     sandboxTerminalService.createTerminal.mockResolvedValue({
       execId: 'exec-kill-audit',
@@ -972,7 +1010,8 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('应在 session cleanup 时只 kill + release 当前 session 的 terminals', async () => {
-    const { service, sandboxTerminalService, auditLogService } = createService();
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
     const trackedSessionA = createTrackedSession();
     const trackedSessionB = createTrackedSession({
       sessionId: 'session-002',
@@ -1002,8 +1041,14 @@ describe('AcpTerminalProxyService', () => {
 
     await service.cleanupSessionTerminals(trackedSessionA);
 
-    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith('exec-a', 'TERM');
-    expect(sandboxTerminalService.killTerminal).not.toHaveBeenCalledWith('exec-b', 'TERM');
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-a',
+      'TERM',
+    );
+    expect(sandboxTerminalService.killTerminal).not.toHaveBeenCalledWith(
+      'exec-b',
+      'TERM',
+    );
     expect(trackedSessionA.terminalIds).toEqual([]);
     await expect(
       service.readTerminalOutput(
@@ -1024,9 +1069,9 @@ describe('AcpTerminalProxyService', () => {
         },
         trackedSessionB,
       ),
-      ).resolves.toMatchObject({
-        terminalId: terminalB.terminalId,
-      });
+    ).resolves.toMatchObject({
+      terminalId: terminalB.terminalId,
+    });
 
     expect(auditLogService.record).toHaveBeenCalledWith(
       expect.objectContaining({

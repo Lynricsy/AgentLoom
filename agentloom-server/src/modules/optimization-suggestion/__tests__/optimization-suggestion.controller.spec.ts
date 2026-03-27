@@ -71,9 +71,7 @@ function createSuggestion(
 
 describe('OptimizationSuggestionController', () => {
   let controller: OptimizationSuggestionController;
-  let service: ReturnType<
-    typeof mocks.createMockOptimizationSuggestionService
-  >;
+  let service: ReturnType<typeof mocks.createMockOptimizationSuggestionService>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -93,9 +91,9 @@ describe('OptimizationSuggestionController', () => {
   });
 
   it('应在类级别声明 operator/creator/admin/owner 角色', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, OptimizationSuggestionController)).toEqual(
-      ['operator', 'creator', 'admin', 'owner'],
-    );
+    expect(
+      Reflect.getMetadata(ROLES_KEY, OptimizationSuggestionController),
+    ).toEqual(['operator', 'creator', 'admin', 'owner']);
   });
 
   describe('list', () => {
@@ -108,7 +106,9 @@ describe('OptimizationSuggestionController', () => {
       const suggestions = [createSuggestion()];
       service.findByWorkflowAndNode.mockResolvedValue(suggestions);
 
-      await expect(controller.list(query)).resolves.toEqual({ data: suggestions });
+      await expect(controller.list(query)).resolves.toEqual({
+        data: suggestions,
+      });
       expect(service.findByWorkflowAndNode).toHaveBeenCalledWith(
         WORKFLOW_ID,
         'agent-node-1',
@@ -144,7 +144,9 @@ describe('OptimizationSuggestionController', () => {
 
   describe('getStats', () => {
     it('应调用 service.getAdoptionStats', async () => {
-      const query = QueryStatsSchema.parse({ workflowDefinitionId: WORKFLOW_ID });
+      const query = QueryStatsSchema.parse({
+        workflowDefinitionId: WORKFLOW_ID,
+      });
       const stats = {
         total: 3,
         applied: 1,
@@ -165,7 +167,9 @@ describe('OptimizationSuggestionController', () => {
       };
       service.getAdoptionStats.mockResolvedValue(stats);
 
-      await expect(controller.getStats(query)).resolves.toEqual({ data: stats });
+      await expect(controller.getStats(query)).resolves.toEqual({
+        data: stats,
+      });
       expect(service.getAdoptionStats).toHaveBeenCalledWith(WORKFLOW_ID);
     });
   });
@@ -182,7 +186,10 @@ describe('OptimizationSuggestionController', () => {
       await expect(controller.apply(SUGGESTION_ID, USER_ID)).resolves.toEqual({
         data: suggestion,
       });
-      expect(service.applySuggestion).toHaveBeenCalledWith(SUGGESTION_ID, USER_ID);
+      expect(service.applySuggestion).toHaveBeenCalledWith(
+        SUGGESTION_ID,
+        USER_ID,
+      );
     });
 
     it('应透传 service.applySuggestion 的异常', async () => {
@@ -194,7 +201,9 @@ describe('OptimizationSuggestionController', () => {
       });
       service.applySuggestion.mockRejectedValue(error);
 
-      await expect(controller.apply(SUGGESTION_ID, USER_ID)).rejects.toBe(error);
+      await expect(controller.apply(SUGGESTION_ID, USER_ID)).rejects.toBe(
+        error,
+      );
     });
   });
 
@@ -207,9 +216,11 @@ describe('OptimizationSuggestionController', () => {
       });
       service.dismissSuggestion.mockResolvedValue(suggestion);
 
-      await expect(controller.dismiss(SUGGESTION_ID, USER_ID)).resolves.toEqual({
-        data: suggestion,
-      });
+      await expect(controller.dismiss(SUGGESTION_ID, USER_ID)).resolves.toEqual(
+        {
+          data: suggestion,
+        },
+      );
       expect(service.dismissSuggestion).toHaveBeenCalledWith(
         SUGGESTION_ID,
         USER_ID,
@@ -225,7 +236,9 @@ describe('OptimizationSuggestionController', () => {
       });
       service.dismissSuggestion.mockRejectedValue(error);
 
-      await expect(controller.dismiss(SUGGESTION_ID, USER_ID)).rejects.toBe(error);
+      await expect(controller.dismiss(SUGGESTION_ID, USER_ID)).rejects.toBe(
+        error,
+      );
     });
   });
 });

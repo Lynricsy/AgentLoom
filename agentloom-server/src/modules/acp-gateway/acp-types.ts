@@ -1,7 +1,5 @@
 import type { StopReason } from '../agent/types/agent-event.types';
-import type {
-  ContentBlock,
-} from '../agent/types/content-block.types';
+import type { ContentBlock } from '../agent/types/content-block.types';
 import type {
   SessionContext,
   ServerSandboxBinding,
@@ -215,7 +213,10 @@ export interface AcpPermissionToolCall {
   kind: 'tool_call';
   status: Extract<ToolCallStatus, 'awaiting_permission'>;
   content?: ContentBlock[];
-  permissionRequest?: Pick<ToolPermissionRequest, 'description' | 'resourcePaths'>;
+  permissionRequest?: Pick<
+    ToolPermissionRequest,
+    'description' | 'resourcePaths'
+  >;
 }
 
 export interface AcpPermissionSelectedOutcome {

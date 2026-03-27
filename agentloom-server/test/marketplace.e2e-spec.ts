@@ -5,14 +5,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 
 declare const vi: typeof import('vitest').vi;
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import {
@@ -557,9 +550,13 @@ describe('Marketplace E2E', () => {
   }) {
     const workflow =
       options.workflow ??
-      (await seedWorkflowForMarketplace(options.owner.tenantId, options.owner.user.id, {
-        snapshot: options.snapshot,
-      }));
+      (await seedWorkflowForMarketplace(
+        options.owner.tenantId,
+        options.owner.user.id,
+        {
+          snapshot: options.snapshot,
+        },
+      ));
     const listingId = crypto.randomUUID();
     const publishedAt = options.publishedAt ?? new Date();
 
@@ -568,7 +565,8 @@ describe('Marketplace E2E', () => {
       workflowVersionId: workflow.versionId,
       tenantId: options.owner.tenantId,
       title:
-        options.title ?? `Marketplace Listing ${crypto.randomUUID().slice(0, 8)}`,
+        options.title ??
+        `Marketplace Listing ${crypto.randomUUID().slice(0, 8)}`,
       summary:
         options.summary ??
         '这是一个用于 Marketplace 浏览与安装测试的公开工作流摘要，包含足够长的描述内容。',
@@ -854,7 +852,8 @@ describe('Marketplace E2E', () => {
       message: 'Workflow installed successfully',
     });
 
-    const installedWorkflowId = installResponse.body.workflowDefinitionId as string;
+    const installedWorkflowId = installResponse.body
+      .workflowDefinitionId as string;
     const [installedWorkflow] = await drizzleDb
       .select()
       .from(workflowDefinitions)
@@ -868,8 +867,11 @@ describe('Marketplace E2E', () => {
       createdBy: operator.user.id,
     });
     expect(
-      (installedWorkflow?.metadata as { cloned_from_marketplace?: { listingId: string } })
-        ?.cloned_from_marketplace?.listingId,
+      (
+        installedWorkflow?.metadata as {
+          cloned_from_marketplace?: { listingId: string };
+        }
+      )?.cloned_from_marketplace?.listingId,
     ).toBe(seeded.listingId);
 
     const [updatedListing] = await drizzleDb
@@ -994,7 +996,8 @@ describe('Marketplace E2E', () => {
       status: 'listed',
     });
 
-    const submitReview = submitResponse.body.reviewResult as MarketplaceReviewResult;
+    const submitReview = submitResponse.body
+      .reviewResult as MarketplaceReviewResult;
     expect(submitReview.outcome).toBe('passed');
     expect(submitReview.recentSuccessfulExecutionId).toBe(workflow.executionId);
 
@@ -1057,7 +1060,8 @@ describe('Marketplace E2E', () => {
       status: 'listed',
     });
 
-    const relistReview = relistResponse.body.reviewResult as MarketplaceReviewResult;
+    const relistReview = relistResponse.body
+      .reviewResult as MarketplaceReviewResult;
     expect(relistReview.outcome).toBe('passed');
     expect(
       new Date(relistResponse.body.data.publishedAt as string).getTime(),
@@ -1127,7 +1131,9 @@ describe('Marketplace E2E', () => {
 
     const reviewResult = response.body.reviewResult as MarketplaceReviewResult;
     expect(reviewResult.outcome).toBe('failed');
-    expect(findReviewCheck(reviewResult, 'WORKFLOW_VERSION_NOT_PUBLISHED')).toMatchObject({
+    expect(
+      findReviewCheck(reviewResult, 'WORKFLOW_VERSION_NOT_PUBLISHED'),
+    ).toMatchObject({
       status: 'failed',
     });
   });
@@ -1158,7 +1164,9 @@ describe('Marketplace E2E', () => {
 
     const reviewResult = response.body.reviewResult as MarketplaceReviewResult;
     expect(reviewResult.outcome).toBe('failed');
-    expect(findReviewCheck(reviewResult, 'WORKFLOW_VERSION_ARCHIVED')).toMatchObject({
+    expect(
+      findReviewCheck(reviewResult, 'WORKFLOW_VERSION_ARCHIVED'),
+    ).toMatchObject({
       status: 'failed',
     });
   });
@@ -1208,7 +1216,8 @@ describe('Marketplace E2E', () => {
       status: 'listed',
     });
 
-    const reviewResult = secondResponse.body.reviewResult as MarketplaceReviewResult;
+    const reviewResult = secondResponse.body
+      .reviewResult as MarketplaceReviewResult;
     expect(reviewResult.outcome).toBe('passed');
 
     const listings = await drizzleDb
@@ -1243,7 +1252,9 @@ describe('Marketplace E2E', () => {
     const secondResponse = await request(app.getHttpServer())
       .post(`${MARKETPLACE_BASE_PATH}/listings`)
       .set(owner.headers)
-      .send(createSubmitPayload(workflow.versionId, { title: 'Another title' }));
+      .send(
+        createSubmitPayload(workflow.versionId, { title: 'Another title' }),
+      );
 
     expect(secondResponse.status).toBe(409);
 
@@ -1447,9 +1458,12 @@ describe('Marketplace E2E', () => {
       publishedAt: null,
     });
 
-    const reviewResult = relistResponse.body.reviewResult as MarketplaceReviewResult;
+    const reviewResult = relistResponse.body
+      .reviewResult as MarketplaceReviewResult;
     expect(reviewResult.outcome).toBe('failed');
-    expect(findReviewCheck(reviewResult, 'RECENT_SUCCESSFUL_EXECUTION_MISSING')).toMatchObject({
+    expect(
+      findReviewCheck(reviewResult, 'RECENT_SUCCESSFUL_EXECUTION_MISSING'),
+    ).toMatchObject({
       status: 'failed',
     });
   });
@@ -1504,7 +1518,9 @@ describe('Marketplace E2E', () => {
     const viewerSubmitResponse = await request(app.getHttpServer())
       .post(`${MARKETPLACE_BASE_PATH}/listings`)
       .set(viewer.headers)
-      .send(createSubmitPayload(workflow.versionId, { title: 'Viewer submit' }));
+      .send(
+        createSubmitPayload(workflow.versionId, { title: 'Viewer submit' }),
+      );
 
     expect(viewerSubmitResponse.status).toBe(403);
     expect(viewerSubmitResponse.body).toMatchObject({
@@ -1591,7 +1607,17 @@ describe('Marketplace E2E', () => {
       .set(owner.headers)
       .send(
         createSubmitPayload(workflow.versionId, {
-          tags: ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'],
+          tags: [
+            'one',
+            'two',
+            'three',
+            'four',
+            'five',
+            'six',
+            'seven',
+            'eight',
+            'nine',
+          ],
         }),
       );
 

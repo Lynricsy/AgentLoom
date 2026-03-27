@@ -169,7 +169,9 @@ export class GlossaryService {
     const [node] = await tenantDb
       .select()
       .from(memoryNodes)
-      .where(and(eq(memoryNodes.id, nodeId), eq(memoryNodes.instanceId, instanceId)))
+      .where(
+        and(eq(memoryNodes.id, nodeId), eq(memoryNodes.instanceId, instanceId)),
+      )
       .limit(1);
 
     if (!node) {
@@ -201,13 +203,16 @@ export class GlossaryService {
     const matchesByPosition = new Map<number, GlossaryMatch[]>();
     const matchLengthsByPosition = new Map<number, number>();
 
-    for (const [endIndex, matchedKeywords] of cache.automaton.search(normalizedText)) {
+    for (const [endIndex, matchedKeywords] of cache.automaton.search(
+      normalizedText,
+    )) {
       for (const matchedKeyword of matchedKeywords) {
         const entries = cache.keywordLookup.get(matchedKeyword) ?? [];
 
         for (const entry of entries) {
           const position = endIndex - entry.normalizedKeyword.length + 1;
-          const currentLongestLength = matchLengthsByPosition.get(position) ?? 0;
+          const currentLongestLength =
+            matchLengthsByPosition.get(position) ?? 0;
           const currentLength = entry.normalizedKeyword.length;
 
           if (currentLength < currentLongestLength) {
@@ -236,7 +241,9 @@ export class GlossaryService {
     const matches: GlossaryMatch[] = [];
     let nextAvailablePosition = 0;
 
-    const sortedPositions = [...matchesByPosition.keys()].sort((left, right) => left - right);
+    const sortedPositions = [...matchesByPosition.keys()].sort(
+      (left, right) => left - right,
+    );
     for (const position of sortedPositions) {
       if (position < nextAvailablePosition) {
         continue;

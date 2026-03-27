@@ -174,7 +174,9 @@ describe('TenantKeyService', () => {
 
       db.select.mockReturnValueOnce({ from });
 
-      await expect(service.findByOrg(TENANT_ID, ORG_ID)).resolves.toEqual(records);
+      await expect(service.findByOrg(TENANT_ID, ORG_ID)).resolves.toEqual(
+        records,
+      );
     });
   });
 
@@ -185,7 +187,9 @@ describe('TenantKeyService', () => {
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(service.findById(TENANT_ID, KEY_ID)).resolves.toEqual(record);
+      await expect(service.findById(TENANT_ID, KEY_ID)).resolves.toEqual(
+        record,
+      );
     });
 
     it('密钥不存在时应抛出异常', async () => {

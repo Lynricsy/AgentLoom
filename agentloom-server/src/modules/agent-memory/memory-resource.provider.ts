@@ -41,9 +41,10 @@ interface MemorySessionShareMetadata extends MemorySessionConfig {
 }
 
 @Injectable()
-export class MemoryResourceProvider
-  implements SharedResourceProvider<MemoryResourceConfig, MemoryResourceInstance>
-{
+export class MemoryResourceProvider implements SharedResourceProvider<
+  MemoryResourceConfig,
+  MemoryResourceInstance
+> {
   private readonly logger = new Logger(MemoryResourceProvider.name);
 
   readonly type = MEMORY_RESOURCE_TYPE;
@@ -102,7 +103,9 @@ export class MemoryResourceProvider
       status: 'disconnected',
     };
 
-    this.logger.debug(`Disconnected memory resource: session ${instance.sessionId}`);
+    this.logger.debug(
+      `Disconnected memory resource: session ${instance.sessionId}`,
+    );
   }
 
   async share(
@@ -110,7 +113,10 @@ export class MemoryResourceProvider
     consumerId: string,
   ): Promise<void> {
     const tenantDb = getTenantDb(this.db);
-    const nextConfig = this.buildSharedConfig(instance.session.config, consumerId);
+    const nextConfig = this.buildSharedConfig(
+      instance.session.config,
+      consumerId,
+    );
 
     await tenantDb
       .update(memorySessions)
@@ -141,7 +147,8 @@ export class MemoryResourceProvider
       bootUris: [],
       fusionPriority: 0,
     };
-    const existingShareConfig = currentConfig as MemorySessionShareMetadata | null;
+    const existingShareConfig =
+      currentConfig as MemorySessionShareMetadata | null;
     const sharedConsumers = [
       ...(existingShareConfig?.sharedConsumers ?? []),
       consumerId,

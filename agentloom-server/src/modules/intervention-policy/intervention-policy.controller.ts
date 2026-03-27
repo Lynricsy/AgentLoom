@@ -38,8 +38,18 @@ export class InterventionPolicyController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取工作流的介入策略列表' })
   @ApiParam({ name: 'workflowId', description: '工作流 ID', type: String })
-  @ApiQuery({ name: 'page', required: false, description: '页码（默认 1）', type: Number })
-  @ApiQuery({ name: 'pageSize', required: false, description: '每页数量（默认 20）', type: Number })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: '页码（默认 1）',
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    description: '每页数量（默认 20）',
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: '介入策略列表获取成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
@@ -62,7 +72,12 @@ export class InterventionPolicyController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '解析工作流的有效介入策略' })
   @ApiParam({ name: 'workflowId', description: '工作流 ID', type: String })
-  @ApiQuery({ name: 'nodeId', required: false, description: '节点 ID，用于获取节点级策略', type: String })
+  @ApiQuery({
+    name: 'nodeId',
+    required: false,
+    description: '节点 ID，用于获取节点级策略',
+    type: String,
+  })
   @ApiResponse({ status: 200, description: '解析的介入策略返回成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
@@ -116,10 +131,14 @@ export class InterventionPolicyController {
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const policy = await this.interventionPolicyService.create(tenantId, userId, {
-      ...body,
-      workflowId,
-    });
+    const policy = await this.interventionPolicyService.create(
+      tenantId,
+      userId,
+      {
+        ...body,
+        workflowId,
+      },
+    );
     return { data: policy };
   }
 

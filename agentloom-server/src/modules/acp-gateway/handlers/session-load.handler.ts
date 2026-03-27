@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../../agent/ports/agent-runtime.port';
 import {
   ConversationSessionDataIntegrityError,
   SessionPersistenceService,
 } from '../../execution/services/session-persistence.service';
-import {
-  AcpJsonRpcError,
-  buildJsonRpcNotification,
-} from '../acp-jsonrpc';
+import { AcpJsonRpcError, buildJsonRpcNotification } from '../acp-jsonrpc';
 import { mapConversationReplayEntryToAcpSessionUpdate } from '../acp-session-update.mapper';
 import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
 import { AcpTerminalProxyService } from '../services/acp-terminal-proxy.service';
@@ -39,7 +39,9 @@ export class SessionLoadHandler {
     state: AcpConnectionState,
   ): Promise<AcpSessionLoadResult> {
     const normalizedParams = this.readParams(params);
-    const session = await this.loadConversationSession(normalizedParams.sessionId);
+    const session = await this.loadConversationSession(
+      normalizedParams.sessionId,
+    );
     const tenantId = state.authContext?.tenantId;
 
     if (
@@ -52,9 +54,10 @@ export class SessionLoadHandler {
     }
 
     try {
-      const replayEntries = await this.sessionPersistence.loadConversationReplay(
-        normalizedParams.sessionId,
-      );
+      const replayEntries =
+        await this.sessionPersistence.loadConversationReplay(
+          normalizedParams.sessionId,
+        );
 
       for (const entry of replayEntries) {
         if (!state.emitNotification) {
@@ -81,7 +84,9 @@ export class SessionLoadHandler {
       runtimeSessionId: session.id,
       agentId: session.agentId,
       tenantId,
-      ...(session.context.cwd === undefined ? {} : { cwd: session.context.cwd }),
+      ...(session.context.cwd === undefined
+        ? {}
+        : { cwd: session.context.cwd }),
       ...(session.context.serverSandbox === undefined
         ? {}
         : { serverSandbox: session.context.serverSandbox }),
@@ -95,10 +100,14 @@ export class SessionLoadHandler {
         );
       } catch (error) {
         await this.safeCleanupSessionTools(trackedSession);
-        throw new AcpJsonRpcError(-32603, 'Failed to restore ACP MCP forwarding', {
-          sessionId: session.id,
-          reason: this.getErrorMessage(error),
-        });
+        throw new AcpJsonRpcError(
+          -32603,
+          'Failed to restore ACP MCP forwarding',
+          {
+            sessionId: session.id,
+            reason: this.getErrorMessage(error),
+          },
+        );
       }
     }
 

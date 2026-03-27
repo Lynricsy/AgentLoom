@@ -88,9 +88,8 @@ export class AgentExecutionService {
     conversationId: string,
     message: string | SendMessageDto,
   ): Promise<void> {
-    const conversation = await this.getConversationIdentityOrThrow(
-      conversationId,
-    );
+    const conversation =
+      await this.getConversationIdentityOrThrow(conversationId);
     const normalizedMessage = this.normalizeMessage(message);
 
     await this.withTenantContext(conversation.tenantId, async () => {
@@ -108,9 +107,8 @@ export class AgentExecutionService {
   }
 
   async cancelExecution(conversationId: string): Promise<void> {
-    const conversation = await this.getConversationIdentityOrThrow(
-      conversationId,
-    );
+    const conversation =
+      await this.getConversationIdentityOrThrow(conversationId);
 
     await this.withTenantContext(conversation.tenantId, async () => {
       await this.conversationService.cancel(conversationId);
@@ -147,10 +145,7 @@ export class AgentExecutionService {
     return handle;
   }
 
-  clearActiveRun(
-    conversationId: string,
-    abort?: AbortController,
-  ): void {
+  clearActiveRun(conversationId: string, abort?: AbortController): void {
     const current = this.activeRuns.get(conversationId);
     if (!current) {
       return;
@@ -164,9 +159,7 @@ export class AgentExecutionService {
     this.resolveNotificationWaiters(conversationId, 'timeout');
   }
 
-  getActiveRun(
-    conversationId: string,
-  ): AgentConversationActiveRun | undefined {
+  getActiveRun(conversationId: string): AgentConversationActiveRun | undefined {
     return this.activeRuns.get(conversationId);
   }
 
@@ -234,7 +227,9 @@ export class AgentExecutionService {
     });
   }
 
-  private async dispatchAfterCommit(operation: () => Promise<void>): Promise<void> {
+  private async dispatchAfterCommit(
+    operation: () => Promise<void>,
+  ): Promise<void> {
     if (hasActiveTenantTransaction()) {
       registerAfterCommitHook(operation);
       return;
@@ -298,7 +293,9 @@ export class AgentExecutionService {
   private async getConversationIdentityOrThrow(
     conversationId: string,
   ): Promise<ConversationIdentity> {
-    const dbClient = hasActiveTenantTransaction() ? getTenantDb(this.db) : this.db;
+    const dbClient = hasActiveTenantTransaction()
+      ? getTenantDb(this.db)
+      : this.db;
     const [conversation] = await dbClient
       .select({
         id: agentConversations.id,

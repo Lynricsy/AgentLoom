@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -146,7 +147,9 @@ describe('MemoryVersionService', () => {
       const created = createVersion({ createdBy: 'user-1' });
       const insertQuery = createInsertChain([created]);
 
-      tenantDb.select.mockReturnValueOnce(nodeQuery).mockReturnValueOnce(latestQuery);
+      tenantDb.select
+        .mockReturnValueOnce(nodeQuery)
+        .mockReturnValueOnce(latestQuery);
       tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
 
       await expect(
@@ -168,9 +171,9 @@ describe('MemoryVersionService', () => {
     it('节点不存在时应抛出异常', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.createVersion(NODE_ID, '初始记忆内容')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.createVersion(NODE_ID, '初始记忆内容'),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
@@ -179,9 +182,9 @@ describe('MemoryVersionService', () => {
         .mockReturnValueOnce(createSelectChain([createNode()]))
         .mockReturnValueOnce(createSelectChain([createVersion()]));
 
-      await expect(service.createVersion(NODE_ID, '重复初始内容')).rejects.toBeInstanceOf(
-        ConflictException,
-      );
+      await expect(
+        service.createVersion(NODE_ID, '重复初始内容'),
+      ).rejects.toBeInstanceOf(ConflictException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
   });
@@ -229,11 +232,16 @@ describe('MemoryVersionService', () => {
 
     it('oldString 不存在时应抛出 409', async () => {
       txDb.select.mockReturnValueOnce(
-        createSelectChain([createVersion({ content: 'hello world', version: 2 })]),
+        createSelectChain([
+          createVersion({ content: 'hello world', version: 2 }),
+        ]),
       );
 
       await expect(
-        service.patchVersion(NODE_ID, { oldString: 'missing', newString: 'new' }),
+        service.patchVersion(NODE_ID, {
+          oldString: 'missing',
+          newString: 'new',
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
 
       expect(txDb.insert).not.toHaveBeenCalled();
@@ -242,7 +250,9 @@ describe('MemoryVersionService', () => {
 
     it('最新版本在写入前发生变化时应触发 OCC 冲突', async () => {
       txDb.select.mockReturnValueOnce(
-        createSelectChain([createVersion({ content: 'hello old world', version: 2 })]),
+        createSelectChain([
+          createVersion({ content: 'hello old world', version: 2 }),
+        ]),
       );
       txDb.insert.mockReturnValueOnce(
         createInsertChain([
@@ -277,7 +287,9 @@ describe('MemoryVersionService', () => {
       txDb.insert.mockReturnValueOnce(insertQuery.chain);
       txDb.update.mockReturnValueOnce(updateQuery.chain);
 
-      await expect(service.appendVersion(NODE_ID, 'line2')).resolves.toEqual(created);
+      await expect(service.appendVersion(NODE_ID, 'line2')).resolves.toEqual(
+        created,
+      );
 
       expect(insertQuery.values).toHaveBeenCalledWith({
         nodeId: NODE_ID,
@@ -303,7 +315,9 @@ describe('MemoryVersionService', () => {
       tenantDb.select.mockReturnValueOnce(query);
 
       await expect(service.getLatestVersion(NODE_ID)).resolves.toEqual(latest);
-      expect(query.orderBy).toHaveBeenCalledWith(mocks.operators.desc(memoryVersions.version));
+      expect(query.orderBy).toHaveBeenCalledWith(
+        mocks.operators.desc(memoryVersions.version),
+      );
       expect(query.limit).toHaveBeenCalledWith(1);
     });
   });
@@ -312,22 +326,44 @@ describe('MemoryVersionService', () => {
     it('应按版本号倒序返回完整版本链', async () => {
       const history = [
         createVersion({ id: 'v3', version: 3 }),
-        createVersion({ id: 'v2', version: 2, deprecated: true, migratedTo: 'v3' }),
-        createVersion({ id: 'v1', version: 1, deprecated: true, migratedTo: 'v2' }),
+        createVersion({
+          id: 'v2',
+          version: 2,
+          deprecated: true,
+          migratedTo: 'v3',
+        }),
+        createVersion({
+          id: 'v1',
+          version: 1,
+          deprecated: true,
+          migratedTo: 'v2',
+        }),
       ];
       const query = createSelectChain(history);
 
       tenantDb.select.mockReturnValueOnce(query);
 
-      await expect(service.getVersionHistory(NODE_ID)).resolves.toEqual(history);
-      expect(query.orderBy).toHaveBeenCalledWith(mocks.operators.desc(memoryVersions.version));
+      await expect(service.getVersionHistory(NODE_ID)).resolves.toEqual(
+        history,
+      );
+      expect(query.orderBy).toHaveBeenCalledWith(
+        mocks.operators.desc(memoryVersions.version),
+      );
     });
   });
 
   describe('rollbackToVersion', () => {
     it('应复制目标版本内容为新版本并废弃当前版本', async () => {
-      const target = createVersion({ id: 'v2', version: 2, content: 'stable content' });
-      const latest = createVersion({ id: 'v5', version: 5, content: 'broken content' });
+      const target = createVersion({
+        id: 'v2',
+        version: 2,
+        content: 'stable content',
+      });
+      const latest = createVersion({
+        id: 'v5',
+        version: 5,
+        content: 'broken content',
+      });
       const created = createVersion({
         id: 'v6',
         version: 6,
@@ -344,9 +380,9 @@ describe('MemoryVersionService', () => {
       txDb.insert.mockReturnValueOnce(insertQuery.chain);
       txDb.update.mockReturnValueOnce(updateQuery.chain);
 
-      await expect(service.rollbackToVersion(NODE_ID, target.id, 'user-3')).resolves.toEqual(
-        created,
-      );
+      await expect(
+        service.rollbackToVersion(NODE_ID, target.id, 'user-3'),
+      ).resolves.toEqual(created);
 
       expect(insertQuery.values).toHaveBeenCalledWith({
         nodeId: NODE_ID,
@@ -371,19 +407,21 @@ describe('MemoryVersionService', () => {
 
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
 
-      await expect(service.updateReviewStatus(VERSION_ID, 'approved')).resolves.toEqual(
-        updated,
-      );
+      await expect(
+        service.updateReviewStatus(VERSION_ID, 'approved'),
+      ).resolves.toEqual(updated);
 
-      expect(updateQuery.set).toHaveBeenCalledWith({ reviewStatus: 'approved' });
+      expect(updateQuery.set).toHaveBeenCalledWith({
+        reviewStatus: 'approved',
+      });
     });
 
     it('版本不存在时应抛出异常', async () => {
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
-      await expect(service.updateReviewStatus(VERSION_ID, 'rejected')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.updateReviewStatus(VERSION_ID, 'rejected'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

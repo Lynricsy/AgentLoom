@@ -88,16 +88,27 @@ export function sanitizeSensitiveFields(obj: unknown): unknown {
 /**
  * 对 StepTelemetryData 应用截断和敏感字段清洗
  */
-export function sanitizeTelemetryData(data: StepTelemetryData): StepTelemetryData {
+export function sanitizeTelemetryData(
+  data: StepTelemetryData,
+): StepTelemetryData {
   return {
     toolCalls: data.toolCalls.map((tc) => ({
       ...tc,
-      input: truncateField(sanitizeSensitiveFields(tc.input), TOOL_CALL_IO_MAX_BYTES),
-      output: truncateField(sanitizeSensitiveFields(tc.output), TOOL_CALL_IO_MAX_BYTES),
+      input: truncateField(
+        sanitizeSensitiveFields(tc.input),
+        TOOL_CALL_IO_MAX_BYTES,
+      ),
+      output: truncateField(
+        sanitizeSensitiveFields(tc.output),
+        TOOL_CALL_IO_MAX_BYTES,
+      ),
     })),
     errors: data.errors.map((err) => ({
       ...err,
-      errorMessage: truncateField(err.errorMessage, ERROR_MESSAGE_MAX_BYTES) as string,
+      errorMessage: truncateField(
+        err.errorMessage,
+        ERROR_MESSAGE_MAX_BYTES,
+      ) as string,
     })),
     selfRepairs: data.selfRepairs.map((sr) => ({
       ...sr,
@@ -156,7 +167,10 @@ function truncateString(value: string, maxBytes: number): string {
     encoder.encode(value).slice(0, Math.max(0, maxBytes - markerBytes)),
   );
 
-  while (truncated.length > 0 && getStringBytes(`${truncated}${TRUNCATED_MARKER}`) > maxBytes) {
+  while (
+    truncated.length > 0 &&
+    getStringBytes(`${truncated}${TRUNCATED_MARKER}`) > maxBytes
+  ) {
     truncated = truncated.slice(0, -1);
   }
 
@@ -207,15 +221,24 @@ function truncateObject(
     }))
     .sort((left, right) => {
       const priorityDifference =
-        getObjectEntryPriority(left.key, left.originalValue, left.truncatedValue) -
-        getObjectEntryPriority(right.key, right.originalValue, right.truncatedValue);
+        getObjectEntryPriority(
+          left.key,
+          left.originalValue,
+          left.truncatedValue,
+        ) -
+        getObjectEntryPriority(
+          right.key,
+          right.originalValue,
+          right.truncatedValue,
+        );
 
       if (priorityDifference !== 0) {
         return priorityDifference;
       }
 
       const sizeDifference =
-        getSerializedBytes(left.truncatedValue) - getSerializedBytes(right.truncatedValue);
+        getSerializedBytes(left.truncatedValue) -
+        getSerializedBytes(right.truncatedValue);
       if (sizeDifference !== 0) {
         return sizeDifference;
       }

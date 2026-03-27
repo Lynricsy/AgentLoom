@@ -72,9 +72,7 @@ export class ReusableBlockService {
     const conditions = [eq(schema.reusableBlocks.tenantId, tenantId)];
 
     if (parsedQuery.category) {
-      conditions.push(
-        eq(schema.reusableBlocks.category, parsedQuery.category),
-      );
+      conditions.push(eq(schema.reusableBlocks.category, parsedQuery.category));
     }
 
     if (parsedQuery.search) {
@@ -319,9 +317,7 @@ export class ReusableBlockService {
             : ['definition', ...issue.path],
       }));
 
-      throw new InvalidBlockDefinitionException(
-        new ZodError(normalizedIssues),
-      );
+      throw new InvalidBlockDefinitionException(new ZodError(normalizedIssues));
     }
 
     throw error;

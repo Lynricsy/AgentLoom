@@ -36,7 +36,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -64,10 +65,18 @@ import type { MemoryBootSequenceResult } from '../boot-protocol.service';
 import { MemoryFusionService } from '../memory-fusion.service';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
-type MockBootProtocolService = ReturnType<typeof mocks.createBootProtocolService>;
-type MockMemorySearchService = ReturnType<typeof mocks.createMemorySearchService>;
-type MockPathResolverService = ReturnType<typeof mocks.createPathResolverService>;
-type MockMemoryVersionService = ReturnType<typeof mocks.createMemoryVersionService>;
+type MockBootProtocolService = ReturnType<
+  typeof mocks.createBootProtocolService
+>;
+type MockMemorySearchService = ReturnType<
+  typeof mocks.createMemorySearchService
+>;
+type MockPathResolverService = ReturnType<
+  typeof mocks.createPathResolverService
+>;
+type MockMemoryVersionService = ReturnType<
+  typeof mocks.createMemoryVersionService
+>;
 type MockMemoryNodeService = ReturnType<typeof mocks.createMemoryNodeService>;
 
 type SelectChain<TResult> = Promise<TResult[]> & {
@@ -232,18 +241,31 @@ describe('MemoryFusionService', () => {
         memoryInstanceId: 'instance-high',
         config: createSessionConfig({ fusionPriority: 1 }),
       });
-      const sessionQuery = createSelectChain([lowPrioritySession, highPrioritySession]);
+      const sessionQuery = createSelectChain([
+        lowPrioritySession,
+        highPrioritySession,
+      ]);
 
       tenantDb.select.mockReturnValueOnce(sessionQuery);
-      pathResolverService.resolveUri.mockImplementation(async (instanceId: string) =>
-        instanceId === 'instance-high'
-          ? createNode({ id: 'node-high', instanceId })
-          : createNode({ id: 'node-low', instanceId }),
+      pathResolverService.resolveUri.mockImplementation(
+        async (instanceId: string) =>
+          instanceId === 'instance-high'
+            ? createNode({ id: 'node-high', instanceId })
+            : createNode({ id: 'node-low', instanceId }),
       );
-      memoryVersionService.getLatestVersion.mockImplementation(async (nodeId: string) =>
-        nodeId === 'node-high'
-          ? createVersion({ id: 'version-high', nodeId, content: '高优先级内容' })
-          : createVersion({ id: 'version-low', nodeId, content: '低优先级内容' }),
+      memoryVersionService.getLatestVersion.mockImplementation(
+        async (nodeId: string) =>
+          nodeId === 'node-high'
+            ? createVersion({
+                id: 'version-high',
+                nodeId,
+                content: '高优先级内容',
+              })
+            : createVersion({
+                id: 'version-low',
+                nodeId,
+                content: '低优先级内容',
+              }),
       );
 
       await expect(
@@ -288,15 +310,23 @@ describe('MemoryFusionService', () => {
       tenantDb.select.mockReturnValueOnce(
         createSelectChain([missingSession, foundSession]),
       );
-      pathResolverService.resolveUri.mockImplementation(async (instanceId: string) => {
-        if (instanceId === 'instance-missing') {
-          throw new NotFoundException('Memory path core://agent/name not found');
-        }
+      pathResolverService.resolveUri.mockImplementation(
+        async (instanceId: string) => {
+          if (instanceId === 'instance-missing') {
+            throw new NotFoundException(
+              'Memory path core://agent/name not found',
+            );
+          }
 
-        return createNode({ id: 'node-found', instanceId });
-      });
+          return createNode({ id: 'node-found', instanceId });
+        },
+      );
       memoryVersionService.getLatestVersion.mockResolvedValue(
-        createVersion({ id: 'version-found', nodeId: 'node-found', content: '可读内容' }),
+        createVersion({
+          id: 'version-found',
+          nodeId: 'node-found',
+          content: '可读内容',
+        }),
       );
 
       await expect(
@@ -318,7 +348,9 @@ describe('MemoryFusionService', () => {
     });
 
     it('空 sessionIds 应返回空数组', async () => {
-      await expect(service.readFromAll([], 'core://agent/name')).resolves.toEqual([]);
+      await expect(
+        service.readFromAll([], 'core://agent/name'),
+      ).resolves.toEqual([]);
       expect(tenantDb.select).not.toHaveBeenCalled();
     });
 
@@ -334,24 +366,34 @@ describe('MemoryFusionService', () => {
         config: createSessionConfig({ fusionPriority: 2 }),
       });
 
-      tenantDb.select.mockReturnValueOnce(createSelectChain([sessionB, sessionA]));
-      pathResolverService.resolveUri.mockImplementation(async (instanceId: string) =>
-        createNode({
-          id: instanceId === 'instance-a' ? 'node-a' : 'node-b',
-          instanceId,
-        }),
+      tenantDb.select.mockReturnValueOnce(
+        createSelectChain([sessionB, sessionA]),
       );
-      memoryVersionService.getLatestVersion.mockImplementation(async (nodeId: string) =>
-        createVersion({
-          id: `${nodeId}-version`,
-          nodeId,
-          content: nodeId === 'node-a' ? 'A' : 'B',
-        }),
+      pathResolverService.resolveUri.mockImplementation(
+        async (instanceId: string) =>
+          createNode({
+            id: instanceId === 'instance-a' ? 'node-a' : 'node-b',
+            instanceId,
+          }),
+      );
+      memoryVersionService.getLatestVersion.mockImplementation(
+        async (nodeId: string) =>
+          createVersion({
+            id: `${nodeId}-version`,
+            nodeId,
+            content: nodeId === 'node-a' ? 'A' : 'B',
+          }),
       );
 
-      const results = await service.readFromAll(['session-b', 'session-a'], 'core://agent/name');
+      const results = await service.readFromAll(
+        ['session-b', 'session-a'],
+        'core://agent/name',
+      );
 
-      expect(results.map((result) => result.sessionId)).toEqual(['session-a', 'session-b']);
+      expect(results.map((result) => result.sessionId)).toEqual([
+        'session-a',
+        'session-b',
+      ]);
     });
   });
 
@@ -372,7 +414,10 @@ describe('MemoryFusionService', () => {
         createSelectChain([lowPrioritySession, highPrioritySession]),
       );
       memorySearchService.search.mockImplementation(
-        async (instanceId: string, options: { query: string; limit?: number }) => {
+        async (
+          instanceId: string,
+          options: { query: string; limit?: number },
+        ) => {
           if (instanceId === 'instance-high') {
             expect(options).toEqual({ query: 'agent', limit: 5 });
 
@@ -399,31 +444,34 @@ describe('MemoryFusionService', () => {
         },
       );
 
-      await expect(service.searchAll(['session-low', 'session-high'], 'agent', { limit: 5 }))
-        .resolves.toEqual([
-          {
-            sessionId: 'session-high',
-            memoryInstanceId: 'instance-high',
-            fusionPriority: 1,
-            weightedScore: 0.45,
-            nodeId: 'node-high',
-            content: '高优先级但相关性略低',
-            relevanceScore: 0.45,
-            snippet: '高优先级摘要',
-            disclosureLevel: 0,
-          },
-          {
-            sessionId: 'session-low',
-            memoryInstanceId: 'instance-low',
-            fusionPriority: 4,
-            weightedScore: 0.225,
-            nodeId: 'node-low',
-            content: '低优先级但相关性更高',
-            relevanceScore: 0.9,
-            snippet: '低优先级摘要',
-            disclosureLevel: 0,
-          },
-        ]);
+      await expect(
+        service.searchAll(['session-low', 'session-high'], 'agent', {
+          limit: 5,
+        }),
+      ).resolves.toEqual([
+        {
+          sessionId: 'session-high',
+          memoryInstanceId: 'instance-high',
+          fusionPriority: 1,
+          weightedScore: 0.45,
+          nodeId: 'node-high',
+          content: '高优先级但相关性略低',
+          relevanceScore: 0.45,
+          snippet: '高优先级摘要',
+          disclosureLevel: 0,
+        },
+        {
+          sessionId: 'session-low',
+          memoryInstanceId: 'instance-low',
+          fusionPriority: 4,
+          weightedScore: 0.225,
+          nodeId: 'node-low',
+          content: '低优先级但相关性更高',
+          relevanceScore: 0.9,
+          snippet: '低优先级摘要',
+          disclosureLevel: 0,
+        },
+      ]);
     });
 
     it('空 sessionIds 应返回空搜索结果', async () => {
@@ -446,7 +494,11 @@ describe('MemoryFusionService', () => {
         createNode({ id: 'node-primary', instanceId: 'instance-primary' }),
       );
       memoryVersionService.getLatestVersion.mockResolvedValue(
-        createVersion({ id: 'version-latest', nodeId: 'node-primary', content: '旧内容' }),
+        createVersion({
+          id: 'version-latest',
+          nodeId: 'node-primary',
+          content: '旧内容',
+        }),
       );
 
       const appendedVersion = createVersion({
@@ -482,7 +534,10 @@ describe('MemoryFusionService', () => {
         role: 'primary',
         memoryInstanceId: 'instance-primary',
       });
-      const createdNode = createNode({ id: 'node-created', instanceId: 'instance-primary' });
+      const createdNode = createNode({
+        id: 'node-created',
+        instanceId: 'instance-primary',
+      });
       const createdVersion = createVersion({
         id: 'version-created',
         nodeId: 'node-created',
@@ -506,12 +561,19 @@ describe('MemoryFusionService', () => {
       memoryVersionService.createVersion.mockResolvedValue(createdVersion);
 
       await expect(
-        service.writeToTarget(['session-primary'], 'writer://drafts/ch1', '初始化内容'),
+        service.writeToTarget(
+          ['session-primary'],
+          'writer://drafts/ch1',
+          '初始化内容',
+        ),
       ).resolves.toEqual(createdVersion);
 
-      expect(memoryNodeService.createNode).toHaveBeenCalledWith('instance-primary', {
-        metadata: { uri: 'writer://drafts/ch1' },
-      });
+      expect(memoryNodeService.createNode).toHaveBeenCalledWith(
+        'instance-primary',
+        {
+          metadata: { uri: 'writer://drafts/ch1' },
+        },
+      );
       expect(pathResolverService.createPath).toHaveBeenCalledWith(
         'instance-primary',
         'writer',
@@ -599,9 +661,9 @@ describe('MemoryFusionService', () => {
     it('没有 primary session 时应抛出 BadRequestException', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.getWriteTarget(['session-a', 'session-b'])).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.getWriteTarget(['session-a', 'session-b']),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('存在多个 primary session 时应抛出 BadRequestException', async () => {
@@ -612,9 +674,9 @@ describe('MemoryFusionService', () => {
         ]),
       );
 
-      await expect(service.getWriteTarget(['primary-1', 'primary-2'])).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.getWriteTarget(['primary-1', 'primary-2']),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -641,10 +703,26 @@ describe('MemoryFusionService', () => {
               systemPrompt: 'Prompt H',
               boot: 'Boot H',
               index: [
-                createPath({ id: 'path-core-h', instanceId, domain: 'core', pathString: 'agent' }),
-                createPath({ id: 'path-notes-h', instanceId, domain: 'notes', pathString: 'scratchpad' }),
+                createPath({
+                  id: 'path-core-h',
+                  instanceId,
+                  domain: 'core',
+                  pathString: 'agent',
+                }),
+                createPath({
+                  id: 'path-notes-h',
+                  instanceId,
+                  domain: 'notes',
+                  pathString: 'scratchpad',
+                }),
               ],
-              glossary: [createGlossaryKeyword({ id: 'kw-shared', instanceId, keyword: 'identity' })],
+              glossary: [
+                createGlossaryKeyword({
+                  id: 'kw-shared',
+                  instanceId,
+                  keyword: 'identity',
+                }),
+              ],
             });
           }
 
@@ -652,18 +730,38 @@ describe('MemoryFusionService', () => {
             systemPrompt: 'Prompt L',
             boot: 'Boot L',
             index: [
-              createPath({ id: 'path-core-l', instanceId, domain: 'core', pathString: 'fallback' }),
-              createPath({ id: 'path-writer-l', instanceId, domain: 'writer', pathString: 'chapter_1' }),
+              createPath({
+                id: 'path-core-l',
+                instanceId,
+                domain: 'core',
+                pathString: 'fallback',
+              }),
+              createPath({
+                id: 'path-writer-l',
+                instanceId,
+                domain: 'writer',
+                pathString: 'chapter_1',
+              }),
             ],
             glossary: [
-              createGlossaryKeyword({ id: 'kw-shared', instanceId, keyword: 'identity' }),
-              createGlossaryKeyword({ id: 'kw-writer', instanceId, keyword: 'chapter' }),
+              createGlossaryKeyword({
+                id: 'kw-shared',
+                instanceId,
+                keyword: 'identity',
+              }),
+              createGlossaryKeyword({
+                id: 'kw-writer',
+                instanceId,
+                keyword: 'chapter',
+              }),
             ],
           });
         },
       );
 
-      await expect(service.bootAll(['session-low', 'session-high'])).resolves.toEqual({
+      await expect(
+        service.bootAll(['session-low', 'session-high']),
+      ).resolves.toEqual({
         systemPrompt: 'Prompt H\n\nPrompt L',
         boot: 'Boot H\n\nBoot L',
         index: [
@@ -707,12 +805,18 @@ describe('MemoryFusionService', () => {
         memoryInstanceId: 'instance-only',
         role: 'primary',
       });
-      const sequence = createBootSequence({ systemPrompt: 'Solo', boot: null, index: [] });
+      const sequence = createBootSequence({
+        systemPrompt: 'Solo',
+        boot: null,
+        index: [],
+      });
 
       tenantDb.select.mockReturnValueOnce(createSelectChain([session]));
       bootProtocolService.executeBootSequence.mockResolvedValue(sequence);
 
-      await expect(service.bootAll(['session-only'])).resolves.toEqual(sequence);
+      await expect(service.bootAll(['session-only'])).resolves.toEqual(
+        sequence,
+      );
     });
 
     it('空 sessionIds 应返回空 boot 上下文', async () => {
@@ -734,8 +838,13 @@ describe('MemoryFusionService', () => {
 
       expect(mocks.getTenantDb).toHaveBeenCalledWith(rawDb);
       expect(tenantDb.select).toHaveBeenCalledWith();
-      expect(mocks.operators.inArray).toHaveBeenCalledWith(memorySessions.id, ['session-a']);
-      expect(mocks.operators.eq).toHaveBeenCalledWith(memorySessions.status, 'active');
+      expect(mocks.operators.inArray).toHaveBeenCalledWith(memorySessions.id, [
+        'session-a',
+      ]);
+      expect(mocks.operators.eq).toHaveBeenCalledWith(
+        memorySessions.status,
+        'active',
+      );
     });
   });
 });

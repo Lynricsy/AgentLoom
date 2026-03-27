@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentConversationService } from '../../agent-conversation/agent-conversation.service';
-import { AgentExecutionService, AGENT_CONVERSATION_EXECUTION_JOB, AGENT_CONVERSATION_EXECUTION_QUEUE } from '../agent-execution.service';
+import {
+  AgentExecutionService,
+  AGENT_CONVERSATION_EXECUTION_JOB,
+  AGENT_CONVERSATION_EXECUTION_QUEUE,
+} from '../agent-execution.service';
 
-const {
-  mockQueue,
-  mockConversationService,
-} = vi.hoisted(() => ({
+const { mockQueue, mockConversationService } = vi.hoisted(() => ({
   mockQueue: {
     add: vi.fn(),
   },
@@ -136,7 +137,9 @@ describe('AgentExecutionService', () => {
 
     await service.cancelExecution('conversation-1');
 
-    expect(mockConversationService.cancel).toHaveBeenCalledWith('conversation-1');
+    expect(mockConversationService.cancel).toHaveBeenCalledWith(
+      'conversation-1',
+    );
     expect(abortSpy).toHaveBeenCalledTimes(1);
     expect(notifySpy).toHaveBeenCalledTimes(1);
   });

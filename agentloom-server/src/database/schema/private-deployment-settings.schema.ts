@@ -28,7 +28,9 @@ export const privateDeploymentCertificateSourceEnum = pgEnum(
 export const privateDeploymentSettings = pgTable(
   'private_deployment_settings',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     organizationId: uuid('organization_id')
       .notNull()
@@ -46,7 +48,9 @@ export const privateDeploymentSettings = pgTable(
     smtpPasswordIv: bytea('smtp_password_iv'),
     smtpPasswordAuthTag: bytea('smtp_password_auth_tag'),
 
-    privateCloudEndpointUrl: varchar('private_cloud_endpoint_url', { length: 512 }),
+    privateCloudEndpointUrl: varchar('private_cloud_endpoint_url', {
+      length: 512,
+    }),
     privateCloudAuthMethod: privateCloudAuthMethodEnum(
       'private_cloud_auth_method',
     )
@@ -57,8 +61,12 @@ export const privateDeploymentSettings = pgTable(
     )
       .notNull()
       .default(false),
-    privateCloudApiKeyEncryptedKey: bytea('private_cloud_api_key_encrypted_key'),
-    privateCloudApiKeyEncryptedDek: bytea('private_cloud_api_key_encrypted_dek'),
+    privateCloudApiKeyEncryptedKey: bytea(
+      'private_cloud_api_key_encrypted_key',
+    ),
+    privateCloudApiKeyEncryptedDek: bytea(
+      'private_cloud_api_key_encrypted_dek',
+    ),
     privateCloudApiKeyIv: bytea('private_cloud_api_key_iv'),
     privateCloudApiKeyAuthTag: bytea('private_cloud_api_key_auth_tag'),
 

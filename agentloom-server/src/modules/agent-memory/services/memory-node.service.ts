@@ -139,10 +139,7 @@ export class MemoryNodeService {
         .orderBy(desc(memoryNodes.createdAt))
         .limit(limit)
         .offset(offset),
-      tenantDb
-        .select({ total: count() })
-        .from(memoryNodes)
-        .where(predicate),
+      tenantDb.select({ total: count() }).from(memoryNodes).where(predicate),
     ]);
 
     return {

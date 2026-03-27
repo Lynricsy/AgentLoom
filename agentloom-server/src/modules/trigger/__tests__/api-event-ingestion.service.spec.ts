@@ -224,7 +224,11 @@ describe('ApiEventIngestionService', () => {
     });
 
     it('执行失败时应写入失败历史并继续处理其余触发器', async () => {
-      const trigger2 = { ...baseTrigger, id: 'trigger-2', workflowDefinitionId: 'wf-2' };
+      const trigger2 = {
+        ...baseTrigger,
+        id: 'trigger-2',
+        workflowDefinitionId: 'wf-2',
+      };
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([baseTrigger, trigger2]),
@@ -257,14 +261,20 @@ describe('ApiEventIngestionService', () => {
     });
 
     it('应处理多个触发器并返回正确计数', async () => {
-      const trigger2 = { ...baseTrigger, id: 'trigger-2-id', workflowDefinitionId: 'wf-2' };
+      const trigger2 = {
+        ...baseTrigger,
+        id: 'trigger-2-id',
+        workflowDefinitionId: 'wf-2',
+      };
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([baseTrigger, trigger2]),
         }),
       });
       adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
-      mockAdapter.matchesTrigger.mockReturnValueOnce(true).mockReturnValueOnce(false);
+      mockAdapter.matchesTrigger
+        .mockReturnValueOnce(true)
+        .mockReturnValueOnce(false);
       executionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
       historyService.record.mockResolvedValue(undefined);
       triggerService.markTriggered.mockResolvedValue(undefined);

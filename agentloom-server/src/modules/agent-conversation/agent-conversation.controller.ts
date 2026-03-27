@@ -63,7 +63,10 @@ export class AgentConversationController {
   @Get('agent-conversations/:id')
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: 'Get conversation detail with message history' })
-  @ApiResponse({ status: 200, description: 'Conversation detail with messages' })
+  @ApiResponse({
+    status: 200,
+    description: 'Conversation detail with messages',
+  })
   async getDetail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page?: string,
@@ -163,7 +166,9 @@ export class AgentConversationController {
 
   @Get('agent-conversations/:id/workspace/tree')
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
-  @ApiOperation({ summary: 'Get workspace file tree for a conversation sandbox' })
+  @ApiOperation({
+    summary: 'Get workspace file tree for a conversation sandbox',
+  })
   @ApiResponse({ status: 200, description: 'File tree' })
   async getWorkspaceTree(
     @Param('id', ParseUUIDPipe) id: string,

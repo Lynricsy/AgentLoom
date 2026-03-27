@@ -88,29 +88,33 @@ export class ResourceGovernanceController {
       organizationId,
       userId,
     );
-    const effectedAt = this.resourceGovernanceService.resolveGovernanceEffectedAt(
-      governance,
-      requestedAt,
-    );
-    const response = this.resourceGovernanceService.buildGovernanceActionResponse({
-      organizationId,
-      requestedBy: userId,
-      requestedAt,
-      effectedAt,
-      reason:
-        dto.tenantControl?.reason ??
-        dto.workflowControls?.find((control) => control.reason)?.reason ??
-        null,
-      effectiveState: state,
-      workflowTargetIds:
-        dto.workflowControls?.map((control) => control.targetId) ?? [],
-      tenantControlUpdated: dto.tenantControl !== undefined,
-    });
+    const effectedAt =
+      this.resourceGovernanceService.resolveGovernanceEffectedAt(
+        governance,
+        requestedAt,
+      );
+    const response =
+      this.resourceGovernanceService.buildGovernanceActionResponse({
+        organizationId,
+        requestedBy: userId,
+        requestedAt,
+        effectedAt,
+        reason:
+          dto.tenantControl?.reason ??
+          dto.workflowControls?.find((control) => control.reason)?.reason ??
+          null,
+        effectiveState: state,
+        workflowTargetIds:
+          dto.workflowControls?.map((control) => control.targetId) ?? [],
+        tenantControlUpdated: dto.tenantControl !== undefined,
+      });
 
     return { data: response };
   }
 
-  @Post('organizations/:id/resource-governance/executions/:executionId/terminate')
+  @Post(
+    'organizations/:id/resource-governance/executions/:executionId/terminate',
+  )
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin')
   @ApiOperation({ summary: '终止异常执行' })
@@ -122,7 +126,10 @@ export class ResourceGovernanceController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ) {
-    await this.resourceGovernanceService.getEffectiveState(organizationId, userId);
+    await this.resourceGovernanceService.getEffectiveState(
+      organizationId,
+      userId,
+    );
 
     const requestedAt = new Date().toISOString();
     const execution = await this.getExecutionService().cancelExecution(
@@ -131,16 +138,18 @@ export class ResourceGovernanceController {
     );
 
     const response =
-      await this.resourceGovernanceService.finalizeAnomalousExecutionTermination({
-        tenantId,
-        organizationId,
-        executionId: execution.id,
-        workflowId: execution.workflowDefinitionId,
-        requestedBy: userId,
-        reason: (dto as TerminateExecutionDto).reason,
-        requestedAt,
-        finalStatus: execution.status,
-      });
+      await this.resourceGovernanceService.finalizeAnomalousExecutionTermination(
+        {
+          tenantId,
+          organizationId,
+          executionId: execution.id,
+          workflowId: execution.workflowDefinitionId,
+          requestedBy: userId,
+          reason: (dto as TerminateExecutionDto).reason,
+          requestedAt,
+          finalStatus: execution.status,
+        },
+      );
 
     return { data: response };
   }

@@ -12,7 +12,10 @@ class TestStrategy extends BaseRouterStrategy {
   readonly requiresEmbedding = false;
   readonly configSchema: z.ZodSchema;
 
-  constructor(readonly name: string, configSchema: z.ZodSchema) {
+  constructor(
+    readonly name: string,
+    configSchema: z.ZodSchema,
+  ) {
     super();
     this.configSchema = configSchema;
   }

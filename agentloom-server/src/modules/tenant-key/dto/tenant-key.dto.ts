@@ -19,7 +19,9 @@ export const TenantKeyResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export class TenantKeyResponseDto extends createZodDto(TenantKeyResponseSchema) {}
+export class TenantKeyResponseDto extends createZodDto(
+  TenantKeyResponseSchema,
+) {}
 
 export type TenantKeyResponse = z.infer<typeof TenantKeyResponseSchema>;
 

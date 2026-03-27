@@ -6,7 +6,10 @@ import {
   type ExecuteSubAgent,
   SubAgentToolsProvider,
 } from './subagent-tools.provider';
-import { SubAgentRunStatus, type SubAgentResult } from './subagent-execution.types';
+import {
+  SubAgentRunStatus,
+  type SubAgentResult,
+} from './subagent-execution.types';
 
 const { mockAgentDefinitionService, mockEventBridge } = vi.hoisted(() => ({
   mockAgentDefinitionService: {
@@ -96,7 +99,11 @@ async function createTools(
   refs: AgentSubAgentRef[] = DEFAULT_REFS,
   parentContext = DEFAULT_PARENT_CONTEXT,
 ) {
-  return createProvider().createSessionToolProvider(refs, parentContext, executeSubAgent)();
+  return createProvider().createSessionToolProvider(
+    refs,
+    parentContext,
+    executeSubAgent,
+  )();
 }
 
 function createExecuteOptions(toolCallId = 'tool-call-1') {
@@ -123,9 +130,11 @@ describe('SubAgentToolsProvider', () => {
       stopReason: 'end_turn',
     }));
 
-    const result = ((tools.call_subagent as any).inputSchema as {
-      safeParse: (value: unknown) => { success: boolean };
-    }).safeParse({
+    const result = (
+      (tools.call_subagent as any).inputSchema as {
+        safeParse: (value: unknown) => { success: boolean };
+      }
+    ).safeParse({
       alias: 'invalid-alias',
       task: 'write',
     });
@@ -135,7 +144,10 @@ describe('SubAgentToolsProvider', () => {
 
   it('call_subagent 正常返回字符串化的 SubAgentResult', async () => {
     const tools = await createTools(async (params) => {
-      params.eventProxy?.emitEvent({ type: 'message_chunk', content: 'child-chunk' });
+      params.eventProxy?.emitEvent({
+        type: 'message_chunk',
+        content: 'child-chunk',
+      });
 
       return {
         content: 'child-result',

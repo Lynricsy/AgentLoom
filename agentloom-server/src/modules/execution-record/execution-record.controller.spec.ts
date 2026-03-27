@@ -28,7 +28,9 @@ function getHandler(name: 'findByExecution'): (...args: unknown[]) => unknown {
   );
 
   if (typeof descriptor?.value !== 'function') {
-    throw new Error(`Handler ${name} is not defined on ExecutionRecordController`);
+    throw new Error(
+      `Handler ${name} is not defined on ExecutionRecordController`,
+    );
   }
 
   return descriptor.value as (...args: unknown[]) => unknown;
@@ -39,7 +41,10 @@ function invokeFindByExecution(
   tenantId: string,
   query: unknown,
 ) {
-  return Reflect.apply(getHandler('findByExecution'), controller, [tenantId, query]);
+  return Reflect.apply(getHandler('findByExecution'), controller, [
+    tenantId,
+    query,
+  ]);
 }
 
 describe('ExecutionRecordController', () => {
@@ -156,7 +161,9 @@ describe('ExecutionRecordController', () => {
   it('should declare GET route metadata for the list endpoint', () => {
     const handler = getHandler('findByExecution');
 
-    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.GET);
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(
+      RequestMethod.GET,
+    );
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('/');
   });
 

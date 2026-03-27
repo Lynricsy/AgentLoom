@@ -5,10 +5,7 @@ export type ResourceGovernanceActionType =
   | 'governance_update'
   | 'execution_termination';
 
-export type ResourceGovernanceActionScope =
-  | 'tenant'
-  | 'workflow'
-  | 'execution';
+export type ResourceGovernanceActionScope = 'tenant' | 'workflow' | 'execution';
 
 export interface ResourceGovernanceAffectedSummaryDto {
   requested: number;
@@ -41,8 +38,7 @@ export interface TerminatedExecutionSummaryDto {
   timelineUrl: string;
 }
 
-export interface TerminateExecutionResponseDto
-  extends ResourceGovernanceActionResponseDto {
+export interface TerminateExecutionResponseDto extends ResourceGovernanceActionResponseDto {
   action: 'execution_termination';
   scope: 'execution';
   executionId: string;

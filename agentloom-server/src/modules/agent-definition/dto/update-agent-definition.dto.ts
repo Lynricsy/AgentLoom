@@ -21,10 +21,7 @@ export const UpdateAgentDefinitionSchema = z
 
     globalSandboxConfig: z.record(z.string(), z.unknown()).optional(),
 
-    version: z
-      .number()
-      .int()
-      .min(1, { message: '版本号必须为正整数' }),
+    version: z.number().int().min(1, { message: '版本号必须为正整数' }),
   })
   .strict();
 

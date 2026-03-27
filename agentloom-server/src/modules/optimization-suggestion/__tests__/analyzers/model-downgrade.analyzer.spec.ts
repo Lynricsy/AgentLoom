@@ -20,7 +20,9 @@ function createTelemetry(
       errors: [],
       ...overrides,
     },
-    createdAt: new Date(`2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
@@ -31,7 +33,9 @@ function createSummary(executionId: string): ExecutionSummaryRecord {
       status: 'completed',
       totalDurationMs: 10_000,
     },
-    createdAt: new Date(`2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 

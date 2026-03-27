@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from 'vitest';
 import { execSync } from 'node:child_process';
 
 vi.mock('@mariozechner/pi-coding-agent', () => ({}));
@@ -253,9 +261,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       const events = parseSseEvents(response.body);
       expect(events.length).toBeGreaterThanOrEqual(2);
 
-      const textEvent = events.find(
-        (e) => e.params.type === 'text_delta',
-      );
+      const textEvent = events.find((e) => e.params.type === 'text_delta');
       expect(textEvent).toBeDefined();
       expect(textEvent!.jsonrpc).toBe('2.0');
       expect(textEvent!.method).toBe('event');
@@ -309,9 +315,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
         expect(event.params).toHaveProperty('type');
       }
 
-      const toolStart = events.find(
-        (e) => e.params.type === 'tool_call_start',
-      );
+      const toolStart = events.find((e) => e.params.type === 'tool_call_start');
       expect(toolStart).toBeDefined();
       if (toolStart!.params.type === 'tool_call_start') {
         expect(toolStart!.params.toolName).toBe('bash');
@@ -328,9 +332,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
         expect(toolUpdate!.params.content).toBe('file1.txt');
       }
 
-      const toolEnd = events.find(
-        (e) => e.params.type === 'tool_call_end',
-      );
+      const toolEnd = events.find((e) => e.params.type === 'tool_call_end');
       expect(toolEnd).toBeDefined();
       if (toolEnd!.params.type === 'tool_call_end') {
         expect(toolEnd!.params.toolCallId).toBe('tc-001');
@@ -346,9 +348,9 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       });
       const { sessionId } = createRes.json();
 
-      mockSession.prompt = vi.fn().mockImplementation(
-        () => new Promise(() => {}),
-      );
+      mockSession.prompt = vi
+        .fn()
+        .mockImplementation(() => new Promise(() => {}));
 
       const firstPromptPromise = app.inject({
         method: 'POST',
@@ -391,9 +393,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
 
       expect(response.statusCode).toBe(200);
       const events = parseSseEvents(response.body);
-      const errorEvent = events.find(
-        (e) => e.params.type === 'error',
-      );
+      const errorEvent = events.find((e) => e.params.type === 'error');
       expect(errorEvent).toBeDefined();
       if (errorEvent!.params.type === 'error') {
         expect(errorEvent!.params.message).toContain(
@@ -434,8 +434,8 @@ describe('Sandbox HTTP Contract (in-process)', () => {
 
       const events = parseSseEvents(response.body);
       expect(events).toHaveLength(2);
-      expect(events[0]!.params.type).toBe('text_delta');
-      expect(events[1]!.params.type).toBe('done');
+      expect(events[0].params.type).toBe('text_delta');
+      expect(events[1].params.type).toBe('done');
     });
   });
 
@@ -569,9 +569,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       expect(promptRes.statusCode).toBe(200);
 
       const events = parseSseEvents(promptRes.body);
-      expect(events.some((e) => e.params.type === 'text_delta')).toBe(
-        true,
-      );
+      expect(events.some((e) => e.params.type === 'text_delta')).toBe(true);
       expect(events.some((e) => e.params.type === 'done')).toBe(true);
 
       const abortRes = await app.inject({
@@ -599,24 +597,20 @@ describe.skipIf(!isSandboxImageAvailable)(
       ).trim();
       containerId = output;
 
-      const portOutput = execSync(
-        `docker port ${containerId} 8080/tcp`,
-        { encoding: 'utf-8', timeout: 5000 },
-      ).trim();
+      const portOutput = execSync(`docker port ${containerId} 8080/tcp`, {
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
       const portMatch = portOutput.match(/:(\d+)$/);
       if (!portMatch) {
-        throw new Error(
-          `Failed to parse container port from: ${portOutput}`,
-        );
+        throw new Error(`Failed to parse container port from: ${portOutput}`);
       }
-      containerPort = parseInt(portMatch[1]!, 10);
+      containerPort = parseInt(portMatch[1], 10);
 
       const deadline = Date.now() + CONTAINER_STARTUP_TIMEOUT;
       while (Date.now() < deadline) {
         try {
-          const res = await fetch(
-            `http://127.0.0.1:${containerPort}/health`,
-          );
+          const res = await fetch(`http://127.0.0.1:${containerPort}/health`);
           if (res.ok) break;
         } catch {
           /* waiting for startup */
@@ -646,23 +640,18 @@ describe.skipIf(!isSandboxImageAvailable)(
     }, 15_000);
 
     it('GET /health 应返回 healthy（/workspace 已挂载）', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${containerPort}/health`,
-      );
+      const res = await fetch(`http://127.0.0.1:${containerPort}/health`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toEqual({ status: 'healthy' });
     });
 
     it('POST /v1/session 应创建容器内会话', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${containerPort}/v1/session`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        },
-      );
+      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
 
       if (res.status === 200) {
         const body = await res.json();
@@ -673,30 +662,24 @@ describe.skipIf(!isSandboxImageAvailable)(
     });
 
     it('POST /v1/prompt 无效 session 应返回 400 或 404', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${containerPort}/v1/prompt`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'nonexistent',
-            text: 'hello',
-          }),
-        },
-      );
+      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'nonexistent',
+          text: 'hello',
+        }),
+      });
 
       expect([400, 404]).toContain(res.status);
     });
 
     it('POST /v1/abort 无效 session 应返回 400 或 404', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${containerPort}/v1/abort`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: 'nonexistent' }),
-        },
-      );
+      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/abort`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: 'nonexistent' }),
+      });
 
       expect([400, 404]).toContain(res.status);
     });

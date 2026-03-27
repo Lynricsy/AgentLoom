@@ -86,7 +86,10 @@ export class AcpSessionMcpRegistryService {
     const provider = this.buildSessionToolProvider(tools);
     const runtime = this.getRuntimeWithToolProviderSupport();
 
-    runtime.registerSessionToolProvider?.(trackedSession.runtimeSessionId, provider);
+    runtime.registerSessionToolProvider?.(
+      trackedSession.runtimeSessionId,
+      provider,
+    );
     this.registry.set(trackedSession.runtimeSessionId, {
       tools,
       provider,
@@ -123,9 +126,8 @@ export class AcpSessionMcpRegistryService {
 
     for (const [serverName, config] of Object.entries(mcpServers)) {
       const connection = this.normalizeConnection(serverName, config);
-      const discoveredTools = await this.mcpService.discoverRuntimeTools(
-        connection,
-      );
+      const discoveredTools =
+        await this.mcpService.discoverRuntimeTools(connection);
 
       for (const discoveredTool of discoveredTools) {
         tools.push(
@@ -216,8 +218,12 @@ export class AcpSessionMcpRegistryService {
         return {
           transportType: 'stdio',
           command: config.command,
-          ...(config.args === undefined ? {} : { args: this.readStringArray(config.args) }),
-          ...(config.env === undefined ? {} : { env: this.readStringRecord(config.env) }),
+          ...(config.args === undefined
+            ? {}
+            : { args: this.readStringArray(config.args) }),
+          ...(config.env === undefined
+            ? {}
+            : { env: this.readStringRecord(config.env) }),
         };
       case 'sse':
       case 'streamable_http':
@@ -238,7 +244,10 @@ export class AcpSessionMcpRegistryService {
   }
 
   private readStringArray(value: unknown): string[] {
-    if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    if (
+      !Array.isArray(value) ||
+      value.some((entry) => typeof entry !== 'string')
+    ) {
       throw new Error('MCP stdio args must be a string array');
     }
 

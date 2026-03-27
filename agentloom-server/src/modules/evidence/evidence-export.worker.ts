@@ -7,7 +7,11 @@ import JSZip from 'jszip';
 import { Job } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import { auditLogArchives, auditLogs, evidenceExportJobs } from '../../database/schema';
+import {
+  auditLogArchives,
+  auditLogs,
+  evidenceExportJobs,
+} from '../../database/schema';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import type { EvidenceChainResponse } from './dto/evidence.dto';
 import { AuditLogService } from './audit-log.service';
@@ -65,7 +69,10 @@ export class EvidenceExportWorker extends WorkerHost {
   }
 
   async process(job: Job<EvidenceExportQueueJobData>): Promise<void> {
-    const exportJob = await this.findExportJob(job.data.tenantId, job.data.exportId);
+    const exportJob = await this.findExportJob(
+      job.data.tenantId,
+      job.data.exportId,
+    );
 
     if (!exportJob) {
       this.logger.warn(
@@ -112,7 +119,10 @@ export class EvidenceExportWorker extends WorkerHost {
         );
 
         const auditEntries = exportJob.filters.includeAuditMetadata
-          ? await this.loadExecutionAuditEntries(exportJob.tenantId, executionId)
+          ? await this.loadExecutionAuditEntries(
+              exportJob.tenantId,
+              executionId,
+            )
           : undefined;
 
         executionPayloads.push({
@@ -123,7 +133,11 @@ export class EvidenceExportWorker extends WorkerHost {
       }
 
       const completedAt = new Date();
-      const bundle = await this.buildBundle(exportJob, executionPayloads, completedAt);
+      const bundle = await this.buildBundle(
+        exportJob,
+        executionPayloads,
+        completedAt,
+      );
       const storageKey = buildEvidenceExportStorageKey(
         exportJob.tenantId,
         exportJob.id,
@@ -174,7 +188,10 @@ export class EvidenceExportWorker extends WorkerHost {
       });
     } catch (error) {
       const failedAt = new Date();
-      const message = error instanceof Error ? error.message : 'Unknown evidence export worker error';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unknown evidence export worker error';
 
       await this.db
         .update(evidenceExportJobs)
@@ -277,7 +294,9 @@ export class EvidenceExportWorker extends WorkerHost {
   }
 
   private async buildBundle(
-    exportJob: Awaited<ReturnType<EvidenceExportWorker['findExportJob']>> extends infer T
+    exportJob: Awaited<
+      ReturnType<EvidenceExportWorker['findExportJob']>
+    > extends infer T
       ? NonNullable<T>
       : never,
     executionPayloads: ExportExecutionPayload[],
@@ -293,7 +312,11 @@ export class EvidenceExportWorker extends WorkerHost {
       executions: executionPayloads,
     };
 
-    const report = this.buildReport(exportJob.id, executionPayloads, completedAt);
+    const report = this.buildReport(
+      exportJob.id,
+      executionPayloads,
+      completedAt,
+    );
     const bundleFiles: ExportBundleFile[] = [
       {
         path: EVIDENCE_EXPORT_BUNDLE_DATA_PATH,
@@ -329,7 +352,10 @@ export class EvidenceExportWorker extends WorkerHost {
     };
 
     const zip = new JSZip();
-    zip.file(EVIDENCE_EXPORT_BUNDLE_MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+    zip.file(
+      EVIDENCE_EXPORT_BUNDLE_MANIFEST_PATH,
+      JSON.stringify(manifest, null, 2),
+    );
     for (const file of bundleFiles) {
       zip.file(file.path, file.contents);
     }
@@ -362,8 +388,8 @@ export class EvidenceExportWorker extends WorkerHost {
     ];
 
     for (const payload of executionPayloads) {
-      const issueTypes = payload.chain.integrityStatus.integrityIssues.map((issue) =>
-        'issueType' in issue ? String(issue.issueType) : 'unknown',
+      const issueTypes = payload.chain.integrityStatus.integrityIssues.map(
+        (issue) => ('issueType' in issue ? String(issue.issueType) : 'unknown'),
       );
 
       lines.push(`### ${payload.executionId}`);

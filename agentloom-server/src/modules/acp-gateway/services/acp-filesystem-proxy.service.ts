@@ -74,7 +74,10 @@ export class AcpFilesystemProxyService {
     const requestClient = state.requestClient;
 
     if (!requestClient) {
-      throw new AcpJsonRpcError(-32004, 'ACP client fs proxy transport is unavailable');
+      throw new AcpJsonRpcError(
+        -32004,
+        'ACP client fs proxy transport is unavailable',
+      );
     }
 
     const pendingRequest = requestClient<
@@ -90,11 +93,17 @@ export class AcpFilesystemProxyService {
     try {
       const response = await pendingRequest.response;
       if (this.isCancelledResult(response)) {
-        throw new AcpJsonRpcError(-32005, 'ACP client fs request was cancelled');
+        throw new AcpJsonRpcError(
+          -32005,
+          'ACP client fs request was cancelled',
+        );
       }
 
       if (!isPlainObject(response) || typeof response.text !== 'string') {
-        throw new AcpJsonRpcError(-32603, 'ACP client returned invalid fs response');
+        throw new AcpJsonRpcError(
+          -32603,
+          'ACP client returned invalid fs response',
+        );
       }
 
       return {
@@ -129,7 +138,11 @@ export class AcpFilesystemProxyService {
     const normalizedPath = this.normalizePath(params.path, trackedSession);
     const requestClient = this.getRequestClient(state);
 
-    await this.requestWritePermission(normalizedPath, trackedSession, requestClient);
+    await this.requestWritePermission(
+      normalizedPath,
+      trackedSession,
+      requestClient,
+    );
 
     const pendingRequest = requestClient<
       { sessionId: string; path: string; content: string },
@@ -145,11 +158,17 @@ export class AcpFilesystemProxyService {
     try {
       const response = await pendingRequest.response;
       if (this.isCancelledResult(response)) {
-        throw new AcpJsonRpcError(-32005, 'ACP client fs request was cancelled');
+        throw new AcpJsonRpcError(
+          -32005,
+          'ACP client fs request was cancelled',
+        );
       }
 
       if (!isPlainObject(response) || response.success !== true) {
-        throw new AcpJsonRpcError(-32603, 'ACP client returned invalid fs response');
+        throw new AcpJsonRpcError(
+          -32603,
+          'ACP client returned invalid fs response',
+        );
       }
 
       return {
@@ -203,7 +222,9 @@ export class AcpFilesystemProxyService {
     trackedSession.pendingPermissionToolCallId = toolCallId;
 
     try {
-      const response = this.validatePermissionResponse(await pendingRequest.response);
+      const response = this.validatePermissionResponse(
+        await pendingRequest.response,
+      );
 
       if (response.outcome.outcome === 'cancelled') {
         await this.recordAudit(trackedSession, 'acp.fs.permission.cancelled', {
@@ -214,10 +235,15 @@ export class AcpFilesystemProxyService {
             reason: 'permission_cancelled',
           },
         });
-        throw new AcpJsonRpcError(-32005, 'ACP file permission request was cancelled');
+        throw new AcpJsonRpcError(
+          -32005,
+          'ACP file permission request was cancelled',
+        );
       }
 
-      if (this.mapPermissionOptionToAction(response.outcome.optionId) === 'deny') {
+      if (
+        this.mapPermissionOptionToAction(response.outcome.optionId) === 'deny'
+      ) {
         await this.recordAudit(trackedSession, 'acp.fs.permission.denied', {
           summary: 'Rejected ACP file write by permission policy',
           metadata: {
@@ -254,7 +280,10 @@ export class AcpFilesystemProxyService {
     state: AcpConnectionState,
   ): NonNullable<AcpConnectionState['requestClient']> {
     if (!state.requestClient) {
-      throw new AcpJsonRpcError(-32004, 'ACP client fs proxy transport is unavailable');
+      throw new AcpJsonRpcError(
+        -32004,
+        'ACP client fs proxy transport is unavailable',
+      );
     }
 
     return state.requestClient;
@@ -359,7 +388,11 @@ export class AcpFilesystemProxyService {
       throw new AcpJsonRpcError(-32603, 'ACP server sandbox fs request failed');
     }
 
-    await this.requestWritePermission(normalizedPath, trackedSession, requestClient);
+    await this.requestWritePermission(
+      normalizedPath,
+      trackedSession,
+      requestClient,
+    );
 
     try {
       const response = await sandboxFilesystemService.writeTextFile({
@@ -458,9 +491,15 @@ export class AcpFilesystemProxyService {
     return 'sandbox_request_failed';
   }
 
-  private normalizePath(pathValue: string, trackedSession: AcpTrackedSession): string {
+  private normalizePath(
+    pathValue: string,
+    trackedSession: AcpTrackedSession,
+  ): string {
     if (!isAbsolute(pathValue)) {
-      if (typeof trackedSession.cwd !== 'string' || trackedSession.cwd.length === 0) {
+      if (
+        typeof trackedSession.cwd !== 'string' ||
+        trackedSession.cwd.length === 0
+      ) {
         throw new AcpJsonRpcError(-32602, 'Invalid params', {
           reason: 'Relative fs path requires session cwd',
         });
@@ -502,9 +541,7 @@ export class AcpFilesystemProxyService {
     trackedSession.pendingFsRequestIds = nextPendingRequestIds;
   }
 
-  private isCancelledResult(
-    value: unknown,
-  ): value is { cancelled: true } {
+  private isCancelledResult(value: unknown): value is { cancelled: true } {
     return isPlainObject(value) && value.cancelled === true;
   }
 
@@ -546,9 +583,7 @@ export class AcpFilesystemProxyService {
     );
   }
 
-  private mapPermissionOptionToAction(
-    optionId: string,
-  ): 'approve' | 'deny' {
+  private mapPermissionOptionToAction(optionId: string): 'approve' | 'deny' {
     switch (optionId) {
       case 'allow-once':
       case 'allow-always':

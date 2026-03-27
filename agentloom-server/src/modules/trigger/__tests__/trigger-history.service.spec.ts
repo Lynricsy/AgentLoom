@@ -73,10 +73,7 @@ describe('TriggerHistoryService', () => {
     mocks.getTenantDb.mockReturnValue(db);
 
     const module = await Test.createTestingModule({
-      providers: [
-        TriggerHistoryService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [TriggerHistoryService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(TriggerHistoryService);

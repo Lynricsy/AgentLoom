@@ -102,9 +102,7 @@ describe('SessionPersistenceService', () => {
       expect(result.status).toBe('active');
       expect(result.createdAt).toBe('2025-01-01T00:00:00.000Z');
       expect(result.updatedAt).toBe('2025-01-01T00:00:00.000Z');
-      expect(result.context.history).toEqual([
-        { type: 'text', text: 'hello' },
-      ]);
+      expect(result.context.history).toEqual([{ type: 'text', text: 'hello' }]);
       expect(result.context.workflowState).toEqual({
         executionId: 'exec-1',
         stepId: STEP_ID,
@@ -252,27 +250,30 @@ describe('SessionPersistenceService', () => {
         ),
       );
 
-      const valuesArg = mockDb.insert.mock.results[0].value.values.mock.calls[0][0];
+      const valuesArg =
+        mockDb.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(valuesArg).toMatchObject({
         sessionId: 'conversation-001',
         tenantId: TENANT_ID,
         agentId: 'agent-001',
         sessionSnapshot: expect.objectContaining({
-            id: 'conversation-001',
-            mode: 'conversation',
-            context: expect.objectContaining({
-              serverSandbox: SERVER_SANDBOX,
-            }),
+          id: 'conversation-001',
+          mode: 'conversation',
+          context: expect.objectContaining({
+            serverSandbox: SERVER_SANDBOX,
           }),
+        }),
         replayEntries: [],
       });
     });
 
     it('应从独立 durable store 加载 conversation session', async () => {
-      const session = withServerSandbox(makeSession({
-        id: 'conversation-001',
-        mode: 'conversation',
-      }));
+      const session = withServerSandbox(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+      );
       const serialized = service.serializeSession(session);
       mockDb.select.mockReturnValue(
         createSelectChain([
@@ -342,10 +343,12 @@ describe('SessionPersistenceService', () => {
     });
 
     it('应为 conversation session 追加 replay ledger 并同步保存快照', async () => {
-      const session = withServerSandbox(makeSession({
-        id: 'conversation-001',
-        mode: 'conversation',
-      }));
+      const session = withServerSandbox(
+        makeSession({
+          id: 'conversation-001',
+          mode: 'conversation',
+        }),
+      );
       const serialized = service.serializeSession(session);
       mockDb.select.mockReturnValue(
         createSelectChain([
@@ -357,22 +360,19 @@ describe('SessionPersistenceService', () => {
       );
       mockDb.update.mockReturnValue(createUpdateChainVoid());
 
-      await service.appendConversationReplayEntry(
-        session,
-        replayEntry,
-      );
+      await service.appendConversationReplayEntry(session, replayEntry);
 
       const setArg = mockDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setArg).toMatchObject({
         replayEntries: [replayEntry],
         sessionSnapshot: expect.objectContaining({
-            id: 'conversation-001',
-            mode: 'conversation',
-            context: expect.objectContaining({
-              serverSandbox: SERVER_SANDBOX,
-            }),
+          id: 'conversation-001',
+          mode: 'conversation',
+          context: expect.objectContaining({
+            serverSandbox: SERVER_SANDBOX,
           }),
-        });
+        }),
+      });
     });
 
     it('应读取 conversation replay ledger', async () => {

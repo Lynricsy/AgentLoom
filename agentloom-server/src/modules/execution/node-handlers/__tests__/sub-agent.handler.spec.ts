@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  resolveSubAgent,
-  MAX_SUB_AGENT_DEPTH,
-} from '../sub-agent.handler';
+import { resolveSubAgent, MAX_SUB_AGENT_DEPTH } from '../sub-agent.handler';
 
 const { mockAgentDefinitionService } = vi.hoisted(() => ({
   mockAgentDefinitionService: {
@@ -53,7 +50,9 @@ const agentVersionFixture = {
 describe('resolveSubAgent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAgentDefinitionService.findDetailById.mockResolvedValue(agentDefinitionFixture);
+    mockAgentDefinitionService.findDetailById.mockResolvedValue(
+      agentDefinitionFixture,
+    );
     mockAgentDefinitionService.listVersions.mockResolvedValue({
       data: [agentVersionFixture],
       meta: { total: 1, page: 1, pageSize: 100, totalPages: 1 },
@@ -75,7 +74,11 @@ describe('resolveSubAgent', () => {
   });
 
   it('resolves a specific agentVersionId when provided', async () => {
-    const version2 = { ...agentVersionFixture, id: 'version-2', versionNumber: 2 };
+    const version2 = {
+      ...agentVersionFixture,
+      id: 'version-2',
+      versionNumber: 2,
+    };
     mockAgentDefinitionService.listVersions.mockResolvedValue({
       data: [version2],
       meta: { total: 1, page: 1, pageSize: 100, totalPages: 1 },

@@ -107,7 +107,11 @@ describe('WebhookController', () => {
     triggerService.markTriggered.mockResolvedValue(undefined);
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+      controller.handleWebhook(
+        'webhook-token',
+        createMockRequest(),
+        reply as never,
+      ),
     ).resolves.toEqual({
       executionId: EXECUTION_ID,
       status: 'accepted',
@@ -144,7 +148,11 @@ describe('WebhookController', () => {
     triggerHistoryService.record.mockRejectedValue(new Error('history failed'));
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+      controller.handleWebhook(
+        'webhook-token',
+        createMockRequest(),
+        reply as never,
+      ),
     ).resolves.toEqual({
       executionId: EXECUTION_ID,
       status: 'accepted',
@@ -171,7 +179,11 @@ describe('WebhookController', () => {
     });
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+      controller.handleWebhook(
+        'webhook-token',
+        createMockRequest(),
+        reply as never,
+      ),
     ).rejects.toThrow(TriggerNotFoundException);
 
     expect(executionService.runWorkflow).not.toHaveBeenCalled();
@@ -188,7 +200,11 @@ describe('WebhookController', () => {
     triggerHistoryService.record.mockResolvedValue(undefined);
 
     await expect(
-      controller.handleWebhook('webhook-token', createMockRequest(), reply as never),
+      controller.handleWebhook(
+        'webhook-token',
+        createMockRequest(),
+        reply as never,
+      ),
     ).resolves.toEqual({
       error: 'INVALID_SIGNATURE',
       message: 'Webhook signature verification failed',
@@ -213,8 +229,8 @@ describe('WebhookController', () => {
     );
 
     expect(descriptor?.value).toBeDefined();
-    expect(Reflect.getMetadata(IS_PUBLIC_KEY, descriptor?.value as object)).toBe(
-      true,
-    );
+    expect(
+      Reflect.getMetadata(IS_PUBLIC_KEY, descriptor?.value as object),
+    ).toBe(true);
   });
 });

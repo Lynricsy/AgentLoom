@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InterventionPolicyService, SYSTEM_DEFAULT_POLICY } from '../intervention-policy.service';
+import {
+  InterventionPolicyService,
+  SYSTEM_DEFAULT_POLICY,
+} from '../intervention-policy.service';
 
 const TENANT_ID = '019577a0-0000-7000-8000-000000000099';
 const WORKFLOW_ID = '019577a0-0000-7000-8000-000000000100';
@@ -66,7 +69,9 @@ describe('InterventionPolicyService', () => {
     };
 
     service = new InterventionPolicyService(
-      db as unknown as ConstructorParameters<typeof InterventionPolicyService>[0],
+      db as unknown as ConstructorParameters<
+        typeof InterventionPolicyService
+      >[0],
     );
   });
 

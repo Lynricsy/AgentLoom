@@ -4,7 +4,11 @@ import { BaseRouterStrategy } from '../core/base-router-strategy';
 import type { RoutingCandidate } from '../core/routing-candidate';
 import type { RoutingContext } from '../core/routing-context';
 import type { RoutingDecision } from '../core/routing-decision';
-import { toLegacyCandidate, toLegacyContext, toRoutingDecision } from './legacy-adapter';
+import {
+  toLegacyCandidate,
+  toLegacyContext,
+  toRoutingDecision,
+} from './legacy-adapter';
 import { latencyFirst } from './latency-first';
 
 export class LatencyFirstRouter extends BaseRouterStrategy {

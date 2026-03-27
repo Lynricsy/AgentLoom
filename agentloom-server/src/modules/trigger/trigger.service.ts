@@ -68,7 +68,10 @@ export class TriggerService {
       .orderBy(desc(schema.workflowTriggers.createdAt));
   }
 
-  async findById(tenantId: string, triggerId: string): Promise<WorkflowTrigger> {
+  async findById(
+    tenantId: string,
+    triggerId: string,
+  ): Promise<WorkflowTrigger> {
     const trigger = await this.findTrigger(tenantId, triggerId);
 
     if (!trigger) {
@@ -166,7 +169,10 @@ export class TriggerService {
     }
 
     if (parsedDto.config !== undefined) {
-      setClause.config = this.buildUpdatedConfig(currentTrigger, parsedDto.config);
+      setClause.config = this.buildUpdatedConfig(
+        currentTrigger,
+        parsedDto.config,
+      );
     }
 
     const [updated] = await this.tenantDb

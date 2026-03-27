@@ -23,7 +23,10 @@ const memoryBankRouterConfigSchema = z.object({
 type MemoryBankRouterConfig = z.infer<typeof memoryBankRouterConfigSchema>;
 type RoutingDb = Pick<DrizzleDB, 'select'>;
 type RoutingMemoryClient = Pick<QdrantClient, 'search'>;
-type EmbeddingServiceLike = Pick<EmbeddingIntegrationService, 'generateEmbedding'>;
+type EmbeddingServiceLike = Pick<
+  EmbeddingIntegrationService,
+  'generateEmbedding'
+>;
 
 interface RouterModelLookupRow {
   routerModelId: string;
@@ -121,7 +124,11 @@ export class MemoryBankRouter extends BaseRouterStrategy {
       }
     }
 
-    const coldStartDecision = await this.routeFromBenchmarks(candidates, context, config);
+    const coldStartDecision = await this.routeFromBenchmarks(
+      candidates,
+      context,
+      config,
+    );
     if (coldStartDecision) {
       return coldStartDecision;
     }
@@ -136,7 +143,9 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     });
   }
 
-  private async resolveEmbedding(context: RoutingContext): Promise<number[] | null> {
+  private async resolveEmbedding(
+    context: RoutingContext,
+  ): Promise<number[] | null> {
     if (context.queryEmbedding && context.queryEmbedding.length > 0) {
       return context.queryEmbedding;
     }
@@ -145,7 +154,10 @@ export class MemoryBankRouter extends BaseRouterStrategy {
       return null;
     }
 
-    return this.embeddingService.generateEmbedding(context.queryText, context.tenantId);
+    return this.embeddingService.generateEmbedding(
+      context.queryText,
+      context.tenantId,
+    );
   }
 
   private async routeFromMemory(
@@ -188,7 +200,10 @@ export class MemoryBankRouter extends BaseRouterStrategy {
 
       const weight = Math.max(point.score, 0);
       const performance = clampUnitInterval(
-        readNumber(payload.performance_score, readNumber(payload.success_rate, 0)),
+        readNumber(
+          payload.performance_score,
+          readNumber(payload.success_rate, 0),
+        ),
       );
       const latency = readNumber(
         payload.latency_ms,
@@ -240,7 +255,10 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     context: RoutingContext,
     config: MemoryBankRouterConfig,
   ): Promise<RoutingDecision | null> {
-    const routerModelRows = await this.loadRouterModels(candidates, context.tenantId);
+    const routerModelRows = await this.loadRouterModels(
+      candidates,
+      context.tenantId,
+    );
     if (routerModelRows.length === 0) {
       return null;
     }
@@ -253,7 +271,9 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     const candidateByRouterModelId = new Map<string, RoutingCandidate>();
     for (const row of routerModelRows) {
       const candidate = candidates.find(
-        (item) => item.modelConfigId === row.modelConfigId || item.id === row.modelConfigId,
+        (item) =>
+          item.modelConfigId === row.modelConfigId ||
+          item.id === row.modelConfigId,
       );
       if (candidate) {
         candidateByRouterModelId.set(row.routerModelId, candidate);
@@ -283,7 +303,9 @@ export class MemoryBankRouter extends BaseRouterStrategy {
         costSum: 0,
       };
       current.weightSum += 1;
-      current.performanceSum += clampUnitInterval(readNumber(row.performanceScore, 0));
+      current.performanceSum += clampUnitInterval(
+        readNumber(row.performanceScore, 0),
+      );
       current.latencySum += row.latencyMs;
       current.costSum += this.estimateCost(row.tokenCount, candidate);
       aggregatedByCandidateId.set(candidate.id, current);
@@ -355,7 +377,8 @@ export class MemoryBankRouter extends BaseRouterStrategy {
         continue;
       }
 
-      const latencyNormalized = maxLatency > 0 ? average.latency / maxLatency : 0;
+      const latencyNormalized =
+        maxLatency > 0 ? average.latency / maxLatency : 0;
       const costNormalized = maxCost > 0 ? average.cost / maxCost : 0;
       const combinedScore =
         config.alpha * clampUnitInterval(average.performance) +
@@ -374,7 +397,8 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     reasoning: string,
   ): RoutingDecision {
     const selectedCandidate = candidates.reduce((best, candidate) =>
-      (scoreByCandidateId.get(candidate.id) ?? 0) > (scoreByCandidateId.get(best.id) ?? 0)
+      (scoreByCandidateId.get(candidate.id) ?? 0) >
+      (scoreByCandidateId.get(best.id) ?? 0)
         ? candidate
         : best,
     );
@@ -394,7 +418,10 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     };
   }
 
-  private estimateCost(tokenCount: number, candidate: RoutingCandidate): number {
+  private estimateCost(
+    tokenCount: number,
+    candidate: RoutingCandidate,
+  ): number {
     return (tokenCount / 1000) * candidate.routingMeta.costs.input;
   }
 
@@ -449,7 +476,8 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     return (
       candidates.find(
         (candidate) =>
-          candidate.modelConfigId === modelIdentifier || candidate.id === modelIdentifier,
+          candidate.modelConfigId === modelIdentifier ||
+          candidate.id === modelIdentifier,
       ) ?? null
     );
   }
@@ -459,7 +487,9 @@ export class MemoryBankRouter extends BaseRouterStrategy {
     reason: string,
   ): RoutingDecision {
     const bestCandidate = candidates.reduce((best, candidate) =>
-      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank ? candidate : best,
+      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank
+        ? candidate
+        : best,
     );
     const maxQuality = Math.max(
       ...candidates.map((candidate) => candidate.routingMeta.qualityRank),

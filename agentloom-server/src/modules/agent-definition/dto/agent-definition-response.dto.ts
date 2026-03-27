@@ -21,8 +21,7 @@ export interface AgentDefinitionResponseDto {
   updatedAt: Date;
 }
 
-export interface AgentDefinitionDetailResponseDto
-  extends AgentDefinitionResponseDto {
+export interface AgentDefinitionDetailResponseDto extends AgentDefinitionResponseDto {
   systemPrompt: string | null;
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];

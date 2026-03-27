@@ -120,15 +120,13 @@ describe('AgentConversationGateway', () => {
       expect(ack).toEqual<ConversationSubscribeAck>({
         status: 'subscribed',
       });
-      expect(client.join).toHaveBeenCalledWith(
-        'conversation:tenant-1:conv-1',
-      );
+      expect(client.join).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
     });
 
     it('should reject when user has no tenantId', async () => {
       const client = makeSocket({ tenantId: undefined as any });
       // Override data.user to have no tenantId
-      (client.data.user as any).tenantId = undefined;
+      client.data.user.tenantId = undefined;
 
       const ack = await gateway.handleSubscribe(client, {
         conversationId: 'conv-1',
@@ -237,9 +235,7 @@ describe('AgentConversationGateway', () => {
       // Then unsubscribe
       gateway.handleUnsubscribe(client, { conversationId: 'conv-1' });
 
-      expect(client.leave).toHaveBeenCalledWith(
-        'conversation:tenant-1:conv-1',
-      );
+      expect(client.leave).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
     });
 
     it('should clean up conversationSockets map when last socket leaves', async () => {
@@ -275,7 +271,7 @@ describe('AgentConversationGateway', () => {
 
     it('should reject when user has no tenantId', async () => {
       const client = makeSocket();
-      (client.data.user as any).tenantId = undefined;
+      client.data.user.tenantId = undefined;
 
       const result = await gateway.handleMessage(client, {
         conversationId: 'conv-1',
@@ -283,9 +279,7 @@ describe('AgentConversationGateway', () => {
       });
 
       expect(result).toEqual({ status: 'error', error: 'FORBIDDEN' });
-      expect(
-        mockAgentExecutionService.injectMessage,
-      ).not.toHaveBeenCalled();
+      expect(mockAgentExecutionService.injectMessage).not.toHaveBeenCalled();
     });
 
     it('should reject when conversationId is missing', async () => {
@@ -360,14 +354,14 @@ describe('AgentConversationGateway', () => {
       });
 
       expect(result).toEqual({ status: 'ok' });
-      expect(
-        mockAgentExecutionService.cancelExecution,
-      ).toHaveBeenCalledWith('conv-1');
+      expect(mockAgentExecutionService.cancelExecution).toHaveBeenCalledWith(
+        'conv-1',
+      );
     });
 
     it('should reject when user has no tenantId', async () => {
       const client = makeSocket();
-      (client.data.user as any).tenantId = undefined;
+      client.data.user.tenantId = undefined;
 
       const result = await gateway.handleCancel(client, {
         conversationId: 'conv-1',
@@ -422,11 +416,9 @@ describe('AgentConversationGateway', () => {
           tenantId: 'tenant-1',
         });
 
-        expect(server.to).toHaveBeenCalledWith(
-          'conversation:tenant-1:conv-1',
-        );
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.STATUS_CHANGED,
           expect.objectContaining({ conversationId: 'conv-1' }),
@@ -440,8 +432,7 @@ describe('AgentConversationGateway', () => {
           tenantId: 'tenant-1',
         });
 
-        const toCalls = (server.to as ReturnType<typeof vi.fn>).mock
-          .results;
+        const toCalls = (server.to as ReturnType<typeof vi.fn>).mock.results;
         // STATUS_CHANGED + AGENT_DONE = at least 2 emits
         expect(toCalls.length).toBeGreaterThanOrEqual(2);
       });
@@ -466,8 +457,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_THINKING,
           expect.any(Object),
@@ -482,8 +473,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_MESSAGE_CHUNK,
           expect.any(Object),
@@ -498,8 +489,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_TOOL_CALL,
           expect.any(Object),
@@ -514,8 +505,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_TOOL_RESULT,
           expect.any(Object),
@@ -530,8 +521,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.SANDBOX_TERMINAL_OUTPUT,
           expect.any(Object),
@@ -549,8 +540,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.SANDBOX_FILE_CHANGE,
           expect.any(Object),
@@ -565,8 +556,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_MESSAGE_CHUNK,
           expect.any(Object),
@@ -586,8 +577,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_TOOL_RESULT,
           expect.any(Object),
@@ -605,8 +596,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_TOOL_RESULT,
           expect.any(Object),
@@ -624,8 +615,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.AGENT_TOOL_CALL,
           expect.any(Object),
@@ -644,8 +635,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.STATUS_CHANGED,
           expect.any(Object),
@@ -665,8 +656,8 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-          .results[0].value.emit;
+        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          .value.emit;
         expect(emitFn).toHaveBeenCalledWith(
           ConversationEventName.STATUS_CHANGED,
           expect.any(Object),
@@ -688,9 +679,7 @@ describe('AgentConversationGateway', () => {
         { test: true },
       );
 
-      expect(server.to).toHaveBeenCalledWith(
-        'conversation:tenant-1:conv-1',
-      );
+      expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
     });
 
     it('should enqueue when throttle denies', async () => {
@@ -708,9 +697,9 @@ describe('AgentConversationGateway', () => {
       // Should have enqueued — queue should not be empty
       const queueKey = 'tenant-1:conv-1';
       expect((gateway as any).eventQueue.get(queueKey)).toBeDefined();
-      expect(
-        (gateway as any).eventQueue.get(queueKey).length,
-      ).toBeGreaterThan(0);
+      expect((gateway as any).eventQueue.get(queueKey).length).toBeGreaterThan(
+        0,
+      );
     });
   });
 
@@ -723,9 +712,7 @@ describe('AgentConversationGateway', () => {
         { status: 'completed' },
       );
 
-      expect(server.to).toHaveBeenCalledWith(
-        'conversation:tenant-1:conv-1',
-      );
+      expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
       expect(mockThrottleService.tryConsume).not.toHaveBeenCalled();
     });
   });
@@ -758,8 +745,8 @@ describe('AgentConversationGateway', () => {
       expect((gateway as any).eventQueue.has(queueKey)).toBe(false);
 
       // Both events should have been emitted
-      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock
-        .results[0]?.value.emit;
+      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        ?.value.emit;
       if (emitFn) {
         expect(emitFn).toHaveBeenCalled();
       }
@@ -768,9 +755,7 @@ describe('AgentConversationGateway', () => {
     it('should clear queue when empty', () => {
       gateway.flushConversationQueue('tenant-1', 'conv-1');
 
-      expect((gateway as any).eventQueue.has('tenant-1:conv-1')).toBe(
-        false,
-      );
+      expect((gateway as any).eventQueue.has('tenant-1:conv-1')).toBe(false);
     });
   });
 
@@ -833,9 +818,9 @@ describe('AgentConversationGateway', () => {
   describe('onModuleInit', () => {
     it('should register flush handler with throttleService', () => {
       gateway.onModuleInit();
-      expect(
-        mockThrottleService.registerFlushHandler,
-      ).toHaveBeenCalledWith(expect.any(Function));
+      expect(mockThrottleService.registerFlushHandler).toHaveBeenCalledWith(
+        expect.any(Function),
+      );
     });
   });
 
@@ -874,9 +859,7 @@ describe('AgentConversationGateway', () => {
       expect(ConversationEventName.AGENT_TOOL_RESULT).toBe(
         'conversation.agent.tool_result',
       );
-      expect(ConversationEventName.AGENT_DONE).toBe(
-        'conversation.agent.done',
-      );
+      expect(ConversationEventName.AGENT_DONE).toBe('conversation.agent.done');
       expect(ConversationEventName.SANDBOX_TERMINAL_OUTPUT).toBe(
         'conversation.sandbox.terminal_output',
       );

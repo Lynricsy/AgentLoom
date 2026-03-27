@@ -62,9 +62,9 @@ describe('SupabaseService', () => {
     );
 
     expect(createClientMock).not.toHaveBeenCalled();
-    await expect(service.signIn('test@example.com', 'Password123')).rejects.toBeInstanceOf(
-      AuthUnavailableException,
-    );
+    await expect(
+      service.signIn('test@example.com', 'Password123'),
+    ).rejects.toBeInstanceOf(AuthUnavailableException);
   });
 
   it('完整配置下会创建 admin 与 oauth client', async () => {

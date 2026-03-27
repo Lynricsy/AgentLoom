@@ -19,7 +19,9 @@ import { users } from './users.schema';
 export const skills = pgTable(
   'skills',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     name: varchar('name', { length: 128 }).notNull(),
     slug: varchar('slug', { length: 128 }).notNull(),

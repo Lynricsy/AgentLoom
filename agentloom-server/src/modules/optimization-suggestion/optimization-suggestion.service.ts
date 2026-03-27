@@ -164,7 +164,10 @@ export class OptimizationSuggestionService {
 
     await this.assertAutonomySuggestionAllowed(suggestion);
 
-    const nodes = this.applySuggestionToWorkflowNode(workflowDefinition, suggestion);
+    const nodes = this.applySuggestionToWorkflowNode(
+      workflowDefinition,
+      suggestion,
+    );
     const now = new Date();
 
     this.logger.log(
@@ -411,7 +414,8 @@ export class OptimizationSuggestionService {
       let updatedNodeData: Record<string, unknown>;
 
       if (suggestion.suggestionType === 'autonomy_upgrade') {
-        const suggestedValue = suggestion.suggestedValue as AutonomyUpgradeValue;
+        const suggestedValue =
+          suggestion.suggestedValue as AutonomyUpgradeValue;
         const nextAutonomyMode: AutonomyMode = normalizeAutonomyMode(
           suggestedValue.autonomyMode,
         ).canonicalMode;
@@ -464,7 +468,8 @@ export class OptimizationSuggestionService {
         };
       }
       case 'timeout_adjustment': {
-        const suggestedValue = suggestion.suggestedValue as TimeoutAdjustmentValue;
+        const suggestedValue =
+          suggestion.suggestedValue as TimeoutAdjustmentValue;
         return {
           ...config,
           timeoutMs: suggestedValue.timeoutMs,

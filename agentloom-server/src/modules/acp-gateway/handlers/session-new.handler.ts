@@ -1,7 +1,10 @@
 import { isAbsolute } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../../agent/ports/agent-runtime.port';
 import type {
   McpServerConfig,
   ServerSandboxBinding,
@@ -58,7 +61,9 @@ export class SessionNewHandler {
       runtimeSessionId: session.id,
       agentId: session.agentId,
       tenantId,
-      ...(normalizedParams.cwd === undefined ? {} : { cwd: normalizedParams.cwd }),
+      ...(normalizedParams.cwd === undefined
+        ? {}
+        : { cwd: normalizedParams.cwd }),
       ...(normalizedParams.serverSandbox === undefined
         ? {}
         : { serverSandbox: normalizedParams.serverSandbox }),

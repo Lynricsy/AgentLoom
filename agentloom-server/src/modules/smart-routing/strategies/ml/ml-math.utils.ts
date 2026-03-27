@@ -30,7 +30,8 @@ export function matmul(a: number[][], b: number[][]): number[][] {
   return a.map((row) =>
     Array.from({ length: bColumns }, (_, columnIndex) =>
       row.reduce(
-        (sum, value, valueIndex) => sum + value * (b[valueIndex]?.[columnIndex] ?? 0),
+        (sum, value, valueIndex) =>
+          sum + value * (b[valueIndex]?.[columnIndex] ?? 0),
         0,
       ),
     ),

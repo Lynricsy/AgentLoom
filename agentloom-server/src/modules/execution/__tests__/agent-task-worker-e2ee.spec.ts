@@ -14,7 +14,10 @@ import {
 } from '../../agent/agent-adapter.factory';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
-import { LlmEncryptionService, type EncryptedPayload } from '../../llm/llm-encryption.service';
+import {
+  LlmEncryptionService,
+  type EncryptedPayload,
+} from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
@@ -237,7 +240,8 @@ function queueCompletionPrompt(output: string): void {
 }
 
 function getCompletedStepExtra(): CompletedStepExtra {
-  const completedCall = mocks.stepStateMachine.updateStepStatus.mock.calls.at(-1);
+  const completedCall =
+    mocks.stepStateMachine.updateStepStatus.mock.calls.at(-1);
   expect(completedCall).toBeDefined();
   expect(completedCall?.[0]).toBe(TENANT_ID);
   expect(completedCall?.[1]).toBe(STEP_ID);
@@ -249,9 +253,9 @@ describe('AgentTaskWorker E2EE integration', () => {
   let worker: AgentTaskWorker;
 
   const adapterFactory: IAgentAdapterFactory = {
-    selectAdapter: vi.fn().mockReturnValue(
-      mocks.agentRuntime as unknown as IAgentRuntime,
-    ),
+    selectAdapter: vi
+      .fn()
+      .mockReturnValue(mocks.agentRuntime as unknown as IAgentRuntime),
   };
 
   beforeEach(async () => {
@@ -289,7 +293,9 @@ describe('AgentTaskWorker E2EE integration', () => {
     });
     mocks.notificationService.create.mockResolvedValue(undefined);
     mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(false);
-    mocks.smartRoutingService.recordDecision.mockReset().mockResolvedValue(undefined);
+    mocks.smartRoutingService.recordDecision
+      .mockReset()
+      .mockResolvedValue(undefined);
     mocks.organizationAutonomyPolicyService.resolveAutonomyCapForTenant
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
@@ -351,7 +357,9 @@ describe('AgentTaskWorker E2EE integration', () => {
     queueStepAndOrgLookup({ id: ORG_ID });
     queueCompletionPrompt('这是机密输出');
     mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(true);
-    mocks.llmEncryptionService.encryptForTenant.mockResolvedValue(encryptedPayload);
+    mocks.llmEncryptionService.encryptForTenant.mockResolvedValue(
+      encryptedPayload,
+    );
 
     await worker.process(createMockJob());
 
@@ -407,7 +415,9 @@ describe('AgentTaskWorker E2EE integration', () => {
   });
 
   it('加密失败时会优雅降级为明文并记录警告', async () => {
-    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
 
     queueStepAndOrgLookup({ id: ORG_ID });
     queueCompletionPrompt('加密失败后保留的明文');

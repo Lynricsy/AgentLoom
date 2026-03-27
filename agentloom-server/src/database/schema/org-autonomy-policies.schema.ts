@@ -15,7 +15,9 @@ import { users } from './users.schema';
 export const organizationAutonomyPolicies = pgTable(
   'organization_autonomy_policies',
   {
-    id: uuid().primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid()
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     organizationId: uuid('organization_id')
       .notNull()
@@ -45,7 +47,9 @@ export const organizationAutonomyPolicies = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex('uq_organization_autonomy_policies_org').on(table.organizationId),
+    uniqueIndex('uq_organization_autonomy_policies_org').on(
+      table.organizationId,
+    ),
     index('idx_organization_autonomy_policies_tenant').on(table.tenantId),
     ...createDirectTenantPolicies('organization_autonomy_policies'),
   ],

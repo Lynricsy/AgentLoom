@@ -19,7 +19,13 @@ import { AgentSessionFactory } from '../execution/services/agent-session-factory
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 
 @Module({
-  imports: [DatabaseModule, LlmModule, SandboxModule, McpModule, KnowledgeModule],
+  imports: [
+    DatabaseModule,
+    LlmModule,
+    SandboxModule,
+    McpModule,
+    KnowledgeModule,
+  ],
   providers: [
     AutonomyResolverService,
     OutputFormatService,

@@ -43,7 +43,10 @@ describe('AgentConversationController', () => {
       controllers: [AgentConversationController],
       providers: [
         { provide: AgentConversationService, useValue: mockService },
-        { provide: WorkspaceIntegrationService, useValue: mockWorkspaceIntegrationService },
+        {
+          provide: WorkspaceIntegrationService,
+          useValue: mockWorkspaceIntegrationService,
+        },
         { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
       ],
     }).compile();
@@ -60,12 +63,9 @@ describe('AgentConversationController', () => {
       const expected = { data: { id: CONVERSATION_ID } };
       mockService.create.mockResolvedValueOnce(expected);
 
-      const result = await controller.create(
-        AGENT_ID,
-        TENANT_ID,
-        USER_ID,
-        { title: '新对话' } as any,
-      );
+      const result = await controller.create(AGENT_ID, TENANT_ID, USER_ID, {
+        title: '新对话',
+      } as any);
 
       expect(mockService.create).toHaveBeenCalledWith(
         AGENT_ID,
@@ -108,11 +108,7 @@ describe('AgentConversationController', () => {
       const expected = { data: { id: CONVERSATION_ID, messages: {} } };
       mockService.getDetail.mockResolvedValueOnce(expected);
 
-      const result = await controller.getDetail(
-        CONVERSATION_ID,
-        '2',
-        '10',
-      );
+      const result = await controller.getDetail(CONVERSATION_ID, '2', '10');
 
       expect(mockService.getDetail).toHaveBeenCalledWith(
         CONVERSATION_ID,
@@ -173,9 +169,7 @@ describe('AgentConversationController', () => {
     it('应调用 service.end', async () => {
       mockService.end.mockResolvedValueOnce(undefined);
 
-      await expect(
-        controller.end(CONVERSATION_ID),
-      ).resolves.toBeUndefined();
+      await expect(controller.end(CONVERSATION_ID)).resolves.toBeUndefined();
 
       expect(mockService.end).toHaveBeenCalledWith(CONVERSATION_ID);
     });
@@ -193,7 +187,10 @@ describe('AgentConversationController', () => {
         input: { path: '/workspace/a.txt' },
       };
 
-      const result = await controller.requestToolPermission(CONVERSATION_ID, dto);
+      const result = await controller.requestToolPermission(
+        CONVERSATION_ID,
+        dto,
+      );
 
       expect(mockSandboxAgentAdapter.awaitToolPermission).toHaveBeenCalledWith(
         CONVERSATION_ID,
@@ -235,7 +232,11 @@ describe('AgentConversationController', () => {
       mockSandboxAgentAdapter.ptyWrite.mockResolvedValue(writeResult);
 
       const body = { sessionId: 'pty-1', data: 'ls -la\n' };
-      const result = await controller.ptyWrite(CONVERSATION_ID, body, TENANT_ID);
+      const result = await controller.ptyWrite(
+        CONVERSATION_ID,
+        body,
+        TENANT_ID,
+      );
 
       expect(result).toEqual({ data: writeResult });
       expect(mockSandboxAgentAdapter.ptyWrite).toHaveBeenCalledWith(
@@ -278,7 +279,9 @@ describe('AgentConversationController', () => {
           TENANT_ID,
         );
       } catch (e) {
-        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect((e as HttpException).getStatus()).toBe(
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
         expect((e as HttpException).getResponse()).toEqual({
           error: 'SANDBOX_UNAVAILABLE',
           message: 'container timeout',

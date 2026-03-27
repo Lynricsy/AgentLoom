@@ -42,7 +42,8 @@ const LIST_TOOLS_TIMEOUT_MS = 60_000;
 const CALL_TOOL_TIMEOUT_MS = 60_000;
 
 export type McpRuntimeConnection = TestMcpConnectionDto['connection'];
-export type McpRuntimeDiscoveredTool = DiscoverMcpToolsResponse['tools'][number];
+export type McpRuntimeDiscoveredTool =
+  DiscoverMcpToolsResponse['tools'][number];
 
 type McpConnection = McpRuntimeConnection;
 type DiscoveredMcpTool = Awaited<

@@ -48,7 +48,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.initializeHandler.handle(request.params, state);
+        const result = await this.initializeHandler.handle(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -70,7 +73,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.authenticateHandler.handle(request.params, state);
+        const result = await this.authenticateHandler.handle(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -83,7 +89,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.sessionNewHandler.handle(request.params, state);
+        const result = await this.sessionNewHandler.handle(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -92,7 +101,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.sessionLoadHandler.handle(request.params, state);
+        const result = await this.sessionLoadHandler.handle(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -119,7 +131,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.terminalHandler.handleCreate(request.params, state);
+        const result = await this.terminalHandler.handleCreate(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -128,7 +143,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.terminalHandler.handleOutput(request.params, state);
+        const result = await this.terminalHandler.handleOutput(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -149,7 +167,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.terminalHandler.handleKill(request.params, state);
+        const result = await this.terminalHandler.handleKill(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -158,7 +179,10 @@ export class AcpMessageRouter {
           throw new AcpJsonRpcError(-32600, 'Invalid Request');
         }
 
-        const result = await this.terminalHandler.handleRelease(request.params, state);
+        const result = await this.terminalHandler.handleRelease(
+          request.params,
+          state,
+        );
         return buildJsonRpcSuccess(requestId, result);
       }
 
@@ -197,7 +221,12 @@ export class AcpMessageRouter {
           return null;
         }
 
-        return buildJsonRpcError(requestId, error.code, error.message, error.data);
+        return buildJsonRpcError(
+          requestId,
+          error.code,
+          error.message,
+          error.data,
+        );
       }
 
       if (error instanceof DomainException) {

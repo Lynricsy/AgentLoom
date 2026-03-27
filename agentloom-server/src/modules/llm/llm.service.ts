@@ -71,11 +71,16 @@ export class LlmService {
       authConfig:
         params.authMethod === 'mtls' ? (params.authConfig ?? null) : null,
       timeoutMs: params.timeoutMs ?? null,
-      apiKeyId: params.authMethod === 'api_key' ? (params.apiKeyId ?? null) : null,
+      apiKeyId:
+        params.authMethod === 'api_key' ? (params.apiKeyId ?? null) : null,
     };
   }
 
-  async create(dto: CreateLlmModelConfigDto, tenantId: string, _userId: string) {
+  async create(
+    dto: CreateLlmModelConfigDto,
+    tenantId: string,
+    _userId: string,
+  ) {
     const orgResult = await this.tenantDb
       .select({ id: organizations.id })
       .from(organizations)
@@ -196,13 +201,15 @@ export class LlmService {
     const existing = await this.findById(id, tenantId);
 
     const provider = dto.provider ?? existing.provider;
-    const endpointUrl = 'endpointUrl' in dto ? dto.endpointUrl : existing.endpointUrl;
-    const authMethod = 'authMethod' in dto ? dto.authMethod : existing.authMethod;
+    const endpointUrl =
+      'endpointUrl' in dto ? dto.endpointUrl : existing.endpointUrl;
+    const authMethod =
+      'authMethod' in dto ? dto.authMethod : existing.authMethod;
     const apiKeyId = 'apiKeyId' in dto ? dto.apiKeyId : existing.apiKeyId;
     const authConfig: Record<string, unknown> | null =
       'authConfig' in dto
         ? dto.authConfig && typeof dto.authConfig === 'object'
-          ? (dto.authConfig as Record<string, unknown>)
+          ? dto.authConfig
           : null
         : existing.authConfig && typeof existing.authConfig === 'object'
           ? (existing.authConfig as Record<string, unknown>)

@@ -16,9 +16,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -224,9 +223,9 @@ describe('PathResolverService', () => {
     });
 
     it('URI 格式非法时应抛出 BadRequestException', async () => {
-      await expect(service.resolveUri(INSTANCE_ID, 'core:/broken')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveUri(INSTANCE_ID, 'core:/broken'),
+      ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(tenantDb.select).not.toHaveBeenCalled();
     });
@@ -354,7 +353,9 @@ describe('PathResolverService', () => {
       insertQuery.returning.mockRejectedValueOnce(duplicateError);
 
       tenantDb.select.mockReturnValueOnce(
-        createSelectChain([createNode({ id: CHILD_NODE_ID, instanceId: INSTANCE_ID })]),
+        createSelectChain([
+          createNode({ id: CHILD_NODE_ID, instanceId: INSTANCE_ID }),
+        ]),
       );
       tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
 
@@ -366,7 +367,9 @@ describe('PathResolverService', () => {
           CHILD_NODE_ID,
           EDGE_ID,
         ),
-      ).rejects.toThrowError('Memory path core://agent/identity already exists');
+      ).rejects.toThrowError(
+        'Memory path core://agent/identity already exists',
+      );
     });
 
     it('非唯一约束错误时应原样抛出', async () => {
@@ -375,7 +378,9 @@ describe('PathResolverService', () => {
       insertQuery.returning.mockRejectedValueOnce(databaseError);
 
       tenantDb.select.mockReturnValueOnce(
-        createSelectChain([createNode({ id: CHILD_NODE_ID, instanceId: INSTANCE_ID })]),
+        createSelectChain([
+          createNode({ id: CHILD_NODE_ID, instanceId: INSTANCE_ID }),
+        ]),
       );
       tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
 
@@ -470,10 +475,7 @@ describe('PathResolverService', () => {
 
       await expect(
         service.listChildren(INSTANCE_ID, 'core://agent'),
-      ).resolves.toEqual([
-        rows[0],
-        rows[2],
-      ]);
+      ).resolves.toEqual([rows[0], rows[2]]);
     });
 
     it('父 URI 为 domain 根时应返回顶层路径', async () => {
@@ -485,10 +487,9 @@ describe('PathResolverService', () => {
 
       tenantDb.select.mockReturnValueOnce(createSelectChain(rows));
 
-      await expect(service.listChildren(INSTANCE_ID, 'core://')).resolves.toEqual([
-        rows[0],
-        rows[2],
-      ]);
+      await expect(
+        service.listChildren(INSTANCE_ID, 'core://'),
+      ).resolves.toEqual([rows[0], rows[2]]);
     });
   });
 
@@ -501,7 +502,9 @@ describe('PathResolverService', () => {
 
       tenantDb.select.mockReturnValueOnce(createSelectChain(paths));
 
-      await expect(service.getPathsByNode(CHILD_NODE_ID)).resolves.toEqual(paths);
+      await expect(service.getPathsByNode(CHILD_NODE_ID)).resolves.toEqual(
+        paths,
+      );
       expect(mocks.operators.eq).toHaveBeenCalledWith(
         memoryPaths.nodeId,
         CHILD_NODE_ID,

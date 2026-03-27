@@ -56,7 +56,7 @@ function sanitizeNode(node: ReactFlowNode): ReactFlowNode {
   const sanitized: ReactFlowNode = { ...node };
 
   if (sanitized.data) {
-    sanitized.data = sanitizeObject(sanitized.data) as ReactFlowNode['data'];
+    sanitized.data = sanitizeObject(sanitized.data);
   }
 
   return sanitized;

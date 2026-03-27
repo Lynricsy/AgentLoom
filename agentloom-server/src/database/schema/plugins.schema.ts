@@ -26,7 +26,9 @@ export const pluginStatusEnum = pgEnum('plugin_status', [
 export const plugins = pgTable(
   'plugins',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     orgId: uuid('org_id')
       .notNull()
@@ -47,7 +49,10 @@ export const plugins = pgTable(
     signature: text('signature'),
     contentHash: varchar('content_hash', { length: 64 }),
     wasmBundleUrl: varchar('wasm_bundle_url', { length: 512 }),
-    permissions: text('permissions').array().notNull().default(sql`'{}'::text[]`),
+    permissions: text('permissions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     installedBy: uuid('installed_by').references(() => users.id),
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
     occVersion: integer('occ_version').notNull().default(1),

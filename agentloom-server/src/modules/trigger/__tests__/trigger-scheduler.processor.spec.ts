@@ -7,12 +7,12 @@ import { DRIZZLE } from '../../../database/database.module';
 import { ExecutionService } from '../../execution/execution.service';
 import { TriggerHistoryService } from '../trigger-history.service';
 import { TriggerSchedulerProcessor } from '../trigger-scheduler.processor';
-import { TriggerSchedulerService, type TriggerCronJobData } from '../trigger-scheduler.service';
-import { TriggerService } from '../trigger.service';
 import {
-  SYSTEM_TRIGGER_USER_ID,
-  TRIGGER_CRON_JOB,
-} from '../trigger.constants';
+  TriggerSchedulerService,
+  type TriggerCronJobData,
+} from '../trigger-scheduler.service';
+import { TriggerService } from '../trigger.service';
+import { SYSTEM_TRIGGER_USER_ID, TRIGGER_CRON_JOB } from '../trigger.constants';
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
@@ -153,7 +153,9 @@ describe('TriggerSchedulerProcessor', () => {
   it('入队成功后即使 bookkeeping 失败也应返回 processed=true 且不抛错', async () => {
     mockTriggerService.findById.mockResolvedValue(cronTrigger);
     mockExecutionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
-    mockTriggerHistoryService.record.mockRejectedValue(new Error('history failed'));
+    mockTriggerHistoryService.record.mockRejectedValue(
+      new Error('history failed'),
+    );
 
     await expect(processor.process(createMockJob())).resolves.toEqual({
       processed: true,

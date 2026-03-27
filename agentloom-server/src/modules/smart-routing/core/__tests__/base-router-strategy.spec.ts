@@ -159,16 +159,20 @@ describe('BaseRouterStrategy', () => {
     );
 
     expect(strategy.routeSingleMock).toHaveBeenCalledTimes(1);
-    expect(strategy.routeSingleMock).toHaveBeenCalledWith([validCandidate], context);
+    expect(strategy.routeSingleMock).toHaveBeenCalledWith(
+      [validCandidate],
+      context,
+    );
     expect(decision.selectedModelId).toBe('valid-model');
   });
 
   it('route() 会写入 latencyMs 与 routerType', async () => {
-    vi.spyOn(Date, 'now')
-      .mockReturnValueOnce(1_000)
-      .mockReturnValueOnce(1_025);
+    vi.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(1_025);
 
-    const decision = await strategy.route([createCandidate('valid-model')], context);
+    const decision = await strategy.route(
+      [createCandidate('valid-model')],
+      context,
+    );
 
     expect(decision.latencyMs).toBe(25);
     expect(decision.routerType).toBe('test-router');

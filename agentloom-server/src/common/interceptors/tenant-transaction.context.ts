@@ -20,7 +20,9 @@ export function registerAfterCommitHook(hook: AfterCommitHook): void {
   const context = transactionStorage.getStore();
 
   if (!context) {
-    throw new Error('registerAfterCommitHook must be used inside a tenant transaction');
+    throw new Error(
+      'registerAfterCommitHook must be used inside a tenant transaction',
+    );
   }
 
   context.afterCommitHooks.push(hook);

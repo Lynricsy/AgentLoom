@@ -4,13 +4,19 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import { QDRANT_CLIENT, qdrantClientProvider } from '../knowledge/qdrant.provider';
+import {
+  QDRANT_CLIENT,
+  qdrantClientProvider,
+} from '../knowledge/qdrant.provider';
 import { LlmModule } from '../llm/llm.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { PluginSandboxService } from '../plugin/plugin-sandbox.service';
 import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 import { HealthMonitorService } from './circuit-breaker/health-monitor.service';
-import { BaseRouterStrategy, type RouterCategory } from './core/base-router-strategy';
+import {
+  BaseRouterStrategy,
+  type RouterCategory,
+} from './core/base-router-strategy';
 import type { RoutingCandidate } from './core/routing-candidate';
 import type { RoutingContext } from './core/routing-context';
 import type { RoutingDecision } from './core/routing-decision';

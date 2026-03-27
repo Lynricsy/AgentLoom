@@ -23,7 +23,9 @@ export const memoryReviewStatusEnum = pgEnum('memory_review_status', [
 export const memoryVersions = pgTable(
   'memory_versions',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     nodeId: uuid('node_id')
       .notNull()
       .references(() => memoryNodes.id, { onDelete: 'cascade' }),

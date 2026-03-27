@@ -29,7 +29,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -55,15 +56,17 @@ import {
   type MemoryPath,
   type MemoryVersion,
 } from '../../../../database/schema';
-import {
-  MEMORY_SYSTEM_PROMPT_TEMPLATE,
-} from '../../constants/memory-system-prompt.template';
+import { MEMORY_SYSTEM_PROMPT_TEMPLATE } from '../../constants/memory-system-prompt.template';
 import { BootProtocolService } from '../boot-protocol.service';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
-type MockPathResolverService = ReturnType<typeof mocks.createPathResolverService>;
+type MockPathResolverService = ReturnType<
+  typeof mocks.createPathResolverService
+>;
 type MockMemoryNodeService = ReturnType<typeof mocks.createMemoryNodeService>;
-type MockMemoryVersionService = ReturnType<typeof mocks.createMemoryVersionService>;
+type MockMemoryVersionService = ReturnType<
+  typeof mocks.createMemoryVersionService
+>;
 type MockGlossaryService = ReturnType<typeof mocks.createGlossaryService>;
 
 type SelectChain<TResult> = Promise<TResult[]> & {
@@ -230,7 +233,9 @@ describe('BootProtocolService', () => {
         INSTANCE_ID,
         'system://boot',
       );
-      expect(memoryVersionService.getLatestVersion).toHaveBeenCalledWith(NODE_ID);
+      expect(memoryVersionService.getLatestVersion).toHaveBeenCalledWith(
+        NODE_ID,
+      );
     });
 
     it('system://boot 缺失时应降级返回 null', async () => {
@@ -283,8 +288,16 @@ describe('BootProtocolService', () => {
       const firstNode = createNode({ id: NODE_ID });
       const secondNode = createNode({ id: 'node-2' });
       const recentVersions = [
-        createVersion({ id: 'v2', nodeId: 'node-2', createdAt: new Date('2025-02-03T00:00:00.000Z') }),
-        createVersion({ id: 'v1', nodeId: NODE_ID, createdAt: new Date('2025-02-02T00:00:00.000Z') }),
+        createVersion({
+          id: 'v2',
+          nodeId: 'node-2',
+          createdAt: new Date('2025-02-03T00:00:00.000Z'),
+        }),
+        createVersion({
+          id: 'v1',
+          nodeId: NODE_ID,
+          createdAt: new Date('2025-02-02T00:00:00.000Z'),
+        }),
       ];
       const query = createSelectChain(recentVersions);
 
@@ -294,7 +307,9 @@ describe('BootProtocolService', () => {
       });
       tenantDb.select.mockReturnValueOnce(query);
 
-      await expect(service.getRecent(INSTANCE_ID, 5)).resolves.toEqual(recentVersions);
+      await expect(service.getRecent(INSTANCE_ID, 5)).resolves.toEqual(
+        recentVersions,
+      );
 
       expect(memoryNodeService.listNodes).toHaveBeenCalledWith(INSTANCE_ID, {
         page: 1,
@@ -327,7 +342,9 @@ describe('BootProtocolService', () => {
 
       tenantDb.select.mockReturnValueOnce(query);
 
-      await expect(service.getGlossary(INSTANCE_ID)).resolves.toEqual(glossaryRows);
+      await expect(service.getGlossary(INSTANCE_ID)).resolves.toEqual(
+        glossaryRows,
+      );
 
       expect(query.where).toHaveBeenCalledWith(
         mocks.operators.eq(memoryGlossaryKeywords.instanceId, INSTANCE_ID),
@@ -378,13 +395,17 @@ describe('BootProtocolService', () => {
       const getMemorySystemPromptSpy = vi
         .spyOn(service, 'getMemorySystemPrompt')
         .mockResolvedValue('Prompt');
-      const bootSpy = vi.spyOn(service, 'boot').mockResolvedValue('I am Agent X');
-      const getIndexSpy = vi.spyOn(service, 'getIndex').mockResolvedValue([
-        createPath({ domain: 'core', pathString: 'agent' }),
-      ]);
-      const getGlossarySpy = vi.spyOn(service, 'getGlossary').mockResolvedValue([
-        createGlossaryKeyword({ keyword: 'agentloom' }),
-      ]);
+      const bootSpy = vi
+        .spyOn(service, 'boot')
+        .mockResolvedValue('I am Agent X');
+      const getIndexSpy = vi
+        .spyOn(service, 'getIndex')
+        .mockResolvedValue([
+          createPath({ domain: 'core', pathString: 'agent' }),
+        ]);
+      const getGlossarySpy = vi
+        .spyOn(service, 'getGlossary')
+        .mockResolvedValue([createGlossaryKeyword({ keyword: 'agentloom' })]);
 
       await expect(service.executeBootSequence(INSTANCE_ID)).resolves.toEqual({
         systemPrompt: 'Prompt',

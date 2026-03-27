@@ -33,7 +33,9 @@ import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 @ApiSecurity('X-Api-Key')
 @Controller('plugins/developer-keys')
 export class PluginDeveloperKeyController {
-  constructor(private readonly developerKeyService: PluginDeveloperKeyService) {}
+  constructor(
+    private readonly developerKeyService: PluginDeveloperKeyService,
+  ) {}
 
   @Post()
   @Roles('creator', 'admin', 'owner')

@@ -30,11 +30,13 @@ function getExtraConfigEntries(table: object): unknown[] {
     throw new Error('未找到 marketplaceListings 的 Drizzle extra config');
   }
 
-  const extraConfigBuilder = Reflect.get(
+  const extraConfigBuilder = Reflect.get(table, extraConfigBuilderSymbol) as (
+    columns: object,
+  ) => unknown[];
+  const extraConfigColumns = Reflect.get(
     table,
-    extraConfigBuilderSymbol,
-  ) as ((columns: object) => unknown[]);
-  const extraConfigColumns = Reflect.get(table, extraConfigColumnsSymbol) as object;
+    extraConfigColumnsSymbol,
+  ) as object;
 
   return extraConfigBuilder(extraConfigColumns);
 }

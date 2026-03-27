@@ -117,7 +117,10 @@ function createExecutionSelectChain(
 
     return executions
       .filter((execution) => execution.completedAt >= lookbackDate)
-      .sort((left, right) => right.completedAt.getTime() - left.completedAt.getTime())
+      .sort(
+        (left, right) =>
+          right.completedAt.getTime() - left.completedAt.getTime(),
+      )
       .slice(0, count);
   });
   const orderBy = vi.fn().mockReturnValue({ limit });
@@ -157,10 +160,7 @@ describe('MarketplaceReviewService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        MarketplaceReviewService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [MarketplaceReviewService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(MarketplaceReviewService);
@@ -176,28 +176,40 @@ describe('MarketplaceReviewService', () => {
     const selectCanvas = createSelectChain([
       { snapshot: createWorkflowSnapshot() },
     ]);
-    const selectExecution = createExecutionSelectChain([createExecutionRecord()]);
+    const selectExecution = createExecutionSelectChain([
+      createExecutionRecord(),
+    ]);
 
     db.select
       .mockReturnValueOnce(selectVersion)
       .mockReturnValueOnce(selectCanvas)
       .mockReturnValueOnce(selectExecution);
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('passed');
     expect(result.reviewedAt).toBe(NOW.toISOString());
     expect(result.recentSuccessfulExecutionId).toBe(EXECUTION_ID);
     expect(result.recentSuccessfulExecutionAt).toBe(NOW.toISOString());
     expect(result.checks).toHaveLength(8);
-    expect(result.checks.every((check) => check.status === 'passed')).toBe(true);
+    expect(result.checks.every((check) => check.status === 'passed')).toBe(
+      true,
+    );
     expect(selectExecution.limit).toHaveBeenCalledWith(1);
   });
 
   it('工作流版本不存在时应失败并短路画布与执行检查', async () => {
     db.select.mockReturnValueOnce(createSelectChain([]));
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED').status).toBe(
@@ -208,7 +220,9 @@ describe('MarketplaceReviewService', () => {
       status: 'failed',
       message: '无法检查画布结构：工作流版本未发布',
     });
-    expect(getCheck(result, 'RECENT_SUCCESSFUL_EXECUTION_MISSING')).toMatchObject({
+    expect(
+      getCheck(result, 'RECENT_SUCCESSFUL_EXECUTION_MISSING'),
+    ).toMatchObject({
       status: 'failed',
       message: '无法检查执行记录：工作流版本未发布',
     });
@@ -220,11 +234,17 @@ describe('MarketplaceReviewService', () => {
   it('工作流版本已归档时应失败并短路画布与执行检查', async () => {
     db.select.mockReturnValueOnce(
       createSelectChain([
-        createVersionRecord({ archivedAt: new Date('2025-01-02T00:00:00.000Z') }),
+        createVersionRecord({
+          archivedAt: new Date('2025-01-02T00:00:00.000Z'),
+        }),
       ]),
     );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED').status).toBe(
@@ -244,7 +264,11 @@ describe('MarketplaceReviewService', () => {
       ]),
     );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED').status).toBe(
@@ -267,7 +291,11 @@ describe('MarketplaceReviewService', () => {
       ]),
     );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'WORKFLOW_VERSION_NOT_PUBLISHED')).toMatchObject({
@@ -284,13 +312,22 @@ describe('MarketplaceReviewService', () => {
       .mockReturnValueOnce(
         createSelectChain([
           {
-            snapshot: createWorkflowSnapshot({ nodes: [], metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 } }),
+            snapshot: createWorkflowSnapshot({
+              nodes: [],
+              metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+            }),
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'WORKFLOW_EMPTY_NODE_DETECTED')).toMatchObject({
@@ -318,12 +355,20 @@ describe('MarketplaceReviewService', () => {
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
-    expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE')).toMatchObject({
+    expect(
+      getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE'),
+    ).toMatchObject({
       status: 'failed',
       nodeId: 'node-1',
       missingFields: ['systemPrompt'],
@@ -349,12 +394,20 @@ describe('MarketplaceReviewService', () => {
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
-    expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE')).toMatchObject({
+    expect(
+      getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE'),
+    ).toMatchObject({
       status: 'failed',
       missingFields: ['llmModelId'],
     });
@@ -380,9 +433,15 @@ describe('MarketplaceReviewService', () => {
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('passed');
     expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
@@ -410,9 +469,15 @@ describe('MarketplaceReviewService', () => {
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('passed');
     expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
@@ -437,9 +502,15 @@ describe('MarketplaceReviewService', () => {
           },
         ]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('passed');
     expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
@@ -455,10 +526,16 @@ describe('MarketplaceReviewService', () => {
       )
       .mockReturnValueOnce(createExecutionSelectChain([]));
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
-    expect(getCheck(result, 'RECENT_SUCCESSFUL_EXECUTION_MISSING')).toMatchObject({
+    expect(
+      getCheck(result, 'RECENT_SUCCESSFUL_EXECUTION_MISSING'),
+    ).toMatchObject({
       status: 'failed',
       fixHint: '请先成功运行一次工作流',
     });
@@ -477,7 +554,11 @@ describe('MarketplaceReviewService', () => {
       )
       .mockReturnValueOnce(createExecutionSelectChain([expiredExecution]));
 
-    const result = await service.review(TENANT_ID, VERSION_ID, createMetadata());
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
 
     expect(result.outcome).toBe('failed');
     expect(getCheck(result, 'RECENT_SUCCESSFUL_EXECUTION_MISSING').status).toBe(
@@ -496,7 +577,9 @@ describe('MarketplaceReviewService', () => {
       .mockReturnValueOnce(
         createSelectChain([{ snapshot: createWorkflowSnapshot() }]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
     const result = await service.review(
       TENANT_ID,
@@ -520,7 +603,9 @@ describe('MarketplaceReviewService', () => {
       .mockReturnValueOnce(
         createSelectChain([{ snapshot: createWorkflowSnapshot() }]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
     const result = await service.review(
       TENANT_ID,
@@ -544,14 +629,19 @@ describe('MarketplaceReviewService', () => {
         (_value, index) => `tag-${index}`,
       ),
     ],
-    ['标签过长', ['analysis', '超'.repeat(MARKETPLACE_REVIEW_LIMITS.tagMaxLength + 1)]],
+    [
+      '标签过长',
+      ['analysis', '超'.repeat(MARKETPLACE_REVIEW_LIMITS.tagMaxLength + 1)],
+    ],
   ])('标签%s时应返回 TAGS_INVALID', async (_label, tags) => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
       .mockReturnValueOnce(
         createSelectChain([{ snapshot: createWorkflowSnapshot() }]),
       )
-      .mockReturnValueOnce(createExecutionSelectChain([createExecutionRecord()]));
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
 
     const result = await service.review(
       TENANT_ID,

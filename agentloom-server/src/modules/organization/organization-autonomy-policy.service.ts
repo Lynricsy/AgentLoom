@@ -118,7 +118,8 @@ export class OrganizationAutonomyPolicyService {
     const previousCap =
       (existingPolicy?.autonomyCap as AutonomyMode | undefined) ??
       SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY.autonomyCap;
-    const isTightened = compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
+    const isTightened =
+      compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
 
     if (!existingPolicy) {
       const [created] = await this.tenantDb
@@ -140,7 +141,9 @@ export class OrganizationAutonomyPolicyService {
         );
       }
 
-      this.logger.log(`Created organization autonomy policy for ${organizationId}`);
+      this.logger.log(
+        `Created organization autonomy policy for ${organizationId}`,
+      );
       const response = await this.toResponseDto(created);
       await this.recordAudit({
         tenantId: organization.tenantId,
@@ -179,7 +182,9 @@ export class OrganizationAutonomyPolicyService {
       );
     }
 
-    this.logger.log(`Updated organization autonomy policy for ${organizationId}`);
+    this.logger.log(
+      `Updated organization autonomy policy for ${organizationId}`,
+    );
     const response = await this.toResponseDto(updated);
     await this.recordAudit({
       tenantId: organization.tenantId,
@@ -243,7 +248,8 @@ export class OrganizationAutonomyPolicyService {
     const previousCap =
       (existingPolicy?.autonomyCap as AutonomyMode | undefined) ??
       SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY.autonomyCap;
-    const isTightened = compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
+    const isTightened =
+      compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
     const impact = await this.buildDowngradeImpact(
       organization.tenantId,
       validated.autonomyCap,
@@ -262,7 +268,10 @@ export class OrganizationAutonomyPolicyService {
       const persistedPolicy = await this.tenantDb.transaction(async (tx) => {
         const existingPolicy =
           await tx.query.organizationAutonomyPolicies.findFirst({
-            where: eq(organizationAutonomyPolicies.organizationId, organizationId),
+            where: eq(
+              organizationAutonomyPolicies.organizationId,
+              organizationId,
+            ),
           });
 
         const [policy] = existingPolicy
@@ -361,9 +370,10 @@ export class OrganizationAutonomyPolicyService {
       return SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY.autonomyCap;
     }
 
-    const policy = await this.tenantDb.query.organizationAutonomyPolicies.findFirst({
-      where: eq(organizationAutonomyPolicies.organizationId, organization.id),
-    });
+    const policy =
+      await this.tenantDb.query.organizationAutonomyPolicies.findFirst({
+        where: eq(organizationAutonomyPolicies.organizationId, organization.id),
+      });
 
     return (
       (policy?.autonomyCap as AutonomyMode | undefined) ??
@@ -503,7 +513,9 @@ export class OrganizationAutonomyPolicyService {
     }
 
     const violations = impactedWorkflows.flatMap((workflow) =>
-      workflow.violations.map(({ nodeIndex: _nodeIndex, ...violation }) => violation),
+      workflow.violations.map(
+        ({ nodeIndex: _nodeIndex, ...violation }) => violation,
+      ),
     );
 
     return {
@@ -532,9 +544,7 @@ export class OrganizationAutonomyPolicyService {
         return [];
       }
 
-      return [
-        this.toViolationDetail(workflow, node, nodeIndex, explanation),
-      ];
+      return [this.toViolationDetail(workflow, node, nodeIndex, explanation)];
     });
   }
 
@@ -622,13 +632,14 @@ export class OrganizationAutonomyPolicyService {
     autonomyCap: AutonomyMode,
   ) {
     const scopedDb = tenantDb as Pick<DrizzleDB, 'query' | 'update'>;
-    const pendingSuggestions = await scopedDb.query.optimizationSuggestions.findMany({
-      where: and(
-        eq(optimizationSuggestions.tenantId, tenantId),
-        eq(optimizationSuggestions.suggestionType, 'autonomy_upgrade'),
-        eq(optimizationSuggestions.status, 'pending'),
-      ),
-    });
+    const pendingSuggestions =
+      await scopedDb.query.optimizationSuggestions.findMany({
+        where: and(
+          eq(optimizationSuggestions.tenantId, tenantId),
+          eq(optimizationSuggestions.suggestionType, 'autonomy_upgrade'),
+          eq(optimizationSuggestions.status, 'pending'),
+        ),
+      });
 
     const blockedAt = new Date();
 
@@ -648,7 +659,7 @@ export class OrganizationAutonomyPolicyService {
         .set({
           status: 'blocked',
           analysisMetadata: this.buildBlockedAnalysisMetadata(
-            (this.asRecord(suggestion.analysisMetadata) ?? {}) as Record<string, unknown>,
+            this.asRecord(suggestion.analysisMetadata) ?? {},
             autonomyCap,
             explanation,
             blockedAt,
@@ -657,7 +668,7 @@ export class OrganizationAutonomyPolicyService {
         })
         .where(eq(optimizationSuggestions.id, suggestion.id))
         .returning();
-      }
+    }
   }
 
   private buildBlockedAnalysisMetadata(

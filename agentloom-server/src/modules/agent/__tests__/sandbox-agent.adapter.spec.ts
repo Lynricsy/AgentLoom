@@ -323,14 +323,16 @@ describe('SandboxAgentAdapter', () => {
         'http://127.0.0.1:49123/v1/prompt',
       );
 
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        createSseResponse([
-          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"hello"}}}\n\n',
-          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","input":{"path":"/workspace/a.txt"},"status":"awaiting_permission","permissionRequest":{"description":"允许写入文件","resourcePaths":["/workspace/a.txt"]}}}}\n\n',
-          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","status":"completed","result":{"ok":true}}}}\n\n',
-          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"tool_use"}}}\n\n',
-        ]),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"hello"}}}\n\n',
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","input":{"path":"/workspace/a.txt"},"status":"awaiting_permission","permissionRequest":{"description":"允许写入文件","resourcePaths":["/workspace/a.txt"]}}}}\n\n',
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_end","data":{"toolCallId":"tool-1","toolName":"fs/write_text_file","status":"completed","result":{"ok":true}}}}\n\n',
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"tool_use"}}}\n\n',
+          ]),
+        );
 
       const events = await collectEvents(
         adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
@@ -371,14 +373,18 @@ describe('SandboxAgentAdapter', () => {
         'http://127.0.0.1:49123/v1/prompt',
       );
 
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        createSseResponse([
-          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","data":{"message":"sandbox exploded"}}}\n\n',
-        ]),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","data":{"message":"sandbox exploded"}}}\n\n',
+          ]),
+        );
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hello' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+        ),
       ).rejects.toThrow('sandbox exploded');
     });
 
@@ -620,7 +626,11 @@ describe('SandboxAgentAdapter', () => {
       });
 
       await Promise.resolve();
-      await adapter.resolveConversationToolPermission('conv-001', 'tool-2', 'deny');
+      await adapter.resolveConversationToolPermission(
+        'conv-001',
+        'tool-2',
+        'deny',
+      );
 
       await expect(pending).resolves.toEqual({ allowed: false });
     });
@@ -678,7 +688,11 @@ describe('SandboxAgentAdapter', () => {
         }),
       ).rejects.toThrow('already has pending tool permission');
 
-      await adapter.resolveConversationToolPermission('conv-001', 'tool-dup', 'deny');
+      await adapter.resolveConversationToolPermission(
+        'conv-001',
+        'tool-dup',
+        'deny',
+      );
       await expect(first).resolves.toEqual({ allowed: false });
     });
   });
@@ -730,7 +744,10 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect(events[0]).toEqual({ type: 'message_chunk', content: 'via-content' });
+      expect(events[0]).toEqual({
+        type: 'message_chunk',
+        content: 'via-content',
+      });
     });
 
     it('text_delta with raw string data', async () => {
@@ -739,7 +756,10 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect(events[0]).toEqual({ type: 'message_chunk', content: 'raw-string' });
+      expect(events[0]).toEqual({
+        type: 'message_chunk',
+        content: 'raw-string',
+      });
     });
 
     it('text_delta with empty string data yields no event', async () => {
@@ -855,7 +875,14 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+      expect(
+        (
+          events[0] as unknown as {
+            type: 'tool_call';
+            call: { args: Record<string, unknown> };
+          }
+        ).call.args,
+      ).toEqual({ cmd: 'ls' });
     });
 
     it('normalizeToolArgs reads arguments field', async () => {
@@ -864,7 +891,14 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({ cmd: 'ls' });
+      expect(
+        (
+          events[0] as unknown as {
+            type: 'tool_call';
+            call: { args: Record<string, unknown> };
+          }
+        ).call.args,
+      ).toEqual({ cmd: 'ls' });
     });
 
     it('normalizeToolArgs returns {} when no candidates match', async () => {
@@ -873,12 +907,24 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { args: Record<string, unknown> } }).call.args).toEqual({});
+      expect(
+        (
+          events[0] as unknown as {
+            type: 'tool_call';
+            call: { args: Record<string, unknown> };
+          }
+        ).call.args,
+      ).toEqual({});
     });
 
     it('normalizeTransitions with valid entries', async () => {
       const transitions = [
-        { from: 'pending', to: 'in_progress', timestamp: '2025-01-01T00:00:00Z', source: 'worker' },
+        {
+          from: 'pending',
+          to: 'in_progress',
+          timestamp: '2025-01-01T00:00:00Z',
+          source: 'worker',
+        },
         { to: 'completed', source: 'runtime' },
       ];
       const events = await createSessionAndPromptSse([
@@ -886,7 +932,12 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (
+        events[0] as unknown as {
+          type: 'tool_call';
+          call: Record<string, unknown>;
+        }
+      ).call;
       const trans = call.transitions as Array<Record<string, unknown>>;
       expect(trans).toHaveLength(2);
       expect(trans[0].from).toBe('pending');
@@ -906,7 +957,12 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (
+        events[0] as unknown as {
+          type: 'tool_call';
+          call: Record<string, unknown>;
+        }
+      ).call;
       const trans = call.transitions as Array<Record<string, unknown>>;
       expect(trans).toHaveLength(1);
       expect(trans[0].to).toBe('completed');
@@ -919,7 +975,12 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (
+        events[0] as unknown as {
+          type: 'tool_call';
+          call: Record<string, unknown>;
+        }
+      ).call;
       expect(call.permissionRequest).toEqual({
         description: '写入文件',
         resourcePaths: ['/workspace/x.txt'],
@@ -932,7 +993,12 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      const call = (events[0] as unknown as { type: 'tool_call'; call: Record<string, unknown> }).call;
+      const call = (
+        events[0] as unknown as {
+          type: 'tool_call';
+          call: Record<string, unknown>;
+        }
+      ).call;
       const perm = call.permissionRequest as Record<string, unknown>;
       expect(perm.description).toContain('myTool');
       expect(perm.resourcePaths).toEqual(['/a']);
@@ -944,7 +1010,10 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { tool: string } }).call.tool).toBe('alt_tool');
+      expect(
+        (events[0] as unknown as { type: 'tool_call'; call: { tool: string } })
+          .call.tool,
+      ).toBe('alt_tool');
     });
 
     it('buildToolCallEvent falls back to data.id when toolCallId missing', async () => {
@@ -953,7 +1022,10 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { id: string } }).call.id).toBe('alt-id');
+      expect(
+        (events[0] as unknown as { type: 'tool_call'; call: { id: string } })
+          .call.id,
+      ).toBe('alt-id');
     });
 
     it('readToolCallStatus infers awaiting_permission when permissionRequest present', async () => {
@@ -962,7 +1034,14 @@ describe('SandboxAgentAdapter', () => {
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
       ]);
 
-      expect((events[0] as unknown as { type: 'tool_call'; call: { status: string } }).call.status).toBe('awaiting_permission');
+      expect(
+        (
+          events[0] as unknown as {
+            type: 'tool_call';
+            call: { status: string };
+          }
+        ).call.status,
+      ).toBe('awaiting_permission');
     });
 
     it('error event with fallback message from envelope.data', async () => {
@@ -1271,7 +1350,10 @@ describe('SandboxAgentAdapter', () => {
 
     it('ptyBufferDump 代理 POST 到容器', async () => {
       await setupSandboxProxy();
-      const mockResult = { lines: [{ lineNo: 1, text: 'hello' }], totalLines: 1 };
+      const mockResult = {
+        lines: [{ lineNo: 1, text: 'hello' }],
+        totalLines: 1,
+      };
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -1326,7 +1408,11 @@ describe('SandboxAgentAdapter', () => {
       } as unknown as Response);
 
       await expect(
-        adapter.ptyBufferDump({ executionId: 'exec-001' }, 'tenant-001', 'pty-001'),
+        adapter.ptyBufferDump(
+          { executionId: 'exec-001' },
+          'tenant-001',
+          'pty-001',
+        ),
       ).rejects.toThrow('PTY buffer-dump 失败');
     });
 
@@ -1363,7 +1449,12 @@ describe('SandboxAgentAdapter', () => {
       } as unknown as Response);
 
       await expect(
-        adapter.ptyWrite({ executionId: 'exec-001' }, 'tenant-001', 'pty-001', 'x'),
+        adapter.ptyWrite(
+          { executionId: 'exec-001' },
+          'tenant-001',
+          'pty-001',
+          'x',
+        ),
       ).rejects.toThrow('PTY write 失败');
     });
 
@@ -1518,7 +1609,9 @@ describe('SandboxAgentAdapter', () => {
         'http://127.0.0.1:49123/v1/prompt',
       );
 
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('abort network failed'));
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('abort network failed'));
 
       await expect(adapter.cancel(session.id)).resolves.toBeUndefined();
       const loaded = await adapter.loadSession(session.id);
@@ -1540,7 +1633,11 @@ describe('SandboxAgentAdapter', () => {
       });
 
       await Promise.resolve();
-      await adapter.resolveConversationToolPermission('conv-scan', 'tool-scan', 'approve');
+      await adapter.resolveConversationToolPermission(
+        'conv-scan',
+        'tool-scan',
+        'approve',
+      );
 
       await expect(pending).resolves.toEqual({ allowed: true });
     });

@@ -32,7 +32,9 @@ describe('SmartRoutingController', () => {
     vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
 
     mockService = createMockSmartRoutingService();
-    controller = new SmartRoutingController(mockService as unknown as SmartRoutingService);
+    controller = new SmartRoutingController(
+      mockService as unknown as SmartRoutingService,
+    );
   });
 
   afterEach(() => {
@@ -62,7 +64,9 @@ describe('SmartRoutingController', () => {
     );
 
     expect(descriptor?.value).toBeDefined();
-    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(200);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(
+      200,
+    );
   });
 
   it('应为 getStrategies 声明 Viewer+ RBAC', () => {
@@ -120,7 +124,9 @@ describe('SmartRoutingController', () => {
     );
 
     expect(descriptor?.value).toBeDefined();
-    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(200);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(
+      200,
+    );
   });
 
   it('应为 getProviderHealth 声明 200 HTTP 状态码', () => {
@@ -130,7 +136,9 @@ describe('SmartRoutingController', () => {
     );
 
     expect(descriptor?.value).toBeDefined();
-    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(200);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(
+      200,
+    );
   });
 
   it('应为 getStrategyConfigSchema 声明 200 HTTP 状态码', () => {
@@ -140,7 +148,9 @@ describe('SmartRoutingController', () => {
     );
 
     expect(descriptor?.value).toBeDefined();
-    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(200);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, descriptor?.value)).toBe(
+      200,
+    );
   });
 
   it('应委托 service.listStrategies 返回策略列表', () => {
@@ -174,8 +184,12 @@ describe('SmartRoutingController', () => {
     };
     mockService.getProviderHealthStatuses.mockResolvedValue(response);
 
-    await expect(controller.getProviderHealth('tenant-1')).resolves.toEqual(response);
-    expect(mockService.getProviderHealthStatuses).toHaveBeenCalledWith('tenant-1');
+    await expect(controller.getProviderHealth('tenant-1')).resolves.toEqual(
+      response,
+    );
+    expect(mockService.getProviderHealthStatuses).toHaveBeenCalledWith(
+      'tenant-1',
+    );
   });
 
   it('应将策略名称正确委托给 service.getStrategyConfigSchema', () => {

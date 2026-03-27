@@ -137,7 +137,10 @@ describe('LlmAsRouterStrategy', () => {
   });
 
   it('LLM 超时时应该回退到随机选择', async () => {
-    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    const abortError = new DOMException(
+      'The operation was aborted',
+      'AbortError',
+    );
     mockFetch.mockRejectedValueOnce(abortError);
 
     const candidates = makeCandidates();
@@ -148,9 +151,9 @@ describe('LlmAsRouterStrategy', () => {
     const decision = await strategy.route(candidates, context);
 
     expect(decision.selectedModelId).toBeTruthy();
-    expect(
-      candidates.some((c) => c.id === decision.selectedModelId),
-    ).toBe(true);
+    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+      true,
+    );
     expect(decision.reasoning).toContain('超时');
     expect(decision.scores).toHaveLength(3);
   });
@@ -177,9 +180,9 @@ describe('LlmAsRouterStrategy', () => {
     const decision = await strategy.route(candidates, context);
 
     expect(decision.selectedModelId).toBeTruthy();
-    expect(
-      candidates.some((c) => c.id === decision.selectedModelId),
-    ).toBe(true);
+    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+      true,
+    );
     expect(decision.reasoning).toContain('回退');
   });
 
@@ -208,9 +211,9 @@ describe('LlmAsRouterStrategy', () => {
     const decision = await strategy.route(candidates, context);
 
     expect(decision.selectedModelId).toBeTruthy();
-    expect(
-      candidates.some((c) => c.id === decision.selectedModelId),
-    ).toBe(true);
+    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+      true,
+    );
     expect(decision.reasoning).toContain('回退');
   });
 
@@ -225,9 +228,9 @@ describe('LlmAsRouterStrategy', () => {
     const decision = await strategy.route(candidates, context);
 
     expect(decision.selectedModelId).toBeTruthy();
-    expect(
-      candidates.some((c) => c.id === decision.selectedModelId),
-    ).toBe(true);
+    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+      true,
+    );
     expect(decision.reasoning).toContain('回退');
   });
 

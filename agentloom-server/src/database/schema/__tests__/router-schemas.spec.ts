@@ -9,7 +9,12 @@ import { routerModels } from '../router-models.schema';
 import { routingBenchmarks } from '../routing-benchmarks.schema';
 import { routingDecisions } from '../routing-decisions.schema';
 
-function describeForeignKeys(table: typeof routerModels | typeof routingBenchmarks | typeof providerHealthStatus) {
+function describeForeignKeys(
+  table:
+    | typeof routerModels
+    | typeof routingBenchmarks
+    | typeof providerHealthStatus,
+) {
   return getTableConfig(table).foreignKeys.map((foreignKey) => {
     const reference = foreignKey.reference();
 
@@ -131,7 +136,9 @@ describe('smart routing schemas', () => {
       ]),
     );
 
-    expect(providerTableConfig.indexes.map((index) => index.config.name)).toEqual(
+    expect(
+      providerTableConfig.indexes.map((index) => index.config.name),
+    ).toEqual(
       expect.arrayContaining([
         'uq_provider_health_status_tenant_provider_model',
         'idx_provider_health_status_tenant_id',

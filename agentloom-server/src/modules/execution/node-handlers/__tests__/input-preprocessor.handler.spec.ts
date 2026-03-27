@@ -69,13 +69,19 @@ describe('InputPreprocessorHandlerImpl', () => {
     });
 
     it('简单字段提取', async () => {
-      const result = await handler.execute({ name: 'Alice', age: 30 }, makeConfig('name'));
+      const result = await handler.execute(
+        { name: 'Alice', age: 30 },
+        makeConfig('name'),
+      );
       expect(result.output).toBe('Alice');
     });
 
     it('嵌套字段提取', async () => {
       const input = { user: { profile: { name: 'Bob' } } };
-      const result = await handler.execute(input, makeConfig('user.profile.name'));
+      const result = await handler.execute(
+        input,
+        makeConfig('user.profile.name'),
+      );
       expect(result.output).toBe('Bob');
     });
 
@@ -86,8 +92,16 @@ describe('InputPreprocessorHandlerImpl', () => {
     });
 
     it('过滤表达式', async () => {
-      const input = { people: [{ name: 'A', age: 20 }, { name: 'B', age: 35 }] };
-      const result = await handler.execute(input, makeConfig("people[?age > `30`].name"));
+      const input = {
+        people: [
+          { name: 'A', age: 20 },
+          { name: 'B', age: 35 },
+        ],
+      };
+      const result = await handler.execute(
+        input,
+        makeConfig('people[?age > `30`].name'),
+      );
       expect(result.output).toEqual(['B']);
     });
 
@@ -121,25 +135,37 @@ describe('InputPreprocessorHandlerImpl', () => {
 
     it('计算表达式', async () => {
       const input = { price: 100, quantity: 3 };
-      const result = await handler.execute(input, makeConfig('price * quantity'));
+      const result = await handler.execute(
+        input,
+        makeConfig('price * quantity'),
+      );
       expect(result.output).toBe(300);
     });
 
     it('字符串拼接', async () => {
       const input = { firstName: 'John', lastName: 'Doe' };
-      const result = await handler.execute(input, makeConfig('firstName & " " & lastName'));
+      const result = await handler.execute(
+        input,
+        makeConfig('firstName & " " & lastName'),
+      );
       expect(result.output).toBe('John Doe');
     });
 
     it('数组聚合', async () => {
       const input = { items: [{ price: 10 }, { price: 20 }, { price: 30 }] };
-      const result = await handler.execute(input, makeConfig('$sum(items.price)'));
+      const result = await handler.execute(
+        input,
+        makeConfig('$sum(items.price)'),
+      );
       expect(result.output).toBe(60);
     });
 
     it('对象构建', async () => {
       const input = { name: 'Alice', age: 25 };
-      const result = await handler.execute(input, makeConfig('{"user": name, "years": age}'));
+      const result = await handler.execute(
+        input,
+        makeConfig('{"user": name, "years": age}'),
+      );
       expect(result.output).toEqual({ user: 'Alice', years: 25 });
     });
 
@@ -176,13 +202,19 @@ describe('InputPreprocessorHandlerImpl', () => {
 
     it('多个变量替换', async () => {
       const input = { city: 'Tokyo', country: 'Japan' };
-      const result = await handler.execute(input, makeConfig('{{city}}, {{country}}'));
+      const result = await handler.execute(
+        input,
+        makeConfig('{{city}}, {{country}}'),
+      );
       expect(result.output).toBe('Tokyo, Japan');
     });
 
     it('嵌套路径 dot notation', async () => {
       const input = { user: { name: 'Alice' } };
-      const result = await handler.execute(input, makeConfig('Name: {{user.name}}'));
+      const result = await handler.execute(
+        input,
+        makeConfig('Name: {{user.name}}'),
+      );
       expect(result.output).toBe('Name: Alice');
     });
 
@@ -193,7 +225,10 @@ describe('InputPreprocessorHandlerImpl', () => {
     });
 
     it('不存在的键替换为空字符串', async () => {
-      const result = await handler.execute({ a: 1 }, makeConfig('val={{missing}}'));
+      const result = await handler.execute(
+        { a: 1 },
+        makeConfig('val={{missing}}'),
+      );
       expect(result.output).toBe('val=');
     });
 
@@ -206,7 +241,10 @@ describe('InputPreprocessorHandlerImpl', () => {
     });
 
     it('数值类型正确转字符串', async () => {
-      const result = await handler.execute({ num: 42 }, makeConfig('Answer: {{num}}'));
+      const result = await handler.execute(
+        { num: 42 },
+        makeConfig('Answer: {{num}}'),
+      );
       expect(result.output).toBe('Answer: 42');
     });
 
@@ -219,7 +257,10 @@ describe('InputPreprocessorHandlerImpl', () => {
     });
 
     it('无占位符时原样返回模板', async () => {
-      const result = await handler.execute({ a: 1 }, makeConfig('no placeholders here'));
+      const result = await handler.execute(
+        { a: 1 },
+        makeConfig('no placeholders here'),
+      );
       expect(result.output).toBe('no placeholders here');
     });
 
@@ -281,21 +322,24 @@ describe('InputPreprocessorHandlerImpl', () => {
 
     it('使用 Math', async () => {
       const input = { values: [1, 4, 9] };
-      const script = '({ max: Math.max(...input.values), sqrt: Math.sqrt(input.values[2]) })';
+      const script =
+        '({ max: Math.max(...input.values), sqrt: Math.sqrt(input.values[2]) })';
       const result = await handler.execute(input, makeConfig(script));
       expect(result.output).toEqual({ max: 9, sqrt: 3 });
     });
 
     it('使用 parseInt / parseFloat', async () => {
       const input = { intStr: '42', floatStr: '3.14' };
-      const script = '({ int: parseInt(input.intStr), float: parseFloat(input.floatStr) })';
+      const script =
+        '({ int: parseInt(input.intStr), float: parseFloat(input.floatStr) })';
       const result = await handler.execute(input, makeConfig(script));
       expect(result.output).toEqual({ int: 42, float: 3.14 });
     });
 
     it('使用 Object.keys/values', async () => {
       const input = { a: 1, b: 2 };
-      const script = '({ keys: Object.keys(input), vals: Object.values(input) })';
+      const script =
+        '({ keys: Object.keys(input), vals: Object.values(input) })';
       const result = await handler.execute(input, makeConfig(script));
       expect(result.output).toEqual({ keys: ['a', 'b'], vals: [1, 2] });
     });
@@ -347,7 +391,9 @@ describe('InputPreprocessorHandlerImpl', () => {
       it('globalThis 不泄露 process/require', async () => {
         const result = await handler.execute(
           { a: 1 },
-          makeConfig('({ hasProcess: typeof globalThis.process !== "undefined", hasRequire: typeof globalThis.require !== "undefined" })'),
+          makeConfig(
+            '({ hasProcess: typeof globalThis.process !== "undefined", hasRequire: typeof globalThis.require !== "undefined" })',
+          ),
         );
         expect(result.output).toEqual({ hasProcess: false, hasRequire: false });
       });
@@ -397,14 +443,25 @@ describe('InputPreprocessorHandlerImpl', () => {
     it('jsonata → script 链式处理', async () => {
       // 第一步：用 jsonata 计算
       const step1Result = await handler.execute(
-        { items: [{ price: 10, qty: 2 }, { price: 20, qty: 1 }] },
-        { transformType: 'jsonata', expression: '{"total": $sum(items.(price * qty))}' },
+        {
+          items: [
+            { price: 10, qty: 2 },
+            { price: 20, qty: 1 },
+          ],
+        },
+        {
+          transformType: 'jsonata',
+          expression: '{"total": $sum(items.(price * qty))}',
+        },
       );
 
       // 第二步：用 script 添加标签
       const step2Result = await handler.execute(
         step1Result.output as Record<string, unknown>,
-        { transformType: 'script', expression: '({ summary: "Total: $" + input.total })' },
+        {
+          transformType: 'script',
+          expression: '({ summary: "Total: $" + input.total })',
+        },
       );
 
       expect(step2Result.output).toEqual({ summary: 'Total: $40' });
@@ -416,20 +473,27 @@ describe('InputPreprocessorHandlerImpl', () => {
         { raw: [5, 3, 8, 1] },
         {
           transformType: 'script',
-          expression: '({ sorted: input.raw.sort((a,b) => a-b), count: input.raw.length })',
+          expression:
+            '({ sorted: input.raw.sort((a,b) => a-b), count: input.raw.length })',
         },
       );
 
       // 第二步：jmespath 提取
       const step2Result = await handler.execute(
         step1Result.output as Record<string, unknown>,
-        { transformType: 'jmespath', expression: '{first: sorted[0], total: count}' },
+        {
+          transformType: 'jmespath',
+          expression: '{first: sorted[0], total: count}',
+        },
       );
 
       // 第三步：template 格式化
       const step3Result = await handler.execute(
         step2Result.output as Record<string, unknown>,
-        { transformType: 'template', expression: 'Min value: {{first}}, Count: {{total}}' },
+        {
+          transformType: 'template',
+          expression: 'Min value: {{first}}, Count: {{total}}',
+        },
       );
 
       expect(step3Result.output).toBe('Min value: 1, Count: 4');

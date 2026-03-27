@@ -333,8 +333,7 @@ export class SmartRoutingService {
         modelId,
         {
           successRate: metric.total > 0 ? metric.success / metric.total : 0,
-          avgLatencyMs:
-            metric.total > 0 ? metric.latencySum / metric.total : 0,
+          avgLatencyMs: metric.total > 0 ? metric.latencySum / metric.total : 0,
           avgTokenUsage: 0,
           ...(metric.lastUsedAt
             ? { lastUsedAt: metric.lastUsedAt.toISOString() }
@@ -387,7 +386,9 @@ export class SmartRoutingService {
       };
     } catch (error) {
       throw new NotFoundException(
-        error instanceof Error ? error.message : `Strategy \"${name}\" not found`,
+        error instanceof Error
+          ? error.message
+          : `Strategy \"${name}\" not found`,
       );
     }
   }
@@ -418,10 +419,14 @@ export class SmartRoutingService {
       tenantId,
     );
 
-    const configsById = new Map(modelConfigs.map((config) => [config.id, config]));
+    const configsById = new Map(
+      modelConfigs.map((config) => [config.id, config]),
+    );
     const orderedModelConfigs = modelConfigIds
       .map((id) => configsById.get(id))
-      .filter((config): config is NonNullable<typeof config> => Boolean(config));
+      .filter((config): config is NonNullable<typeof config> =>
+        Boolean(config),
+      );
 
     const candidates: ModelCandidate[] = orderedModelConfigs.map((config) => ({
       id: config.id,
@@ -464,20 +469,20 @@ export class SmartRoutingService {
     const [inserted] = await this.tenantDb
       .insert(routingDecisions)
       .values({
-      executionStepId,
-      tenantId,
-      routingNodeId,
-      strategy: decision.strategy,
-      modelsEvaluated: decision.evaluatedModels.map((m) => ({
-        modelId: m.modelId,
-        modelName: m.modelName,
-        provider: m.provider,
-        score: m.score,
-        reasoning: m.reasoning,
-      })),
-      selectedModelId: decision.selectedModelId,
-      decisionReasoning: decision.reasoning,
-      routingLatencyMs: decision.latencyMs,
+        executionStepId,
+        tenantId,
+        routingNodeId,
+        strategy: decision.strategy,
+        modelsEvaluated: decision.evaluatedModels.map((m) => ({
+          modelId: m.modelId,
+          modelName: m.modelName,
+          provider: m.provider,
+          score: m.score,
+          reasoning: m.reasoning,
+        })),
+        selectedModelId: decision.selectedModelId,
+        decisionReasoning: decision.reasoning,
+        routingLatencyMs: decision.latencyMs,
         routerType: decision.routerType ?? null,
       })
       .returning({ id: routingDecisions.id });

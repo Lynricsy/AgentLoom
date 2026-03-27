@@ -2,13 +2,13 @@ import { access, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import {
-  DRIZZLE,
-  type DrizzleDB,
-} from '../../../database/database.module';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { sandboxSessions } from '../../../database/schema';
-import { DockerService, type DockerExecExitInfo } from '../../sandbox/docker.service';
+import {
+  DockerService,
+  type DockerExecExitInfo,
+} from '../../sandbox/docker.service';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import type { AcpTrackedSession } from '../acp-types';
 
@@ -101,9 +101,7 @@ export class AcpTerminalSandboxService {
             workspacePath: sandboxSessions.workspacePath,
           })
           .from(sandboxSessions)
-          .where(
-            this.buildActiveSandboxWhere(trackedSession.tenantId, binding),
-          )
+          .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
 
         return rows[0] satisfies SandboxSessionAccess | undefined;
@@ -264,7 +262,10 @@ export class AcpTerminalSandboxService {
     }
 
     if (!isAbsolute(pathValue)) {
-      if (typeof trackedSession.cwd !== 'string' || trackedSession.cwd.length === 0) {
+      if (
+        typeof trackedSession.cwd !== 'string' ||
+        trackedSession.cwd.length === 0
+      ) {
         throw new AcpJsonRpcError(-32602, 'Invalid params', {
           reason: 'Relative terminal cwd requires session cwd',
         });
@@ -302,8 +303,7 @@ export class AcpTerminalSandboxService {
 
     const normalizedPath = resolve(workspacePath);
     return (
-      isAbsolute(normalizedPath) &&
-      normalizedPath !== SANDBOX_WORKSPACE_ROOT
+      isAbsolute(normalizedPath) && normalizedPath !== SANDBOX_WORKSPACE_ROOT
     );
   }
 

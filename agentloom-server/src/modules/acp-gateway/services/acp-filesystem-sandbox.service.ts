@@ -6,19 +6,10 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import {
-  dirname,
-  isAbsolute,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import {
-  DRIZZLE,
-  type DrizzleDB,
-} from '../../../database/database.module';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { sandboxSessions } from '../../../database/schema';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import type { AcpTrackedSession } from '../acp-types';
@@ -123,7 +114,10 @@ export class AcpFilesystemSandboxService {
       'sandbox_workspace_unavailable',
       'ACP server sandbox workspace is unavailable',
     );
-    const logicalPath = this.resolveLogicalSandboxPath(pathValue, trackedSession);
+    const logicalPath = this.resolveLogicalSandboxPath(
+      pathValue,
+      trackedSession,
+    );
     const relativeWorkspacePath = this.toWorkspaceRelativePath(logicalPath);
 
     if (relativeWorkspacePath === '') {
@@ -227,7 +221,10 @@ export class AcpFilesystemSandboxService {
     trackedSession: AcpTrackedSession,
   ): string {
     if (!isAbsolute(pathValue)) {
-      if (typeof trackedSession.cwd !== 'string' || trackedSession.cwd.length === 0) {
+      if (
+        typeof trackedSession.cwd !== 'string' ||
+        trackedSession.cwd.length === 0
+      ) {
         throw new AcpJsonRpcError(-32602, 'Invalid params', {
           reason: 'Relative fs path requires session cwd',
         });
@@ -271,9 +268,7 @@ export class AcpFilesystemSandboxService {
             workspacePath: sandboxSessions.workspacePath,
           })
           .from(sandboxSessions)
-          .where(
-            this.buildActiveSandboxWhere(trackedSession.tenantId, binding),
-          )
+          .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
 
         return rows[0] satisfies SandboxSessionAccess | undefined;
@@ -369,8 +364,7 @@ export class AcpFilesystemSandboxService {
 
     const normalizedPath = resolve(workspacePath);
     return (
-      isAbsolute(normalizedPath) &&
-      normalizedPath !== SANDBOX_WORKSPACE_ROOT
+      isAbsolute(normalizedPath) && normalizedPath !== SANDBOX_WORKSPACE_ROOT
     );
   }
 

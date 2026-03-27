@@ -283,7 +283,9 @@ export class AgentConversationGateway
     }
     sockets.add(client.id);
 
-    this.logger.debug(`Client ${client.id} subscribed to conversation ${conversationId}`);
+    this.logger.debug(
+      `Client ${client.id} subscribed to conversation ${conversationId}`,
+    );
 
     if (lastEventId != null) {
       this.replayEvents(client, conversationId, lastEventId);
@@ -310,7 +312,9 @@ export class AgentConversationGateway
       }
     }
 
-    this.logger.debug(`Client ${client.id} unsubscribed from conversation ${payload.conversationId}`);
+    this.logger.debug(
+      `Client ${client.id} unsubscribed from conversation ${payload.conversationId}`,
+    );
   }
 
   @SubscribeMessage('conversation:message')
@@ -328,15 +332,12 @@ export class AgentConversationGateway
     }
 
     try {
-      await this.agentExecutionService.injectMessage(
-        payload.conversationId,
-        {
-          content: payload.content,
-          role: 'user',
-          contentType: payload.contentType ?? 'text',
-          metadata: payload.metadata,
-        },
-      );
+      await this.agentExecutionService.injectMessage(payload.conversationId, {
+        content: payload.content,
+        role: 'user',
+        contentType: payload.contentType ?? 'text',
+        metadata: payload.metadata,
+      });
       return { status: 'ok' };
     } catch (error) {
       this.logger.warn(
@@ -361,9 +362,7 @@ export class AgentConversationGateway
     }
 
     try {
-      await this.agentExecutionService.cancelExecution(
-        payload.conversationId,
-      );
+      await this.agentExecutionService.cancelExecution(payload.conversationId);
       return { status: 'ok' };
     } catch (error) {
       this.logger.warn(
@@ -737,8 +736,7 @@ export class AgentConversationGateway
       conversationId,
       tenantId,
       timestamp: new Date().toISOString(),
-      eventId:
-        this.eventBridgeService.getLastEventId(conversationId) ?? 0,
+      eventId: this.eventBridgeService.getLastEventId(conversationId) ?? 0,
       ...data,
     } as Record<string, unknown>;
   }
@@ -750,8 +748,9 @@ export class AgentConversationGateway
   private createAuthError(
     message: string,
   ): Error & { data?: { code: number; reason: string } } {
-    const err: Error & { data?: { code: number; reason: string } } =
-      new Error(message);
+    const err: Error & { data?: { code: number; reason: string } } = new Error(
+      message,
+    );
     err.data = { code: WS_CLOSE_AUTH_FAILURE, reason: message };
     return err;
   }

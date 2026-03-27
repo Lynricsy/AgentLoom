@@ -22,7 +22,9 @@ export const auditActorTypeEnum = pgEnum('audit_actor_type', auditActorTypes);
 
 function createAuditLogColumns() {
   return {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     actorId: uuid('actor_id').references(() => users.id, {
       onDelete: 'set null',
@@ -48,7 +50,10 @@ export const auditLogs = pgTable(
   'audit_logs',
   createAuditLogColumns(),
   (table) => [
-    index('idx_audit_logs_tenant_created_at').on(table.tenantId, table.createdAt),
+    index('idx_audit_logs_tenant_created_at').on(
+      table.tenantId,
+      table.createdAt,
+    ),
     index('idx_audit_logs_tenant_event_created_at').on(
       table.tenantId,
       table.eventType,

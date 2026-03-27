@@ -170,9 +170,7 @@ describe('AgentConversationService', () => {
     });
 
     it('title 为空时应使用 undefined', async () => {
-      db.select.mockReturnValueOnce(
-        createSelectChain([{ id: AGENT_ID }]),
-      );
+      db.select.mockReturnValueOnce(createSelectChain([{ id: AGENT_ID }]));
       const created = createConversationRecord({ title: null });
       db.insert.mockReturnValueOnce(createInsertChain([created]));
 
@@ -195,9 +193,7 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain(conversations);
       const countChain = createCountSelectChain([{ total: 5 }]);
 
-      db.select
-        .mockReturnValueOnce(listChain)
-        .mockReturnValueOnce(countChain);
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
 
       const result = await service.listByAgent(AGENT_ID, {
         page: 1,
@@ -217,9 +213,7 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select
-        .mockReturnValueOnce(listChain)
-        .mockReturnValueOnce(countChain);
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
 
       const result = await service.listByAgent(AGENT_ID, {
         page: 1,
@@ -235,9 +229,7 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select
-        .mockReturnValueOnce(listChain)
-        .mockReturnValueOnce(countChain);
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
 
       await service.listByAgent(AGENT_ID, {
         page: 3,
@@ -283,9 +275,9 @@ describe('AgentConversationService', () => {
     it('对话不存在时应抛出 NotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(
-        service.getDetail(CONVERSATION_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.getDetail(CONVERSATION_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('应支持自定义消息分页参数', async () => {
@@ -320,11 +312,9 @@ describe('AgentConversationService', () => {
       db.insert.mockReturnValueOnce(insertChain);
       db.update.mockReturnValueOnce(updateChain);
 
-      const result = await service.sendMessage(
-        CONVERSATION_ID,
-        TENANT_ID,
-        { content: '你好' } as any,
-      );
+      const result = await service.sendMessage(CONVERSATION_ID, TENANT_ID, {
+        content: '你好',
+      } as any);
 
       expect(insertChain.values).toHaveBeenCalledWith({
         conversationId: CONVERSATION_ID,
@@ -413,9 +403,9 @@ describe('AgentConversationService', () => {
     it('活跃对话不存在时应抛出 NotFoundException', async () => {
       db.update.mockReturnValueOnce(createUpdateChain([]));
 
-      await expect(
-        service.cancel(CONVERSATION_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.cancel(CONVERSATION_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -425,9 +415,7 @@ describe('AgentConversationService', () => {
       const updateChain = createUpdateChain([updated]);
       db.update.mockReturnValueOnce(updateChain);
 
-      await expect(
-        service.end(CONVERSATION_ID),
-      ).resolves.toBeUndefined();
+      await expect(service.end(CONVERSATION_ID)).resolves.toBeUndefined();
 
       expect(updateChain.set).toHaveBeenCalledWith({
         status: 'ended',
@@ -438,9 +426,9 @@ describe('AgentConversationService', () => {
     it('对话不存在时应抛出 NotFoundException', async () => {
       db.update.mockReturnValueOnce(createUpdateChain([]));
 
-      await expect(
-        service.end(CONVERSATION_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.end(CONVERSATION_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('结束对话后应发出 agent-conversation.ended 事件并携带正确载荷', async () => {

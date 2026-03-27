@@ -786,7 +786,9 @@ describe('WorkflowVersionService', () => {
         ...CONDITIONAL_INPUT_SCHEMA,
         version: 2,
       });
-      expect(db.update.mock.results[0].value.set.mock.calls[0][0].inputSchema).toEqual({
+      expect(
+        db.update.mock.results[0].value.set.mock.calls[0][0].inputSchema,
+      ).toEqual({
         ...CONDITIONAL_INPUT_SCHEMA,
         version: 2,
       });
@@ -823,9 +825,9 @@ describe('WorkflowVersionService', () => {
         ...MOCK_INPUT_SCHEMA,
         version: 3,
       });
-      expect(db.update.mock.results[0].value.set.mock.calls[0][0]).not.toHaveProperty(
-        'inputSchema',
-      );
+      expect(
+        db.update.mock.results[0].value.set.mock.calls[0][0],
+      ).not.toHaveProperty('inputSchema');
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
@@ -1316,7 +1318,9 @@ describe('WorkflowVersionService', () => {
         },
       );
 
-      await expect(service.publish(WORKFLOW_ID, {}, USER_ID)).rejects.toMatchObject({
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toMatchObject({
         errors: [
           {
             field: 'nodes.agent-1.autonomyMode',

@@ -2,8 +2,7 @@ export const EVIDENCE_EXPORT_QUEUE = 'evidence-export';
 export const EVIDENCE_EXPORT_JOB_NAME = 'run-evidence-export';
 export const EVIDENCE_EXPORT_CLEANUP_QUEUE = 'evidence-export-cleanup';
 export const EVIDENCE_EXPORT_CLEANUP_JOB_NAME = 'expire-evidence-exports';
-export const EVIDENCE_EXPORT_CLEANUP_JOB_ID =
-  'evidence-export-cleanup-hourly';
+export const EVIDENCE_EXPORT_CLEANUP_JOB_ID = 'evidence-export-cleanup-hourly';
 export const EVIDENCE_EXPORT_CLEANUP_SCHEDULE = '0 * * * *';
 export const EVIDENCE_EXPORT_ARTIFACT_FORMAT = 'zip';
 export const EVIDENCE_EXPORT_ARCHIVE_MIME_TYPE = 'application/zip';

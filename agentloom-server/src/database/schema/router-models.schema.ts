@@ -30,7 +30,9 @@ export interface RouterModelRoutingMeta {
 export const routerModels = pgTable(
   'router_models',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     tenantId: uuid('tenant_id')
       .notNull()
@@ -65,7 +67,10 @@ export const routerModels = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex('uq_router_models_tenant_model').on(table.tenantId, table.modelId),
+    uniqueIndex('uq_router_models_tenant_model').on(
+      table.tenantId,
+      table.modelId,
+    ),
     index('idx_router_models_tenant_id').on(table.tenantId),
     index('idx_router_models_provider_name').on(table.providerName),
     index('idx_router_models_is_active').on(table.isActive),

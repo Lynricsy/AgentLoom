@@ -265,7 +265,9 @@ describe('OptimizationSuggestionService', () => {
       const suggestion = createSuggestion();
       db.select.mockReturnValue(createSelectWhereResolved([suggestion]));
 
-      await expect(service.findById(SUGGESTION_ID)).resolves.toEqual(suggestion);
+      await expect(service.findById(SUGGESTION_ID)).resolves.toEqual(
+        suggestion,
+      );
     });
 
     it('建议不存在时应抛出 404 DomainException', async () => {
@@ -714,7 +716,9 @@ describe('OptimizationSuggestionService', () => {
 
       db.select
         .mockReturnValueOnce(createSelectWhereResolved([suggestion]))
-        .mockReturnValueOnce(createSelectWhereResolved([{ status: 'applied' }]));
+        .mockReturnValueOnce(
+          createSelectWhereResolved([{ status: 'applied' }]),
+        );
       db.update.mockReturnValue(updateChain);
 
       await expect(

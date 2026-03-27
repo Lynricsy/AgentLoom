@@ -316,9 +316,9 @@ describe('PluginService', () => {
       const selectPlugin = createSelectChain([]);
       db.select.mockReturnValue(selectPlugin);
 
-      await expect(service.findById(PLUGIN_ID, TENANT_ID)).rejects.toBeInstanceOf(
-        PluginNotFoundException,
-      );
+      await expect(
+        service.findById(PLUGIN_ID, TENANT_ID),
+      ).rejects.toBeInstanceOf(PluginNotFoundException);
     });
   });
 
@@ -399,7 +399,9 @@ describe('PluginService', () => {
       const deletePlugin = createDeleteChain([{ id: PLUGIN_ID }]);
       db.delete.mockReturnValue(deletePlugin);
 
-      await expect(service.remove(PLUGIN_ID, TENANT_ID)).resolves.toBeUndefined();
+      await expect(
+        service.remove(PLUGIN_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
     });
 
     it('删除不存在插件时应抛出 404', async () => {
@@ -470,7 +472,9 @@ describe('PluginService', () => {
         ]),
       );
 
-      await expect(service.resolveUsageSourceContext(clonedPlugin)).resolves.toEqual({
+      await expect(
+        service.resolveUsageSourceContext(clonedPlugin),
+      ).resolves.toEqual({
         sourceTenantId: TENANT_ID,
         sourceOrgId: ORG_ID,
         sourcePluginDbId: PLUGIN_ID,
@@ -500,7 +504,9 @@ describe('PluginService', () => {
       });
       db.select.mockReturnValue(createSelectChainWithLimit([]));
 
-      await expect(service.resolveUsageSourceContext(clonedPlugin)).resolves.toEqual({
+      await expect(
+        service.resolveUsageSourceContext(clonedPlugin),
+      ).resolves.toEqual({
         sourceTenantId: TENANT_ID,
         sourceOrgId: ORG_ID,
         sourcePluginDbId: PLUGIN_ID,

@@ -33,9 +33,7 @@ const ORG_ID = 'org-001';
 const USER_ID = 'user-001';
 const SESSION_ID = 'session-001';
 
-function mockSandboxSession(
-  overrides: Record<string, unknown> = {},
-) {
+function mockSandboxSession(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
     containerId: CONTAINER_ID,
@@ -57,7 +55,10 @@ function setupExecWithOutput(output: string) {
   }));
 
   mockDockerService.attachExecOutput.mockImplementation(
-    async (_execId: string, callback: (level: string, message: string) => void) => {
+    async (
+      _execId: string,
+      callback: (level: string, message: string) => void,
+    ) => {
       callback('stdout', output);
     },
   );
@@ -81,7 +82,10 @@ function setupExecWithSequentialOutputs(outputs: string[]) {
   }));
 
   mockDockerService.attachExecOutput.mockImplementation(
-    async (_execId: string, callback: (level: string, message: string) => void) => {
+    async (
+      _execId: string,
+      callback: (level: string, message: string) => void,
+    ) => {
       const content = outputs[outputIndex] ?? '';
       outputIndex++;
       callback('stdout', content);
@@ -226,16 +230,17 @@ describe('WorkspaceIntegrationService', () => {
       );
 
       let outputIndex = 0;
-      const outputs = [
-        '1024|regular file',
-      ];
+      const outputs = ['1024|regular file'];
 
       mockDockerService.createExec.mockImplementation(async () => ({
         execId: `exec-binary-${++outputIndex}`,
       }));
 
       mockDockerService.attachExecOutput.mockImplementation(
-        async (_execId: string, callback: (level: string, message: string) => void) => {
+        async (
+          _execId: string,
+          callback: (level: string, message: string) => void,
+        ) => {
           if (outputIndex <= outputs.length) {
             callback('stdout', outputs[outputIndex - 1]);
           } else {
@@ -361,9 +366,7 @@ describe('WorkspaceIntegrationService', () => {
     });
 
     it('不存在的监听器应静默忽略', () => {
-      expect(() =>
-        service.stopFileWatcher('nonexistent'),
-      ).not.toThrow();
+      expect(() => service.stopFileWatcher('nonexistent')).not.toThrow();
     });
   });
 
@@ -432,12 +435,7 @@ describe('WorkspaceIntegrationService', () => {
       );
 
       await expect(
-        service.onConversationEnd(
-          CONVERSATION_ID,
-          TENANT_ID,
-          ORG_ID,
-          USER_ID,
-        ),
+        service.onConversationEnd(CONVERSATION_ID, TENANT_ID, ORG_ID, USER_ID),
       ).resolves.toBeUndefined();
     });
 
@@ -553,11 +551,7 @@ describe('WorkspaceIntegrationService', () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
         mockSandboxSession(),
       );
-      setupExecWithSequentialOutputs([
-        '50|regular file',
-        'data',
-        'data',
-      ]);
+      setupExecWithSequentialOutputs(['50|regular file', 'data', 'data']);
 
       const result = await service.getFileContent(
         CONVERSATION_ID,
@@ -577,7 +571,10 @@ describe('WorkspaceIntegrationService', () => {
 
       mockDockerService.createExec.mockResolvedValue({ execId: 'exec-fail' });
       mockDockerService.attachExecOutput.mockImplementation(
-        async (_execId: string, callback: (level: string, message: string) => void) => {
+        async (
+          _execId: string,
+          callback: (level: string, message: string) => void,
+        ) => {
           callback('stdout', 'No such file');
         },
       );

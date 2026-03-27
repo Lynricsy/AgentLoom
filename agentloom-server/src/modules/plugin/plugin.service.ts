@@ -109,7 +109,8 @@ export class PluginService {
       wasmBundleUrl?: string;
     },
   ): Promise<PluginRecord> {
-    const resolvedOrgId = orgId ?? (await this.findOrganizationIdOrThrow(tenantId));
+    const resolvedOrgId =
+      orgId ?? (await this.findOrganizationIdOrThrow(tenantId));
     const manifest = this.parseManifest(manifestData);
     const parsedNodeDefinitions = this.parseNodeDefinitions(nodeDefinitions);
 
@@ -230,7 +231,8 @@ export class PluginService {
     orgId: string | undefined,
     tenantId: string,
   ): Promise<PluginRecord | null> {
-    const resolvedOrgId = orgId ?? (await this.findOrganizationIdOrThrow(tenantId));
+    const resolvedOrgId =
+      orgId ?? (await this.findOrganizationIdOrThrow(tenantId));
 
     const [plugin] = await this.tenantDb
       .select()
@@ -297,10 +299,7 @@ export class PluginService {
     const [deleted] = await this.tenantDb
       .delete(schema.plugins)
       .where(
-        and(
-          eq(schema.plugins.id, id),
-          eq(schema.plugins.tenantId, tenantId),
-        ),
+        and(eq(schema.plugins.id, id), eq(schema.plugins.tenantId, tenantId)),
       )
       .returning({ id: schema.plugins.id });
 
@@ -444,10 +443,7 @@ export class PluginService {
       .select()
       .from(schema.plugins)
       .where(
-        and(
-          eq(schema.plugins.id, id),
-          eq(schema.plugins.tenantId, tenantId),
-        ),
+        and(eq(schema.plugins.id, id), eq(schema.plugins.tenantId, tenantId)),
       );
 
     return plugin ?? null;
@@ -469,7 +465,10 @@ export class PluginService {
 
   private async findPluginMarketplaceListingById(
     listingId: string,
-  ): Promise<Pick<schema.MarketplaceListing, 'id' | 'pricingModel' | 'pricePerExecution'> | null> {
+  ): Promise<Pick<
+    schema.MarketplaceListing,
+    'id' | 'pricingModel' | 'pricePerExecution'
+  > | null> {
     const [listing] = await this.db
       .select({
         id: schema.marketplaceListings.id,
@@ -542,9 +541,8 @@ export class PluginService {
   private parseNodeDefinitions(
     nodeDefinitions: Array<Record<string, unknown>>,
   ): Array<Record<string, unknown>> {
-    const parsedDefinitions = PluginNodeDefinitionsSchema.safeParse(
-      nodeDefinitions,
-    );
+    const parsedDefinitions =
+      PluginNodeDefinitionsSchema.safeParse(nodeDefinitions);
 
     if (!parsedDefinitions.success) {
       throw new PluginValidationException(
@@ -555,7 +553,9 @@ export class PluginService {
     return parsedDefinitions.data;
   }
 
-  private normalizeNullableText(value: string | null | undefined): string | null {
+  private normalizeNullableText(
+    value: string | null | undefined,
+  ): string | null {
     if (value === undefined || value === null) {
       return null;
     }

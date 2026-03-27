@@ -75,7 +75,8 @@ function createReusableBlock(overrides: Record<string, unknown> = {}) {
 }
 
 function createReusableBlockListItem(overrides: Record<string, unknown> = {}) {
-  const { definition: _definition, ...listItem } = createReusableBlock(overrides);
+  const { definition: _definition, ...listItem } =
+    createReusableBlock(overrides);
   return listItem;
 }
 
@@ -171,10 +172,7 @@ describe('ReusableBlockService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ReusableBlockService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [ReusableBlockService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(ReusableBlockService);
@@ -230,9 +228,9 @@ describe('ReusableBlockService', () => {
       const selectBlock = createSelectChain([]);
       db.select.mockReturnValue(selectBlock);
 
-      await expect(service.findById(TENANT_ID, BLOCK_ID)).rejects.toBeInstanceOf(
-        ReusableBlockNotFoundException,
-      );
+      await expect(
+        service.findById(TENANT_ID, BLOCK_ID),
+      ).rejects.toBeInstanceOf(ReusableBlockNotFoundException);
     });
   });
 
@@ -243,7 +241,11 @@ describe('ReusableBlockService', () => {
       db.select.mockReturnValue(selectOrg);
       db.insert.mockReturnValue(insertBlock);
 
-      const result = await service.create(TENANT_ID, USER_ID, createCreateDto());
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        createCreateDto(),
+      );
 
       expect(selectOrg.limit).toHaveBeenCalledWith(1);
       expect(insertBlock.values).toHaveBeenCalledWith(
@@ -305,7 +307,9 @@ describe('ReusableBlockService', () => {
 
     it('版本冲突时应抛出 409 并返回 currentVersion', async () => {
       const updateBlock = createUpdateChain([]);
-      const selectBlock = createSelectChain([createReusableBlock({ version: 3 })]);
+      const selectBlock = createSelectChain([
+        createReusableBlock({ version: 3 }),
+      ]);
       db.update.mockReturnValue(updateBlock);
       db.select.mockReturnValue(selectBlock);
 
@@ -323,7 +327,9 @@ describe('ReusableBlockService', () => {
       const deleteBlock = createDeleteChain([{ id: BLOCK_ID }]);
       db.delete.mockReturnValue(deleteBlock);
 
-      await expect(service.remove(TENANT_ID, BLOCK_ID)).resolves.toBeUndefined();
+      await expect(
+        service.remove(TENANT_ID, BLOCK_ID),
+      ).resolves.toBeUndefined();
     });
 
     it('删除不存在的可复用块时应抛出 404', async () => {

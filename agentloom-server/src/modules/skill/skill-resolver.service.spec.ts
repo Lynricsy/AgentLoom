@@ -47,7 +47,9 @@ describe('SkillResolverService', () => {
       expect(result).toContain('</available_skills>');
       expect(result).toContain('<skill>');
       expect(result).toContain('<name>Code Review</name>');
-      expect(result).toContain('<description>Review code quality</description>');
+      expect(result).toContain(
+        '<description>Review code quality</description>',
+      );
     });
 
     it('escapes XML special characters', () => {
@@ -123,11 +125,26 @@ describe('SkillResolverService', () => {
 
     it('loads skills and filters active only', async () => {
       skillService.findByIds.mockResolvedValue([
-        { id: 'id-1', name: 'Active', description: 'desc A', content: '# A', status: 'active' },
-        { id: 'id-2', name: 'Archived', description: 'desc B', content: '# B', status: 'archived' },
+        {
+          id: 'id-1',
+          name: 'Active',
+          description: 'desc A',
+          content: '# A',
+          status: 'active',
+        },
+        {
+          id: 'id-2',
+          name: 'Archived',
+          description: 'desc B',
+          content: '# B',
+          status: 'archived',
+        },
       ]);
 
-      const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1', 'id-2']);
+      const result = await resolver.resolveSkillsForAgent(TENANT_ID, [
+        'id-1',
+        'id-2',
+      ]);
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Active');
@@ -135,11 +152,26 @@ describe('SkillResolverService', () => {
 
     it('maintains skillIds order', async () => {
       skillService.findByIds.mockResolvedValue([
-        { id: 'id-2', name: 'B', description: 'B desc', content: '# B', status: 'active' },
-        { id: 'id-1', name: 'A', description: 'A desc', content: '# A', status: 'active' },
+        {
+          id: 'id-2',
+          name: 'B',
+          description: 'B desc',
+          content: '# B',
+          status: 'active',
+        },
+        {
+          id: 'id-1',
+          name: 'A',
+          description: 'A desc',
+          content: '# A',
+          status: 'active',
+        },
       ]);
 
-      const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1', 'id-2']);
+      const result = await resolver.resolveSkillsForAgent(TENANT_ID, [
+        'id-1',
+        'id-2',
+      ]);
 
       expect(result[0].id).toBe('id-1');
       expect(result[1].id).toBe('id-2');
@@ -147,10 +179,19 @@ describe('SkillResolverService', () => {
 
     it('skips not-found skill IDs', async () => {
       skillService.findByIds.mockResolvedValue([
-        { id: 'id-1', name: 'Found', description: 'desc', content: '# Found', status: 'active' },
+        {
+          id: 'id-1',
+          name: 'Found',
+          description: 'desc',
+          content: '# Found',
+          status: 'active',
+        },
       ]);
 
-      const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1', 'id-missing']);
+      const result = await resolver.resolveSkillsForAgent(TENANT_ID, [
+        'id-1',
+        'id-missing',
+      ]);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('id-1');
@@ -158,7 +199,13 @@ describe('SkillResolverService', () => {
 
     it('maps to SkillPromptPayload correctly', async () => {
       skillService.findByIds.mockResolvedValue([
-        { id: 'id-1', name: 'Skill', description: 'desc', content: '# Content', status: 'active' },
+        {
+          id: 'id-1',
+          name: 'Skill',
+          description: 'desc',
+          content: '# Content',
+          status: 'active',
+        },
       ]);
 
       const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1']);
@@ -175,13 +222,21 @@ describe('SkillResolverService', () => {
   // ─── buildSkillAugmentedPrompt ─────────────────────────────────────────
   describe('buildSkillAugmentedPrompt', () => {
     it('returns base prompt when no skills', () => {
-      const result = resolver.buildSkillAugmentedPrompt('You are an assistant.', []);
+      const result = resolver.buildSkillAugmentedPrompt(
+        'You are an assistant.',
+        [],
+      );
       expect(result).toBe('You are an assistant.');
     });
 
     it('includes summaries and full content for small skills', () => {
       const skills: SkillPromptPayload[] = [
-        { id: 'id-1', name: 'Small', description: 'desc', content: 'short content' },
+        {
+          id: 'id-1',
+          name: 'Small',
+          description: 'desc',
+          content: 'short content',
+        },
       ];
 
       const result = resolver.buildSkillAugmentedPrompt('Base prompt.', skills);
@@ -195,7 +250,12 @@ describe('SkillResolverService', () => {
     it('only includes summaries when content exceeds 50KB threshold', () => {
       const largeContent = 'x'.repeat(51 * 1024);
       const skills: SkillPromptPayload[] = [
-        { id: 'id-1', name: 'Large', description: 'desc', content: largeContent },
+        {
+          id: 'id-1',
+          name: 'Large',
+          description: 'desc',
+          content: largeContent,
+        },
       ];
 
       const result = resolver.buildSkillAugmentedPrompt('Base prompt.', skills);

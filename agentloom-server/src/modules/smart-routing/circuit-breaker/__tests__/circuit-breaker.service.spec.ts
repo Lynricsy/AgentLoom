@@ -3,45 +3,43 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { providerHealthStatus } from '../../../../database/schema/provider-health-status.schema';
 import { CircuitBreakerService } from '../circuit-breaker.service';
 
-const {
-  createInsertChain,
-  createMockDb,
-  createSelectChain,
-} = vi.hoisted(() => {
-  type SelectChain<T> = {
-    select: ReturnType<typeof vi.fn>;
-    from: ReturnType<typeof vi.fn>;
-    where: ReturnType<typeof vi.fn>;
-    limit: ReturnType<typeof vi.fn>;
-  } & Promise<T[]>;
+const { createInsertChain, createMockDb, createSelectChain } = vi.hoisted(
+  () => {
+    type SelectChain<T> = {
+      select: ReturnType<typeof vi.fn>;
+      from: ReturnType<typeof vi.fn>;
+      where: ReturnType<typeof vi.fn>;
+      limit: ReturnType<typeof vi.fn>;
+    } & Promise<T[]>;
 
-  function createSelectChain<T>(data: T[]): SelectChain<T> {
-    const chain = Promise.resolve(data) as SelectChain<T>;
-    chain.select = vi.fn().mockReturnValue(chain);
-    chain.from = vi.fn().mockReturnValue(chain);
-    chain.where = vi.fn().mockReturnValue(chain);
-    chain.limit = vi.fn().mockReturnValue(chain);
-    return chain;
-  }
+    function createSelectChain<T>(data: T[]): SelectChain<T> {
+      const chain = Promise.resolve(data) as SelectChain<T>;
+      chain.select = vi.fn().mockReturnValue(chain);
+      chain.from = vi.fn().mockReturnValue(chain);
+      chain.where = vi.fn().mockReturnValue(chain);
+      chain.limit = vi.fn().mockReturnValue(chain);
+      return chain;
+    }
 
-  function createInsertChain() {
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
-    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    function createInsertChain() {
+      const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+      const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+      return {
+        values,
+        onConflictDoUpdate,
+      };
+    }
+
     return {
-      values,
-      onConflictDoUpdate,
+      createSelectChain,
+      createInsertChain,
+      createMockDb: () => ({
+        select: vi.fn(),
+        insert: vi.fn(),
+      }),
     };
-  }
-
-  return {
-    createSelectChain,
-    createInsertChain,
-    createMockDb: () => ({
-      select: vi.fn(),
-      insert: vi.fn(),
-    }),
-  };
-});
+  },
+);
 
 vi.mock('../../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn((db) => db),
@@ -85,7 +83,9 @@ describe('CircuitBreakerService', () => {
     db.select.mockReturnValue(createSelectChain([]));
     db.insert.mockImplementation(() => createInsertChain());
 
-    const breakerDb = db as ConstructorParameters<typeof CircuitBreakerService>[0];
+    const breakerDb = db as ConstructorParameters<
+      typeof CircuitBreakerService
+    >[0];
 
     service = new CircuitBreakerService(breakerDb, {
       persistenceIntervalMs: 0,
@@ -101,8 +101,18 @@ describe('CircuitBreakerService', () => {
   });
 
   it('三次连续失败后会打开熔断器并持久化 open 状态', async () => {
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-1'));
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-2'));
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-1'),
+    );
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-2'),
+    );
     const snapshot = await service.recordFailure(
       TENANT_ID,
       PROVIDER,
@@ -119,7 +129,12 @@ describe('CircuitBreakerService', () => {
   });
 
   it('滑动窗口内失败率超过 50% 时进入 degraded，窗口过期后恢复 healthy', async () => {
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-1'));
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-1'),
+    );
     await service.recordSuccess(TENANT_ID, PROVIDER, MODEL_ID);
     const degraded = await service.recordFailure(
       TENANT_ID,
@@ -142,9 +157,24 @@ describe('CircuitBreakerService', () => {
   });
 
   it('恢复超时后会自动进入 half-open，并在探测成功后恢复 healthy', async () => {
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-1'));
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-2'));
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-3'));
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-1'),
+    );
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-2'),
+    );
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-3'),
+    );
 
     vi.advanceTimersByTime(5 * 60 * 1000 - 1);
     const stillOpen = await service.getStatus(TENANT_ID, PROVIDER, MODEL_ID);
@@ -156,7 +186,11 @@ describe('CircuitBreakerService', () => {
     expect(halfOpen.status).toBe('degraded');
     expect(halfOpen.phase).toBe('half-open');
 
-    const recovered = await service.recordSuccess(TENANT_ID, PROVIDER, MODEL_ID);
+    const recovered = await service.recordSuccess(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+    );
     expect(recovered.status).toBe('healthy');
     expect(recovered.phase).toBe('closed');
     expect(recovered.consecutiveFailureCount).toBe(0);
@@ -164,9 +198,24 @@ describe('CircuitBreakerService', () => {
   });
 
   it('half-open 探测失败会重新打开熔断器并刷新打开时间', async () => {
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-1'));
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-2'));
-    await service.recordFailure(TENANT_ID, PROVIDER, MODEL_ID, new Error('boom-3'));
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-1'),
+    );
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-2'),
+    );
+    await service.recordFailure(
+      TENANT_ID,
+      PROVIDER,
+      MODEL_ID,
+      new Error('boom-3'),
+    );
 
     vi.advanceTimersByTime(5 * 60 * 1000);
     const halfOpen = await service.getStatus(TENANT_ID, PROVIDER, MODEL_ID);
@@ -198,7 +247,9 @@ describe('CircuitBreakerService', () => {
     ]);
     db.select.mockReturnValueOnce(selectChain);
 
-    const breakerDb = db as ConstructorParameters<typeof CircuitBreakerService>[0];
+    const breakerDb = db as ConstructorParameters<
+      typeof CircuitBreakerService
+    >[0];
 
     service = new CircuitBreakerService(breakerDb, {
       persistenceIntervalMs: 0,

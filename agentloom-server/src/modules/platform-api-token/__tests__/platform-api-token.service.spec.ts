@@ -273,9 +273,9 @@ describe('PlatformApiTokenService', () => {
     it('应默认仅查询 active Token 并返回分页结果', async () => {
       const records = [createPlatformApiTokenRecord()];
 
-      mockDb.where.mockImplementationOnce(() => mockDb).mockResolvedValueOnce([
-        { count: 1 },
-      ]);
+      mockDb.where
+        .mockImplementationOnce(() => mockDb)
+        .mockResolvedValueOnce([{ count: 1 }]);
       mockDb.offset.mockResolvedValueOnce(records);
 
       const result = await service.findAll(
@@ -306,13 +306,15 @@ describe('PlatformApiTokenService', () => {
       expect(hasEqCall(platformApiTokens.isRevoked, false)).toBe(true);
       expect(mockDb.limit).toHaveBeenCalledWith(20);
       expect(mockDb.offset).toHaveBeenCalledWith(0);
-      expect(drizzleMocks.desc).toHaveBeenCalledWith(platformApiTokens.createdAt);
+      expect(drizzleMocks.desc).toHaveBeenCalledWith(
+        platformApiTokens.createdAt,
+      );
     });
 
     it('应支持按 revoked 状态过滤', async () => {
-      mockDb.where.mockImplementationOnce(() => mockDb).mockResolvedValueOnce([
-        { count: 1 },
-      ]);
+      mockDb.where
+        .mockImplementationOnce(() => mockDb)
+        .mockResolvedValueOnce([{ count: 1 }]);
       mockDb.offset.mockResolvedValueOnce([
         createPlatformApiTokenRecord({ isRevoked: true }),
       ]);
@@ -329,9 +331,9 @@ describe('PlatformApiTokenService', () => {
     });
 
     it('应在 status=all 时不过滤撤销状态', async () => {
-      mockDb.where.mockImplementationOnce(() => mockDb).mockResolvedValueOnce([
-        { count: 2 },
-      ]);
+      mockDb.where
+        .mockImplementationOnce(() => mockDb)
+        .mockResolvedValueOnce([{ count: 2 }]);
       mockDb.offset.mockResolvedValueOnce([
         createPlatformApiTokenRecord(),
         createPlatformApiTokenRecord({
@@ -352,9 +354,9 @@ describe('PlatformApiTokenService', () => {
     });
 
     it('应正确处理自定义分页参数', async () => {
-      mockDb.where.mockImplementationOnce(() => mockDb).mockResolvedValueOnce([
-        { count: 23 },
-      ]);
+      mockDb.where
+        .mockImplementationOnce(() => mockDb)
+        .mockResolvedValueOnce([{ count: 23 }]);
       mockDb.offset.mockResolvedValueOnce([]);
 
       const result = await service.findAll(
@@ -416,9 +418,9 @@ describe('PlatformApiTokenService', () => {
     });
 
     it('应在 tenantId 缺失时拒绝撤销', async () => {
-      await expect(service.revoke('', USER_ID, TOKEN_ID)).rejects.toBeInstanceOf(
-        TenantRequiredException,
-      );
+      await expect(
+        service.revoke('', USER_ID, TOKEN_ID),
+      ).rejects.toBeInstanceOf(TenantRequiredException);
 
       expect(mockDb.select).not.toHaveBeenCalled();
     });
@@ -451,9 +453,9 @@ describe('PlatformApiTokenService', () => {
     });
 
     it('应在 Token 前缀非法时直接抛出无效异常', async () => {
-      await expect(service.validateToken('invalid-token')).rejects.toBeInstanceOf(
-        PlatformApiTokenInvalidException,
-      );
+      await expect(
+        service.validateToken('invalid-token'),
+      ).rejects.toBeInstanceOf(PlatformApiTokenInvalidException);
 
       expect(mockDb.select).not.toHaveBeenCalled();
     });
@@ -461,9 +463,9 @@ describe('PlatformApiTokenService', () => {
     it('应在数据库中不存在 Token 时抛出无效异常', async () => {
       mockDb.where.mockResolvedValueOnce([]);
 
-      await expect(service.validateToken(FIXED_RAW_TOKEN)).rejects.toBeInstanceOf(
-        PlatformApiTokenInvalidException,
-      );
+      await expect(
+        service.validateToken(FIXED_RAW_TOKEN),
+      ).rejects.toBeInstanceOf(PlatformApiTokenInvalidException);
     });
 
     it('应在 Token 已撤销时抛出无效异常', async () => {
@@ -471,9 +473,9 @@ describe('PlatformApiTokenService', () => {
         createPlatformApiTokenRecord({ isRevoked: true }),
       ]);
 
-      await expect(service.validateToken(FIXED_RAW_TOKEN)).rejects.toBeInstanceOf(
-        PlatformApiTokenInvalidException,
-      );
+      await expect(
+        service.validateToken(FIXED_RAW_TOKEN),
+      ).rejects.toBeInstanceOf(PlatformApiTokenInvalidException);
       expect(mockRbacCacheService.getUserRole).not.toHaveBeenCalled();
     });
 
@@ -482,9 +484,9 @@ describe('PlatformApiTokenService', () => {
         createPlatformApiTokenRecord({ expiresAt: PAST }),
       ]);
 
-      await expect(service.validateToken(FIXED_RAW_TOKEN)).rejects.toBeInstanceOf(
-        PlatformApiTokenExpiredException,
-      );
+      await expect(
+        service.validateToken(FIXED_RAW_TOKEN),
+      ).rejects.toBeInstanceOf(PlatformApiTokenExpiredException);
       expect(mockRbacCacheService.getUserRole).not.toHaveBeenCalled();
     });
 

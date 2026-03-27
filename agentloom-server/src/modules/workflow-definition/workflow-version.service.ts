@@ -94,7 +94,8 @@ function normalizeWorkflowInputSchemaForUpdate(
   currentInputSchema: WorkflowInputSchema | null,
   nextInputSchema: WorkflowInputSchema,
 ): WorkflowInputSchema {
-  const currentSchema = currentInputSchema ?? createDefaultWorkflowInputSchema();
+  const currentSchema =
+    currentInputSchema ?? createDefaultWorkflowInputSchema();
   const parsedCurrentSchema = workflowInputSchemaSchema.parse(currentSchema);
   const parsedNextSchema = workflowInputSchemaSchema.parse(nextInputSchema);
   const schemaChanged =
@@ -368,10 +369,12 @@ export class WorkflowVersionService {
         );
 
       if (!listing) {
-        throw new MarketplaceListingNotFoundException(dto.marketplace_listing_id);
+        throw new MarketplaceListingNotFoundException(
+          dto.marketplace_listing_id,
+        );
       }
 
-      const snapshot = listing.snapshot as WorkflowVersionSnapshot;
+      const snapshot = listing.snapshot;
       const cloned = cloneDefinitionWithNewIds({
         nodes: snapshot.nodes,
         edges: snapshot.edges,

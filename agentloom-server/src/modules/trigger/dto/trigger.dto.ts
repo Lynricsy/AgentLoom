@@ -12,10 +12,7 @@ export const CronConfigSchema = z
       .regex(/^(\S+\s+){4}\S+$/, {
         message: 'cron 表达式格式无效，应为 5 段格式',
       }),
-    timezone: z
-      .string()
-      .min(1, { message: '时区不能为空' })
-      .default('UTC'),
+    timezone: z.string().min(1, { message: '时区不能为空' }).default('UTC'),
   })
   .strict();
 
@@ -117,7 +114,11 @@ export const UpdateTriggerSchema = z
       .nullable()
       .optional(),
     config: z
-      .union([CronConfigSchema, WebhookConfigCreateSchema, ApiEventConfigSchema])
+      .union([
+        CronConfigSchema,
+        WebhookConfigCreateSchema,
+        ApiEventConfigSchema,
+      ])
       .optional(),
     isEnabled: z.boolean().optional(),
   })

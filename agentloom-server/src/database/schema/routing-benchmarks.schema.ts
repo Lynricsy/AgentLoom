@@ -43,7 +43,9 @@ export interface RoutingBenchmarkMlpWeights {
 export const routingBenchmarks = pgTable(
   'routing_benchmarks',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     taskCategory: varchar('task_category', { length: 30 })
       .notNull()
@@ -60,8 +62,7 @@ export const routingBenchmarks = pgTable(
     performanceScore: numeric('performance_score', {
       precision: 10,
       scale: 4,
-    })
-      .notNull(),
+    }).notNull(),
 
     tokenCount: integer('token_count').notNull(),
 
@@ -76,8 +77,14 @@ export const routingBenchmarks = pgTable(
   (table) => [
     index('idx_routing_benchmarks_task_category').on(table.taskCategory),
     index('idx_routing_benchmarks_model_id').on(table.modelId),
-    index('idx_routing_benchmarks_query_embedding_id').on(table.queryEmbeddingId),
-    ...createJoinTenantPolicies('routing_benchmarks', 'model_id', 'router_models'),
+    index('idx_routing_benchmarks_query_embedding_id').on(
+      table.queryEmbeddingId,
+    ),
+    ...createJoinTenantPolicies(
+      'routing_benchmarks',
+      'model_id',
+      'router_models',
+    ),
   ],
 );
 

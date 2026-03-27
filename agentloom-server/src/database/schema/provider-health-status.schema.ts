@@ -19,12 +19,15 @@ export const PROVIDER_HEALTH_STATUS_STATES = [
   'open',
 ] as const;
 
-export type ProviderHealthState = (typeof PROVIDER_HEALTH_STATUS_STATES)[number];
+export type ProviderHealthState =
+  (typeof PROVIDER_HEALTH_STATUS_STATES)[number];
 
 export const providerHealthStatus = pgTable(
   'provider_health_status',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     tenantId: uuid('tenant_id')
       .notNull()

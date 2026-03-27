@@ -1,5 +1,8 @@
 import type { LlmModelRoutingMeta } from '../../llm/llm-provider-catalog';
-import type { RoutingContext, ModelEvaluationResult } from '../dto/routing-context.dto';
+import type {
+  RoutingContext,
+  ModelEvaluationResult,
+} from '../dto/routing-context.dto';
 
 export interface ModelCandidate {
   id: string;

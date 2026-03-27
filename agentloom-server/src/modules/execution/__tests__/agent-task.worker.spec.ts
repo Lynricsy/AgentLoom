@@ -189,10 +189,12 @@ describe('AgentTaskWorker', () => {
     bufferOutputChunk: vi.fn(),
   };
 
-  const mockInterventionPolicyService: Record<string, ReturnType<typeof vi.fn>> =
-    {
-      resolvePolicy: vi.fn(),
-    };
+  const mockInterventionPolicyService: Record<
+    string,
+    ReturnType<typeof vi.fn>
+  > = {
+    resolvePolicy: vi.fn(),
+  };
 
   const mockNotificationService: Record<string, ReturnType<typeof vi.fn>> = {
     create: vi.fn().mockResolvedValue(undefined),
@@ -326,7 +328,9 @@ describe('AgentTaskWorker', () => {
     mockNodeScheduler.enqueueInterventionTimeout
       .mockReset()
       .mockResolvedValue(undefined);
-    mockNodeScheduler.resolveIntervention.mockReset().mockResolvedValue(undefined);
+    mockNodeScheduler.resolveIntervention
+      .mockReset()
+      .mockResolvedValue(undefined);
     mockNotificationService.create.mockReset().mockResolvedValue(undefined);
     mockInterventionPolicyService.resolvePolicy.mockResolvedValue({
       allowedRoles: ['owner', 'admin'],
@@ -380,7 +384,10 @@ describe('AgentTaskWorker', () => {
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
         { provide: DRIZZLE, useValue: mockDb },
-        { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mockAgentTaskQueue },
+        {
+          provide: getQueueToken(AGENT_TASK_QUEUE),
+          useValue: mockAgentTaskQueue,
+        },
         { provide: MemoryToolsService, useValue: mockMemoryToolsService },
         { provide: MemoryFusionService, useValue: mockMemoryFusionService },
       ],
@@ -460,7 +467,9 @@ describe('AgentTaskWorker', () => {
         ],
         glossary: [{ keyword: 'fox', nodeId: 'node-1' }],
       });
-      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(toolProvider);
+      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(
+        toolProvider,
+      );
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
@@ -500,9 +509,9 @@ describe('AgentTaskWorker', () => {
           memorySessionIds: ['memory-session-1'],
         },
       });
-      expect(mockMemoryToolsService.createSessionToolProvider).toHaveBeenCalledWith(
-        ['memory-session-1'],
-      );
+      expect(
+        mockMemoryToolsService.createSessionToolProvider,
+      ).toHaveBeenCalledWith(['memory-session-1']);
       expect(mockAgentRuntime.registerSessionToolProvider).toHaveBeenCalledWith(
         SESSION_ID,
         toolProvider,
@@ -520,7 +529,9 @@ describe('AgentTaskWorker', () => {
       });
 
       mockDb.select.mockReturnValue(createSelectChain(step));
-      mockMemoryFusionService.bootAll.mockRejectedValue(new Error('boot failed'));
+      mockMemoryFusionService.bootAll.mockRejectedValue(
+        new Error('boot failed'),
+      );
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
@@ -599,7 +610,9 @@ describe('AgentTaskWorker', () => {
         'anthropic',
         'model-2',
       );
-      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+      expect(
+        mockRoutingLearningProducer.enqueueLearningJob,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
           executionStepId: STEP_ID,
@@ -1003,7 +1016,9 @@ describe('AgentTaskWorker', () => {
         'openai',
         'model-1',
       );
-      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+      expect(
+        mockRoutingLearningProducer.enqueueLearningJob,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
           executionStepId: STEP_ID,
@@ -1123,7 +1138,9 @@ describe('AgentTaskWorker', () => {
         'openai',
         'model-1',
       );
-      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+      expect(
+        mockRoutingLearningProducer.enqueueLearningJob,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           routingDecisionId: 'routing-decision-1',
           selectedModelId: 'model-1',
@@ -1168,7 +1185,10 @@ describe('AgentTaskWorker', () => {
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
-          yield { type: 'message_chunk', content: '最后一次候选尝试' } as AgentEvent;
+          yield {
+            type: 'message_chunk',
+            content: '最后一次候选尝试',
+          } as AgentEvent;
           throw new Error('last candidate failed');
         })(),
       );
@@ -1220,7 +1240,9 @@ describe('AgentTaskWorker', () => {
         'anthropic',
         'model-2',
       );
-      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+      expect(
+        mockRoutingLearningProducer.enqueueLearningJob,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           routingDecisionId: 'routing-decision-2',
           selectedModelId: 'model-2',
@@ -1257,7 +1279,10 @@ describe('AgentTaskWorker', () => {
       mockAgentRuntime.createSession.mockResolvedValue(makeSession());
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
-          yield { type: 'message_chunk', content: '普通策略失败' } as AgentEvent;
+          yield {
+            type: 'message_chunk',
+            content: '普通策略失败',
+          } as AgentEvent;
           throw new Error('quality-first failed');
         })(),
       );
@@ -1302,7 +1327,9 @@ describe('AgentTaskWorker', () => {
         'openai',
         'model-1',
       );
-      expect(mockRoutingLearningProducer.enqueueLearningJob).toHaveBeenCalledWith(
+      expect(
+        mockRoutingLearningProducer.enqueueLearningJob,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           routingDecisionId: 'routing-decision-3',
           selectedModelId: 'model-1',
@@ -1739,36 +1766,44 @@ describe('AgentTaskWorker', () => {
 
       expect(mockNodeScheduler.resolveIntervention).not.toHaveBeenCalled();
       expect(mockNotificationService.create).toHaveBeenCalledTimes(2);
-      expect(mockNotificationService.create).toHaveBeenNthCalledWith(1, TENANT_ID, {
-        userId: 'owner-user-1',
-        type: 'system',
-        title: '节点人工干预已升级',
-        body: {
-          workflowId: 'workflow-escalate-1',
-          workflowName: '法务审批流',
-          executionId: EXECUTION_ID,
-          nodeId: 'node-1',
-          nodeName: '法务复核节点',
-          timelineUrl: `/executions/${EXECUTION_ID}`,
-          notifyChannels: ['in_app', 'push', 'email'],
-          escalationCount: 1,
+      expect(mockNotificationService.create).toHaveBeenNthCalledWith(
+        1,
+        TENANT_ID,
+        {
+          userId: 'owner-user-1',
+          type: 'system',
+          title: '节点人工干预已升级',
+          body: {
+            workflowId: 'workflow-escalate-1',
+            workflowName: '法务审批流',
+            executionId: EXECUTION_ID,
+            nodeId: 'node-1',
+            nodeName: '法务复核节点',
+            timelineUrl: `/executions/${EXECUTION_ID}`,
+            notifyChannels: ['in_app', 'push', 'email'],
+            escalationCount: 1,
+          },
         },
-      });
-      expect(mockNotificationService.create).toHaveBeenNthCalledWith(2, TENANT_ID, {
-        userId: 'owner-user-2',
-        type: 'system',
-        title: '节点人工干预已升级',
-        body: {
-          workflowId: 'workflow-escalate-1',
-          workflowName: '法务审批流',
-          executionId: EXECUTION_ID,
-          nodeId: 'node-1',
-          nodeName: '法务复核节点',
-          timelineUrl: `/executions/${EXECUTION_ID}`,
-          notifyChannels: ['in_app', 'push', 'email'],
-          escalationCount: 1,
+      );
+      expect(mockNotificationService.create).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        {
+          userId: 'owner-user-2',
+          type: 'system',
+          title: '节点人工干预已升级',
+          body: {
+            workflowId: 'workflow-escalate-1',
+            workflowName: '法务审批流',
+            executionId: EXECUTION_ID,
+            nodeId: 'node-1',
+            nodeName: '法务复核节点',
+            timelineUrl: `/executions/${EXECUTION_ID}`,
+            notifyChannels: ['in_app', 'push', 'email'],
+            escalationCount: 1,
+          },
         },
-      });
+      );
       expect(mockNodeScheduler.enqueueInterventionTimeout).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,
@@ -1815,7 +1850,9 @@ describe('AgentTaskWorker', () => {
       );
 
       expect(mockNotificationService.create).not.toHaveBeenCalled();
-      expect(mockNodeScheduler.enqueueInterventionTimeout).not.toHaveBeenCalled();
+      expect(
+        mockNodeScheduler.enqueueInterventionTimeout,
+      ).not.toHaveBeenCalled();
       expect(mockNodeScheduler.resolveIntervention).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,

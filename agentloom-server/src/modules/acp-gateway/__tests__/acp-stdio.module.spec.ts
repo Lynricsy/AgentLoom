@@ -21,34 +21,39 @@ const ACP_STDIO_TEST_ENV = {
 } as const;
 
 describe('AcpStdioModule', () => {
-  it('应将 AGENT_RUNTIME 绑定到真实 runtime provider', { timeout: 30_000 }, async () => {
-    const acpStdioModulePath = '../acp-stdio.module.ts';
+  it(
+    '应将 AGENT_RUNTIME 绑定到真实 runtime provider',
+    { timeout: 30_000 },
+    async () => {
+      const acpStdioModulePath = '../acp-stdio.module.ts';
 
-    for (const [key, value] of Object.entries(ACP_STDIO_TEST_ENV)) {
-      process.env[key] = value;
-    }
+      for (const [key, value] of Object.entries(ACP_STDIO_TEST_ENV)) {
+        process.env[key] = value;
+      }
 
-    const { AcpStdioModule } = await import(acpStdioModulePath);
-    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AcpStdioModule) as
-      | unknown[]
-      | undefined;
-    const providers = Reflect.getMetadata(
-      MODULE_METADATA.PROVIDERS,
-      AcpStdioModule,
-    ) as Array<unknown> | undefined;
+      const { AcpStdioModule } = await import(acpStdioModulePath);
+      const imports = Reflect.getMetadata(
+        MODULE_METADATA.IMPORTS,
+        AcpStdioModule,
+      ) as unknown[] | undefined;
+      const providers = Reflect.getMetadata(
+        MODULE_METADATA.PROVIDERS,
+        AcpStdioModule,
+      ) as Array<unknown> | undefined;
 
-    expect(imports).toEqual(expect.arrayContaining([LlmModule]));
-    expect(providers).toEqual(
-      expect.arrayContaining([
-        AgentSessionFactory,
-        SessionPersistenceService,
-        InProcessAgentAdapter,
-        expect.objectContaining({
-          provide: AGENT_RUNTIME,
-          inject: [InProcessAgentAdapter, SessionPersistenceService],
-          useFactory: ACP_TEST_RUNTIME_PROVIDER.useFactory,
-        }),
-      ]),
-    );
-  });
+      expect(imports).toEqual(expect.arrayContaining([LlmModule]));
+      expect(providers).toEqual(
+        expect.arrayContaining([
+          AgentSessionFactory,
+          SessionPersistenceService,
+          InProcessAgentAdapter,
+          expect.objectContaining({
+            provide: AGENT_RUNTIME,
+            inject: [InProcessAgentAdapter, SessionPersistenceService],
+            useFactory: ACP_TEST_RUNTIME_PROVIDER.useFactory,
+          }),
+        ]),
+      );
+    },
+  );
 });

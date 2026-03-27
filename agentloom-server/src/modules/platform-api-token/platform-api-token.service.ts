@@ -58,9 +58,7 @@ export class PlatformApiTokenService {
         tokenHash,
         tokenPrefix,
         scopes: parsedDto.scopes ?? null,
-        expiresAt: parsedDto.expires_at
-          ? new Date(parsedDto.expires_at)
-          : null,
+        expiresAt: parsedDto.expires_at ? new Date(parsedDto.expires_at) : null,
       })
       .returning();
 
@@ -158,9 +156,7 @@ export class PlatformApiTokenService {
       .where(eq(platformApiTokens.id, tokenId));
   }
 
-  async validateToken(
-    rawToken: string,
-  ): Promise<{
+  async validateToken(rawToken: string): Promise<{
     userId: string;
     tenantId: string;
     scopes: string | null;

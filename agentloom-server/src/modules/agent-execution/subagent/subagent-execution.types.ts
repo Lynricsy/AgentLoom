@@ -4,7 +4,7 @@ import { z } from 'zod';
 export type SubAgentHandle = `sa_${string}`;
 
 export function generateSubAgentHandle(): SubAgentHandle {
-  return `sa_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}` as SubAgentHandle;
+  return `sa_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
 /** 子代理运行状态 */

@@ -61,8 +61,7 @@ export class MemorySearchService {
     const tsVector = sql`to_tsvector('english', ${memoryVersions.content})`;
 
     const relevanceScore = sql<number>`ts_rank_cd(${tsVector}, ${tsQuery})`;
-    const snippet =
-      sql<string>`ts_headline('english', ${memoryVersions.content}, ${tsQuery}, 'StartSel=<b>, StopSel=</b>, MaxWords=50, MinWords=20')`;
+    const snippet = sql<string>`ts_headline('english', ${memoryVersions.content}, ${tsQuery}, 'StartSel=<b>, StopSel=</b>, MaxWords=50, MinWords=20')`;
 
     const conditions = [
       eq(memoryNodes.instanceId, instanceId),
@@ -71,9 +70,7 @@ export class MemorySearchService {
     ];
 
     if (options.minDisclosure !== undefined) {
-      conditions.push(
-        lte(memoryNodes.disclosureLevel, options.minDisclosure),
-      );
+      conditions.push(lte(memoryNodes.disclosureLevel, options.minDisclosure));
     }
 
     const results = await db

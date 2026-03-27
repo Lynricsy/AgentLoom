@@ -18,15 +18,22 @@ function createTelemetry(
     telemetryData: {
       toolCalls: toolsUsed.map((toolName) => ({ toolName, success: true })),
     },
-    createdAt: new Date(`2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
-function createSummary(executionId: string, day: number): ExecutionSummaryRecord {
+function createSummary(
+  executionId: string,
+  day: number,
+): ExecutionSummaryRecord {
   return {
     executionId,
     summaryData: { status: 'completed' },
-    createdAt: new Date(`2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
@@ -151,7 +158,11 @@ describe('ToolPruningAnalyzer', () => {
     const result = analyzer.analyze(
       createContext({
         nodeConfig: {
-          tools: [{ toolName: 'search' }, { name: 'calculator' }, { name: 'browser' }],
+          tools: [
+            { toolName: 'search' },
+            { name: 'calculator' },
+            { name: 'browser' },
+          ],
         },
         stepTelemetries,
         executionSummaries,
@@ -159,7 +170,9 @@ describe('ToolPruningAnalyzer', () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result?.currentValue).toEqual({ tools: ['search', 'calculator', 'browser'] });
+    expect(result?.currentValue).toEqual({
+      tools: ['search', 'calculator', 'browser'],
+    });
     expect(result?.confidence).toBe(0.95);
   });
 

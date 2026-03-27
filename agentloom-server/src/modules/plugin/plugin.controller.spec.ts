@@ -67,7 +67,10 @@ type AuthenticatedRequest = FastifyRequest & {
   file: () => Promise<unknown>;
 };
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -75,7 +78,10 @@ function getRoles(controller: object, methodName: string): string[] | undefined 
     : undefined;
 }
 
-function getHttpCode(controller: object, methodName: string): number | undefined {
+function getHttpCode(
+  controller: object,
+  methodName: string,
+): number | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -141,7 +147,10 @@ async function createPluginArchiveBuffer(
       ...manifestOverrides,
     }),
   );
-  zip.file('node-definitions.json', JSON.stringify([{ type: 'review-analyzer' }]));
+  zip.file(
+    'node-definitions.json',
+    JSON.stringify([{ type: 'review-analyzer' }]),
+  );
 
   return zip.generateAsync({ type: 'nodebuffer' });
 }
@@ -234,7 +243,10 @@ describe('PluginController', () => {
   describe('register', () => {
     it('应上传 .alp 包、注册插件并按需切换状态', async () => {
       const createdPlugin = createPluginResponse();
-      const activePlugin = createPluginResponse({ status: 'active', occVersion: 2 });
+      const activePlugin = createPluginResponse({
+        status: 'active',
+        occVersion: 2,
+      });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         id: 'key-1',
         publicKey: 'public-key-pem',
@@ -256,7 +268,11 @@ describe('PluginController', () => {
         }),
       );
 
-      expect(getRoles(controller, 'register')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'register')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
       expect(getHttpCode(controller, 'register')).toBe(HttpStatus.CREATED);
       expect(service.register).toHaveBeenCalledWith(
         TENANT_ID,
@@ -266,17 +282,18 @@ describe('PluginController', () => {
           pluginId: 'com.example.review',
           name: 'Review Analyzer',
         }),
-        expect.arrayContaining([expect.objectContaining({ type: 'review-analyzer' })]),
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'review-analyzer' }),
+        ]),
         expect.stringContaining('tenants/'),
         expect.objectContaining({
           signature: SIGNATURE,
           contentHash: CONTENT_HASH,
         }),
       );
-      expect(developerKeyService.findActiveKeyByFingerprint).toHaveBeenCalledWith(
-        ORG_ID,
-        KEY_FINGERPRINT,
-      );
+      expect(
+        developerKeyService.findActiveKeyByFingerprint,
+      ).toHaveBeenCalledWith(ORG_ID, KEY_FINGERPRINT);
       expect(signatureService.verifyArchiveSignature).toHaveBeenCalledWith(
         expect.any(Buffer),
         SIGNATURE,
@@ -294,9 +311,9 @@ describe('PluginController', () => {
     });
 
     it('未签名插件应抛出 PluginSignatureMissingException 并拒绝注册', async () => {
-      await expect(controller.register(await createRegisterRequest())).rejects.toThrow(
-        PluginSignatureMissingException,
-      );
+      await expect(
+        controller.register(await createRegisterRequest()),
+      ).rejects.toThrow(PluginSignatureMissingException);
 
       expect(storageService.upload).not.toHaveBeenCalled();
       expect(service.register).not.toHaveBeenCalled();
@@ -394,7 +411,10 @@ describe('PluginController', () => {
       const plugin = createPluginResponse();
       service.findById.mockResolvedValue(plugin);
 
-      const result = await controller.findById(PLUGIN_RECORD_ID, createRequest());
+      const result = await controller.findById(
+        PLUGIN_RECORD_ID,
+        createRequest(),
+      );
 
       expect(getRoles(controller, 'findById')).toEqual([
         'owner',
@@ -403,7 +423,10 @@ describe('PluginController', () => {
         'operator',
         'viewer',
       ]);
-      expect(service.findById).toHaveBeenCalledWith(PLUGIN_RECORD_ID, TENANT_ID);
+      expect(service.findById).toHaveBeenCalledWith(
+        PLUGIN_RECORD_ID,
+        TENANT_ID,
+      );
       expect(result).toEqual({ data: plugin });
     });
   });
@@ -414,7 +437,10 @@ describe('PluginController', () => {
         status: 'disabled',
         occVersion: 2,
       });
-      const updatedPlugin = createPluginResponse({ status: 'disabled', occVersion: 3 });
+      const updatedPlugin = createPluginResponse({
+        status: 'disabled',
+        occVersion: 3,
+      });
       service.updateStatus.mockResolvedValue(updatedPlugin);
 
       const result = await controller.updateStatus(

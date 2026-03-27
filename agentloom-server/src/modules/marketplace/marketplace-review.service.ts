@@ -130,7 +130,9 @@ export class MarketplaceReviewService {
         ),
       );
     } else {
-      checks.push(this.pass('WORKFLOW_VERSION_NOT_PUBLISHED', '工作流版本已发布'));
+      checks.push(
+        this.pass('WORKFLOW_VERSION_NOT_PUBLISHED', '工作流版本已发布'),
+      );
     }
 
     if (version?.archivedAt || version?.workflowStatus === 'archived') {
@@ -163,11 +165,9 @@ export class MarketplaceReviewService {
 
     if (nodes.length === 0) {
       checks.push(
-        this.fail(
-          'WORKFLOW_EMPTY_NODE_DETECTED',
-          '工作流画布中没有任何节点',
-          { fixHint: '至少添加一个 Agent 节点' },
-        ),
+        this.fail('WORKFLOW_EMPTY_NODE_DETECTED', '工作流画布中没有任何节点', {
+          fixHint: '至少添加一个 Agent 节点',
+        }),
       );
     } else {
       checks.push(

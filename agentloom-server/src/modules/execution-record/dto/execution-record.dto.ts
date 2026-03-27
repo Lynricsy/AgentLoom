@@ -26,12 +26,7 @@ const ToolCallRecordSchema = z.object({
 });
 
 const ErrorRecordSchema = z.object({
-  errorType: z.enum([
-    'tool_error',
-    'llm_error',
-    'validation_error',
-    'timeout',
-  ]),
+  errorType: z.enum(['tool_error', 'llm_error', 'validation_error', 'timeout']),
   errorMessage: z.string(),
   timestamp: z.string().datetime(),
   nodeId: z.string(),

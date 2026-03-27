@@ -37,6 +37,7 @@ export const acpConversationSessions = pgTable(
   ],
 );
 
-export type AcpConversationSession = typeof acpConversationSessions.$inferSelect;
+export type AcpConversationSession =
+  typeof acpConversationSessions.$inferSelect;
 export type NewAcpConversationSession =
   typeof acpConversationSessions.$inferInsert;

@@ -51,11 +51,12 @@ export class EarningsSettlementWorker extends WorkerHost {
     const periodEndDate = new Date(periodEnd);
 
     await runInTenantTransaction(this.db, tenantId, async () => {
-      const usageByPlugin = await this.pluginUsageService.getUsageByPluginForPeriod(
-        orgId,
-        periodStartDate,
-        periodEndDate,
-      );
+      const usageByPlugin =
+        await this.pluginUsageService.getUsageByPluginForPeriod(
+          orgId,
+          periodStartDate,
+          periodEndDate,
+        );
 
       const usageAggregates = this.aggregateUsage(usageByPlugin);
       let settledCount = 0;
@@ -65,11 +66,12 @@ export class EarningsSettlementWorker extends WorkerHost {
           continue;
         }
 
-        const existingRecord = await this.pluginEarningsService.findExistingEarning(
-          usage.pluginDbId,
-          periodStartDate,
-          periodEndDate,
-        );
+        const existingRecord =
+          await this.pluginEarningsService.findExistingEarning(
+            usage.pluginDbId,
+            periodStartDate,
+            periodEndDate,
+          );
 
         if (existingRecord) {
           continue;
@@ -81,7 +83,9 @@ export class EarningsSettlementWorker extends WorkerHost {
           usage.pluginDbId,
         );
         const sourceListingId =
-          validSourceListingIds.length === 1 ? validSourceListingIds[0] : undefined;
+          validSourceListingIds.length === 1
+            ? validSourceListingIds[0]
+            : undefined;
 
         const amounts = this.pluginEarningsService.calculateSettlementShares(
           usage.totalBillingAmount,
@@ -116,12 +120,17 @@ export class EarningsSettlementWorker extends WorkerHost {
         settledCount += 1;
       }
 
-      this.logger.log(`Settled earnings for ${settledCount} plugins in ${orgId}`);
+      this.logger.log(
+        `Settled earnings for ${settledCount} plugins in ${orgId}`,
+      );
     });
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<EarningsSettlementJobData> | undefined, error: Error): void {
+  onFailed(
+    job: Job<EarningsSettlementJobData> | undefined,
+    error: Error,
+  ): void {
     this.logger.error(
       `Earnings settlement failed: ${JSON.stringify({
         jobId: job?.id ?? null,
@@ -140,7 +149,12 @@ export class EarningsSettlementWorker extends WorkerHost {
     const aggregateMap = new Map<string, SettlementAggregate>();
 
     for (const usage of usageByPlugin) {
-      if (!usage.tenantId || !usage.orgId || !usage.pluginDbId || !usage.pluginId) {
+      if (
+        !usage.tenantId ||
+        !usage.orgId ||
+        !usage.pluginDbId ||
+        !usage.pluginId
+      ) {
         continue;
       }
 
@@ -153,13 +167,14 @@ export class EarningsSettlementWorker extends WorkerHost {
       ].join(':');
 
       const existingAggregate = aggregateMap.get(aggregateKey);
-      const totalBillingAmount = FixedScaleDecimal.from(usage.totalBillingAmount);
+      const totalBillingAmount = FixedScaleDecimal.from(
+        usage.totalBillingAmount,
+      );
 
       if (existingAggregate) {
         existingAggregate.totalExecutions += usage.totalExecutions;
-        existingAggregate.totalBillingAmount = existingAggregate.totalBillingAmount.add(
-          totalBillingAmount,
-        );
+        existingAggregate.totalBillingAmount =
+          existingAggregate.totalBillingAmount.add(totalBillingAmount);
 
         if (usage.sourceListingId) {
           existingAggregate.sourceListingIds.add(usage.sourceListingId);

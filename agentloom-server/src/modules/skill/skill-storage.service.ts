@@ -66,18 +66,11 @@ export class SkillStorageService {
     return this.storageService.download(key);
   }
 
-  async deleteSkillFiles(
-    tenantId: string,
-    skillId: string,
-  ): Promise<void> {
+  async deleteSkillFiles(tenantId: string, skillId: string): Promise<void> {
     const prefix = this.buildSkillKey(tenantId, skillId);
 
     const objectNames: string[] = [];
-    const stream = this.minioClient.listObjectsV2(
-      this.bucket,
-      prefix,
-      true,
-    );
+    const stream = this.minioClient.listObjectsV2(this.bucket, prefix, true);
 
     for await (const obj of stream) {
       if (obj.name) {
@@ -104,11 +97,7 @@ export class SkillStorageService {
     const prefix = this.buildSkillKey(tenantId, skillId);
     const files: { name: string; size: number }[] = [];
 
-    const stream = this.minioClient.listObjectsV2(
-      this.bucket,
-      prefix,
-      true,
-    );
+    const stream = this.minioClient.listObjectsV2(this.bucket, prefix, true);
 
     for await (const obj of stream) {
       if (obj.name) {

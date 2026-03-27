@@ -222,7 +222,9 @@ describe('Sub-Agent Integration Tests', () => {
       ]),
     );
     mockExecutionService.injectMessage.mockResolvedValue(undefined);
-    mockSubAgentToolsProvider.createSessionToolProvider.mockReturnValue(() => ({}));
+    mockSubAgentToolsProvider.createSessionToolProvider.mockReturnValue(
+      () => ({}),
+    );
   });
 
   describe('1. Full chain: canvas → compile → register → call → result', () => {
@@ -270,8 +272,14 @@ describe('Sub-Agent Integration Tests', () => {
         }),
       );
 
-      expect(mockAgentDefinitionService.findDetailById).toHaveBeenCalledWith('agent-writer');
-      expect(mockAgentDefinitionService.listVersions).toHaveBeenCalledWith('agent-writer', 1, 100);
+      expect(mockAgentDefinitionService.findDetailById).toHaveBeenCalledWith(
+        'agent-writer',
+      );
+      expect(mockAgentDefinitionService.listVersions).toHaveBeenCalledWith(
+        'agent-writer',
+        1,
+        100,
+      );
     });
 
     it('Worker.registerSubAgentToolsProvider 将 refs + context + callback 完整传递给 provider', () => {
@@ -293,7 +301,9 @@ describe('Sub-Agent Integration Tests', () => {
         subAgentTracker: tracker,
       });
 
-      expect(mockSubAgentToolsProvider.createSessionToolProvider).toHaveBeenCalledWith(
+      expect(
+        mockSubAgentToolsProvider.createSessionToolProvider,
+      ).toHaveBeenCalledWith(
         [{ alias: 'writer', agentDefinitionId: 'agent-writer' }],
         expect.objectContaining({
           conversationId: 'conversation-int-1',
@@ -336,7 +346,10 @@ describe('Sub-Agent Integration Tests', () => {
       });
 
       // When: sub-agent completes
-      deferred.resolve({ content: 'Document draft v1', stopReason: 'end_turn' });
+      deferred.resolve({
+        content: 'Document draft v1',
+        stopReason: 'end_turn',
+      });
 
       // Then: wait returns completed result
       const waited = await tools.wait_for_subagents.execute?.(
@@ -400,7 +413,9 @@ describe('Sub-Agent Integration Tests', () => {
         expect.objectContaining({
           role: 'user',
           contentType: 'text',
-          content: expect.stringContaining('[Sub-Agent: Researcher Agent] Completed:'),
+          content: expect.stringContaining(
+            '[Sub-Agent: Researcher Agent] Completed:',
+          ),
           metadata: expect.objectContaining({
             type: 'subagent_completion_notice',
             handle,
@@ -462,7 +477,10 @@ describe('Sub-Agent Integration Tests', () => {
       expect(child2Abort.signal.aborted).toBe(false);
       expect(child3Abort.signal.aborted).toBe(false);
 
-      (worker as any).abortTrackedSubAgents(tracker, 'parent conversation cancelled');
+      (worker as any).abortTrackedSubAgents(
+        tracker,
+        'parent conversation cancelled',
+      );
 
       expect(child1Abort.signal.aborted).toBe(true);
       expect(child2Abort.signal.aborted).toBe(true);
@@ -499,7 +517,9 @@ describe('Sub-Agent Integration Tests', () => {
   describe('5. Orphan cleanup: parent completes → children terminated', () => {
     it('executeSubAgent 完成后 tracker 中该 handle 被清理', async () => {
       const worker = createWorker();
-      const tracker = { abortControllers: new Map<SubAgentHandle, AbortController>() };
+      const tracker = {
+        abortControllers: new Map<SubAgentHandle, AbortController>(),
+      };
       const handle = 'sa_orphan_1' as SubAgentHandle;
 
       expect(tracker.abortControllers.size).toBe(0);
@@ -532,7 +552,9 @@ describe('Sub-Agent Integration Tests', () => {
 
     it('executeSubAgent 失败后 tracker 记录也被清理', async () => {
       const worker = createWorker();
-      const tracker = { abortControllers: new Map<SubAgentHandle, AbortController>() };
+      const tracker = {
+        abortControllers: new Map<SubAgentHandle, AbortController>(),
+      };
       const handle = 'sa_orphan_fail_1' as SubAgentHandle;
 
       mockAgentDefinitionService.compileCanvas.mockRejectedValue(

@@ -48,7 +48,11 @@ import { EvidenceService } from './evidence.service';
       defaultJobOptions: evidenceExportCleanupJobOptions,
     }),
   ],
-  controllers: [EvidenceController, AuditLogController, EvidenceExportController],
+  controllers: [
+    EvidenceController,
+    AuditLogController,
+    EvidenceExportController,
+  ],
   providers: [
     EvidenceService,
     EvidenceExportAccessGuard,

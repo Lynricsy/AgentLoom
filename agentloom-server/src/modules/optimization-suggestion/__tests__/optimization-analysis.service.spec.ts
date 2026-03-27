@@ -141,7 +141,9 @@ function createAnalyzer(
 ) {
   return {
     type,
-    analyze: vi.fn((context: { nodeId: string }) => implementation?.(context.nodeId) ?? null),
+    analyze: vi.fn(
+      (context: { nodeId: string }) => implementation?.(context.nodeId) ?? null,
+    ),
   };
 }
 
@@ -200,7 +202,9 @@ describe('OptimizationAnalysisService', () => {
       .mockReturnValueOnce(
         createSelectChain([{ tenantId: tenantOne }, { tenantId: tenantTwo }]),
       )
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantOne, ['node-1'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-1', tenantOne, ['node-1'])]),
+      )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
       .mockReturnValueOnce(
         createSelectChain([createTelemetryRecord('exec-1', 'node-1')]),
@@ -209,7 +213,9 @@ describe('OptimizationAnalysisService', () => {
         createSelectChain([createSummaryRecord('exec-1', 'node-1')]),
       )
       .mockReturnValueOnce(createSelectChain([]))
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-2', tenantTwo, ['node-2'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-2', tenantTwo, ['node-2'])]),
+      )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
       .mockReturnValueOnce(
         createSelectChain([createTelemetryRecord('exec-2', 'node-2')]),
@@ -219,7 +225,9 @@ describe('OptimizationAnalysisService', () => {
       )
       .mockReturnValueOnce(createSelectChain([]));
 
-    mockDb.insert.mockReturnValueOnce(insertChainOne).mockReturnValueOnce(insertChainTwo);
+    mockDb.insert
+      .mockReturnValueOnce(insertChainOne)
+      .mockReturnValueOnce(insertChainTwo);
 
     const result = await service.runAnalysis();
 
@@ -256,7 +264,9 @@ describe('OptimizationAnalysisService', () => {
 
     mockDb.select
       .mockReturnValueOnce(createSelectChain([{ tenantId }]))
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]),
+      )
       .mockReturnValueOnce(createSelectChain([{ count: 10 }]));
 
     const result = await service.runAnalysis();
@@ -275,7 +285,9 @@ describe('OptimizationAnalysisService', () => {
 
     mockDb.select
       .mockReturnValueOnce(createSelectChain([{ tenantId }]))
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]),
+      )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
       .mockReturnValueOnce(
         createSelectChain([createTelemetryRecord('exec-1', 'node-1')]),
@@ -283,7 +295,9 @@ describe('OptimizationAnalysisService', () => {
       .mockReturnValueOnce(
         createSelectChain([createSummaryRecord('exec-1', 'node-1')]),
       )
-      .mockReturnValueOnce(createSelectChain([{ suggestionType: 'model_downgrade' }]));
+      .mockReturnValueOnce(
+        createSelectChain([{ suggestionType: 'model_downgrade' }]),
+      );
 
     const result = await service.runAnalysis();
 
@@ -294,21 +308,27 @@ describe('OptimizationAnalysisService', () => {
 
   it('应在单个节点失败时记录错误并继续分析其他节点', async () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
-    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
     const insertChain = createInsertChain();
 
-    modelDowngradeAnalyzer.analyze.mockImplementation((context: { nodeId: string }) => {
-      if (context.nodeId === 'node-1') {
-        throw new Error('boom');
-      }
+    modelDowngradeAnalyzer.analyze.mockImplementation(
+      (context: { nodeId: string }) => {
+        if (context.nodeId === 'node-1') {
+          throw new Error('boom');
+        }
 
-      return createCandidate('model_downgrade');
-    });
+        return createCandidate('model_downgrade');
+      },
+    );
 
     mockDb.select
       .mockReturnValueOnce(createSelectChain([{ tenantId }]))
       .mockReturnValueOnce(
-        createSelectChain([createWorkflow('wf-1', tenantId, ['node-1', 'node-2'])]),
+        createSelectChain([
+          createWorkflow('wf-1', tenantId, ['node-1', 'node-2']),
+        ]),
       )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
       .mockReturnValueOnce(
@@ -594,8 +614,12 @@ describe('OptimizationAnalysisService', () => {
         ]),
       )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
-      .mockReturnValueOnce(createSelectChain([createTelemetryRecord('exec-1', 'node-1')]))
-      .mockReturnValueOnce(createSelectChain([createSummaryRecord('exec-1', 'node-1')]))
+      .mockReturnValueOnce(
+        createSelectChain([createTelemetryRecord('exec-1', 'node-1')]),
+      )
+      .mockReturnValueOnce(
+        createSelectChain([createSummaryRecord('exec-1', 'node-1')]),
+      )
       .mockReturnValueOnce(createSelectChain([]));
 
     mockDb.insert.mockReturnValueOnce(insertChain);
@@ -654,26 +678,34 @@ describe('OptimizationAnalysisService', () => {
     organizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
       'RULE_BASED',
     );
-    autonomyUpgradeAnalyzer.analyze.mockImplementation((context: { autonomyCap: string }) => {
-      expect(context.autonomyCap).toBe('RULE_BASED');
-      return createCandidate('autonomy_upgrade');
-    });
+    autonomyUpgradeAnalyzer.analyze.mockImplementation(
+      (context: { autonomyCap: string }) => {
+        expect(context.autonomyCap).toBe('RULE_BASED');
+        return createCandidate('autonomy_upgrade');
+      },
+    );
 
     mockDb.select
       .mockReturnValueOnce(createSelectChain([{ tenantId }]))
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]),
+      )
       .mockReturnValueOnce(createSelectChain([{ count: 25 }]))
-      .mockReturnValueOnce(createSelectChain([createTelemetryRecord('exec-1', 'node-1')]))
-      .mockReturnValueOnce(createSelectChain([createSummaryRecord('exec-1', 'node-1')]))
+      .mockReturnValueOnce(
+        createSelectChain([createTelemetryRecord('exec-1', 'node-1')]),
+      )
+      .mockReturnValueOnce(
+        createSelectChain([createSummaryRecord('exec-1', 'node-1')]),
+      )
       .mockReturnValueOnce(createSelectChain([]));
 
     mockDb.insert.mockReturnValueOnce(insertChain);
 
     const result = await service.runAnalysis();
 
-    expect(organizationAutonomyPolicyService.resolveAutonomyCapForTenant).toHaveBeenCalledWith(
-      tenantId,
-    );
+    expect(
+      organizationAutonomyPolicyService.resolveAutonomyCapForTenant,
+    ).toHaveBeenCalledWith(tenantId);
     expect(autonomyUpgradeAnalyzer.analyze).toHaveBeenCalledOnce();
     expect(insertChain.values).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -690,7 +722,9 @@ describe('OptimizationAnalysisService', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
 
     mockDb.select
-      .mockReturnValueOnce(createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]))
+      .mockReturnValueOnce(
+        createSelectChain([createWorkflow('wf-1', tenantId, ['node-1'])]),
+      )
       .mockReturnValueOnce(createSelectChain([]));
 
     const result = await service.runAnalysis(tenantId);

@@ -14,7 +14,12 @@ import { PrivateCloudService } from './private-cloud.service';
 @Module({
   imports: [ConfigModule, ApiKeyModule, TenantKeyModule],
   controllers: [LlmController, LlmProviderController, PrivateCloudController],
-  providers: [LlmService, PiAiAdapter, LlmEncryptionService, PrivateCloudService],
+  providers: [
+    LlmService,
+    PiAiAdapter,
+    LlmEncryptionService,
+    PrivateCloudService,
+  ],
   exports: [LlmService, PiAiAdapter, LlmEncryptionService],
 })
 export class LlmModule {}

@@ -16,7 +16,9 @@ import { createDirectTenantPolicies } from './rls-policies';
 export const memoryPaths = pgTable(
   'memory_paths',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     instanceId: uuid('instance_id')
       .notNull()
       .references(() => agentMemoryInstances.id, { onDelete: 'cascade' }),
@@ -39,7 +41,10 @@ export const memoryPaths = pgTable(
       table.domain,
       table.pathString,
     ),
-    index('idx_memory_paths_instance_domain').on(table.instanceId, table.domain),
+    index('idx_memory_paths_instance_domain').on(
+      table.instanceId,
+      table.domain,
+    ),
     index('idx_memory_paths_node_id').on(table.nodeId),
     index('idx_memory_paths_tenant_id').on(table.tenantId),
     ...createDirectTenantPolicies('memory_paths'),

@@ -142,7 +142,10 @@ export class InputPreprocessorHandlerImpl implements InputPreprocessorNodeHandle
     if (result === undefined || result === null) {
       return {};
     }
-    if (typeof result === 'string' || (typeof result === 'object' && !Array.isArray(result))) {
+    if (
+      typeof result === 'string' ||
+      (typeof result === 'object' && !Array.isArray(result))
+    ) {
       return result as string | Record<string, unknown>;
     }
     return { result };

@@ -14,9 +14,11 @@ export const costOptimized: StrategyFn = (candidates, context) => {
       const maxCost = Math.max(
         ...candidates.map((m) => {
           const ic =
-            (context.inputTokenCount / 1000) * m.routingMeta.costPer1kInputTokens;
+            (context.inputTokenCount / 1000) *
+            m.routingMeta.costPer1kInputTokens;
           const oc =
-            (estimatedOutputTokens / 1000) * m.routingMeta.costPer1kOutputTokens;
+            (estimatedOutputTokens / 1000) *
+            m.routingMeta.costPer1kOutputTokens;
           return ic + oc;
         }),
         0.0001,

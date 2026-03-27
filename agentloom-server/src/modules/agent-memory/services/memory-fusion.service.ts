@@ -94,7 +94,8 @@ export class MemoryFusionService {
             session.memoryInstanceId,
             uri,
           );
-          const latestVersion = await this.memoryVersionService.getLatestVersion(node.id);
+          const latestVersion =
+            await this.memoryVersionService.getLatestVersion(node.id);
 
           return {
             sessionId: session.id,
@@ -118,7 +119,9 @@ export class MemoryFusionService {
       }),
     );
 
-    return reads.filter((result): result is MemoryFusionReadResult => result !== null);
+    return reads.filter(
+      (result): result is MemoryFusionReadResult => result !== null,
+    );
   }
 
   async searchAll(
@@ -142,13 +145,17 @@ export class MemoryFusionService {
           },
         );
 
-        return searchResults.map((result) => ({
-          ...result,
-          sessionId: session.id,
-          memoryInstanceId: session.memoryInstanceId,
-          fusionPriority,
-          weightedScore: result.relevanceScore * this.getPriorityWeight(fusionPriority),
-        } satisfies MemoryFusionSearchResult));
+        return searchResults.map(
+          (result) =>
+            ({
+              ...result,
+              sessionId: session.id,
+              memoryInstanceId: session.memoryInstanceId,
+              fusionPriority,
+              weightedScore:
+                result.relevanceScore * this.getPriorityWeight(fusionPriority),
+            }) satisfies MemoryFusionSearchResult,
+        );
       }),
     );
 
@@ -177,7 +184,9 @@ export class MemoryFusionService {
         targetSession.memoryInstanceId,
         uri,
       );
-      const latestVersion = await this.memoryVersionService.getLatestVersion(node.id);
+      const latestVersion = await this.memoryVersionService.getLatestVersion(
+        node.id,
+      );
 
       if (!latestVersion) {
         return this.memoryVersionService.createVersion(node.id, content);
@@ -251,7 +260,9 @@ export class MemoryFusionService {
     const uniqueSessionIds = this.getUniqueSessionIds(sessionIds);
 
     if (uniqueSessionIds.length === 0) {
-      throw new BadRequestException('Exactly one active primary memory session is required');
+      throw new BadRequestException(
+        'Exactly one active primary memory session is required',
+      );
     }
 
     const tenantDb = getTenantDb(this.db);
@@ -267,7 +278,9 @@ export class MemoryFusionService {
       );
 
     if (primarySessions.length !== 1) {
-      throw new BadRequestException('Exactly one active primary memory session is required');
+      throw new BadRequestException(
+        'Exactly one active primary memory session is required',
+      );
     }
 
     return primarySessions[0];
@@ -330,9 +343,9 @@ export class MemoryFusionService {
   }
 
   private mergeTextSections(sections: string[]): string {
-    return [...new Set(sections.map((section) => section.trim()).filter(Boolean))].join(
-      '\n\n',
-    );
+    return [
+      ...new Set(sections.map((section) => section.trim()).filter(Boolean)),
+    ].join('\n\n');
   }
 
   private mergeNullableTextSections(

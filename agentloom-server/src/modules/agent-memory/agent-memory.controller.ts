@@ -419,21 +419,12 @@ export class AgentMemoryController {
   @ApiOperation({ summary: '获取完整图数据（用于 ReactFlow 渲染）' })
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiResponse({ status: 200, description: '查询成功' })
-  async getGraph(
-    @CurrentTenant() tenantId: string,
-    @Param('id') id: string,
-  ) {
+  async getGraph(@CurrentTenant() tenantId: string, @Param('id') id: string) {
     const tenantDb = getTenantDb(this.db);
 
     const [nodes, edges] = await Promise.all([
-      tenantDb
-        .select()
-        .from(memoryNodes)
-        .where(eq(memoryNodes.instanceId, id)),
-      tenantDb
-        .select()
-        .from(memoryEdges)
-        .where(eq(memoryEdges.instanceId, id)),
+      tenantDb.select().from(memoryNodes).where(eq(memoryNodes.instanceId, id)),
+      tenantDb.select().from(memoryEdges).where(eq(memoryEdges.instanceId, id)),
     ]);
 
     return { data: { nodes, edges } };
@@ -497,12 +488,7 @@ export class AgentMemoryController {
 
     const [deleted] = await tenantDb
       .delete(memoryPaths)
-      .where(
-        and(
-          eq(memoryPaths.id, pathId),
-          eq(memoryPaths.instanceId, id),
-        ),
-      )
+      .where(and(eq(memoryPaths.id, pathId), eq(memoryPaths.instanceId, id)))
       .returning({ id: memoryPaths.id });
 
     if (!deleted) {
@@ -541,10 +527,7 @@ export class AgentMemoryController {
         .orderBy(desc(memoryPaths.createdAt))
         .limit(pageSize)
         .offset(offset),
-      tenantDb
-        .select({ total: count() })
-        .from(memoryPaths)
-        .where(predicate),
+      tenantDb.select({ total: count() }).from(memoryPaths).where(predicate),
     ]);
 
     const total = countRow?.total ?? 0;
@@ -597,10 +580,7 @@ export class AgentMemoryController {
         .orderBy(desc(memoryEdges.createdAt))
         .limit(pageSize)
         .offset(offset),
-      tenantDb
-        .select({ total: count() })
-        .from(memoryEdges)
-        .where(predicate),
+      tenantDb.select({ total: count() }).from(memoryEdges).where(predicate),
     ]);
 
     const total = countRow?.total ?? 0;
@@ -768,10 +748,13 @@ export class AgentMemoryController {
     const offset = (page - 1) * pageSize;
 
     // 查询版本变更记录作为审计条目
-    const predicate = eq(memoryVersions.nodeId, sql`ANY(
+    const predicate = eq(
+      memoryVersions.nodeId,
+      sql`ANY(
       SELECT ${memoryNodes.id} FROM ${memoryNodes}
       WHERE ${memoryNodes.instanceId} = ${id}
-    )`);
+    )`,
+    );
 
     const conditions = [
       sql`${memoryVersions.nodeId} IN (
@@ -824,8 +807,7 @@ export class AgentMemoryController {
     @Param('versionId') versionId: string,
     @Body() dto: ReviewVersionDto,
   ) {
-    const reviewDecision =
-      dto.action === 'approve' ? 'approved' : 'rejected';
+    const reviewDecision = dto.action === 'approve' ? 'approved' : 'rejected';
 
     const version = await this.memoryVersionService.updateReviewStatus(
       versionId,
@@ -883,10 +865,7 @@ export class AgentMemoryController {
         .orderBy(desc(memoryVersions.createdAt))
         .limit(pageSize)
         .offset(offset),
-      tenantDb
-        .select({ total: count() })
-        .from(memoryVersions)
-        .where(predicate),
+      tenantDb.select({ total: count() }).from(memoryVersions).where(predicate),
     ]);
 
     const total = countRow?.total ?? 0;

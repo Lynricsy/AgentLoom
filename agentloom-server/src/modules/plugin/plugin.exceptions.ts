@@ -67,7 +67,9 @@ export class PluginValidationException extends DomainException {
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: messages.join('\n'),
       errors: messages.map((entry) => ({
-        field: entry.includes(':') ? entry.split(':', 1)[0]?.trim() || 'plugin' : 'plugin',
+        field: entry.includes(':')
+          ? entry.split(':', 1)[0]?.trim() || 'plugin'
+          : 'plugin',
         message: entry,
       })),
     });

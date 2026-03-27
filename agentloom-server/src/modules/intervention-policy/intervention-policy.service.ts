@@ -33,20 +33,13 @@ export const SYSTEM_DEFAULT_POLICY = {
 export class InterventionPolicyService {
   private readonly logger = new Logger(InterventionPolicyService.name);
 
-  constructor(
-    @Inject(DRIZZLE) private readonly db: DrizzleDB,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   private get tenantDb() {
     return getTenantDb(this.db);
   }
 
-  async findAll(
-    tenantId: string,
-    workflowId: string,
-    page = 1,
-    pageSize = 20,
-  ) {
+  async findAll(tenantId: string, workflowId: string, page = 1, pageSize = 20) {
     const offset = (page - 1) * pageSize;
 
     const [policies, countResult] = await Promise.all([

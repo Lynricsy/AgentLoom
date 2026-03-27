@@ -45,7 +45,9 @@ describe('InterventionPolicyController', () => {
       notifyChannels: ['in_app', 'push'],
       source: 'node' as const,
     };
-    mockInterventionPolicyService.resolvePolicy.mockResolvedValue(resolvedPolicy);
+    mockInterventionPolicyService.resolvePolicy.mockResolvedValue(
+      resolvedPolicy,
+    );
 
     await expect(
       controller.resolvePolicy(TENANT_ID, WORKFLOW_ID, NODE_ID),

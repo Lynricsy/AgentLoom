@@ -213,7 +213,9 @@ describe('MemoryToolsService', () => {
       success: true,
       data: {
         uri: 'system://glossary',
-        entries: [{ id: 'keyword-1', keyword: 'memory-term', nodeId: 'node-1' }],
+        entries: [
+          { id: 'keyword-1', keyword: 'memory-term', nodeId: 'node-1' },
+        ],
       },
     });
   });
@@ -558,7 +560,10 @@ describe('MemoryToolsService', () => {
       .find((tool) => tool.name === 'delete_memory');
 
     memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
-    pathResolverService.deletePath.mockResolvedValue({ id: 'path-1', deleted: true });
+    pathResolverService.deletePath.mockResolvedValue({
+      id: 'path-1',
+      deleted: true,
+    });
 
     const result = await definition?.execute({ uri: 'core://profile/name' });
 

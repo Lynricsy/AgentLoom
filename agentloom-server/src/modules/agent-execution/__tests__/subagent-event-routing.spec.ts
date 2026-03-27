@@ -175,9 +175,7 @@ describe('SubAgent Event Routing', () => {
       proxy.emitEvent({ type: 'message_chunk', content: 'hello' });
       proxy.emitEvent({ type: 'done', stopReason: 'end_turn' });
 
-      expect(
-        mockBridge.emitSubAgentConversationEvent,
-      ).toHaveBeenCalledTimes(3);
+      expect(mockBridge.emitSubAgentConversationEvent).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -253,7 +251,10 @@ describe('SubAgent Event Routing', () => {
       gateway.handleSubAgentEvent({
         conversationId: 'conv-1',
         tenantId: 'tenant-1',
-        event: { type: 'tool_call', call: { id: 'tc-1', tool: 'search', args: {}, status: 'pending' } },
+        event: {
+          type: 'tool_call',
+          call: { id: 'tc-1', tool: 'search', args: {}, status: 'pending' },
+        },
         subagent: makeEnvelope(),
       });
 
@@ -356,9 +357,9 @@ describe('SubAgent Event Routing', () => {
 
       const queueKey = 'tenant-1:conv-1';
       expect((gateway as any).eventQueue.get(queueKey)).toBeDefined();
-      expect(
-        (gateway as any).eventQueue.get(queueKey).length,
-      ).toBeGreaterThan(0);
+      expect((gateway as any).eventQueue.get(queueKey).length).toBeGreaterThan(
+        0,
+      );
     });
   });
 

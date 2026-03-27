@@ -94,7 +94,11 @@ export class MemoryVersionService {
         })
         .returning();
 
-      await this.deprecateLatestVersionOrThrow(tx, latestVersion, createdVersion.id);
+      await this.deprecateLatestVersionOrThrow(
+        tx,
+        latestVersion,
+        createdVersion.id,
+      );
 
       return createdVersion;
     });
@@ -122,7 +126,11 @@ export class MemoryVersionService {
         })
         .returning();
 
-      await this.deprecateLatestVersionOrThrow(tx, latestVersion, createdVersion.id);
+      await this.deprecateLatestVersionOrThrow(
+        tx,
+        latestVersion,
+        createdVersion.id,
+      );
 
       return createdVersion;
     });
@@ -183,7 +191,11 @@ export class MemoryVersionService {
         })
         .returning();
 
-      await this.deprecateLatestVersionOrThrow(tx, latestVersion, createdVersion.id);
+      await this.deprecateLatestVersionOrThrow(
+        tx,
+        latestVersion,
+        createdVersion.id,
+      );
 
       return createdVersion;
     });
@@ -246,7 +258,9 @@ export class MemoryVersionService {
     const latestVersion = await this.findLatestVersion(dbClient, nodeId);
 
     if (!latestVersion) {
-      throw new NotFoundException(`Memory version for node ${nodeId} not found`);
+      throw new NotFoundException(
+        `Memory version for node ${nodeId} not found`,
+      );
     }
 
     return latestVersion;
@@ -274,7 +288,9 @@ export class MemoryVersionService {
       .returning({ id: memoryVersions.id });
 
     if (!updatedVersion) {
-      throw new ConflictException('Latest memory version changed during update');
+      throw new ConflictException(
+        'Latest memory version changed during update',
+      );
     }
   }
 }

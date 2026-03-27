@@ -53,7 +53,12 @@ describe('MarketplaceController', () => {
       };
       marketplaceService.installListing.mockResolvedValue(mockWorkflow);
 
-      const result = await controller.install(TENANT_ID, USER_ID, LISTING_ID, dto);
+      const result = await controller.install(
+        TENANT_ID,
+        USER_ID,
+        LISTING_ID,
+        dto,
+      );
 
       expect(marketplaceService.installListing).toHaveBeenCalledWith(
         TENANT_ID,

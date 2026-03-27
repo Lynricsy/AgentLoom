@@ -268,7 +268,9 @@ describe('EvidenceExportService', () => {
   it('should reject workloads larger than the configured execution limit and audit the rejection', async () => {
     tenantDb.select.mockReturnValueOnce(
       createSelectChain(
-        Array.from({ length: 101 }, (_, index) => ({ id: `exec-${index + 1}` })),
+        Array.from({ length: 101 }, (_, index) => ({
+          id: `exec-${index + 1}`,
+        })),
       ),
     );
 
@@ -420,7 +422,9 @@ describe('EvidenceExportService', () => {
 
   it('should issue a short-lived download url for completed exports and audit the action', async () => {
     tenantDb.select.mockReturnValueOnce(createSelectChain([createExportJob()]));
-    storageService.getPresignedUrl.mockResolvedValue('https://signed.example/export-1');
+    storageService.getPresignedUrl.mockResolvedValue(
+      'https://signed.example/export-1',
+    );
 
     await expect(
       service.getDownloadDetail({
@@ -552,7 +556,9 @@ describe('EvidenceExportService', () => {
 
   it('should map invalid storage keys to a domain not found exception', async () => {
     tenantDb.select.mockReturnValueOnce(createSelectChain([createExportJob()]));
-    storageService.getPresignedUrl.mockRejectedValue(new StorageKeyInvalidException());
+    storageService.getPresignedUrl.mockRejectedValue(
+      new StorageKeyInvalidException(),
+    );
 
     await expect(
       service.getDownloadDetail({

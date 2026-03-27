@@ -186,7 +186,11 @@ describe('AuthGuard', () => {
 
     expect(result).toBe(true);
     expect(request.user).toBeDefined();
-    const user = request.user as { sub: string; email: string; supabaseUserId?: string };
+    const user = request.user as {
+      sub: string;
+      email: string;
+      supabaseUserId?: string;
+    };
     expect(user.sub).toBe(TEST_APP_USER_ID);
     expect(user.email).toBe(TEST_USER_EMAIL);
     expect(user.supabaseUserId).toBe(TEST_USER_SUB);
@@ -310,7 +314,9 @@ describe('AuthGuard', () => {
   });
 
   it('JWT認証: UserIdentityResolverService が例外を投げた場合は 401 を返す', async () => {
-    userIdentityResolver.resolveAppUserId.mockRejectedValueOnce(new Error('DB error'));
+    userIdentityResolver.resolveAppUserId.mockRejectedValueOnce(
+      new Error('DB error'),
+    );
     const token = createValidToken();
     const { context } = createMockExecutionContext(`Bearer ${token}`);
 
@@ -444,9 +450,11 @@ describe('AuthGuard', () => {
       vi.mocked(platformApiTokenService.updateLastUsedAt).mockRejectedValueOnce(
         new Error('write failed'),
       );
-      const logger = (authGuard as unknown as {
-        logger: { warn: (message: string) => void };
-      }).logger;
+      const logger = (
+        authGuard as unknown as {
+          logger: { warn: (message: string) => void };
+        }
+      ).logger;
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {
         return undefined;
       });

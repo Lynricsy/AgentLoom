@@ -131,7 +131,10 @@ const LISTING_ID = '55555555-5555-4555-8555-555555555555';
 const LISTING_ID_2 = '66666666-6666-4666-8666-666666666666';
 const ORG_ID = '77777777-7777-4777-8777-777777777777';
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -139,7 +142,10 @@ function getRoles(controller: object, methodName: string): string[] | undefined 
     : undefined;
 }
 
-function getHttpCode(controller: object, methodName: string): number | undefined {
+function getHttpCode(
+  controller: object,
+  methodName: string,
+): number | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -177,7 +183,9 @@ function createPlugin(overrides: Partial<PluginRecord> = {}): PluginRecord {
   };
 }
 
-function createListing(overrides: Partial<MarketplaceListing> = {}): MarketplaceListing {
+function createListing(
+  overrides: Partial<MarketplaceListing> = {},
+): MarketplaceListing {
   const now = new Date('2025-01-01T00:00:00.000Z');
 
   return {
@@ -277,7 +285,11 @@ describe('PluginMarketplaceController', () => {
         USER_ID,
       );
 
-      expect(getRoles(controller, 'submit')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'submit')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
       expect(getHttpCode(controller, 'submit')).toBe(HttpStatus.CREATED);
       expect(pluginService.findById).toHaveBeenCalledWith(PLUGIN_ID, TENANT_ID);
       expect(pluginMarketplaceReviewService.review).toHaveBeenCalledWith({
@@ -324,7 +336,9 @@ describe('PluginMarketplaceController', () => {
     });
 
     it('应在插件不存在时抛出异常', async () => {
-      pluginService.findById.mockRejectedValue(new PluginNotFoundException(PLUGIN_ID));
+      pluginService.findById.mockRejectedValue(
+        new PluginNotFoundException(PLUGIN_ID),
+      );
 
       await expect(
         controller.submit(
@@ -341,7 +355,9 @@ describe('PluginMarketplaceController', () => {
     });
 
     it('插件未激活时应抛出异常', async () => {
-      pluginService.findById.mockResolvedValue(createPlugin({ status: 'registered' }));
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'registered' }),
+      );
 
       await expect(
         controller.submit(
@@ -377,9 +393,14 @@ describe('PluginMarketplaceController', () => {
     });
 
     it('已上架 listing 再次提交时应抛出冲突异常', async () => {
-      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
       db.__selectResults.push([
-        createListing({ status: 'listed', publishedAt: new Date('2025-01-02T00:00:00.000Z') }),
+        createListing({
+          status: 'listed',
+          publishedAt: new Date('2025-01-02T00:00:00.000Z'),
+        }),
       ]);
 
       await expect(
@@ -503,9 +524,9 @@ describe('PluginMarketplaceController', () => {
     it('应在 listing 不存在时抛出异常', async () => {
       db.__selectResults.push([]);
 
-      await expect(controller.findById(LISTING_ID, TENANT_ID)).rejects.toBeInstanceOf(
-        MarketplaceListingNotFoundException,
-      );
+      await expect(
+        controller.findById(LISTING_ID, TENANT_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
     });
   });
 
@@ -538,8 +559,13 @@ describe('PluginMarketplaceController', () => {
         TENANT_ID,
       );
 
-      expect(getRoles(controller, 'getEarningsSummary')).toEqual(['owner', 'admin']);
-      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(TENANT_ID);
+      expect(getRoles(controller, 'getEarningsSummary')).toEqual([
+        'owner',
+        'admin',
+      ]);
+      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
+        TENANT_ID,
+      );
       expect(pluginEarningsService.getDashboardSummary).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
@@ -583,7 +609,10 @@ describe('PluginMarketplaceController', () => {
         TENANT_ID,
       );
 
-      expect(getRoles(controller, 'getEarningsTrends')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'getEarningsTrends')).toEqual([
+        'owner',
+        'admin',
+      ]);
       expect(result).toEqual([
         {
           month: '2025-01',
@@ -618,7 +647,10 @@ describe('PluginMarketplaceController', () => {
         TENANT_ID,
       );
 
-      expect(getRoles(controller, 'getEarningsRanking')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'getEarningsRanking')).toEqual([
+        'owner',
+        'admin',
+      ]);
       expect(result).toEqual([
         {
           pluginId: 'com.example.plugin',
@@ -666,7 +698,10 @@ describe('PluginMarketplaceController', () => {
         TENANT_ID,
       );
 
-      expect(getRoles(controller, 'getEarningsHistory')).toEqual(['owner', 'admin']);
+      expect(getRoles(controller, 'getEarningsHistory')).toEqual([
+        'owner',
+        'admin',
+      ]);
       expect(result).toEqual({
         data: [
           {
@@ -727,10 +762,22 @@ describe('PluginMarketplaceController', () => {
         USER_ID,
       );
 
-      expect(getRoles(controller, 'update')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'update')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
       expect(getHttpCode(controller, 'update')).toBe(HttpStatus.OK);
-      expect(pluginService.findById).toHaveBeenNthCalledWith(1, PLUGIN_ID, TENANT_ID);
-      expect(pluginService.findById).toHaveBeenNthCalledWith(2, PLUGIN_ID_2, TENANT_ID);
+      expect(pluginService.findById).toHaveBeenNthCalledWith(
+        1,
+        PLUGIN_ID,
+        TENANT_ID,
+      );
+      expect(pluginService.findById).toHaveBeenNthCalledWith(
+        2,
+        PLUGIN_ID_2,
+        TENANT_ID,
+      );
       expect(db.__updateValues).toHaveLength(1);
       expect(db.__updateValues[0]).toMatchObject({
         pluginDbId: PLUGIN_ID_2,
@@ -769,11 +816,17 @@ describe('PluginMarketplaceController', () => {
 
       db.__selectResults.push([currentListing]);
       db.__updateResults.push([updatedListing]);
-      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
 
       const result = await controller.unlist(LISTING_ID, TENANT_ID, USER_ID);
 
-      expect(getRoles(controller, 'unlist')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'unlist')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
       expect(result).toEqual({ data: updatedListing });
       expect(db.__updateValues[0]).toMatchObject({
         status: 'unlisted',
@@ -796,12 +849,18 @@ describe('PluginMarketplaceController', () => {
 
       db.__selectResults.push([currentListing]);
       db.__updateResults.push([], [updatedListing]);
-      pluginService.findById.mockResolvedValue(createPlugin({ status: 'active' }));
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
       pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
 
       const result = await controller.relist(LISTING_ID, TENANT_ID, USER_ID);
 
-      expect(getRoles(controller, 'relist')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'relist')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
       expect(db.__updateValues[0]).toMatchObject({
         status: 'pending_review',
         submittedBy: USER_ID,
@@ -848,7 +907,9 @@ describe('PluginMarketplaceController', () => {
     });
 
     it('应对查询 DTO 进行类型转换并补齐默认值', () => {
-      expect(QueryPluginListingsSchema.parse({ page: '2', pageSize: '5' })).toEqual({
+      expect(
+        QueryPluginListingsSchema.parse({ page: '2', pageSize: '5' }),
+      ).toEqual({
         page: 2,
         pageSize: 5,
       });

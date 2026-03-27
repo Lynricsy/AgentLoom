@@ -91,7 +91,9 @@ export const recordTypeEnum = pgEnum('record_type', [
 export const agentExecutionRecords = pgTable(
   'agent_execution_records',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     executionId: uuid('execution_id')
       .notNull()

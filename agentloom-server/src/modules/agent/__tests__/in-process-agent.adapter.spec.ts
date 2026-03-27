@@ -75,8 +75,10 @@ const hoisted = vi.hoisted(() => {
       session.context.history.push(...content);
       const behavior: { events?: AgentEvent[]; error?: Error } =
         promptBehaviors.shift() ?? {
-        events: [{ type: 'done', stopReason: 'end_turn' } satisfies AgentEvent],
-      };
+          events: [
+            { type: 'done', stopReason: 'end_turn' } satisfies AgentEvent,
+          ],
+        };
 
       if (behavior.error) {
         session.status = 'error';
@@ -138,7 +140,10 @@ const hoisted = vi.hoisted(() => {
     resolveToolPermission,
     registerSessionToolProvider,
     unregisterSessionToolProvider,
-    queuePromptBehavior: (behavior: { events?: AgentEvent[]; error?: Error }) => {
+    queuePromptBehavior: (behavior: {
+      events?: AgentEvent[];
+      error?: Error;
+    }) => {
       promptBehaviors.push(behavior);
     },
     clearRuntimeSessions: () => {
@@ -177,7 +182,7 @@ async function collectEvents(
   return events;
 }
 
-  describe('InProcessAgentAdapter', () => {
+describe('InProcessAgentAdapter', () => {
   let adapter: InProcessAgentAdapter;
   let mockDb: unknown;
   let mockPiAiAdapter: unknown;
@@ -204,7 +209,10 @@ async function collectEvents(
     mockDb = {};
     mockPiAiAdapter = { getModel: vi.fn() };
     mockAgentSessionFactory = { createWorkflowSession: vi.fn() };
-    mockMcpService = { resolveRuntimeConnection: vi.fn(), callRuntimeTool: vi.fn() };
+    mockMcpService = {
+      resolveRuntimeConnection: vi.fn(),
+      callRuntimeTool: vi.fn(),
+    };
     mockRagService = { search: vi.fn() };
     mockSessionPersistence = {
       saveToCheckpoint: vi.fn().mockResolvedValue(undefined),
@@ -216,12 +224,12 @@ async function collectEvents(
 
     type AdapterArgs = ConstructorParameters<typeof InProcessAgentAdapter>;
     adapter = new InProcessAgentAdapter(
-      mockDb as unknown as AdapterArgs[0],
-      mockPiAiAdapter as unknown as AdapterArgs[1],
-      mockAgentSessionFactory as unknown as AdapterArgs[2],
+      mockDb as AdapterArgs[0],
+      mockPiAiAdapter as AdapterArgs[1],
+      mockAgentSessionFactory as AdapterArgs[2],
       mockSessionPersistence as unknown as AdapterArgs[3],
-      mockMcpService as unknown as AdapterArgs[4],
-      mockRagService as unknown as AdapterArgs[5],
+      mockMcpService as AdapterArgs[4],
+      mockRagService as AdapterArgs[5],
     );
   });
 
@@ -280,7 +288,9 @@ async function collectEvents(
         },
       });
 
-      expect(mockSessionPersistence.saveConversationSession).toHaveBeenCalledWith(
+      expect(
+        mockSessionPersistence.saveConversationSession,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           id: session.id,
           mode: 'conversation',
@@ -317,7 +327,9 @@ async function collectEvents(
         createdAt: NOW,
         updatedAt: NOW,
       };
-      mockSessionPersistence.loadConversationSession.mockResolvedValue(persisted);
+      mockSessionPersistence.loadConversationSession.mockResolvedValue(
+        persisted,
+      );
 
       await expect(adapter.loadSession('conversation-001')).resolves.toEqual(
         persisted,
@@ -366,21 +378,25 @@ async function collectEvents(
         systemPrompt: '你是一个聊天助手',
       });
 
-      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).resolves.toEqual(
-        [
-          { type: 'message_chunk', content: '你好，主人' },
-          { type: 'done', stopReason: 'end_turn' },
-        ],
-      );
+      await expect(
+        collectEvents(adapter.prompt(session.id, [textBlock])),
+      ).resolves.toEqual([
+        { type: 'message_chunk', content: '你好，主人' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
 
-      expect(mockSessionPersistence.appendConversationReplayEntry).toHaveBeenCalledWith(
+      expect(
+        mockSessionPersistence.appendConversationReplayEntry,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({ id: session.id, mode: 'conversation' }),
         {
           kind: 'user_message',
           content: [textBlock],
         } satisfies ConversationReplayEntry,
       );
-      expect(mockSessionPersistence.appendConversationReplayEntry).toHaveBeenCalledWith(
+      expect(
+        mockSessionPersistence.appendConversationReplayEntry,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({ id: session.id, mode: 'conversation' }),
         {
           kind: 'agent_event',
@@ -390,7 +406,9 @@ async function collectEvents(
           },
         } satisfies ConversationReplayEntry,
       );
-      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+      expect(
+        mockSessionPersistence.saveConversationSession,
+      ).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
           context: {
@@ -415,13 +433,17 @@ async function collectEvents(
         createdAt: NOW,
         updatedAt: NOW,
       };
-      mockSessionPersistence.loadConversationSession.mockResolvedValue(persisted);
+      mockSessionPersistence.loadConversationSession.mockResolvedValue(
+        persisted,
+      );
       hoisted.queuePromptBehavior({
         events: [{ type: 'done', stopReason: 'end_turn' }],
       });
 
       await collectEvents(
-        adapter.prompt('persisted-session', [{ type: 'text', text: '新的输入' }]),
+        adapter.prompt('persisted-session', [
+          { type: 'text', text: '新的输入' },
+        ]),
       );
 
       expect(hoisted.createSession).toHaveBeenCalledWith({
@@ -470,11 +492,13 @@ async function collectEvents(
         tenantId: 'tenant-001',
       });
 
-      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).rejects.toThrow(
-        '模型流失败',
-      );
+      await expect(
+        collectEvents(adapter.prompt(session.id, [textBlock])),
+      ).rejects.toThrow('模型流失败');
 
-      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+      expect(
+        mockSessionPersistence.saveConversationSession,
+      ).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
           status: 'error',
@@ -493,9 +517,9 @@ async function collectEvents(
         status: 'completed',
       });
 
-      await expect(collectEvents(adapter.prompt(session.id, [textBlock]))).resolves.toEqual([
-        { type: 'done', stopReason: 'cancelled' },
-      ]);
+      await expect(
+        collectEvents(adapter.prompt(session.id, [textBlock])),
+      ).resolves.toEqual([{ type: 'done', stopReason: 'cancelled' }]);
     });
   });
 
@@ -536,7 +560,11 @@ async function collectEvents(
       });
 
       await collectEvents(adapter.prompt('persisted-session', [textBlock]));
-      await adapter.resolveToolPermission('persisted-session', 'tool-1', 'approve');
+      await adapter.resolveToolPermission(
+        'persisted-session',
+        'tool-1',
+        'approve',
+      );
 
       expect(hoisted.resolveToolPermission).toHaveBeenCalledWith(
         'runtime-session-1',
@@ -557,7 +585,9 @@ async function collectEvents(
       await adapter.cancel(session.id);
 
       expect(hoisted.cancel).toHaveBeenCalledWith(session.id);
-      expect(mockSessionPersistence.saveConversationSession).toHaveBeenLastCalledWith(
+      expect(
+        mockSessionPersistence.saveConversationSession,
+      ).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
           status: 'completed',

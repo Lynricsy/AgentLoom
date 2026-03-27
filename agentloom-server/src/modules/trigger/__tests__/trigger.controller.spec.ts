@@ -162,7 +162,9 @@ describe('TriggerController', () => {
       },
     });
 
-    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(TRIGGER_ID);
+    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(
+      TRIGGER_ID,
+    );
     expect(triggerSchedulerService.registerCronJob).toHaveBeenCalledWith({
       ...cronTrigger,
       config: { expression: '0 9 * * *', timezone: 'UTC' },
@@ -178,7 +180,9 @@ describe('TriggerController', () => {
       controller.remove(WORKFLOW_ID, TRIGGER_ID, TENANT_ID),
     ).resolves.toBeUndefined();
 
-    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(TRIGGER_ID);
+    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(
+      TRIGGER_ID,
+    );
   });
 
   it('应切换 cron 触发器状态并在禁用时移除任务', async () => {
@@ -199,7 +203,9 @@ describe('TriggerController', () => {
       },
     });
 
-    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(TRIGGER_ID);
+    expect(triggerSchedulerService.removeCronJob).toHaveBeenCalledWith(
+      TRIGGER_ID,
+    );
     expect(triggerSchedulerService.registerCronJob).not.toHaveBeenCalled();
   });
 

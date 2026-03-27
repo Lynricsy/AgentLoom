@@ -272,7 +272,9 @@ describe('EvidenceExportCleanupWorker', () => {
       }),
     );
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`Failed to clean up evidence export ${exportJob.id}`),
+      expect.stringContaining(
+        `Failed to clean up evidence export ${exportJob.id}`,
+      ),
     );
   });
 });

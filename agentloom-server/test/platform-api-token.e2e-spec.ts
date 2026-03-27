@@ -5,14 +5,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 
 declare const vi: typeof import('vitest').vi;
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
@@ -80,7 +73,11 @@ function signToken(payload: Record<string, unknown>) {
   });
 }
 
-function authHeaders(userId: string, email: string, tenantId?: string): HeaderMap {
+function authHeaders(
+  userId: string,
+  email: string,
+  tenantId?: string,
+): HeaderMap {
   return {
     authorization: `Bearer ${signToken({
       sub: userId,
@@ -130,7 +127,8 @@ function createTestAuthGuard(getCtx: () => RlsTestContext) {
             typeof verified === 'string' ||
             typeof verified.sub !== 'string' ||
             typeof verified.email !== 'string' ||
-            (typeof verified.aud !== 'string' && !Array.isArray(verified.aud)) ||
+            (typeof verified.aud !== 'string' &&
+              !Array.isArray(verified.aud)) ||
             typeof verified.exp !== 'number' ||
             typeof verified.iat !== 'number'
           ) {
@@ -188,7 +186,8 @@ function createTestAuthGuard(getCtx: () => RlsTestContext) {
       }
 
       const apiKeyHeader = request.headers['x-api-key'];
-      const apiKey = typeof apiKeyHeader === 'string' ? apiKeyHeader : undefined;
+      const apiKey =
+        typeof apiKeyHeader === 'string' ? apiKeyHeader : undefined;
 
       if (apiKey) {
         if (!apiKey.startsWith(RAW_TOKEN_PREFIX)) {
@@ -400,21 +399,26 @@ describe('PlatformApiToken E2E', () => {
       .query(query);
   }
 
-  async function revokeToken(tokenId: string, headers: HeaderMap = creatorHeaders()) {
+  async function revokeToken(
+    tokenId: string,
+    headers: HeaderMap = creatorHeaders(),
+  ) {
     return request(app.getHttpServer())
       .delete(`${BASE_PATH}/${tokenId}`)
       .set(headers);
   }
 
-  async function seedPlatformToken(options: {
-    userId?: string;
-    tenantId?: string;
-    name?: string;
-    scopes?: string | null;
-    expiresAt?: Date | null;
-    lastUsedAt?: Date | null;
-    isRevoked?: boolean;
-  } = {}): Promise<SeededPlatformToken> {
+  async function seedPlatformToken(
+    options: {
+      userId?: string;
+      tenantId?: string;
+      name?: string;
+      scopes?: string | null;
+      expiresAt?: Date | null;
+      lastUsedAt?: Date | null;
+      isRevoked?: boolean;
+    } = {},
+  ): Promise<SeededPlatformToken> {
     const rawToken = createRawPlatformToken();
     const tokenId = crypto.randomUUID();
     const tokenPrefix = rawToken.slice(0, TOKEN_PREFIX_LENGTH);
@@ -434,8 +438,8 @@ describe('PlatformApiToken E2E', () => {
       )
       VALUES (
         ${tokenId}::uuid,
-        ${(options.userId ?? creatorUser.id)}::uuid,
-        ${(options.tenantId ?? tenantId)}::uuid,
+        ${options.userId ?? creatorUser.id}::uuid,
+        ${options.tenantId ?? tenantId}::uuid,
         ${options.name ?? 'Seeded Platform Token'},
         ${hashPlatformToken(rawToken)},
         ${tokenPrefix},
@@ -744,7 +748,9 @@ describe('PlatformApiToken E2E', () => {
     });
 
     it('同一 API key 超过 100 次请求时应返回 429，并带 Retry-After 与限流头', async () => {
-      const primaryToken = await createToken({ name: 'Primary Rate Limit Token' });
+      const primaryToken = await createToken({
+        name: 'Primary Rate Limit Token',
+      });
       const secondaryToken = await createToken({
         name: 'Secondary Rate Limit Token',
       });
@@ -819,7 +825,9 @@ describe('PlatformApiToken E2E', () => {
 
   describe('edge cases', () => {
     it('创建 token 时应支持 expires_at 过期时间', async () => {
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = new Date(
+        Date.now() + 24 * 60 * 60 * 1000,
+      ).toISOString();
 
       const res = await createTokenRequest({
         name: 'Expiring Token',

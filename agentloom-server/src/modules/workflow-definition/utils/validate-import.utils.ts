@@ -22,7 +22,9 @@ const ImportWorkflowSchema = z.object({
     name: z.string().min(1).max(255),
     description: z.string().max(2000).nullable(),
     definition: z.object({
-      nodes: z.array(passthroughObjectSchema).min(1, 'Workflow must have at least one node'),
+      nodes: z
+        .array(passthroughObjectSchema)
+        .min(1, 'Workflow must have at least one node'),
       edges: z.array(passthroughObjectSchema),
       viewport: passthroughObjectSchema,
     }),
@@ -70,11 +72,15 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function getNodeLabel(node: LooseObject): string {
-  return typeof node.id === 'string' && node.id.length > 0 ? node.id : 'unknown';
+  return typeof node.id === 'string' && node.id.length > 0
+    ? node.id
+    : 'unknown';
 }
 
 function getEdgeLabel(edge: LooseObject): string {
-  return typeof edge.id === 'string' && edge.id.length > 0 ? edge.id : 'unknown';
+  return typeof edge.id === 'string' && edge.id.length > 0
+    ? edge.id
+    : 'unknown';
 }
 
 function validateNode(node: LooseObject): string[] {
@@ -123,11 +129,15 @@ function validateEdge(edge: LooseObject): string[] {
   const edgeLabel = getEdgeLabel(edge);
 
   if (typeof edge.source !== 'string' || edge.source.length === 0) {
-    errors.push(`Edge ${edgeLabel} references invalid source: ${String(edge.source)}`);
+    errors.push(
+      `Edge ${edgeLabel} references invalid source: ${String(edge.source)}`,
+    );
   }
 
   if (typeof edge.target !== 'string' || edge.target.length === 0) {
-    errors.push(`Edge ${edgeLabel} references invalid target: ${String(edge.target)}`);
+    errors.push(
+      `Edge ${edgeLabel} references invalid target: ${String(edge.target)}`,
+    );
   }
 
   return errors;

@@ -48,10 +48,13 @@ export const sandboxSessions = pgTable(
     id: uuid('id')
       .primaryKey()
       .default(sql`uuid_generate_v7()`),
-    executionId: uuid('execution_id')
-      .references(() => workflowExecutions.id, { onDelete: 'cascade' }),
-    agentConversationId: uuid('agent_conversation_id')
-      .references(() => agentConversations.id, { onDelete: 'cascade' }),
+    executionId: uuid('execution_id').references(() => workflowExecutions.id, {
+      onDelete: 'cascade',
+    }),
+    agentConversationId: uuid('agent_conversation_id').references(
+      () => agentConversations.id,
+      { onDelete: 'cascade' },
+    ),
     sandboxNodeId: varchar('sandbox_node_id', { length: 64 }),
     tenantId: uuid('tenant_id').notNull(),
     containerId: varchar('container_id', { length: 128 }),

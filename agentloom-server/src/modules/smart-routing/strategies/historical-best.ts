@@ -2,7 +2,9 @@ import type { StrategyFn } from './types';
 
 export const historicalBest: StrategyFn = (candidates, context) => {
   const metrics = context.historicalMetrics;
-  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const candidateById = new Map(
+    candidates.map((candidate) => [candidate.id, candidate]),
+  );
 
   if (
     !metrics ||
@@ -60,7 +62,8 @@ export const historicalBest: StrategyFn = (candidates, context) => {
           return metricsB.successRate - metricsA.successRate;
         }
 
-        const lastUsedDiff = getLastUsedAt(b.modelId) - getLastUsedAt(a.modelId);
+        const lastUsedDiff =
+          getLastUsedAt(b.modelId) - getLastUsedAt(a.modelId);
         if (lastUsedDiff !== 0) {
           return lastUsedDiff;
         }

@@ -20,7 +20,10 @@ const mlpRouterConfigSchema = z.object({
 
 type MlpRouterConfig = z.infer<typeof mlpRouterConfigSchema>;
 type RoutingDb = Pick<DrizzleDB, 'select'>;
-type EmbeddingServiceLike = Pick<EmbeddingIntegrationService, 'generateEmbedding'>;
+type EmbeddingServiceLike = Pick<
+  EmbeddingIntegrationService,
+  'generateEmbedding'
+>;
 
 interface RouterModelLookupRow {
   routerModelId: string;
@@ -37,7 +40,9 @@ function readVectorDimension(weights: RoutingBenchmarkMlpWeights): number {
   return weights.layers[0]?.weights[0]?.length ?? 0;
 }
 
-function isTwoLayerWeights(weights: RoutingBenchmarkMlpWeights | null): weights is RoutingBenchmarkMlpWeights {
+function isTwoLayerWeights(
+  weights: RoutingBenchmarkMlpWeights | null,
+): weights is RoutingBenchmarkMlpWeights {
   if (!weights) {
     return false;
   }
@@ -71,7 +76,10 @@ export class MlpRouter extends BaseRouterStrategy {
     context: RoutingContext,
   ): Promise<RoutingDecision> {
     const config = this.resolveConfig(context);
-    const routerModelRows = await this.loadRouterModels(candidates, context.tenantId);
+    const routerModelRows = await this.loadRouterModels(
+      candidates,
+      context.tenantId,
+    );
     const benchmarkRows = await this.loadBenchmarkWeights(routerModelRows);
     const resolvedWeights = this.pickUsableWeights(
       benchmarkRows,
@@ -133,7 +141,9 @@ export class MlpRouter extends BaseRouterStrategy {
     });
   }
 
-  private async resolveEmbedding(context: RoutingContext): Promise<number[] | null> {
+  private async resolveEmbedding(
+    context: RoutingContext,
+  ): Promise<number[] | null> {
     if (context.queryEmbedding && context.queryEmbedding.length > 0) {
       return context.queryEmbedding;
     }
@@ -142,7 +152,10 @@ export class MlpRouter extends BaseRouterStrategy {
       return null;
     }
 
-    return this.embeddingService.generateEmbedding(context.queryText, context.tenantId);
+    return this.embeddingService.generateEmbedding(
+      context.queryText,
+      context.tenantId,
+    );
   }
 
   private forwardDenseLayer(
@@ -182,14 +195,24 @@ export class MlpRouter extends BaseRouterStrategy {
       const outputDimension = secondLayer.biases.length;
       const firstLayerMatches =
         firstLayer.weights.length === hiddenDimension &&
-        firstLayer.weights.every((layerWeights) => layerWeights.length === inputDimension);
+        firstLayer.weights.every(
+          (layerWeights) => layerWeights.length === inputDimension,
+        );
       const secondLayerMatches =
         secondLayer.weights.length === outputDimension &&
-        secondLayer.weights.every((layerWeights) => layerWeights.length === hiddenDimension);
+        secondLayer.weights.every(
+          (layerWeights) => layerWeights.length === hiddenDimension,
+        );
       const inputMatches =
-        embeddingDimension === undefined || embeddingDimension === inputDimension;
+        embeddingDimension === undefined ||
+        embeddingDimension === inputDimension;
 
-      if (firstLayerMatches && secondLayerMatches && outputDimension === candidateCount && inputMatches) {
+      if (
+        firstLayerMatches &&
+        secondLayerMatches &&
+        outputDimension === candidateCount &&
+        inputMatches
+      ) {
         return row.mlpWeights;
       }
     }
@@ -245,7 +268,9 @@ export class MlpRouter extends BaseRouterStrategy {
     reason: string,
   ): RoutingDecision {
     const bestCandidate = candidates.reduce((best, candidate) =>
-      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank ? candidate : best,
+      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank
+        ? candidate
+        : best,
     );
     const maxQuality = Math.max(
       ...candidates.map((candidate) => candidate.routingMeta.qualityRank),

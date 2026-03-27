@@ -19,18 +19,21 @@ vi.mock('../../../../common/interceptors/tenant-transaction.context', () => ({
   ),
 }));
 
-const { createMockEmbeddingService, createMockQdrantClient, createMockMlpTrainer } =
-  vi.hoisted(() => ({
-    createMockEmbeddingService: () => ({
-      generateEmbedding: vi.fn(),
-    }),
-    createMockQdrantClient: () => ({
-      upsert: vi.fn(),
-    }),
-    createMockMlpTrainer: () => ({
-      recordSample: vi.fn(),
-    }),
-  }));
+const {
+  createMockEmbeddingService,
+  createMockQdrantClient,
+  createMockMlpTrainer,
+} = vi.hoisted(() => ({
+  createMockEmbeddingService: () => ({
+    generateEmbedding: vi.fn(),
+  }),
+  createMockQdrantClient: () => ({
+    upsert: vi.fn(),
+  }),
+  createMockMlpTrainer: () => ({
+    recordSample: vi.fn(),
+  }),
+}));
 
 type MockDb = {
   select: ReturnType<typeof vi.fn>;
@@ -51,7 +54,9 @@ function createWorker(
   );
 }
 
-function createJob(overrides: Partial<RoutingLearningJob> = {}): Job<RoutingLearningJob> {
+function createJob(
+  overrides: Partial<RoutingLearningJob> = {},
+): Job<RoutingLearningJob> {
   return {
     id: 'job-1',
     name: ROUTING_LEARNING_JOB_NAME,
@@ -84,8 +89,9 @@ function createMockDb(options: {
 
   const select = vi.fn(() => {
     const result =
-      options.selectResults[Math.min(selectIndex, options.selectResults.length - 1)] ??
-      [];
+      options.selectResults[
+        Math.min(selectIndex, options.selectResults.length - 1)
+      ] ?? [];
     selectIndex += 1;
 
     return {
@@ -163,7 +169,8 @@ describe('RoutingLearningWorker', () => {
     await worker.process(createJob());
 
     const upsertPayload = qdrantClient.upsert.mock.calls[0]?.[1];
-    const performanceScore = upsertPayload?.points?.[0]?.payload?.performance_score;
+    const performanceScore =
+      upsertPayload?.points?.[0]?.payload?.performance_score;
 
     expect(qdrantClient.upsert).toHaveBeenCalledWith('routing_memory', {
       wait: false,

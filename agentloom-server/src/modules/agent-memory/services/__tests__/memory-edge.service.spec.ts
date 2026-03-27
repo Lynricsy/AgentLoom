@@ -20,9 +20,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -223,10 +222,14 @@ describe('MemoryEdgeService', () => {
 
       tenantDb.select
         .mockReturnValueOnce(
-          createSelectChain([createNode({ id: nodeC, instanceId: INSTANCE_ID })]),
+          createSelectChain([
+            createNode({ id: nodeC, instanceId: INSTANCE_ID }),
+          ]),
         )
         .mockReturnValueOnce(
-          createSelectChain([createNode({ id: nodeA, instanceId: INSTANCE_ID })]),
+          createSelectChain([
+            createNode({ id: nodeA, instanceId: INSTANCE_ID }),
+          ]),
         )
         .mockReturnValueOnce(
           createSelectChain([
@@ -310,10 +313,14 @@ describe('MemoryEdgeService', () => {
 
       tenantDb.select
         .mockReturnValueOnce(
-          createSelectChain([createNode({ id: ids[11], instanceId: INSTANCE_ID })]),
+          createSelectChain([
+            createNode({ id: ids[11], instanceId: INSTANCE_ID }),
+          ]),
         )
         .mockReturnValueOnce(
-          createSelectChain([createNode({ id: ids[0], instanceId: INSTANCE_ID })]),
+          createSelectChain([
+            createNode({ id: ids[0], instanceId: INSTANCE_ID }),
+          ]),
         );
       for (const query of cycleQueries) {
         tenantDb.select.mockReturnValueOnce(query);
@@ -474,9 +481,9 @@ describe('MemoryEdgeService', () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([createEdge()]));
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
-      await expect(service.updateEdgePriority(EDGE_ID, 11)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.updateEdgePriority(EDGE_ID, 11),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -498,9 +505,9 @@ describe('MemoryEdgeService', () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([createEdge()]));
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
-      await expect(service.updateEdgeDisclosure(EDGE_ID, 4)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.updateEdgeDisclosure(EDGE_ID, 4),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

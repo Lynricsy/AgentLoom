@@ -21,7 +21,9 @@ export abstract class BaseRouterStrategy {
     candidates: RoutingCandidate[],
     contexts: RoutingContext[],
   ): Promise<RoutingDecision[]> {
-    return Promise.all(contexts.map((context) => this.route(candidates, context)));
+    return Promise.all(
+      contexts.map((context) => this.route(candidates, context)),
+    );
   }
 
   async route(
@@ -33,7 +35,8 @@ export abstract class BaseRouterStrategy {
       (candidate) => candidate.healthStatus !== 'open',
     );
     const validCandidates = healthyCandidates.filter(
-      (candidate) => candidate.routingMeta.contextWindow >= context.inputTokenCount,
+      (candidate) =>
+        candidate.routingMeta.contextWindow >= context.inputTokenCount,
     );
 
     if (validCandidates.length === 0) {

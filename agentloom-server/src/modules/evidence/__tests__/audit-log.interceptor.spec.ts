@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 
-import { Logger, type CallHandler, type ExecutionContext } from '@nestjs/common';
+import {
+  Logger,
+  type CallHandler,
+  type ExecutionContext,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { lastValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,7 +55,10 @@ describe('AuditLogInterceptor', () => {
   beforeEach(() => {
     auditLogService.record.mockReset();
     auditLogService.record.mockResolvedValue(undefined);
-    interceptor = new AuditLogInterceptor(new Reflector(), auditLogService as never);
+    interceptor = new AuditLogInterceptor(
+      new Reflector(),
+      auditLogService as never,
+    );
   });
 
   it('should skip HTTP requests without audit capture metadata', async () => {
@@ -242,7 +249,9 @@ describe('AuditLogInterceptor', () => {
     expect(result).toEqual(response);
     expect(auditLogService.record).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to persist audit log for organization.created'),
+      expect.stringContaining(
+        'Failed to persist audit log for organization.created',
+      ),
       expect.objectContaining({
         tenantId: CREATED_TENANT_ID,
         resourceType: 'organization',

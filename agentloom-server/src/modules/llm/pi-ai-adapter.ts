@@ -30,7 +30,7 @@ export class PiAiAdapter {
     const resolvedApiKey =
       config.provider === 'private_cloud' && config.authMethod !== 'api_key'
         ? undefined
-        : apiKey ?? (await this.resolveApiKey(config));
+        : (apiKey ?? (await this.resolveApiKey(config)));
 
     const provider = await this.resolveProvider(
       config.provider,
@@ -110,8 +110,7 @@ export class PiAiAdapter {
 
         const requiresAuth = config.authMethod === 'api_key';
         return createOpenAI({
-          apiKey:
-            apiKey ?? PiAiAdapter.PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          apiKey: apiKey ?? PiAiAdapter.PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
           baseURL: config.endpointUrl,
           ...(requiresAuth
             ? {}
@@ -230,7 +229,9 @@ export class PiAiAdapter {
   private createAuthorizationStrippingFetch(): typeof fetch {
     return async (input, init) => {
       const headers = new Headers(
-        input instanceof Request ? (init?.headers ?? input.headers) : init?.headers,
+        input instanceof Request
+          ? (init?.headers ?? input.headers)
+          : init?.headers,
       );
 
       headers.delete('authorization');

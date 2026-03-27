@@ -26,7 +26,10 @@ const ORG_ID = '22222222-2222-4222-8222-222222222222';
 const KEY_ID = '33333333-3333-4333-8333-333333333333';
 const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----';
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -34,7 +37,10 @@ function getRoles(controller: object, methodName: string): string[] | undefined 
     : undefined;
 }
 
-function getHttpCode(controller: object, methodName: string): number | undefined {
+function getHttpCode(
+  controller: object,
+  methodName: string,
+): number | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -92,8 +98,13 @@ describe('TenantKeyController', () => {
 
       const result = await controller.uploadPublicKey(dto, TENANT_ID, ORG_ID);
 
-      expect(getRoles(controller, 'uploadPublicKey')).toEqual(['owner', 'admin']);
-      expect(getHttpCode(controller, 'uploadPublicKey')).toBe(HttpStatus.CREATED);
+      expect(getRoles(controller, 'uploadPublicKey')).toEqual([
+        'owner',
+        'admin',
+      ]);
+      expect(getHttpCode(controller, 'uploadPublicKey')).toBe(
+        HttpStatus.CREATED,
+      );
       expect(service.uploadPublicKey).toHaveBeenCalledWith(
         TENANT_ID,
         ORG_ID,

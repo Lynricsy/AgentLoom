@@ -192,7 +192,9 @@ describe('RedisPubSubService', () => {
       await service.onModuleInit();
       const mockInstance = await getSubscriberMock();
       mockInstance.status = 'ready';
-      mockInstance.unsubscribe.mockRejectedValue(new Error('Connection is closed.'));
+      mockInstance.unsubscribe.mockRejectedValue(
+        new Error('Connection is closed.'),
+      );
 
       await expect(service.onModuleDestroy()).resolves.toBeUndefined();
       expect(mockInstance.unsubscribe).toHaveBeenCalledWith(

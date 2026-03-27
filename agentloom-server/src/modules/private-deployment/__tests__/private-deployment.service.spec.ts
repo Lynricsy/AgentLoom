@@ -289,7 +289,9 @@ describe('PrivateDeploymentService', () => {
     };
 
     service = new PrivateDeploymentService(
-      db as unknown as ConstructorParameters<typeof PrivateDeploymentService>[0],
+      db as unknown as ConstructorParameters<
+        typeof PrivateDeploymentService
+      >[0],
       auditLogService as unknown as AuditLogService,
       encryptionService as unknown as EncryptionService,
       configService as unknown as ConfigService,
@@ -303,7 +305,9 @@ describe('PrivateDeploymentService', () => {
   describe('getSettings', () => {
     it('returns default settings with env-derived deployment mode when no row exists', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(null);
 
       await expect(service.getSettings(ORG_ID, OWNER_ID)).resolves.toEqual({
@@ -348,29 +352,29 @@ describe('PrivateDeploymentService', () => {
         makeSettings(),
       );
 
-        await expect(service.getSettings(ORG_ID, ADMIN_ID)).resolves.toEqual(
-          expect.objectContaining({
-            organizationId: ORG_ID,
-            deploymentMode: 'private',
-            version: 1,
-            llmProxy: expect.objectContaining({ mode: 'private_cloud' }),
-            certificates: expect.objectContaining({
-              source: 'uploaded',
-              expiresAt: '2026-09-01T00:00:00.000Z',
-            }),
-            smtp: expect.objectContaining({
-              passwordSecretRef: smtpPasswordSecretRef(),
-            }),
+      await expect(service.getSettings(ORG_ID, ADMIN_ID)).resolves.toEqual(
+        expect.objectContaining({
+          organizationId: ORG_ID,
+          deploymentMode: 'private',
+          version: 1,
+          llmProxy: expect.objectContaining({ mode: 'private_cloud' }),
+          certificates: expect.objectContaining({
+            source: 'uploaded',
+            expiresAt: '2026-09-01T00:00:00.000Z',
           }),
-        );
+          smtp: expect.objectContaining({
+            passwordSecretRef: smtpPasswordSecretRef(),
+          }),
+        }),
+      );
     });
 
     it('throws when the target organization does not exist', async () => {
       db.query.organizations.findFirst.mockResolvedValue(null);
 
-      await expect(service.getSettings(ORG_ID, OWNER_ID)).rejects.toBeInstanceOf(
-        OrganizationNotFoundException,
-      );
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
     });
 
     it('rejects members without owner/admin permission', async () => {
@@ -379,14 +383,16 @@ describe('PrivateDeploymentService', () => {
         makeMembership({ userId: VIEWER_ID, role: 'viewer' }),
       );
 
-      await expect(service.getSettings(ORG_ID, VIEWER_ID)).rejects.toBeInstanceOf(
-        InsufficientOrganizationPermissionException,
-      );
+      await expect(
+        service.getSettings(ORG_ID, VIEWER_ID),
+      ).rejects.toBeInstanceOf(InsufficientOrganizationPermissionException);
     });
 
     it('returns license status missing when no license key is stored', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({
           licenseKeyEncryptedKey: null,
@@ -410,7 +416,9 @@ describe('PrivateDeploymentService', () => {
 
     it('returns license status valid with fingerprint and verification metadata', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({
           licenseKeyEncryptedKey: makeEnvelope('license').encryptedKey,
@@ -435,7 +443,9 @@ describe('PrivateDeploymentService', () => {
 
     it('returns license status invalid when verification fails', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({
           licenseKeyEncryptedKey: makeEnvelope('license').encryptedKey,
@@ -468,7 +478,9 @@ describe('PrivateDeploymentService', () => {
 
     it('returns license status expired when the signature is valid but the license is past due', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({
           licenseKeyEncryptedKey: makeEnvelope('license').encryptedKey,
@@ -497,7 +509,9 @@ describe('PrivateDeploymentService', () => {
   describe('updateSettings', () => {
     it('creates a new settings row on first update', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(null);
       db.insert.mockReturnValue(
         createInsertChain([
@@ -541,28 +555,28 @@ describe('PrivateDeploymentService', () => {
           OWNER_ID,
         ),
       ).resolves.toEqual(
-          expect.objectContaining({
-            organizationId: ORG_ID,
-            deploymentMode: 'private',
-            version: 1,
-            smtp: expect.objectContaining({
-              useTls: true,
-              passwordSecretRef: smtpPasswordSecretRef(),
-            }),
-            llmProxy: expect.objectContaining({
-              mode: 'private_cloud',
-              baseUrl: 'https://proxy.internal.local',
-              apiKeySecretRef: llmProxyApiKeySecretRef(),
-              allowExternalEgress: false,
-            }),
-            certificates: expect.objectContaining({
-              source: 'uploaded',
-              tlsSecretRef: null,
-              expiresAt: '2026-09-01T00:00:00.000Z',
-            }),
-            license: expect.objectContaining({ status: 'missing' }),
+        expect.objectContaining({
+          organizationId: ORG_ID,
+          deploymentMode: 'private',
+          version: 1,
+          smtp: expect.objectContaining({
+            useTls: true,
+            passwordSecretRef: smtpPasswordSecretRef(),
           }),
-        );
+          llmProxy: expect.objectContaining({
+            mode: 'private_cloud',
+            baseUrl: 'https://proxy.internal.local',
+            apiKeySecretRef: llmProxyApiKeySecretRef(),
+            allowExternalEgress: false,
+          }),
+          certificates: expect.objectContaining({
+            source: 'uploaded',
+            tlsSecretRef: null,
+            expiresAt: '2026-09-01T00:00:00.000Z',
+          }),
+          license: expect.objectContaining({ status: 'missing' }),
+        }),
+      );
 
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(db.update).not.toHaveBeenCalled();
@@ -570,7 +584,9 @@ describe('PrivateDeploymentService', () => {
 
     it('updates the existing row and increments the version', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({ version: 2 }),
       );
@@ -630,27 +646,27 @@ describe('PrivateDeploymentService', () => {
           OWNER_ID,
         ),
       ).resolves.toEqual(
-          expect.objectContaining({
-            organizationId: ORG_ID,
-            version: 3,
-            updatedBy: OWNER_ID,
-            smtp: expect.objectContaining({
-              useTls: false,
-              passwordSecretRef: smtpPasswordSecretRef(),
-            }),
-            llmProxy: expect.objectContaining({
-              mode: 'enterprise_proxy',
-              baseUrl: 'https://proxy.backup.local',
-              apiKeySecretRef: llmProxyApiKeySecretRef(),
-              allowExternalEgress: true,
-            }),
-            certificates: expect.objectContaining({
-              source: 'secretRef',
-              tlsSecretRef: 'ingress/proxy-cert',
-              expiresAt: '2026-10-01T00:00:00.000Z',
-            }),
+        expect.objectContaining({
+          organizationId: ORG_ID,
+          version: 3,
+          updatedBy: OWNER_ID,
+          smtp: expect.objectContaining({
+            useTls: false,
+            passwordSecretRef: smtpPasswordSecretRef(),
           }),
-        );
+          llmProxy: expect.objectContaining({
+            mode: 'enterprise_proxy',
+            baseUrl: 'https://proxy.backup.local',
+            apiKeySecretRef: llmProxyApiKeySecretRef(),
+            allowExternalEgress: true,
+          }),
+          certificates: expect.objectContaining({
+            source: 'secretRef',
+            tlsSecretRef: 'ingress/proxy-cert',
+            expiresAt: '2026-10-01T00:00:00.000Z',
+          }),
+        }),
+      );
 
       expect(db.update).toHaveBeenCalledTimes(1);
       expect(db.insert).not.toHaveBeenCalled();
@@ -658,7 +674,9 @@ describe('PrivateDeploymentService', () => {
 
     it('rejects enterprise_proxy mode without a baseUrl', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
 
       const error = await service
         .updateSettings(
@@ -689,7 +707,9 @@ describe('PrivateDeploymentService', () => {
 
     it('rejects private_cloud mode without a baseUrl', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
 
       const error = await service
         .updateSettings(
@@ -720,7 +740,9 @@ describe('PrivateDeploymentService', () => {
 
     it('rejects secretRef certificates without tlsSecretRef', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
 
       const error = await service
         .updateSettings(
@@ -751,7 +773,9 @@ describe('PrivateDeploymentService', () => {
 
     it('rejects invalid opaque secret references instead of silently keeping existing secrets', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
 
       const error = await service
         .updateSettings(
@@ -762,14 +786,16 @@ describe('PrivateDeploymentService', () => {
               port: 587,
               username: 'mailer',
               fromEmail: 'noreply@example.com',
-              passwordSecretRef: 'private-deployment://organizations/not-a-uuid/smtp/password',
+              passwordSecretRef:
+                'private-deployment://organizations/not-a-uuid/smtp/password',
               useTls: true,
               password: undefined,
             },
             llmProxy: {
               mode: 'private_cloud',
               baseUrl: 'https://proxy.internal.local',
-              apiKeySecretRef: 'private-deployment://organizations/not-a-uuid/llm-proxy/api-key',
+              apiKeySecretRef:
+                'private-deployment://organizations/not-a-uuid/llm-proxy/api-key',
               allowExternalEgress: false,
               apiKey: undefined,
             },
@@ -791,8 +817,12 @@ describe('PrivateDeploymentService', () => {
 
     it('rejects opaque secret references that do not belong to the current organization', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
-      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(makeSettings());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        makeSettings(),
+      );
 
       const error = await service
         .updateSettings(
@@ -831,7 +861,9 @@ describe('PrivateDeploymentService', () => {
       const insertChain = createInsertChain([makeSettings()]);
 
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(null);
       db.insert.mockReturnValue(insertChain);
 
@@ -878,7 +910,8 @@ describe('PrivateDeploymentService', () => {
       expect(insertChain.values).toHaveBeenCalledWith(
         expect.objectContaining({
           smtpPasswordEncryptedKey: makeEnvelope('smtp-secret').encryptedKey,
-          privateCloudApiKeyEncryptedKey: makeEnvelope('llm-secret').encryptedKey,
+          privateCloudApiKeyEncryptedKey:
+            makeEnvelope('llm-secret').encryptedKey,
           certificatePemEncryptedKey: makeEnvelope(
             '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----',
           ).encryptedKey,
@@ -891,7 +924,9 @@ describe('PrivateDeploymentService', () => {
 
     it('redacts plaintext secrets from the response DTO', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(null);
       db.insert.mockReturnValue(createInsertChain([makeSettings()]));
 
@@ -952,7 +987,9 @@ describe('PrivateDeploymentService', () => {
 
     it('records an organization-scoped audit log with redacted before/after payloads', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
         makeSettings({ version: 2 }),
       );
@@ -1052,7 +1089,9 @@ describe('PrivateDeploymentService', () => {
       >;
       expect(auditInput.before).not.toHaveProperty('smtp.password');
       expect(auditInput.after).not.toHaveProperty('llmProxy.apiKey');
-      expect(auditInput.after).not.toHaveProperty('certificates.certificatePem');
+      expect(auditInput.after).not.toHaveProperty(
+        'certificates.certificatePem',
+      );
       expect(auditInput.after).not.toHaveProperty('certificates.privateKeyPem');
       expect(auditInput.after).not.toHaveProperty('license.licenseKey');
     });

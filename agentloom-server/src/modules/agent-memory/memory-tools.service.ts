@@ -99,7 +99,8 @@ const READ_MEMORY_SCHEMA = {
   properties: {
     uri: {
       type: 'string',
-      description: '要读取的记忆 URI，例如 core://profile/name 或 system://boot',
+      description:
+        '要读取的记忆 URI，例如 core://profile/name 或 system://boot',
     },
   },
   required: ['uri'],
@@ -282,7 +283,8 @@ export class MemoryToolsService {
     return [
       {
         name: 'read_memory',
-        description: 'Read memory content by URI, including boot/index/glossary resources.',
+        description:
+          'Read memory content by URI, including boot/index/glossary resources.',
         inputSchema: READ_MEMORY_SCHEMA,
         execute: (input) =>
           this.withTimeout(() =>
@@ -291,7 +293,8 @@ export class MemoryToolsService {
       },
       {
         name: 'create_memory',
-        description: 'Create a new memory node and bind it to the specified URI.',
+        description:
+          'Create a new memory node and bind it to the specified URI.',
         inputSchema: CREATE_MEMORY_SCHEMA,
         execute: (input) =>
           this.withTimeout(() =>
@@ -300,7 +303,8 @@ export class MemoryToolsService {
       },
       {
         name: 'update_memory',
-        description: 'Update an existing memory by appending content or patching old text.',
+        description:
+          'Update an existing memory by appending content or patching old text.',
         inputSchema: UPDATE_MEMORY_SCHEMA,
         execute: (input) =>
           this.withTimeout(() =>
@@ -309,7 +313,8 @@ export class MemoryToolsService {
       },
       {
         name: 'delete_memory',
-        description: 'Delete a memory path binding without deleting the underlying node content.',
+        description:
+          'Delete a memory path binding without deleting the underlying node content.',
         inputSchema: DELETE_MEMORY_SCHEMA,
         execute: (input) =>
           this.withTimeout(() =>
@@ -327,11 +332,15 @@ export class MemoryToolsService {
       },
       {
         name: 'manage_triggers',
-        description: 'Add or remove glossary keyword triggers for a memory URI.',
+        description:
+          'Add or remove glossary keyword triggers for a memory URI.',
         inputSchema: MANAGE_TRIGGERS_SCHEMA,
         execute: (input) =>
           this.withTimeout(() =>
-            this.executeManageTriggers(sessionIds, input as ManageTriggersInput),
+            this.executeManageTriggers(
+              sessionIds,
+              input as ManageTriggersInput,
+            ),
           ),
       },
       {
@@ -375,7 +384,10 @@ export class MemoryToolsService {
       };
     }
 
-    const results = await this.memoryFusionService.readFromAll(sessionIds, input.uri);
+    const results = await this.memoryFusionService.readFromAll(
+      sessionIds,
+      input.uri,
+    );
 
     return Promise.all(
       results.map(async (result) => ({
@@ -389,10 +401,14 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: CreateMemoryInput,
   ): Promise<unknown> {
-    const targetSession = await this.memoryFusionService.getWriteTarget(sessionIds);
+    const targetSession =
+      await this.memoryFusionService.getWriteTarget(sessionIds);
 
     try {
-      await this.pathResolverService.resolveUri(targetSession.memoryInstanceId, input.uri);
+      await this.pathResolverService.resolveUri(
+        targetSession.memoryInstanceId,
+        input.uri,
+      );
       throw new ConflictException(`Memory path ${input.uri} already exists`);
     } catch (error) {
       if (!(error instanceof NotFoundException)) {
@@ -436,7 +452,8 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: UpdateMemoryInput,
   ): Promise<unknown> {
-    const targetSession = await this.memoryFusionService.getWriteTarget(sessionIds);
+    const targetSession =
+      await this.memoryFusionService.getWriteTarget(sessionIds);
     const node = await this.pathResolverService.resolveUri(
       targetSession.memoryInstanceId,
       input.uri,
@@ -465,7 +482,8 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: DeleteMemoryInput,
   ): Promise<unknown> {
-    const targetSession = await this.memoryFusionService.getWriteTarget(sessionIds);
+    const targetSession =
+      await this.memoryFusionService.getWriteTarget(sessionIds);
     const deleted = await this.pathResolverService.deletePath(
       targetSession.memoryInstanceId,
       input.uri,
@@ -483,7 +501,8 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: AddAliasInput,
   ): Promise<unknown> {
-    const targetSession = await this.memoryFusionService.getWriteTarget(sessionIds);
+    const targetSession =
+      await this.memoryFusionService.getWriteTarget(sessionIds);
     const alias = await this.pathResolverService.addAlias(
       targetSession.memoryInstanceId,
       input.uri,
@@ -502,7 +521,8 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: ManageTriggersInput,
   ): Promise<unknown> {
-    const targetSession = await this.memoryFusionService.getWriteTarget(sessionIds);
+    const targetSession =
+      await this.memoryFusionService.getWriteTarget(sessionIds);
     const node = await this.pathResolverService.resolveUri(
       targetSession.memoryInstanceId,
       input.uri,
@@ -544,13 +564,17 @@ export class MemoryToolsService {
     sessionIds: string[],
     input: SearchMemoryInput,
   ): Promise<unknown> {
-    const results = await this.memoryFusionService.searchAll(sessionIds, input.query, {
-      ...(input.limit !== undefined ? { limit: input.limit } : {}),
-      ...(input.offset !== undefined ? { offset: input.offset } : {}),
-      ...(input.minDisclosure !== undefined
-        ? { minDisclosure: input.minDisclosure }
-        : {}),
-    });
+    const results = await this.memoryFusionService.searchAll(
+      sessionIds,
+      input.query,
+      {
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        ...(input.offset !== undefined ? { offset: input.offset } : {}),
+        ...(input.minDisclosure !== undefined
+          ? { minDisclosure: input.minDisclosure }
+          : {}),
+      },
+    );
 
     return Promise.all(
       results.map(async (result) => ({
@@ -566,16 +590,27 @@ export class MemoryToolsService {
     createdBy?: string,
   ): Promise<MemoryVersion> {
     if (!appendContent) {
-      throw new BadRequestException('appendContent is required for append mode');
+      throw new BadRequestException(
+        'appendContent is required for append mode',
+      );
     }
 
-    const latestVersion = await this.memoryVersionService.getLatestVersion(nodeId);
+    const latestVersion =
+      await this.memoryVersionService.getLatestVersion(nodeId);
 
     if (!latestVersion) {
-      return this.memoryVersionService.createVersion(nodeId, appendContent, createdBy);
+      return this.memoryVersionService.createVersion(
+        nodeId,
+        appendContent,
+        createdBy,
+      );
     }
 
-    return this.memoryVersionService.appendVersion(nodeId, appendContent, createdBy);
+    return this.memoryVersionService.appendVersion(
+      nodeId,
+      appendContent,
+      createdBy,
+    );
   }
 
   private async patchMemory(

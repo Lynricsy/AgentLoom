@@ -102,7 +102,9 @@ export const agentMessages = pgTable(
 
     role: messageRoleEnum('role').notNull(),
 
-    contentType: messageContentTypeEnum('content_type').notNull().default('text'),
+    contentType: messageContentTypeEnum('content_type')
+      .notNull()
+      .default('text'),
 
     content: text('content').notNull(),
 

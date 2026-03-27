@@ -49,33 +49,37 @@ export class ExecutionRecordService {
     }
 
     try {
-      await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-        const [step] = await tenantDb
-          .select()
-          .from(executionSteps)
-          .where(eq(executionSteps.id, payload.stepId))
-          .limit(1);
+      await runInTenantTransaction(
+        this.db,
+        payload.tenantId,
+        async (tenantDb) => {
+          const [step] = await tenantDb
+            .select()
+            .from(executionSteps)
+            .where(eq(executionSteps.id, payload.stepId))
+            .limit(1);
 
-        if (!step) {
-          this.logger.warn(
-            `Step ${payload.stepId} not found for telemetry recording`,
-          );
-          return;
-        }
+          if (!step) {
+            this.logger.warn(
+              `Step ${payload.stepId} not found for telemetry recording`,
+            );
+            return;
+          }
 
-        const telemetryData = this.extractStepTelemetry(step, payload);
-        const sanitizedData = sanitizeTelemetryData(telemetryData);
+          const telemetryData = this.extractStepTelemetry(step, payload);
+          const sanitizedData = sanitizeTelemetryData(telemetryData);
 
-        await tenantDb.insert(agentExecutionRecords).values({
-          tenantId: payload.tenantId,
-          executionId: payload.executionId,
-          stepId: payload.stepId,
-          nodeId: payload.nodeId,
-          recordType: 'step_telemetry',
-          telemetryData: sanitizedData,
-          summaryData: null,
-        });
-      });
+          await tenantDb.insert(agentExecutionRecords).values({
+            tenantId: payload.tenantId,
+            executionId: payload.executionId,
+            stepId: payload.stepId,
+            nodeId: payload.nodeId,
+            recordType: 'step_telemetry',
+            telemetryData: sanitizedData,
+            summaryData: null,
+          });
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to record step telemetry for step ${payload.stepId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -92,20 +96,24 @@ export class ExecutionRecordService {
     }
 
     try {
-      await runInTenantTransaction(this.db, payload.tenantId, async (tenantDb) => {
-        const summaryData = await this.buildExecutionSummary(
-          tenantDb,
-          payload.executionId,
-        );
+      await runInTenantTransaction(
+        this.db,
+        payload.tenantId,
+        async (tenantDb) => {
+          const summaryData = await this.buildExecutionSummary(
+            tenantDb,
+            payload.executionId,
+          );
 
-        await tenantDb.insert(agentExecutionRecords).values({
-          tenantId: payload.tenantId,
-          executionId: payload.executionId,
-          recordType: 'execution_summary',
-          telemetryData: null,
-          summaryData,
-        });
-      });
+          await tenantDb.insert(agentExecutionRecords).values({
+            tenantId: payload.tenantId,
+            executionId: payload.executionId,
+            recordType: 'execution_summary',
+            telemetryData: null,
+            summaryData,
+          });
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to record execution summary for ${payload.executionId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -195,7 +203,10 @@ export class ExecutionRecordService {
           step.nodeType,
           payload.errorDetail,
         ),
-        errorMessage: this.resolveErrorMessage(step.errorMessage, payload.errorDetail),
+        errorMessage: this.resolveErrorMessage(
+          step.errorMessage,
+          payload.errorDetail,
+        ),
         timestamp: new Date().toISOString(),
         nodeId: payload.nodeId,
         stepId: payload.stepId,
@@ -264,7 +275,9 @@ export class ExecutionRecordService {
       totalLatencyMs += data.llmInteractions?.latencyMs ?? 0;
     }
 
-    const completedSteps = steps.filter((step) => step.status === 'completed').length;
+    const completedSteps = steps.filter(
+      (step) => step.status === 'completed',
+    ).length;
     const failedSteps = steps.filter((step) => step.status === 'failed').length;
 
     const stepTimes = steps
@@ -303,7 +316,9 @@ export class ExecutionRecordService {
     }
 
     return toolCalls
-      .filter((toolCall): toolCall is ToolCallEvent => this.isToolCallEvent(toolCall))
+      .filter((toolCall): toolCall is ToolCallEvent =>
+        this.isToolCallEvent(toolCall),
+      )
       .map((toolCall) => ({
         toolName: toolCall.tool,
         input: toolCall.args,
@@ -335,8 +350,9 @@ export class ExecutionRecordService {
     }
 
     const startTransition =
-      toolCall.transitions.find((transition) => transition.to === 'in_progress') ??
-      toolCall.transitions[0];
+      toolCall.transitions.find(
+        (transition) => transition.to === 'in_progress',
+      ) ?? toolCall.transitions[0];
     const endTransition =
       [...toolCall.transitions]
         .reverse()
@@ -393,7 +409,11 @@ export class ExecutionRecordService {
       return 'timeout';
     }
 
-    if (/tool|mcp|sandbox|permission denied|permission request|extism/.test(signals)) {
+    if (
+      /tool|mcp|sandbox|permission denied|permission request|extism/.test(
+        signals,
+      )
+    ) {
       return 'tool_error';
     }
 
@@ -433,6 +453,8 @@ export class ExecutionRecordService {
   }
 
   private toIsoString(value: Date | string): string {
-    return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    return value instanceof Date
+      ? value.toISOString()
+      : new Date(value).toISOString();
   }
 }

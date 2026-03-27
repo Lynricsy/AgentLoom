@@ -18,7 +18,10 @@ import type { FastifyReply } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
+import {
+  CaptureAuditLog,
+  auditLogCaptureConfigs,
+} from '../evidence/audit-log.capture';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { ExecutionService } from './execution.service';
 import { CheckpointService } from './checkpoint.service';
@@ -292,7 +295,13 @@ export class ExecutionController {
   @ApiResponse({ status: 503, description: '沙箱不可用' })
   async ptyBufferDump(
     @Param('executionId', ParseUUIDPipe) executionId: string,
-    @Body() body: { sessionId: string; offset?: number; limit?: number; pattern?: string },
+    @Body()
+    body: {
+      sessionId: string;
+      offset?: number;
+      limit?: number;
+      pattern?: string;
+    },
     @CurrentTenant() tenantId: string,
   ) {
     try {

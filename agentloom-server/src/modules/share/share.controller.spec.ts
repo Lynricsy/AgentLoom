@@ -77,13 +77,9 @@ describe('ShareController', () => {
         'operator',
         'viewer',
       ]);
-      expect(Reflect.getMetadata(ROLES_KEY, incrementCopyCountHandler)).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-        'viewer',
-      ]);
+      expect(Reflect.getMetadata(ROLES_KEY, incrementCopyCountHandler)).toEqual(
+        ['owner', 'admin', 'creator', 'operator', 'viewer'],
+      );
     });
   });
 
@@ -181,7 +177,9 @@ describe('ShareController', () => {
 
       mocks.shareService.findSharesByWorkflow.mockResolvedValue(serviceResult);
 
-      await expect(controller.list(query, req as never)).resolves.toEqual(serviceResult);
+      await expect(controller.list(query, req as never)).resolves.toEqual(
+        serviceResult,
+      );
       expect(mocks.shareService.findSharesByWorkflow).toHaveBeenCalledWith(
         TENANT_ID,
         query,
@@ -220,8 +218,13 @@ describe('ShareController', () => {
 
       mocks.shareService.revokeShare.mockResolvedValue(undefined);
 
-      await expect(controller.revoke(SHARE_ID, req as never)).resolves.toBeUndefined();
-      expect(mocks.shareService.revokeShare).toHaveBeenCalledWith(TENANT_ID, SHARE_ID);
+      await expect(
+        controller.revoke(SHARE_ID, req as never),
+      ).resolves.toBeUndefined();
+      expect(mocks.shareService.revokeShare).toHaveBeenCalledWith(
+        TENANT_ID,
+        SHARE_ID,
+      );
     });
 
     it('缺少 tenant 信息时应抛出 TenantRequiredException', async () => {
@@ -231,9 +234,9 @@ describe('ShareController', () => {
         },
       };
 
-      await expect(controller.revoke(SHARE_ID, req as never)).rejects.toBeInstanceOf(
-        TenantRequiredException,
-      );
+      await expect(
+        controller.revoke(SHARE_ID, req as never),
+      ).rejects.toBeInstanceOf(TenantRequiredException);
 
       expect(mocks.shareService.revokeShare).not.toHaveBeenCalled();
     });
@@ -248,10 +251,14 @@ describe('ShareController', () => {
 
       mocks.shareService.incrementCopyCount.mockResolvedValue(serviceResult);
 
-      await expect(controller.incrementCopyCount(SHARE_TOKEN)).resolves.toEqual({
-        data: serviceResult,
-      });
-      expect(mocks.shareService.incrementCopyCount).toHaveBeenCalledWith(SHARE_TOKEN);
+      await expect(controller.incrementCopyCount(SHARE_TOKEN)).resolves.toEqual(
+        {
+          data: serviceResult,
+        },
+      );
+      expect(mocks.shareService.incrementCopyCount).toHaveBeenCalledWith(
+        SHARE_TOKEN,
+      );
     });
   });
 });

@@ -102,7 +102,9 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
   analyze(context: AnalysisContext): SuggestionCandidate | null {
     const totalTokens = context.stepTelemetries
       .map((record) => record.telemetryData.tokenUsage?.totalTokens)
-      .filter((value): value is number => typeof value === 'number' && value > 0);
+      .filter(
+        (value): value is number => typeof value === 'number' && value > 0,
+      );
 
     if (totalTokens.length === 0 || this.hasLlmError(context)) {
       return null;
@@ -124,7 +126,8 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
 
     const confidence = this.calculateConfidence(usageRatio);
     const costSavingPct = Math.round(
-      ((currentModel.pricePerMillionTokens - downgradeTarget.pricePerMillionTokens) /
+      ((currentModel.pricePerMillionTokens -
+        downgradeTarget.pricePerMillionTokens) /
         currentModel.pricePerMillionTokens) *
         100,
     );
@@ -152,12 +155,15 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
   private hasLlmError(context: AnalysisContext): boolean {
     return context.stepTelemetries.some((record) =>
       (record.telemetryData.errors ?? []).some(
-        (error) => error.type === 'llm_error' || /llm/i.test(error.message ?? ''),
+        (error) =>
+          error.type === 'llm_error' || /llm/i.test(error.message ?? ''),
       ),
     );
   }
 
-  private resolveCurrentModel(nodeConfig: Record<string, unknown>): ModelProfile {
+  private resolveCurrentModel(
+    nodeConfig: Record<string, unknown>,
+  ): ModelProfile {
     const rawModel = this.asRecord(nodeConfig.model);
     const modelId = this.readString(
       rawModel?.modelId,
@@ -176,8 +182,14 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
       nodeConfig.contextWindow,
       nodeConfig.maxContextTokens,
     );
-    const modelName = this.readOptionalString(rawModel?.modelName, nodeConfig.modelName);
-    const provider = this.readOptionalString(rawModel?.provider, nodeConfig.provider);
+    const modelName = this.readOptionalString(
+      rawModel?.modelName,
+      nodeConfig.modelName,
+    );
+    const provider = this.readOptionalString(
+      rawModel?.provider,
+      nodeConfig.provider,
+    );
 
     return {
       modelId,
@@ -185,7 +197,10 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
       provider: provider ?? knownProfile?.provider ?? 'unknown',
       capacity: capacity ?? knownProfile?.capacity ?? DEFAULT_MODEL_CAPACITY,
       pricePerMillionTokens:
-        this.readNumber(rawModel?.pricePerMillionTokens, nodeConfig.pricePerMillionTokens) ??
+        this.readNumber(
+          rawModel?.pricePerMillionTokens,
+          nodeConfig.pricePerMillionTokens,
+        ) ??
         knownProfile?.pricePerMillionTokens ??
         10,
     };
@@ -211,24 +226,31 @@ export class ModelDowngradeAnalyzer implements SuggestionAnalyzer {
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+    return typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : null;
   }
 
   private readString(...values: unknown[]): string {
-    const resolved = values.find((value): value is string => typeof value === 'string' && value.length > 0);
+    const resolved = values.find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
 
     return resolved ?? 'unknown-model';
   }
 
   private readOptionalString(...values: unknown[]): string | null {
-    const resolved = values.find((value): value is string => typeof value === 'string' && value.length > 0);
+    const resolved = values.find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
 
     return resolved ?? null;
   }
 
   private readNumber(...values: unknown[]): number | null {
     const resolved = values.find(
-      (value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0,
+      (value): value is number =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
     );
 
     return resolved ?? null;

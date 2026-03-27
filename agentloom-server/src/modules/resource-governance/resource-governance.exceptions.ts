@@ -6,9 +6,7 @@ import type {
   TenantQuotaMetricKey,
 } from './dto/resource-governance-response.dto';
 
-export type ResourceGovernanceDecision =
-  | 'allow'
-  | 'blocked';
+export type ResourceGovernanceDecision = 'allow' | 'blocked';
 
 export type ResourceGovernanceDecisionAction =
   | 'execution_start'

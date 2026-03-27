@@ -135,7 +135,9 @@ describe('PluginDeveloperKeyService', () => {
   let module: TestingModule;
   let service: PluginDeveloperKeyService;
   let db: MockDb;
-  let signatureService: ReturnType<typeof mocks.createMockPluginSignatureService>;
+  let signatureService: ReturnType<
+    typeof mocks.createMockPluginSignatureService
+  >;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -179,8 +181,12 @@ describe('PluginDeveloperKeyService', () => {
       );
 
       expect(result).toEqual(createdKey);
-      expect(signatureService.validatePublicKey).toHaveBeenCalledWith(PUBLIC_KEY);
-      expect(signatureService.computeKeyFingerprint).toHaveBeenCalledWith(PUBLIC_KEY);
+      expect(signatureService.validatePublicKey).toHaveBeenCalledWith(
+        PUBLIC_KEY,
+      );
+      expect(signatureService.computeKeyFingerprint).toHaveBeenCalledWith(
+        PUBLIC_KEY,
+      );
       expect(selectQuery.limit).toHaveBeenCalledWith(1);
       expect(db.insert).toHaveBeenCalledWith(pluginDeveloperKeys);
       expect(insertQuery.values).toHaveBeenCalledWith({
@@ -212,7 +218,9 @@ describe('PluginDeveloperKeyService', () => {
       const dataQuery = createSelectChainWithPagination([createdKey]);
       const countQuery = createSelectChain([{ total: 1 }]);
 
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
+      db.select
+        .mockReturnValueOnce(dataQuery.chain)
+        .mockReturnValueOnce(countQuery.chain);
 
       const result = await service.listKeys(ORG_ID, {
         status: 'active',
@@ -220,7 +228,9 @@ describe('PluginDeveloperKeyService', () => {
         pageSize: 10,
       });
 
-      expect(dataQuery.orderBy).toHaveBeenCalledWith(desc(pluginDeveloperKeys.createdAt));
+      expect(dataQuery.orderBy).toHaveBeenCalledWith(
+        desc(pluginDeveloperKeys.createdAt),
+      );
       expect(dataQuery.limit).toHaveBeenCalledWith(10);
       expect(dataQuery.offset).toHaveBeenCalledWith(10);
       expect(result).toEqual({
@@ -238,7 +248,9 @@ describe('PluginDeveloperKeyService', () => {
       const dataQuery = createSelectChainWithPagination<PluginDeveloperKey>([]);
       const countQuery = createSelectChain([{ total: 0 }]);
 
-      db.select.mockReturnValueOnce(dataQuery.chain).mockReturnValueOnce(countQuery.chain);
+      db.select
+        .mockReturnValueOnce(dataQuery.chain)
+        .mockReturnValueOnce(countQuery.chain);
 
       const result = await service.listKeys(ORG_ID);
 

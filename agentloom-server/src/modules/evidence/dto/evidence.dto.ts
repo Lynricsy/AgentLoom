@@ -348,8 +348,8 @@ export interface EvidenceChainNode {
   parentEvidenceId: string | null;
   createdAt: string;
   depth: number;
-   isEncrypted?: boolean;
-   encryptionMetadata?: EvidenceEncryptionMetadataDto | null;
+  isEncrypted?: boolean;
+  encryptionMetadata?: EvidenceEncryptionMetadataDto | null;
   sourceUnavailable?: boolean;
   sourceModified?: boolean;
   unavailableReason?: string;

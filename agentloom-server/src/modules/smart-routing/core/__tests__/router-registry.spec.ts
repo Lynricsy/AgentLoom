@@ -54,9 +54,9 @@ describe('RouterRegistry', () => {
     it('重复名称注册时抛出错误', () => {
       registry.register(new TestStrategy('quality-first'));
 
-      expect(() => registry.register(new TestStrategy('quality-first'))).toThrow(
-        'Strategy "quality-first" is already registered',
-      );
+      expect(() =>
+        registry.register(new TestStrategy('quality-first')),
+      ).toThrow('Strategy "quality-first" is already registered');
     });
   });
 

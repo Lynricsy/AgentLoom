@@ -270,7 +270,9 @@ describe('PluginEarningsService', () => {
 
   describe('updatePayoutStatus', () => {
     it('应更新 payout 状态并返回最新记录', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([createEarningWithPluginName()]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([createEarningWithPluginName()]),
+      );
       const updated = createEarningRecord({
         payoutStatus: 'completed',
         payoutReference: 'payout_123',
@@ -459,7 +461,9 @@ describe('PluginEarningsService', () => {
   describe('calculateSettlementShares', () => {
     it('应使用 fixed-scale 精确计算收益分成', () => {
       expect(
-        service.calculateSettlementShares(FixedScaleDecimal.from('25.00000000')),
+        service.calculateSettlementShares(
+          FixedScaleDecimal.from('25.00000000'),
+        ),
       ).toEqual({
         totalRevenue: '25.00000000',
         developerShare: '14.87500000',

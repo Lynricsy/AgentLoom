@@ -22,16 +22,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 @Injectable()
 export class AcpTerminalHandler {
-  constructor(
-    private readonly terminalProxyService: AcpTerminalProxyService,
-  ) {}
+  constructor(private readonly terminalProxyService: AcpTerminalProxyService) {}
 
   async handleCreate(
     params: unknown,
     state: AcpConnectionState,
   ): Promise<AcpTerminalCreateResult> {
     const normalizedParams = this.readCreateParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.terminalProxyService.createTerminal(
       {
@@ -50,7 +51,10 @@ export class AcpTerminalHandler {
     state: AcpConnectionState,
   ): Promise<AcpTerminalOutputResult> {
     const normalizedParams = this.readOutputParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.terminalProxyService.readTerminalOutput(
       {
@@ -67,7 +71,10 @@ export class AcpTerminalHandler {
     state: AcpConnectionState,
   ): Promise<AcpTerminalWaitForExitResult> {
     const normalizedParams = this.readWaitForExitParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.terminalProxyService.waitForTerminalExit(
       {
@@ -83,7 +90,10 @@ export class AcpTerminalHandler {
     state: AcpConnectionState,
   ): Promise<AcpTerminalKillResult> {
     const normalizedParams = this.readKillParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.terminalProxyService.killTerminal(
       {
@@ -98,7 +108,10 @@ export class AcpTerminalHandler {
     state: AcpConnectionState,
   ): Promise<AcpTerminalReleaseResult> {
     const normalizedParams = this.readReleaseParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.terminalProxyService.releaseTerminal(
       {
@@ -113,7 +126,10 @@ export class AcpTerminalHandler {
     sessionId: string,
   ): AcpTrackedSession {
     const trackedSession = state.sessions?.get(sessionId);
-    if (!trackedSession || trackedSession.tenantId !== state.authContext?.tenantId) {
+    if (
+      !trackedSession ||
+      trackedSession.tenantId !== state.authContext?.tenantId
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params', {
         sessionId,
         reason: 'Session not found',
@@ -214,7 +230,10 @@ export class AcpTerminalHandler {
       return undefined;
     }
 
-    if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    if (
+      !Array.isArray(value) ||
+      value.some((entry) => typeof entry !== 'string')
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 

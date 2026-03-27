@@ -150,8 +150,8 @@ describe('OrganizationAutonomyPolicyService', () => {
       transaction: vi.fn(),
     };
 
-    db.transaction.mockImplementation(async (callback: (tx: typeof db) => unknown) =>
-      callback(db),
+    db.transaction.mockImplementation(
+      async (callback: (tx: typeof db) => unknown) => callback(db),
     );
 
     auditLogService = {
@@ -451,7 +451,10 @@ describe('OrganizationAutonomyPolicyService', () => {
     });
 
     it('blocks pending autonomy_upgrade suggestions that exceed a tightened cap', async () => {
-      const updatedPolicy = makePolicy({ autonomyCap: 'RULE_BASED', version: 2 });
+      const updatedPolicy = makePolicy({
+        autonomyCap: 'RULE_BASED',
+        version: 2,
+      });
       const blockedSuggestionUpdate = createUpdateChain([
         {
           id: '019577a0-0000-7000-8000-000000000777',
@@ -468,7 +471,9 @@ describe('OrganizationAutonomyPolicyService', () => {
       ]);
 
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(
         makePolicy({ autonomyCap: 'LLM_SUGGEST', version: 1 }),
       );
@@ -512,7 +517,9 @@ describe('OrganizationAutonomyPolicyService', () => {
         OWNER_ID,
       );
 
-      expect(db.query.optimizationSuggestions.findMany).toHaveBeenCalledTimes(1);
+      expect(db.query.optimizationSuggestions.findMany).toHaveBeenCalledTimes(
+        1,
+      );
       expect(db.update).toHaveBeenCalledTimes(2);
       expect(blockedSuggestionUpdate.set).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -634,7 +641,9 @@ describe('OrganizationAutonomyPolicyService', () => {
   describe('previewAutonomyDowngrade', () => {
     it('returns downgrade details and records a preview audit event', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.select.mockReturnValue(
         createSelectChain([
           makeWorkflowDefinition({
@@ -694,7 +703,8 @@ describe('OrganizationAutonomyPolicyService', () => {
             replacementMode: 'RULE_BASED',
             source: 'legacy',
             reasonCode: 'mode_exceeds_cap',
-            message: '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+            message:
+              '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
           },
           {
             workflowId: 'wf-preview-1',
@@ -706,7 +716,8 @@ describe('OrganizationAutonomyPolicyService', () => {
             replacementMode: 'RULE_BASED',
             source: 'canonical',
             reasonCode: 'mode_exceeds_cap',
-            message: '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+            message:
+              '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
           },
         ],
       });
@@ -732,8 +743,14 @@ describe('OrganizationAutonomyPolicyService', () => {
 
   describe('confirmAutonomyDowngrade', () => {
     it('updates the policy, downgrades current workflow definitions, and records confirm/completed audit events', async () => {
-      const storedPolicy = makePolicy({ autonomyCap: 'RULE_BASED', version: 2 });
-      const updatedPolicy = makePolicy({ autonomyCap: 'MANUAL_CONFIRM', version: 3 });
+      const storedPolicy = makePolicy({
+        autonomyCap: 'RULE_BASED',
+        version: 2,
+      });
+      const updatedPolicy = makePolicy({
+        autonomyCap: 'MANUAL_CONFIRM',
+        version: 3,
+      });
       const policyUpdateChain = createUpdateChain([updatedPolicy]);
       const workflowUpdateChain = createUpdateChain([
         makeWorkflowDefinition({
@@ -743,8 +760,12 @@ describe('OrganizationAutonomyPolicyService', () => {
       ]);
 
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
-      db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(storedPolicy);
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(
+        storedPolicy,
+      );
       db.select
         .mockReturnValueOnce(
           createSelectChain([
@@ -869,7 +890,8 @@ describe('OrganizationAutonomyPolicyService', () => {
         }),
       });
 
-      const workflowUpdatePayload = workflowUpdateChain.set.mock.calls[0]?.[0] as {
+      const workflowUpdatePayload = workflowUpdateChain.set.mock
+        .calls[0]?.[0] as {
         nodes: Array<{ id: string; data: Record<string, unknown> }>;
       };
 
@@ -914,7 +936,9 @@ describe('OrganizationAutonomyPolicyService', () => {
           id: 'agent-3',
           data: expect.objectContaining({
             autonomyConfig: expect.objectContaining({ mode: 'MANUAL_CONFIRM' }),
-            settings: expect.objectContaining({ autonomyMode: 'MANUAL_CONFIRM' }),
+            settings: expect.objectContaining({
+              autonomyMode: 'MANUAL_CONFIRM',
+            }),
             config: expect.objectContaining({ autonomyMode: 'MANUAL_CONFIRM' }),
           }),
         }),
@@ -957,7 +981,9 @@ describe('OrganizationAutonomyPolicyService', () => {
       workflowUpdateChain.where.mockReturnValue(workflowUpdateChain);
 
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(
         makePolicy({ autonomyCap: 'RULE_BASED', version: 2 }),
       );

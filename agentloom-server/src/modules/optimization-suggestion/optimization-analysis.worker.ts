@@ -14,9 +14,7 @@ export interface OptimizationAnalysisJobData {
 export class OptimizationAnalysisWorker extends WorkerHost {
   private readonly logger = new Logger(OptimizationAnalysisWorker.name);
 
-  constructor(
-    private readonly analysisService: OptimizationAnalysisService,
-  ) {
+  constructor(private readonly analysisService: OptimizationAnalysisService) {
     super();
   }
 
@@ -35,7 +33,10 @@ export class OptimizationAnalysisWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<OptimizationAnalysisJobData> | undefined, error: Error): void {
+  onFailed(
+    job: Job<OptimizationAnalysisJobData> | undefined,
+    error: Error,
+  ): void {
     this.logger.error(
       `Optimization analysis failed: ${JSON.stringify({
         jobId: job?.id ?? null,

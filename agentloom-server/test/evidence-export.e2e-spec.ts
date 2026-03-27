@@ -461,8 +461,7 @@ describe('EvidenceExport E2E', () => {
       options.storageKey === undefined
         ? buildEvidenceExportStorageKey(options.tenantId, exportId)
         : options.storageKey;
-    const expiresAt =
-      options.expiresAt ?? new Date('2026-03-20T00:00:00.000Z');
+    const expiresAt = options.expiresAt ?? new Date('2026-03-20T00:00:00.000Z');
     const fileName = buildEvidenceExportArchiveFileName(exportId);
 
     await ctx.adminSql`
@@ -525,7 +524,9 @@ describe('EvidenceExport E2E', () => {
     `;
   }
 
-  async function fetchExportJobRow(exportId: string): Promise<ExportJobRow | null> {
+  async function fetchExportJobRow(
+    exportId: string,
+  ): Promise<ExportJobRow | null> {
     const [row] = await ctx.adminSql<ExportJobRow[]>`
       SELECT id, status, storage_key
       FROM evidence_export_jobs
@@ -553,7 +554,9 @@ describe('EvidenceExport E2E', () => {
     expect(response.body.data.status).toBe('queued');
     expect(response.body.data.matchedExecutionCount).toBe(1);
     expect(response.body.data.filters.workflowId).toBe(execution.workflowId);
-    expect(response.body.data.filters.executionIds).toEqual([execution.executionId]);
+    expect(response.body.data.filters.executionIds).toEqual([
+      execution.executionId,
+    ]);
 
     expect(exportQueueMock.add).toHaveBeenCalledTimes(1);
     expect(exportQueueMock.add).toHaveBeenCalledWith(

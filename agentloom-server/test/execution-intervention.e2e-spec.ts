@@ -14,7 +14,10 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { Test } from '@nestjs/testing';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import * as crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import request from 'supertest';

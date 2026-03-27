@@ -32,7 +32,9 @@ function createCandidate(
   };
 }
 
-function createContext(overrides: Partial<RoutingContext> = {}): RoutingContext {
+function createContext(
+  overrides: Partial<RoutingContext> = {},
+): RoutingContext {
   return {
     inputTokenCount: 4_000,
     tenantId: 'tenant-1',
@@ -86,7 +88,9 @@ describe('WasmPluginRouter', () => {
     });
 
     it('configSchema 校验 pluginId 必填', () => {
-      const valid = router.configSchema.safeParse({ pluginId: 'com.example.router' });
+      const valid = router.configSchema.safeParse({
+        pluginId: 'com.example.router',
+      });
       expect(valid.success).toBe(true);
 
       const invalid = router.configSchema.safeParse({});
@@ -104,7 +108,10 @@ describe('WasmPluginRouter', () => {
 
   describe('routeSingle - 成功路径', () => {
     it('将候选和上下文序列化为 JSON 传入 PluginSandboxService', async () => {
-      const candidates = [createCandidate('model-a'), createCandidate('model-b')];
+      const candidates = [
+        createCandidate('model-a'),
+        createCandidate('model-b'),
+      ];
       const context = createContext();
 
       executeMock.mockResolvedValueOnce({
@@ -174,7 +181,8 @@ describe('WasmPluginRouter', () => {
       await router.routeSingle(candidates, context);
 
       expect(executeMock).toHaveBeenCalledTimes(1);
-      const [wasmBuf, fnName, inputArg, sandboxConfig, pId] = executeMock.mock.calls[0];
+      const [wasmBuf, fnName, inputArg, sandboxConfig, pId] =
+        executeMock.mock.calls[0];
       expect(wasmBuf).toBe(wasmBuffer);
       expect(fnName).toBe('route');
       expect(pId).toBe(pluginId);
@@ -237,14 +245,17 @@ describe('WasmPluginRouter', () => {
 
   describe('routeSingle - 错误回退', () => {
     it('WASM 执行失败时回退到随机候选', async () => {
-      const candidates = [createCandidate('model-a'), createCandidate('model-b')];
+      const candidates = [
+        createCandidate('model-a'),
+        createCandidate('model-b'),
+      ];
       executeMock.mockRejectedValueOnce(new Error('WASM execution crashed'));
 
       const decision = await router.routeSingle(candidates, createContext());
 
-      expect(
-        candidates.some((c) => c.id === decision.selectedModelId),
-      ).toBe(true);
+      expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+        true,
+      );
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
       expect(decision.scores).toHaveLength(candidates.length);
     });
@@ -274,12 +285,15 @@ describe('WasmPluginRouter', () => {
         executionTimeMs: 10,
       });
 
-      const candidates = [createCandidate('model-a'), createCandidate('model-b')];
+      const candidates = [
+        createCandidate('model-a'),
+        createCandidate('model-b'),
+      ];
       const decision = await router.routeSingle(candidates, createContext());
 
-      expect(
-        candidates.some((c) => c.id === decision.selectedModelId),
-      ).toBe(true);
+      expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+        true,
+      );
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
     });
 

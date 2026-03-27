@@ -118,31 +118,47 @@ describe('AcpFilesystemProxyService', () => {
       createState({ requestClient }),
     );
 
-    expect(requestClient).toHaveBeenNthCalledWith(1, 'session/request_permission', {
-      sessionId: 'session-001',
-      toolCall: {
-        toolCallId: expect.any(String),
-        title: 'filesystem.write',
-        kind: 'tool_call',
-        status: 'awaiting_permission',
-        content: [
-          {
-            type: 'text',
-            text: '写入文件需要主人确认：/workspace/demo/notes/todo.txt',
+    expect(requestClient).toHaveBeenNthCalledWith(
+      1,
+      'session/request_permission',
+      {
+        sessionId: 'session-001',
+        toolCall: {
+          toolCallId: expect.any(String),
+          title: 'filesystem.write',
+          kind: 'tool_call',
+          status: 'awaiting_permission',
+          content: [
+            {
+              type: 'text',
+              text: '写入文件需要主人确认：/workspace/demo/notes/todo.txt',
+            },
+          ],
+          permissionRequest: {
+            description: '写入文件需要主人确认：/workspace/demo/notes/todo.txt',
+            resourcePaths: ['/workspace/demo/notes/todo.txt'],
           },
-        ],
-        permissionRequest: {
-          description: '写入文件需要主人确认：/workspace/demo/notes/todo.txt',
-          resourcePaths: ['/workspace/demo/notes/todo.txt'],
         },
+        options: expect.arrayContaining([
+          expect.objectContaining({
+            optionId: 'allow-once',
+            kind: 'allow_once',
+          }),
+          expect.objectContaining({
+            optionId: 'allow-always',
+            kind: 'allow_always',
+          }),
+          expect.objectContaining({
+            optionId: 'reject-once',
+            kind: 'reject_once',
+          }),
+          expect.objectContaining({
+            optionId: 'reject-always',
+            kind: 'reject_always',
+          }),
+        ]),
       },
-      options: expect.arrayContaining([
-        expect.objectContaining({ optionId: 'allow-once', kind: 'allow_once' }),
-        expect.objectContaining({ optionId: 'allow-always', kind: 'allow_always' }),
-        expect.objectContaining({ optionId: 'reject-once', kind: 'reject_once' }),
-        expect.objectContaining({ optionId: 'reject-always', kind: 'reject_always' }),
-      ]),
-    });
+    );
     expect(requestClient).toHaveBeenNthCalledWith(2, 'fs/write_text_file', {
       sessionId: 'session-001',
       path: '/workspace/demo/notes/todo.txt',
@@ -344,11 +360,13 @@ describe('AcpFilesystemProxyService', () => {
     );
 
     expect(requestClient).toHaveBeenCalledTimes(1);
-    expect(sandboxFilesystemService.validateWriteTextFile).toHaveBeenCalledWith({
-      trackedSession,
-      path: 'notes/todo.txt',
-      content: 'sandbox text',
-    });
+    expect(sandboxFilesystemService.validateWriteTextFile).toHaveBeenCalledWith(
+      {
+        trackedSession,
+        path: 'notes/todo.txt',
+        content: 'sandbox text',
+      },
+    );
     expect(requestClient).toHaveBeenCalledWith('session/request_permission', {
       sessionId: 'session-001',
       toolCall: {
@@ -381,18 +399,17 @@ describe('AcpFilesystemProxyService', () => {
 
   it('应在 server sandbox write 目标越界时先 fail-closed，且不进入权限确认', async () => {
     const requestClient = vi.fn();
-    const { service, sandboxFilesystemService, auditLogService } = createService();
+    const { service, sandboxFilesystemService, auditLogService } =
+      createService();
     const trackedSession = createTrackedSession({
       serverSandbox: {
         executionId: '019391d4-e000-7000-0000-000000000005',
       },
     });
     sandboxFilesystemService.validateWriteTextFile.mockRejectedValue(
-      new AcpJsonRpcError(
-        -32004,
-        'ACP server sandbox path escapes workspace',
-        { reason: 'sandbox_path_escaped_workspace' },
-      ),
+      new AcpJsonRpcError(-32004, 'ACP server sandbox path escapes workspace', {
+        reason: 'sandbox_path_escaped_workspace',
+      }),
     );
 
     await expect(
@@ -424,13 +441,12 @@ describe('AcpFilesystemProxyService', () => {
   });
 
   it('应在沙箱文件服务拒绝越界读取时透传稳定错误并写入正式审计', async () => {
-    const { service, sandboxFilesystemService, auditLogService } = createService();
+    const { service, sandboxFilesystemService, auditLogService } =
+      createService();
     sandboxFilesystemService.readTextFile.mockRejectedValue(
-      new AcpJsonRpcError(
-        -32004,
-        'ACP server sandbox path escapes workspace',
-        { reason: 'sandbox_path_escaped_workspace' },
-      ),
+      new AcpJsonRpcError(-32004, 'ACP server sandbox path escapes workspace', {
+        reason: 'sandbox_path_escaped_workspace',
+      }),
     );
 
     await expect(

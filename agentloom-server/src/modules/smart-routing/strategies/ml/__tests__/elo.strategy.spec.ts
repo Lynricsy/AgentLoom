@@ -29,7 +29,9 @@ function createCandidate(
   };
 }
 
-function createContext(overrides: Partial<RoutingContext> = {}): RoutingContext {
+function createContext(
+  overrides: Partial<RoutingContext> = {},
+): RoutingContext {
   return {
     inputTokenCount: 1_500,
     tenantId: 'tenant-1',

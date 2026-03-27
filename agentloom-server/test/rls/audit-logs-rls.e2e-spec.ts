@@ -219,8 +219,10 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
       metadata: { source: 'admin-seed' },
     });
 
-    const rows = await withTenantContext(context.db, fixture.tenantOneId, (tx) =>
-      tx.select({ id: auditLogs.id }).from(auditLogs),
+    const rows = await withTenantContext(
+      context.db,
+      fixture.tenantOneId,
+      (tx) => tx.select({ id: auditLogs.id }).from(auditLogs),
     );
 
     expect(rows).toEqual([]);
@@ -273,7 +275,9 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
       thrown = error;
     }
 
-    expect(getErrorText(thrown)).toMatch(/permission denied|row-level security/i);
+    expect(getErrorText(thrown)).toMatch(
+      /permission denied|row-level security/i,
+    );
 
     const [row] = await context.adminSql`
       SELECT summary FROM audit_logs WHERE id = ${fixture.hotLogId}::uuid
@@ -308,7 +312,9 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
       thrown = error;
     }
 
-    expect(getErrorText(thrown)).toMatch(/permission denied|row-level security/i);
+    expect(getErrorText(thrown)).toMatch(
+      /permission denied|row-level security/i,
+    );
 
     const [row] = await context.adminSql`
       SELECT id FROM audit_logs WHERE id = ${fixture.hotLogId}::uuid
@@ -344,11 +350,17 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
     expect(insertedRows).toHaveLength(1);
     expect(insertedRows[0]?.id).toBe(fixture.archiveLogId);
 
-    const rows = await withTenantContext(context.db, fixture.tenantOneId, (tx) =>
-      tx
-        .select({ id: auditLogArchives.id, summary: auditLogArchives.summary })
-        .from(auditLogArchives)
-        .where(eq(auditLogArchives.id, fixture.archiveLogId)),
+    const rows = await withTenantContext(
+      context.db,
+      fixture.tenantOneId,
+      (tx) =>
+        tx
+          .select({
+            id: auditLogArchives.id,
+            summary: auditLogArchives.summary,
+          })
+          .from(auditLogArchives)
+          .where(eq(auditLogArchives.id, fixture.archiveLogId)),
     );
 
     expect(rows).toEqual([
@@ -386,7 +398,9 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
       thrown = error;
     }
 
-    expect(getErrorText(thrown)).toMatch(/permission denied|row-level security/i);
+    expect(getErrorText(thrown)).toMatch(
+      /permission denied|row-level security/i,
+    );
 
     const [row] = await context.adminSql`
       SELECT summary FROM audit_log_archives WHERE id = ${fixture.archiveLogId}::uuid
@@ -421,7 +435,9 @@ describe('AuditLogs RLS append-only isolation (testcontainers)', () => {
       thrown = error;
     }
 
-    expect(getErrorText(thrown)).toMatch(/permission denied|row-level security/i);
+    expect(getErrorText(thrown)).toMatch(
+      /permission denied|row-level security/i,
+    );
 
     const [row] = await context.adminSql`
       SELECT id FROM audit_log_archives WHERE id = ${fixture.archiveLogId}::uuid

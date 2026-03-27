@@ -100,9 +100,11 @@ describe('AuditLogController', () => {
   it('should return detail responses as { data }', async () => {
     service.findById.mockResolvedValue({ id: AUDIT_LOG_ID, summary: 'detail' });
 
-    await expect(controller.findById(TENANT_ID, AUDIT_LOG_ID)).resolves.toEqual({
-      data: { id: AUDIT_LOG_ID, summary: 'detail' },
-    });
+    await expect(controller.findById(TENANT_ID, AUDIT_LOG_ID)).resolves.toEqual(
+      {
+        data: { id: AUDIT_LOG_ID, summary: 'detail' },
+      },
+    );
   });
 
   it('should return resource sequence responses as { data }', async () => {

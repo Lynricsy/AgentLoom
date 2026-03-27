@@ -291,9 +291,7 @@ describe('ShareService', () => {
       const listChain = createPaginatedSelectChain(shares);
       const countChain = createSelectChain([{ count: 7 }]);
 
-      db.select
-        .mockReturnValueOnce(listChain)
-        .mockReturnValueOnce(countChain);
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
 
       const result = await service.findSharesByWorkflow(TENANT_ID, {
         page: 2,
@@ -357,7 +355,9 @@ describe('ShareService', () => {
       const updateChain = createUpdateChain([{ id: SHARE_ID }]);
       db.update.mockReturnValueOnce(updateChain);
 
-      await expect(service.revokeShare(TENANT_ID, SHARE_ID)).resolves.toBeUndefined();
+      await expect(
+        service.revokeShare(TENANT_ID, SHARE_ID),
+      ).resolves.toBeUndefined();
 
       expect(updateChain.set).toHaveBeenCalledWith({
         isRevoked: true,
@@ -368,9 +368,9 @@ describe('ShareService', () => {
     it('未找到分享链接时应抛出 ShareNotFoundException', async () => {
       db.update.mockReturnValueOnce(createUpdateChain([]));
 
-      await expect(service.revokeShare(TENANT_ID, SHARE_ID)).rejects.toBeInstanceOf(
-        ShareNotFoundException,
-      );
+      await expect(
+        service.revokeShare(TENANT_ID, SHARE_ID),
+      ).rejects.toBeInstanceOf(ShareNotFoundException);
     });
   });
 
@@ -549,9 +549,9 @@ describe('ShareService', () => {
     it('分享链接不存在时应抛出 ShareNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChainWithJoins([]));
 
-      await expect(service.incrementCopyCount(SHARE_TOKEN)).rejects.toBeInstanceOf(
-        ShareNotFoundException,
-      );
+      await expect(
+        service.incrementCopyCount(SHARE_TOKEN),
+      ).rejects.toBeInstanceOf(ShareNotFoundException);
     });
   });
 

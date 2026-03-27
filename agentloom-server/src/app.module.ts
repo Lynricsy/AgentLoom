@@ -68,9 +68,7 @@ function createThrottlerOptions(configService: ConfigService) {
   throttlerRedisClient = new Redis(configService.get<string>('APP_REDIS_URL')!);
 
   return {
-    throttlers: [
-      { name: 'default', ttl: 60_000, limit: 100 },
-    ],
+    throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
     storage: new ThrottlerStorageRedisService(throttlerRedisClient),
   };
 }

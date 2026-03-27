@@ -5,7 +5,10 @@ import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../../agent/ports/agent-runtime.port';
-import type { AgentEvent, StopReason } from '../../agent/types/agent-event.types';
+import type {
+  AgentEvent,
+  StopReason,
+} from '../../agent/types/agent-event.types';
 import { InProcessAgentAdapter } from '../../agent/in-process-agent.adapter';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import type { ReplayableAgentEvent } from '../../agent/types/conversation-history.types';
@@ -20,7 +23,10 @@ import { SessionPersistenceService } from '../../execution/services/session-pers
 export class AcpTestRuntime implements IAgentRuntime {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider>();
+  private readonly sessionToolProviders = new Map<
+    string,
+    SessionToolProvider
+  >();
   private readonly pendingPermissions = new Map<
     string,
     {

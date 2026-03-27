@@ -117,7 +117,11 @@ describe('EvidenceController', () => {
       cached: true,
     });
 
-    await controller.getEvidenceGraph(TENANT_ID, EXECUTION_ID, mockRes as never);
+    await controller.getEvidenceGraph(
+      TENANT_ID,
+      EXECUTION_ID,
+      mockRes as never,
+    );
 
     expect(mockRes.header).toHaveBeenCalledWith('X-Cache-Hit', 'true');
   });

@@ -91,10 +91,17 @@ function createSubmitDto(
   });
 }
 
-function createPublicWorkflowListingRow(overrides: Record<string, unknown> = {}) {
+function createPublicWorkflowListingRow(
+  overrides: Record<string, unknown> = {},
+) {
   const snapshot = {
     nodes: [
-      { id: 'public-node-1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
+      {
+        id: 'public-node-1',
+        type: 'agent',
+        position: { x: 0, y: 0 },
+        data: {},
+      },
     ],
     edges: [],
     viewport: null,
@@ -385,7 +392,9 @@ describe('MarketplaceService', () => {
         title: '重新提交后的标题',
         tags: ['refined', 'updated'],
       });
-      const existingListing = createMarketplaceListing({ status: 'review_failed' });
+      const existingListing = createMarketplaceListing({
+        status: 'review_failed',
+      });
       const reviewResult = createReviewResult({ outcome: 'passed' });
       const updatePending = createUpdateWhereChain(undefined);
       const updatedListing = createMarketplaceListing({
@@ -463,7 +472,11 @@ describe('MarketplaceService', () => {
       db.select.mockReturnValue(createSelectChain([listedListing]));
       db.update.mockReturnValue(createUpdateChain([updatedListing]));
 
-      const result = await service.unlist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID);
+      const result = await service.unlist(
+        TENANT_ID,
+        WORKFLOW_LISTING_ID,
+        USER_ID,
+      );
 
       expect(result).toEqual(updatedListing);
     });
@@ -490,7 +503,11 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(createUpdateChain([updatedListing]));
       reviewService.review.mockResolvedValue(reviewResult);
 
-      const result = await service.relist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID);
+      const result = await service.relist(
+        TENANT_ID,
+        WORKFLOW_LISTING_ID,
+        USER_ID,
+      );
 
       expect(reviewService.review).toHaveBeenCalledWith(TENANT_ID, VERSION_ID, {
         title: unlistedListing.title,
@@ -536,7 +553,9 @@ describe('MarketplaceService', () => {
         pluginVersion: null,
         pluginAuthor: null,
       };
-      const selectData = createSelectChainWithTripleLeftJoinPagination([listItem]);
+      const selectData = createSelectChainWithTripleLeftJoinPagination([
+        listItem,
+      ]);
       const selectCount = createSelectChain([{ count: 21 }]);
 
       db.select
@@ -567,9 +586,9 @@ describe('MarketplaceService', () => {
       const listing = createMarketplaceListing({ status: 'listed' });
       db.select.mockReturnValue(createSelectChain([listing]));
 
-      await expect(service.findById(TENANT_ID, WORKFLOW_LISTING_ID)).resolves.toEqual(
-        listing,
-      );
+      await expect(
+        service.findById(TENANT_ID, WORKFLOW_LISTING_ID),
+      ).resolves.toEqual(listing);
     });
 
     it('listing 不存在时应抛出 404', async () => {
@@ -664,8 +683,12 @@ describe('MarketplaceService', () => {
       const reviewRow = createReviewRow();
 
       db.select
-        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([workflowRow]))
-        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([reviewRow]));
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([workflowRow]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithSingleLeftJoinOrdered([reviewRow]),
+        );
 
       const result = await service.findPublicById(WORKFLOW_LISTING_ID);
 
@@ -707,8 +730,12 @@ describe('MarketplaceService', () => {
       const reviewRow = createReviewRow({ rating: 4, content: '插件很稳定' });
 
       db.select
-        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
-        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([reviewRow]));
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([pluginRow]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithSingleLeftJoinOrdered([reviewRow]),
+        );
 
       const result = await service.findPublicById(PLUGIN_LISTING_ID);
 
@@ -803,8 +830,12 @@ describe('MarketplaceService', () => {
       const updateChain = createUpdateWhereChain(undefined);
 
       db.select
-        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
-        .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([pluginSourceRow]));
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([pluginRow]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([pluginSourceRow]),
+        );
       db.update.mockReturnValueOnce(updateChain);
       pluginService.cloneMarketplacePlugin.mockResolvedValue(createdPlugin);
 
@@ -847,7 +878,9 @@ describe('MarketplaceService', () => {
       });
 
       db.select
-        .mockReturnValueOnce(createSelectChainWithTripleLeftJoinWhere([pluginRow]))
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([pluginRow]),
+        )
         .mockReturnValueOnce(
           createSelectChainWithInnerJoinWhereLimit([inactivePluginSourceRow]),
         );

@@ -4,10 +4,11 @@ import { and, desc, eq, getTableColumns, ilike, or, sql } from 'drizzle-orm';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import type { MarketplaceListing, MarketplaceReviewResult } from '../../database/schema';
-import {
-  PluginInactiveException,
-} from '../plugin/plugin.exceptions';
+import type {
+  MarketplaceListing,
+  MarketplaceReviewResult,
+} from '../../database/schema';
+import { PluginInactiveException } from '../plugin/plugin.exceptions';
 import { PluginService } from '../plugin/plugin.service';
 import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 import type {
@@ -81,8 +82,7 @@ export interface PublicMarketplaceListingsResult {
   };
 }
 
-export interface PublicMarketplaceWorkflowListingDetail
-  extends PublicMarketplaceListingItem {
+export interface PublicMarketplaceWorkflowListingDetail extends PublicMarketplaceListingItem {
   listingType: 'workflow';
   plugin: null;
   definition: {
@@ -93,8 +93,7 @@ export interface PublicMarketplaceWorkflowListingDetail
   reviews: MarketplacePublicReviewItem[];
 }
 
-export interface PublicMarketplacePluginListingDetail
-  extends PublicMarketplaceListingItem {
+export interface PublicMarketplacePluginListingDetail extends PublicMarketplaceListingItem {
   listingType: 'plugin';
   plugin: MarketplacePublicPluginDescriptor;
   reviews: MarketplacePublicReviewItem[];
@@ -219,8 +218,12 @@ export class MarketplaceService {
     tenantId: string,
     userId: string,
     dto: SubmitMarketplaceListingDto,
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
-    const { workflowVersionId, title, summary, tags, coverImageUrl, category } = dto;
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
+    const { workflowVersionId, title, summary, tags, coverImageUrl, category } =
+      dto;
 
     const existing = await this.findByVersionId(workflowVersionId);
 
@@ -307,7 +310,10 @@ export class MarketplaceService {
     tenantId: string,
     listingId: string,
     userId: string,
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     const listing = await this.findByIdOrThrow(tenantId, listingId);
 
     if (listing.status !== 'unlisted') {
@@ -374,9 +380,7 @@ export class MarketplaceService {
     const { page, pageSize, status, listingType } = parsedQuery;
     const offset = (page - 1) * pageSize;
 
-    const conditions = [
-      eq(schema.marketplaceListings.tenantId, tenantId),
-    ];
+    const conditions = [eq(schema.marketplaceListings.tenantId, tenantId)];
 
     if (status) {
       conditions.push(eq(schema.marketplaceListings.status, status));
@@ -524,8 +528,9 @@ export class MarketplaceService {
         pluginAuthor: schema.plugins.author,
         pluginDescription: schema.plugins.description,
         pluginLicense: schema.plugins.license,
-        authorDisplayName:
-          sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        authorDisplayName: sql<
+          string | null
+        >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
       })
       .from(schema.marketplaceListings)
       .leftJoin(
@@ -753,7 +758,10 @@ export class MarketplaceService {
       coverImageUrl?: string;
       category?: MarketplaceListing['category'];
     },
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     const [created] = await this.tenantDb
       .insert(schema.marketplaceListings)
       .values({
@@ -770,11 +778,15 @@ export class MarketplaceService {
       })
       .returning();
 
-    const reviewResult = await this.reviewService.review(tenantId, params.workflowVersionId, {
-      title: params.title,
-      summary: params.summary,
-      tags: params.tags,
-    });
+    const reviewResult = await this.reviewService.review(
+      tenantId,
+      params.workflowVersionId,
+      {
+        title: params.title,
+        summary: params.summary,
+        tags: params.tags,
+      },
+    );
 
     const newStatus =
       reviewResult.outcome === 'passed' ? 'listed' : 'review_failed';
@@ -816,7 +828,10 @@ export class MarketplaceService {
       category?: MarketplaceListing['category'];
       workflowVersionId: string;
     },
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     await this.tenantDb
       .update(schema.marketplaceListings)
       .set({
@@ -945,8 +960,9 @@ export class MarketplaceService {
         pluginAuthor: schema.plugins.author,
         pluginDescription: schema.plugins.description,
         pluginLicense: schema.plugins.license,
-        authorDisplayName:
-          sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        authorDisplayName: sql<
+          string | null
+        >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
         snapshot: schema.workflowVersions.snapshot,
       })
       .from(schema.marketplaceListings)
@@ -1034,8 +1050,9 @@ export class MarketplaceService {
         rating: schema.marketplaceReviews.rating,
         content: schema.marketplaceReviews.content,
         createdAt: schema.marketplaceReviews.createdAt,
-        authorDisplayName:
-          sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        authorDisplayName: sql<
+          string | null
+        >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
       })
       .from(schema.marketplaceReviews)
       .leftJoin(

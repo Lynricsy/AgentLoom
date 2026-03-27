@@ -2,19 +2,31 @@ import { Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { agentVersions, type AgentVersionSnapshot } from '../../database/schema/agent-definitions.schema';
+import {
+  agentVersions,
+  type AgentVersionSnapshot,
+} from '../../database/schema/agent-definitions.schema';
 import type { DrizzleDB } from '../../database/database.module';
 import type { ExecutionStep, SandboxConfig } from '../../database/schema';
 import type { IAgentAdapterFactory as RuntimeAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
-import type { DecisionEvent, StopReason } from '../agent/types/agent-event.types';
+import type {
+  DecisionEvent,
+  StopReason,
+} from '../agent/types/agent-event.types';
 import {
   ContentBlockSchema,
   type ContentBlock,
 } from '../agent/types/content-block.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
-import type { AgentRuntimeConfig, AgentSubAgentRef } from '../agent-definition/agent-runtime-config.interface';
-import { resolveSubAgent, MAX_SUB_AGENT_DEPTH } from './node-handlers/sub-agent.handler';
+import type {
+  AgentRuntimeConfig,
+  AgentSubAgentRef,
+} from '../agent-definition/agent-runtime-config.interface';
+import {
+  resolveSubAgent,
+  MAX_SUB_AGENT_DEPTH,
+} from './node-handlers/sub-agent.handler';
 import { EventBridgeService } from './services/event-bridge.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 
@@ -210,9 +222,10 @@ export class WorkflowAgentAdapter {
     agentVersionId?: string;
     versionSnapshot?: AgentVersionSnapshot;
   }): Promise<CompiledWorkflowAgentDefinition> {
-    const definition = await this.dependencies.agentDefinitionService.findDetailById(
-      params.agentDefinitionId,
-    );
+    const definition =
+      await this.dependencies.agentDefinitionService.findDetailById(
+        params.agentDefinitionId,
+      );
 
     const snapshot =
       params.versionSnapshot ??
@@ -228,10 +241,11 @@ export class WorkflowAgentAdapter {
       );
     }
 
-    const runtimeConfig = this.dependencies.agentDefinitionService.buildRuntimeConfigFromNodes(
-      snapshot.nodes,
-      snapshot.edges,
-    );
+    const runtimeConfig =
+      this.dependencies.agentDefinitionService.buildRuntimeConfigFromNodes(
+        snapshot.nodes,
+        snapshot.edges,
+      );
 
     runtimeConfig.sandboxConfig =
       this.config.sandboxConfig ??
@@ -241,7 +255,8 @@ export class WorkflowAgentAdapter {
 
     return {
       runtimeConfig,
-      systemPrompt: snapshot.systemPrompt ?? definition.systemPrompt ?? undefined,
+      systemPrompt:
+        snapshot.systemPrompt ?? definition.systemPrompt ?? undefined,
     };
   }
 
@@ -338,7 +353,9 @@ export class WorkflowAgentAdapter {
         );
       }
 
-      const nestedAdapter = this.createNestedAdapter(resolved.agentDefinition.id);
+      const nestedAdapter = this.createNestedAdapter(
+        resolved.agentDefinition.id,
+      );
       const nestedResult = await nestedAdapter.execute({
         executionId: params.executionId,
         step: params.step,
@@ -372,7 +389,9 @@ export class WorkflowAgentAdapter {
       ...(event.autonomyMode ? { autonomyMode: event.autonomyMode } : {}),
       ...(event.selectedAction ? { selectedAction: event.selectedAction } : {}),
       ...(event.alternatives ? { alternatives: [...event.alternatives] } : {}),
-      ...(event.confidence !== undefined ? { confidence: event.confidence } : {}),
+      ...(event.confidence !== undefined
+        ? { confidence: event.confidence }
+        : {}),
       ...(event.rationale ? { rationale: event.rationale } : {}),
     };
   }
@@ -408,7 +427,9 @@ export class WorkflowAgentAdapter {
     }
 
     if (this.isRecord(value)) {
-      return Object.values(value).flatMap((item) => this.collectModalBlocks(item));
+      return Object.values(value).flatMap((item) =>
+        this.collectModalBlocks(item),
+      );
     }
 
     return [];
@@ -437,7 +458,10 @@ export class WorkflowAgentAdapter {
 
     if (this.isRecord(value)) {
       return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, this.summarizeForText(item)]),
+        Object.entries(value).map(([key, item]) => [
+          key,
+          this.summarizeForText(item),
+        ]),
       );
     }
 

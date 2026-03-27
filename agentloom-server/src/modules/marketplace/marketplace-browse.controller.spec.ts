@@ -24,9 +24,9 @@ describe('MarketplaceBrowseController', () => {
 
   describe('decorators', () => {
     it('应在控制器类上声明 @Public()', () => {
-      expect(Reflect.getMetadata(IS_PUBLIC_KEY, MarketplaceBrowseController)).toBe(
-        true,
-      );
+      expect(
+        Reflect.getMetadata(IS_PUBLIC_KEY, MarketplaceBrowseController),
+      ).toBe(true);
     });
   });
 
@@ -64,7 +64,9 @@ describe('MarketplaceBrowseController', () => {
 
       const result = await controller.detail(LISTING_ID);
 
-      expect(marketplaceService.findPublicById).toHaveBeenCalledWith(LISTING_ID);
+      expect(marketplaceService.findPublicById).toHaveBeenCalledWith(
+        LISTING_ID,
+      );
       expect(result).toEqual(mockResult);
     });
   });

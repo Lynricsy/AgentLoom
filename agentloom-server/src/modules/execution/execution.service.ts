@@ -169,13 +169,19 @@ function validateResolvedFieldValue(
 
       if (field.validation?.min !== undefined && value < field.validation.min) {
         errors.push(
-          createInputFieldError(field.id, `数值不能小于 ${field.validation.min}`),
+          createInputFieldError(
+            field.id,
+            `数值不能小于 ${field.validation.min}`,
+          ),
         );
       }
 
       if (field.validation?.max !== undefined && value > field.validation.max) {
         errors.push(
-          createInputFieldError(field.id, `数值不能大于 ${field.validation.max}`),
+          createInputFieldError(
+            field.id,
+            `数值不能大于 ${field.validation.max}`,
+          ),
         );
       }
 
@@ -188,7 +194,9 @@ function validateResolvedFieldValue(
       }
 
       if (field.options && !field.options.includes(value)) {
-        errors.push(createInputFieldError(field.id, '该字段必须是预定义选项之一'));
+        errors.push(
+          createInputFieldError(field.id, '该字段必须是预定义选项之一'),
+        );
       }
 
       return value;
@@ -247,7 +255,9 @@ function buildNormalizedExecutionInputParams(
 
   Object.keys(rawInputParams).forEach((fieldId) => {
     if (!fieldMap.has(fieldId)) {
-      errors.push(createInputFieldError(fieldId, '该字段不存在于当前输入契约中'));
+      errors.push(
+        createInputFieldError(fieldId, '该字段不存在于当前输入契约中'),
+      );
     }
   });
 
@@ -283,9 +293,13 @@ function buildNormalizedExecutionInputParams(
       const nextPath = new Set(path);
       nextPath.add(fieldId);
 
-      const controllerState = resolveFieldState(field.visibility.fieldId, nextPath);
+      const controllerState = resolveFieldState(
+        field.visibility.fieldId,
+        nextPath,
+      );
       visible =
-        controllerState.visible && controllerState.value === field.visibility.equals;
+        controllerState.visible &&
+        controllerState.value === field.visibility.equals;
     }
 
     const state = {
@@ -312,7 +326,11 @@ function buildNormalizedExecutionInputParams(
       return;
     }
 
-    const resolvedValue = validateResolvedFieldValue(field, fieldState.value, errors);
+    const resolvedValue = validateResolvedFieldValue(
+      field,
+      fieldState.value,
+      errors,
+    );
     if (resolvedValue !== undefined) {
       resolvedInputs[field.id] = resolvedValue;
     }
@@ -412,7 +430,10 @@ export class ExecutionService {
       ? workflowInputSchemaSchema.parse(workflow.inputSchema)
       : createDefaultWorkflowInputSchema();
 
-    const inputParams = shouldNormalizeLaunchInput(workflow.inputSchema, runRequest)
+    const inputParams = shouldNormalizeLaunchInput(
+      workflow.inputSchema,
+      runRequest,
+    )
       ? buildNormalizedExecutionInputParams(
           workflowId,
           runRequest,

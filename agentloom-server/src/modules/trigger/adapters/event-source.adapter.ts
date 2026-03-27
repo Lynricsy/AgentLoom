@@ -10,5 +10,8 @@ export interface EventPayload {
 export interface EventSourceAdapter {
   readonly name: string;
   validateEvent(payload: EventPayload, config?: ApiEventTriggerConfig): boolean;
-  matchesTrigger(payload: EventPayload, triggerConfig: ApiEventTriggerConfig): boolean;
+  matchesTrigger(
+    payload: EventPayload,
+    triggerConfig: ApiEventTriggerConfig,
+  ): boolean;
 }

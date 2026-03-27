@@ -6,7 +6,10 @@ import { runInTenantTransaction } from '../../common/interceptors/tenant-transac
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { ExecutionService } from '../execution/execution.service';
 import { TriggerHistoryService } from './trigger-history.service';
-import { TriggerSchedulerService, type TriggerCronJobData } from './trigger-scheduler.service';
+import {
+  TriggerSchedulerService,
+  type TriggerCronJobData,
+} from './trigger-scheduler.service';
 import { TriggerService } from './trigger.service';
 import {
   SYSTEM_TRIGGER_USER_ID,
@@ -82,11 +85,23 @@ export class TriggerSchedulerProcessor extends WorkerHost {
         SYSTEM_TRIGGER_USER_ID,
       );
     } catch (error) {
-      await this.recordFailedCronTrigger(job, triggerId, tenantId, workflowId, error);
+      await this.recordFailedCronTrigger(
+        job,
+        triggerId,
+        tenantId,
+        workflowId,
+        error,
+      );
       throw error;
     }
 
-    await this.recordSuccessfulCronTrigger(job, triggerId, tenantId, workflowId, execution.id);
+    await this.recordSuccessfulCronTrigger(
+      job,
+      triggerId,
+      tenantId,
+      workflowId,
+      execution.id,
+    );
 
     this.logger.log(
       JSON.stringify({
@@ -121,7 +136,8 @@ export class TriggerSchedulerProcessor extends WorkerHost {
         });
 
         await this.triggerService.markTriggered(tenantId, triggerId, {
-          nextFireAt: await this.triggerSchedulerService.getNextFireAt(triggerId),
+          nextFireAt:
+            await this.triggerSchedulerService.getNextFireAt(triggerId),
         });
       });
     } catch (error) {
@@ -155,7 +171,8 @@ export class TriggerSchedulerProcessor extends WorkerHost {
         });
 
         await this.triggerService.markTriggered(tenantId, triggerId, {
-          nextFireAt: await this.triggerSchedulerService.getNextFireAt(triggerId),
+          nextFireAt:
+            await this.triggerSchedulerService.getNextFireAt(triggerId),
         });
       });
     } catch (bookkeepingError) {

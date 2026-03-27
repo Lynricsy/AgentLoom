@@ -99,7 +99,9 @@ describe('TriggerSchedulerService', () => {
     ]);
     db.update.mockReturnValueOnce(createUpdateWhereResolved(undefined));
 
-    await expect(service.registerCronJob(cronTrigger)).resolves.toEqual(NEXT_FIRE_AT);
+    await expect(service.registerCronJob(cronTrigger)).resolves.toEqual(
+      NEXT_FIRE_AT,
+    );
 
     expect(queue.add).toHaveBeenCalledWith(
       TRIGGER_CRON_JOB,

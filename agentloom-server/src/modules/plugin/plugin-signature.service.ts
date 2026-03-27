@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  createHash,
-  createPublicKey,
-  type KeyObject,
-} from 'node:crypto';
+import { createHash, createPublicKey, type KeyObject } from 'node:crypto';
 
 import {
   computeContentHash as computeArchiveContentHash,

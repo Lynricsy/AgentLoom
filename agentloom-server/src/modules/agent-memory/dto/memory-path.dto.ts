@@ -9,9 +9,7 @@ export const CreateMemoryPathSchema = z.object({
   nodeId: z.string().uuid('nodeId 必须为有效 UUID'),
 });
 
-export class CreateMemoryPathDto extends createZodDto(
-  CreateMemoryPathSchema,
-) {}
+export class CreateMemoryPathDto extends createZodDto(CreateMemoryPathSchema) {}
 
 export const CreateMemoryAliasSchema = z.object({
   sourceUri: z.string().min(1, 'sourceUri 不能为空').max(600),

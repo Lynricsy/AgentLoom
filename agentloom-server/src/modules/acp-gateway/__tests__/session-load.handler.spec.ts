@@ -48,17 +48,17 @@ describe('SessionLoadHandler', () => {
         agentId: 'agent-001',
         mode: 'conversation',
         context: {
-            history: [{ type: 'text', text: '你好' }],
-            cwd: '/workspace/demo',
-            mcpServers: {
-              docs: {
-                command: 'node',
-                args: ['mcp-server.js'],
-              },
+          history: [{ type: 'text', text: '你好' }],
+          cwd: '/workspace/demo',
+          mcpServers: {
+            docs: {
+              command: 'node',
+              args: ['mcp-server.js'],
             },
-            serverSandbox: {
-              executionId: '019391d4-e000-7000-0000-000000000005',
-            },
+          },
+          serverSandbox: {
+            executionId: '019391d4-e000-7000-0000-000000000005',
+          },
         },
         status: 'active',
         tenantId: 'tenant-1',
@@ -142,7 +142,9 @@ describe('SessionLoadHandler', () => {
         },
       },
     );
-    expect(terminalProxyService.restoreTerminalContinuity).not.toHaveBeenCalled();
+    expect(
+      terminalProxyService.restoreTerminalContinuity,
+    ).not.toHaveBeenCalled();
   });
 
   it('应在 session 不存在时返回 Invalid params / Session not found', async () => {
@@ -150,7 +152,9 @@ describe('SessionLoadHandler', () => {
     const handler = new SessionLoadHandler(
       {
         get: vi.fn().mockReturnValue({
-          loadSession: vi.fn().mockRejectedValue(new Error('Session not found')),
+          loadSession: vi
+            .fn()
+            .mockRejectedValue(new Error('Session not found')),
         }),
       } as unknown as ModuleRef,
       {
@@ -222,7 +226,9 @@ describe('SessionLoadHandler', () => {
 
   it('应将 replay 失败映射为 Internal error', async () => {
     const state = createState();
-    state.emitNotification = vi.fn().mockRejectedValue(new Error('emit failed'));
+    state.emitNotification = vi
+      .fn()
+      .mockRejectedValue(new Error('emit failed'));
     const terminalProxyService = createTerminalProxyService();
     const mcpSessionService = createMcpSessionService();
     const handler = new SessionLoadHandler(
@@ -333,7 +339,7 @@ describe('SessionLoadHandler', () => {
               'session-001',
               'replay entries at 0.kind',
             ),
-            ),
+          ),
       } as never,
       terminalProxyService as never,
       mcpSessionService as never,
@@ -362,7 +368,9 @@ describe('SessionLoadHandler', () => {
     const state = createState();
     const terminalProxyService = createTerminalProxyService();
     const mcpSessionService = {
-      restoreSessionTools: vi.fn().mockRejectedValue(new Error('restore failed')),
+      restoreSessionTools: vi
+        .fn()
+        .mockRejectedValue(new Error('restore failed')),
     };
     const handler = new SessionLoadHandler(
       {

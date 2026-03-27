@@ -51,10 +51,12 @@ export class SupabaseService {
   }
 
   async signIn(email: string, password: string) {
-    const { data, error } = await this.getAdminClient().auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error } = await this.getAdminClient().auth.signInWithPassword(
+      {
+        email,
+        password,
+      },
+    );
 
     if (error) {
       this.logger.warn(`SignIn failed for ${email}: ${error.message}`);
@@ -78,9 +80,8 @@ export class SupabaseService {
   }
 
   async signOut(accessToken: string) {
-    const { error } = await this.getAdminClient().auth.admin.signOut(
-      accessToken,
-    );
+    const { error } =
+      await this.getAdminClient().auth.admin.signOut(accessToken);
 
     if (error) {
       this.logger.warn(`SignOut failed: ${error.message}`);
@@ -89,9 +90,8 @@ export class SupabaseService {
   }
 
   async getUser(accessToken: string) {
-    const { data, error } = await this.getAdminClient().auth.getUser(
-      accessToken,
-    );
+    const { data, error } =
+      await this.getAdminClient().auth.getUser(accessToken);
 
     if (error) {
       this.logger.warn(`GetUser failed: ${error.message}`);
@@ -302,13 +302,17 @@ export class SupabaseService {
     }
 
     if (!this.oauthClient) {
-      this.oauthClient = createClient(this.supabaseUrl!, this.supabaseAnonKey!, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
+      this.oauthClient = createClient(
+        this.supabaseUrl!,
+        this.supabaseAnonKey!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false,
+          },
         },
-      });
+      );
     }
   }
 }

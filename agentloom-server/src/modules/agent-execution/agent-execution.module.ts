@@ -9,7 +9,10 @@ import {
   type AgentAdapterFactory,
 } from '../agent/agent-adapter.factory';
 import { AgentModule } from '../agent/agent.module';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../agent/ports/agent-runtime.port';
 import { AgentConversationService } from '../agent-conversation/agent-conversation.service';
 import { AgentConversationModule } from '../agent-conversation/agent-conversation.module';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';

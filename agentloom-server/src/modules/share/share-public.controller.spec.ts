@@ -36,7 +36,9 @@ describe('SharePublicController', () => {
   });
 
   it('类级别应标记为 Public', () => {
-    expect(Reflect.getMetadata(IS_PUBLIC_KEY, SharePublicController)).toBe(true);
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, SharePublicController)).toBe(
+      true,
+    );
   });
 
   it('应直接委托 ShareService.getPublicShare', async () => {
@@ -51,7 +53,9 @@ describe('SharePublicController', () => {
 
     mocks.shareService.getPublicShare.mockResolvedValue(serviceResult);
 
-    await expect(controller.getPublicShare(SHARE_TOKEN)).resolves.toEqual(serviceResult);
+    await expect(controller.getPublicShare(SHARE_TOKEN)).resolves.toEqual(
+      serviceResult,
+    );
     expect(mocks.shareService.getPublicShare).toHaveBeenCalledWith(SHARE_TOKEN);
   });
 });

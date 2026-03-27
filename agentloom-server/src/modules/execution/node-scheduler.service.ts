@@ -383,7 +383,8 @@ export class NodeSchedulerService {
       typeof nodeData.pluginNodeType === 'string'
         ? nodeData.pluginNodeType
         : undefined;
-    const orgId = typeof nodeData.orgId === 'string' ? nodeData.orgId : undefined;
+    const orgId =
+      typeof nodeData.orgId === 'string' ? nodeData.orgId : undefined;
 
     if (!pluginId || !pluginNodeType) {
       throw new Error('Plugin node missing pluginId or pluginNodeType');
@@ -624,13 +625,17 @@ export class NodeSchedulerService {
     }
 
     if (userId !== SYSTEM_TIMEOUT_INTERVENTION_USER_ID) {
-      const workflowDefinitionId = await this.loadWorkflowDefinitionId(executionId);
+      const workflowDefinitionId =
+        await this.loadWorkflowDefinitionId(executionId);
       const resolvedPolicy = await this.interventionPolicyService.resolvePolicy(
         tenantId,
         workflowDefinitionId,
         step.nodeId,
       );
-      const userRole = await this.rbacCacheService.getUserRole(tenantId, userId);
+      const userRole = await this.rbacCacheService.getUserRole(
+        tenantId,
+        userId,
+      );
 
       if (!userRole || !resolvedPolicy.allowedRoles.includes(userRole)) {
         throw new InterventionPermissionDeniedException();
@@ -918,7 +923,11 @@ export class NodeSchedulerService {
       this.logger.log(`Intervention timeout removed: ${jobId}`);
     }
 
-    for (let escalationCount = 1; escalationCount <= MAX_ESCALATION_ATTEMPTS; escalationCount += 1) {
+    for (
+      let escalationCount = 1;
+      escalationCount <= MAX_ESCALATION_ATTEMPTS;
+      escalationCount += 1
+    ) {
       const escJobId = buildEscalatedInterventionTimeoutJobId(
         stepId,
         escalationCount,
@@ -970,7 +979,7 @@ export class NodeSchedulerService {
         tenantId,
         step.id,
         'completed',
-        { result: result as Record<string, unknown> },
+        { result: result },
       );
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1024,9 +1033,7 @@ export class NodeSchedulerService {
             ? (nodeData.transformType as InputPreprocessorConfig['transformType'])
             : 'jmespath',
         expression:
-          typeof nodeData.expression === 'string'
-            ? nodeData.expression
-            : '',
+          typeof nodeData.expression === 'string' ? nodeData.expression : '',
         ...(typeof nodeData.outputFormat === 'string'
           ? { outputFormat: nodeData.outputFormat }
           : {}),
@@ -1094,7 +1101,9 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
-      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+      const config = this.isRecord(nodeData.config)
+        ? nodeData.config
+        : nodeData;
       const skillId =
         typeof config.skillId === 'string' && config.skillId.trim().length > 0
           ? config.skillId.trim()
@@ -1161,9 +1170,14 @@ export class NodeSchedulerService {
         content: skill.content,
       }));
 
-      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'completed', {
-        result: { skills: skillPayloads },
-      });
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: { skills: skillPayloads },
+        },
+      );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
@@ -1210,28 +1224,32 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
-      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+      const config = this.isRecord(nodeData.config)
+        ? nodeData.config
+        : nodeData;
 
       const mcpServerConfigId =
-        typeof config.mcpServerConfigId === 'string' && config.mcpServerConfigId.trim().length > 0
+        typeof config.mcpServerConfigId === 'string' &&
+        config.mcpServerConfigId.trim().length > 0
           ? config.mcpServerConfigId.trim()
-          : typeof nodeData.mcpServerConfigId === 'string' && nodeData.mcpServerConfigId.trim().length > 0
+          : typeof nodeData.mcpServerConfigId === 'string' &&
+              nodeData.mcpServerConfigId.trim().length > 0
             ? nodeData.mcpServerConfigId.trim()
             : undefined;
 
       const toolName =
         typeof config.toolName === 'string' && config.toolName.trim().length > 0
           ? config.toolName.trim()
-          : typeof nodeData.toolName === 'string' && nodeData.toolName.trim().length > 0
+          : typeof nodeData.toolName === 'string' &&
+              nodeData.toolName.trim().length > 0
             ? nodeData.toolName.trim()
             : undefined;
 
-      const portMapping =
-        this.isRecord(config.portMapping)
-          ? config.portMapping
-          : this.isRecord(nodeData.portMapping)
-            ? nodeData.portMapping
-            : undefined;
+      const portMapping = this.isRecord(config.portMapping)
+        ? config.portMapping
+        : this.isRecord(nodeData.portMapping)
+          ? nodeData.portMapping
+          : undefined;
 
       if (!mcpServerConfigId || !toolName) {
         this.logger.warn(
@@ -1259,9 +1277,14 @@ export class NodeSchedulerService {
         ...(portMapping !== undefined ? { portMapping } : {}),
       };
 
-      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'completed', {
-        result: descriptor,
-      });
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: descriptor,
+        },
+      );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
@@ -1391,15 +1414,22 @@ export class NodeSchedulerService {
 
       const modelConfigIds = this.collectModelConfigIds(nodeData, input);
       const tokenThreshold =
-        typeof nodeData.tokenThreshold === 'number' && nodeData.tokenThreshold > 0
+        typeof nodeData.tokenThreshold === 'number' &&
+        nodeData.tokenThreshold > 0
           ? nodeData.tokenThreshold
           : 4096;
       const queryText = this.extractSmartRoutingQueryText(nodeData, input);
-      const taskCategory = this.extractSmartRoutingTaskCategory(nodeData, input);
+      const taskCategory = this.extractSmartRoutingTaskCategory(
+        nodeData,
+        input,
+      );
       const inputTokenCount = this.estimateTokenCount(input);
       const historicalMetrics =
         strategyName === 'historical_best'
-          ? await this.smartRoutingService.getHistoricalMetrics(tenantId, step.nodeId)
+          ? await this.smartRoutingService.getHistoricalMetrics(
+              tenantId,
+              step.nodeId,
+            )
           : undefined;
 
       const context: SmartRoutingContext = {
@@ -1425,11 +1455,15 @@ export class NodeSchedulerService {
         }
       }
 
-      const candidates = await this.loadRoutingCandidates(modelConfigIds, tenantId);
-      const healthyCandidates = await this.healthMonitorService.filterHealthyCandidates(
+      const candidates = await this.loadRoutingCandidates(
+        modelConfigIds,
         tenantId,
-        candidates,
       );
+      const healthyCandidates =
+        await this.healthMonitorService.filterHealthyCandidates(
+          tenantId,
+          candidates,
+        );
 
       const decision = await router.route(healthyCandidates, context);
 
@@ -1622,21 +1656,26 @@ export class NodeSchedulerService {
     return Object.keys(servers).length > 0 ? servers : undefined;
   }
 
-  private extractMcpServerConfigIds(
-    input: Record<string, unknown>,
-  ): string[] {
+  private extractMcpServerConfigIds(input: Record<string, unknown>): string[] {
     const ids = new Set<string>();
 
     for (const value of Object.values(input)) {
       const record = this.isRecord(value) ? value : null;
       if (!record) continue;
 
-      if (record.type === 'mcp-tool' && typeof record.mcpServerConfigId === 'string') {
+      if (
+        record.type === 'mcp-tool' &&
+        typeof record.mcpServerConfigId === 'string'
+      ) {
         ids.add(record.mcpServerConfigId);
         continue;
       }
 
-      if (this.isRecord(record.result) && record.result.type === 'mcp-tool' && typeof record.result.mcpServerConfigId === 'string') {
+      if (
+        this.isRecord(record.result) &&
+        record.result.type === 'mcp-tool' &&
+        typeof record.result.mcpServerConfigId === 'string'
+      ) {
         ids.add(record.result.mcpServerConfigId);
       }
     }
@@ -1647,7 +1686,10 @@ export class NodeSchedulerService {
   private resolveSmartRoutingStrategyValue(
     nodeData: Record<string, unknown>,
   ): string {
-    if (typeof nodeData.strategyName === 'string' && nodeData.strategyName.length > 0) {
+    if (
+      typeof nodeData.strategyName === 'string' &&
+      nodeData.strategyName.length > 0
+    ) {
       return nodeData.strategyName;
     }
 
@@ -1690,7 +1732,8 @@ export class NodeSchedulerService {
 
   private isFallbackChainStrategy(strategy?: string): boolean {
     return Boolean(
-      strategy && this.normalizeSmartRoutingStrategyName(strategy) === 'fallback_chain',
+      strategy &&
+      this.normalizeSmartRoutingStrategyName(strategy) === 'fallback_chain',
     );
   }
 
@@ -1724,7 +1767,11 @@ export class NodeSchedulerService {
     input: Record<string, unknown>,
   ): string | undefined {
     return (
-      this.findFirstStringByKeys(nodeData, ['taskCategory', 'category', 'intent']) ??
+      this.findFirstStringByKeys(nodeData, [
+        'taskCategory',
+        'category',
+        'intent',
+      ]) ??
       this.findFirstStringByKeys(input, ['taskCategory', 'category', 'intent'])
     );
   }
@@ -1816,7 +1863,9 @@ export class NodeSchedulerService {
         ),
       );
 
-    const configsById = new Map(modelConfigs.map((config) => [config.id, config]));
+    const configsById = new Map(
+      modelConfigs.map((config) => [config.id, config]),
+    );
     const routingMetadataById = new Map(
       routingMetadataRows.map((row) => [row.modelConfigId, row]),
     );
@@ -1824,67 +1873,68 @@ export class NodeSchedulerService {
     const candidates: RoutingCandidate[] = [];
 
     for (const modelConfigId of modelConfigIds) {
-        const modelConfig = configsById.get(modelConfigId);
-        if (!modelConfig) {
-          continue;
-        }
+      const modelConfig = configsById.get(modelConfigId);
+      if (!modelConfig) {
+        continue;
+      }
 
-        const routingMetadata = routingMetadataById.get(modelConfigId);
-        const fallbackMeta = getModelRoutingMeta(
-          modelConfig.provider,
-          modelConfig.modelName,
-        );
-        const rawRoutingMeta = this.isRecord(routingMetadata?.routingMeta)
-          ? routingMetadata.routingMeta
-          : undefined;
-        const rawCosts = this.isRecord(rawRoutingMeta?.costs)
-          ? rawRoutingMeta.costs
-          : undefined;
+      const routingMetadata = routingMetadataById.get(modelConfigId);
+      const fallbackMeta = getModelRoutingMeta(
+        modelConfig.provider,
+        modelConfig.modelName,
+      );
+      const rawRoutingMeta = this.isRecord(routingMetadata?.routingMeta)
+        ? routingMetadata.routingMeta
+        : undefined;
+      const rawCosts = this.isRecord(rawRoutingMeta?.costs)
+        ? rawRoutingMeta.costs
+        : undefined;
 
-        candidates.push({
-          id: modelConfig.id,
-          modelConfigId: modelConfig.id,
-          name: modelConfig.name,
-          provider: routingMetadata?.providerName ?? modelConfig.provider,
-          routingMeta: {
-            contextWindow: this.readNumber(
+      candidates.push({
+        id: modelConfig.id,
+        modelConfigId: modelConfig.id,
+        name: modelConfig.name,
+        provider: routingMetadata?.providerName ?? modelConfig.provider,
+        routingMeta: {
+          contextWindow: this.readNumber(
+            rawRoutingMeta?.contextWindow,
+            fallbackMeta.contextWindow,
+          ),
+          costs: {
+            input: this.readNumber(
+              rawCosts?.inputPer1kTokens,
+              fallbackMeta.costPer1kInputTokens,
+            ),
+            output: this.readNumber(
+              rawCosts?.outputPer1kTokens,
+              fallbackMeta.costPer1kOutputTokens,
+            ),
+          },
+          qualityRank: this.readNumber(
+            rawRoutingMeta?.qualityRank,
+            fallbackMeta.qualityRank,
+          ),
+          avgLatencyMs: this.readNumber(
+            rawRoutingMeta?.avgLatencyMs,
+            fallbackMeta.avgLatencyMs,
+          ),
+          maxInputTokens: this.readNumber(
+            rawRoutingMeta?.maxInputTokens,
+            this.readNumber(
               rawRoutingMeta?.contextWindow,
               fallbackMeta.contextWindow,
             ),
-            costs: {
-              input: this.readNumber(
-                rawCosts?.inputPer1kTokens,
-                fallbackMeta.costPer1kInputTokens,
-              ),
-              output: this.readNumber(
-                rawCosts?.outputPer1kTokens,
-                fallbackMeta.costPer1kOutputTokens,
-              ),
-            },
-            qualityRank: this.readNumber(
-              rawRoutingMeta?.qualityRank,
-              fallbackMeta.qualityRank,
-            ),
-            avgLatencyMs: this.readNumber(
-              rawRoutingMeta?.avgLatencyMs,
-              fallbackMeta.avgLatencyMs,
-            ),
-            maxInputTokens: this.readNumber(
-              rawRoutingMeta?.maxInputTokens,
-              this.readNumber(rawRoutingMeta?.contextWindow, fallbackMeta.contextWindow),
-            ),
-            eloRating: this.readNumber(routingMetadata?.eloRating, 1200),
-          },
-          healthStatus: 'healthy',
-        });
+          ),
+          eloRating: this.readNumber(routingMetadata?.eloRating, 1200),
+        },
+        healthStatus: 'healthy',
+      });
     }
 
     return candidates;
   }
 
-  private mapRoutingDecisionScores(
-    decision: RouterDecision,
-  ): Array<{
+  private mapRoutingDecisionScores(decision: RouterDecision): Array<{
     modelId: string;
     modelName: string;
     provider: string;
@@ -1985,7 +2035,9 @@ export class NodeSchedulerService {
       return [directId];
     }
 
-    return Object.values(value).flatMap((item) => this.extractModelConfigIds(item));
+    return Object.values(value).flatMap((item) =>
+      this.extractModelConfigIds(item),
+    );
   }
 
   private estimateTokenCount(value: unknown): number {
@@ -2041,7 +2093,9 @@ export class NodeSchedulerService {
       const agentDefinitionId = this.getWorkflowAgentDefinitionId(nodeData);
 
       if (!agentDefinitionId) {
-        throw new Error(`Workflow agent node ${step.nodeId} 缺少 agentDefinitionId`);
+        throw new Error(
+          `Workflow agent node ${step.nodeId} 缺少 agentDefinitionId`,
+        );
       }
 
       const workflowSandboxConfig = this.getWorkflowSandboxOverride(
@@ -2049,19 +2103,18 @@ export class NodeSchedulerService {
         edges,
         steps,
       );
-      const adapter = this.workflowAgentAdapterFactory.createFromAgentDefinition(
-        agentDefinitionId,
-        workflowSandboxConfig,
-      );
+      const adapter =
+        this.workflowAgentAdapterFactory.createFromAgentDefinition(
+          agentDefinitionId,
+          workflowSandboxConfig,
+        );
 
       const result = await adapter.execute({
         executionId,
         step,
         input,
         tenantId,
-        ...(workflowSandboxConfig
-          ? { sandboxBinding: { executionId } }
-          : {}),
+        ...(workflowSandboxConfig ? { sandboxBinding: { executionId } } : {}),
         ...(typeof nodeData.agentVersionId === 'string'
           ? { agentVersionId: nodeData.agentVersionId }
           : typeof nodeData.agent_version_id === 'string'
@@ -2117,7 +2170,9 @@ export class NodeSchedulerService {
     const incomingEdges = edges.filter((edge) => edge.target === nodeId);
 
     for (const edge of incomingEdges) {
-      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
+      const sourceStep = steps.find(
+        (candidate) => candidate.nodeId === edge.source,
+      );
       if (sourceStep?.nodeType !== 'sandbox') {
         continue;
       }
@@ -2128,16 +2183,24 @@ export class NodeSchedulerService {
     return undefined;
   }
 
-  private resolveSandboxConfig(nodeData: Record<string, unknown>): SandboxConfig {
+  private resolveSandboxConfig(
+    nodeData: Record<string, unknown>,
+  ): SandboxConfig {
     const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
 
     return {
-      cpu: typeof sandboxConfigSource.cpu === 'number' ? sandboxConfigSource.cpu : 1,
+      cpu:
+        typeof sandboxConfigSource.cpu === 'number'
+          ? sandboxConfigSource.cpu
+          : 1,
       memory:
         typeof sandboxConfigSource.memory === 'number'
           ? sandboxConfigSource.memory
           : 512,
-      disk: typeof sandboxConfigSource.disk === 'number' ? sandboxConfigSource.disk : 2,
+      disk:
+        typeof sandboxConfigSource.disk === 'number'
+          ? sandboxConfigSource.disk
+          : 2,
       timeout:
         typeof sandboxConfigSource.timeout === 'number'
           ? sandboxConfigSource.timeout
@@ -2219,12 +2282,15 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const config = this.resolveMemoryConfig(step.nodeData ?? {}, tenantId, executionId);
-      const instance =
-        await this.sharedResourceRegistry.createResource<
-          MemoryResourceConfig,
-          MemoryResourceInstance
-        >('memory', config);
+      const config = this.resolveMemoryConfig(
+        step.nodeData ?? {},
+        tenantId,
+        executionId,
+      );
+      const instance = await this.sharedResourceRegistry.createResource<
+        MemoryResourceConfig,
+        MemoryResourceInstance
+      >('memory', config);
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,

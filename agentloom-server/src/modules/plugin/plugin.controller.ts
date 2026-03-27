@@ -109,7 +109,8 @@ export class PluginController {
     const buffer = await this.readMultipartBuffer(multipartFile);
     const { manifest, nodeDefinitions } = await this.parsePluginArchive(buffer);
 
-    const pluginId = (manifest.id as string) ?? (manifest.pluginId as string) ?? 'unknown';
+    const pluginId =
+      (manifest.id as string) ?? (manifest.pluginId as string) ?? 'unknown';
     const version = (manifest.version as string) ?? '0.0.0';
 
     const signingMetadata = this.requireSigningMetadata(manifest, pluginId);
@@ -118,21 +119,23 @@ export class PluginController {
       throw new PluginSignatureInvalidException(pluginId);
     }
 
-    const developerKey = await this.developerKeyService.findActiveKeyByFingerprint(
-      orgId,
-      signingMetadata.developerKeyFingerprint,
-    );
+    const developerKey =
+      await this.developerKeyService.findActiveKeyByFingerprint(
+        orgId,
+        signingMetadata.developerKeyFingerprint,
+      );
 
     if (!developerKey) {
       throw new PluginSignatureInvalidException(pluginId);
     }
 
-    const verificationResult = await this.signatureService.verifyArchiveSignature(
-      buffer,
-      signingMetadata.signature,
-      developerKey.publicKey,
-      pluginId,
-    );
+    const verificationResult =
+      await this.signatureService.verifyArchiveSignature(
+        buffer,
+        signingMetadata.signature,
+        developerKey.publicKey,
+        pluginId,
+      );
 
     if (verificationResult.contentHash !== signingMetadata.contentHash) {
       throw new PluginSignatureInvalidException(pluginId);
@@ -142,7 +145,12 @@ export class PluginController {
     const contentHash = verificationResult.contentHash;
 
     const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
-    await this.storageService.upload(storageKey, buffer, buffer.length, 'application/zip');
+    await this.storageService.upload(
+      storageKey,
+      buffer,
+      buffer.length,
+      'application/zip',
+    );
 
     let wasmBundleUrl: string | undefined;
     const wasmEntry = manifest.wasmEntry as string | undefined;
@@ -290,7 +298,10 @@ export class PluginController {
   private parseRegisterOptions(
     multipartFile: MultipartFile,
   ): RegisterPluginDtoType {
-    const status = this.extractMultipartFieldValue(multipartFile.fields, 'status');
+    const status = this.extractMultipartFieldValue(
+      multipartFile.fields,
+      'status',
+    );
 
     return RegisterPluginSchema.parse({
       ...(status ? { status } : {}),
@@ -341,11 +352,16 @@ export class PluginController {
     }
   }
 
-  private async readMultipartBuffer(multipartFile: MultipartFile): Promise<Buffer> {
+  private async readMultipartBuffer(
+    multipartFile: MultipartFile,
+  ): Promise<Buffer> {
     try {
       const buffer = await multipartFile.toBuffer();
 
-      if (buffer.length > MAX_PLUGIN_FILE_SIZE || multipartFile.file.truncated) {
+      if (
+        buffer.length > MAX_PLUGIN_FILE_SIZE ||
+        multipartFile.file.truncated
+      ) {
         throw new PluginFileTooLargeException();
       }
 
@@ -428,7 +444,10 @@ export class PluginController {
     }
 
     if (Array.isArray(manifest.nodes)) {
-      return this.normalizeNodeDefinitions(manifest.nodes, 'manifest.json#nodes');
+      return this.normalizeNodeDefinitions(
+        manifest.nodes,
+        'manifest.json#nodes',
+      );
     }
 
     return [];

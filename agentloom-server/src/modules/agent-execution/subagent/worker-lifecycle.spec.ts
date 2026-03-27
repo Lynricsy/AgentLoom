@@ -93,7 +93,9 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       ]),
     );
     mockExecutionService.injectMessage.mockResolvedValue(undefined);
-    mockSubAgentToolsProvider.createSessionToolProvider.mockReturnValue(() => ({}));
+    mockSubAgentToolsProvider.createSessionToolProvider.mockReturnValue(
+      () => ({}),
+    );
 
     worker = new AgentExecutionWorker(
       {} as never,
@@ -131,7 +133,9 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       subAgentTracker: tracker,
     });
 
-    expect(mockSubAgentToolsProvider.createSessionToolProvider).toHaveBeenCalledWith(
+    expect(
+      mockSubAgentToolsProvider.createSessionToolProvider,
+    ).toHaveBeenCalledWith(
       [{ alias: 'researcher', agentDefinitionId: 'agent-child' }],
       expect.objectContaining({
         conversationId: 'conversation-1',
@@ -146,7 +150,8 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       expect.any(Function),
     );
 
-    const parentContext = mockSubAgentToolsProvider.createSessionToolProvider.mock.calls[0]?.[1];
+    const parentContext =
+      mockSubAgentToolsProvider.createSessionToolProvider.mock.calls[0]?.[1];
     expect(parentContext.visitedAgentIds).toBeInstanceOf(Set);
     expect([...parentContext.visitedAgentIds]).toEqual(['agent-parent']);
   });
@@ -166,7 +171,9 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       subAgentTracker: { abortControllers: new Map() },
     });
 
-    expect(mockSubAgentToolsProvider.createSessionToolProvider).not.toHaveBeenCalled();
+    expect(
+      mockSubAgentToolsProvider.createSessionToolProvider,
+    ).not.toHaveBeenCalled();
   });
 
   it('abortTrackedSubAgents() 会级联中止所有子代理控制器', () => {

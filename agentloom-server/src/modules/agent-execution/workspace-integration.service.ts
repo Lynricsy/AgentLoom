@@ -53,29 +53,22 @@ export class WorkspaceIntegrationService {
     conversationId: string,
     tenantId: string,
   ): Promise<FileTreeNode[]> {
-    const containerId = await this.resolveContainerId(
-      conversationId,
-      tenantId,
-    );
+    const containerId = await this.resolveContainerId(conversationId, tenantId);
 
-    const output = await this.execInContainer(
-      containerId,
-      'find',
-      [
-        CONTAINER_WORKSPACE,
-        '-not',
-        '-path',
-        '*/node_modules/*',
-        '-not',
-        '-path',
-        '*/.git/*',
-        '-not',
-        '-name',
-        '.*',
-        '-printf',
-        '%y|%s|%P\\n',
-      ],
-    );
+    const output = await this.execInContainer(containerId, 'find', [
+      CONTAINER_WORKSPACE,
+      '-not',
+      '-path',
+      '*/node_modules/*',
+      '-not',
+      '-path',
+      '*/.git/*',
+      '-not',
+      '-name',
+      '.*',
+      '-printf',
+      '%y|%s|%P\\n',
+    ]);
 
     return this.parseFileTree(output);
   }
@@ -85,20 +78,17 @@ export class WorkspaceIntegrationService {
     tenantId: string,
     filePath: string,
   ): Promise<FileContentResult> {
-    const containerId = await this.resolveContainerId(
-      conversationId,
-      tenantId,
-    );
+    const containerId = await this.resolveContainerId(conversationId, tenantId);
 
     // Security: path traversal prevention
     const normalizedPath = this.normalizePath(filePath);
     const fullPath = `${CONTAINER_WORKSPACE}/${normalizedPath}`;
 
-    const statOutput = await this.execInContainer(
-      containerId,
-      'stat',
-      ['-c', '%s|%F', fullPath],
-    );
+    const statOutput = await this.execInContainer(containerId, 'stat', [
+      '-c',
+      '%s|%F',
+      fullPath,
+    ]);
 
     const [sizeStr, fileType] = statOutput.trim().split('|');
     const size = parseInt(sizeStr, 10);
@@ -114,11 +104,11 @@ export class WorkspaceIntegrationService {
     }
 
     // Security: binary detection via null-byte scan on first 8KB
-    const headOutput = await this.execInContainerRaw(
-      containerId,
-      'head',
-      ['-c', '8192', fullPath],
-    );
+    const headOutput = await this.execInContainerRaw(containerId, 'head', [
+      '-c',
+      '8192',
+      fullPath,
+    ]);
 
     if (this.isBinaryBuffer(headOutput)) {
       throw new NotFoundException(
@@ -126,11 +116,7 @@ export class WorkspaceIntegrationService {
       );
     }
 
-    const content = await this.execInContainer(
-      containerId,
-      'cat',
-      [fullPath],
-    );
+    const content = await this.execInContainer(containerId, 'cat', [fullPath]);
 
     return {
       path: normalizedPath,
@@ -146,9 +132,7 @@ export class WorkspaceIntegrationService {
     containerId: string,
   ): void {
     if (this.activeWatchers.has(conversationId)) {
-      this.logger.debug(
-        `文件监听器已存在: conversation=${conversationId}`,
-      );
+      this.logger.debug(`文件监听器已存在: conversation=${conversationId}`);
       return;
     }
 
@@ -195,9 +179,7 @@ export class WorkspaceIntegrationService {
     );
 
     if (!session) {
-      this.logger.debug(
-        `对话 ${conversationId} 没有关联的沙箱会话，跳过归档`,
-      );
+      this.logger.debug(`对话 ${conversationId} 没有关联的沙箱会话，跳过归档`);
       return;
     }
 
@@ -342,7 +324,9 @@ export class WorkspaceIntegrationService {
     for (const seg of segments) {
       if (seg === '..') {
         if (resolved.length === 0) {
-          throw new NotFoundException('路径穿越被拒绝：不允许访问工作区外的文件');
+          throw new NotFoundException(
+            '路径穿越被拒绝：不允许访问工作区外的文件',
+          );
         }
         resolved.pop();
       } else if (seg !== '.') {
@@ -416,25 +400,21 @@ export class WorkspaceIntegrationService {
     tenantId: string,
     containerId: string,
   ): Promise<void> {
-    const output = await this.execInContainer(
-      containerId,
-      'find',
-      [
-        CONTAINER_WORKSPACE,
-        '-newer',
-        MARKER_FILE,
-        '-type',
-        'f',
-        '-not',
-        '-path',
-        '*/node_modules/*',
-        '-not',
-        '-path',
-        '*/.git/*',
-        '-printf',
-        '%P\\n',
-      ],
-    );
+    const output = await this.execInContainer(containerId, 'find', [
+      CONTAINER_WORKSPACE,
+      '-newer',
+      MARKER_FILE,
+      '-type',
+      'f',
+      '-not',
+      '-path',
+      '*/node_modules/*',
+      '-not',
+      '-path',
+      '*/.git/*',
+      '-printf',
+      '%P\\n',
+    ]);
 
     const changedFiles = output.trim().split('\n').filter(Boolean);
 

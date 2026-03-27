@@ -37,22 +37,22 @@ export const ListAuditLogsQuerySchema = z
     pageSize: value.pageSize ?? value.page_size ?? 20,
     ...(value.from ? { from: value.from } : {}),
     ...(value.to ? { to: value.to } : {}),
-    ...(value.eventType ?? value.event_type
+    ...((value.eventType ?? value.event_type)
       ? { eventType: value.eventType ?? value.event_type }
       : {}),
-    ...(value.resourceType ?? value.resource_type
+    ...((value.resourceType ?? value.resource_type)
       ? { resourceType: value.resourceType ?? value.resource_type }
       : {}),
-    ...(value.resourceId ?? value.resource_id
+    ...((value.resourceId ?? value.resource_id)
       ? { resourceId: value.resourceId ?? value.resource_id }
       : {}),
-    ...(value.executionId ?? value.execution_id
+    ...((value.executionId ?? value.execution_id)
       ? { executionId: value.executionId ?? value.execution_id }
       : {}),
-    ...(value.actorType ?? value.actor_type
+    ...((value.actorType ?? value.actor_type)
       ? { actorType: value.actorType ?? value.actor_type }
       : {}),
-    ...(value.actorId ?? value.actor_id
+    ...((value.actorId ?? value.actor_id)
       ? { actorId: value.actorId ?? value.actor_id }
       : {}),
   }));

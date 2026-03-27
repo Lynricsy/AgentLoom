@@ -73,7 +73,10 @@ describe('ResourceGovernanceController', () => {
   });
 
   it('applies owner/admin roles to all resource governance handlers', () => {
-    expect(getMethodRoles('getResourceGovernanceState')).toEqual(['owner', 'admin']);
+    expect(getMethodRoles('getResourceGovernanceState')).toEqual([
+      'owner',
+      'admin',
+    ]);
     expect(getMethodRoles('updateQuota')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('updateControls')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('terminateExecution')).toEqual(['owner', 'admin']);
@@ -113,7 +116,11 @@ describe('ResourceGovernanceController', () => {
       version: 1,
     });
 
-    const result = await controller.updateQuota(ORGANIZATION_ID, dto as never, USER_ID);
+    const result = await controller.updateQuota(
+      ORGANIZATION_ID,
+      dto as never,
+      USER_ID,
+    );
 
     expect(service.upsertTenantQuota).toHaveBeenCalledWith(
       ORGANIZATION_ID,
@@ -185,7 +192,10 @@ describe('ResourceGovernanceController', () => {
       dto,
       USER_ID,
     );
-    expect(service.getEffectiveState).toHaveBeenCalledWith(ORGANIZATION_ID, USER_ID);
+    expect(service.getEffectiveState).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      USER_ID,
+    );
     expect(service.buildGovernanceActionResponse).toHaveBeenCalledWith({
       organizationId: ORGANIZATION_ID,
       requestedBy: USER_ID,
@@ -266,7 +276,9 @@ describe('ResourceGovernanceController', () => {
       quota: { apiRateLimitPerMinute: 100 },
       governance: { version: 2 },
     });
-    service.resolveGovernanceEffectedAt.mockReturnValue('2026-03-18T04:01:00.000Z');
+    service.resolveGovernanceEffectedAt.mockReturnValue(
+      '2026-03-18T04:01:00.000Z',
+    );
     service.buildGovernanceActionResponse.mockReturnValue({
       organizationId: ORGANIZATION_ID,
       action: 'governance_update',
@@ -324,7 +336,9 @@ describe('ResourceGovernanceController', () => {
   });
 
   it('reuses cancelExecution for anomalous termination and returns an action envelope', async () => {
-    service.getEffectiveState.mockResolvedValue({ organizationId: ORGANIZATION_ID });
+    service.getEffectiveState.mockResolvedValue({
+      organizationId: ORGANIZATION_ID,
+    });
     executionService.cancelExecution.mockResolvedValue({
       id: EXECUTION_ID,
       workflowDefinitionId: WORKFLOW_ID,
@@ -378,7 +392,9 @@ describe('ResourceGovernanceController', () => {
       ORGANIZATION_ID,
       USER_ID,
     );
-    expect(moduleRef.get).toHaveBeenCalledWith(ExecutionService, { strict: false });
+    expect(moduleRef.get).toHaveBeenCalledWith(ExecutionService, {
+      strict: false,
+    });
     expect(executionService.cancelExecution).toHaveBeenCalledWith(
       EXECUTION_ID,
       TENANT_ID,

@@ -36,11 +36,19 @@ export class RulesRouter extends BaseRouterStrategy {
       const target = candidates.find((c) => c.id === rule.targetModelId);
       if (!target) continue;
 
-      return this.buildDecision(candidates, target.id, `规则匹配：${rule.condition.field} ${rule.condition.operator} ${String(rule.condition.value)} → ${target.name}`);
+      return this.buildDecision(
+        candidates,
+        target.id,
+        `规则匹配：${rule.condition.field} ${rule.condition.operator} ${String(rule.condition.value)} → ${target.name}`,
+      );
     }
 
     const fallback = candidates[0];
-    return this.buildDecision(candidates, fallback.id, `规则回退：无匹配规则，使用第一个候选 ${fallback.name}`);
+    return this.buildDecision(
+      candidates,
+      fallback.id,
+      `规则回退：无匹配规则，使用第一个候选 ${fallback.name}`,
+    );
   }
 
   private extractRules(context: RoutingContext): RoutingRule[] {
@@ -49,7 +57,10 @@ export class RulesRouter extends BaseRouterStrategy {
     return config.rules as RoutingRule[];
   }
 
-  private evaluateCondition(rule: RoutingRule, context: RoutingContext): boolean {
+  private evaluateCondition(
+    rule: RoutingRule,
+    context: RoutingContext,
+  ): boolean {
     const { field, operator, value } = rule.condition;
 
     let actual: string | number | undefined;
@@ -65,11 +76,23 @@ export class RulesRouter extends BaseRouterStrategy {
       case 'equals':
         return actual === value;
       case 'greater_than':
-        return typeof actual === 'number' && typeof value === 'number' && actual > value;
+        return (
+          typeof actual === 'number' &&
+          typeof value === 'number' &&
+          actual > value
+        );
       case 'less_than':
-        return typeof actual === 'number' && typeof value === 'number' && actual < value;
+        return (
+          typeof actual === 'number' &&
+          typeof value === 'number' &&
+          actual < value
+        );
       case 'contains':
-        return typeof actual === 'string' && typeof value === 'string' && actual.includes(value);
+        return (
+          typeof actual === 'string' &&
+          typeof value === 'string' &&
+          actual.includes(value)
+        );
       default:
         return false;
     }

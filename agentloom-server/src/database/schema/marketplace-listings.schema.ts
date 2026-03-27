@@ -29,10 +29,10 @@ export const marketplaceListingTypeEnum = pgEnum('marketplace_listing_type', [
   'plugin',
 ]);
 
-export const marketplacePricingModelEnum = pgEnum(
-  'marketplace_pricing_model',
-  ['free', 'per_execution'],
-);
+export const marketplacePricingModelEnum = pgEnum('marketplace_pricing_model', [
+  'free',
+  'per_execution',
+]);
 
 export const marketplaceCategoryEnum = pgEnum('marketplace_category_enum', [
   'analysis',
@@ -98,11 +98,14 @@ export const marketplaceListings = pgTable(
       .primaryKey()
       .default(sql`uuid_generate_v7()`),
 
-    workflowVersionId: uuid('workflow_version_id')
-      .references(() => workflowVersions.id, { onDelete: 'cascade' }),
+    workflowVersionId: uuid('workflow_version_id').references(
+      () => workflowVersions.id,
+      { onDelete: 'cascade' },
+    ),
 
-    pluginDbId: uuid('plugin_db_id')
-      .references(() => plugins.id, { onDelete: 'cascade' }),
+    pluginDbId: uuid('plugin_db_id').references(() => plugins.id, {
+      onDelete: 'cascade',
+    }),
 
     listingType: marketplaceListingTypeEnum('listing_type')
       .notNull()

@@ -12,7 +12,11 @@ function makeTool(
   inputSchema: z.ZodTypeAny,
   execute?: (input: unknown, options: ToolExecutionOptions) => Promise<unknown>,
 ): ToolSet[string] {
-  return { description, inputSchema, execute: execute as ToolSet[string]['execute'] };
+  return {
+    description,
+    inputSchema,
+    execute: execute as ToolSet[string]['execute'],
+  };
 }
 
 describe('convertMcpToolToPiTool()', () => {

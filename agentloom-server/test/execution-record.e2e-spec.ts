@@ -14,7 +14,10 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { Test } from '@nestjs/testing';
-import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import * as crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import type { JSONValue } from 'postgres';
@@ -432,26 +435,24 @@ describe('ExecutionRecord E2E', () => {
     const snapshot = createWorkflowSnapshot();
     const startedAt = new Date('2026-01-01T00:00:00.000Z');
     const completedAt = new Date('2026-01-01T00:00:01.000Z');
-    const seedRecords =
-      options.records ??
-      [
-        {
-          stepId,
-          nodeId: 'node-1',
-          recordType: 'step_telemetry' as const,
-          telemetryData: createStepTelemetryData(startedAt, completedAt),
-          summaryData: null,
-          createdAt: new Date('2026-01-01T00:00:02.000Z'),
-        },
-        {
-          stepId: null,
-          nodeId: null,
-          recordType: 'execution_summary' as const,
-          telemetryData: null,
-          summaryData: createExecutionSummaryData(),
-          createdAt: new Date('2026-01-01T00:00:03.000Z'),
-        },
-      ];
+    const seedRecords = options.records ?? [
+      {
+        stepId,
+        nodeId: 'node-1',
+        recordType: 'step_telemetry' as const,
+        telemetryData: createStepTelemetryData(startedAt, completedAt),
+        summaryData: null,
+        createdAt: new Date('2026-01-01T00:00:02.000Z'),
+      },
+      {
+        stepId: null,
+        nodeId: null,
+        recordType: 'execution_summary' as const,
+        telemetryData: null,
+        summaryData: createExecutionSummaryData(),
+        createdAt: new Date('2026-01-01T00:00:03.000Z'),
+      },
+    ];
 
     await ctx.adminSql`
       INSERT INTO workflow_definitions (
@@ -672,8 +673,11 @@ describe('ExecutionRecord E2E', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveLength(2);
-      expect(response.body.data.map((record: { recordType: string }) => record.recordType))
-        .toEqual(['execution_summary', 'step_telemetry']);
+      expect(
+        response.body.data.map(
+          (record: { recordType: string }) => record.recordType,
+        ),
+      ).toEqual(['execution_summary', 'step_telemetry']);
       expect(response.body.data[0]).toMatchObject({
         recordType: 'execution_summary',
         telemetryData: null,
@@ -851,9 +855,9 @@ describe('ExecutionRecord E2E', () => {
         offset: 1,
         hasMore: true,
       });
-      expect(new Date(firstPage.body.data[0].createdAt).getTime()).toBeGreaterThan(
-        new Date(secondPage.body.data[0].createdAt).getTime(),
-      );
+      expect(
+        new Date(firstPage.body.data[0].createdAt).getTime(),
+      ).toBeGreaterThan(new Date(secondPage.body.data[0].createdAt).getTime());
     });
 
     it('should return 422 for missing executionId', async () => {
@@ -1038,14 +1042,18 @@ describe('ExecutionRecord E2E', () => {
           totalTokens: 88,
         },
       });
-      expect(getSerializedBytes(telemetry.toolCalls[0].input)).toBeLessThanOrEqual(
-        TOOL_CALL_IO_MAX_BYTES,
+      expect(
+        getSerializedBytes(telemetry.toolCalls[0].input),
+      ).toBeLessThanOrEqual(TOOL_CALL_IO_MAX_BYTES);
+      expect(
+        getSerializedBytes(telemetry.toolCalls[0].output),
+      ).toBeLessThanOrEqual(TOOL_CALL_IO_MAX_BYTES);
+      expect(JSON.stringify(telemetry.toolCalls[0].input)).toContain(
+        '[TRUNCATED]',
       );
-      expect(getSerializedBytes(telemetry.toolCalls[0].output)).toBeLessThanOrEqual(
-        TOOL_CALL_IO_MAX_BYTES,
+      expect(JSON.stringify(telemetry.toolCalls[0].output)).toContain(
+        '[TRUNCATED]',
       );
-      expect(JSON.stringify(telemetry.toolCalls[0].input)).toContain('[TRUNCATED]');
-      expect(JSON.stringify(telemetry.toolCalls[0].output)).toContain('[TRUNCATED]');
 
       expect(telemetry.ioSnapshots.stepInput).toMatchObject({
         authorizationHeader: '[REDACTED]',
@@ -1058,13 +1066,15 @@ describe('ExecutionRecord E2E', () => {
         totalTokens: 168,
         privateKey: '[REDACTED]',
       });
-      expect(getSerializedBytes(telemetry.ioSnapshots.stepInput)).toBeLessThanOrEqual(
-        IO_SNAPSHOTS_MAX_BYTES,
+      expect(
+        getSerializedBytes(telemetry.ioSnapshots.stepInput),
+      ).toBeLessThanOrEqual(IO_SNAPSHOTS_MAX_BYTES);
+      expect(
+        getSerializedBytes(telemetry.ioSnapshots.stepOutput),
+      ).toBeLessThanOrEqual(IO_SNAPSHOTS_MAX_BYTES);
+      expect(JSON.stringify(telemetry.ioSnapshots.stepInput)).toContain(
+        '[TRUNCATED]',
       );
-      expect(getSerializedBytes(telemetry.ioSnapshots.stepOutput)).toBeLessThanOrEqual(
-        IO_SNAPSHOTS_MAX_BYTES,
-      );
-      expect(JSON.stringify(telemetry.ioSnapshots.stepInput)).toContain('[TRUNCATED]');
       expect(JSON.stringify(telemetry.ioSnapshots.stepOutput)).toContain(
         '[TRUNCATED]',
       );

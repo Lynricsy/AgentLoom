@@ -21,7 +21,9 @@ export class TemplateService {
     return value instanceof Date ? value.toISOString() : value;
   }
 
-  private parseTemplateCategory(category: string): TemplateListItem['category'] {
+  private parseTemplateCategory(
+    category: string,
+  ): TemplateListItem['category'] {
     return TemplateListItemSchema.shape.category.parse(category);
   }
 

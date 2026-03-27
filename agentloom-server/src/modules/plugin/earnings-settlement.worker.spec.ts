@@ -120,12 +120,14 @@ describe('EarningsSettlementWorker', () => {
       ) => operation(db),
     );
 
-    mockEarningsService.calculateSettlementShares.mockImplementation((value) => ({
-      totalRevenue: value.toString(),
-      developerShare: '14.87500000',
-      platformShare: '7.50000000',
-      listingCommission: '2.62500000',
-    }));
+    mockEarningsService.calculateSettlementShares.mockImplementation(
+      (value) => ({
+        totalRevenue: value.toString(),
+        developerShare: '14.87500000',
+        platformShare: '7.50000000',
+        listingCommission: '2.62500000',
+      }),
+    );
 
     worker = new EarningsSettlementWorker(
       mockDb as unknown as DrizzleDB,
@@ -136,13 +138,17 @@ describe('EarningsSettlementWorker', () => {
 
   describe('process', () => {
     it('应基于 usage ledger 结算付费插件收益', async () => {
-      const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => {});
       const usage = createUsageRecord();
       const listingQuery = createSelectChain([{ id: SOURCE_LISTING_ID }]);
 
       mockUsageService.getUsageByPluginForPeriod.mockResolvedValue([usage]);
       mockEarningsService.findExistingEarning.mockResolvedValue(null);
-      mockEarningsService.createEarningsRecord.mockResolvedValue({ id: 'earning-1' });
+      mockEarningsService.createEarningsRecord.mockResolvedValue({
+        id: 'earning-1',
+      });
       mockDb.select.mockReturnValueOnce(listingQuery);
 
       await worker.process(createJob());
@@ -218,7 +224,9 @@ describe('EarningsSettlementWorker', () => {
       await worker.process(createJob());
 
       expect(mockDb.select).not.toHaveBeenCalled();
-      expect(mockEarningsService.calculateSettlementShares).not.toHaveBeenCalled();
+      expect(
+        mockEarningsService.calculateSettlementShares,
+      ).not.toHaveBeenCalled();
       expect(mockEarningsService.createEarningsRecord).not.toHaveBeenCalled();
     });
 
@@ -239,7 +247,9 @@ describe('EarningsSettlementWorker', () => {
         }),
       ]);
       mockEarningsService.findExistingEarning.mockResolvedValue(null);
-      mockEarningsService.createEarningsRecord.mockResolvedValue({ id: 'earning-2' });
+      mockEarningsService.createEarningsRecord.mockResolvedValue({
+        id: 'earning-2',
+      });
       mockDb.select.mockReturnValueOnce(
         createSelectChain([{ id: firstListingId }]),
       );
@@ -264,7 +274,9 @@ describe('EarningsSettlementWorker', () => {
     });
 
     it('无 usage 数据时应记录 0 条结算', async () => {
-      const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+      const logSpy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => {});
 
       mockUsageService.getUsageByPluginForPeriod.mockResolvedValue([]);
 
@@ -281,9 +293,13 @@ describe('EarningsSettlementWorker', () => {
 
   describe('onFailed', () => {
     it('应记录失败日志', () => {
-      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+      const errorSpy = vi
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
 
-      expect(() => worker.onFailed(createJob(), new Error('settlement failed'))).not.toThrow();
+      expect(() =>
+        worker.onFailed(createJob(), new Error('settlement failed')),
+      ).not.toThrow();
 
       expect(errorSpy).toHaveBeenCalledTimes(1);
       const message = errorSpy.mock.calls[0][0] as string;
@@ -294,11 +310,17 @@ describe('EarningsSettlementWorker', () => {
     });
 
     it('job 缺失时也应安全记录失败日志', () => {
-      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+      const errorSpy = vi
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
 
-      expect(() => worker.onFailed(undefined, new Error('missing job'))).not.toThrow();
+      expect(() =>
+        worker.onFailed(undefined, new Error('missing job')),
+      ).not.toThrow();
       expect(errorSpy).toHaveBeenCalledTimes(1);
-      expect((errorSpy.mock.calls[0]?.[0] as string) ?? '').toContain('missing job');
+      expect((errorSpy.mock.calls[0]?.[0] as string) ?? '').toContain(
+        'missing job',
+      );
     });
   });
 });

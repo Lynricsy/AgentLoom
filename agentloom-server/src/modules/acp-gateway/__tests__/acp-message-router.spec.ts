@@ -323,11 +323,11 @@ describe('AcpMessageRouter', () => {
     expect(response).toEqual({
       jsonrpc: '2.0',
       id: 8,
-        error: {
-          code: -32002,
-          message: 'Authentication required',
-        },
-      });
+      error: {
+        code: -32002,
+        message: 'Authentication required',
+      },
+    });
   });
 
   it('应在未认证时拒绝 session/load', async () => {
@@ -389,7 +389,10 @@ describe('AcpMessageRouter', () => {
   it.each([
     ['terminal/create', { sessionId: 'session-001', command: 'pwd', args: [] }],
     ['terminal/output', { sessionId: 'session-001', terminalId: 'term-001' }],
-    ['terminal/wait_for_exit', { sessionId: 'session-001', terminalId: 'term-001' }],
+    [
+      'terminal/wait_for_exit',
+      { sessionId: 'session-001', terminalId: 'term-001' },
+    ],
     ['terminal/kill', { sessionId: 'session-001', terminalId: 'term-001' }],
     ['terminal/release', { sessionId: 'session-001', terminalId: 'term-001' }],
   ])('应在未认证时拒绝 %s', async (method, params) => {
@@ -656,9 +659,9 @@ describe('AcpMessageRouter', () => {
         handleKill: vi.fn(),
         handleRelease: vi.fn(),
       };
-      terminalHandler[handlerMethod as keyof typeof terminalHandler].mockResolvedValue(
-        result,
-      );
+      terminalHandler[
+        handlerMethod as keyof typeof terminalHandler
+      ].mockResolvedValue(result);
       const router = createRouter({
         terminalHandler,
       });
@@ -702,7 +705,9 @@ describe('AcpMessageRouter', () => {
   it('应将 handler 抛出的参数错误映射为 invalid params', async () => {
     const router = createRouter({
       authenticateHandler: {
-        handle: vi.fn().mockRejectedValue(new AcpJsonRpcError(-32602, 'Invalid params')),
+        handle: vi
+          .fn()
+          .mockRejectedValue(new AcpJsonRpcError(-32602, 'Invalid params')),
       },
     });
 

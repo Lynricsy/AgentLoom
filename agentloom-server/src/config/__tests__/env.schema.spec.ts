@@ -86,7 +86,9 @@ describe('envSchema', () => {
     expect(result.data.APP_SUPABASE_URL).toBeUndefined();
     expect(result.data.APP_SUPABASE_ANON_KEY).toBeUndefined();
     expect(result.data.APP_SUPABASE_SERVICE_KEY).toBeUndefined();
-    expect(result.data.APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY).toBeUndefined();
+    expect(
+      result.data.APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY,
+    ).toBeUndefined();
   });
 
   it('private 模式下禁止部分 APP_SUPABASE_* 半配置', () => {

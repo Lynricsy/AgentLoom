@@ -34,7 +34,9 @@ export function convertMcpToolToPiTool(
     name,
     label: name,
     description: tool.description ?? '',
-    parameters: zodToTypeBox(tool.inputSchema as Parameters<typeof zodToTypeBox>[0]),
+    parameters: zodToTypeBox(
+      tool.inputSchema as Parameters<typeof zodToTypeBox>[0],
+    ),
     execute: async (
       toolCallId: string,
       params: unknown,
@@ -42,7 +44,9 @@ export function convertMcpToolToPiTool(
     ) => {
       if (!tool.execute) {
         return {
-          content: [{ type: 'text' as const, text: 'Tool has no execute function' }],
+          content: [
+            { type: 'text' as const, text: 'Tool has no execute function' },
+          ],
           details: null,
         };
       }

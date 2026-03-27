@@ -9,7 +9,10 @@ import type { DrizzleDB } from '../../../database/database.module';
 import { routerModels } from '../../../database/schema/router-models.schema';
 import { routingDecisions } from '../../../database/schema/routing-decisions.schema';
 import { EmbeddingIntegrationService } from '../embedding/embedding.service';
-import { eloExpectedScore, eloUpdateRating } from '../strategies/ml/ml-math.utils';
+import {
+  eloExpectedScore,
+  eloUpdateRating,
+} from '../strategies/ml/ml-math.utils';
 import { MlpTrainerService } from './mlp-trainer.service';
 import {
   DEFAULT_ROUTING_LEARNING_CONFIG,
@@ -23,7 +26,10 @@ import {
 
 type RoutingLearningDb = Pick<DrizzleDB, 'select' | 'update'>;
 type RoutingMemoryClient = Pick<QdrantClient, 'upsert'>;
-type EmbeddingServiceLike = Pick<EmbeddingIntegrationService, 'generateEmbedding'>;
+type EmbeddingServiceLike = Pick<
+  EmbeddingIntegrationService,
+  'generateEmbedding'
+>;
 
 interface RoutingDecisionRow {
   modelsEvaluated: Array<{ modelId: string }>;
@@ -43,7 +49,10 @@ function clampUnitInterval(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function normalizeQualityScore(value: number | undefined, fallback: number): number {
+function normalizeQualityScore(
+  value: number | undefined,
+  fallback: number,
+): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
   }
@@ -56,9 +65,14 @@ function calculatePerformanceScore(job: RoutingLearningJob): number {
     return 0;
   }
 
-  const qualityScore = normalizeQualityScore(job.actualPerformance.qualityScore, 1);
-  const latencyScore = 1 / (1 + Math.max(0, job.actualPerformance.latencyMs) / 2_000);
-  const tokenEfficiency = 1 / (1 + Math.max(0, job.actualPerformance.tokenCount) / 4_000);
+  const qualityScore = normalizeQualityScore(
+    job.actualPerformance.qualityScore,
+    1,
+  );
+  const latencyScore =
+    1 / (1 + Math.max(0, job.actualPerformance.latencyMs) / 2_000);
+  const tokenEfficiency =
+    1 / (1 + Math.max(0, job.actualPerformance.tokenCount) / 4_000);
 
   return clampUnitInterval(
     qualityScore * 0.6 + latencyScore * 0.25 + tokenEfficiency * 0.15,
@@ -86,53 +100,61 @@ export class RoutingLearningWorker extends WorkerHost {
       return;
     }
 
-    await runInTenantTransaction(this.db as DrizzleDB, job.data.tenantId, async () => {
-      const performanceScore = calculatePerformanceScore(job.data);
-      const [routingDecision] = await this.db
-        .select({
-          modelsEvaluated: routingDecisions.modelsEvaluated,
-          selectedModelId: routingDecisions.selectedModelId,
-        })
-        .from(routingDecisions)
-        .where(
-          and(
-            eq(routingDecisions.id, job.data.routingDecisionId),
-            eq(routingDecisions.executionStepId, job.data.executionStepId),
-            eq(routingDecisions.tenantId, job.data.tenantId),
-          ),
+    await runInTenantTransaction(
+      this.db as DrizzleDB,
+      job.data.tenantId,
+      async () => {
+        const performanceScore = calculatePerformanceScore(job.data);
+        const [routingDecision] = await this.db
+          .select({
+            modelsEvaluated: routingDecisions.modelsEvaluated,
+            selectedModelId: routingDecisions.selectedModelId,
+          })
+          .from(routingDecisions)
+          .where(
+            and(
+              eq(routingDecisions.id, job.data.routingDecisionId),
+              eq(routingDecisions.executionStepId, job.data.executionStepId),
+              eq(routingDecisions.tenantId, job.data.tenantId),
+            ),
+          );
+
+        const queryEmbedding = await this.embeddingService.generateEmbedding(
+          job.data.queryText,
+          job.data.tenantId,
         );
 
-      const queryEmbedding = await this.embeddingService.generateEmbedding(
-        job.data.queryText,
-        job.data.tenantId,
-      );
+        if (queryEmbedding) {
+          await this.upsertRoutingMemory(
+            job.data,
+            queryEmbedding,
+            performanceScore,
+          );
+        } else {
+          this.logger.warn(
+            `Routing learning skipped Qdrant upsert because embedding is unavailable: ${job.data.routingDecisionId}`,
+          );
+        }
 
-      if (queryEmbedding) {
-        await this.upsertRoutingMemory(job.data, queryEmbedding, performanceScore);
-      } else {
-        this.logger.warn(
-          `Routing learning skipped Qdrant upsert because embedding is unavailable: ${job.data.routingDecisionId}`,
-        );
-      }
+        await this.updateEloRating(job.data, routingDecision, performanceScore);
 
-      await this.updateEloRating(job.data, routingDecision, performanceScore);
+        if (this.config.mlpEnabled && queryEmbedding && routingDecision) {
+          const candidateModelIds = routingDecision.modelsEvaluated.map(
+            (model) => model.modelId,
+          );
 
-      if (this.config.mlpEnabled && queryEmbedding && routingDecision) {
-        const candidateModelIds = routingDecision.modelsEvaluated.map(
-          (model) => model.modelId,
-        );
-
-        await this.mlpTrainerService.recordSample({
-          tenantId: job.data.tenantId,
-          taskCategory: job.data.taskCategory ?? 'general',
-          selectedModelId:
-            routingDecision.selectedModelId ?? job.data.selectedModelId,
-          candidateModelIds,
-          queryEmbedding,
-          performanceScore,
-        });
-      }
-    });
+          await this.mlpTrainerService.recordSample({
+            tenantId: job.data.tenantId,
+            taskCategory: job.data.taskCategory ?? 'general',
+            selectedModelId:
+              routingDecision.selectedModelId ?? job.data.selectedModelId,
+            candidateModelIds,
+            queryEmbedding,
+            performanceScore,
+          });
+        }
+      },
+    );
   }
 
   @OnWorkerEvent('failed')
@@ -188,7 +210,8 @@ export class RoutingLearningWorker extends WorkerHost {
     const candidateModelIds = Array.from(
       new Set([
         job.selectedModelId,
-        ...(routingDecision?.modelsEvaluated.map((model) => model.modelId) ?? []),
+        ...(routingDecision?.modelsEvaluated.map((model) => model.modelId) ??
+          []),
       ]),
     );
 
@@ -220,14 +243,19 @@ export class RoutingLearningWorker extends WorkerHost {
       }
 
       const selectedRating = readNumber(selectedRow.eloRating, 1500);
-      const opponentRows = routerRows.filter((row) => row.modelId !== job.selectedModelId);
+      const opponentRows = routerRows.filter(
+        (row) => row.modelId !== job.selectedModelId,
+      );
       const expectedScore =
         opponentRows.length === 0
           ? eloExpectedScore(selectedRating, 1500)
           : opponentRows.reduce(
               (sum, row) =>
                 sum +
-                eloExpectedScore(selectedRating, readNumber(row.eloRating, 1500)),
+                eloExpectedScore(
+                  selectedRating,
+                  readNumber(row.eloRating, 1500),
+                ),
               0,
             ) / opponentRows.length;
       const nextRating = eloUpdateRating(

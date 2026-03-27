@@ -11,10 +11,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import {
-  appendSlugSuffix,
-  generateSlug,
-} from '../organization/slug.utils';
+import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
 import type { CreateSkillDtoType } from './dto/create-skill.dto';
 import type { SkillQueryDtoType } from './dto/skill-query.dto';
 import type { UpdateSkillDtoType } from './dto/update-skill.dto';
@@ -45,9 +42,10 @@ export class SkillService {
   /**
    * 解析 SKILL.md 内容中的 YAML frontmatter（平面 key: value 格式）
    */
-  private parseFrontmatter(
-    content: string,
-  ): { frontmatter: Record<string, unknown>; body: string } {
+  private parseFrontmatter(content: string): {
+    frontmatter: Record<string, unknown>;
+    body: string;
+  } {
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!match) return { frontmatter: {}, body: content };
 
@@ -69,13 +67,9 @@ export class SkillService {
   /**
    * 从文件列表中提取 SKILL.md 内容（如有）
    */
-  private extractSkillMdContent(
-    files?: SkillUploadFile[],
-  ): string | null {
+  private extractSkillMdContent(files?: SkillUploadFile[]): string | null {
     if (!files?.length) return null;
-    const skillMd = files.find(
-      (f) => f.filename.toLowerCase() === 'skill.md',
-    );
+    const skillMd = files.find((f) => f.filename.toLowerCase() === 'skill.md');
     return skillMd ? skillMd.buffer.toString('utf-8') : null;
   }
 
@@ -150,9 +144,7 @@ export class SkillService {
       throw new Error('Unreachable: slug retry loop exhausted');
     }
 
-    this.logger.log(
-      `Skill created: ${created.id} (${created.slug})`,
-    );
+    this.logger.log(`Skill created: ${created.id} (${created.slug})`);
 
     if (files?.length) {
       for (const file of files) {
@@ -187,9 +179,7 @@ export class SkillService {
     return created;
   }
 
-  async findAll(
-    query: SkillQueryDtoType,
-  ): Promise<{
+  async findAll(query: SkillQueryDtoType): Promise<{
     data: schema.SkillRecord[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
@@ -212,8 +202,7 @@ export class SkillService {
       );
     }
 
-    const whereClause =
-      conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [rows, countResult] = await Promise.all([
       this.tenantDb
@@ -314,9 +303,7 @@ export class SkillService {
       .returning();
 
     if (updateResult.length === 0) {
-      throw new ConflictException(
-        `Skill ${skillId} 版本冲突，请刷新后重试`,
-      );
+      throw new ConflictException(`Skill ${skillId} 版本冲突，请刷新后重试`);
     }
 
     if (files?.length) {
@@ -386,9 +373,7 @@ export class SkillService {
     }
 
     if (skill.status === 'archived') {
-      throw new ConflictException(
-        `Skill ${skillId} 已处于归档状态`,
-      );
+      throw new ConflictException(`Skill ${skillId} 已处于归档状态`);
     }
 
     const [updated] = await this.tenantDb

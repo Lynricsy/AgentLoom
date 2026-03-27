@@ -85,11 +85,10 @@ import { UserIdentityResolverService } from '../../../../common/services/user-id
 const JWT_SECRET = 'test-jwt-secret';
 
 function createToken(payload: Record<string, unknown>): string {
-  return jwt.sign(
-    { aud: 'authenticated', ...payload },
-    JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: '1h' },
-  );
+  return jwt.sign({ aud: 'authenticated', ...payload }, JWT_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: '1h',
+  });
 }
 
 describe('MemoryGateway', () => {
@@ -650,13 +649,7 @@ describe('MemoryGateway', () => {
             data: Record<string, unknown>,
           ) => void;
         }
-      ).enqueueEvent(
-        'tenant-abc',
-        'instance-timer',
-        queueKey,
-        'new-event',
-        {},
-      );
+      ).enqueueEvent('tenant-abc', 'instance-timer', queueKey, 'new-event', {});
 
       expect(drainTimers.has(queueKey)).toBe(true);
     });

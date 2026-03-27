@@ -15,10 +15,7 @@ import {
 import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
 
-export const shareTypeEnum = pgEnum('share_type', [
-  'read_only',
-  'copyable',
-]);
+export const shareTypeEnum = pgEnum('share_type', ['read_only', 'copyable']);
 
 // 公开访问通过 TenantMiddleware 排除 + @Public() 实现，管理端走 RLS
 export const workflowShares = pgTable(

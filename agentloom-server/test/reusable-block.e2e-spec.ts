@@ -376,7 +376,9 @@ describe('ReusableBlock E2E', () => {
       .set(owner.headers);
 
     expect(getResponse.status).toBe(200);
-    expect(getResponse.body.data.definition.inputPorts[0].dataType).toBe('text');
+    expect(getResponse.body.data.definition.inputPorts[0].dataType).toBe(
+      'text',
+    );
 
     const updatedDefinition = {
       ...VALID_DEFINITION,

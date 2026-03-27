@@ -71,7 +71,9 @@ export const suggestionStatusEnum = pgEnum('suggestion_status', [
 export const optimizationSuggestions = pgTable(
   'optimization_suggestions',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     workflowDefinitionId: uuid('workflow_definition_id').notNull(),
     nodeId: text('node_id').notNull(),
@@ -86,7 +88,9 @@ export const optimizationSuggestions = pgTable(
       .$type<SuggestionSuggestedValue>(),
     rationale: text('rationale').notNull(),
     impactEstimate: jsonb('impact_estimate').$type<ImpactEstimate | null>(),
-    analysisMetadata: jsonb('analysis_metadata').$type<AnalysisMetadata | null>(),
+    analysisMetadata: jsonb(
+      'analysis_metadata',
+    ).$type<AnalysisMetadata | null>(),
     analysisPeriodStart: timestamp('analysis_period_start', {
       withTimezone: true,
     }).notNull(),

@@ -215,27 +215,27 @@ describe('sanitizeTelemetryData', () => {
       }),
     );
 
-    expect(getSerializedBytes(sanitized.toolCalls[0]?.input)).toBeLessThanOrEqual(
-      BYTE_LIMITS.TOOL_CALL_IO,
-    );
-    expect(getSerializedBytes(sanitized.toolCalls[0]?.output)).toBeLessThanOrEqual(
-      BYTE_LIMITS.TOOL_CALL_IO,
-    );
-    expect(getStringBytes(sanitized.errors[0]?.errorMessage ?? '')).toBeLessThanOrEqual(
-      BYTE_LIMITS.ERROR_MESSAGE,
-    );
+    expect(
+      getSerializedBytes(sanitized.toolCalls[0]?.input),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.TOOL_CALL_IO);
+    expect(
+      getSerializedBytes(sanitized.toolCalls[0]?.output),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.TOOL_CALL_IO);
+    expect(
+      getStringBytes(sanitized.errors[0]?.errorMessage ?? ''),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.ERROR_MESSAGE);
     expect(
       getSerializedBytes(sanitized.selfRepairs[0]?.originalOutput),
     ).toBeLessThanOrEqual(BYTE_LIMITS.SELF_REPAIR);
     expect(
       getSerializedBytes(sanitized.selfRepairs[0]?.repairAttempts[0]?.result),
     ).toBeLessThanOrEqual(BYTE_LIMITS.SELF_REPAIR);
-    expect(getSerializedBytes(sanitized.ioSnapshots.stepInput)).toBeLessThanOrEqual(
-      BYTE_LIMITS.IO_SNAPSHOTS,
-    );
-    expect(getSerializedBytes(sanitized.ioSnapshots.stepOutput)).toBeLessThanOrEqual(
-      BYTE_LIMITS.IO_SNAPSHOTS,
-    );
+    expect(
+      getSerializedBytes(sanitized.ioSnapshots.stepInput),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.IO_SNAPSHOTS);
+    expect(
+      getSerializedBytes(sanitized.ioSnapshots.stepOutput),
+    ).toBeLessThanOrEqual(BYTE_LIMITS.IO_SNAPSHOTS);
 
     expect(sanitized.toolCalls[0]?.input).toMatchObject({
       apiKey: '[REDACTED]',
@@ -245,9 +245,15 @@ describe('sanitizeTelemetryData', () => {
       accessKey: '[REDACTED]',
       totalTokens: 456,
     });
-    expect(JSON.stringify(sanitized.toolCalls[0]?.input)).toContain(TRUNCATED_MARKER);
-    expect(JSON.stringify(sanitized.toolCalls[0]?.output)).toContain(TRUNCATED_MARKER);
-    expect(sanitized.errors[0]?.errorMessage.endsWith(TRUNCATED_MARKER)).toBe(true);
+    expect(JSON.stringify(sanitized.toolCalls[0]?.input)).toContain(
+      TRUNCATED_MARKER,
+    );
+    expect(JSON.stringify(sanitized.toolCalls[0]?.output)).toContain(
+      TRUNCATED_MARKER,
+    );
+    expect(sanitized.errors[0]?.errorMessage.endsWith(TRUNCATED_MARKER)).toBe(
+      true,
+    );
     expect(sanitized.selfRepairs[0]?.originalOutput).toMatchObject({
       secret: '[REDACTED]',
       promptTokens: 10,

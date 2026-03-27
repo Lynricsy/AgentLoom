@@ -10,12 +10,12 @@ export const PayoutStatusSchema = z.enum([
   'failed',
 ]);
 
-const DecimalStringSchema = z.string().trim().regex(
-  NON_NEGATIVE_FIXED_SCALE_DECIMAL_REGEX,
-  {
-  message: '必须为十进制数字字符串',
-  },
-);
+const DecimalStringSchema = z
+  .string()
+  .trim()
+  .regex(NON_NEGATIVE_FIXED_SCALE_DECIMAL_REGEX, {
+    message: '必须为十进制数字字符串',
+  });
 
 const JsonbMetadataSchema = z.record(z.string(), z.unknown());
 const IsoDatetimeSchema = z.iso.datetime();
@@ -80,7 +80,8 @@ export class UpdatePayoutStatusDto extends createZodDto(
   UpdatePayoutStatusSchema,
 ) {}
 
-export const QueryPluginEarningsSummarySchema = DashboardDateRangeSchema.strict();
+export const QueryPluginEarningsSummarySchema =
+  DashboardDateRangeSchema.strict();
 
 export class QueryPluginEarningsSummaryDto extends createZodDto(
   QueryPluginEarningsSummarySchema,
@@ -94,19 +95,23 @@ export class QueryPluginEarningsTrendDto extends createZodDto(
   QueryPluginEarningsTrendSchema,
 ) {}
 
-export const QueryPluginEarningsRankingSchema = DashboardDateRangeSchema.extend({
-  limit: z.coerce.number().int().min(1).max(100).optional().default(10),
-}).strict();
+export const QueryPluginEarningsRankingSchema = DashboardDateRangeSchema.extend(
+  {
+    limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+  },
+).strict();
 
 export class QueryPluginEarningsRankingDto extends createZodDto(
   QueryPluginEarningsRankingSchema,
 ) {}
 
-export const QueryPluginEarningsHistorySchema = DashboardDateRangeSchema.extend({
-  payoutStatus: PayoutStatusSchema.optional(),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
-}).strict();
+export const QueryPluginEarningsHistorySchema = DashboardDateRangeSchema.extend(
+  {
+    payoutStatus: PayoutStatusSchema.optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+  },
+).strict();
 
 export class QueryPluginEarningsHistoryDto extends createZodDto(
   QueryPluginEarningsHistorySchema,

@@ -72,7 +72,9 @@ export class TriggerHistoryService {
     ];
 
     if (parsedQuery.status) {
-      conditions.push(eq(schema.workflowTriggerHistory.status, parsedQuery.status));
+      conditions.push(
+        eq(schema.workflowTriggerHistory.status, parsedQuery.status),
+      );
     }
 
     const whereClause = and(...conditions);

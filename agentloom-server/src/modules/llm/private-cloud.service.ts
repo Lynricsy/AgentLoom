@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
-import {
-  LlmProviderException,
-  LlmTimeoutException,
-} from './llm.exceptions';
+import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
 import type { TestConnectionDto } from './dto/test-connection.dto';
 import type { FetchPrivateCloudModelsDto } from './dto/private-cloud-models.dto';
 
@@ -68,7 +65,9 @@ export class PrivateCloudService {
         };
       }
 
-      this.logger.debug(`/health 返回状态 ${healthRes.status}，尝试 /v1/models`);
+      this.logger.debug(
+        `/health 返回状态 ${healthRes.status}，尝试 /v1/models`,
+      );
     } catch (error) {
       if (
         error instanceof LlmProviderException ||

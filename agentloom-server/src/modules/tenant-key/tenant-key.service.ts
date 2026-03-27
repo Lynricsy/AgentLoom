@@ -13,10 +13,7 @@ import {
   TenantKeyNotFoundException,
   TenantKeyRevokedException,
 } from './exceptions/tenant-key.exceptions';
-import {
-  computeKeyFingerprint,
-  validateRsaPublicKey,
-} from './rsa-key-utils';
+import { computeKeyFingerprint, validateRsaPublicKey } from './rsa-key-utils';
 
 @Injectable()
 export class TenantKeyService {
@@ -65,7 +62,10 @@ export class TenantKeyService {
     return created;
   }
 
-  async findByOrg(tenantId: string, orgId: string): Promise<TenantEncryptionKey[]> {
+  async findByOrg(
+    tenantId: string,
+    orgId: string,
+  ): Promise<TenantEncryptionKey[]> {
     return this.tenantDb
       .select()
       .from(tenantEncryptionKeys)
@@ -86,7 +86,10 @@ export class TenantKeyService {
       );
   }
 
-  async findById(tenantId: string, keyId: string): Promise<TenantEncryptionKey> {
+  async findById(
+    tenantId: string,
+    keyId: string,
+  ): Promise<TenantEncryptionKey> {
     const [key] = await this.tenantDb
       .select()
       .from(tenantEncryptionKeys)
@@ -184,7 +187,10 @@ export class TenantKeyService {
     }
   }
 
-  async revokeKey(tenantId: string, keyId: string): Promise<TenantEncryptionKey> {
+  async revokeKey(
+    tenantId: string,
+    keyId: string,
+  ): Promise<TenantEncryptionKey> {
     const existingKey = await this.findById(tenantId, keyId);
 
     if (existingKey.status === 'revoked') {

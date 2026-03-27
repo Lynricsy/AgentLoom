@@ -5,7 +5,15 @@ import {
   generateKeyPairSync,
   privateDecrypt,
 } from 'node:crypto';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import type { TenantEncryptionKey } from '../../../database/schema/tenant-encryption-keys.schema';
 import { TenantKeyService } from '../../tenant-key/tenant-key.service';
@@ -25,7 +33,8 @@ const NOW = new Date('2026-03-15T12:34:56.000Z');
 const TENANT_ID = '00000000-0000-0000-0000-000000000010';
 const ORG_ID = '00000000-0000-0000-0000-000000000020';
 const KEY_ID = '00000000-0000-0000-0000-000000000030';
-const BASE64_REGEX = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const BASE64_REGEX =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 let testKeyPair: { publicKey: string; privateKey: string };
 
@@ -49,7 +58,10 @@ function createTenantKeyRecord(
   };
 }
 
-function decryptPayload(payload: EncryptedPayload, privateKeyPem: string): string {
+function decryptPayload(
+  payload: EncryptedPayload,
+  privateKeyPem: string,
+): string {
   const dek = privateDecrypt(
     {
       key: privateKeyPem,
@@ -115,21 +127,29 @@ describe('LlmEncryptionService', () => {
 
   describe('isE2EEEnabled', () => {
     it('当存在活跃密钥时返回 true', async () => {
-      mockTenantKeyService.getActiveKey.mockResolvedValue(createTenantKeyRecord());
+      mockTenantKeyService.getActiveKey.mockResolvedValue(
+        createTenantKeyRecord(),
+      );
 
-      await expect(service.isE2EEEnabled(TENANT_ID, ORG_ID)).resolves.toBe(true);
+      await expect(service.isE2EEEnabled(TENANT_ID, ORG_ID)).resolves.toBe(
+        true,
+      );
     });
 
     it('当不存在活跃密钥时返回 false', async () => {
       mockTenantKeyService.getActiveKey.mockResolvedValue(null);
 
-      await expect(service.isE2EEEnabled(TENANT_ID, ORG_ID)).resolves.toBe(false);
+      await expect(service.isE2EEEnabled(TENANT_ID, ORG_ID)).resolves.toBe(
+        false,
+      );
     });
   });
 
   describe('encryptForTenant', () => {
     it('成功加密并返回完整 EncryptedPayload', async () => {
-      mockTenantKeyService.getActiveKey.mockResolvedValue(createTenantKeyRecord());
+      mockTenantKeyService.getActiveKey.mockResolvedValue(
+        createTenantKeyRecord(),
+      );
 
       const payload = await service.encryptForTenant(
         TENANT_ID,
@@ -154,7 +174,9 @@ describe('LlmEncryptionService', () => {
     });
 
     it('加密完成后应清零 DEK 缓冲区', async () => {
-      mockTenantKeyService.getActiveKey.mockResolvedValue(createTenantKeyRecord());
+      mockTenantKeyService.getActiveKey.mockResolvedValue(
+        createTenantKeyRecord(),
+      );
 
       const fillSpy = vi.spyOn(Buffer.prototype, 'fill');
 
@@ -173,9 +195,15 @@ describe('LlmEncryptionService', () => {
 
     it('应当支持真实 RSA + AES 回环解密', async () => {
       const plaintext = 'Roundtrip 测试：混合加密内容 ✅';
-      mockTenantKeyService.getActiveKey.mockResolvedValue(createTenantKeyRecord());
+      mockTenantKeyService.getActiveKey.mockResolvedValue(
+        createTenantKeyRecord(),
+      );
 
-      const payload = await service.encryptForTenant(TENANT_ID, ORG_ID, plaintext);
+      const payload = await service.encryptForTenant(
+        TENANT_ID,
+        ORG_ID,
+        plaintext,
+      );
 
       expect(decryptPayload(payload, testKeyPair.privateKey)).toBe(plaintext);
     });

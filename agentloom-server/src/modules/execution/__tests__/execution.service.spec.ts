@@ -405,7 +405,9 @@ describe('ExecutionService', () => {
     mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValue(
       null,
     );
-    mockResourceGovernanceService.recordBlockedDecision.mockResolvedValue(undefined);
+    mockResourceGovernanceService.recordBlockedDecision.mockResolvedValue(
+      undefined,
+    );
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -575,7 +577,9 @@ describe('ExecutionService', () => {
         inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
       };
 
-      db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([workflowWithInputSchema]),
+      );
 
       await expect(
         service.runWorkflow(
@@ -599,7 +603,9 @@ describe('ExecutionService', () => {
         inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
       };
 
-      db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([workflowWithInputSchema]),
+      );
 
       try {
         await service.runWorkflow(
@@ -616,7 +622,9 @@ describe('ExecutionService', () => {
         throw new Error('应当抛出 WorkflowLaunchInputValidationException');
       } catch (error) {
         expect(error).toBeInstanceOf(WorkflowLaunchInputValidationException);
-        expect((error as WorkflowLaunchInputValidationException).errors).toEqual(
+        expect(
+          (error as WorkflowLaunchInputValidationException).errors,
+        ).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               field: 'inputParams.topic',
@@ -702,18 +710,18 @@ describe('ExecutionService', () => {
       });
 
       it('应在 hybrid 模式下保留 conversationPlan 并生成 launchConfig', async () => {
-        expect(workflowInputSchemaSchema.parse(HYBRID_RUN_INPUT_SCHEMA)).toMatchObject(
-          {
-            collectionMode: 'hybrid',
-            conversationPlan: HYBRID_RUN_INPUT_SCHEMA.conversationPlan,
-            fields: expect.arrayContaining([
-              expect.objectContaining({
-                id: 'topic',
-                collectionHint: '先问用户本次需要分析什么',
-              }),
-            ]),
-          },
-        );
+        expect(
+          workflowInputSchemaSchema.parse(HYBRID_RUN_INPUT_SCHEMA),
+        ).toMatchObject({
+          collectionMode: 'hybrid',
+          conversationPlan: HYBRID_RUN_INPUT_SCHEMA.conversationPlan,
+          fields: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'topic',
+              collectionHint: '先问用户本次需要分析什么',
+            }),
+          ]),
+        });
 
         const workflowWithInputSchema = {
           ...mockPublishedWorkflow,
@@ -969,7 +977,9 @@ describe('ExecutionService', () => {
           inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
         };
 
-        db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+        db.select.mockReturnValueOnce(
+          createSelectChain([workflowWithInputSchema]),
+        );
 
         await expect(
           service.runWorkflow(
@@ -993,7 +1003,9 @@ describe('ExecutionService', () => {
           inputSchema: CONVERSATION_RUN_INPUT_SCHEMA,
         };
 
-        db.select.mockReturnValueOnce(createSelectChain([workflowWithInputSchema]));
+        db.select.mockReturnValueOnce(
+          createSelectChain([workflowWithInputSchema]),
+        );
 
         try {
           await service.runWorkflow(
@@ -1010,7 +1022,9 @@ describe('ExecutionService', () => {
           throw new Error('应当抛出 WorkflowLaunchInputValidationException');
         } catch (error) {
           expect(error).toBeInstanceOf(WorkflowLaunchInputValidationException);
-          expect((error as WorkflowLaunchInputValidationException).errors).toEqual(
+          expect(
+            (error as WorkflowLaunchInputValidationException).errors,
+          ).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
                 field: 'inputParams.topic',
@@ -1213,7 +1227,9 @@ describe('ExecutionService', () => {
         workflowId: WORKFLOW_ID,
         dbClient: db,
       });
-      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+      expect(
+        mockResourceGovernanceService.recordBlockedDecision,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
           actorId: USER_ID,
@@ -1233,7 +1249,8 @@ describe('ExecutionService', () => {
         createBlockedDecision({
           category: 'workflow_pause',
           scope: 'workflow',
-          reason: 'workflow governance pause is preventing new workflow executions',
+          reason:
+            'workflow governance pause is preventing new workflow executions',
           effectiveState: {
             organizationId: '019391d4-f000-7000-0000-000000000006',
             tenantControl: {
@@ -1271,7 +1288,9 @@ describe('ExecutionService', () => {
         workflowId: WORKFLOW_ID,
         dbClient: txDb,
       });
-      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+      expect(
+        mockResourceGovernanceService.recordBlockedDecision,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
           actorId: USER_ID,
@@ -1307,7 +1326,9 @@ describe('ExecutionService', () => {
 
       expect(db.insert).not.toHaveBeenCalled();
       expect(mockQueue.add).not.toHaveBeenCalled();
-      expect(mockResourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+      expect(
+        mockResourceGovernanceService.recordBlockedDecision,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: TENANT_ID,
           actorId: USER_ID,

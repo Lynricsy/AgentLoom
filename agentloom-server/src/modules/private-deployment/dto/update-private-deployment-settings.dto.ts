@@ -27,15 +27,17 @@ const UpdatePrivateDeploymentSmtpSchema = z
       .string()
       .trim()
       .min(1, 'SMTP 密码引用不能为空')
-      .regex(
-        SMTP_PASSWORD_SECRET_REF_PATTERN,
-        'SMTP 密码引用格式不正确',
-      )
+      .regex(SMTP_PASSWORD_SECRET_REF_PATTERN, 'SMTP 密码引用格式不正确')
       .nullable()
       .optional(),
     fromEmail: z.string().email('发件邮箱格式不正确').nullable(),
     useTls: z.boolean(),
-    password: z.string().trim().min(1, 'SMTP 密码不能为空').nullable().optional(),
+    password: z
+      .string()
+      .trim()
+      .min(1, 'SMTP 密码不能为空')
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -47,14 +49,16 @@ const UpdatePrivateDeploymentLlmProxySchema = z
       .string()
       .trim()
       .min(1, 'LLM API Key 引用不能为空')
-      .regex(
-        LLM_PROXY_API_KEY_SECRET_REF_PATTERN,
-        'LLM API Key 引用格式不正确',
-      )
+      .regex(LLM_PROXY_API_KEY_SECRET_REF_PATTERN, 'LLM API Key 引用格式不正确')
       .nullable()
       .optional(),
     allowExternalEgress: z.boolean(),
-    apiKey: z.string().trim().min(1, 'LLM API Key 不能为空').nullable().optional(),
+    apiKey: z
+      .string()
+      .trim()
+      .min(1, 'LLM API Key 不能为空')
+      .nullable()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -81,7 +85,11 @@ const UpdatePrivateDeploymentLlmProxySchema = z
 const UpdatePrivateDeploymentCertificatesSchema = z
   .object({
     source: z.enum(['uploaded', 'secretRef', 'ingress-managed']),
-    tlsSecretRef: z.string().trim().min(1, 'TLS Secret 引用不能为空').nullable(),
+    tlsSecretRef: z
+      .string()
+      .trim()
+      .min(1, 'TLS Secret 引用不能为空')
+      .nullable(),
     expiresAt: NullableIsoDatetimeSchema,
     certificatePem: z
       .string()

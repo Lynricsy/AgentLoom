@@ -18,10 +18,7 @@ const optionalUrlFromEnv = (message: string) =>
   z.preprocess(emptyStringToUndefined, z.string().url(message).optional());
 
 const optionalNonEmptyStringFromEnv = (message: string) =>
-  z.preprocess(
-    emptyStringToUndefined,
-    z.string().min(1, message).optional(),
-  );
+  z.preprocess(emptyStringToUndefined, z.string().min(1, message).optional());
 
 const baseEnvSchema = z.object({
   APP_PORT: z.coerce.number().default(3000),

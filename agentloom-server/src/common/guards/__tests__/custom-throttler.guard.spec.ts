@@ -33,7 +33,10 @@ type HeaderWriter = {
   header: Mock;
 };
 
-type PlatformApiTokenServiceLike = Pick<PlatformApiTokenService, 'validateToken'>;
+type PlatformApiTokenServiceLike = Pick<
+  PlatformApiTokenService,
+  'validateToken'
+>;
 type ResourceGovernanceServiceLike = Pick<
   ResourceGovernanceService,
   | 'resolveRuntimeStateForTenant'
@@ -129,9 +132,7 @@ function createResponse(): HeaderWriter {
 function createRequestProps(
   req: GuardRequest,
   res: HeaderWriter,
-  overrides: Partial<
-    Pick<ThrottlerRequest, 'getTracker' | 'generateKey'>
-  > = {},
+  overrides: Partial<Pick<ThrottlerRequest, 'getTracker' | 'generateKey'>> = {},
 ): ThrottlerRequest {
   const context = {
     req,
@@ -177,8 +178,12 @@ function createGuard(): ExposedCustomThrottlerGuard {
 describe('CustomThrottlerGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValue(null);
-    resourceGovernanceService.recordBlockedDecision.mockResolvedValue(undefined);
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValue(
+      null,
+    );
+    resourceGovernanceService.recordBlockedDecision.mockResolvedValue(
+      undefined,
+    );
     resourceGovernanceService.buildBlockedDecision.mockImplementation(
       (input) => ({
         decision: 'blocked',
@@ -304,7 +309,9 @@ describe('CustomThrottlerGuard', () => {
     expect(res.header).toHaveBeenCalledWith('X-RateLimit-Limit', 5);
     expect(res.header).toHaveBeenCalledWith('X-RateLimit-Remaining', 0);
     expect(res.header).toHaveBeenCalledWith('X-RateLimit-Reset', 12);
-    expect(resourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+    expect(
+      resourceGovernanceService.recordBlockedDecision,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: TENANT_ID,
         actorId: USER_ID,
@@ -357,8 +364,13 @@ describe('CustomThrottlerGuard', () => {
     }
 
     expect(storageService.increment).toHaveBeenCalledTimes(1);
-    expect(res.header).not.toHaveBeenCalledWith('Retry-After', expect.anything());
-    expect(resourceGovernanceService.recordBlockedDecision).toHaveBeenCalledWith(
+    expect(res.header).not.toHaveBeenCalledWith(
+      'Retry-After',
+      expect.anything(),
+    );
+    expect(
+      resourceGovernanceService.recordBlockedDecision,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: TENANT_ID,
         actorId: USER_ID,
@@ -405,9 +417,9 @@ describe('CustomThrottlerGuard', () => {
     expect(platformApiTokenService.validateToken).toHaveBeenCalledWith(
       'al_testpref1234567890',
     );
-    expect(resourceGovernanceService.resolveRuntimeStateForTenant).toHaveBeenCalledWith(
-      TENANT_ID,
-    );
+    expect(
+      resourceGovernanceService.resolveRuntimeStateForTenant,
+    ).toHaveBeenCalledWith(TENANT_ID);
     expect(req.tenantId).toBe(TENANT_ID);
     expect(req.apiKeyPrefix).toBe('al_testpref');
     expect(requestProps.generateKey).toHaveBeenCalledWith(
@@ -444,10 +456,14 @@ describe('CustomThrottlerGuard', () => {
       getTracker: vi.fn().mockResolvedValue('jwt:jwt-user'),
       generateKey,
     });
-    const apiKeyRequestProps = createRequestProps(reqFromApiKey, createResponse(), {
-      getTracker: vi.fn().mockResolvedValue('apikey:al_testpref'),
-      generateKey,
-    });
+    const apiKeyRequestProps = createRequestProps(
+      reqFromApiKey,
+      createResponse(),
+      {
+        getTracker: vi.fn().mockResolvedValue('apikey:al_testpref'),
+        generateKey,
+      },
+    );
 
     resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValue(
       createRuntimeState({ apiRateLimitPerMinute: 7 }),
@@ -466,8 +482,12 @@ describe('CustomThrottlerGuard', () => {
         timeToBlockExpire: 0,
       });
 
-    await expect(guard.handleRequestForTest(jwtRequestProps)).resolves.toBe(true);
-    await expect(guard.handleRequestForTest(apiKeyRequestProps)).resolves.toBe(true);
+    await expect(guard.handleRequestForTest(jwtRequestProps)).resolves.toBe(
+      true,
+    );
+    await expect(guard.handleRequestForTest(apiKeyRequestProps)).resolves.toBe(
+      true,
+    );
 
     expect(generateKey).toHaveBeenNthCalledWith(
       1,
@@ -498,5 +518,4 @@ describe('CustomThrottlerGuard', () => {
       'default',
     );
   });
-
 });

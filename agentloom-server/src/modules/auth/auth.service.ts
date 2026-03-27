@@ -587,14 +587,12 @@ export class AuthService {
             user_agent: row.user_agent ?? null,
             ip: row.ip ?? null,
             created_at: row.created_at
-              ? new Date(row.created_at as string | Date).toISOString()
+              ? new Date(row.created_at).toISOString()
               : null,
             last_active_at: row.last_active_at
-              ? new Date(row.last_active_at as string | Date).toISOString()
+              ? new Date(row.last_active_at).toISOString()
               : null,
-            is_current: currentSessionId
-              ? row.id === currentSessionId
-              : false,
+            is_current: currentSessionId ? row.id === currentSessionId : false,
           })),
         },
       };

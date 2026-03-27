@@ -106,7 +106,10 @@ describe('RoundRobinRouter', () => {
   it('选中的模型应该有最高分数', async () => {
     const router = new RoundRobinRouter();
     const candidates = makeCandidates();
-    const decision = await router.routeSingle(candidates, makeContext('tenant-score'));
+    const decision = await router.routeSingle(
+      candidates,
+      makeContext('tenant-score'),
+    );
 
     const selectedScore = decision.scores.find(
       (s) => s.modelId === decision.selectedModelId,
@@ -124,7 +127,10 @@ describe('RoundRobinRouter', () => {
   it('reasoning 应该包含轮转信息', async () => {
     const router = new RoundRobinRouter();
     const candidates = makeCandidates();
-    const decision = await router.routeSingle(candidates, makeContext('tenant-r'));
+    const decision = await router.routeSingle(
+      candidates,
+      makeContext('tenant-r'),
+    );
 
     expect(decision.reasoning).toContain('轮转');
   });
@@ -132,7 +138,10 @@ describe('RoundRobinRouter', () => {
   it('scores 数量应该等于候选数', async () => {
     const router = new RoundRobinRouter();
     const candidates = makeCandidates();
-    const decision = await router.routeSingle(candidates, makeContext('tenant-s'));
+    const decision = await router.routeSingle(
+      candidates,
+      makeContext('tenant-s'),
+    );
 
     expect(decision.scores).toHaveLength(candidates.length);
   });

@@ -71,7 +71,11 @@ describe('RulesRouter', () => {
     const valid = router.configSchema.safeParse({
       rules: [
         {
-          condition: { field: 'taskCategory', operator: 'equals', value: 'coding' },
+          condition: {
+            field: 'taskCategory',
+            operator: 'equals',
+            value: 'coding',
+          },
           targetModelId: 'gpt-4o',
           priority: 1,
         },
@@ -91,7 +95,11 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'taskCategory', operator: 'equals', value: 'coding' },
+            condition: {
+              field: 'taskCategory',
+              operator: 'equals',
+              value: 'coding',
+            },
             targetModelId: 'claude-sonnet',
             priority: 1,
           },
@@ -112,7 +120,11 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'inputTokenCount', operator: 'greater_than', value: 10_000 },
+            condition: {
+              field: 'inputTokenCount',
+              operator: 'greater_than',
+              value: 10_000,
+            },
             targetModelId: 'claude-sonnet',
             priority: 1,
           },
@@ -132,7 +144,11 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'inputTokenCount', operator: 'less_than', value: 1000 },
+            condition: {
+              field: 'inputTokenCount',
+              operator: 'less_than',
+              value: 1000,
+            },
             targetModelId: 'deepseek-chat',
             priority: 1,
           },
@@ -153,12 +169,20 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'inputTokenCount', operator: 'greater_than', value: 10_000 },
+            condition: {
+              field: 'inputTokenCount',
+              operator: 'greater_than',
+              value: 10_000,
+            },
             targetModelId: 'claude-sonnet',
             priority: 2,
           },
           {
-            condition: { field: 'taskCategory', operator: 'equals', value: 'coding' },
+            condition: {
+              field: 'taskCategory',
+              operator: 'equals',
+              value: 'coding',
+            },
             targetModelId: 'gpt-4o',
             priority: 1,
           },
@@ -178,7 +202,11 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'taskCategory', operator: 'equals', value: 'coding' },
+            condition: {
+              field: 'taskCategory',
+              operator: 'equals',
+              value: 'coding',
+            },
             targetModelId: 'claude-sonnet',
             priority: 1,
           },
@@ -199,7 +227,11 @@ describe('RulesRouter', () => {
       strategyConfig: {
         rules: [
           {
-            condition: { field: 'taskCategory', operator: 'equals', value: 'coding' },
+            condition: {
+              field: 'taskCategory',
+              operator: 'equals',
+              value: 'coding',
+            },
             targetModelId: 'non-existent-model',
             priority: 1,
           },

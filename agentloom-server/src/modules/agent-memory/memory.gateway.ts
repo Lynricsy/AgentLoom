@@ -6,11 +6,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import {
-  Logger,
-  UseGuards,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Logger, UseGuards, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
@@ -240,8 +236,9 @@ export class MemoryGateway
     this.logger.debug(`Client ${client.id} joined room ${room}`);
 
     // lastEventId 重连回放
-    const lastEventIdRaw =
-      client.handshake.query?.lastEventId as string | undefined;
+    const lastEventIdRaw = client.handshake.query?.lastEventId as
+      | string
+      | undefined;
     if (lastEventIdRaw != null && lastEventIdRaw !== '') {
       const lastEventId = parseInt(lastEventIdRaw, 10);
       if (!isNaN(lastEventId)) {

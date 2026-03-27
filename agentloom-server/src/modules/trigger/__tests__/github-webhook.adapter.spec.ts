@@ -15,7 +15,10 @@ describe('GithubWebhookAdapter', () => {
   }
 
   function createPayload(
-    overrides: Partial<EventPayload> & { rawBody?: string; headers?: Record<string, string> } = {},
+    overrides: Partial<EventPayload> & {
+      rawBody?: string;
+      headers?: Record<string, string>;
+    } = {},
   ): EventPayload {
     const rawBody = overrides.rawBody ?? '{"action":"opened"}';
     const headers = overrides.headers ?? {

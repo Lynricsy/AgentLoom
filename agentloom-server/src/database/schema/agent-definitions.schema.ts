@@ -55,8 +55,10 @@ export const agentDefinitions = pgTable(
       .$type<SandboxConfig | null>()
       .default(null),
 
-    workspaceSnapshotId: uuid('workspace_snapshot_id')
-      .references(() => workspaceSnapshots.id, { onDelete: 'set null' }),
+    workspaceSnapshotId: uuid('workspace_snapshot_id').references(
+      () => workspaceSnapshots.id,
+      { onDelete: 'set null' },
+    ),
 
     version: integer('version').notNull().default(1),
     status: agentStatusEnum('status').notNull().default('draft'),

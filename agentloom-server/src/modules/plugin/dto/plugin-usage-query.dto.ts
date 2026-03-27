@@ -3,9 +3,7 @@ import { z } from 'zod';
 
 const IsoDateTimeStringSchema = z
   .string()
-  .datetime({ offset: true, message: 'Invalid ISO datetime' })
-;
-
+  .datetime({ offset: true, message: 'Invalid ISO datetime' });
 const IsoDateCoerceSchema = z
   .union([IsoDateTimeStringSchema, z.date()])
   .pipe(z.coerce.date());

@@ -126,7 +126,9 @@ function normalizeOperationParameterAliases(value: unknown): void {
     });
 
     if (aliasesToRemove.size > 0) {
-      value.parameters = parameters.filter((_, index) => !aliasesToRemove.has(index));
+      value.parameters = parameters.filter(
+        (_, index) => !aliasesToRemove.has(index),
+      );
     }
   }
 
@@ -207,17 +209,12 @@ function buildSwaggerConfig() {
     .setContact('AgentLoom', 'https://agentloom.dev', 'support@agentloom.dev')
     .setLicense('Proprietary', '')
     .addBearerAuth()
-    .addApiKey(
-      { type: 'apiKey', in: 'header', name: 'X-Api-Key' },
-      'X-Api-Key',
-    )
+    .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Api-Key' }, 'X-Api-Key')
     .addServer(`/${API_GLOBAL_PREFIX}`, 'API v1')
     .build();
 }
 
-export function createSwaggerDocument(
-  app: INestApplication,
-): OpenAPIObject {
+export function createSwaggerDocument(app: INestApplication): OpenAPIObject {
   const document = SwaggerModule.createDocument(
     app,
     buildSwaggerConfig(),

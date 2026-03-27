@@ -303,7 +303,9 @@ describe('EvidenceService', () => {
       ) => operation(mocks.tenantDb),
     );
 
-    mocks.llmEncryptionService.isE2EEEnabled.mockReset().mockResolvedValue(false);
+    mocks.llmEncryptionService.isE2EEEnabled
+      .mockReset()
+      .mockResolvedValue(false);
     mocks.llmEncryptionService.encryptForTenant.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({

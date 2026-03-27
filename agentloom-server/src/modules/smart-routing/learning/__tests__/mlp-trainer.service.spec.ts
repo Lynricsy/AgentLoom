@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  RoutingBenchmarkMlpWeights,
-} from '../../../../database/schema/routing-benchmarks.schema';
+import type { RoutingBenchmarkMlpWeights } from '../../../../database/schema/routing-benchmarks.schema';
 import { MlpTrainerService } from '../mlp-trainer.service';
 
 type MockDb = {
@@ -10,7 +8,10 @@ type MockDb = {
   update: ReturnType<typeof vi.fn>;
 };
 
-function createService(db: MockDb, config: ConstructorParameters<typeof MlpTrainerService>[1]) {
+function createService(
+  db: MockDb,
+  config: ConstructorParameters<typeof MlpTrainerService>[1],
+) {
   return new MlpTrainerService(
     db as unknown as ConstructorParameters<typeof MlpTrainerService>[0],
     config,
@@ -55,7 +56,8 @@ function createMockDb(selectResults: unknown[][]): {
   return {
     db: {
       select: vi.fn(() => {
-        const result = selectResults[Math.min(selectIndex, selectResults.length - 1)] ?? [];
+        const result =
+          selectResults[Math.min(selectIndex, selectResults.length - 1)] ?? [];
         selectIndex += 1;
 
         return {
@@ -164,7 +166,8 @@ describe('MlpTrainerService', () => {
     });
 
     expect(result.batchProcessed).toBe(true);
-    const persisted = setMock.mock.calls[0]?.[0]?.mlpWeights as RoutingBenchmarkMlpWeights;
+    const persisted = setMock.mock.calls[0]?.[0]
+      ?.mlpWeights as RoutingBenchmarkMlpWeights;
     expect(persisted.metadata.sampleCount).toBe(5);
     expect(persisted.layers[1]?.weights[0]?.[0]).toBeGreaterThan(
       weights.layers[1]?.weights[0]?.[0] ?? 0,

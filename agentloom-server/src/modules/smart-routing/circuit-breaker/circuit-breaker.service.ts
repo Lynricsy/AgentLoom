@@ -191,10 +191,13 @@ export class CircuitBreakerService implements OnModuleDestroy {
   private deserializeRow(row: ProviderHealthStatus): CircuitBreakerState {
     const fallbackTimestamp =
       row.lastFailureAt?.getTime() ?? row.updatedAt.getTime();
-    const recentResults = Array.from({ length: Math.max(row.failureCount, 0) }, () => ({
-      success: false,
-      timestamp: fallbackTimestamp,
-    }));
+    const recentResults = Array.from(
+      { length: Math.max(row.failureCount, 0) },
+      () => ({
+        success: false,
+        timestamp: fallbackTimestamp,
+      }),
+    );
 
     return {
       tenantId: row.tenantId,
@@ -255,7 +258,10 @@ export class CircuitBreakerService implements OnModuleDestroy {
     }
 
     state.phase = 'closed';
-    if (metrics.consecutiveFailureCount >= this.options.consecutiveFailureThreshold) {
+    if (
+      metrics.consecutiveFailureCount >=
+      this.options.consecutiveFailureThreshold
+    ) {
       state.status = 'open';
       state.phase = 'open';
       state.circuitOpenedAt = now;
@@ -309,14 +315,20 @@ export class CircuitBreakerService implements OnModuleDestroy {
     );
   }
 
-  private calculateWindowStart(state: CircuitBreakerState, now: number): number {
+  private calculateWindowStart(
+    state: CircuitBreakerState,
+    now: number,
+  ): number {
     return state.recentResults[0]?.timestamp ?? now;
   }
 
   private getMetrics(recentResults: CircuitBreakerState['recentResults']) {
     const totalRequestCount = recentResults.length;
-    const failureCount = recentResults.filter((result) => !result.success).length;
-    const failureRate = totalRequestCount > 0 ? failureCount / totalRequestCount : 0;
+    const failureCount = recentResults.filter(
+      (result) => !result.success,
+    ).length;
+    const failureRate =
+      totalRequestCount > 0 ? failureCount / totalRequestCount : 0;
 
     let consecutiveFailureCount = 0;
     for (let index = recentResults.length - 1; index >= 0; index -= 1) {
@@ -353,12 +365,18 @@ export class CircuitBreakerService implements OnModuleDestroy {
       totalRequestCount: metrics.totalRequestCount,
       failureRate: metrics.failureRate,
       consecutiveFailureCount: metrics.consecutiveFailureCount,
-      lastFailureAt: state.lastFailureAt ? new Date(state.lastFailureAt).toISOString() : null,
-      lastSuccessAt: state.lastSuccessAt ? new Date(state.lastSuccessAt).toISOString() : null,
+      lastFailureAt: state.lastFailureAt
+        ? new Date(state.lastFailureAt).toISOString()
+        : null,
+      lastSuccessAt: state.lastSuccessAt
+        ? new Date(state.lastSuccessAt).toISOString()
+        : null,
       circuitOpenedAt: state.circuitOpenedAt
         ? new Date(state.circuitOpenedAt).toISOString()
         : null,
-      windowStartAt: new Date(this.calculateWindowStart(state, now)).toISOString(),
+      windowStartAt: new Date(
+        this.calculateWindowStart(state, now),
+      ).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
     };
   }
@@ -373,7 +391,9 @@ export class CircuitBreakerService implements OnModuleDestroy {
   }
 
   private async flushDirtyEntries(): Promise<void> {
-    const dirtyEntries = Array.from(this.cache.values()).filter((state) => state.dirty);
+    const dirtyEntries = Array.from(this.cache.values()).filter(
+      (state) => state.dirty,
+    );
 
     for (const state of dirtyEntries) {
       await this.persistState(state);

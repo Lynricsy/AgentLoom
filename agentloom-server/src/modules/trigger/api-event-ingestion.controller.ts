@@ -6,19 +6,23 @@ import {
   Logger,
   Post,
   Req,
-} from '@nestjs/common'
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+} from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { ApiEventIngestionService, IngestEventSchema, type IngestionResult } from './api-event-ingestion.service'
+import {
+  ApiEventIngestionService,
+  IngestEventSchema,
+  type IngestionResult,
+} from './api-event-ingestion.service';
 
 type AuthenticatedRequest = {
-  tenantId: string
-}
+  tenantId: string;
+};
 
 @ApiTags('Triggers')
 @Controller('api-events')
 export class ApiEventIngestionController {
-  private readonly logger = new Logger(ApiEventIngestionController.name)
+  private readonly logger = new Logger(ApiEventIngestionController.name);
 
   constructor(private readonly ingestionService: ApiEventIngestionService) {}
 
@@ -31,7 +35,7 @@ export class ApiEventIngestionController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<IngestionResult> {
-    const dto = IngestEventSchema.parse(body)
-    return this.ingestionService.ingestEvent(request.tenantId, dto)
+    const dto = IngestEventSchema.parse(body);
+    return this.ingestionService.ingestEvent(request.tenantId, dto);
   }
 }

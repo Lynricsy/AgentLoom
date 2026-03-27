@@ -14,7 +14,9 @@ import { users } from './users.schema';
 export const tenantQuotas = pgTable(
   'tenant_quotas',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     organizationId: uuid('organization_id')
       .notNull()

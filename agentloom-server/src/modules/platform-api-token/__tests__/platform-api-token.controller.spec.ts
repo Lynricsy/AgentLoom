@@ -64,14 +64,20 @@ function createMockRequest(
   return request;
 }
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
   const handler = Reflect.get(controller, methodName);
   return typeof handler === 'function'
     ? (Reflect.getMetadata(ROLES_KEY, handler) as string[] | undefined)
     : undefined;
 }
 
-function getHttpCode(controller: object, methodName: string): number | undefined {
+function getHttpCode(
+  controller: object,
+  methodName: string,
+): number | undefined {
   const handler = Reflect.get(controller, methodName);
   return typeof handler === 'function'
     ? (Reflect.getMetadata(HTTP_CODE_METADATA, handler) as number | undefined)
@@ -144,7 +150,11 @@ describe('PlatformApiTokenController', () => {
       );
 
       expect(result).toEqual({ data: createdToken });
-      expect(service.generateToken).toHaveBeenCalledWith(TENANT_ID, USER_ID, dto);
+      expect(service.generateToken).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        dto,
+      );
     });
   });
 

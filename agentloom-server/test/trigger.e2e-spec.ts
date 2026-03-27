@@ -455,12 +455,12 @@ describe('Trigger E2E', () => {
         ? DEFAULT_CRON_CONFIG
         : type === 'webhook'
           ? {
-            token: crypto.randomUUID().replaceAll('-', ''),
-            secret:
-              crypto.randomUUID().replaceAll('-', '') +
-              crypto.randomUUID().replaceAll('-', ''),
-            ipWhitelist: [],
-          }
+              token: crypto.randomUUID().replaceAll('-', ''),
+              secret:
+                crypto.randomUUID().replaceAll('-', '') +
+                crypto.randomUUID().replaceAll('-', ''),
+              ipWhitelist: [],
+            }
           : {
               eventSource: 'github',
               eventType: 'pull_request',
@@ -594,7 +594,9 @@ describe('Trigger E2E', () => {
     });
 
     const deleteResponse = await request(app.getHttpServer())
-      .delete(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`)
+      .delete(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}`,
+      )
       .set(owner.headers);
 
     expect(deleteResponse.status).toBe(204);
@@ -701,7 +703,9 @@ describe('Trigger E2E', () => {
     });
 
     const updateResponse = await request(app.getHttpServer())
-      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .patch(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`,
+      )
       .set(owner.headers)
       .send({
         name: 'Blocked Preview Update',
@@ -711,7 +715,9 @@ describe('Trigger E2E', () => {
     expect(updateResponse.body.title).toBe('触发器类型仅预览');
 
     const toggleResponse = await request(app.getHttpServer())
-      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}/toggle`)
+      .patch(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}/toggle`,
+      )
       .set(owner.headers)
       .send();
 
@@ -777,7 +783,9 @@ describe('Trigger E2E', () => {
     const triggerId = createResponse.body.data.id as string;
 
     const disableResponse = await request(app.getHttpServer())
-      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`)
+      .patch(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`,
+      )
       .set(owner.headers)
       .send();
 
@@ -793,7 +801,9 @@ describe('Trigger E2E', () => {
     expect(storedAfterDisable?.nextFireAt).toBeNull();
 
     const enableResponse = await request(app.getHttpServer())
-      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`)
+      .patch(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${triggerId}/toggle`,
+      )
       .set(owner.headers)
       .send();
 
@@ -807,7 +817,9 @@ describe('Trigger E2E', () => {
       .where(eq(schema.workflowTriggers.id, triggerId));
 
     expect(storedTrigger?.isEnabled).toBe(true);
-    expect(storedTrigger?.nextFireAt?.toISOString()).toBe(nextFireAt.toISOString());
+    expect(storedTrigger?.nextFireAt?.toISOString()).toBe(
+      nextFireAt.toISOString(),
+    );
   });
 
   it('公开 webhook 成功时应返回 accepted 并以 webhook 元数据创建 execution', async () => {
@@ -1019,7 +1031,9 @@ describe('Trigger E2E', () => {
     expect(historyResponse.body.data[0].status).toBe('success');
     expect(
       Date.parse(historyResponse.body.data[0].triggeredAt),
-    ).toBeGreaterThanOrEqual(Date.parse(historyResponse.body.data[1].triggeredAt));
+    ).toBeGreaterThanOrEqual(
+      Date.parse(historyResponse.body.data[1].triggeredAt),
+    );
   });
 
   it('工作流未发布时创建触发器应返回 409', async () => {
@@ -1096,14 +1110,18 @@ describe('Trigger E2E', () => {
     expect(createResponse.status).toBe(403);
 
     const updateResponse = await request(app.getHttpServer())
-      .patch(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .patch(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`,
+      )
       .set(viewer.headers)
       .send({ name: 'Viewer Update' });
 
     expect(updateResponse.status).toBe(403);
 
     const deleteResponse = await request(app.getHttpServer())
-      .delete(`/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`)
+      .delete(
+        `/api/v1/workflow-definitions/${workflowId}/triggers/${trigger.id}`,
+      )
       .set(viewer.headers);
 
     expect(deleteResponse.status).toBe(403);

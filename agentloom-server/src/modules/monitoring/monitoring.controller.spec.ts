@@ -29,7 +29,9 @@ describe('MonitoringController', () => {
       getDashboard: vi.fn(),
     };
 
-    controller = new MonitoringController(service as unknown as MonitoringService);
+    controller = new MonitoringController(
+      service as unknown as MonitoringService,
+    );
   });
 
   it('applies owner/admin roles to the monitoring handler', () => {

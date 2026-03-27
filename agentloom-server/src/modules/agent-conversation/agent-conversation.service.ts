@@ -110,11 +110,7 @@ export class AgentConversationService {
     };
   }
 
-  async listMessages(
-    conversationId: string,
-    page = 1,
-    limit = 50,
-  ) {
+  async listMessages(conversationId: string, page = 1, limit = 50) {
     const [conversation] = await this.tenantDb
       .select({ id: agentConversations.id })
       .from(agentConversations)
@@ -122,9 +118,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(
-        `Conversation ${conversationId} not found`,
-      );
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
     }
 
     const offset = (page - 1) * limit;
@@ -166,9 +160,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(
-        `Conversation ${conversationId} not found`,
-      );
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
     }
 
     const offset = (messagesPage - 1) * messagesLimit;
@@ -218,9 +210,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(
-        `Conversation ${conversationId} not found`,
-      );
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
     }
 
     if (conversation.status !== 'active') {
@@ -289,9 +279,7 @@ export class AgentConversationService {
       .returning();
 
     if (!conversation) {
-      throw new NotFoundException(
-        `Conversation ${conversationId} not found`,
-      );
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
     }
 
     this.logger.log(`Conversation ${conversationId} ended`);

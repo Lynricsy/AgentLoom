@@ -8,12 +8,7 @@ import {
 
 export const UpdateSkillSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(SKILL_NAME_MAX_LENGTH)
-      .optional(),
+    name: z.string().trim().min(1).max(SKILL_NAME_MAX_LENGTH).optional(),
     description: z
       .string()
       .trim()
@@ -21,10 +16,7 @@ export const UpdateSkillSchema = z
       .max(SKILL_DESCRIPTION_MAX_LENGTH)
       .optional(),
     content: z.string().optional(),
-    occVersion: z
-      .number()
-      .int()
-      .min(1, { message: 'occVersion 必须为正整数' }),
+    occVersion: z.number().int().min(1, { message: 'occVersion 必须为正整数' }),
   })
   .strict();
 

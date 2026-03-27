@@ -11,12 +11,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -39,7 +34,9 @@ import {
 @ApiTags('Agent Definitions')
 @Controller('agent-definitions')
 export class AgentDefinitionController {
-  constructor(private readonly agentDefinitionService: AgentDefinitionService) {}
+  constructor(
+    private readonly agentDefinitionService: AgentDefinitionService,
+  ) {}
 
   @Post()
   @Roles('owner', 'admin', 'creator')
@@ -150,7 +147,11 @@ export class AgentDefinitionController {
     dto: CreateAgentVersionDto,
     @CurrentUser('sub') userId: string,
   ) {
-    const data = await this.agentDefinitionService.createVersion(id, dto, userId);
+    const data = await this.agentDefinitionService.createVersion(
+      id,
+      dto,
+      userId,
+    );
     return { data };
   }
 

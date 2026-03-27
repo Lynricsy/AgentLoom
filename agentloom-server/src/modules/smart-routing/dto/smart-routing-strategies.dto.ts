@@ -31,7 +31,9 @@ export class SmartRoutingStrategyConfigSchemaResponseDto extends createZodDto(
   SmartRoutingStrategyConfigSchemaResponseSchema,
 ) {}
 
-export type SmartRoutingStrategyDto = z.infer<typeof SmartRoutingStrategySchema>;
+export type SmartRoutingStrategyDto = z.infer<
+  typeof SmartRoutingStrategySchema
+>;
 export type SmartRoutingStrategiesResponseDtoType = z.infer<
   typeof SmartRoutingStrategiesResponseSchema
 >;

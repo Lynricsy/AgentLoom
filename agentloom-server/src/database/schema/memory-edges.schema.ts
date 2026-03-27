@@ -16,7 +16,9 @@ import { createDirectTenantPolicies } from './rls-policies';
 export const memoryEdges = pgTable(
   'memory_edges',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     instanceId: uuid('instance_id')
       .notNull()
       .references(() => agentMemoryInstances.id, { onDelete: 'cascade' }),

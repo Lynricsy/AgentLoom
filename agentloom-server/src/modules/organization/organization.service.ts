@@ -112,9 +112,12 @@ export class OrganizationService {
       .onConflictDoNothing()
       .returning();
 
-    return inserted ?? await this.db.query.users.findFirst({
-      where: eq(users.supabaseUserId, supabaseUserId),
-    });
+    return (
+      inserted ??
+      (await this.db.query.users.findFirst({
+        where: eq(users.supabaseUserId, supabaseUserId),
+      }))
+    );
   }
 
   async getOrganization(orgId: string, userId: string) {

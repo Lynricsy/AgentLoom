@@ -18,7 +18,9 @@ export const QueryDeveloperKeysSchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });
 
-export class QueryDeveloperKeysDto extends createZodDto(QueryDeveloperKeysSchema) {}
+export class QueryDeveloperKeysDto extends createZodDto(
+  QueryDeveloperKeysSchema,
+) {}
 
 export const DeveloperKeyResponseSchema = RegisterDeveloperKeySchema.extend({
   id: z.uuid(),
@@ -37,7 +39,9 @@ export type DeveloperKeyStatusDto = z.infer<typeof DeveloperKeyStatusSchema>;
 export type RegisterDeveloperKeyDtoType = z.infer<
   typeof RegisterDeveloperKeySchema
 >;
-export type QueryDeveloperKeysDtoType = z.infer<typeof QueryDeveloperKeysSchema>;
+export type QueryDeveloperKeysDtoType = z.infer<
+  typeof QueryDeveloperKeysSchema
+>;
 export type DeveloperKeyResponseDtoType = z.infer<
   typeof DeveloperKeyResponseSchema
 >;

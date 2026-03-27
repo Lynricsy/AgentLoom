@@ -58,7 +58,10 @@ export class OptimizationSuggestionController {
     @CurrentUser('sub') userId: string,
   ) {
     return {
-      data: await this.optimizationSuggestionService.applySuggestion(id, userId),
+      data: await this.optimizationSuggestionService.applySuggestion(
+        id,
+        userId,
+      ),
     };
   }
 
@@ -68,7 +71,10 @@ export class OptimizationSuggestionController {
     @CurrentUser('sub') userId: string,
   ) {
     return {
-      data: await this.optimizationSuggestionService.dismissSuggestion(id, userId),
+      data: await this.optimizationSuggestionService.dismissSuggestion(
+        id,
+        userId,
+      ),
     };
   }
 }

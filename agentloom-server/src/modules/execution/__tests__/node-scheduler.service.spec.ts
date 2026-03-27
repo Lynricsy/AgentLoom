@@ -295,7 +295,9 @@ describe('NodeSchedulerService', () => {
       }),
     };
     mockHealthMonitorService = {
-      filterHealthyCandidates: vi.fn(async (_tenantId, candidates) => candidates),
+      filterHealthyCandidates: vi.fn(
+        async (_tenantId, candidates) => candidates,
+      ),
     };
     mockEmbeddingService = {
       generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
@@ -477,20 +479,28 @@ describe('NodeSchedulerService', () => {
         'step-b',
         'queued',
       );
-      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
-        executionId: EXECUTION_ID,
-        stepId: 'step-a',
-        tenantId: TENANT_ID,
-        input: {},
-        nodeData: { agentId: 'agent-a' },
-      }, undefined);
-      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
-        executionId: EXECUTION_ID,
-        stepId: 'step-b',
-        tenantId: TENANT_ID,
-        input: {},
-        nodeData: { agentId: 'agent-b' },
-      }, undefined);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-a',
+          tenantId: TENANT_ID,
+          input: {},
+          nodeData: { agentId: 'agent-a' },
+        },
+        undefined,
+      );
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-b',
+          tenantId: TENANT_ID,
+          input: {},
+          nodeData: { agentId: 'agent-b' },
+        },
+        undefined,
+      );
     });
 
     it('空图时直接更新 execution 状态', async () => {
@@ -544,13 +554,17 @@ describe('NodeSchedulerService', () => {
         'step-b',
         'queued',
       );
-      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
-        executionId: EXECUTION_ID,
-        stepId: 'step-b',
-        tenantId: TENANT_ID,
-        input: { A: { answer: 'hello' } },
-        nodeData: { agentId: 'agent-b' },
-      }, undefined);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-b',
+          tenantId: TENANT_ID,
+          input: { A: { answer: 'hello' } },
+          nodeData: { agentId: 'agent-b' },
+        },
+        undefined,
+      );
     });
 
     it('data_transform 节点会直接内联执行，不进入 queued', async () => {
@@ -635,20 +649,18 @@ describe('NodeSchedulerService', () => {
 
       await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
 
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        {
-          executionId: EXECUTION_ID,
-          sandboxNodeId: 'S',
-          config: {
-            cpu: 2,
-            memory: 1024,
-            disk: 5,
-            timeout: 4,
-            persistencePath: 'outputs/review',
-          },
-          tenantId: TENANT_ID,
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        sandboxNodeId: 'S',
+        config: {
+          cpu: 2,
+          memory: 1024,
+          disk: 5,
+          timeout: 4,
+          persistencePath: 'outputs/review',
         },
-      );
+        tenantId: TENANT_ID,
+      });
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         'step-s',
@@ -823,14 +835,12 @@ describe('NodeSchedulerService', () => {
 
       await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
 
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        {
-          executionId: EXECUTION_ID,
-          sandboxNodeId: 'S',
-          config: { cpu: 3, memory: 2048, disk: 8, timeout: 6 },
-          tenantId: TENANT_ID,
-        },
-      );
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        sandboxNodeId: 'S',
+        config: { cpu: 3, memory: 2048, disk: 8, timeout: 6 },
+        tenantId: TENANT_ID,
+      });
     });
 
     it('sandbox 节点应兼容 Agent globalSandboxConfig.sandboxConfig', async () => {
@@ -907,14 +917,18 @@ describe('NodeSchedulerService', () => {
 
       await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
 
-      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
-        executionId: EXECUTION_ID,
-        stepId: 'step-a',
-        tenantId: TENANT_ID,
-        input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
-        nodeData: { agentId: 'agent-1' },
-        hasSandbox: true,
-      }, undefined);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-a',
+          tenantId: TENANT_ID,
+          input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
+          nodeData: { agentId: 'agent-1' },
+          hasSandbox: true,
+        },
+        undefined,
+      );
     });
 
     it('plugin 节点会校验插件激活态��投递到 plugin queue', async () => {
@@ -985,13 +999,17 @@ describe('NodeSchedulerService', () => {
 
       await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, steps);
 
-      expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
-        executionId: EXECUTION_ID,
-        stepId: 'step-b',
-        tenantId: TENANT_ID,
-        input: { A: { answer: 'hello' } },
-        nodeData: { agentId: 'agent-b' },
-      }, undefined);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-b',
+          tenantId: TENANT_ID,
+          input: { A: { answer: 'hello' } },
+          nodeData: { agentId: 'agent-b' },
+        },
+        undefined,
+      );
     });
 
     it('带 agentDefinitionId 的 agent 节点会内联执行工作流 agent adapter，并复用上游 sandbox', async () => {
@@ -1030,7 +1048,9 @@ describe('NodeSchedulerService', () => {
         }),
       ];
       const workflowAgentAdapter = {
-        execute: vi.fn().mockResolvedValue({ content: 'workflow-agent-output' }),
+        execute: vi
+          .fn()
+          .mockResolvedValue({ content: 'workflow-agent-output' }),
       };
       const onNodeCompleted = vi
         .spyOn(service, 'onNodeCompleted')
@@ -1085,7 +1105,10 @@ describe('NodeSchedulerService', () => {
           makeNode('B', 'llm-model'),
           makeNode('R', 'smart-routing'),
         ],
-        [makeEdge('A', 'R', undefined, 'primary'), makeEdge('B', 'R', undefined, 'secondary')],
+        [
+          makeEdge('A', 'R', undefined, 'primary'),
+          makeEdge('B', 'R', undefined, 'secondary'),
+        ],
       );
       const steps = [
         makeStep({
@@ -1187,7 +1210,9 @@ describe('NodeSchedulerService', () => {
       await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
 
       expect(mockRouterRegistry.get).toHaveBeenCalledWith('fallback_chain');
-      expect(mockHealthMonitorService.filterHealthyCandidates).toHaveBeenCalledWith(
+      expect(
+        mockHealthMonitorService.filterHealthyCandidates,
+      ).toHaveBeenCalledWith(
         TENANT_ID,
         expect.arrayContaining([
           expect.objectContaining({ modelConfigId: 'model-1' }),
@@ -1543,10 +1568,17 @@ describe('NodeSchedulerService', () => {
         'step-m',
         'completed',
         expect.objectContaining({
-          result: expect.objectContaining({ warning: expect.any(String), type: 'mcp-tool' }),
+          result: expect.objectContaining({
+            warning: expect.any(String),
+            type: 'mcp-tool',
+          }),
         }),
       );
-      expect(onNodeCompleted).toHaveBeenCalledWith(EXECUTION_ID, 'step-m', TENANT_ID);
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-m',
+        TENANT_ID,
+      );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
   });
@@ -2032,7 +2064,9 @@ describe('NodeSchedulerService', () => {
       );
 
       expect(mockRbacCacheService.getUserRole).not.toHaveBeenCalled();
-      expect(mockInterventionPolicyService.resolvePolicy).not.toHaveBeenCalled();
+      expect(
+        mockInterventionPolicyService.resolvePolicy,
+      ).not.toHaveBeenCalled();
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         STEP_ID,
@@ -2362,10 +2396,15 @@ describe('NodeSchedulerService', () => {
         source: 'node',
       });
 
-      await service.enqueueInterventionTimeout(EXECUTION_ID, 'step-x', TENANT_ID, {
-        escalated: true,
-        escalationCount: 2,
-      });
+      await service.enqueueInterventionTimeout(
+        EXECUTION_ID,
+        'step-x',
+        TENANT_ID,
+        {
+          escalated: true,
+          escalationCount: 2,
+        },
+      );
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'intervention-timeout',
@@ -2385,9 +2424,12 @@ describe('NodeSchedulerService', () => {
   describe('removeInterventionTimeout (via resolveIntervention)', () => {
     it('存在普通与全部升级超时任务时应一并移除', async () => {
       const mockJob = { remove: vi.fn().mockResolvedValue(undefined) };
-      const escalatedJobs = Array.from({ length: MAX_ESCALATION_ATTEMPTS }, () => ({
-        remove: vi.fn().mockResolvedValue(undefined),
-      }));
+      const escalatedJobs = Array.from(
+        { length: MAX_ESCALATION_ATTEMPTS },
+        () => ({
+          remove: vi.fn().mockResolvedValue(undefined),
+        }),
+      );
       mockQueue.getJob.mockResolvedValueOnce(mockJob);
       for (const escalatedJob of escalatedJobs) {
         mockQueue.getJob.mockResolvedValueOnce(escalatedJob);
@@ -2420,7 +2462,11 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.getJob).toHaveBeenCalledWith(
         'intervention-timeout:019391d4-0000-7000-0000-000000000099',
       );
-      for (let escalationCount = 1; escalationCount <= MAX_ESCALATION_ATTEMPTS; escalationCount += 1) {
+      for (
+        let escalationCount = 1;
+        escalationCount <= MAX_ESCALATION_ATTEMPTS;
+        escalationCount += 1
+      ) {
         expect(mockQueue.getJob).toHaveBeenCalledWith(
           `intervention-timeout:019391d4-0000-7000-0000-000000000099:escalated:${escalationCount}`,
         );
@@ -2514,7 +2560,10 @@ describe('NodeSchedulerService', () => {
 
     let mcpService: NodeSchedulerService;
     let mcpDb: Record<string, ReturnType<typeof vi.fn>>;
-    let mcpMockQueue: { add: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> };
+    let mcpMockQueue: {
+      add: ReturnType<typeof vi.fn>;
+      getJob: ReturnType<typeof vi.fn>;
+    };
     let mcpMockStateMachine: {
       updateStepStatus: ReturnType<typeof vi.fn>;
       updateExecutionStatus: ReturnType<typeof vi.fn>;
@@ -2554,19 +2603,59 @@ describe('NodeSchedulerService', () => {
           { provide: DagResolverService, useValue: { resolveDag: vi.fn() } },
           { provide: StepStateMachineService, useValue: mcpMockStateMachine },
           { provide: getQueueToken(AGENT_TASK_QUEUE), useValue: mcpMockQueue },
-          { provide: getQueueToken(PLUGIN_EXECUTION_QUEUE), useValue: { add: vi.fn(), getJob: vi.fn() } },
-          { provide: SandboxService, useValue: { createSandboxSession: vi.fn(), getSandboxSession: vi.fn(), destroySandbox: vi.fn() } },
+          {
+            provide: getQueueToken(PLUGIN_EXECUTION_QUEUE),
+            useValue: { add: vi.fn(), getJob: vi.fn() },
+          },
+          {
+            provide: SandboxService,
+            useValue: {
+              createSandboxSession: vi.fn(),
+              getSandboxSession: vi.fn(),
+              destroySandbox: vi.fn(),
+            },
+          },
           { provide: CheckpointService, useValue: { saveCheckpoint: vi.fn() } },
-          { provide: EventBridgeService, useValue: { emitInterventionResolved: vi.fn(), emitToolPermissionResolved: vi.fn() } },
-          { provide: InterventionPolicyService, useValue: { resolvePolicy: vi.fn() } },
-          { provide: SmartRoutingService, useValue: { recordDecision: vi.fn(), getHistoricalMetrics: vi.fn() } },
+          {
+            provide: EventBridgeService,
+            useValue: {
+              emitInterventionResolved: vi.fn(),
+              emitToolPermissionResolved: vi.fn(),
+            },
+          },
+          {
+            provide: InterventionPolicyService,
+            useValue: { resolvePolicy: vi.fn() },
+          },
+          {
+            provide: SmartRoutingService,
+            useValue: {
+              recordDecision: vi.fn(),
+              getHistoricalMetrics: vi.fn(),
+            },
+          },
           { provide: RouterRegistry, useValue: { get: vi.fn() } },
-          { provide: HealthMonitorService, useValue: { filterHealthyCandidates: vi.fn() } },
-          { provide: EmbeddingIntegrationService, useValue: { generateEmbedding: vi.fn() } },
+          {
+            provide: HealthMonitorService,
+            useValue: { filterHealthyCandidates: vi.fn() },
+          },
+          {
+            provide: EmbeddingIntegrationService,
+            useValue: { generateEmbedding: vi.fn() },
+          },
           { provide: RbacCacheService, useValue: { getUserRole: vi.fn() } },
-          { provide: PluginService, useValue: { findActiveByPluginId: vi.fn() } },
-          { provide: AgentAdapterFactory, useValue: { createFromAgentDefinition: vi.fn() } },
-          { provide: SharedResourceRegistry, useValue: { createResource: vi.fn() } },
+          {
+            provide: PluginService,
+            useValue: { findActiveByPluginId: vi.fn() },
+          },
+          {
+            provide: AgentAdapterFactory,
+            useValue: { createFromAgentDefinition: vi.fn() },
+          },
+          {
+            provide: SharedResourceRegistry,
+            useValue: { createResource: vi.fn() },
+          },
           { provide: McpService, useValue: mockMcpService },
         ],
       }).compile();
@@ -2575,7 +2664,9 @@ describe('NodeSchedulerService', () => {
     });
 
     it('agent 节点的 input 包含 MCP tool 描述符时注入 mcpServers', async () => {
-      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(
+        mockMcpConnection1,
+      );
 
       const snapshot = makeSnapshot(
         [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
@@ -2586,7 +2677,11 @@ describe('NodeSchedulerService', () => {
           id: 'step-mcp',
           nodeId: 'mcp-1',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'search',
+          },
         }),
         makeStep({
           id: 'step-agent',
@@ -2599,7 +2694,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
         MCP_CONFIG_ID_1,
@@ -2619,7 +2720,9 @@ describe('NodeSchedulerService', () => {
     });
 
     it('nested result 结构的 MCP 描述符也能正确提取', async () => {
-      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(
+        mockMcpConnection1,
+      );
 
       const snapshot = makeSnapshot(
         [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
@@ -2631,7 +2734,11 @@ describe('NodeSchedulerService', () => {
           nodeId: 'mcp-1',
           status: 'completed',
           result: {
-            result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'fetch' },
+            result: {
+              type: 'mcp-tool',
+              mcpServerConfigId: MCP_CONFIG_ID_1,
+              toolName: 'fetch',
+            },
           },
         }),
         makeStep({
@@ -2645,7 +2752,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
         MCP_CONFIG_ID_1,
@@ -2665,10 +2778,16 @@ describe('NodeSchedulerService', () => {
     });
 
     it('多个 MCP 工具引用同一 configId 时去重', async () => {
-      mockMcpService.resolveRuntimeConnection.mockResolvedValue(mockMcpConnection1);
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(
+        mockMcpConnection1,
+      );
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [
+          makeNode('mcp-1', 'mcp-tool'),
+          makeNode('mcp-2', 'mcp-tool'),
+          makeNode('agent-1'),
+        ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
       const steps = [
@@ -2676,13 +2795,21 @@ describe('NodeSchedulerService', () => {
           id: 'step-mcp-1',
           nodeId: 'mcp-1',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'search',
+          },
         }),
         makeStep({
           id: 'step-mcp-2',
           nodeId: 'mcp-2',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'fetch' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'fetch',
+          },
         }),
         makeStep({
           id: 'step-agent',
@@ -2695,7 +2822,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       // resolveRuntimeConnection 仅被调用一次（去重）
       expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledTimes(1);
@@ -2718,7 +2851,11 @@ describe('NodeSchedulerService', () => {
         .mockResolvedValueOnce(mockMcpConnection2);
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [
+          makeNode('mcp-1', 'mcp-tool'),
+          makeNode('mcp-2', 'mcp-tool'),
+          makeNode('agent-1'),
+        ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
       const steps = [
@@ -2726,13 +2863,21 @@ describe('NodeSchedulerService', () => {
           id: 'step-mcp-1',
           nodeId: 'mcp-1',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'search',
+          },
         }),
         makeStep({
           id: 'step-mcp-2',
           nodeId: 'mcp-2',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_2, toolName: 'exec' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_2,
+            toolName: 'exec',
+          },
         }),
         makeStep({
           id: 'step-agent',
@@ -2745,7 +2890,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledTimes(2);
       expect(mcpMockQueue.add).toHaveBeenCalledWith(
@@ -2785,7 +2936,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'B',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       expect(mockMcpService.resolveRuntimeConnection).not.toHaveBeenCalled();
       const jobData = mcpMockQueue.add.mock.calls[0]?.[1];
@@ -2806,7 +2963,11 @@ describe('NodeSchedulerService', () => {
           id: 'step-mcp',
           nodeId: 'mcp-1',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'search',
+          },
         }),
         makeStep({
           id: 'step-agent',
@@ -2819,7 +2980,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       // 即使解析失败也不会阻止 agent 任务入队
       expect(mcpMockQueue.add).toHaveBeenCalledWith(
@@ -2835,7 +3002,11 @@ describe('NodeSchedulerService', () => {
         .mockRejectedValueOnce(new Error('Config not found'));
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('mcp-2', 'mcp-tool'), makeNode('agent-1')],
+        [
+          makeNode('mcp-1', 'mcp-tool'),
+          makeNode('mcp-2', 'mcp-tool'),
+          makeNode('agent-1'),
+        ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
       const steps = [
@@ -2843,13 +3014,21 @@ describe('NodeSchedulerService', () => {
           id: 'step-mcp-1',
           nodeId: 'mcp-1',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_1, toolName: 'search' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_1,
+            toolName: 'search',
+          },
         }),
         makeStep({
           id: 'step-mcp-2',
           nodeId: 'mcp-2',
           status: 'completed',
-          result: { type: 'mcp-tool', mcpServerConfigId: MCP_CONFIG_ID_2, toolName: 'exec' },
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: MCP_CONFIG_ID_2,
+            toolName: 'exec',
+          },
         }),
         makeStep({
           id: 'step-agent',
@@ -2862,7 +3041,13 @@ describe('NodeSchedulerService', () => {
 
       mcpDb.update.mockReturnValueOnce(createUpdateChainVoid());
 
-      await mcpService.scheduleNode(EXECUTION_ID, 'agent-1', TENANT_ID, snapshot, steps);
+      await mcpService.scheduleNode(
+        EXECUTION_ID,
+        'agent-1',
+        TENANT_ID,
+        snapshot,
+        steps,
+      );
 
       // 只成功解析的 config 被注入
       expect(mcpMockQueue.add).toHaveBeenCalledWith(

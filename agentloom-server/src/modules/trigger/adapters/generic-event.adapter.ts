@@ -22,8 +22,6 @@ export class GenericEventAdapter implements EventSourceAdapter {
       return true;
     }
 
-    return (
-      payload.type.toLowerCase() === triggerConfig.eventType.toLowerCase()
-    );
+    return payload.type.toLowerCase() === triggerConfig.eventType.toLowerCase();
   }
 }

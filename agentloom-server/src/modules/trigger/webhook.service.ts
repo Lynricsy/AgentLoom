@@ -33,7 +33,8 @@ export class WebhookService {
 
     const currentTimestamp = Math.floor(Date.now() / 1000);
     if (
-      Math.abs(currentTimestamp - timestamp) > WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
+      Math.abs(currentTimestamp - timestamp) >
+      WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
     ) {
       throw new WebhookVerificationFailedException('Webhook 时间戳已过期');
     }
@@ -71,7 +72,10 @@ export class WebhookService {
     return trigger;
   }
 
-  checkIpWhitelist(trigger: WorkflowTrigger, clientIp: string | undefined): void {
+  checkIpWhitelist(
+    trigger: WorkflowTrigger,
+    clientIp: string | undefined,
+  ): void {
     const config = WebhookConfigSchema.parse(trigger.config);
 
     if (config.ipWhitelist.length === 0) {
@@ -79,10 +83,17 @@ export class WebhookService {
     }
 
     const normalizedClientIp = this.normalizeIp(clientIp);
-    const normalizedWhitelist = config.ipWhitelist.map((ip) => this.normalizeIp(ip));
+    const normalizedWhitelist = config.ipWhitelist.map((ip) =>
+      this.normalizeIp(ip),
+    );
 
-    if (!normalizedClientIp || !normalizedWhitelist.includes(normalizedClientIp)) {
-      throw new WebhookVerificationFailedException('Webhook 来源 IP 不在白名单中');
+    if (
+      !normalizedClientIp ||
+      !normalizedWhitelist.includes(normalizedClientIp)
+    ) {
+      throw new WebhookVerificationFailedException(
+        'Webhook 来源 IP 不在白名单中',
+      );
     }
   }
 

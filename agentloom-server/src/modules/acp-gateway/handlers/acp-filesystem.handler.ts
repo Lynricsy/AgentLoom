@@ -25,7 +25,10 @@ export class AcpFilesystemHandler {
     state: AcpConnectionState,
   ): Promise<AcpReadTextFileResult> {
     const normalizedParams = this.readReadParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.filesystemProxyService.readTextFile(
       {
@@ -42,7 +45,10 @@ export class AcpFilesystemHandler {
     state: AcpConnectionState,
   ): Promise<AcpWriteTextFileResult> {
     const normalizedParams = this.readWriteParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     return this.filesystemProxyService.writeTextFile(
       {
@@ -60,7 +66,10 @@ export class AcpFilesystemHandler {
     sessionId: string,
   ): AcpTrackedSession {
     const trackedSession = state.sessions?.get(sessionId);
-    if (!trackedSession || trackedSession.tenantId !== state.authContext?.tenantId) {
+    if (
+      !trackedSession ||
+      trackedSession.tenantId !== state.authContext?.tenantId
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params', {
         sessionId,
         reason: 'Session not found',

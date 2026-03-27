@@ -4,45 +4,43 @@ import type { RoutingCandidate } from '../../core/routing-candidate';
 import { CircuitBreakerService } from '../circuit-breaker.service';
 import { HealthMonitorService } from '../health-monitor.service';
 
-const {
-  createInsertChain,
-  createMockDb,
-  createSelectChain,
-} = vi.hoisted(() => {
-  type SelectChain<T> = {
-    select: ReturnType<typeof vi.fn>;
-    from: ReturnType<typeof vi.fn>;
-    where: ReturnType<typeof vi.fn>;
-    limit: ReturnType<typeof vi.fn>;
-  } & Promise<T[]>;
+const { createInsertChain, createMockDb, createSelectChain } = vi.hoisted(
+  () => {
+    type SelectChain<T> = {
+      select: ReturnType<typeof vi.fn>;
+      from: ReturnType<typeof vi.fn>;
+      where: ReturnType<typeof vi.fn>;
+      limit: ReturnType<typeof vi.fn>;
+    } & Promise<T[]>;
 
-  function createSelectChain<T>(data: T[]): SelectChain<T> {
-    const chain = Promise.resolve(data) as SelectChain<T>;
-    chain.select = vi.fn().mockReturnValue(chain);
-    chain.from = vi.fn().mockReturnValue(chain);
-    chain.where = vi.fn().mockReturnValue(chain);
-    chain.limit = vi.fn().mockReturnValue(chain);
-    return chain;
-  }
+    function createSelectChain<T>(data: T[]): SelectChain<T> {
+      const chain = Promise.resolve(data) as SelectChain<T>;
+      chain.select = vi.fn().mockReturnValue(chain);
+      chain.from = vi.fn().mockReturnValue(chain);
+      chain.where = vi.fn().mockReturnValue(chain);
+      chain.limit = vi.fn().mockReturnValue(chain);
+      return chain;
+    }
 
-  function createInsertChain() {
-    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
-    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    function createInsertChain() {
+      const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+      const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+      return {
+        values,
+        onConflictDoUpdate,
+      };
+    }
+
     return {
-      values,
-      onConflictDoUpdate,
+      createSelectChain,
+      createInsertChain,
+      createMockDb: () => ({
+        select: vi.fn(),
+        insert: vi.fn(),
+      }),
     };
-  }
-
-  return {
-    createSelectChain,
-    createInsertChain,
-    createMockDb: () => ({
-      select: vi.fn(),
-      insert: vi.fn(),
-    }),
-  };
-});
+  },
+);
 
 vi.mock('../../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn((db) => db),
@@ -89,7 +87,9 @@ describe('HealthMonitorService', () => {
     db.select.mockReturnValue(createSelectChain([]));
     db.insert.mockImplementation(() => createInsertChain());
 
-    const breakerDb = db as ConstructorParameters<typeof CircuitBreakerService>[0];
+    const breakerDb = db as ConstructorParameters<
+      typeof CircuitBreakerService
+    >[0];
 
     breaker = new CircuitBreakerService(breakerDb, {
       persistenceIntervalMs: 0,

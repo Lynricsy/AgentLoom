@@ -79,7 +79,13 @@ describe('PluginSandboxService', () => {
     });
 
     it('应透传字符串输入', async () => {
-      await service.execute(testWasm, 'execute', 'plain string', undefined, pluginId);
+      await service.execute(
+        testWasm,
+        'execute',
+        'plain string',
+        undefined,
+        pluginId,
+      );
 
       expect(mocks.plugin.call).toHaveBeenCalledWith('execute', 'plain string');
     });
@@ -128,7 +134,9 @@ describe('PluginSandboxService', () => {
     });
 
     it('关闭插件失败时应记录告警但仍返回结果', async () => {
-      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
       mocks.plugin.close.mockRejectedValue(new Error('close failed'));
 
       const result = await service.execute(
@@ -181,7 +189,9 @@ describe('PluginSandboxService', () => {
 
     it('访问未授权路径时应抛出 PluginPermissionDeniedException', async () => {
       mocks.plugin.call.mockRejectedValue(
-        new Error('Path "/tmp/secret" is not allowed (no allowedPaths match "/tmp/secret")'),
+        new Error(
+          'Path "/tmp/secret" is not allowed (no allowedPaths match "/tmp/secret")',
+        ),
       );
 
       await expect(
@@ -190,7 +200,9 @@ describe('PluginSandboxService', () => {
     });
 
     it('内存超限时应抛出 PluginResourceExhaustedException', async () => {
-      mocks.plugin.call.mockRejectedValue(new Error('var memory limit exceeded'));
+      mocks.plugin.call.mockRejectedValue(
+        new Error('var memory limit exceeded'),
+      );
 
       await expect(
         service.execute(testWasm, 'execute', 'input', undefined, pluginId),

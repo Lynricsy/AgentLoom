@@ -32,7 +32,10 @@ import type {
   SessionContext,
 } from './types/agent-session.types';
 import type { ContentBlock } from './types/content-block.types';
-import type { ToolCallEvent, ToolPermissionRequest } from './types/tool-call-event.types';
+import type {
+  ToolCallEvent,
+  ToolPermissionRequest,
+} from './types/tool-call-event.types';
 
 const PERMISSION_EXEMPT_TOOLS = new Set([
   'call_subagent',
@@ -240,7 +243,10 @@ class AsyncAgentEventSink implements AsyncIterable<AgentEvent> {
 @Injectable()
 export class PiAgentCoreAdapter implements IAgentRuntime {
   private readonly sessions = new Map<string, RuntimeSession>();
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider[]>();
+  private readonly sessionToolProviders = new Map<
+    string,
+    SessionToolProvider[]
+  >();
   private readonly pendingPermissionResolvers = new Map<
     string,
     Map<string, PendingPermissionGate>
@@ -284,10 +290,13 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
     const toolSet = await this.resolveSessionTools(session.id);
     const modelConfig = await this.resolveModelConfig(session);
-    const model = (await this.piAiAdapter.getModel(modelConfig)) as LanguageModel;
+    const model = (await this.piAiAdapter.getModel(
+      modelConfig,
+    )) as LanguageModel;
     const streamFn = createVercelStreamFn(model, toolSet);
     const tools = this.convertToolSetToPiTools(toolSet);
-    const piAgentCore = (await importPiAgentCore()) as unknown as PiAgentCoreModule;
+    const piAgentCore =
+      (await importPiAgentCore()) as unknown as PiAgentCoreModule;
     const agent = new piAgentCore.Agent({
       initialState: {
         systemPrompt: params.systemPrompt ?? '',
@@ -463,14 +472,18 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     }
 
     const hasCanvasTools = (runtimeConfig.tools?.length ?? 0) > 0;
-    const hasKnowledgeBindings = (runtimeConfig.knowledgeBindings?.length ?? 0) > 0;
+    const hasKnowledgeBindings =
+      (runtimeConfig.knowledgeBindings?.length ?? 0) > 0;
     if (!hasCanvasTools && !hasKnowledgeBindings) {
       return null;
     }
 
     let cachedToolSetPromise: Promise<ToolSet> | null = null;
     return () => {
-      cachedToolSetPromise ??= this.buildRuntimeConfigToolSet(session, runtimeConfig);
+      cachedToolSetPromise ??= this.buildRuntimeConfigToolSet(
+        session,
+        runtimeConfig,
+      );
       return cachedToolSetPromise;
     };
   }
@@ -492,7 +505,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       }
 
       if (normalizedBinding.toolType === 'mcp') {
-        const mcpEntry = await this.buildMcpToolEntry(session, normalizedBinding);
+        const mcpEntry = await this.buildMcpToolEntry(
+          session,
+          normalizedBinding,
+        );
         if (mcpEntry) {
           toolSet[mcpEntry.name] = mcpEntry.tool;
         }
@@ -531,7 +547,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     if (
       (typeof mcpBinding.mcpToolDefinitionId === 'string' &&
         mcpBinding.mcpToolDefinitionId.length > 0) ||
-      (mcpBinding.mcpServerConfigId !== undefined && mcpBinding.toolName !== undefined) ||
+      (mcpBinding.mcpServerConfigId !== undefined &&
+        mcpBinding.toolName !== undefined) ||
       binding.toolType === 'mcp'
     ) {
       return {
@@ -606,7 +623,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         description: binding.description ?? descriptor.description,
         inputSchema,
         execute: async (input) => {
-          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          const args = this.normalizeExecuteArgs(
+            input,
+            binding.parameterOverrides,
+          );
           const connection = await this.mcpService!.resolveRuntimeConnection(
             descriptor.mcpServerConfigId,
             session.tenantId!,
@@ -647,11 +667,11 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
             })
             .from(schema.toolDefinitions)
             .where(
-                and(
-                  eq(schema.toolDefinitions.id, binding.mcpToolDefinitionId!),
-                  eq(schema.toolDefinitions.tenantId, tenantId),
-                  eq(schema.toolDefinitions.isActive, true),
-                ),
+              and(
+                eq(schema.toolDefinitions.id, binding.mcpToolDefinitionId!),
+                eq(schema.toolDefinitions.tenantId, tenantId),
+                eq(schema.toolDefinitions.isActive, true),
+              ),
             );
 
           return record;
@@ -694,10 +714,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     return {
       name,
       tool: tool({
-        description: binding.description ?? `通过 ${method} ${binding.url} 调用 HTTP 接口`,
+        description:
+          binding.description ?? `通过 ${method} ${binding.url} 调用 HTTP 接口`,
         inputSchema: jsonSchema(HTTP_TOOL_INPUT_SCHEMA),
         execute: async (input) => {
-          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          const args = this.normalizeExecuteArgs(
+            input,
+            binding.parameterOverrides,
+          );
           const response = await this.executeHttpToolRequest(binding, args);
           return response;
         },
@@ -715,10 +739,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       name,
       tool: tool({
         description:
-          binding.description ?? `调用 ${binding.language} 代码片段工具（当前为受限占位执行）`,
+          binding.description ??
+          `调用 ${binding.language} 代码片段工具（当前为受限占位执行）`,
         inputSchema: jsonSchema(CODE_TOOL_INPUT_SCHEMA),
         execute: async (input) => {
-          const args = this.normalizeExecuteArgs(input, binding.parameterOverrides);
+          const args = this.normalizeExecuteArgs(
+            input,
+            binding.parameterOverrides,
+          );
           return {
             success: false,
             message: `In-process runtime 当前不会直接执行 ${binding.language} 代码工具，请改用沙箱运行时。`,
@@ -758,13 +786,17 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
               ? Math.max(1, Math.trunc(args.topK))
               : binding.topK;
 
-          const results = await this.ragService!.search(query, session.tenantId!, {
-            knowledgeBaseId: binding.knowledgeBaseId,
-            ...(topK === undefined ? {} : { limit: topK }),
-            ...(binding.similarityThreshold === undefined
-              ? {}
-              : { scoreThreshold: binding.similarityThreshold }),
-          });
+          const results = await this.ragService!.search(
+            query,
+            session.tenantId!,
+            {
+              knowledgeBaseId: binding.knowledgeBaseId,
+              ...(topK === undefined ? {} : { limit: topK }),
+              ...(binding.similarityThreshold === undefined
+                ? {}
+                : { scoreThreshold: binding.similarityThreshold }),
+            },
+          );
 
           return {
             knowledgeBaseId: binding.knowledgeBaseId,
@@ -795,7 +827,9 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     parameterOverrides?: Record<string, unknown>,
   ): Record<string, unknown> {
     const normalized = this.isRecord(input) ? input : {};
-    return parameterOverrides ? { ...normalized, ...parameterOverrides } : normalized;
+    return parameterOverrides
+      ? { ...normalized, ...parameterOverrides }
+      : normalized;
   }
 
   private async executeHttpToolRequest(
@@ -811,7 +845,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
           continue;
         }
 
-        url.searchParams.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+        url.searchParams.set(
+          key,
+          typeof value === 'string' ? value : JSON.stringify(value),
+        );
       }
     }
 
@@ -845,7 +882,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
   }
 
   private async parseHttpResponseBody(response: Response): Promise<unknown> {
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const contentType =
+      response.headers.get('content-type')?.toLowerCase() ?? '';
     if (contentType.includes('application/json')) {
       return await response.json();
     }
@@ -866,7 +904,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     );
   }
 
-  private sanitizeToolName(rawName: string | undefined, fallback: string): string {
+  private sanitizeToolName(
+    rawName: string | undefined,
+    fallback: string,
+  ): string {
     const candidate = (rawName ?? fallback).trim();
     const sanitized = candidate.replace(/[^a-zA-Z0-9_/-]+/g, '_');
     if (sanitized.length === 0) {
@@ -876,7 +917,9 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     return /^[a-zA-Z_]/.test(sanitized) ? sanitized : `tool_${sanitized}`;
   }
 
-  private async resolveSessionTools(sessionId: string): Promise<ToolSet | undefined> {
+  private async resolveSessionTools(
+    sessionId: string,
+  ): Promise<ToolSet | undefined> {
     const providers = this.sessionToolProviders.get(sessionId);
     if (!providers?.length) {
       return undefined;
@@ -960,7 +1003,9 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       return undefined;
     }
 
-    const args = this.normalizeToolArgs(context.args ?? context.toolCall?.arguments);
+    const args = this.normalizeToolArgs(
+      context.args ?? context.toolCall?.arguments,
+    );
 
     const permissionRequest: ToolPermissionRequest = {
       description: `工具 ${toolName} 需要主人授权后才能执行。`,
@@ -1027,7 +1072,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       );
     }
 
-    const sessionResolvers = existing ?? new Map<string, PendingPermissionGate>();
+    const sessionResolvers =
+      existing ?? new Map<string, PendingPermissionGate>();
     this.pendingPermissionResolvers.set(sessionId, sessionResolvers);
 
     return new Promise<PermissionResolution>((resolve) => {
@@ -1074,9 +1120,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
   ): AgentEvent[] {
     switch (event.type) {
       case 'message_update': {
-        const assistantMessageEvent = this.asRecord(event.assistantMessageEvent);
+        const assistantMessageEvent = this.asRecord(
+          event.assistantMessageEvent,
+        );
         const delta = assistantMessageEvent?.delta;
-        if (assistantMessageEvent?.type !== 'text_delta' || typeof delta !== 'string') {
+        if (
+          assistantMessageEvent?.type !== 'text_delta' ||
+          typeof delta !== 'string'
+        ) {
           return [];
         }
 
@@ -1102,7 +1153,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         ];
 
       case 'tool_execution_end': {
-        const toolCallId = this.stringOrFallback(event.toolCallId, randomUUID());
+        const toolCallId = this.stringOrFallback(
+          event.toolCallId,
+          randomUUID(),
+        );
         const toolName = this.stringOrFallback(event.toolName, 'unknown_tool');
 
         if (this.consumeDeniedToolCall(sessionId, toolCallId)) {
@@ -1113,21 +1167,22 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         return [
           {
             type: 'tool_call',
-            call: event.isError === true
-              ? {
-                  id: toolCallId,
-                  tool: toolName,
-                  args: {},
-                  status: 'failed',
-                  error: this.stringifyToolError(payload),
-                }
-              : {
-                  id: toolCallId,
-                  tool: toolName,
-                  args: {},
-                  status: 'completed',
-                  result: payload,
-                },
+            call:
+              event.isError === true
+                ? {
+                    id: toolCallId,
+                    tool: toolName,
+                    args: {},
+                    status: 'failed',
+                    error: this.stringifyToolError(payload),
+                  }
+                : {
+                    id: toolCallId,
+                    tool: toolName,
+                    args: {},
+                    status: 'completed',
+                    result: payload,
+                  },
           },
         ];
       }
@@ -1253,7 +1308,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     this.deniedToolCalls.set(sessionId, denied);
   }
 
-  private consumeDeniedToolCall(sessionId: string, toolCallId: string): boolean {
+  private consumeDeniedToolCall(
+    sessionId: string,
+    toolCallId: string,
+  ): boolean {
     const denied = this.deniedToolCalls.get(sessionId);
     if (!denied?.has(toolCallId)) {
       return false;

@@ -45,10 +45,7 @@ const T3 = new Date('2026-03-10T10:03:00.000Z');
 const T4 = new Date('2026-03-10T10:04:00.000Z');
 
 // ─── Helpers ─────────────────────────────────────────────
-function createSelectChain<T>(
-  terminal: 'where' | 'orderBy',
-  result: T,
-) {
+function createSelectChain<T>(terminal: 'where' | 'orderBy', result: T) {
   const chain = {
     from: vi.fn(),
     where: vi.fn(),
@@ -148,12 +145,12 @@ describe('EvidenceGraphService', () => {
 
   describe('empty execution', () => {
     it('should return empty graph when no evidence records exist', async () => {
-      setupQueries(
-        [makeStep(STEP_ID_A, NODE_ID_A, 'Writer')],
-        [],
-      );
+      setupQueries([makeStep(STEP_ID_A, NODE_ID_A, 'Writer')], []);
 
-      const { response, cached } = await service.buildGraph(TENANT_ID, EXECUTION_ID);
+      const { response, cached } = await service.buildGraph(
+        TENANT_ID,
+        EXECUTION_ID,
+      );
 
       expect(cached).toBe(false);
       expect(response).toEqual({
@@ -355,7 +352,9 @@ describe('EvidenceGraphService', () => {
       const steps: StepRow[] = [
         { id: STEP_ID_A, nodeId: NODE_ID_A, nodeData: null, status: 'running' },
       ];
-      const evidences = [makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0)];
+      const evidences = [
+        makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0),
+      ];
       setupQueries(steps, evidences);
 
       const { response } = await service.buildGraph(TENANT_ID, EXECUTION_ID);
@@ -400,7 +399,10 @@ describe('EvidenceGraphService', () => {
       };
       mocks.cacheService.get.mockResolvedValue(JSON.stringify(cachedResponse));
 
-      const { response, cached } = await service.buildGraph(TENANT_ID, EXECUTION_ID);
+      const { response, cached } = await service.buildGraph(
+        TENANT_ID,
+        EXECUTION_ID,
+      );
 
       expect(cached).toBe(true);
       expect(response).toEqual(cachedResponse);
@@ -409,7 +411,9 @@ describe('EvidenceGraphService', () => {
 
     it('should compute and cache on cache miss', async () => {
       const steps = [makeStep(STEP_ID_A, NODE_ID_A, 'Writer')];
-      const evidences = [makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0)];
+      const evidences = [
+        makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0),
+      ];
       setupQueries(steps, evidences);
 
       await service.buildGraph(TENANT_ID, EXECUTION_ID);
@@ -424,10 +428,15 @@ describe('EvidenceGraphService', () => {
     it('should degrade gracefully when cache read fails', async () => {
       mocks.cacheService.get.mockRejectedValue(new Error('Redis down'));
       const steps = [makeStep(STEP_ID_A, NODE_ID_A, 'Writer')];
-      const evidences = [makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0)];
+      const evidences = [
+        makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0),
+      ];
       setupQueries(steps, evidences);
 
-      const { response, cached } = await service.buildGraph(TENANT_ID, EXECUTION_ID);
+      const { response, cached } = await service.buildGraph(
+        TENANT_ID,
+        EXECUTION_ID,
+      );
 
       expect(cached).toBe(false);
       expect(response.nodes).toHaveLength(1);
@@ -436,7 +445,9 @@ describe('EvidenceGraphService', () => {
     it('should degrade gracefully when cache write fails', async () => {
       mocks.cacheService.set.mockRejectedValue(new Error('Redis down'));
       const steps = [makeStep(STEP_ID_A, NODE_ID_A, 'Writer')];
-      const evidences = [makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0)];
+      const evidences = [
+        makeEvidence(EVIDENCE_1, STEP_ID_A, 'agent_decision', T0),
+      ];
       setupQueries(steps, evidences);
 
       const { response } = await service.buildGraph(TENANT_ID, EXECUTION_ID);
@@ -446,10 +457,7 @@ describe('EvidenceGraphService', () => {
     });
 
     it('should use correct cache key format', async () => {
-      setupQueries(
-        [makeStep(STEP_ID_A, NODE_ID_A, 'Writer')],
-        [],
-      );
+      setupQueries([makeStep(STEP_ID_A, NODE_ID_A, 'Writer')], []);
 
       await service.buildGraph(TENANT_ID, EXECUTION_ID);
 

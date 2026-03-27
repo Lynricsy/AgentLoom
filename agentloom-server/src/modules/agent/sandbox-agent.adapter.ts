@@ -324,7 +324,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     callback: SandboxToolPermissionCallback,
   ): Promise<{ allowed: boolean }> {
     const sessionId =
-      callback.sessionId ?? this.resolveSessionIdForConversation(conversationId);
+      callback.sessionId ??
+      this.resolveSessionIdForConversation(conversationId);
     const action = await this.waitForPermission(sessionId, callback.toolCallId);
 
     return { allowed: action === 'approve' };
@@ -563,7 +564,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     if (this.isRecord(parsed) && typeof parsed.type === 'string') {
-      return this.translateContainerEvent(sessionId, parsed as ContainerEventEnvelope);
+      return this.translateContainerEvent(
+        sessionId,
+        parsed as ContainerEventEnvelope,
+      );
     }
 
     return { events: [] };
@@ -632,7 +636,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
       case 'error': {
         const message =
-          this.readString(data?.message) ?? this.readString(envelope.data) ?? 'Sandbox agent error';
+          this.readString(data?.message) ??
+          this.readString(envelope.data) ??
+          'Sandbox agent error';
         this.clearPendingPermissions(sessionId, 'deny');
         return { events: [], error: new Error(message) };
       }
@@ -656,7 +662,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         const ptyData = this.readString(data?.data);
         if (!ptySessionId || ptyData == null) return { events: [] };
         return {
-          events: [{ type: 'pty.output' as const, sessionId: ptySessionId, data: ptyData }],
+          events: [
+            {
+              type: 'pty.output' as const,
+              sessionId: ptySessionId,
+              data: ptyData,
+            },
+          ],
         };
       }
 
@@ -666,7 +678,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         const exitCode =
           typeof data?.exitCode === 'number' ? data.exitCode : undefined;
         const exitSignal =
-          typeof data?.exitSignal === 'number' || typeof data?.exitSignal === 'string'
+          typeof data?.exitSignal === 'number' ||
+          typeof data?.exitSignal === 'string'
             ? data.exitSignal
             : undefined;
         return {
@@ -698,20 +711,27 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     data: Record<string, unknown> | null,
     fallbackStatus: ToolCallStatus,
   ): ToolCallEvent {
-    const tool = this.readString(data?.toolName) ?? this.readString(data?.tool) ?? 'unknown_tool';
+    const tool =
+      this.readString(data?.toolName) ??
+      this.readString(data?.tool) ??
+      'unknown_tool';
     const permissionRequest = this.normalizePermissionRequest(
       data?.permissionRequest,
       tool,
       data,
     );
-    const status = this.readToolCallStatus(
-      data?.status,
-      permissionRequest,
-      fallbackStatus,
-    ) ?? fallbackStatus;
+    const status =
+      this.readToolCallStatus(
+        data?.status,
+        permissionRequest,
+        fallbackStatus,
+      ) ?? fallbackStatus;
 
     return {
-      id: this.readString(data?.toolCallId) ?? this.readString(data?.id) ?? randomUUID(),
+      id:
+        this.readString(data?.toolCallId) ??
+        this.readString(data?.id) ??
+        randomUUID(),
       tool,
       args: this.normalizeToolArgs(data),
       status,
@@ -719,7 +739,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         ? { transitions: this.normalizeTransitions(data?.transitions) }
         : {}),
       ...(data && 'result' in data ? { result: data.result } : {}),
-      ...(this.readToolError(data) ? { error: this.readToolError(data) ?? undefined } : {}),
+      ...(this.readToolError(data)
+        ? { error: this.readToolError(data) ?? undefined }
+        : {}),
       ...(permissionRequest ? { permissionRequest } : {}),
     };
   }
@@ -750,9 +772,12 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       }
 
       const to = this.readToolCallStatus(entry.to, undefined, undefined);
-      const timestamp = this.readString(entry.timestamp) ?? new Date().toISOString();
+      const timestamp =
+        this.readString(entry.timestamp) ?? new Date().toISOString();
       const source: ToolCallTransitionSource =
-        entry.source === 'runtime' || entry.source === 'worker' || entry.source === 'user'
+        entry.source === 'runtime' ||
+        entry.source === 'worker' ||
+        entry.source === 'user'
           ? entry.source
           : 'runtime';
 
@@ -760,7 +785,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         ? [
             {
               ...(this.readToolCallStatus(entry.from, undefined, undefined)
-                ? { from: this.readToolCallStatus(entry.from, undefined, undefined) }
+                ? {
+                    from: this.readToolCallStatus(
+                      entry.from,
+                      undefined,
+                      undefined,
+                    ),
+                  }
                 : {}),
               to,
               timestamp,
@@ -849,10 +880,14 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return null;
     }
 
-    return this.readString(value.delta) ?? this.readString(value.content) ?? null;
+    return (
+      this.readString(value.delta) ?? this.readString(value.content) ?? null
+    );
   }
 
-  private readToolError(data: Record<string, unknown> | null): string | undefined {
+  private readToolError(
+    data: Record<string, unknown> | null,
+  ): string | undefined {
     const errorValue = data?.error;
     if (typeof errorValue === 'string' && errorValue.length > 0) {
       return errorValue;
@@ -882,7 +917,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return [];
     }
 
-    return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+    return value.filter(
+      (entry): entry is string => typeof entry === 'string' && entry.length > 0,
+    );
   }
 
   private async waitForPermission(
@@ -893,7 +930,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const controller = this.abortControllers.get(sessionId);
     const signal = controller?.signal;
     const sessionResolvers =
-      this.pendingPermissionResolvers.get(sessionId) ?? new Map<string, PendingPermissionGate>();
+      this.pendingPermissionResolvers.get(sessionId) ??
+      new Map<string, PendingPermissionGate>();
 
     if (sessionResolvers.has(toolCallId)) {
       throw new Error(
@@ -915,7 +953,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       };
 
       const onAbort = () => finish('cancelled');
-      const timer = setTimeout(() => finish('deny'), TOOL_PERMISSION_TIMEOUT_MS);
+      const timer = setTimeout(
+        () => finish('deny'),
+        TOOL_PERMISSION_TIMEOUT_MS,
+      );
 
       sessionResolvers.set(toolCallId, {
         resolve: finish,
@@ -954,21 +995,28 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     for (const [sessionId, session] of this.sessions.entries()) {
-      const binding = this.readSandboxBinding(session.context.workflowState ?? {});
+      const binding = this.readSandboxBinding(
+        session.context.workflowState ?? {},
+      );
       if (binding.agentConversationId === conversationId) {
         this.conversationSessionIds.set(conversationId, sessionId);
         return sessionId;
       }
     }
 
-    throw new Error(`Sandbox conversation session not found for ${conversationId}`);
+    throw new Error(
+      `Sandbox conversation session not found for ${conversationId}`,
+    );
   }
 
   async listPtySessions(
     sandboxBinding: SandboxBinding,
     tenantId: string,
   ): Promise<unknown> {
-    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const sandboxSession = await this.waitForSandboxReady(
+      sandboxBinding,
+      tenantId,
+    );
     const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
     const response = await fetch(`${baseUrl}/v1/pty/sessions`, {
@@ -989,7 +1037,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     ptySessionId: string,
     options?: { offset?: number; limit?: number; pattern?: string },
   ): Promise<unknown> {
-    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const sandboxSession = await this.waitForSandboxReady(
+      sandboxBinding,
+      tenantId,
+    );
     const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
     const response = await fetch(`${baseUrl}/v1/pty/buffer-dump`, {
@@ -1012,7 +1063,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     ptySessionId: string,
     data: string,
   ): Promise<unknown> {
-    const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
+    const sandboxSession = await this.waitForSandboxReady(
+      sandboxBinding,
+      tenantId,
+    );
     const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
     const response = await fetch(`${baseUrl}/v1/pty/write`, {
@@ -1040,8 +1094,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     tenantId: string,
   ): Promise<void> {
     try {
-      const sandboxSession = await this.waitForSandboxReady(sandboxBinding, tenantId);
-      const promptUrl = await this.dockerService.getPromptUrl(sandboxSession.containerId);
+      const sandboxSession = await this.waitForSandboxReady(
+        sandboxBinding,
+        tenantId,
+      );
+      const promptUrl = await this.dockerService.getPromptUrl(
+        sandboxSession.containerId,
+      );
       const abortUrl = new URL(promptUrl);
       abortUrl.pathname = '/v1/abort';
 
@@ -1071,7 +1130,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
     switch (value.type) {
       case 'plan':
-        return typeof value.title === 'string' && typeof value.content === 'string';
+        return (
+          typeof value.title === 'string' && typeof value.content === 'string'
+        );
       case 'message_chunk':
         return typeof value.content === 'string';
       case 'tool_call':
@@ -1083,7 +1144,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       case 'pty.spawned':
         return typeof value.sessionId === 'string';
       case 'pty.output':
-        return typeof value.sessionId === 'string' && typeof value.data === 'string';
+        return (
+          typeof value.sessionId === 'string' && typeof value.data === 'string'
+        );
       case 'pty.exit':
         return typeof value.sessionId === 'string';
       case 'pty.killed':

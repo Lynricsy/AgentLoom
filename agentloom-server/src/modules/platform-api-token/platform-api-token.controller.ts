@@ -25,13 +25,9 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import {
-  CreatePlatformApiTokenSwaggerDto,
-} from './dto/create-platform-api-token.dto';
+import { CreatePlatformApiTokenSwaggerDto } from './dto/create-platform-api-token.dto';
 import { CreatePlatformApiTokenSchema } from './dto/create-platform-api-token.dto';
-import {
-  QueryPlatformApiTokenSwaggerDto,
-} from './dto/query-platform-api-token.dto';
+import { QueryPlatformApiTokenSwaggerDto } from './dto/query-platform-api-token.dto';
 import { QueryPlatformApiTokenSchema } from './dto/query-platform-api-token.dto';
 import {
   PlatformApiTokenCreateEnvelopeSwaggerDto,

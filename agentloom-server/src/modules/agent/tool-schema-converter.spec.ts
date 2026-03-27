@@ -22,7 +22,9 @@ describe('zodToTypeBox', () => {
   it('converts z.array(z.string()) to Type.Array(Type.String())', () => {
     const result = zodToTypeBox(z.array(z.string()));
     expect(TypeGuard.IsArray(result)).toBe(true);
-    expect(TypeGuard.IsString((result as ReturnType<typeof Type.Array>).items)).toBe(true);
+    expect(
+      TypeGuard.IsString((result as ReturnType<typeof Type.Array>).items),
+    ).toBe(true);
   });
 
   it('converts z.enum([...]) to Type.Union([Type.Literal(...)])', () => {
@@ -44,14 +46,20 @@ describe('zodToTypeBox', () => {
     const result = zodToTypeBox(z.string().nullable());
     expect(TypeGuard.IsUnion(result)).toBe(true);
     const union = result as ReturnType<typeof Type.Union>;
-    const hasNull = union.anyOf.some((item) => TypeGuard.IsNull(item as Parameters<typeof TypeGuard.IsNull>[0]));
-    const hasString = union.anyOf.some((item) => TypeGuard.IsString(item as Parameters<typeof TypeGuard.IsString>[0]));
+    const hasNull = union.anyOf.some((item) =>
+      TypeGuard.IsNull(item as Parameters<typeof TypeGuard.IsNull>[0]),
+    );
+    const hasString = union.anyOf.some((item) =>
+      TypeGuard.IsString(item as Parameters<typeof TypeGuard.IsString>[0]),
+    );
     expect(hasNull).toBe(true);
     expect(hasString).toBe(true);
   });
 
   it('converts z.object({...}) to Type.Object({...})', () => {
-    const result = zodToTypeBox(z.object({ name: z.string(), age: z.number() }));
+    const result = zodToTypeBox(
+      z.object({ name: z.string(), age: z.number() }),
+    );
     expect(TypeGuard.IsObject(result)).toBe(true);
     const obj = result as ReturnType<typeof Type.Object>;
     expect(TypeGuard.IsString(obj.properties.name)).toBe(true);
@@ -73,7 +81,10 @@ describe('zodToTypeBox', () => {
   });
 
   it('marks optional object properties as not required', () => {
-    const schema = z.object({ required: z.string(), opt: z.number().optional() });
+    const schema = z.object({
+      required: z.string(),
+      opt: z.number().optional(),
+    });
     const result = zodToTypeBox(schema) as ReturnType<typeof Type.Object>;
     expect(result.required).toContain('required');
     expect(result.required).not.toContain('opt');
@@ -81,7 +92,9 @@ describe('zodToTypeBox', () => {
 
   it('forwards .describe() as description option', () => {
     const result = zodToTypeBox(z.string().describe('a user name'));
-    expect((result as { description?: string }).description).toBe('a user name');
+    expect((result as { description?: string }).description).toBe(
+      'a user name',
+    );
   });
 
   it('converts z.array(z.object({...})) to nested array of objects', () => {
@@ -116,33 +129,50 @@ describe('typeBoxToZod', () => {
   it('converts Type.Array(Type.String()) to z.array(z.string())', () => {
     const result = typeBoxToZod(Type.Array(Type.String()));
     expect(result._def.type).toBe('array');
-    expect((result._def as { element: { _def: { type: string } } }).element._def.type).toBe('string');
+    expect(
+      (result._def as { element: { _def: { type: string } } }).element._def
+        .type,
+    ).toBe('string');
   });
 
   it('converts Type.Union([Type.Literal(...)]) to z.enum([...])', () => {
-    const result = typeBoxToZod(Type.Union([Type.Literal('a'), Type.Literal('b'), Type.Literal('c')]));
+    const result = typeBoxToZod(
+      Type.Union([Type.Literal('a'), Type.Literal('b'), Type.Literal('c')]),
+    );
     expect(result._def.type).toBe('enum');
-    const entries = (result._def as { entries: Record<string, string> }).entries;
+    const entries = (result._def as { entries: Record<string, string> })
+      .entries;
     expect(Object.keys(entries)).toEqual(['a', 'b', 'c']);
   });
 
   it('converts Type.Union([T, Type.Null()]) to z.nullable()', () => {
     const result = typeBoxToZod(Type.Union([Type.Number(), Type.Null()]));
     expect(result._def.type).toBe('nullable');
-    expect((result._def as { innerType: { _def: { type: string } } }).innerType._def.type).toBe('number');
+    expect(
+      (result._def as { innerType: { _def: { type: string } } }).innerType._def
+        .type,
+    ).toBe('number');
   });
 
   it('converts Type.Object({...}) to z.object({...})', () => {
-    const result = typeBoxToZod(Type.Object({ x: Type.String(), y: Type.Number() }));
+    const result = typeBoxToZod(
+      Type.Object({ x: Type.String(), y: Type.Number() }),
+    );
     expect(result._def.type).toBe('object');
-    const shape = (result._def as { shape: Record<string, { _def: { type: string } }> }).shape;
+    const shape = (
+      result._def as { shape: Record<string, { _def: { type: string } }> }
+    ).shape;
     expect(shape.x._def.type).toBe('string');
     expect(shape.y._def.type).toBe('number');
   });
 
   it('marks missing-from-required properties as optional', () => {
-    const result = typeBoxToZod(Type.Object({ x: Type.String(), y: Type.Optional(Type.Number()) }));
-    const shape = (result._def as { shape: Record<string, { _def: { type: string } }> }).shape;
+    const result = typeBoxToZod(
+      Type.Object({ x: Type.String(), y: Type.Optional(Type.Number()) }),
+    );
+    const shape = (
+      result._def as { shape: Record<string, { _def: { type: string } }> }
+    ).shape;
     expect(shape.x._def.type).toBe('string');
     expect(shape.y._def.type).toBe('optional');
   });
@@ -150,7 +180,10 @@ describe('typeBoxToZod', () => {
   it('converts Type.Optional(Type.String()) to z.string().optional()', () => {
     const result = typeBoxToZod(Type.Optional(Type.String()));
     expect(result._def.type).toBe('optional');
-    expect((result._def as { innerType: { _def: { type: string } } }).innerType._def.type).toBe('string');
+    expect(
+      (result._def as { innerType: { _def: { type: string } } }).innerType._def
+        .type,
+    ).toBe('string');
   });
 
   it('forwards description to Zod schema', () => {
@@ -165,7 +198,9 @@ describe('typeBoxToZod', () => {
     });
     const result = typeBoxToZod(schema);
     expect(result._def.type).toBe('object');
-    const shape = (result._def as { shape: Record<string, { _def: { type: string } }> }).shape;
+    const shape = (
+      result._def as { shape: Record<string, { _def: { type: string } }> }
+    ).shape;
     expect(shape.user._def.type).toBe('object');
     expect(shape.tags._def.type).toBe('array');
   });
@@ -181,7 +216,11 @@ describe('round-trip', () => {
     });
     const typeBox = zodToTypeBox(original);
     const roundTripped = typeBoxToZod(typeBox);
-    const shape = (roundTripped._def as { shape: Record<string, { _def: { type: string }; description?: string }> }).shape;
+    const shape = (
+      roundTripped._def as {
+        shape: Record<string, { _def: { type: string }; description?: string }>;
+      }
+    ).shape;
     expect(shape.name._def.type).toBe('string');
     expect(shape.name.description).toBe('the name');
     expect(shape.count._def.type).toBe('number');
@@ -193,7 +232,8 @@ describe('round-trip', () => {
     const original = z.enum(['red', 'green', 'blue']);
     const roundTripped = typeBoxToZod(zodToTypeBox(original));
     expect(roundTripped._def.type).toBe('enum');
-    const entries = (roundTripped._def as { entries: Record<string, string> }).entries;
+    const entries = (roundTripped._def as { entries: Record<string, string> })
+      .entries;
     expect(Object.keys(entries)).toEqual(['red', 'green', 'blue']);
   });
 

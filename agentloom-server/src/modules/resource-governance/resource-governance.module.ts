@@ -15,8 +15,12 @@ import { ResourceGovernanceService } from './resource-governance.service';
       inject: [DRIZZLE, AuditLogService, EventEmitter2],
       useFactory: (
         db: ConstructorParameters<typeof ResourceGovernanceService>[0],
-        auditLogService: ConstructorParameters<typeof ResourceGovernanceService>[1],
-        eventEmitter: ConstructorParameters<typeof ResourceGovernanceService>[2],
+        auditLogService: ConstructorParameters<
+          typeof ResourceGovernanceService
+        >[1],
+        eventEmitter: ConstructorParameters<
+          typeof ResourceGovernanceService
+        >[2],
       ) => new ResourceGovernanceService(db, auditLogService, eventEmitter),
     },
   ],

@@ -104,7 +104,10 @@ export class ResourceGovernanceService {
     organizationId: string,
     userId: string,
   ): Promise<ResourceGovernanceStateResponseDto> {
-    const organization = await this.ensureGovernanceAccess(organizationId, userId);
+    const organization = await this.ensureGovernanceAccess(
+      organizationId,
+      userId,
+    );
 
     const [storedQuota, storedGovernance] = await Promise.all([
       this.tenantDb.query.tenantQuotas.findFirst({
@@ -119,7 +122,10 @@ export class ResourceGovernanceService {
       organizationId,
       quota: storedQuota
         ? this.toTenantQuotaResponse(storedQuota)
-        : this.toDefaultTenantQuotaResponse(organization.id, organization.tenantId),
+        : this.toDefaultTenantQuotaResponse(
+            organization.id,
+            organization.tenantId,
+          ),
       governance: this.toExecutionGovernanceResponse(
         organization.id,
         organization.tenantId,
@@ -394,9 +400,11 @@ export class ResourceGovernanceService {
       effectiveState: params.effectiveState,
       affectedSummary: {
         requested:
-          params.workflowTargetIds.length + (params.tenantControlUpdated ? 1 : 0),
+          params.workflowTargetIds.length +
+          (params.tenantControlUpdated ? 1 : 0),
         affected:
-          params.workflowTargetIds.length + (params.tenantControlUpdated ? 1 : 0),
+          params.workflowTargetIds.length +
+          (params.tenantControlUpdated ? 1 : 0),
         skipped: 0,
         workflowTargetIds: params.workflowTargetIds,
       },
@@ -463,18 +471,19 @@ export class ResourceGovernanceService {
     finalStatus?: string;
   }): Promise<TerminateExecutionResponseDto> {
     const effectedAt = new Date().toISOString();
-    const effectiveState =
-      (await this.resolveRuntimeStateForTenant(params.tenantId)) ?? {
-        organizationId: params.organizationId,
-        quota: this.toDefaultTenantQuotaResponse(
-          params.organizationId,
-          params.tenantId,
-        ),
-        governance: this.toDefaultExecutionGovernanceResponse(
-          params.organizationId,
-          params.tenantId,
-        ),
-      };
+    const effectiveState = (await this.resolveRuntimeStateForTenant(
+      params.tenantId,
+    )) ?? {
+      organizationId: params.organizationId,
+      quota: this.toDefaultTenantQuotaResponse(
+        params.organizationId,
+        params.tenantId,
+      ),
+      governance: this.toDefaultExecutionGovernanceResponse(
+        params.organizationId,
+        params.tenantId,
+      ),
+    };
     const response = this.buildTerminationActionResponse({
       organizationId: params.organizationId,
       executionId: params.executionId,
@@ -527,7 +536,10 @@ export class ResourceGovernanceService {
     dto: UpsertTenantQuotaDto,
     userId: string,
   ): Promise<TenantQuotaResponseDto> {
-    const organization = await this.ensureGovernanceAccess(organizationId, userId);
+    const organization = await this.ensureGovernanceAccess(
+      organizationId,
+      userId,
+    );
     const requestedAt = new Date().toISOString();
     const validated = UpsertTenantQuotaSchema.parse(dto);
     const existingQuota = await this.tenantDb.query.tenantQuotas.findFirst({
@@ -536,8 +548,14 @@ export class ResourceGovernanceService {
 
     const previousResponse = existingQuota
       ? this.toTenantQuotaResponse(existingQuota)
-      : this.toDefaultTenantQuotaResponse(organization.id, organization.tenantId);
-    const resolvedSnapshot = this.resolveQuotaSnapshot(validated, previousResponse);
+      : this.toDefaultTenantQuotaResponse(
+          organization.id,
+          organization.tenantId,
+        );
+    const resolvedSnapshot = this.resolveQuotaSnapshot(
+      validated,
+      previousResponse,
+    );
 
     if (!existingQuota) {
       const [created] = await this.tenantDb
@@ -627,7 +645,10 @@ export class ResourceGovernanceService {
     dto: UpsertExecutionGovernanceControlsDto,
     userId: string,
   ): Promise<ExecutionGovernanceControlsResponseDto> {
-    const organization = await this.ensureGovernanceAccess(organizationId, userId);
+    const organization = await this.ensureGovernanceAccess(
+      organizationId,
+      userId,
+    );
     const requestedAt = new Date().toISOString();
     const validated = UpsertExecutionGovernanceControlsSchema.parse(dto);
     const existingControls =
@@ -710,7 +731,9 @@ export class ResourceGovernanceService {
         if (staleWorkflowControlIds.length > 0) {
           await tx
             .delete(executionGovernanceControls)
-            .where(inArray(executionGovernanceControls.id, staleWorkflowControlIds));
+            .where(
+              inArray(executionGovernanceControls.id, staleWorkflowControlIds),
+            );
 
           for (const staleWorkflowControlId of staleWorkflowControlIds) {
             const index = nextControls.findIndex(
@@ -759,7 +782,9 @@ export class ResourceGovernanceService {
               version: sql`${executionGovernanceControls.version} + 1`,
               updatedAt: new Date(),
             })
-            .where(eq(executionGovernanceControls.id, existingWorkflowControl.id))
+            .where(
+              eq(executionGovernanceControls.id, existingWorkflowControl.id),
+            )
             .returning();
 
           this.replaceGovernanceControl(nextControls, updatedWorkflowControl);
@@ -799,7 +824,9 @@ export class ResourceGovernanceService {
       });
     });
 
-    this.logger.log(`Updated execution governance controls for ${organizationId}`);
+    this.logger.log(
+      `Updated execution governance controls for ${organizationId}`,
+    );
     return response;
   }
 
@@ -880,7 +907,10 @@ export class ResourceGovernanceService {
     controls: ExecutionGovernanceControl[],
   ): ExecutionGovernanceControlsResponseDto {
     if (controls.length === 0) {
-      return this.toDefaultExecutionGovernanceResponse(organizationId, tenantId);
+      return this.toDefaultExecutionGovernanceResponse(
+        organizationId,
+        tenantId,
+      );
     }
 
     const tenantControl = controls.find(
@@ -991,7 +1021,9 @@ export class ResourceGovernanceService {
     controls: ExecutionGovernanceControl[],
     nextControl: ExecutionGovernanceControl,
   ) {
-    const index = controls.findIndex((control) => control.id === nextControl.id);
+    const index = controls.findIndex(
+      (control) => control.id === nextControl.id,
+    );
 
     if (index >= 0) {
       controls[index] = nextControl;
@@ -1013,14 +1045,19 @@ export class ResourceGovernanceService {
     return timestamps.sort().at(-1) ?? fallback;
   }
 
-  private emitQuotaUpdatedEvent(event: ResourceGovernanceQuotaUpdatedEvent): void {
+  private emitQuotaUpdatedEvent(
+    event: ResourceGovernanceQuotaUpdatedEvent,
+  ): void {
     this.eventEmitter?.emit(ResourceGovernanceEventName.QUOTA_UPDATED, event);
   }
 
   private emitControlsUpdatedEvent(
     event: ResourceGovernanceControlsUpdatedEvent,
   ): void {
-    this.eventEmitter?.emit(ResourceGovernanceEventName.CONTROLS_UPDATED, event);
+    this.eventEmitter?.emit(
+      ResourceGovernanceEventName.CONTROLS_UPDATED,
+      event,
+    );
   }
 
   private emitExecutionStartBlockedEvent(

@@ -11,9 +11,7 @@ const createMockDecryptionBoundaryService = () => ({
 });
 
 const createMockLlmService = () => ({
-  findAll: vi.fn().mockResolvedValue([
-    { id: 'org-1', orgId: 'org-1' },
-  ]),
+  findAll: vi.fn().mockResolvedValue([{ id: 'org-1', orgId: 'org-1' }]),
 });
 
 function make1536Vector(seed = 0.1): number[] {
@@ -80,12 +78,21 @@ describe('EmbeddingIntegrationService', () => {
       (_url: string, opts: { signal: AbortSignal }) =>
         new Promise((resolve, reject) => {
           const timer = setTimeout(
-            () => resolve({ ok: true, json: () => Promise.resolve({ data: [{ embedding: make1536Vector(), index: 0 }] }) }),
+            () =>
+              resolve({
+                ok: true,
+                json: () =>
+                  Promise.resolve({
+                    data: [{ embedding: make1536Vector(), index: 0 }],
+                  }),
+              }),
             3000,
           );
           opts.signal.addEventListener('abort', () => {
             clearTimeout(timer);
-            reject(new DOMException('The operation was aborted.', 'AbortError'));
+            reject(
+              new DOMException('The operation was aborted.', 'AbortError'),
+            );
           });
         }),
     );
@@ -145,7 +152,8 @@ describe('EmbeddingIntegrationService', () => {
   });
 
   it('should not cache failed requests', async () => {
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce({
         ok: false,
         status: 500,

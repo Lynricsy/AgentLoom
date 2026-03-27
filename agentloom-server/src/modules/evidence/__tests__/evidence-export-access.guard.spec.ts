@@ -72,7 +72,10 @@ describe('EvidenceExportAccessGuard', () => {
 
     await expect(guard.canActivate(createContext())).resolves.toBe(true);
 
-    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(TENANT_ID, ACTOR_ID);
+    expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(
+      TENANT_ID,
+      ACTOR_ID,
+    );
     expect(auditLogService.record).not.toHaveBeenCalled();
   });
 

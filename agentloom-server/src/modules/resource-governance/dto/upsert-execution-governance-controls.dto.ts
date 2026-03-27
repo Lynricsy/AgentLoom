@@ -32,7 +32,9 @@ export const TenantExecutionGovernanceControlSchema = z
 export const UpsertExecutionGovernanceControlsSchema = z
   .object({
     tenantControl: TenantExecutionGovernanceControlSchema.optional(),
-    workflowControls: z.array(WorkflowExecutionGovernanceControlSchema).optional(),
+    workflowControls: z
+      .array(WorkflowExecutionGovernanceControlSchema)
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

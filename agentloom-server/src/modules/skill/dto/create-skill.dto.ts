@@ -8,16 +8,8 @@ import {
 
 export const CreateSkillSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(SKILL_NAME_MAX_LENGTH),
-    description: z
-      .string()
-      .trim()
-      .min(1)
-      .max(SKILL_DESCRIPTION_MAX_LENGTH),
+    name: z.string().trim().min(1).max(SKILL_NAME_MAX_LENGTH),
+    description: z.string().trim().min(1).max(SKILL_DESCRIPTION_MAX_LENGTH),
     content: z.string().optional(),
   })
   .strict();

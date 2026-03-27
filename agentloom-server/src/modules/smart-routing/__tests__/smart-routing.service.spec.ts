@@ -132,7 +132,9 @@ describe('SmartRoutingService', () => {
   let module: TestingModule;
   let service: SmartRoutingService;
   let db: ReturnType<typeof createMockDb>;
-  let mockCircuitBreakerService: ReturnType<typeof createMockCircuitBreakerService>;
+  let mockCircuitBreakerService: ReturnType<
+    typeof createMockCircuitBreakerService
+  >;
   let mockEmbeddingService: ReturnType<typeof createMockEmbeddingService>;
   let mockLlmService: ReturnType<typeof createMockLlmService>;
   let mockRouterRegistry: ReturnType<typeof createMockRouterRegistry>;
@@ -150,9 +152,18 @@ describe('SmartRoutingService', () => {
     strategy: RoutingStrategy,
     tenantId: string,
   ) => {
-    const legacyEvaluate = Reflect.get(service as object, 'evaluate') as LegacyEvaluateFn;
+    const legacyEvaluate = Reflect.get(
+      service as object,
+      'evaluate',
+    ) as LegacyEvaluateFn;
 
-    return legacyEvaluate.call(service, modelConfigIds, context, strategy, tenantId);
+    return legacyEvaluate.call(
+      service,
+      modelConfigIds,
+      context,
+      strategy,
+      tenantId,
+    );
   };
 
   beforeEach(async () => {
@@ -295,36 +306,35 @@ describe('SmartRoutingService', () => {
       strategy: (typeof ROUTING_STRATEGIES)[number];
       context: RoutingContext;
       selectedModelId: string;
-    }>)('应当使用 $strategy 返回排序后的评估结果', async ({
-      strategy,
-      context,
-      selectedModelId,
-    }) => {
-      mockLlmService.findByIds.mockResolvedValue(mockModelConfigs);
+    }>)(
+      '应当使用 $strategy 返回排序后的评估结果',
+      async ({ strategy, context, selectedModelId }) => {
+        mockLlmService.findByIds.mockResolvedValue(mockModelConfigs);
 
-      const result = await callLegacyEvaluate(
-        mockModelConfigs.map((config) => config.id),
-        context,
-        strategy,
-        TENANT_ID,
-      );
+        const result = await callLegacyEvaluate(
+          mockModelConfigs.map((config) => config.id),
+          context,
+          strategy,
+          TENANT_ID,
+        );
 
-      expect(mockLlmService.findByIds).toHaveBeenCalledWith(
-        ['model-1', 'model-2', 'model-3'],
-        TENANT_ID,
-      );
-      expect(result.selectedModelId).toBe(selectedModelId);
-      expect(result.evaluatedModels[0]?.modelId).toBe(selectedModelId);
-      expect(result.evaluatedModels).toHaveLength(3);
-      expect(result.evaluatedModels.map((model) => model.score)).toEqual(
-        [...result.evaluatedModels]
-          .map((model) => model.score)
-          .sort((a, b) => b - a),
-      );
-      expect(result.strategy).toBe(strategy);
-      expect(result.reasoning).toContain(strategy);
-      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
-    });
+        expect(mockLlmService.findByIds).toHaveBeenCalledWith(
+          ['model-1', 'model-2', 'model-3'],
+          TENANT_ID,
+        );
+        expect(result.selectedModelId).toBe(selectedModelId);
+        expect(result.evaluatedModels[0]?.modelId).toBe(selectedModelId);
+        expect(result.evaluatedModels).toHaveLength(3);
+        expect(result.evaluatedModels.map((model) => model.score)).toEqual(
+          [...result.evaluatedModels]
+            .map((model) => model.score)
+            .sort((a, b) => b - a),
+        );
+        expect(result.strategy).toBe(strategy);
+        expect(result.reasoning).toContain(strategy);
+        expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+      },
+    );
 
     it('应保留传入的候选模型顺序，供 FALLBACK_CHAIN 直接使用', async () => {
       mockLlmService.findByIds.mockResolvedValue([
@@ -414,7 +424,9 @@ describe('SmartRoutingService', () => {
           checkpointData: null,
         },
       ]);
-      db.select.mockReturnValueOnce(routingChain).mockReturnValueOnce(stepChain);
+      db.select
+        .mockReturnValueOnce(routingChain)
+        .mockReturnValueOnce(stepChain);
 
       const result = await service.getHistoricalMetrics(
         TENANT_ID,
@@ -518,7 +530,12 @@ describe('SmartRoutingService', () => {
         routerType: 'round_robin',
       };
 
-      await service.recordDecision('step-2', TENANT_ID, 'routing-node-2', decision);
+      await service.recordDecision(
+        'step-2',
+        TENANT_ID,
+        'routing-node-2',
+        decision,
+      );
 
       expect(insertChain.values).toHaveBeenCalledWith({
         executionStepId: 'step-2',

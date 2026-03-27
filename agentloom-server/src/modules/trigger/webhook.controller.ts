@@ -226,7 +226,9 @@ export class WebhookController {
     }
   }
 
-  private getHeaderValue(value: string | string[] | undefined): string | undefined {
+  private getHeaderValue(
+    value: string | string[] | undefined,
+  ): string | undefined {
     if (Array.isArray(value)) {
       return value[0];
     }

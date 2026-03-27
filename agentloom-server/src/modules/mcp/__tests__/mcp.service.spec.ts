@@ -590,7 +590,9 @@ describe('McpService', () => {
         tools: [tool],
       });
 
-      const result = await service.discoverRuntimeTools(createStdioConnection());
+      const result = await service.discoverRuntimeTools(
+        createStdioConnection(),
+      );
 
       expect(result).toEqual([
         {
@@ -641,7 +643,9 @@ describe('McpService', () => {
           query: 'AgentLoom',
         },
       });
-      expect(mcpMocks.streamableHttpTransport.terminateSession).toHaveBeenCalledOnce();
+      expect(
+        mcpMocks.streamableHttpTransport.terminateSession,
+      ).toHaveBeenCalledOnce();
       expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
       expect(mcpMocks.streamableHttpTransport.close).toHaveBeenCalledOnce();
     });

@@ -21,7 +21,10 @@ const knnRouterConfigSchema = z.object({
 type KnnRouterConfig = z.infer<typeof knnRouterConfigSchema>;
 type RoutingDb = Pick<DrizzleDB, 'select'>;
 type RoutingMemoryClient = Pick<QdrantClient, 'search'>;
-type EmbeddingServiceLike = Pick<EmbeddingIntegrationService, 'generateEmbedding'>;
+type EmbeddingServiceLike = Pick<
+  EmbeddingIntegrationService,
+  'generateEmbedding'
+>;
 
 interface RouterModelLookupRow {
   routerModelId: string;
@@ -113,7 +116,10 @@ export class KnnRouter extends BaseRouterStrategy {
       }
     }
 
-    const coldStartDecision = await this.routeFromBenchmarks(candidates, context);
+    const coldStartDecision = await this.routeFromBenchmarks(
+      candidates,
+      context,
+    );
     if (coldStartDecision) {
       return coldStartDecision;
     }
@@ -128,7 +134,9 @@ export class KnnRouter extends BaseRouterStrategy {
     });
   }
 
-  private async resolveEmbedding(context: RoutingContext): Promise<number[] | null> {
+  private async resolveEmbedding(
+    context: RoutingContext,
+  ): Promise<number[] | null> {
     if (context.queryEmbedding && context.queryEmbedding.length > 0) {
       return context.queryEmbedding;
     }
@@ -137,7 +145,10 @@ export class KnnRouter extends BaseRouterStrategy {
       return null;
     }
 
-    return this.embeddingService.generateEmbedding(context.queryText, context.tenantId);
+    return this.embeddingService.generateEmbedding(
+      context.queryText,
+      context.tenantId,
+    );
   }
 
   private async routeFromQdrant(
@@ -156,7 +167,9 @@ export class KnnRouter extends BaseRouterStrategy {
       with_payload: true,
     })) as QdrantSearchPoint[];
 
-    const scoreByCandidateId = new Map(candidates.map((candidate) => [candidate.id, 0]));
+    const scoreByCandidateId = new Map(
+      candidates.map((candidate) => [candidate.id, 0]),
+    );
     let contributingNeighbors = 0;
 
     for (const point of results) {
@@ -215,7 +228,10 @@ export class KnnRouter extends BaseRouterStrategy {
     candidates: RoutingCandidate[],
     context: RoutingContext,
   ): Promise<RoutingDecision | null> {
-    const routerModelRows = await this.loadRouterModels(candidates, context.tenantId);
+    const routerModelRows = await this.loadRouterModels(
+      candidates,
+      context.tenantId,
+    );
     if (routerModelRows.length === 0) {
       return null;
     }
@@ -228,7 +244,9 @@ export class KnnRouter extends BaseRouterStrategy {
     const candidateByRouterModelId = new Map<string, RoutingCandidate>();
     for (const row of routerModelRows) {
       const candidate = candidates.find(
-        (item) => item.modelConfigId === row.modelConfigId || item.id === row.modelConfigId,
+        (item) =>
+          item.modelConfigId === row.modelConfigId ||
+          item.id === row.modelConfigId,
       );
       if (candidate) {
         candidateByRouterModelId.set(row.routerModelId, candidate);
@@ -332,7 +350,8 @@ export class KnnRouter extends BaseRouterStrategy {
     return (
       candidates.find(
         (candidate) =>
-          candidate.modelConfigId === modelIdentifier || candidate.id === modelIdentifier,
+          candidate.modelConfigId === modelIdentifier ||
+          candidate.id === modelIdentifier,
       ) ?? null
     );
   }
@@ -347,7 +366,8 @@ export class KnnRouter extends BaseRouterStrategy {
       modelId: candidate.id,
       modelName: candidate.name,
       provider: candidate.provider,
-      score: maxVote > 0 ? ((rawVotes.get(candidate.id) ?? 0) / maxVote) * 100 : 0,
+      score:
+        maxVote > 0 ? ((rawVotes.get(candidate.id) ?? 0) / maxVote) * 100 : 0,
       reasoning,
     }));
   }
@@ -357,7 +377,9 @@ export class KnnRouter extends BaseRouterStrategy {
     reason: string,
   ): RoutingDecision {
     const bestCandidate = candidates.reduce((best, candidate) =>
-      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank ? candidate : best,
+      candidate.routingMeta.qualityRank > best.routingMeta.qualityRank
+        ? candidate
+        : best,
     );
     const maxQuality = Math.max(
       ...candidates.map((candidate) => candidate.routingMeta.qualityRank),

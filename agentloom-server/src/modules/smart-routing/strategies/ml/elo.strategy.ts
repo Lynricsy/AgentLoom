@@ -51,10 +51,15 @@ export class EloRouter extends BaseRouterStrategy {
     context: RoutingContext,
   ): Promise<RoutingDecision> {
     const config = this.resolveConfig(context);
-    const ratingByCandidateId = await this.loadRatings(candidates, context.tenantId);
+    const ratingByCandidateId = await this.loadRatings(
+      candidates,
+      context.tenantId,
+    );
     const scoredCandidates = candidates.map((candidate) => ({
       candidate,
-      rating: ratingByCandidateId.get(candidate.id) ?? candidate.routingMeta.eloRating,
+      rating:
+        ratingByCandidateId.get(candidate.id) ??
+        candidate.routingMeta.eloRating,
     }));
 
     const topCandidate = scoredCandidates.reduce((best, current) =>
@@ -66,8 +71,12 @@ export class EloRouter extends BaseRouterStrategy {
       ? candidates[Math.floor(Math.random() * candidates.length)]
       : topCandidate.candidate;
 
-    const minRating = Math.min(...scoredCandidates.map((entry) => entry.rating));
-    const maxRating = Math.max(...scoredCandidates.map((entry) => entry.rating));
+    const minRating = Math.min(
+      ...scoredCandidates.map((entry) => entry.rating),
+    );
+    const maxRating = Math.max(
+      ...scoredCandidates.map((entry) => entry.rating),
+    );
 
     return {
       selectedModelId: selectedCandidate.id,
@@ -130,7 +139,8 @@ export class EloRouter extends BaseRouterStrategy {
     return new Map(
       candidates.map((candidate) => [
         candidate.id,
-        ratingByModelConfigId.get(candidate.modelConfigId) ?? candidate.routingMeta.eloRating,
+        ratingByModelConfigId.get(candidate.modelConfigId) ??
+          candidate.routingMeta.eloRating,
       ]),
     );
   }

@@ -116,8 +116,7 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
   }
 
   const desc = (schema as { description?: string }).description;
-  const withDesc = <T extends ZodAny>(s: T): T =>
-    (desc ? s.describe(desc) : s) as T;
+  const withDesc = <T extends ZodAny>(s: T): T => (desc ? s.describe(desc) : s);
 
   if (TypeGuard.IsString(schema)) {
     return withDesc(z.string());
@@ -141,19 +140,19 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
   }
 
   if (TypeGuard.IsArray(schema)) {
-    const items = typeBoxToZod((schema as TArray).items);
+    const items = typeBoxToZod(schema.items);
     return withDesc(z.array(items));
   }
 
   if (TypeGuard.IsObject(schema)) {
-    const objSchema = schema as TObject;
+    const objSchema = schema;
     const required: string[] = Array.isArray(objSchema.required)
-      ? (objSchema.required as string[])
+      ? objSchema.required
       : [];
     const shape: Record<string, ZodAny> = {};
     for (const [key, val] of Object.entries(objSchema.properties)) {
-      const converted = typeBoxToZod(val as TSchema);
-      if (TypeGuard.IsOptional(val as TSchema)) {
+      const converted = typeBoxToZod(val);
+      if (TypeGuard.IsOptional(val)) {
         shape[key] = converted;
       } else {
         shape[key] = required.includes(key) ? converted : converted.optional();
@@ -163,7 +162,7 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
   }
 
   if (TypeGuard.IsUnion(schema)) {
-    const unionSchema = schema as TUnion;
+    const unionSchema = schema;
 
     if (TypeGuard.IsUnionLiteral(schema)) {
       const values = unionSchema.anyOf.map((item) => {
@@ -179,10 +178,10 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
     }
 
     const nullIndex = unionSchema.anyOf.findIndex((item) =>
-      TypeGuard.IsNull(item as TSchema),
+      TypeGuard.IsNull(item),
     );
     if (nullIndex !== -1 && unionSchema.anyOf.length === 2) {
-      const nonNullItem = unionSchema.anyOf[nullIndex === 0 ? 1 : 0] as TSchema;
+      const nonNullItem = unionSchema.anyOf[nullIndex === 0 ? 1 : 0];
       const inner = typeBoxToZod(nonNullItem);
       return withDesc(inner.nullable());
     }

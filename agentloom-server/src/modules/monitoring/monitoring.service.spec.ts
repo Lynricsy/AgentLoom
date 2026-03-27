@@ -136,7 +136,8 @@ describe('MonitoringService', () => {
         body: {
           workflowId: 'workflow-2',
           workflowName: '工作流 B',
-          reason: 'workflow governance pause is preventing new workflow executions',
+          reason:
+            'workflow governance pause is preventing new workflow executions',
           requestedAt: '2026-03-18T05:50:00.000Z',
           resourceGovernanceUrl: '/settings/resource-quotas',
         },
@@ -148,7 +149,8 @@ describe('MonitoringService', () => {
         body: {
           workflowId: 'workflow-2',
           workflowName: '工作流 B',
-          reason: 'workflow governance pause is preventing new workflow executions',
+          reason:
+            'workflow governance pause is preventing new workflow executions',
           requestedAt: '2026-03-18T05:50:00.000Z',
           resourceGovernanceUrl: '/settings/resource-quotas',
         },
@@ -261,7 +263,9 @@ describe('MonitoringService', () => {
       }),
     );
     expect(dashboard.trend.length).toBeGreaterThan(0);
-    expect(dashboard.trend.every((point) => point.queueDepth === null)).toBe(true);
+    expect(dashboard.trend.every((point) => point.queueDepth === null)).toBe(
+      true,
+    );
   });
 
   it('returns a stable dashboard when the window has no executions, notifications, or queue jobs', async () => {
@@ -309,6 +313,8 @@ describe('MonitoringService', () => {
     expect(dashboard.alerts).toEqual([]);
     expect(dashboard.hotspots).toEqual([]);
     expect(dashboard.riskSummary.level).toBe('stable');
-    expect(dashboard.trend.every((point) => point.queueDepth === null)).toBe(true);
+    expect(dashboard.trend.every((point) => point.queueDepth === null)).toBe(
+      true,
+    );
   });
 });

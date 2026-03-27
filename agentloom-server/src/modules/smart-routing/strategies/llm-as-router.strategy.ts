@@ -31,7 +31,10 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
         return this.buildDecision(candidates, selectedId, context);
       }
 
-      return this.fallbackToRandom(candidates, 'LLM 返回了无效的模型 ID，回退到随机选择');
+      return this.fallbackToRandom(
+        candidates,
+        'LLM 返回了无效的模型 ID，回退到随机选择',
+      );
     } catch (error) {
       const isTimeout =
         error instanceof DOMException && error.name === 'AbortError';
@@ -51,7 +54,11 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
     const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
     try {
-      const prompt = this.buildPrompt(candidates, context, config.promptTemplate);
+      const prompt = this.buildPrompt(
+        candidates,
+        context,
+        config.promptTemplate,
+      );
 
       const response = await fetch(
         `https://api.openai.com/v1/chat/completions`,

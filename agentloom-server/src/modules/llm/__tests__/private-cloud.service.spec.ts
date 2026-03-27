@@ -4,10 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import type { FetchPrivateCloudModelsDto } from '../dto/private-cloud-models.dto';
 import type { TestConnectionDto } from '../dto/test-connection.dto';
-import {
-  LlmProviderException,
-  LlmTimeoutException,
-} from '../llm.exceptions';
+import { LlmProviderException, LlmTimeoutException } from '../llm.exceptions';
 import {
   PrivateCloudService,
   type PrivateCloudRequestContext,
@@ -15,7 +12,9 @@ import {
 } from '../private-cloud.service';
 
 type PrivateCloudServiceInternals = {
-  extractServerInfo: (res: Response) => Promise<PrivateCloudServerInfo | undefined>;
+  extractServerInfo: (
+    res: Response,
+  ) => Promise<PrivateCloudServerInfo | undefined>;
 };
 
 const REQUEST_CONTEXT: PrivateCloudRequestContext = {
@@ -75,7 +74,9 @@ describe('PrivateCloudService', () => {
 
   describe('testConnection', () => {
     it('应当在 /health 成功时返回连接结果和服务器信息', async () => {
-      vi.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(1_025);
+      vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(1_000)
+        .mockReturnValueOnce(1_025);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -123,7 +124,9 @@ describe('PrivateCloudService', () => {
 
     it('应当在 /health 返回非 ok 时回退到 /v1/models', async () => {
       vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
-      vi.spyOn(Date, 'now').mockReturnValueOnce(2_000).mockReturnValueOnce(2_018);
+      vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(2_000)
+        .mockReturnValueOnce(2_018);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -191,7 +194,9 @@ describe('PrivateCloudService', () => {
 
       expect(result.success).toBe(true);
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(debugSpy).toHaveBeenCalledWith('/health 端点不可用，尝试 /v1/models');
+      expect(debugSpy).toHaveBeenCalledWith(
+        '/health 端点不可用，尝试 /v1/models',
+      );
     });
 
     it.each([401, 403])(
@@ -291,16 +296,15 @@ describe('PrivateCloudService', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          data: [
-            { id: 'model-a', owned_by: 'team-a' },
-            { id: 'model-b' },
-          ],
+          data: [{ id: 'model-a', owned_by: 'team-a' }, { id: 'model-b' }],
         }),
         headers: new Headers({ 'content-type': 'application/json' }),
       });
 
       const result = await service.fetchModels(
-        createFetchModelsDto({ endpointUrl: 'https://private-cloud.example.com///' }),
+        createFetchModelsDto({
+          endpointUrl: 'https://private-cloud.example.com///',
+        }),
         REQUEST_CONTEXT,
       );
 
@@ -385,7 +389,9 @@ describe('PrivateCloudService', () => {
     );
 
     it('应当在超时时抛出 LlmTimeoutException', async () => {
-      mockFetch.mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'));
+      mockFetch.mockRejectedValueOnce(
+        new DOMException('Aborted', 'AbortError'),
+      );
 
       const promise = service.fetchModels(
         createFetchModelsDto(),

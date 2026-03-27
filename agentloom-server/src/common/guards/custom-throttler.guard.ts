@@ -81,7 +81,10 @@ function writeRetryAfterHeader(
     return;
   }
 
-  response.header(`Retry-After${getThrottlerSuffix(throttlerName)}`, retryAfter);
+  response.header(
+    `Retry-After${getThrottlerSuffix(throttlerName)}`,
+    retryAfter,
+  );
 }
 
 function getSingleHeaderValue(
@@ -101,7 +104,9 @@ function getSingleHeaderValue(
   return undefined;
 }
 
-function extractApiKeyPrefix(headers: RequestHeaders | undefined): string | undefined {
+function extractApiKeyPrefix(
+  headers: RequestHeaders | undefined,
+): string | undefined {
   const apiKey = getSingleHeaderValue(headers, 'x-api-key');
 
   if (!apiKey || !apiKey.startsWith(RAW_TOKEN_PREFIX)) {
@@ -111,7 +116,9 @@ function extractApiKeyPrefix(headers: RequestHeaders | undefined): string | unde
   return apiKey.slice(0, TOKEN_PREFIX_LENGTH);
 }
 
-function extractJwtSub(headers: RequestHeaders | undefined): string | undefined {
+function extractJwtSub(
+  headers: RequestHeaders | undefined,
+): string | undefined {
   const authorization = getSingleHeaderValue(headers, 'authorization');
 
   if (!authorization?.startsWith('Bearer ')) {
@@ -132,7 +139,9 @@ function extractJwtSub(headers: RequestHeaders | undefined): string | undefined 
   return undefined;
 }
 
-function extractJwtTenantId(headers: RequestHeaders | undefined): string | undefined {
+function extractJwtTenantId(
+  headers: RequestHeaders | undefined,
+): string | undefined {
   const authorization = getSingleHeaderValue(headers, 'authorization');
 
   if (!authorization?.startsWith('Bearer ')) {
@@ -146,7 +155,9 @@ function extractJwtTenantId(headers: RequestHeaders | undefined): string | undef
       return undefined;
     }
 
-    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString()) as {
+    const payload = JSON.parse(
+      Buffer.from(payloadPart, 'base64url').toString(),
+    ) as {
       tenantId?: string;
       tenant_id?: string;
     };
@@ -213,7 +224,11 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     const effectiveLimit = runtimeState?.quota.apiRateLimitPerMinute ?? limit;
     const rateLimitTracker = tenantId ? `tenant:${tenantId}` : tracker;
 
-    if (tenantId && runtimeState && runtimeState.quota.dailyApiCallLimit !== null) {
+    if (
+      tenantId &&
+      runtimeState &&
+      runtimeState.quota.dailyApiCallLimit !== null
+    ) {
       const { organizationId } = runtimeState;
       const { tenantControl } = runtimeState.governance;
       const dailyApiCallLimit = runtimeState.quota.dailyApiCallLimit;
@@ -253,9 +268,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
             tracker,
           },
         });
-        throw new ResourceGovernanceDecisionBlockedException(
-          block,
-        );
+        throw new ResourceGovernanceDecisionBlockedException(block);
       }
     }
 
@@ -268,7 +281,8 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
         blockDuration,
         throttlerName,
       );
-    const setHeaders = throttler.setHeaders ?? this.commonOptions.setHeaders ?? true;
+    const setHeaders =
+      throttler.setHeaders ?? this.commonOptions.setHeaders ?? true;
 
     if (isBlocked) {
       if (setHeaders) {
@@ -309,9 +323,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
             tracker,
           },
         });
-        throw new ResourceGovernanceDecisionBlockedException(
-          block,
-        );
+        throw new ResourceGovernanceDecisionBlockedException(block);
       }
 
       const throttlerLimitDetail: ThrottlerLimitDetail = {
@@ -342,15 +354,10 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     return true;
   }
 
-  protected override async getTracker(
-    req: TrackerRequest,
-  ): Promise<string> {
+  protected override async getTracker(req: TrackerRequest): Promise<string> {
     const apiKeyPrefix = extractApiKeyPrefix(req.headers) ?? req.apiKeyPrefix;
 
-    if (
-      typeof apiKeyPrefix === 'string' &&
-      apiKeyPrefix.length > 0
-    ) {
+    if (typeof apiKeyPrefix === 'string' && apiKeyPrefix.length > 0) {
       return `apikey:${apiKeyPrefix}`;
     }
 
@@ -365,9 +372,12 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
 
   private getPlatformApiTokenService(): PlatformApiTokenService {
     if (!this.platformApiTokenService) {
-      this.platformApiTokenService = this.moduleRef.get(PlatformApiTokenService, {
-        strict: false,
-      });
+      this.platformApiTokenService = this.moduleRef.get(
+        PlatformApiTokenService,
+        {
+          strict: false,
+        },
+      );
     }
 
     return this.platformApiTokenService;
@@ -408,7 +418,8 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       return null;
     }
 
-    const validated = await this.getPlatformApiTokenService().validateToken(apiKey);
+    const validated =
+      await this.getPlatformApiTokenService().validateToken(apiKey);
     req.tenantId = validated.tenantId;
     req.apiKeyPrefix = validated.tokenPrefix;
     req.apiTokenUserId = validated.userId;

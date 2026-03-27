@@ -145,8 +145,7 @@ export interface ToolOutputEvidencePacket extends BaseEvidencePacket {
   toolOutput: ToolOutput;
 }
 
-export interface EncryptedAgentDecisionEvidencePacket
-  extends BaseEvidencePacket {
+export interface EncryptedAgentDecisionEvidencePacket extends BaseEvidencePacket {
   sourceType: 'agent_decision';
   encryptedPacket: EncryptedPayload;
   summary: EncryptedPacketSummary;
@@ -208,8 +207,9 @@ export const evidenceRecords = pgTable(
     contentHash: varchar('content_hash', { length: 64 }).notNull(),
     parentEvidenceId: uuid('parent_evidence_id'),
     isEncrypted: boolean('is_encrypted').notNull().default(false),
-    encryptionMetadata:
-      jsonb('encryption_metadata').$type<EvidenceEncryptionMetadata | null>(),
+    encryptionMetadata: jsonb(
+      'encryption_metadata',
+    ).$type<EvidenceEncryptionMetadata | null>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

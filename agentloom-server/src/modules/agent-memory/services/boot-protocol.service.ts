@@ -101,7 +101,12 @@ export class BootProtocolService {
     return tenantDb
       .select()
       .from(memoryVersions)
-      .where(inArray(memoryVersions.nodeId, nodes.data.map((node) => node.id)))
+      .where(
+        inArray(
+          memoryVersions.nodeId,
+          nodes.data.map((node) => node.id),
+        ),
+      )
       .orderBy(desc(memoryVersions.createdAt))
       .limit(limit);
   }
@@ -128,7 +133,8 @@ export class BootProtocolService {
       throw new NotFoundException(`Memory instance ${instanceId} not found`);
     }
 
-    const template = instance.systemPromptOverride || MEMORY_SYSTEM_PROMPT_TEMPLATE;
+    const template =
+      instance.systemPromptOverride || MEMORY_SYSTEM_PROMPT_TEMPLATE;
 
     return template
       .replaceAll('{{VALID_DOMAINS}}', instance.validDomains.join(', '))

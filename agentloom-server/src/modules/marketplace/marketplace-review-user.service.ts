@@ -87,8 +87,7 @@ export class MarketplaceReviewUserService {
               'code' in error.cause
             ? (error.cause as Record<string, unknown>).code
             : undefined;
-      const isUniqueViolation =
-        error instanceof Error && errorCode === '23505';
+      const isUniqueViolation = error instanceof Error && errorCode === '23505';
 
       if (isUniqueViolation) {
         throw new MarketplaceReviewConflictException();
@@ -117,11 +116,15 @@ export class MarketplaceReviewUserService {
           rating: schema.marketplaceReviews.rating,
           content: schema.marketplaceReviews.content,
           createdAt: schema.marketplaceReviews.createdAt,
-          authorDisplayName:
-            sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+          authorDisplayName: sql<
+            string | null
+          >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
         })
         .from(schema.marketplaceReviews)
-        .leftJoin(schema.users, eq(schema.marketplaceReviews.userId, schema.users.id))
+        .leftJoin(
+          schema.users,
+          eq(schema.marketplaceReviews.userId, schema.users.id),
+        )
         .where(eq(schema.marketplaceReviews.listingId, listingId))
         .orderBy(desc(schema.marketplaceReviews.createdAt))
         .limit(normalizedPageSize)
@@ -157,7 +160,9 @@ export class MarketplaceReviewUserService {
   async recalculateRating(listingId: string): Promise<void> {
     const [aggregate] = await this.db
       .select({
-        avgRating: sql<string | null>`avg(${schema.marketplaceReviews.rating})::numeric(3,2)`,
+        avgRating: sql<
+          string | null
+        >`avg(${schema.marketplaceReviews.rating})::numeric(3,2)`,
         reviewCount: sql<number>`count(*)::int`,
       })
       .from(schema.marketplaceReviews)

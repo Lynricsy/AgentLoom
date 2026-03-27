@@ -32,26 +32,28 @@ export const conversationPlanSchema = z.object({
   maxTurns: z.number().int().positive(),
 });
 
-export const workflowInputSchemaSchema = z.object({
-  version: z.number().int().positive().default(1),
-  collectionMode: collectionModeSchema.default('form'),
-  fields: z.array(inputFieldDefinitionSchema).default([]),
-  conversationPlan: conversationPlanSchema.optional(),
-}).superRefine((schema, ctx) => {
-  const fieldIds = new Set(schema.fields.map((field) => field.id));
+export const workflowInputSchemaSchema = z
+  .object({
+    version: z.number().int().positive().default(1),
+    collectionMode: collectionModeSchema.default('form'),
+    fields: z.array(inputFieldDefinitionSchema).default([]),
+    conversationPlan: conversationPlanSchema.optional(),
+  })
+  .superRefine((schema, ctx) => {
+    const fieldIds = new Set(schema.fields.map((field) => field.id));
 
-  schema.fields.forEach((field, index) => {
-    const visibilityFieldId = field.visibility?.fieldId;
+    schema.fields.forEach((field, index) => {
+      const visibilityFieldId = field.visibility?.fieldId;
 
-    if (visibilityFieldId && !fieldIds.has(visibilityFieldId)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fields', index, 'visibility', 'fieldId'],
-        message: '可见性规则必须引用已存在的字段 ID',
-      });
-    }
+      if (visibilityFieldId && !fieldIds.has(visibilityFieldId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fields', index, 'visibility', 'fieldId'],
+          message: '可见性规则必须引用已存在的字段 ID',
+        });
+      }
+    });
   });
-});
 
 export type WorkflowInputSchema = z.infer<typeof workflowInputSchemaSchema>;
 export type InputFieldDefinition = z.infer<typeof inputFieldDefinitionSchema>;

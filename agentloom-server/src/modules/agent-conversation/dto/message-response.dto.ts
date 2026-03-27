@@ -17,9 +17,9 @@ export function serializeMessage(row: AgentMessage): MessageResponseDto {
     conversationId: row.conversationId,
     role: row.role,
     content: row.content,
-    toolCalls: (row.toolCalls as Record<string, unknown>[] | null) ?? null,
+    toolCalls: row.toolCalls ?? null,
     toolResults: (row.toolResults as Record<string, unknown> | null) ?? null,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    metadata: row.metadata ?? {},
     createdAt: row.createdAt.toISOString(),
   };
 }

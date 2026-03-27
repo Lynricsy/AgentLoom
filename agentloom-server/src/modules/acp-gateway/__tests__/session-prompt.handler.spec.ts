@@ -134,12 +134,12 @@ describe('SessionPromptHandler', () => {
             args: {
               path: '/workspace/demo.txt',
             },
-              status: 'awaiting_permission',
-              permissionRequest: {
-                description: '需要读取 demo 文件',
-              },
+            status: 'awaiting_permission',
+            permissionRequest: {
+              description: '需要读取 demo 文件',
             },
           },
+        },
       },
     });
     expect(requestClient).toHaveBeenCalledWith('session/request_permission', {
@@ -187,7 +187,9 @@ describe('SessionPromptHandler', () => {
     expect(result).toEqual({
       stopReason: 'end_turn',
     });
-    expect(state.sessions?.get('session-001')?.activePromptRequestId).toBeUndefined();
+    expect(
+      state.sessions?.get('session-001')?.activePromptRequestId,
+    ).toBeUndefined();
     expect(
       state.sessions?.get('session-001')?.pendingPermissionRequestId,
     ).toBeUndefined();

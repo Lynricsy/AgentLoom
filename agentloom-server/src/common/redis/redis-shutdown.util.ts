@@ -3,7 +3,9 @@ import type Redis from 'ioredis';
 const IGNORABLE_REDIS_SHUTDOWN_MESSAGE = 'Connection is closed.';
 
 export function isIgnorableRedisShutdownError(error: unknown): boolean {
-  return error instanceof Error && error.message === IGNORABLE_REDIS_SHUTDOWN_MESSAGE;
+  return (
+    error instanceof Error && error.message === IGNORABLE_REDIS_SHUTDOWN_MESSAGE
+  );
 }
 
 export function isRedisConnectionClosed(redis: Redis): boolean {

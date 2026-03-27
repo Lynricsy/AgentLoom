@@ -20,7 +20,9 @@ function createTelemetry(
       errors: [],
       ...overrides,
     },
-    createdAt: new Date(`2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
@@ -28,7 +30,9 @@ function createSummary(executionId: string): ExecutionSummaryRecord {
   return {
     executionId,
     summaryData: { status: 'completed' },
-    createdAt: new Date(`2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${executionId.padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
@@ -75,9 +79,9 @@ describe('TimeoutAdjustmentAnalyzer', () => {
       suggestionType: 'timeout_adjustment',
       currentValue: { timeoutMs: 30_000 },
     });
-    expect((result?.suggestedValue as { timeoutMs: number }).timeoutMs).toBeLessThan(
-      30_000,
-    );
+    expect(
+      (result?.suggestedValue as { timeoutMs: number }).timeoutMs,
+    ).toBeLessThan(30_000);
     expect(result?.confidence).toBeGreaterThanOrEqual(0.6);
   });
 
@@ -98,9 +102,9 @@ describe('TimeoutAdjustmentAnalyzer', () => {
     );
 
     expect(result).not.toBeNull();
-    expect((result?.suggestedValue as { timeoutMs: number }).timeoutMs).toBeGreaterThan(
-      10_000,
-    );
+    expect(
+      (result?.suggestedValue as { timeoutMs: number }).timeoutMs,
+    ).toBeGreaterThan(10_000);
     expect(result?.rationale).toContain('timeout');
   });
 
@@ -201,7 +205,12 @@ describe('TimeoutAdjustmentAnalyzer', () => {
         nodeConfig: { timeoutMs: -1 },
         stepTelemetries: [
           createTelemetry('1', 0, {
-            errors: [{ type: 'gateway_timeout', message: 'request timeout at upstream' }],
+            errors: [
+              {
+                type: 'gateway_timeout',
+                message: 'request timeout at upstream',
+              },
+            ],
           }),
           createTelemetry('2', 0, {
             errors: [{ type: 'timeout', message: 'execution timed out' }],

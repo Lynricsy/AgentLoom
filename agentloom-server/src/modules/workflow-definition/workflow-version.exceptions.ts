@@ -47,8 +47,7 @@ export class WorkflowPublishAutonomyCapException extends DomainException {
       type: 'https://agentloom.dev/errors/workflow-publish-autonomy-cap',
       title: '工作流自治上限校验失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail:
-        violations[0]?.message ?? '工作流存在超出组织自治上限的节点配置',
+      detail: violations[0]?.message ?? '工作流存在超出组织自治上限的节点配置',
       errors: violations.map((violation) => ({
         field: `nodes.${violation.nodeId}.autonomyMode`,
         message: `节点 ${violation.nodeName}（${violation.nodeId}）的自治模式 ${violation.rawMode ?? '未设置'} 超出组织上限 ${autonomyCap}，应降级为 ${violation.replacementMode}`,

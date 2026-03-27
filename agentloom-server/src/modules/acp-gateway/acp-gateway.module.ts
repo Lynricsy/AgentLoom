@@ -24,7 +24,13 @@ import { AcpTerminalProxyService } from './services/acp-terminal-proxy.service';
 import { AcpTerminalSandboxService } from './services/acp-terminal-sandbox.service';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, TokenBlacklistModule, McpModule, SandboxModule],
+  imports: [
+    ConfigModule,
+    DatabaseModule,
+    TokenBlacklistModule,
+    McpModule,
+    SandboxModule,
+  ],
   providers: [
     AcpAuthenticationService,
     SessionPersistenceService,

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-const VALID_ROLES = ['owner', 'admin', 'creator', 'operator', 'viewer'] as const;
+const VALID_ROLES = [
+  'owner',
+  'admin',
+  'creator',
+  'operator',
+  'viewer',
+] as const;
 const VALID_TIMEOUT_ACTIONS = ['approve', 'reject', 'escalate'] as const;
 const VALID_NOTIFY_CHANNELS = ['in_app', 'email', 'push'] as const;
 

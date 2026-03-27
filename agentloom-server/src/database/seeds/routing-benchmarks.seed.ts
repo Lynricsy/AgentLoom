@@ -140,23 +140,25 @@ const TASK_CATEGORY_QUERIES: Record<RoutingBenchmarkTaskCategory, string[]> = {
   ],
 };
 
-const TASK_CATEGORY_MULTIPLIERS: Record<RoutingBenchmarkTaskCategory, number> = {
-  coding: 1.03,
-  reasoning: 1.05,
-  creative: 0.96,
-  qa: 0.94,
-  math: 1.02,
-  general: 0.98,
-};
+const TASK_CATEGORY_MULTIPLIERS: Record<RoutingBenchmarkTaskCategory, number> =
+  {
+    coding: 1.03,
+    reasoning: 1.05,
+    creative: 0.96,
+    qa: 0.94,
+    math: 1.02,
+    general: 0.98,
+  };
 
-const TASK_CATEGORY_BASE_TOKENS: Record<RoutingBenchmarkTaskCategory, number> = {
-  coding: 1900,
-  reasoning: 2200,
-  creative: 1400,
-  qa: 1200,
-  math: 1800,
-  general: 1100,
-};
+const TASK_CATEGORY_BASE_TOKENS: Record<RoutingBenchmarkTaskCategory, number> =
+  {
+    coding: 1900,
+    reasoning: 2200,
+    creative: 1400,
+    qa: 1200,
+    math: 1800,
+    general: 1100,
+  };
 
 const PROVIDER_TASK_BOOSTS: Record<
   RoutingBenchmarkTaskCategory,
@@ -187,7 +189,10 @@ function buildPerformanceScore(
   const stabilityFactor = 1 - (index % 5) * 0.01;
   const score = Math.min(
     0.995,
-    Math.max(0.55, qualityFactor * categoryMultiplier * providerBoost * stabilityFactor),
+    Math.max(
+      0.55,
+      qualityFactor * categoryMultiplier * providerBoost * stabilityFactor,
+    ),
   );
 
   return score.toFixed(4);
@@ -198,7 +203,9 @@ function buildTokenCount(
   queryText: string,
   index: number,
 ): number {
-  return TASK_CATEGORY_BASE_TOKENS[taskCategory] + queryText.length * 5 + index * 41;
+  return (
+    TASK_CATEGORY_BASE_TOKENS[taskCategory] + queryText.length * 5 + index * 41
+  );
 }
 
 function buildLatencyMs(
@@ -232,7 +239,9 @@ function buildMlpWeights(
   const normalizedLatency = Number(
     (Math.min(meta.avgLatencyMs, 3000) / 3000).toFixed(4),
   );
-  const categoryBias = Number((TASK_CATEGORY_MULTIPLIERS[taskCategory] - 0.9).toFixed(4));
+  const categoryBias = Number(
+    (TASK_CATEGORY_MULTIPLIERS[taskCategory] - 0.9).toFixed(4),
+  );
 
   return {
     layers: [
@@ -245,7 +254,9 @@ function buildMlpWeights(
       },
       {
         weights: [[0.72, 0.28]],
-        biases: [Number((normalizedQuality - normalizedLatency / 2).toFixed(4))],
+        biases: [
+          Number((normalizedQuality - normalizedLatency / 2).toFixed(4)),
+        ],
       },
     ],
     metadata: {
@@ -296,7 +307,9 @@ function buildRoutingBenchmarkBlueprints(): RoutingBenchmarkSeedBlueprint[] {
 export const ROUTING_BENCHMARK_SEED_BLUEPRINTS =
   buildRoutingBenchmarkBlueprints();
 
-async function loadRouterModelTargets(db: DrizzleDB): Promise<RouterModelSeedTarget[]> {
+async function loadRouterModelTargets(
+  db: DrizzleDB,
+): Promise<RouterModelSeedTarget[]> {
   return db
     .select({
       routerModelId: routerModels.id,
@@ -306,7 +319,9 @@ async function loadRouterModelTargets(db: DrizzleDB): Promise<RouterModelSeedTar
     })
     .from(routerModels)
     .innerJoin(llmModelConfigs, eq(routerModels.modelId, llmModelConfigs.id))
-    .where(inArray(llmModelConfigs.provider, ROUTING_BENCHMARK_SUPPORTED_PROVIDERS));
+    .where(
+      inArray(llmModelConfigs.provider, ROUTING_BENCHMARK_SUPPORTED_PROVIDERS),
+    );
 }
 
 export async function seedRoutingBenchmarks(
@@ -329,7 +344,13 @@ export async function seedRoutingBenchmarks(
     return {
       synchronizedCount: 0,
       matchedRouterModelCount: 0,
-      unmatchedModelKeys: [...new Set(ROUTING_BENCHMARK_MODEL_ROTATION.map((target) => toModelKey(target.providerId, target.modelName)))],
+      unmatchedModelKeys: [
+        ...new Set(
+          ROUTING_BENCHMARK_MODEL_ROTATION.map((target) =>
+            toModelKey(target.providerId, target.modelName),
+          ),
+        ),
+      ],
     };
   }
 
@@ -342,7 +363,9 @@ export async function seedRoutingBenchmarks(
     );
 
     if (!routerModelMatches || routerModelMatches.length === 0) {
-      unmatchedModelKeys.add(toModelKey(blueprint.providerId, blueprint.modelName));
+      unmatchedModelKeys.add(
+        toModelKey(blueprint.providerId, blueprint.modelName),
+      );
       continue;
     }
 

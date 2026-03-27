@@ -31,7 +31,7 @@ export type InternalLaunchSource =
 export type ExecutionTriggerType = 'manual' | 'api' | 'webhook' | 'system';
 
 export type InternalRunWorkflowRequest = {
-  inputParams?: PublicRunWorkflowInput['inputParams']
+  inputParams?: PublicRunWorkflowInput['inputParams'];
   launchSource?: InternalLaunchSource;
   schemaVersion?: PublicRunWorkflowInput['schemaVersion'];
   triggerType?: ExecutionTriggerType;

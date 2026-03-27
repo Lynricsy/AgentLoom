@@ -101,9 +101,7 @@ function createJob(name: string, data: Record<string, unknown>) {
   return { id: 'job-1', name, data } as never;
 }
 
-function makeActiveContext(
-  overrides: Record<string, unknown> = {},
-) {
+function makeActiveContext(overrides: Record<string, unknown> = {}) {
   return {
     conversation: {
       id: 'conversation-1',
@@ -242,9 +240,7 @@ describe('AgentExecutionWorker', () => {
         conversationId: 'c-1',
         tenantId: 't-1',
       });
-      expect(() =>
-        worker.onFailed(job, new Error('test error')),
-      ).not.toThrow();
+      expect(() => worker.onFailed(job, new Error('test error'))).not.toThrow();
     });
   });
 
@@ -252,9 +248,7 @@ describe('AgentExecutionWorker', () => {
     it('registerActiveRun 返回 null 时直接退出', async () => {
       mockExecutionService.registerActiveRun.mockReturnValue(null);
       await worker.executeAgentLoop('c-1', 't-1');
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
   });
 
@@ -273,9 +267,7 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
   });
 
@@ -304,9 +296,7 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
 
     it('ended 状态的会话直接退出，不发送状态事件', async () => {
@@ -333,9 +323,7 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
     });
   });
 
@@ -356,20 +344,16 @@ describe('AgentExecutionWorker', () => {
         .fn()
         .mockResolvedValue({});
 
-      await expect(
-        worker.executeAgentLoop('c-1', 't-1'),
-      ).rejects.toThrow('Runtime init failed');
+      await expect(worker.executeAgentLoop('c-1', 't-1')).rejects.toThrow(
+        'Runtime init failed',
+      );
 
-      expect(
-        workerInternals.safeUpdateExecutionMetadata,
-      ).toHaveBeenCalledWith(
+      expect(workerInternals.safeUpdateExecutionMetadata).toHaveBeenCalledWith(
         't-1',
         'c-1',
         expect.objectContaining({ runningState: 'failed' }),
       );
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         't-1',
         'c-1',
         expect.objectContaining({
@@ -394,13 +378,9 @@ describe('AgentExecutionWorker', () => {
         .fn()
         .mockResolvedValue({});
 
-      await expect(
-        worker.executeAgentLoop('c-1', 't-1'),
-      ).rejects.toThrow();
+      await expect(worker.executeAgentLoop('c-1', 't-1')).rejects.toThrow();
 
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         't-1',
         'c-1',
         expect.objectContaining({
@@ -433,9 +413,7 @@ describe('AgentExecutionWorker', () => {
 
       await worker.executeAgentLoop('c-1', 't-1');
 
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         't-1',
         'c-1',
         expect.objectContaining({ status: 'cancelled' }),
@@ -539,7 +517,9 @@ describe('AgentExecutionWorker', () => {
         index: [{ domain: 'core', pathString: 'profile/name' }],
         glossary: [{ keyword: 'fox', nodeId: 'node-1' }],
       });
-      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(toolProvider);
+      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(
+        toolProvider,
+      );
       mockRuntime.createSession.mockResolvedValue(makeSession());
 
       const result = await runtimeSessionWorker.prepareRuntimeSession(
@@ -608,10 +588,15 @@ describe('AgentExecutionWorker', () => {
           parentAbortSignal: AbortSignal,
           subAgentTracker: { abortControllers: Map<string, AbortController> },
           currentAgentDefinitionId: string,
-        ) => Promise<{ runtime: typeof mockSandboxRuntime; session: ReturnType<typeof makeSession> }>;
+        ) => Promise<{
+          runtime: typeof mockSandboxRuntime;
+          session: ReturnType<typeof makeSession>;
+        }>;
       };
 
-      mockSandboxRuntime.createSession.mockResolvedValue(makeSession({ id: 'sandbox-session-1' }));
+      mockSandboxRuntime.createSession.mockResolvedValue(
+        makeSession({ id: 'sandbox-session-1' }),
+      );
 
       const result = await runtimeSessionWorker.prepareRuntimeSession(
         makeActiveContext({
@@ -648,10 +633,15 @@ describe('AgentExecutionWorker', () => {
           parentAbortSignal: AbortSignal,
           subAgentTracker: { abortControllers: Map<string, AbortController> },
           currentAgentDefinitionId: string,
-        ) => Promise<{ runtime: typeof mockRuntime; session: ReturnType<typeof makeSession> }>;
+        ) => Promise<{
+          runtime: typeof mockRuntime;
+          session: ReturnType<typeof makeSession>;
+        }>;
       };
 
-      mockRuntime.createSession.mockResolvedValue(makeSession({ id: 'in-process-session-1' }));
+      mockRuntime.createSession.mockResolvedValue(
+        makeSession({ id: 'in-process-session-1' }),
+      );
 
       const result = await runtimeSessionWorker.prepareRuntimeSession(
         makeActiveContext({
@@ -702,9 +692,7 @@ describe('AgentExecutionWorker', () => {
 
       await worker.executeAgentLoop('c-1', 't-1');
 
-      expect(
-        mockExecutionService.waitForNotification,
-      ).toHaveBeenCalledTimes(2);
+      expect(mockExecutionService.waitForNotification).toHaveBeenCalledTimes(2);
       expect(mockRuntime.prompt).toHaveBeenCalledTimes(1);
     });
   });
@@ -728,23 +716,18 @@ describe('AgentExecutionWorker', () => {
       });
 
       mockRuntime.prompt.mockReturnValueOnce(
-        createAsyncIterable([
-          { type: 'done', stopReason: 'cancelled' },
-        ]),
+        createAsyncIterable([{ type: 'done', stopReason: 'cancelled' }]),
       );
 
       await worker.executeAgentLoop('c-1', 't-1');
 
-      expect(
-        mockEventBridge.emitExecutionStatusChanged,
-      ).toHaveBeenCalledWith(
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         't-1',
         'c-1',
         expect.objectContaining({ status: 'cancelled' }),
       );
     });
   });
-
 
   it('执行多轮 loop，并在 tool_use 后自动续轮直到完成', async () => {
     mockExecutionService.registerActiveRun.mockImplementation(
@@ -755,19 +738,21 @@ describe('AgentExecutionWorker', () => {
     );
     mockExecutionService.waitForNotification.mockResolvedValue('timeout');
 
-    workerInternals.loadConversationExecutionContext = vi.fn().mockResolvedValue({
-      conversation: {
-        id: 'conversation-1',
-        agentDefinitionId: 'agent-1',
-        tenantId: 'tenant-1',
-        status: 'active',
-        metadata: {},
-      },
-      runtimeConfig: {},
-      systemPrompt: 'system',
-      hasSandbox: false,
-      executionMetadata: {},
-    });
+    workerInternals.loadConversationExecutionContext = vi
+      .fn()
+      .mockResolvedValue({
+        conversation: {
+          id: 'conversation-1',
+          agentDefinitionId: 'agent-1',
+          tenantId: 'tenant-1',
+          status: 'active',
+          metadata: {},
+        },
+        runtimeConfig: {},
+        systemPrompt: 'system',
+        hasSandbox: false,
+        executionMetadata: {},
+      });
     workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
       runtime: mockRuntime,
       session: {
@@ -856,19 +841,21 @@ describe('AgentExecutionWorker', () => {
     );
     mockExecutionService.waitForNotification.mockResolvedValue('timeout');
 
-    workerInternals.loadConversationExecutionContext = vi.fn().mockResolvedValue({
-      conversation: {
-        id: 'conversation-1',
-        agentDefinitionId: 'agent-1',
-        tenantId: 'tenant-1',
-        status: 'active',
-        metadata: {},
-      },
-      runtimeConfig: {},
-      systemPrompt: 'system',
-      hasSandbox: false,
-      executionMetadata: {},
-    });
+    workerInternals.loadConversationExecutionContext = vi
+      .fn()
+      .mockResolvedValue({
+        conversation: {
+          id: 'conversation-1',
+          agentDefinitionId: 'agent-1',
+          tenantId: 'tenant-1',
+          status: 'active',
+          metadata: {},
+        },
+        runtimeConfig: {},
+        systemPrompt: 'system',
+        hasSandbox: false,
+        executionMetadata: {},
+      });
     workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
       runtime: mockRuntime,
       session: {
@@ -974,19 +961,21 @@ describe('AgentExecutionWorker', () => {
       },
     );
 
-    workerInternals.loadConversationExecutionContext = vi.fn().mockResolvedValue({
-      conversation: {
-        id: 'conversation-1',
-        agentDefinitionId: 'agent-1',
-        tenantId: 'tenant-1',
-        status: 'active',
-        metadata: {},
-      },
-      runtimeConfig: {},
-      systemPrompt: 'system',
-      hasSandbox: false,
-      executionMetadata: {},
-    });
+    workerInternals.loadConversationExecutionContext = vi
+      .fn()
+      .mockResolvedValue({
+        conversation: {
+          id: 'conversation-1',
+          agentDefinitionId: 'agent-1',
+          tenantId: 'tenant-1',
+          status: 'active',
+          metadata: {},
+        },
+        runtimeConfig: {},
+        systemPrompt: 'system',
+        hasSandbox: false,
+        executionMetadata: {},
+      });
     workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
       runtime: mockRuntime,
       session: {

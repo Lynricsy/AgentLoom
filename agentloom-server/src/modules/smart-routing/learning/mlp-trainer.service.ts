@@ -115,7 +115,9 @@ function initializeLayerWeights(
 
   return Array.from({ length: rowCount }, (_, rowIndex) =>
     Array.from({ length: columnCount }, (_, columnIndex) => {
-      const random = seededRandom(seedOffset + rowIndex * columnCount + columnIndex);
+      const random = seededRandom(
+        seedOffset + rowIndex * columnCount + columnIndex,
+      );
       return (random * 2 - 1) * limit;
     }),
   );
@@ -145,7 +147,9 @@ function initializeWeights(
   };
 }
 
-function cloneWeights(weights: RoutingBenchmarkMlpWeights): RoutingBenchmarkMlpWeights {
+function cloneWeights(
+  weights: RoutingBenchmarkMlpWeights,
+): RoutingBenchmarkMlpWeights {
   return {
     layers: weights.layers.map((layer) => ({
       weights: layer.weights.map((row) => [...row]),
@@ -173,13 +177,20 @@ function createGradientAccumulator(
 }
 
 function buildBatchKey(sample: RoutingMlpTrainingSample): string {
-  return [sample.tenantId, sample.taskCategory, ...sample.candidateModelIds].join(':');
+  return [
+    sample.tenantId,
+    sample.taskCategory,
+    ...sample.candidateModelIds,
+  ].join(':');
 }
 
 @Injectable()
 export class MlpTrainerService {
   private readonly logger = new Logger(MlpTrainerService.name);
-  private readonly pendingSamples = new Map<string, RoutingMlpTrainingSample[]>();
+  private readonly pendingSamples = new Map<
+    string,
+    RoutingMlpTrainingSample[]
+  >();
   private readonly config: RoutingLearningConfig;
 
   constructor(
@@ -260,7 +271,9 @@ export class MlpTrainerService {
     }
 
     const usableRow = [...benchmarkRows]
-      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+      .sort(
+        (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+      )
       .find((row) =>
         isUsableWeights(row.mlpWeights, inputDimension, outputDimension),
       );
@@ -268,7 +281,8 @@ export class MlpTrainerService {
       templateSample.selectedModelId,
     );
     const persistenceTarget =
-      benchmarkRows.find((row) => row.modelId === selectedRouterModelId) ?? usableRow;
+      benchmarkRows.find((row) => row.modelId === selectedRouterModelId) ??
+      usableRow;
     if (!persistenceTarget) {
       this.logger.warn('MLP 在线训练跳过：没有可持久化的 benchmark 目标行');
       return { batchProcessed: false };
@@ -281,7 +295,8 @@ export class MlpTrainerService {
           this.config.mlpHiddenSize,
           outputDimension,
         );
-    const startingSampleCount = usableRow?.mlpWeights?.metadata.sampleCount ?? 0;
+    const startingSampleCount =
+      usableRow?.mlpWeights?.metadata.sampleCount ?? 0;
     const learningRate = this.resolveLearningRate(startingSampleCount);
     const updatedWeights = await this.applyMiniBatchGradientUpdate(
       baseWeights,
@@ -312,7 +327,9 @@ export class MlpTrainerService {
   private resolveLearningRate(existingSampleCount: number): number {
     return (
       this.config.mlpBaseLearningRate /
-      Math.sqrt(1 + existingSampleCount / Math.max(1, this.config.miniBatchSize))
+      Math.sqrt(
+        1 + existingSampleCount / Math.max(1, this.config.miniBatchSize),
+      )
     );
   }
 
@@ -334,7 +351,9 @@ export class MlpTrainerService {
     for (const [sampleIndex, sample] of batch.entries()) {
       const forward = this.forward(weights, sample.queryEmbedding);
       const target = buildZeroVector(outputDimension);
-      const selectedIndex = sample.candidateModelIds.indexOf(sample.selectedModelId);
+      const selectedIndex = sample.candidateModelIds.indexOf(
+        sample.selectedModelId,
+      );
       if (selectedIndex >= 0) {
         target[selectedIndex] = sample.performanceScore;
       }
@@ -343,20 +362,36 @@ export class MlpTrainerService {
         (value, index) => ((value - target[index]) * 2) / outputDimension,
       );
 
-      for (let outputIndex = 0; outputIndex < outputDimension; outputIndex += 1) {
+      for (
+        let outputIndex = 0;
+        outputIndex < outputDimension;
+        outputIndex += 1
+      ) {
         gradients.layer2Biases[outputIndex] += outputGradient[outputIndex] ?? 0;
 
-        for (let hiddenIndex = 0; hiddenIndex < hiddenDimension; hiddenIndex += 1) {
-          gradients.layer2Weights[outputIndex]![hiddenIndex]! +=
+        for (
+          let hiddenIndex = 0;
+          hiddenIndex < hiddenDimension;
+          hiddenIndex += 1
+        ) {
+          gradients.layer2Weights[outputIndex][hiddenIndex] +=
             (outputGradient[outputIndex] ?? 0) *
             (forward.hiddenActivation[hiddenIndex] ?? 0);
         }
       }
 
       const hiddenGradient = buildZeroVector(hiddenDimension);
-      for (let hiddenIndex = 0; hiddenIndex < hiddenDimension; hiddenIndex += 1) {
+      for (
+        let hiddenIndex = 0;
+        hiddenIndex < hiddenDimension;
+        hiddenIndex += 1
+      ) {
         let gradientSum = 0;
-        for (let outputIndex = 0; outputIndex < outputDimension; outputIndex += 1) {
+        for (
+          let outputIndex = 0;
+          outputIndex < outputDimension;
+          outputIndex += 1
+        ) {
           gradientSum +=
             (layer2.weights[outputIndex]?.[hiddenIndex] ?? 0) *
             (outputGradient[outputIndex] ?? 0);
@@ -366,11 +401,15 @@ export class MlpTrainerService {
           (forward.hiddenPreActivation[hiddenIndex] ?? 0) > 0 ? gradientSum : 0;
       }
 
-      for (let hiddenIndex = 0; hiddenIndex < hiddenDimension; hiddenIndex += 1) {
+      for (
+        let hiddenIndex = 0;
+        hiddenIndex < hiddenDimension;
+        hiddenIndex += 1
+      ) {
         gradients.layer1Biases[hiddenIndex] += hiddenGradient[hiddenIndex] ?? 0;
 
         for (let inputIndex = 0; inputIndex < inputDimension; inputIndex += 1) {
-          gradients.layer1Weights[hiddenIndex]![inputIndex]! +=
+          gradients.layer1Weights[hiddenIndex][inputIndex] +=
             (hiddenGradient[hiddenIndex] ?? 0) *
             (sample.queryEmbedding[inputIndex] ?? 0);
         }
@@ -383,20 +422,26 @@ export class MlpTrainerService {
 
     const batchScale = learningRate / batch.length;
     for (let hiddenIndex = 0; hiddenIndex < hiddenDimension; hiddenIndex += 1) {
-      layer1.biases[hiddenIndex] -= gradients.layer1Biases[hiddenIndex] * batchScale;
+      layer1.biases[hiddenIndex] -=
+        gradients.layer1Biases[hiddenIndex] * batchScale;
 
       for (let inputIndex = 0; inputIndex < inputDimension; inputIndex += 1) {
-        layer1.weights[hiddenIndex]![inputIndex]! -=
-          gradients.layer1Weights[hiddenIndex]![inputIndex]! * batchScale;
+        layer1.weights[hiddenIndex][inputIndex] -=
+          gradients.layer1Weights[hiddenIndex][inputIndex] * batchScale;
       }
     }
 
     for (let outputIndex = 0; outputIndex < outputDimension; outputIndex += 1) {
-      layer2.biases[outputIndex] -= gradients.layer2Biases[outputIndex] * batchScale;
+      layer2.biases[outputIndex] -=
+        gradients.layer2Biases[outputIndex] * batchScale;
 
-      for (let hiddenIndex = 0; hiddenIndex < hiddenDimension; hiddenIndex += 1) {
-        layer2.weights[outputIndex]![hiddenIndex]! -=
-          gradients.layer2Weights[outputIndex]![hiddenIndex]! * batchScale;
+      for (
+        let hiddenIndex = 0;
+        hiddenIndex < hiddenDimension;
+        hiddenIndex += 1
+      ) {
+        layer2.weights[outputIndex][hiddenIndex] -=
+          gradients.layer2Weights[outputIndex][hiddenIndex] * batchScale;
       }
     }
 

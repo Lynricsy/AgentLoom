@@ -153,8 +153,14 @@ export class AcpTerminalProxyService {
       );
 
       this.terminalRegistry.set(terminalId, record);
-      trackedSession.terminalIds = [...(trackedSession.terminalIds ?? []), terminalId];
-      record.timeoutHandle = this.scheduleTerminalTimeout(record, trackedSession);
+      trackedSession.terminalIds = [
+        ...(trackedSession.terminalIds ?? []),
+        terminalId,
+      ];
+      record.timeoutHandle = this.scheduleTerminalTimeout(
+        record,
+        trackedSession,
+      );
       await this.persistTerminalContinuity(trackedSession);
 
       return { terminalId };
@@ -168,7 +174,10 @@ export class AcpTerminalProxyService {
       }
 
       if (createdTerminal) {
-        await this.safeKill(createdTerminal.execId, DEFAULT_TERMINAL_KILL_SIGNAL);
+        await this.safeKill(
+          createdTerminal.execId,
+          DEFAULT_TERMINAL_KILL_SIGNAL,
+        );
       }
 
       if (
@@ -214,13 +223,20 @@ export class AcpTerminalProxyService {
     }
 
     if (typeof offset === 'number' && offset < terminal.earliestOffset) {
-      throw new AcpJsonRpcError(-32004, 'ACP terminal output offset has been truncated', {
-        reason: 'terminal_output_offset_trimmed',
-      });
+      throw new AcpJsonRpcError(
+        -32004,
+        'ACP terminal output offset has been truncated',
+        {
+          reason: 'terminal_output_offset_trimmed',
+        },
+      );
     }
 
     const effectiveOffset = offset ?? terminal.earliestOffset;
-    const relativeOffset = Math.max(0, effectiveOffset - terminal.earliestOffset);
+    const relativeOffset = Math.max(
+      0,
+      effectiveOffset - terminal.earliestOffset,
+    );
     const outputByteLimit = params.outputByteLimit ?? terminal.outputByteLimit;
     const boundedBuffer = terminal.buffer.subarray(
       relativeOffset,
@@ -289,7 +305,11 @@ export class AcpTerminalProxyService {
       this.clearTerminalTimeout(terminal);
       terminal.status = 'killed';
       terminal.signal = DEFAULT_TERMINAL_KILL_SIGNAL;
-      await this.recordTerminalKilledAudit(trackedSession, terminal, 'manual_kill');
+      await this.recordTerminalKilledAudit(
+        trackedSession,
+        terminal,
+        'manual_kill',
+      );
       await this.persistTerminalContinuity(trackedSession);
     }
 
@@ -301,13 +321,19 @@ export class AcpTerminalProxyService {
     trackedSession: AcpTrackedSession,
   ): Promise<AcpTerminalReleaseResult> {
     const terminal = this.getTrackedTerminal(params.terminalId, trackedSession);
-    await this.releaseTerminalRecord(terminal, trackedSession, 'terminal_release');
+    await this.releaseTerminalRecord(
+      terminal,
+      trackedSession,
+      'terminal_release',
+    );
     this.removeTrackedTerminalId(trackedSession, terminal.terminalId);
     await this.persistTerminalContinuity(trackedSession);
     return { success: true };
   }
 
-  async cleanupSessionTerminals(trackedSession: AcpTrackedSession): Promise<void> {
+  async cleanupSessionTerminals(
+    trackedSession: AcpTrackedSession,
+  ): Promise<void> {
     const terminalIds = new Set<string>([
       ...(trackedSession.terminalIds ?? []),
       ...this.getSessionTerminalRecords(trackedSession).map(
@@ -325,7 +351,11 @@ export class AcpTerminalProxyService {
         continue;
       }
 
-      await this.releaseTerminalRecord(terminal, trackedSession, 'session_cleanup');
+      await this.releaseTerminalRecord(
+        terminal,
+        trackedSession,
+        'session_cleanup',
+      );
     }
 
     trackedSession.terminalIds = [];
@@ -352,7 +382,9 @@ export class AcpTerminalProxyService {
         terminal.exitCode !== (continuityEntry.exitCode ?? null) ||
         terminal.signal !== (continuityEntry.signal ?? null)
       ) {
-        throw this.buildTerminalContinuityUnavailableError(trackedSession.sessionId);
+        throw this.buildTerminalContinuityUnavailableError(
+          trackedSession.sessionId,
+        );
       }
 
       reboundTerminalIds.push(terminal.terminalId);
@@ -375,7 +407,11 @@ export class AcpTerminalProxyService {
     trackedSession: AcpTrackedSession,
   ) {
     this.ensureCommandAllowed(params.command);
-    this.ensureCommandPatternsAllowed(params.command, params.args, trackedSession);
+    this.ensureCommandPatternsAllowed(
+      params.command,
+      params.args,
+      trackedSession,
+    );
     this.ensureCwdAllowed(params.cwd, trackedSession);
   }
 
@@ -418,7 +454,9 @@ export class AcpTerminalProxyService {
     if (
       normalizedCommand === 'rm' &&
       hasRecursiveRemoveFlag &&
-      normalizedArgs.some((value) => this.isDangerousRemoveTarget(value, trackedSession))
+      normalizedArgs.some((value) =>
+        this.isDangerousRemoveTarget(value, trackedSession),
+      )
     ) {
       throw new AcpJsonRpcError(
         -32004,
@@ -433,7 +471,10 @@ export class AcpTerminalProxyService {
         continue;
       }
 
-      const resolvedPath = this.resolveSandboxPath(pathCandidate, sandboxBaseCwd);
+      const resolvedPath = this.resolveSandboxPath(
+        pathCandidate,
+        sandboxBaseCwd,
+      );
       if (!this.isWithinWorkspace(resolvedPath)) {
         throw new AcpJsonRpcError(
           -32004,
@@ -466,7 +507,8 @@ export class AcpTerminalProxyService {
   private ensureSessionTerminalLimit(trackedSession: AcpTrackedSession) {
     const runningTerminalCount = [...this.terminalRegistry.values()].filter(
       (entry) =>
-        entry.sessionId === trackedSession.sessionId && entry.status === 'running',
+        entry.sessionId === trackedSession.sessionId &&
+        entry.status === 'running',
     ).length;
 
     if (runningTerminalCount < MAX_CONCURRENT_TERMINALS_PER_SESSION) {
@@ -498,7 +540,10 @@ export class AcpTerminalProxyService {
   private alignUtf8Start(buffer: Buffer, start: number): number {
     let index = Math.max(0, Math.min(start, buffer.length));
 
-    while (index < buffer.length && (buffer[index] & 0b1100_0000) === 0b1000_0000) {
+    while (
+      index < buffer.length &&
+      (buffer[index] & 0b1100_0000) === 0b1000_0000
+    ) {
       index += 1;
     }
 
@@ -685,14 +730,18 @@ export class AcpTerminalProxyService {
       terminal.status = 'killed';
       terminal.signal = DEFAULT_TERMINAL_KILL_SIGNAL;
       terminal.timedOut = true;
-      await this.recordAudit(trackedSession, 'acp.terminal.server_sandbox.timed_out', {
-        summary: 'Timed out ACP server_sandbox terminal',
-        metadata: {
-          terminalId: terminal.terminalId,
-          execId: terminal.execId,
-          timeoutMs: DEFAULT_TERMINAL_TIMEOUT_MS,
+      await this.recordAudit(
+        trackedSession,
+        'acp.terminal.server_sandbox.timed_out',
+        {
+          summary: 'Timed out ACP server_sandbox terminal',
+          metadata: {
+            terminalId: terminal.terminalId,
+            execId: terminal.execId,
+            timeoutMs: DEFAULT_TERMINAL_TIMEOUT_MS,
+          },
         },
-      });
+      );
       await this.persistTerminalContinuity(trackedSession);
     } catch {
       return;
@@ -703,7 +752,12 @@ export class AcpTerminalProxyService {
     value: string,
     trackedSession: AcpTrackedSession,
   ): boolean {
-    if (value === '/' || value === '.' || value === '..' || value.startsWith('~')) {
+    if (
+      value === '/' ||
+      value === '.' ||
+      value === '..' ||
+      value.startsWith('~')
+    ) {
       return true;
     }
 
@@ -714,7 +768,10 @@ export class AcpTerminalProxyService {
 
     const sandboxBaseCwd = trackedSession.cwd ?? ACP_SANDBOX_WORKSPACE_ROOT;
     const resolvedPath = this.resolveSandboxPath(pathCandidate, sandboxBaseCwd);
-    return !this.isWithinWorkspace(resolvedPath) || resolvedPath === ACP_SANDBOX_WORKSPACE_ROOT;
+    return (
+      !this.isWithinWorkspace(resolvedPath) ||
+      resolvedPath === ACP_SANDBOX_WORKSPACE_ROOT
+    );
   }
 
   private normalizeCommandName(command: string): string {
@@ -733,7 +790,9 @@ export class AcpTerminalProxyService {
     }
 
     const flagName = normalizedValue.slice(0, assignmentSeparatorIndex);
-    const assignedValue = normalizedValue.slice(assignmentSeparatorIndex + 1).trim();
+    const assignedValue = normalizedValue
+      .slice(assignmentSeparatorIndex + 1)
+      .trim();
 
     if (!flagName.startsWith('-') || assignedValue.length === 0) {
       return null;
@@ -809,10 +868,17 @@ export class AcpTerminalProxyService {
   private async loadConversationRuntimeSession(
     trackedSession: AcpTrackedSession,
   ): Promise<AgentSession> {
-    const session = await this.getAgentRuntime().loadSession(trackedSession.sessionId);
+    const session = await this.getAgentRuntime().loadSession(
+      trackedSession.sessionId,
+    );
 
-    if (session.mode !== 'conversation' || session.tenantId !== trackedSession.tenantId) {
-      throw this.buildTerminalContinuityUnavailableError(trackedSession.sessionId);
+    if (
+      session.mode !== 'conversation' ||
+      session.tenantId !== trackedSession.tenantId
+    ) {
+      throw this.buildTerminalContinuityUnavailableError(
+        trackedSession.sessionId,
+      );
     }
 
     return session;
@@ -825,8 +891,8 @@ export class AcpTerminalProxyService {
     const previousTerminalContinuity = session.context.terminalContinuity;
     const previousUpdatedAt = session.updatedAt;
     session.context.terminalContinuity = {
-      terminals: this.getSessionTerminalRecords(trackedSession).map((terminal) =>
-        this.toContinuityEntry(terminal),
+      terminals: this.getSessionTerminalRecords(trackedSession).map(
+        (terminal) => this.toContinuityEntry(terminal),
       ),
     };
     session.updatedAt = new Date();
@@ -896,16 +962,20 @@ export class AcpTerminalProxyService {
   ): Promise<void> {
     const reason = this.extractReason(error);
 
-    await this.recordAudit(trackedSession, 'acp.terminal.server_sandbox.rejected', {
-      summary: 'Rejected ACP server_sandbox terminal request',
-      metadata: {
-        command: params.command,
-        ...(typeof params.cwd === 'string' ? { cwd: params.cwd } : {}),
-        ...(Array.isArray(params.args) ? { args: params.args } : {}),
-        mode: 'server_sandbox',
-        reason,
+    await this.recordAudit(
+      trackedSession,
+      'acp.terminal.server_sandbox.rejected',
+      {
+        summary: 'Rejected ACP server_sandbox terminal request',
+        metadata: {
+          command: params.command,
+          ...(typeof params.cwd === 'string' ? { cwd: params.cwd } : {}),
+          ...(Array.isArray(params.args) ? { args: params.args } : {}),
+          mode: 'server_sandbox',
+          reason,
+        },
       },
-    });
+    );
   }
 
   private async recordTerminalKilledAudit(
@@ -913,15 +983,19 @@ export class AcpTerminalProxyService {
     terminal: TerminalRecord,
     reason: 'manual_kill' | 'terminal_release' | 'session_cleanup',
   ): Promise<void> {
-    await this.recordAudit(trackedSession, 'acp.terminal.server_sandbox.killed', {
-      summary: 'Killed ACP server_sandbox terminal',
-      metadata: {
-        terminalId: terminal.terminalId,
-        execId: terminal.execId,
-        signal: terminal.signal ?? DEFAULT_TERMINAL_KILL_SIGNAL,
-        reason,
+    await this.recordAudit(
+      trackedSession,
+      'acp.terminal.server_sandbox.killed',
+      {
+        summary: 'Killed ACP server_sandbox terminal',
+        metadata: {
+          terminalId: terminal.terminalId,
+          execId: terminal.execId,
+          signal: terminal.signal ?? DEFAULT_TERMINAL_KILL_SIGNAL,
+          reason,
+        },
       },
-    });
+    );
   }
 
   private extractReason(error: AcpJsonRpcError): string {

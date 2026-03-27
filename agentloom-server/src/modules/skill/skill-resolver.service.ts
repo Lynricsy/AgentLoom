@@ -76,9 +76,7 @@ export class SkillResolverService {
           content: skill.content,
         } satisfies SkillPromptPayload;
       })
-      .filter(
-        (skill): skill is SkillPromptPayload => skill !== null,
-      );
+      .filter((skill): skill is SkillPromptPayload => skill !== null);
   }
 
   buildSkillAugmentedPrompt(

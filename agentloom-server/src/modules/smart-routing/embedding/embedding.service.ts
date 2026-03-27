@@ -74,22 +74,18 @@ export class EmbeddingIntegrationService {
       return null;
     }
 
-    const apiKey =
-      await this.decryptionBoundaryService.decryptConfiguredApiKey(
-        {
-          apiKeyId: null,
-          organizationId: orgId,
-          tenantId,
-          provider: 'openai',
-        },
-        'EmbeddingIntegrationService.callEmbeddingApi',
-      );
+    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
+      {
+        apiKeyId: null,
+        organizationId: orgId,
+        tenantId,
+        provider: 'openai',
+      },
+      'EmbeddingIntegrationService.callEmbeddingApi',
+    );
 
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs,
-    );
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
       const response = await fetch('https://api.openai.com/v1/embeddings', {
@@ -116,10 +112,7 @@ export class EmbeddingIntegrationService {
       const json = (await response.json()) as EmbeddingApiResponse;
       return json.data[0]?.embedding ?? null;
     } catch (error: unknown) {
-      if (
-        error instanceof DOMException &&
-        error.name === 'AbortError'
-      ) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         this.logger.warn(
           `Embedding API timeout after ${this.config.timeoutMs}ms`,
         );

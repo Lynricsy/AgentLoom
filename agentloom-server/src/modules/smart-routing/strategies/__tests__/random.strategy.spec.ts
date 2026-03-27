@@ -45,7 +45,9 @@ describe('RandomRouter', () => {
     const decision = await router.routeSingle(candidates, baseContext);
 
     expect(decision.selectedModelId).toBeDefined();
-    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(true);
+    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+      true,
+    );
     expect(decision.scores).toHaveLength(3);
     expect(decision.reasoning).toContain('随机');
   });

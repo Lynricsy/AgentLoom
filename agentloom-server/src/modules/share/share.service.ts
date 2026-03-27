@@ -51,8 +51,10 @@ export interface ShareTokenRecord extends schema.WorkflowShare {
   snapshot: schema.WorkflowVersionSnapshot | null;
 }
 
-export interface AccessibleShareTokenRecord
-  extends Omit<ShareTokenRecord, 'publishedVersionId' | 'snapshot'> {
+export interface AccessibleShareTokenRecord extends Omit<
+  ShareTokenRecord,
+  'publishedVersionId' | 'snapshot'
+> {
   publishedVersionId: string;
   snapshot: schema.WorkflowVersionSnapshot;
 }
@@ -84,10 +86,7 @@ export class ShareService {
       .from(schema.workflowDefinitions)
       .where(
         and(
-          eq(
-            schema.workflowDefinitions.id,
-            parsedDto.workflow_definition_id,
-          ),
+          eq(schema.workflowDefinitions.id, parsedDto.workflow_definition_id),
           eq(schema.workflowDefinitions.tenantId, tenantId),
         ),
       );

@@ -42,7 +42,10 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       mergeMap(async (response) => {
-        const captureContext: AuditLogHttpCaptureContext = { request, response };
+        const captureContext: AuditLogHttpCaptureContext = {
+          request,
+          response,
+        };
         const record = config.buildRecord(captureContext);
 
         if (record) {

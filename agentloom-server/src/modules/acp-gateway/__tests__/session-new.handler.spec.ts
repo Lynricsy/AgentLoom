@@ -26,7 +26,10 @@ describe('SessionNewHandler', () => {
     const moduleRef = {
       get: vi.fn().mockReturnValue(runtime),
     } as unknown as ModuleRef;
-    const handler = new SessionNewHandler(moduleRef, mcpSessionService as never);
+    const handler = new SessionNewHandler(
+      moduleRef,
+      mcpSessionService as never,
+    );
     const state: AcpConnectionState = {
       initialized: true,
       authContext: {
@@ -200,7 +203,9 @@ describe('SessionNewHandler', () => {
       cancel: vi.fn().mockResolvedValue(undefined),
     };
     const mcpSessionService = {
-      bootstrapSessionTools: vi.fn().mockRejectedValue(new Error('bootstrap failed')),
+      bootstrapSessionTools: vi
+        .fn()
+        .mockRejectedValue(new Error('bootstrap failed')),
       cleanupSessionTools: vi.fn().mockResolvedValue(undefined),
     };
     const handler = new SessionNewHandler(
@@ -254,9 +259,12 @@ describe('SessionNewHandler', () => {
   });
 
   it('应拒绝同时缺少 executionId 与 agentConversationId 的 serverSandbox 绑定', async () => {
-    const handler = new SessionNewHandler({
-      get: vi.fn(),
-    } as unknown as ModuleRef, createMcpSessionService() as never);
+    const handler = new SessionNewHandler(
+      {
+        get: vi.fn(),
+      } as unknown as ModuleRef,
+      createMcpSessionService() as never,
+    );
 
     await expect(
       handler.handle(
@@ -284,9 +292,12 @@ describe('SessionNewHandler', () => {
   });
 
   it('应拒绝非绝对路径 cwd', async () => {
-    const handler = new SessionNewHandler({
-      get: vi.fn(),
-    } as unknown as ModuleRef, createMcpSessionService() as never);
+    const handler = new SessionNewHandler(
+      {
+        get: vi.fn(),
+      } as unknown as ModuleRef,
+      createMcpSessionService() as never,
+    );
 
     await expect(
       handler.handle(

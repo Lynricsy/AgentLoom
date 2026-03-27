@@ -67,7 +67,7 @@ describe('EvidenceExportController', () => {
       workflowId: WORKFLOW_ID,
       executionIds: [EXECUTION_ID],
       includeAuditMetadata: true,
-    }) as CreateEvidenceExportJobDto;
+    });
 
     service.requestExport.mockResolvedValue({
       id: EXPORT_ID,

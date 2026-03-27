@@ -125,7 +125,10 @@ export class MemoryEdgeService {
       .orderBy(desc(memoryEdges.priority));
   }
 
-  async updateEdgePriority(edgeId: string, priority: number): Promise<MemoryEdge> {
+  async updateEdgePriority(
+    edgeId: string,
+    priority: number,
+  ): Promise<MemoryEdge> {
     const tenantDb = getTenantDb(this.db);
 
     await this.findEdgeOrThrow(edgeId);

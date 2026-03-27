@@ -86,10 +86,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    const data = await this.workspaceService.findOne(
-      this.getTenantId(req),
-      id,
-    );
+    const data = await this.workspaceService.findOne(this.getTenantId(req), id);
     return { data };
   }
 

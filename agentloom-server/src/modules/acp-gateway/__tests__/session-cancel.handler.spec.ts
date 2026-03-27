@@ -150,7 +150,9 @@ describe('SessionCancelHandler', () => {
 
     expect(runtime.cancel).toHaveBeenCalledTimes(1);
     expect(runtime.cancel).toHaveBeenCalledWith('runtime-session-001');
-    expect(terminalProxyService.cleanupSessionTerminals).toHaveBeenCalledTimes(1);
+    expect(terminalProxyService.cleanupSessionTerminals).toHaveBeenCalledTimes(
+      1,
+    );
     expect(terminalProxyService.cleanupSessionTerminals).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'session-001',
@@ -279,7 +281,9 @@ describe('SessionCancelHandler', () => {
       },
     });
     expect(mcpSessionService.cleanupSessionTools).toHaveBeenCalledTimes(1);
-    expect(terminalProxyService.cleanupSessionTerminals).toHaveBeenCalledTimes(1);
+    expect(terminalProxyService.cleanupSessionTerminals).toHaveBeenCalledTimes(
+      1,
+    );
     expect(runtime.cancel).toHaveBeenCalledWith('runtime-session-004');
     expect(state.sessions?.has('session-004')).toBe(false);
   });

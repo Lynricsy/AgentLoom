@@ -34,8 +34,12 @@ export interface ExecuteSubAgentParams {
   parentContext: SubAgentParentContext;
   parentToolCallId: string;
   depth: number;
-  agentDefinition: Awaited<ReturnType<AgentDefinitionService['findDetailById']>>;
-  versionSnapshot: Awaited<ReturnType<typeof resolveSubAgent>>['versionSnapshot'];
+  agentDefinition: Awaited<
+    ReturnType<AgentDefinitionService['findDetailById']>
+  >;
+  versionSnapshot: Awaited<
+    ReturnType<typeof resolveSubAgent>
+  >['versionSnapshot'];
   abortSignal: AbortSignal;
   eventProxy?: {
     emitEvent(event: AgentEvent): void;
@@ -102,15 +106,15 @@ export class SubAgentToolsProvider {
               parentToolCallId: options.toolCallId,
             });
 
-              void this.runSubAgent({
-                ref,
-                record,
-                task: input.task,
-                context: input.context,
-                parentContext,
-                executeSubAgent,
-                invocationMode: 'call',
-              });
+            void this.runSubAgent({
+              ref,
+              record,
+              task: input.task,
+              context: input.context,
+              parentContext,
+              executeSubAgent,
+              invocationMode: 'call',
+            });
 
             const result = await record.completionPromise;
             return JSON.stringify(result);
@@ -136,15 +140,15 @@ export class SubAgentToolsProvider {
               parentToolCallId: options.toolCallId,
             });
 
-              void this.runSubAgent({
-                ref,
-                record,
-                task: input.task,
-                context: input.context,
-                parentContext,
-                executeSubAgent,
-                invocationMode: 'spawn',
-              });
+            void this.runSubAgent({
+              ref,
+              record,
+              task: input.task,
+              context: input.context,
+              parentContext,
+              executeSubAgent,
+              invocationMode: 'spawn',
+            });
 
             return {
               handle: record.handle,
@@ -157,8 +161,7 @@ export class SubAgentToolsProvider {
         },
       }),
       wait_for_subagents: tool({
-        description:
-          '等待一个或多个子代理结束，并返回当前状态与结果快照。',
+        description: '等待一个或多个子代理结束，并返回当前状态与结果快照。',
         inputSchema: WaitForSubAgentsInputSchema,
         execute: async (input) =>
           Promise.all(
@@ -205,8 +208,8 @@ export class SubAgentToolsProvider {
     runRecords: Map<SubAgentHandle, SubAgentRunRecord>;
     parentToolCallId?: string;
   }): SubAgentRunRecord {
-    const runningCount = Array.from(params.runRecords.values()).filter((record) =>
-      isRunningStatus(record.status),
+    const runningCount = Array.from(params.runRecords.values()).filter(
+      (record) => isRunningStatus(record.status),
     ).length;
     if (runningCount >= MAX_RUNNING_SUBAGENTS) {
       throw new Error(
@@ -378,9 +381,9 @@ export class SubAgentToolsProvider {
       return SubAgentRunStatus.FAILED;
     }
 
-    return isTimeoutReason(ownSignal.reason)
-      || isTimeoutReason(runtimeSignal.reason)
-      || isTimeoutReason(error)
+    return isTimeoutReason(ownSignal.reason) ||
+      isTimeoutReason(runtimeSignal.reason) ||
+      isTimeoutReason(error)
       ? SubAgentRunStatus.TIMEOUT
       : SubAgentRunStatus.CANCELLED;
   }
@@ -417,9 +420,10 @@ function isRunningStatus(status: SubAgentRunStatus): boolean {
   );
 }
 
-function createLinkedAbortSignal(
-  signals: Array<AbortSignal | undefined>,
-): { signal: AbortSignal; cleanup: () => void } {
+function createLinkedAbortSignal(signals: Array<AbortSignal | undefined>): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
   const controller = new AbortController();
   const listeners = new Map<AbortSignal, () => void>();
 

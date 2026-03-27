@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../../../../database/database.module';
-import type {
-  RoutingBenchmarkMlpWeights,
-} from '../../../../../database/schema/routing-benchmarks.schema';
+import type { RoutingBenchmarkMlpWeights } from '../../../../../database/schema/routing-benchmarks.schema';
 import type { RoutingCandidate } from '../../../core/routing-candidate';
 import type { RoutingContext } from '../../../core/routing-context';
 import { MlpRouter } from '../mlp.strategy';
@@ -28,7 +26,9 @@ function createCandidate(id: string, modelConfigId: string): RoutingCandidate {
   };
 }
 
-function createContext(overrides: Partial<RoutingContext> = {}): RoutingContext {
+function createContext(
+  overrides: Partial<RoutingContext> = {},
+): RoutingContext {
   return {
     inputTokenCount: 1_500,
     tenantId: 'tenant-1',
@@ -42,7 +42,8 @@ function createMockDb(queryResults: unknown[][]): { db: MockDb } {
   let callIndex = 0;
 
   const selectMock = vi.fn(() => {
-    const result = queryResults[Math.min(callIndex, queryResults.length - 1)] ?? [];
+    const result =
+      queryResults[Math.min(callIndex, queryResults.length - 1)] ?? [];
     callIndex += 1;
 
     return {

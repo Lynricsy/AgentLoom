@@ -5,15 +5,15 @@ import type {
   StopReason,
   ToolCallAgentEvent,
 } from '../../agent/types/agent-event.types';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../../agent/ports/agent-runtime.port';
 import {
   ContentBlockArraySchema,
   type ContentBlock,
 } from '../../agent/types/content-block.types';
-import {
-  buildJsonRpcNotification,
-  type JsonRpcId,
-} from '../acp-jsonrpc';
+import { buildJsonRpcNotification, type JsonRpcId } from '../acp-jsonrpc';
 import { mapAgentEventToAcpSessionUpdate } from '../acp-session-update.mapper';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import type {
@@ -67,7 +67,10 @@ export class SessionPromptHandler {
     requestId: JsonRpcId,
   ): Promise<AcpSessionPromptResult> {
     const normalizedParams = this.readParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     if (!trackedSession) {
       throw new AcpJsonRpcError(-32602, 'Invalid params', {
@@ -109,7 +112,10 @@ export class SessionPromptHandler {
       }
 
       if (terminalStopReason === null) {
-        throw new AcpJsonRpcError(-32603, 'Prompt finished without terminal event');
+        throw new AcpJsonRpcError(
+          -32603,
+          'Prompt finished without terminal event',
+        );
       }
 
       return {
@@ -311,9 +317,7 @@ export class SessionPromptHandler {
     );
   }
 
-  private mapPermissionOptionToAction(
-    optionId: string,
-  ): 'approve' | 'deny' {
+  private mapPermissionOptionToAction(optionId: string): 'approve' | 'deny' {
     switch (optionId) {
       case 'allow-once':
       case 'allow-always':

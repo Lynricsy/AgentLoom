@@ -1,35 +1,35 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, eq } from 'drizzle-orm'
-import { z } from 'zod'
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
 
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider'
-import { DRIZZLE, type DrizzleDB } from '../../database/database.module'
-import * as schema from '../../database/schema'
-import type { ApiEventTriggerConfig } from '../../database/schema/workflow-triggers.schema'
-import { ExecutionService } from '../execution/execution.service'
-import { EventSourceAdapterRegistry } from './adapters/event-source-adapter.registry'
-import type { EventPayload } from './adapters/event-source.adapter'
-import { TriggerHistoryService } from './trigger-history.service'
-import { TriggerService } from './trigger.service'
-import { SYSTEM_TRIGGER_USER_ID } from './trigger.constants'
+import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import * as schema from '../../database/schema';
+import type { ApiEventTriggerConfig } from '../../database/schema/workflow-triggers.schema';
+import { ExecutionService } from '../execution/execution.service';
+import { EventSourceAdapterRegistry } from './adapters/event-source-adapter.registry';
+import type { EventPayload } from './adapters/event-source.adapter';
+import { TriggerHistoryService } from './trigger-history.service';
+import { TriggerService } from './trigger.service';
+import { SYSTEM_TRIGGER_USER_ID } from './trigger.constants';
 
 export const IngestEventSchema = z.object({
   source: z.string().min(1),
   type: z.string().min(1),
   data: z.record(z.string(), z.unknown()).optional().default({}),
-})
+});
 
-export type IngestEventDto = z.infer<typeof IngestEventSchema>
+export type IngestEventDto = z.infer<typeof IngestEventSchema>;
 
 export type IngestionResult = {
-  triggeredCount: number
-  executions: Array<{ triggerId: string; executionId: string }>
-  skippedCount: number
-}
+  triggeredCount: number;
+  executions: Array<{ triggerId: string; executionId: string }>;
+  skippedCount: number;
+};
 
 @Injectable()
 export class ApiEventIngestionService {
-  private readonly logger = new Logger(ApiEventIngestionService.name)
+  private readonly logger = new Logger(ApiEventIngestionService.name);
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -40,34 +40,34 @@ export class ApiEventIngestionService {
   ) {}
 
   private get tenantDb(): DrizzleDB {
-    return getTenantDb(this.db)
+    return getTenantDb(this.db);
   }
 
   async ingestEvent(
     tenantId: string,
     dto: IngestEventDto,
   ): Promise<IngestionResult> {
-    const parsed = IngestEventSchema.parse(dto)
+    const parsed = IngestEventSchema.parse(dto);
 
     const payload: EventPayload = {
       source: parsed.source,
       type: parsed.type,
       data: parsed.data,
       receivedAt: new Date(),
-    }
+    };
 
-    const candidates = await this.findEnabledApiEventTriggers(tenantId)
+    const candidates = await this.findEnabledApiEventTriggers(tenantId);
 
-    const executions: Array<{ triggerId: string; executionId: string }> = []
-    let skippedCount = 0
+    const executions: Array<{ triggerId: string; executionId: string }> = [];
+    let skippedCount = 0;
 
     for (const trigger of candidates) {
-      const config = trigger.config as ApiEventTriggerConfig
+      const config = trigger.config as ApiEventTriggerConfig;
 
-      const adapter = this.resolveAdapter(parsed.source)
+      const adapter = this.resolveAdapter(parsed.source);
 
       if (!adapter.validateEvent(payload, config)) {
-        skippedCount++
+        skippedCount++;
         this.logger.warn(
           JSON.stringify({
             action: 'api_event_validation_failed',
@@ -76,34 +76,38 @@ export class ApiEventIngestionService {
             type: parsed.type,
             tenantId,
           }),
-        )
-        continue
+        );
+        continue;
       }
 
       if (!adapter.matchesTrigger(payload, config)) {
-        skippedCount++
-        continue
+        skippedCount++;
+        continue;
       }
 
-      let executionId: string | undefined
+      let executionId: string | undefined;
 
       try {
         const execution = await this.executionService.runWorkflow(
           trigger.workflowDefinitionId,
           {
-            inputParams: { ...parsed.data, _eventSource: parsed.source, _eventType: parsed.type },
+            inputParams: {
+              ...parsed.data,
+              _eventSource: parsed.source,
+              _eventType: parsed.type,
+            },
             launchSource: 'api-event-trigger',
             triggerType: 'api',
           },
           tenantId,
           SYSTEM_TRIGGER_USER_ID,
-        )
+        );
 
-        executionId = execution.id
-        executions.push({ triggerId: trigger.id, executionId: execution.id })
+        executionId = execution.id;
+        executions.push({ triggerId: trigger.id, executionId: execution.id });
 
-        await this.recordHistory(tenantId, trigger.id, payload, execution.id)
-        await this.triggerService.markTriggered(tenantId, trigger.id)
+        await this.recordHistory(tenantId, trigger.id, payload, execution.id);
+        await this.triggerService.markTriggered(tenantId, trigger.id);
 
         this.logger.log(
           JSON.stringify({
@@ -114,9 +118,9 @@ export class ApiEventIngestionService {
             type: parsed.type,
             tenantId,
           }),
-        )
+        );
       } catch (error) {
-        await this.recordFailedHistory(tenantId, trigger.id, payload, error)
+        await this.recordFailedHistory(tenantId, trigger.id, payload, error);
         this.logger.error(
           JSON.stringify({
             action: 'api_event_trigger_failed',
@@ -127,7 +131,7 @@ export class ApiEventIngestionService {
             tenantId,
             error: this.getErrorMessage(error),
           }),
-        )
+        );
       }
     }
 
@@ -135,7 +139,7 @@ export class ApiEventIngestionService {
       triggeredCount: executions.length,
       executions,
       skippedCount,
-    }
+    };
   }
 
   private async findEnabledApiEventTriggers(tenantId: string) {
@@ -148,14 +152,14 @@ export class ApiEventIngestionService {
           eq(schema.workflowTriggers.type, 'api_event'),
           eq(schema.workflowTriggers.isEnabled, true),
         ),
-      )
+      );
   }
 
   private resolveAdapter(source: string) {
     try {
-      return this.adapterRegistry.getAdapter(source)
+      return this.adapterRegistry.getAdapter(source);
     } catch {
-      return this.adapterRegistry.getAdapter('generic')
+      return this.adapterRegistry.getAdapter('generic');
     }
   }
 
@@ -170,8 +174,12 @@ export class ApiEventIngestionService {
         triggerId,
         status: 'success',
         executionId,
-        payload: { source: payload.source, type: payload.type, data: payload.data },
-      })
+        payload: {
+          source: payload.source,
+          type: payload.type,
+          data: payload.data,
+        },
+      });
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -180,7 +188,7 @@ export class ApiEventIngestionService {
           tenantId,
           error: this.getErrorMessage(error),
         }),
-      )
+      );
     }
   }
 
@@ -195,8 +203,12 @@ export class ApiEventIngestionService {
         triggerId,
         status: 'failed',
         errorMessage: this.getErrorMessage(error),
-        payload: { source: payload.source, type: payload.type, data: payload.data },
-      })
+        payload: {
+          source: payload.source,
+          type: payload.type,
+          data: payload.data,
+        },
+      });
     } catch (bookkeepingError) {
       this.logger.error(
         JSON.stringify({
@@ -206,12 +218,12 @@ export class ApiEventIngestionService {
           originalError: this.getErrorMessage(error),
           bookkeepingError: this.getErrorMessage(bookkeepingError),
         }),
-      )
+      );
     }
   }
 
   private getErrorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message
-    return '未知错误'
+    if (error instanceof Error) return error.message;
+    return '未知错误';
   }
 }

@@ -142,10 +142,7 @@ describe('TriggerService', () => {
     mocks.getTenantDb.mockReturnValue(db);
 
     const module = await Test.createTestingModule({
-      providers: [
-        TriggerService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [TriggerService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(TriggerService);
@@ -355,9 +352,13 @@ describe('TriggerService', () => {
 
   describe('remove', () => {
     it('应删除触发器', async () => {
-      db.delete.mockReturnValue(createDeleteReturning([{ id: TRIGGER_ID }]).chain);
+      db.delete.mockReturnValue(
+        createDeleteReturning([{ id: TRIGGER_ID }]).chain,
+      );
 
-      await expect(service.remove(TENANT_ID, TRIGGER_ID)).resolves.toBeUndefined();
+      await expect(
+        service.remove(TENANT_ID, TRIGGER_ID),
+      ).resolves.toBeUndefined();
     });
 
     it('删除不存在的触发器时应抛出异常', async () => {

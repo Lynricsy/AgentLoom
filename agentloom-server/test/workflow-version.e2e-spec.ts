@@ -1517,9 +1517,10 @@ describe('WorkflowVersion E2E', () => {
         version: 2,
       });
 
-      const storedWorkflow = await drizzleDb.query.workflowDefinitions.findFirst({
-        where: eq(schema.workflowDefinitions.id, workflow.id),
-      });
+      const storedWorkflow =
+        await drizzleDb.query.workflowDefinitions.findFirst({
+          where: eq(schema.workflowDefinitions.id, workflow.id),
+        });
 
       expect(storedWorkflow?.inputSchema).toEqual({
         ...CONDITIONAL_WORKFLOW_INPUT_SCHEMA,
@@ -1717,9 +1718,10 @@ describe('WorkflowVersion E2E', () => {
         version: 3,
       });
 
-      const storedWorkflow = await drizzleDb.query.workflowDefinitions.findFirst({
-        where: eq(schema.workflowDefinitions.id, workflow.id),
-      });
+      const storedWorkflow =
+        await drizzleDb.query.workflowDefinitions.findFirst({
+          where: eq(schema.workflowDefinitions.id, workflow.id),
+        });
 
       expect(storedWorkflow?.inputSchema).toEqual({
         ...WORKFLOW_INPUT_SCHEMA,

@@ -135,7 +135,10 @@ export class PathResolverService {
     };
   }
 
-  async listChildren(instanceId: string, parentUri: string): Promise<MemoryPath[]> {
+  async listChildren(
+    instanceId: string,
+    parentUri: string,
+  ): Promise<MemoryPath[]> {
     const tenantDb = getTenantDb(this.db);
     const parsed = this.parseUri(parentUri, { allowEmptyPath: true });
     const paths = await tenantDb
@@ -212,7 +215,11 @@ export class PathResolverService {
     instanceId: string,
     parsed: ParsedUri,
   ): Promise<ResolvedUriTarget | null> {
-    const rootPath = await this.findPath(instanceId, parsed.domain, parsed.segments[0]);
+    const rootPath = await this.findPath(
+      instanceId,
+      parsed.domain,
+      parsed.segments[0],
+    );
 
     if (!rootPath) {
       return null;

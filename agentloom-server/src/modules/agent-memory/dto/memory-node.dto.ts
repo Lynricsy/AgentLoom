@@ -9,9 +9,7 @@ export const CreateMemoryNodeSchema = z.object({
   disclosureLevel: z.coerce.number().int().min(0).max(100).default(0),
 });
 
-export class CreateMemoryNodeDto extends createZodDto(
-  CreateMemoryNodeSchema,
-) {}
+export class CreateMemoryNodeDto extends createZodDto(CreateMemoryNodeSchema) {}
 
 export const ListMemoryNodesQuerySchema = z
   .object({

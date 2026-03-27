@@ -121,13 +121,17 @@ export class MonitoringDashboardEnvelopeDto extends createZodDto(
   MonitoringDashboardEnvelopeSchema,
 ) {}
 
-export type MonitoringMetricSource = z.infer<typeof MonitoringMetricSourceSchema>;
+export type MonitoringMetricSource = z.infer<
+  typeof MonitoringMetricSourceSchema
+>;
 export type MonitoringDashboardDto = z.infer<typeof MonitoringDashboardSchema>;
 export type MonitoringAlertSummaryDto = z.infer<
   typeof MonitoringAlertSummarySchema
 >;
 export type MonitoringHotspotDto = z.infer<typeof MonitoringHotspotSchema>;
-export type MonitoringLinkTargetDto = z.infer<typeof MonitoringLinkTargetSchema>;
+export type MonitoringLinkTargetDto = z.infer<
+  typeof MonitoringLinkTargetSchema
+>;
 export type MonitoringRiskSummaryDto = z.infer<
   typeof MonitoringRiskSummarySchema
 >;

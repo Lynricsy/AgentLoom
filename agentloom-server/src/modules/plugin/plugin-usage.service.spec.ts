@@ -19,9 +19,8 @@ const { createMockDb, getTenantDbMock, drizzleOperators } = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -208,7 +207,10 @@ describe('PluginUsageService', () => {
 
       db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
 
-      const result = await service.findUsageByPlugin(PLUGIN_DB_ID, createQuery());
+      const result = await service.findUsageByPlugin(
+        PLUGIN_DB_ID,
+        createQuery(),
+      );
 
       expect(result).toEqual({
         data: [record],

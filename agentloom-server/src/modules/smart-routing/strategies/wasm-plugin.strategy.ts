@@ -5,7 +5,10 @@ import type {
   PluginSandboxService,
   SandboxConfig,
 } from '../../plugin/plugin-sandbox.service';
-import { BaseRouterStrategy, type RouterCategory } from '../core/base-router-strategy';
+import {
+  BaseRouterStrategy,
+  type RouterCategory,
+} from '../core/base-router-strategy';
 import type { RoutingCandidate } from '../core/routing-candidate';
 import type { RoutingContext } from '../core/routing-context';
 import type { ModelScore, RoutingDecision } from '../core/routing-decision';
@@ -51,7 +54,10 @@ export class WasmPluginRouter extends BaseRouterStrategy {
       );
 
       if (!result.success) {
-        return this.fallbackToRandom(candidates, 'wasm plugin returned success=false');
+        return this.fallbackToRandom(
+          candidates,
+          'wasm plugin returned success=false',
+        );
       }
 
       return this.parsePluginOutput(result.output, candidates);
@@ -72,7 +78,8 @@ export class WasmPluginRouter extends BaseRouterStrategy {
 
     const stringifiedConfig: Record<string, string> = {};
     for (const [key, value] of Object.entries(this.config.pluginConfig)) {
-      stringifiedConfig[key] = typeof value === 'string' ? value : JSON.stringify(value);
+      stringifiedConfig[key] =
+        typeof value === 'string' ? value : JSON.stringify(value);
     }
 
     return { config: stringifiedConfig };
@@ -82,8 +89,15 @@ export class WasmPluginRouter extends BaseRouterStrategy {
     output: unknown,
     candidates: RoutingCandidate[],
   ): RoutingDecision {
-    if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-      return this.fallbackToRandom(candidates, 'wasm plugin returned non-object output');
+    if (
+      typeof output !== 'object' ||
+      output === null ||
+      Array.isArray(output)
+    ) {
+      return this.fallbackToRandom(
+        candidates,
+        'wasm plugin returned non-object output',
+      );
     }
 
     const raw = output as Record<string, unknown>;
@@ -110,13 +124,17 @@ export class WasmPluginRouter extends BaseRouterStrategy {
           modelName: c.name,
           provider: c.provider,
           score: c.id === raw.selectedModelId ? 100 : 0,
-          reasoning: c.id === raw.selectedModelId ? 'selected by wasm plugin' : '',
+          reasoning:
+            c.id === raw.selectedModelId ? 'selected by wasm plugin' : '',
         }));
 
     return {
       selectedModelId: raw.selectedModelId,
       scores,
-      reasoning: typeof raw.reasoning === 'string' ? raw.reasoning : 'wasm plugin decision',
+      reasoning:
+        typeof raw.reasoning === 'string'
+          ? raw.reasoning
+          : 'wasm plugin decision',
       routerType: this.name,
       latencyMs: 0,
     };

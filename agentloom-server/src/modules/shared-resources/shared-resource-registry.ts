@@ -6,7 +6,10 @@ import { Injectable, Logger } from '@nestjs/common';
  * @template TConfig 创建资源所需的配置类型
  * @template TInstance 资源实例标识/句柄类型
  */
-export interface SharedResourceProvider<TConfig = unknown, TInstance = unknown> {
+export interface SharedResourceProvider<
+  TConfig = unknown,
+  TInstance = unknown,
+> {
   /** 此提供者管理的资源类型标识（如 'sandbox', 'memory' 等） */
   readonly type: string;
 

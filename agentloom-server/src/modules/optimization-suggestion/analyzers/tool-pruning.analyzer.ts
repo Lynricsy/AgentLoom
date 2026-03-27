@@ -33,7 +33,10 @@ export class ToolPruningAnalyzer implements SuggestionAnalyzer {
       return consecutiveUnusedExecutions >= MIN_CONSECUTIVE_UNUSED;
     });
 
-    if (removableTools.length === 0 || removableTools.length === configuredTools.length) {
+    if (
+      removableTools.length === 0 ||
+      removableTools.length === configuredTools.length
+    ) {
       return null;
     }
 
@@ -48,7 +51,9 @@ export class ToolPruningAnalyzer implements SuggestionAnalyzer {
       confidence: this.calculateConfidence(minUnusedCount),
       currentValue: { tools: configuredTools },
       suggestedValue: {
-        tools: configuredTools.filter((toolName) => !removableTools.includes(toolName)),
+        tools: configuredTools.filter(
+          (toolName) => !removableTools.includes(toolName),
+        ),
         removedTools: removableTools,
       },
       rationale: `工具 ${removableTools.join(', ')} 在最近 ${minUnusedCount} 次连续执行中均未被调用，适合从候选工具列表中裁剪。`,
@@ -82,7 +87,10 @@ export class ToolPruningAnalyzer implements SuggestionAnalyzer {
 
         return null;
       })
-      .filter((toolName): toolName is string => typeof toolName === 'string' && toolName.length > 0);
+      .filter(
+        (toolName): toolName is string =>
+          typeof toolName === 'string' && toolName.length > 0,
+      );
   }
 
   private groupExecutionToolUsage(context: AnalysisContext): Array<{

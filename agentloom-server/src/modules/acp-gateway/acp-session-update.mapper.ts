@@ -6,9 +6,7 @@ import type {
   ToolCallAgentEvent,
 } from '../agent/types/agent-event.types';
 import type { ConversationReplayEntry } from '../agent/types/conversation-history.types';
-import type {
-  AcpSessionUpdate,
-} from './acp-types';
+import type { AcpSessionUpdate } from './acp-types';
 
 export function mapAgentEventToAcpSessionUpdate(
   event: ReplayableAgentEvent,
@@ -57,7 +55,9 @@ export function mapAgentEventToAcpSessionUpdate(
           ...(event.confidence === undefined
             ? {}
             : { confidence: event.confidence }),
-          ...(event.rationale === undefined ? {} : { rationale: event.rationale }),
+          ...(event.rationale === undefined
+            ? {}
+            : { rationale: event.rationale }),
         },
         options,
       );

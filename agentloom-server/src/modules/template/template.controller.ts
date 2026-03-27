@@ -19,9 +19,18 @@ export class TemplateController {
 
   @Get()
   @ApiOperation({ summary: '获取工作流模板列表' })
-  @ApiQuery({ name: 'category', required: false, description: '模板分类过滤', enum: ['analysis', 'content', 'development', 'automation', 'reporting'] })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    description: '模板分类过滤',
+    enum: ['analysis', 'content', 'development', 'automation', 'reporting'],
+  })
   @ApiQuery({ name: 'page', required: false, description: '页码，默认 1' })
-  @ApiQuery({ name: 'pageSize', required: false, description: '每页数量，默认 20' })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    description: '每页数量，默认 20',
+  })
   @ApiResponse({ status: 200, description: '模板列表获取成功' })
   async list(@Query() query: ListTemplatesQueryDto) {
     return this.templateService.findAll(

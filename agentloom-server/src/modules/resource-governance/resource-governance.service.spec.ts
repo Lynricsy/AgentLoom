@@ -2,9 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuditLogService } from '../evidence/audit-log.service';
 import { OrganizationNotFoundException } from '../organization/organization.exceptions';
-import {
-  ResourceGovernanceAccessDeniedException,
-} from './resource-governance.exceptions';
+import { ResourceGovernanceAccessDeniedException } from './resource-governance.exceptions';
 import { ResourceGovernanceEventName } from './resource-governance.events';
 import {
   ResourceGovernanceService,
@@ -149,17 +147,17 @@ function makeGovernanceControl(
 describe('ResourceGovernanceService', () => {
   let service: ResourceGovernanceService;
   let db: {
-      query: {
-        organizations: { findFirst: ReturnType<typeof vi.fn> };
-        organizationMembers: { findFirst: ReturnType<typeof vi.fn> };
-        tenantQuotas: { findFirst: ReturnType<typeof vi.fn> };
-        executionGovernanceControls: { findMany: ReturnType<typeof vi.fn> };
-      };
-      insert: ReturnType<typeof vi.fn>;
-      update: ReturnType<typeof vi.fn>;
-      delete: ReturnType<typeof vi.fn>;
-      transaction: ReturnType<typeof vi.fn>;
+    query: {
+      organizations: { findFirst: ReturnType<typeof vi.fn> };
+      organizationMembers: { findFirst: ReturnType<typeof vi.fn> };
+      tenantQuotas: { findFirst: ReturnType<typeof vi.fn> };
+      executionGovernanceControls: { findMany: ReturnType<typeof vi.fn> };
     };
+    insert: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    transaction: ReturnType<typeof vi.fn>;
+  };
   let auditLogService: { record: ReturnType<typeof vi.fn> };
   let eventEmitter: { emit: ReturnType<typeof vi.fn> };
 
@@ -177,8 +175,8 @@ describe('ResourceGovernanceService', () => {
       transaction: vi.fn(),
     };
 
-    db.transaction.mockImplementation(async (callback: (tx: typeof db) => unknown) =>
-      callback(db),
+    db.transaction.mockImplementation(
+      async (callback: (tx: typeof db) => unknown) => callback(db),
     );
 
     auditLogService = {
@@ -190,7 +188,9 @@ describe('ResourceGovernanceService', () => {
     };
 
     service = new ResourceGovernanceService(
-      db as unknown as ConstructorParameters<typeof ResourceGovernanceService>[0],
+      db as unknown as ConstructorParameters<
+        typeof ResourceGovernanceService
+      >[0],
       auditLogService as unknown as AuditLogService,
       eventEmitter as unknown as EventEmitter2,
     );
@@ -205,7 +205,9 @@ describe('ResourceGovernanceService', () => {
       db.query.tenantQuotas.findFirst.mockResolvedValue(null);
       db.query.executionGovernanceControls.findMany.mockResolvedValue([]);
 
-      await expect(service.getEffectiveState(ORG_ID, ADMIN_ID)).resolves.toEqual({
+      await expect(
+        service.getEffectiveState(ORG_ID, ADMIN_ID),
+      ).resolves.toEqual({
         organizationId: ORG_ID,
         quota: {
           organizationId: ORG_ID,
@@ -233,9 +235,9 @@ describe('ResourceGovernanceService', () => {
     it('throws when the target organization does not exist', async () => {
       db.query.organizations.findFirst.mockResolvedValue(null);
 
-      await expect(service.getEffectiveState(ORG_ID, OWNER_ID)).rejects.toBeInstanceOf(
-        OrganizationNotFoundException,
-      );
+      await expect(
+        service.getEffectiveState(ORG_ID, OWNER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
     });
 
     it('rejects non-owner and non-admin access', async () => {
@@ -244,9 +246,9 @@ describe('ResourceGovernanceService', () => {
         makeMembership({ userId: CREATOR_ID, role: 'creator' }),
       );
 
-      await expect(service.getEffectiveState(ORG_ID, CREATOR_ID)).rejects.toBeInstanceOf(
-        ResourceGovernanceAccessDeniedException,
-      );
+      await expect(
+        service.getEffectiveState(ORG_ID, CREATOR_ID),
+      ).rejects.toBeInstanceOf(ResourceGovernanceAccessDeniedException);
     });
   });
 
@@ -347,7 +349,9 @@ describe('ResourceGovernanceService', () => {
 
     it('updates an existing tenant quota row and records an audit event', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.tenantQuotas.findFirst.mockResolvedValue(
         makeQuota({
           apiRateLimitPerMinute: 120,
@@ -453,7 +457,9 @@ describe('ResourceGovernanceService', () => {
 
     it('returns stored governance controls when a control row exists alongside quotas', async () => {
       db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(makeMembership());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
       db.query.tenantQuotas.findFirst.mockResolvedValue(
         makeQuota({ apiRateLimitPerMinute: 160, version: 2 }),
       );
@@ -475,7 +481,9 @@ describe('ResourceGovernanceService', () => {
         }),
       ]);
 
-      await expect(service.getEffectiveState(ORG_ID, OWNER_ID)).resolves.toEqual({
+      await expect(
+        service.getEffectiveState(ORG_ID, OWNER_ID),
+      ).resolves.toEqual({
         organizationId: ORG_ID,
         quota: expect.objectContaining({
           organizationId: ORG_ID,
@@ -710,7 +718,8 @@ describe('ResourceGovernanceService', () => {
           action: 'execution_start',
           category: 'workflow_pause',
           scope: 'workflow',
-          reason: 'workflow governance pause is preventing new workflow executions',
+          reason:
+            'workflow governance pause is preventing new workflow executions',
           effectiveState: {
             organizationId: ORG_ID,
             tenantControl: {
@@ -836,8 +845,7 @@ describe('ResourceGovernanceService', () => {
         },
         metadata: {
           finalStatus: 'cancelled',
-          timelineUrl:
-            '/executions/019577a0-0000-7000-8000-000000001500',
+          timelineUrl: '/executions/019577a0-0000-7000-8000-000000001500',
         },
       });
     });

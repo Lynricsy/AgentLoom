@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../../agent/ports/agent-runtime.port';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import type {
   AcpConnectionState,
@@ -42,7 +45,10 @@ export class SessionCancelHandler {
 
   async handle(params: unknown, state: AcpConnectionState): Promise<void> {
     const normalizedParams = this.readParams(params);
-    const trackedSession = this.getTrackedSession(state, normalizedParams.sessionId);
+    const trackedSession = this.getTrackedSession(
+      state,
+      normalizedParams.sessionId,
+    );
 
     if (!trackedSession) {
       return;
@@ -84,11 +90,15 @@ export class SessionCancelHandler {
       delete trackedSession.pendingFsRequestIds;
     }
 
-    await this.runCleanupStep(cleanupFailures, 'cleanup_mcp_session_tools', () =>
-      this.mcpSessionService.cleanupSessionTools(trackedSession),
+    await this.runCleanupStep(
+      cleanupFailures,
+      'cleanup_mcp_session_tools',
+      () => this.mcpSessionService.cleanupSessionTools(trackedSession),
     );
-    await this.runCleanupStep(cleanupFailures, 'cleanup_session_terminals', () =>
-      this.terminalProxyService.cleanupSessionTerminals(trackedSession),
+    await this.runCleanupStep(
+      cleanupFailures,
+      'cleanup_session_terminals',
+      () => this.terminalProxyService.cleanupSessionTerminals(trackedSession),
     );
     await this.runCleanupStep(cleanupFailures, 'cancel_runtime_session', () =>
       this.getAgentRuntime().cancel(trackedSession.runtimeSessionId),

@@ -23,17 +23,15 @@ function isJsonRpcId(value: unknown): value is JsonRpcId {
   );
 }
 
-function tryParseClientResponse(rawMessage: string):
-  | {
-      id: JsonRpcId;
-      result?: unknown;
-      error?: {
-        code: number;
-        message: string;
-        data?: unknown;
-      };
-    }
-  | null {
+function tryParseClientResponse(rawMessage: string): {
+  id: JsonRpcId;
+  result?: unknown;
+  error?: {
+    code: number;
+    message: string;
+    data?: unknown;
+  };
+} | null {
   let parsed: unknown;
 
   try {
@@ -86,7 +84,7 @@ function tryParseClientResponse(rawMessage: string):
       error: {
         code: (candidate.error as { code: number }).code,
         message: (candidate.error as { message: string }).message,
-        ...('data' in (candidate.error as object)
+        ...('data' in candidate.error
           ? {
               data: (candidate.error as { data?: unknown }).data,
             }
@@ -137,12 +135,12 @@ async function bootstrap() {
       reject: rejectRequest,
     });
 
-    void enqueueProtocolWrite(buildJsonRpcRequest(requestId, method, params)).catch(
-      (error: unknown) => {
-        pendingClientRequests.delete(requestId);
-        rejectRequest(error);
-      },
-    );
+    void enqueueProtocolWrite(
+      buildJsonRpcRequest(requestId, method, params),
+    ).catch((error: unknown) => {
+      pendingClientRequests.delete(requestId);
+      rejectRequest(error);
+    });
 
     return {
       requestId,
@@ -264,7 +262,9 @@ async function bootstrap() {
           await enqueueProtocolWrite(response);
         }
       } catch {
-        await enqueueProtocolWrite(buildJsonRpcError(null, -32603, 'Internal error'));
+        await enqueueProtocolWrite(
+          buildJsonRpcError(null, -32603, 'Internal error'),
+        );
       }
     })().finally(() => {
       inFlight.delete(task);

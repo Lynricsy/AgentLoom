@@ -1,10 +1,4 @@
-import {
-  mkdir,
-  mkdtemp,
-  rm,
-  symlink,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -124,7 +118,9 @@ describe('AcpFilesystemSandboxService', () => {
     ).resolves.toEqual({
       text: '来自 Docker 挂载解析',
     });
-    expect(dockerService.getWorkspaceHostPath).toHaveBeenCalledWith('container-1');
+    expect(dockerService.getWorkspaceHostPath).toHaveBeenCalledWith(
+      'container-1',
+    );
   });
 
   it('应支持按 agentConversationId 绑定解析工作区', async () => {

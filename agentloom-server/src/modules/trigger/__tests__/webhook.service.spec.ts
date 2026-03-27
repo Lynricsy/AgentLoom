@@ -61,10 +61,7 @@ describe('WebhookService', () => {
     db = mocks.createMockDb();
 
     const module = await Test.createTestingModule({
-      providers: [
-        WebhookService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [WebhookService, { provide: DRIZZLE, useValue: db }],
     }).compile();
 
     service = module.get(WebhookService);
@@ -87,7 +84,12 @@ describe('WebhookService', () => {
     const timestamp = String(Math.floor(NOW.getTime() / 1000));
 
     expect(() =>
-      service.verifySignature('secret', rawBody, 'invalid-signature', timestamp),
+      service.verifySignature(
+        'secret',
+        rawBody,
+        'invalid-signature',
+        timestamp,
+      ),
     ).toThrow(WebhookVerificationFailedException);
   });
 
@@ -126,8 +128,8 @@ describe('WebhookService', () => {
       service.checkIpWhitelist(webhookTrigger, '::ffff:127.0.0.1'),
     ).not.toThrow();
 
-    expect(() =>
-      service.checkIpWhitelist(webhookTrigger, '10.0.0.1'),
-    ).toThrow(WebhookVerificationFailedException);
+    expect(() => service.checkIpWhitelist(webhookTrigger, '10.0.0.1')).toThrow(
+      WebhookVerificationFailedException,
+    );
   });
 });

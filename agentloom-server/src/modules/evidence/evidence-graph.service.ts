@@ -69,7 +69,7 @@ export class EvidenceGraphService {
     for (const step of steps) {
       const info: StepInfo = {
         nodeId: step.nodeId,
-        nodeData: step.nodeData as Record<string, unknown> | null,
+        nodeData: step.nodeData,
         status: step.status,
       };
       stepMap.set(step.id, info);

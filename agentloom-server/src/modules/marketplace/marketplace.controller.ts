@@ -44,8 +44,11 @@ export class MarketplaceController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ) {
-    const { listing, reviewResult } =
-      await this.marketplaceService.submit(tenantId, userId, dto);
+    const { listing, reviewResult } = await this.marketplaceService.submit(
+      tenantId,
+      userId,
+      dto,
+    );
     return { data: listing, reviewResult };
   }
 
@@ -61,11 +64,7 @@ export class MarketplaceController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ) {
-    const listing = await this.marketplaceService.unlist(
-      tenantId,
-      id,
-      userId,
-    );
+    const listing = await this.marketplaceService.unlist(tenantId, id, userId);
     return { data: listing };
   }
 
@@ -81,8 +80,11 @@ export class MarketplaceController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ) {
-    const { listing, reviewResult } =
-      await this.marketplaceService.relist(tenantId, id, userId);
+    const { listing, reviewResult } = await this.marketplaceService.relist(
+      tenantId,
+      id,
+      userId,
+    );
     return { data: listing, reviewResult };
   }
 
@@ -122,12 +124,7 @@ export class MarketplaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InstallMarketplaceListingDto,
   ) {
-    return this.marketplaceService.installListing(
-      tenantId,
-      userId,
-      id,
-      dto,
-    );
+    return this.marketplaceService.installListing(tenantId, userId, id, dto);
   }
 
   @Post('listings/:id/reviews')

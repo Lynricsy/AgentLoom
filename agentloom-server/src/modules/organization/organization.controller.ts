@@ -14,7 +14,10 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
+import {
+  CaptureAuditLog,
+  auditLogCaptureConfigs,
+} from '../evidence/audit-log.capture';
 import { OrganizationService } from './organization.service';
 import { OrganizationAutonomyPolicyService } from './organization-autonomy-policy.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -76,10 +79,11 @@ export class OrganizationController {
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,
   ) {
-    const result = await this.organizationAutonomyPolicyService.getAutonomyPolicy(
-      id,
-      request.user.sub,
-    );
+    const result =
+      await this.organizationAutonomyPolicyService.getAutonomyPolicy(
+        id,
+        request.user.sub,
+      );
     return { data: result };
   }
 

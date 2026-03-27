@@ -45,7 +45,11 @@ export class TenantKeyController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('org_id') orgId: string,
   ): Promise<TenantKeyDetailResponse> {
-    const key = await this.tenantKeyService.uploadPublicKey(tenantId, orgId, dto);
+    const key = await this.tenantKeyService.uploadPublicKey(
+      tenantId,
+      orgId,
+      dto,
+    );
     return this.toDetailResponse(key);
   }
 

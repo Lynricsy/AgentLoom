@@ -157,11 +157,9 @@ export class PluginUsageService {
         pluginDbId: pluginUsageRecords.sourcePluginDbId,
         pluginId: pluginUsageRecords.sourcePluginId,
         sourceListingId: pluginUsageRecords.sourceListingId,
-        currency:
-          sql<string>`coalesce(max(${pluginUsageRecords.currency}), 'USD')::text`,
+        currency: sql<string>`coalesce(max(${pluginUsageRecords.currency}), 'USD')::text`,
         totalExecutions: count(),
-        totalBillingAmount:
-          sql<string>`coalesce(sum(${pluginUsageRecords.billingAmount}), 0)::text`,
+        totalBillingAmount: sql<string>`coalesce(sum(${pluginUsageRecords.billingAmount}), 0)::text`,
       })
       .from(pluginUsageRecords)
       .where(

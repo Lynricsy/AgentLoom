@@ -54,10 +54,12 @@ function createSelectChain<T>(terminal: MockSelectTerminal, result: T) {
 
 function createMockDb() {
   const insertValues: Array<Record<string, unknown>> = [];
-  const values = vi.fn().mockImplementation((value: Record<string, unknown>) => {
-    insertValues.push(value);
-    return Promise.resolve([{ id: 'mock-record-id' }]);
-  });
+  const values = vi
+    .fn()
+    .mockImplementation((value: Record<string, unknown>) => {
+      insertValues.push(value);
+      return Promise.resolve([{ id: 'mock-record-id' }]);
+    });
   const insert = vi.fn().mockReturnValue({ values });
   const select = vi.fn();
 
@@ -200,7 +202,9 @@ describe('ExecutionRecordService', () => {
       ) => operation(tenantDb),
     );
 
-    warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
 
     moduleRef = await Test.createTestingModule({
       providers: [
@@ -584,7 +588,9 @@ describe('ExecutionRecordService', () => {
   });
 
   it('should warn instead of throwing when execution summary recording fails', async () => {
-    mocks.runInTenantTransaction.mockRejectedValueOnce(new Error('summary write failed'));
+    mocks.runInTenantTransaction.mockRejectedValueOnce(
+      new Error('summary write failed'),
+    );
 
     await expect(
       service.handleExecutionStatusChanged(createExecutionStatusPayload()),

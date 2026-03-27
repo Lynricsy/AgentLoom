@@ -21,8 +21,9 @@ const hoisted = vi.hoisted(() => {
 
   class MockPiAgent {
     static instances: MockPiAgent[] = [];
-    static script: ((agent: MockPiAgent, input: string) => Promise<void>) | null =
-      null;
+    static script:
+      | ((agent: MockPiAgent, input: string) => Promise<void>)
+      | null = null;
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
     readonly abortController = new AbortController();
@@ -183,7 +184,9 @@ describe('PiAgentCoreAdapter', () => {
     hoisted.getTenantDb.mockClear();
 
     mockDb = { select: vi.fn() };
-    mockPiAiAdapter = { getModel: vi.fn().mockResolvedValue('mock-language-model') };
+    mockPiAiAdapter = {
+      getModel: vi.fn().mockResolvedValue('mock-language-model'),
+    };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn().mockResolvedValue({
         transportType: 'streamable_http',
@@ -220,7 +223,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('createSession', () => {
     it('会创建 conversation session 并保留上下文元信息', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
 
       const session = await adapter.createSession(
         createParams({
@@ -255,7 +260,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会解析模型并通过动态导入创建 pi Agent 实例', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
 
       const session = await adapter.createSession(createParams());
       const agent = hoisted.MockPiAgent.instances[0];
@@ -276,7 +283,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('workflow 模式会把初始 context 映射为 workflowState', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
 
       const session = await adapter.createSession(
         createParams({
@@ -305,7 +314,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会保留 runtimeConfig 到 session 快照', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const runtimeConfig = {
         tools: [
           {
@@ -331,20 +342,26 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('loadSession', () => {
     it('会返回已创建的 session', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       await expect(adapter.loadSession(session.id)).resolves.toEqual(session);
     });
 
     it('不存在的 session 会抛错', async () => {
-      await expect(adapter.loadSession('missing')).rejects.toThrow(/not found/i);
+      await expect(adapter.loadSession('missing')).rejects.toThrow(
+        /not found/i,
+      );
     });
   });
 
   describe('tool provider lifecycle', () => {
     it('prompt 前注册 provider 会刷新 streamFn 并调用 zodToTypeBox 转换工具 schema', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
       const toolSet = {
         'docs/search': {
@@ -362,7 +379,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]));
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(hoisted.zodToTypeBox).toHaveBeenCalledWith({ type: 'zod-object' });
@@ -381,15 +400,21 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('unregister 后 prompt 不再注入 tools', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
-      adapter.registerSessionToolProvider(session.id, () => ({
-        toolA: {
-          description: 'A',
-          inputSchema: { type: 'schema' },
-          execute: vi.fn(),
-        },
-      }) as unknown as ToolSet);
+      adapter.registerSessionToolProvider(
+        session.id,
+        () =>
+          ({
+            toolA: {
+              description: 'A',
+              inputSchema: { type: 'schema' },
+              execute: vi.fn(),
+            },
+          }) as unknown as ToolSet,
+      );
       adapter.unregisterSessionToolProvider(session.id);
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -399,7 +424,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]));
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenCalledWith([]);
@@ -466,7 +493,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]));
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenLastCalledWith(
@@ -477,9 +506,14 @@ describe('PiAgentCoreAdapter', () => {
       );
       const injectedTools = agent.setTools.mock.lastCall?.[0] as Array<{
         name: string;
-        execute: (toolCallId: string, params: unknown) => Promise<{ details: unknown }>;
+        execute: (
+          toolCallId: string,
+          params: unknown,
+        ) => Promise<{ details: unknown }>;
       }>;
-      const runtimeTool = injectedTools.find((tool) => tool.name === 'search_docs');
+      const runtimeTool = injectedTools.find(
+        (tool) => tool.name === 'search_docs',
+      );
       await expect(
         runtimeTool?.execute('call-mcp', { query: 'AgentLoom' }),
       ).resolves.toMatchObject({
@@ -510,7 +544,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会把 knowledgeBindings 注入为可调用检索工具', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
 
       const session = await adapter.createSession(
         createParams({
@@ -529,10 +565,12 @@ describe('PiAgentCoreAdapter', () => {
 
       hoisted.MockPiAgent.script = async (agent) => {
         const knowledgeTool = agent.tools.find(
-          (tool) =>
-            (tool as { name?: string }).name === 'searchKnowledge_kb-1',
+          (tool) => (tool as { name?: string }).name === 'searchKnowledge_kb-1',
         ) as {
-          execute: (toolCallId: string, params: unknown) => Promise<{
+          execute: (
+            toolCallId: string,
+            params: unknown,
+          ) => Promise<{
             details: unknown;
           }>;
         };
@@ -553,7 +591,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'search' }]));
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'search' }]),
+      );
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenLastCalledWith(
@@ -561,15 +601,21 @@ describe('PiAgentCoreAdapter', () => {
           expect.objectContaining({ name: 'searchKnowledge_kb-1' }),
         ]),
       );
-      expect(mockRagService.search).toHaveBeenCalledWith('AgentLoom', 'tenant-001', {
-        knowledgeBaseId: 'kb-1',
-        limit: 2,
-        scoreThreshold: 0.42,
-      });
+      expect(mockRagService.search).toHaveBeenCalledWith(
+        'AgentLoom',
+        'tenant-001',
+        {
+          knowledgeBaseId: 'kb-1',
+          limit: 2,
+          scoreThreshold: 0.42,
+        },
+      );
     });
 
     it('runtimeConfig 的空 tools 与空 knowledgeBindings 不会破坏 session 创建', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(
         createParams({
           runtimeConfig: {
@@ -587,7 +633,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'noop' }]));
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'noop' }]),
+      );
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenLastCalledWith([]);
@@ -599,7 +647,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('prompt event translation', () => {
     it('会序列化 ContentBlock 并调用 agent.prompt(text)', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
       const blocks: ContentBlock[] = [
         { type: 'text', text: '看这张图' },
@@ -608,7 +658,9 @@ describe('PiAgentCoreAdapter', () => {
       ];
 
       hoisted.MockPiAgent.script = async (agent, input) => {
-        expect(input).toBe('看这张图\n\n[image:image/png]\n\n[resource_link:https://docs.example.com]');
+        expect(input).toBe(
+          '看这张图\n\n[image:image/png]\n\n[resource_link:https://docs.example.com]',
+        );
         agent.emit({
           type: 'agent_end',
           messages: [{ role: 'assistant', stopReason: 'stop' }],
@@ -625,7 +677,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会把 message_update(text_delta) 映射为 message_chunk', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -644,7 +698,9 @@ describe('PiAgentCoreAdapter', () => {
       };
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
       ).resolves.toEqual([
         { type: 'message_chunk', content: '你好，' },
         { type: 'message_chunk', content: '主人' },
@@ -658,7 +714,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会忽略非 text_delta 的 message_update', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -673,12 +731,16 @@ describe('PiAgentCoreAdapter', () => {
       };
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
       ).resolves.toEqual([{ type: 'done', stopReason: 'end_turn' }]);
     });
 
     it('会把 tool_execution_start 映射为 in_progress tool_call', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -695,7 +757,9 @@ describe('PiAgentCoreAdapter', () => {
       };
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
       ).resolves.toEqual([
         {
           type: 'tool_call',
@@ -711,7 +775,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会把 tool_execution_end(success) 映射为 completed tool_call', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -731,7 +797,9 @@ describe('PiAgentCoreAdapter', () => {
       };
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
       ).resolves.toEqual([
         {
           type: 'tool_call',
@@ -748,7 +816,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('会把 tool_execution_end(error) 映射为 failed tool_call', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -768,7 +838,9 @@ describe('PiAgentCoreAdapter', () => {
       };
 
       await expect(
-        collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
       ).resolves.toEqual([
         {
           type: 'tool_call',
@@ -792,7 +864,9 @@ describe('PiAgentCoreAdapter', () => {
     ] as const)(
       '会把 agent_end stopReason=%s 映射为 %s',
       async (source, target) => {
-        mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+        mockDb.select.mockReturnValueOnce(
+          createSelectChain([defaultModelConfig]),
+        );
         const session = await adapter.createSession(createParams());
 
         hoisted.MockPiAgent.script = async (agent) => {
@@ -803,7 +877,9 @@ describe('PiAgentCoreAdapter', () => {
         };
 
         await expect(
-          collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hi' }])),
+          collectEvents(
+            adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+          ),
         ).resolves.toEqual([{ type: 'done', stopReason: target }]);
       },
     );
@@ -811,7 +887,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('permission gate', () => {
     it('approve 后会继续执行工具并输出 tool_call + done', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -849,7 +927,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      const iterator = adapter.prompt(session.id, [{ type: 'text', text: 'read' }])[Symbol.asyncIterator]();
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'read' }])
+        [Symbol.asyncIterator]();
       const first = await iterator.next();
 
       expect(first.value).toEqual({
@@ -894,7 +974,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('deny 后会发出 denied 并阻止后续错误结果重复透传', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -926,7 +1008,9 @@ describe('PiAgentCoreAdapter', () => {
         });
       };
 
-      const iterator = adapter.prompt(session.id, [{ type: 'text', text: 'write' }])[Symbol.asyncIterator]();
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'write' }])
+        [Symbol.asyncIterator]();
       expect((await iterator.next()).value).toMatchObject({
         type: 'tool_call',
         call: { id: 'call-2', status: 'awaiting_permission' },
@@ -954,7 +1038,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('30 秒超时会默认 deny', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -978,7 +1064,9 @@ describe('PiAgentCoreAdapter', () => {
         }
       };
 
-      const iterator = adapter.prompt(session.id, [{ type: 'text', text: 'write' }])[Symbol.asyncIterator]();
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'write' }])
+        [Symbol.asyncIterator]();
       expect((await iterator.next()).value).toMatchObject({
         type: 'tool_call',
         call: { id: 'call-timeout', status: 'awaiting_permission' },
@@ -1007,14 +1095,20 @@ describe('PiAgentCoreAdapter', () => {
 
     it('未命中 pending gate 时 resolveToolPermission 会抛错', async () => {
       await expect(
-        adapter.resolveToolPermission('missing-session', 'missing-call', 'approve'),
+        adapter.resolveToolPermission(
+          'missing-session',
+          'missing-call',
+          'approve',
+        ),
       ).rejects.toThrow(/no pending tool permission/i);
     });
   });
 
   describe('cancel', () => {
     it('会调用 agent.abort 并把 session 标记为 completed', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
       const agent = hoisted.MockPiAgent.instances[0];
 
@@ -1043,15 +1137,14 @@ describe('PiAgentCoreAdapter', () => {
   });
 
   describe('convertToolSetToPiTools branch coverage', () => {
-    function registerToolProvider(
-      sessionId: string,
-      toolSet: ToolSet,
-    ): void {
+    function registerToolProvider(sessionId: string, toolSet: ToolSet): void {
       adapter.registerSessionToolProvider(sessionId, async () => toolSet);
     }
 
     it('tool.execute 缺失时返回 "Tool has no execute function"', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       registerToolProvider(session.id, {
@@ -1083,7 +1176,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool.execute 返回 null 时 text 为空字符串', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       registerToolProvider(session.id, {
@@ -1116,7 +1211,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool.execute 返回 string 时直接使用该 string', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       registerToolProvider(session.id, {
@@ -1149,7 +1246,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool.execute 返回 object 时 JSON.stringify', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       registerToolProvider(session.id, {
@@ -1184,7 +1283,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('translatePiEvent branch coverage', () => {
     it('message_update 非 text_delta 类型时返回空', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1215,7 +1316,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool_execution_end isError=true 时使用 stringifyToolError', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1248,7 +1351,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool_execution_end isError=true content 结构错误时使用 fallback', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1288,7 +1393,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool_execution_end isError=true 空 content 使用 fallback "Tool execution failed"', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1320,7 +1427,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool_execution_end isError=true 纯数字错误使用 fallback', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1342,12 +1451,18 @@ describe('PiAgentCoreAdapter', () => {
       );
       expect(events[0]).toMatchObject({
         type: 'tool_call',
-        call: { id: 'err-num', status: 'failed', error: 'Tool execution failed' },
+        call: {
+          id: 'err-num',
+          status: 'failed',
+          error: 'Tool execution failed',
+        },
       });
     });
 
     it('mapStopReason 处理 tool_use 别名', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1364,7 +1479,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('tool_execution_start 无 toolCallId/toolName 时使用 fallback', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1391,19 +1508,23 @@ describe('PiAgentCoreAdapter', () => {
         },
       });
       // id should be a UUID (36 chars)
-      expect(
-        (events[0] as { call: { id: string } }).call.id,
-      ).toHaveLength(36);
+      expect((events[0] as { call: { id: string } }).call.id).toHaveLength(36);
     });
   });
 
   describe('serializeContentBlocks branch coverage', () => {
     it('序列化 audio/resource/resource_link/default 类型 content block', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       const blocks: ContentBlock[] = [
-        { type: 'audio', mimeType: 'audio/wav', data: 'base64data' } as ContentBlock,
+        {
+          type: 'audio',
+          mimeType: 'audio/wav',
+          data: 'base64data',
+        } as ContentBlock,
         {
           type: 'resource',
           uri: 'file://test.txt',
@@ -1452,7 +1573,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('extractResourcePaths branch coverage', () => {
     it('从数组类型的参数中提取资源路径', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1509,7 +1632,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('signal pre-aborted', () => {
     it('signal 已 aborted 时立即 cancel permission', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1550,7 +1675,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('prompt error path', () => {
     it('agent.prompt 抛错时 session 状态变为 error', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async () => {
@@ -1568,7 +1695,9 @@ describe('PiAgentCoreAdapter', () => {
 
   describe('getToolCallId/getToolName fallback', () => {
     it('从 toolCallId 别名提取 id', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {
@@ -1608,7 +1737,9 @@ describe('PiAgentCoreAdapter', () => {
     });
 
     it('id/name 均缺失时使用 fallback', async () => {
-      mockDb.select.mockReturnValueOnce(createSelectChain([defaultModelConfig]));
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
       const session = await adapter.createSession(createParams());
 
       hoisted.MockPiAgent.script = async (agent) => {

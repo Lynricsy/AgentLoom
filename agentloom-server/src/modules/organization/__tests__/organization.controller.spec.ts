@@ -138,7 +138,9 @@ async function createTestingApp() {
       {
         provide: UserIdentityResolverService,
         useValue: {
-          resolveAppUserId: vi.fn().mockImplementation((id: string) => Promise.resolve(id)),
+          resolveAppUserId: vi
+            .fn()
+            .mockImplementation((id: string) => Promise.resolve(id)),
         },
       },
       {

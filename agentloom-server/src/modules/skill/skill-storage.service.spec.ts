@@ -72,7 +72,13 @@ describe('SkillStorageService', () => {
   describe('uploadSkillFile', () => {
     it('delegates to storageService.upload', async () => {
       const buffer = Buffer.from('hello');
-      await service.uploadSkillFile(TENANT_ID, SKILL_ID, 'test.md', buffer, 'text/markdown');
+      await service.uploadSkillFile(
+        TENANT_ID,
+        SKILL_ID,
+        'test.md',
+        buffer,
+        'text/markdown',
+      );
 
       expect(storageService.upload).toHaveBeenCalledWith(
         `tenants/${TENANT_ID}/skills/${SKILL_ID}/test.md`,
@@ -100,10 +106,18 @@ describe('SkillStorageService', () => {
   // ─── downloadSkillFile ─────────────────────────────────────────────────
   describe('downloadSkillFile', () => {
     it('delegates to storageService.download', async () => {
-      const mockStream = new Readable({ read() { this.push(null); } });
+      const mockStream = new Readable({
+        read() {
+          this.push(null);
+        },
+      });
       storageService.download.mockResolvedValue(mockStream);
 
-      const result = await service.downloadSkillFile(TENANT_ID, SKILL_ID, 'file.txt');
+      const result = await service.downloadSkillFile(
+        TENANT_ID,
+        SKILL_ID,
+        'file.txt',
+      );
       expect(result).toBe(mockStream);
       expect(storageService.download).toHaveBeenCalledWith(
         `tenants/${TENANT_ID}/skills/${SKILL_ID}/file.txt`,

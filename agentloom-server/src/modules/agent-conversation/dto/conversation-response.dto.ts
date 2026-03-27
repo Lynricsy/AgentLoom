@@ -19,7 +19,7 @@ export function serializeConversation(
     agentDefinitionId: row.agentDefinitionId,
     title: row.title ?? null,
     status: row.status,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    metadata: row.metadata ?? {},
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

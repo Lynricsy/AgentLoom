@@ -19,7 +19,9 @@ export class ProviderHealthStatusesResponseDto extends createZodDto(
   ProviderHealthStatusesResponseSchema,
 ) {}
 
-export type ProviderHealthStatusDto = z.infer<typeof ProviderHealthStatusSchema>;
+export type ProviderHealthStatusDto = z.infer<
+  typeof ProviderHealthStatusSchema
+>;
 export type ProviderHealthStatusesResponseDtoType = z.infer<
   typeof ProviderHealthStatusesResponseSchema
 >;

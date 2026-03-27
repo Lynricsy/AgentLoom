@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,7 +30,9 @@ vi.mock('../../common/providers/tenant-aware-db.provider', async () => {
 });
 
 vi.mock('../organization/slug.utils', () => ({
-  generateSlug: vi.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
+  generateSlug: vi.fn((name: string) =>
+    name.toLowerCase().replace(/\s+/g, '-'),
+  ),
   appendSlugSuffix: vi.fn((slug: string) => `${slug}-1`),
 }));
 
@@ -238,7 +236,10 @@ describe('SkillService', () => {
       const record = makeSkillRecord();
       db.insert.mockReturnValue(createInsertChain([record]));
 
-      const updatedRecord = makeSkillRecord({ fileCount: 2, totalSizeBytes: 2000 });
+      const updatedRecord = makeSkillRecord({
+        fileCount: 2,
+        totalSizeBytes: 2000,
+      });
       db.update.mockReturnValue(createUpdateChain([updatedRecord]));
 
       storageService.listSkillFiles.mockResolvedValue([
@@ -255,10 +256,15 @@ describe('SkillService', () => {
         },
       ];
 
-      const result = await service.create(TENANT_ID, USER_ID, {
-        name: 'Test Skill',
-        description: 'A test skill',
-      }, files);
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        {
+          name: 'Test Skill',
+          description: 'A test skill',
+        },
+        files,
+      );
 
       expect(result).toEqual(updatedRecord);
       expect(storageService.uploadSkillFile).toHaveBeenCalledOnce();
@@ -270,7 +276,10 @@ describe('SkillService', () => {
       const record = makeSkillRecord({ content: skillMdContent });
       db.insert.mockReturnValue(createInsertChain([record]));
 
-      const updatedRecord = makeSkillRecord({ fileCount: 1, totalSizeBytes: 100 });
+      const updatedRecord = makeSkillRecord({
+        fileCount: 1,
+        totalSizeBytes: 100,
+      });
       db.update.mockReturnValue(createUpdateChain([updatedRecord]));
       storageService.listSkillFiles.mockResolvedValue([
         { name: 'SKILL.md', size: 100 },
@@ -285,10 +294,15 @@ describe('SkillService', () => {
         },
       ];
 
-      const result = await service.create(TENANT_ID, USER_ID, {
-        name: 'Test Skill',
-        description: 'A test skill',
-      }, files);
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        {
+          name: 'Test Skill',
+          description: 'A test skill',
+        },
+        files,
+      );
 
       expect(result).toEqual(updatedRecord);
     });
@@ -371,19 +385,25 @@ describe('SkillService', () => {
     it('未找到抛出 NotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
-      await expect(
-        service.findById(TENANT_ID, SKILL_ID),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.findById(TENANT_ID, SKILL_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   // ─── findByIds ───────────────────────────────────────────────────────────
   describe('findByIds', () => {
     it('返回多个 Skill', async () => {
-      const records = [makeSkillRecord(), makeSkillRecord({ id: 'another-id' })];
+      const records = [
+        makeSkillRecord(),
+        makeSkillRecord({ id: 'another-id' }),
+      ];
       db.select.mockReturnValue(createSelectChain(records));
 
-      const result = await service.findByIds(TENANT_ID, [SKILL_ID, 'another-id']);
+      const result = await service.findByIds(TENANT_ID, [
+        SKILL_ID,
+        'another-id',
+      ]);
       expect(result).toEqual(records);
     });
 
@@ -438,7 +458,11 @@ describe('SkillService', () => {
 
     it('更新时上传文件并刷新 fileMeta', async () => {
       const firstUpdate = makeSkillRecord({ version: 2 });
-      const afterRefresh = makeSkillRecord({ version: 2, fileCount: 1, totalSizeBytes: 500 });
+      const afterRefresh = makeSkillRecord({
+        version: 2,
+        fileCount: 1,
+        totalSizeBytes: 500,
+      });
       const updateChain1 = createUpdateChain([firstUpdate]);
       const updateChain2 = createUpdateChain([afterRefresh]);
 
@@ -459,9 +483,15 @@ describe('SkillService', () => {
         },
       ];
 
-      const result = await service.update(TENANT_ID, USER_ID, SKILL_ID, {
-        occVersion: 1,
-      }, files);
+      const result = await service.update(
+        TENANT_ID,
+        USER_ID,
+        SKILL_ID,
+        {
+          occVersion: 1,
+        },
+        files,
+      );
 
       expect(result).toEqual(afterRefresh);
       expect(storageService.uploadSkillFile).toHaveBeenCalledOnce();
@@ -507,9 +537,9 @@ describe('SkillService', () => {
     it('未找到抛出 NotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
-      await expect(
-        service.delete(TENANT_ID, SKILL_ID),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.delete(TENANT_ID, SKILL_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

@@ -22,7 +22,9 @@ import { McpService } from '../../../mcp/mcp.service';
 import type { AcpTrackedSession } from '../../acp-types';
 import { AcpSessionMcpRegistryService } from '../acp-session-mcp-registry.service';
 
-function createTrackedSession(overrides: Partial<AcpTrackedSession> = {}): AcpTrackedSession {
+function createTrackedSession(
+  overrides: Partial<AcpTrackedSession> = {},
+): AcpTrackedSession {
   return {
     sessionId: 'session-001',
     runtimeSessionId: 'runtime-session-001',
@@ -45,7 +47,9 @@ function getToolDescription(toolDefinition: unknown): string | undefined {
   return typeof description === 'string' ? description : undefined;
 }
 
-function getToolExecute(toolDefinition: unknown): (input: unknown) => Promise<unknown> {
+function getToolExecute(
+  toolDefinition: unknown,
+): (input: unknown) => Promise<unknown> {
   const execute = Reflect.get(toolDefinition as object, 'execute');
   expect(typeof execute).toBe('function');
 
@@ -76,7 +80,9 @@ describe('AcpSessionMcpRegistryService', () => {
       createSession: vi.fn(),
       loadSession: vi.fn(),
       prompt: vi
-        .fn<(sessionId: string, content: ContentBlock[]) => AsyncIterable<never>>()
+        .fn<
+          (sessionId: string, content: ContentBlock[]) => AsyncIterable<never>
+        >()
         .mockImplementation(() => createAsyncEventStream()),
       cancel: vi.fn().mockResolvedValue(undefined),
       registerSessionToolProvider: vi
@@ -191,7 +197,9 @@ describe('AcpSessionMcpRegistryService', () => {
         description: '搜索 MCP 文档',
       },
     ]);
-    mcpService.callRuntimeTool.mockRejectedValue(new Error('connection dropped'));
+    mcpService.callRuntimeTool.mockRejectedValue(
+      new Error('connection dropped'),
+    );
 
     await service.bootstrapSessionTools(trackedSession, {
       docs: {

@@ -46,6 +46,4 @@ export const EvidenceGraphResponseSchema = z.object({
   timeline: z.array(GraphTimelineEntrySchema),
 });
 
-export type EvidenceGraphResponse = z.infer<
-  typeof EvidenceGraphResponseSchema
->;
+export type EvidenceGraphResponse = z.infer<typeof EvidenceGraphResponseSchema>;

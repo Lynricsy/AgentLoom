@@ -18,9 +18,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -106,7 +105,9 @@ function createDeleteChain<TResult>(result: TResult[]) {
   };
 }
 
-function createInstance(overrides: Partial<MemoryInstance> = {}): MemoryInstance {
+function createInstance(
+  overrides: Partial<MemoryInstance> = {},
+): MemoryInstance {
   return {
     id: INSTANCE_ID,
     tenantId: TENANT_ID,
@@ -276,7 +277,10 @@ describe('MemoryNodeService', () => {
   describe('listNodes', () => {
     it('应支持分页���内容类型过滤与倒序排序', async () => {
       const instanceQuery = createSelectChain([createInstance()]);
-      const data = [createNode(), createNode({ id: '44444444-4444-4444-8444-444444444444' })];
+      const data = [
+        createNode(),
+        createNode({ id: '44444444-4444-4444-8444-444444444444' }),
+      ];
       const dataQuery = createSelectChain(data);
       const countQuery = createSelectChain([{ total: 6 }]);
 

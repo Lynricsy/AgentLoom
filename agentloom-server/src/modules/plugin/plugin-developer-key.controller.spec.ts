@@ -31,7 +31,10 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const KEY_ID = '44444444-4444-4444-8444-444444444444';
 const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----';
 
-function getRoles(controller: object, methodName: string): string[] | undefined {
+function getRoles(
+  controller: object,
+  methodName: string,
+): string[] | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -39,7 +42,10 @@ function getRoles(controller: object, methodName: string): string[] | undefined 
     : undefined;
 }
 
-function getHttpCode(controller: object, methodName: string): number | undefined {
+function getHttpCode(
+  controller: object,
+  methodName: string,
+): number | undefined {
   const handler = Reflect.get(controller, methodName);
 
   return typeof handler === 'function'
@@ -98,9 +104,18 @@ describe('PluginDeveloperKeyController', () => {
       const record = createDeveloperKey();
       service.registerKey.mockResolvedValue(record);
 
-      const result = await controller.registerKey(TENANT_ID, ORG_ID, USER_ID, dto);
+      const result = await controller.registerKey(
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+        dto,
+      );
 
-      expect(getRoles(controller, 'registerKey')).toEqual(['creator', 'admin', 'owner']);
+      expect(getRoles(controller, 'registerKey')).toEqual([
+        'creator',
+        'admin',
+        'owner',
+      ]);
       expect(getHttpCode(controller, 'registerKey')).toBe(HttpStatus.CREATED);
       expect(service.registerKey).toHaveBeenCalledWith(
         TENANT_ID,
@@ -117,7 +132,11 @@ describe('PluginDeveloperKeyController', () => {
     it('应调用 service 返回分页密钥列表', async () => {
       const query = Object.assign(
         new QueryDeveloperKeysDto(),
-        QueryDeveloperKeysSchema.parse({ status: 'active', page: '2', pageSize: '10' }),
+        QueryDeveloperKeysSchema.parse({
+          status: 'active',
+          page: '2',
+          pageSize: '10',
+        }),
       );
       const payload = {
         data: [createDeveloperKey()],
@@ -127,7 +146,11 @@ describe('PluginDeveloperKeyController', () => {
 
       const result = await controller.listKeys(ORG_ID, query);
 
-      expect(getRoles(controller, 'listKeys')).toEqual(['creator', 'admin', 'owner']);
+      expect(getRoles(controller, 'listKeys')).toEqual([
+        'creator',
+        'admin',
+        'owner',
+      ]);
       expect(service.listKeys).toHaveBeenCalledWith(ORG_ID, query);
       expect(result).toEqual(payload);
     });
@@ -140,7 +163,11 @@ describe('PluginDeveloperKeyController', () => {
 
       const result = await controller.findById(ORG_ID, KEY_ID);
 
-      expect(getRoles(controller, 'findById')).toEqual(['creator', 'admin', 'owner']);
+      expect(getRoles(controller, 'findById')).toEqual([
+        'creator',
+        'admin',
+        'owner',
+      ]);
       expect(service.findById).toHaveBeenCalledWith(ORG_ID, KEY_ID);
       expect(result).toEqual(record);
     });
@@ -157,7 +184,11 @@ describe('PluginDeveloperKeyController', () => {
 
       const result = await controller.revokeKey(ORG_ID, KEY_ID);
 
-      expect(getRoles(controller, 'revokeKey')).toEqual(['creator', 'admin', 'owner']);
+      expect(getRoles(controller, 'revokeKey')).toEqual([
+        'creator',
+        'admin',
+        'owner',
+      ]);
       expect(getHttpCode(controller, 'revokeKey')).toBe(HttpStatus.OK);
       expect(service.revokeKey).toHaveBeenCalledWith(ORG_ID, KEY_ID);
       expect(result).toEqual(revokedKey);
@@ -166,14 +197,20 @@ describe('PluginDeveloperKeyController', () => {
 
   describe('DTO 校验', () => {
     it('应校验注册 DTO 的必填公钥字段', () => {
-      expect(() => RegisterDeveloperKeySchema.parse({ publicKey: '' })).toThrow();
-      expect(RegisterDeveloperKeySchema.parse({ publicKey: PUBLIC_KEY })).toEqual({
+      expect(() =>
+        RegisterDeveloperKeySchema.parse({ publicKey: '' }),
+      ).toThrow();
+      expect(
+        RegisterDeveloperKeySchema.parse({ publicKey: PUBLIC_KEY }),
+      ).toEqual({
         publicKey: PUBLIC_KEY,
       });
     });
 
     it('应对查询 DTO 进行类型转换并补齐默认值', () => {
-      expect(QueryDeveloperKeysSchema.parse({ page: '2', pageSize: '5' })).toEqual({
+      expect(
+        QueryDeveloperKeysSchema.parse({ page: '2', pageSize: '5' }),
+      ).toEqual({
         page: 2,
         pageSize: 5,
       });

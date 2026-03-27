@@ -413,7 +413,8 @@ describe('NotificationListener', () => {
         organizationId: 'org-1',
         workflowId: 'workflow-7',
         workflowName: '受治理限制工作流',
-        reason: 'workflow governance pause is preventing new workflow executions',
+        reason:
+          'workflow governance pause is preventing new workflow executions',
         category: 'workflow_pause',
         scope: 'workflow',
         requestedAt: '2026-03-18T00:00:02.000Z',

@@ -29,7 +29,11 @@ import { WebhookService } from './webhook.service';
       defaultJobOptions: TRIGGER_QUEUE_DEFAULT_JOB_OPTIONS,
     }),
   ],
-  controllers: [TriggerController, WebhookController, ApiEventIngestionController],
+  controllers: [
+    TriggerController,
+    WebhookController,
+    ApiEventIngestionController,
+  ],
   providers: [
     TriggerService,
     TriggerHistoryService,

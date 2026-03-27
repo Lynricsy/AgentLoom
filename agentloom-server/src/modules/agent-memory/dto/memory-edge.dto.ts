@@ -11,9 +11,7 @@ export const CreateMemoryEdgeSchema = z.object({
   disclosure: z.coerce.number().int().min(0).default(0),
 });
 
-export class CreateMemoryEdgeDto extends createZodDto(
-  CreateMemoryEdgeSchema,
-) {}
+export class CreateMemoryEdgeDto extends createZodDto(CreateMemoryEdgeSchema) {}
 
 export const ListMemoryEdgesQuerySchema = z
   .object({

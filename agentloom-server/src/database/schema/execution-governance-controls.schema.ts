@@ -29,7 +29,9 @@ export type GovernanceScope = 'tenant' | 'workflow';
 export const executionGovernanceControls = pgTable(
   'execution_governance_controls',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     organizationId: uuid('organization_id')
       .notNull()
@@ -41,9 +43,7 @@ export const executionGovernanceControls = pgTable(
 
     targetId: uuid('target_id').notNull(),
 
-    status: executionGovernanceStateEnum('status')
-      .notNull()
-      .default('active'),
+    status: executionGovernanceStateEnum('status').notNull().default('active'),
 
     reason: text('reason'),
 

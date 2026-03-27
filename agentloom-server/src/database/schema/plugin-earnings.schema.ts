@@ -27,7 +27,9 @@ export const payoutStatusEnum = pgEnum('payout_status', [
 export const pluginEarnings = pgTable(
   'plugin_earnings',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     pluginDbId: uuid('plugin_db_id')
       .notNull()
@@ -44,12 +46,25 @@ export const pluginEarnings = pgTable(
     periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
     periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
     totalExecutions: integer('total_executions').notNull().default(0),
-    totalRevenue: numeric('total_revenue', { precision: 18, scale: 8 }).notNull().default('0'),
-    developerShare: numeric('developer_share', { precision: 18, scale: 8 }).notNull().default('0'),
-    platformShare: numeric('platform_share', { precision: 18, scale: 8 }).notNull().default('0'),
-    listingCommission: numeric('listing_commission', { precision: 18, scale: 8 }).notNull().default('0'),
+    totalRevenue: numeric('total_revenue', { precision: 18, scale: 8 })
+      .notNull()
+      .default('0'),
+    developerShare: numeric('developer_share', { precision: 18, scale: 8 })
+      .notNull()
+      .default('0'),
+    platformShare: numeric('platform_share', { precision: 18, scale: 8 })
+      .notNull()
+      .default('0'),
+    listingCommission: numeric('listing_commission', {
+      precision: 18,
+      scale: 8,
+    })
+      .notNull()
+      .default('0'),
     currency: varchar('currency', { length: 10 }).notNull().default('USD'),
-    payoutStatus: payoutStatusEnum('payout_status').notNull().default('pending'),
+    payoutStatus: payoutStatusEnum('payout_status')
+      .notNull()
+      .default('pending'),
     payoutReference: varchar('payout_reference', { length: 255 }),
     payoutAt: timestamp('payout_at', { withTimezone: true }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
@@ -61,7 +76,10 @@ export const pluginEarnings = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index('plugin_earnings_tenant_plugin_idx').on(table.tenantId, table.pluginDbId),
+    index('plugin_earnings_tenant_plugin_idx').on(
+      table.tenantId,
+      table.pluginDbId,
+    ),
     index('plugin_earnings_org_idx').on(table.orgId),
     index('plugin_earnings_source_org_idx').on(table.sourceOrgId),
     index('plugin_earnings_period_idx').on(table.periodStart, table.periodEnd),

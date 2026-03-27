@@ -54,7 +54,10 @@ export class EvidenceController {
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: '获取执行的证据关系图' })
   @ApiParam({ name: 'executionId', description: '执行 ID' })
-  @ApiResponse({ status: 200, description: '证据关系图获取成功，含 X-Cache-Hit 响应头' })
+  @ApiResponse({
+    status: 200,
+    description: '证据关系图获取成功，含 X-Cache-Hit 响应头',
+  })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: '执行不存在' })
@@ -63,8 +66,10 @@ export class EvidenceController {
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const { response, cached } =
-      await this.evidenceGraphService.buildGraph(tenantId, executionId);
+    const { response, cached } = await this.evidenceGraphService.buildGraph(
+      tenantId,
+      executionId,
+    );
     res.header('X-Cache-Hit', cached ? 'true' : 'false');
     return { data: response };
   }
@@ -73,8 +78,15 @@ export class EvidenceController {
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: '获取执行的证据溯源链' })
   @ApiParam({ name: 'executionId', description: '执行 ID' })
-  @ApiQuery({ name: 'nodeId', required: false, description: '节点 ID，用于过滤特定节点的溯源链' })
-  @ApiResponse({ status: 200, description: '证据溯源链获取成功，含 X-Cache-Hit 响应头' })
+  @ApiQuery({
+    name: 'nodeId',
+    required: false,
+    description: '节点 ID，用于过滤特定节点的溯源链',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '证据溯源链获取成功，含 X-Cache-Hit 响应头',
+  })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: '执行不存在' })

@@ -97,7 +97,9 @@ export class PluginSandboxService {
           await plugin.close();
         } catch (closeError) {
           const closeMessage =
-            closeError instanceof Error ? closeError.message : String(closeError);
+            closeError instanceof Error
+              ? closeError.message
+              : String(closeError);
 
           this.logger.warn(
             `关闭插件 "${pluginId}" 的 WASM 实例时出错: ${closeMessage}`,
@@ -113,7 +115,8 @@ export class PluginSandboxService {
       ? manifest.permissions
       : [];
     const allowedHosts =
-      permissions.includes('network:outbound') && this.isStringArray(sandbox.allowedHosts)
+      permissions.includes('network:outbound') &&
+      this.isStringArray(sandbox.allowedHosts)
         ? [...new Set(sandbox.allowedHosts)]
         : [];
 
@@ -149,7 +152,9 @@ export class PluginSandboxService {
     };
   }
 
-  private normalizeInput(input: unknown): string | number | Uint8Array | undefined {
+  private normalizeInput(
+    input: unknown,
+  ): string | number | Uint8Array | undefined {
     if (input === undefined) {
       return undefined;
     }
@@ -180,15 +185,15 @@ export class PluginSandboxService {
       return new PluginExecutionTimeoutException(pluginId, config.timeoutMs);
     }
 
-    if (message.includes('is not allowed') && this.isPermissionDeniedMessage(message)) {
+    if (
+      message.includes('is not allowed') &&
+      this.isPermissionDeniedMessage(message)
+    ) {
       const detail = message.includes('allowedPaths')
         ? `插件 "${pluginId}" 尝试访问未授权的文件路径。V1 默认禁止文件系统访问。`
         : `插件 "${pluginId}" 尝试访问未授权的主机。请在 manifest 的 sandbox.allowedHosts 中配置允许的主机。`;
 
-      return new PluginPermissionDeniedException(
-        pluginId,
-        detail,
-      );
+      return new PluginPermissionDeniedException(pluginId, detail);
     }
 
     if (
@@ -221,7 +226,9 @@ export class PluginSandboxService {
   }
 
   private isStringArray(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every((item) => typeof item === 'string');
+    return (
+      Array.isArray(value) && value.every((item) => typeof item === 'string')
+    );
   }
 
   private isStringRecord(value: unknown): value is Record<string, string> {

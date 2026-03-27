@@ -14,9 +14,7 @@ import type {
   AgentSession,
   CreateSessionParams,
 } from './types/agent-session.types';
-import type {
-  AgentEvent,
-} from './types/agent-event.types';
+import type { AgentEvent } from './types/agent-event.types';
 import type { ReplayableAgentEvent } from './types/conversation-history.types';
 import type { ContentBlock } from './types/content-block.types';
 
@@ -30,7 +28,10 @@ export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
   private readonly sessionIndex = new Map<string, SessionMetadata>();
   private readonly sessionSnapshots = new Map<string, AgentSession>();
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider[]>();
+  private readonly sessionToolProviders = new Map<
+    string,
+    SessionToolProvider[]
+  >();
   private readonly runtimeSessionIds = new Map<string, string>();
   private readonly coreAdapter: PiAgentCoreAdapter;
 
@@ -69,7 +70,10 @@ export class InProcessAgentAdapter implements IAgentRuntime {
 
     const runtimeSessionId = this.runtimeSessionIds.get(sessionId);
     if (runtimeSessionId) {
-      this.coreAdapter.registerSessionToolProvider?.(runtimeSessionId, provider);
+      this.coreAdapter.registerSessionToolProvider?.(
+        runtimeSessionId,
+        provider,
+      );
     }
   }
 
@@ -184,18 +188,28 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       : content;
 
     try {
-      for await (const event of this.coreAdapter.prompt(runtimeSessionId, promptBlocks)) {
-        if (snapshot.mode === 'conversation' && this.isReplayableAgentEvent(event)) {
-          await this.sessionPersistence.appendConversationReplayEntry(snapshot, {
-            kind: 'agent_event',
-            event,
-          });
+      for await (const event of this.coreAdapter.prompt(
+        runtimeSessionId,
+        promptBlocks,
+      )) {
+        if (
+          snapshot.mode === 'conversation' &&
+          this.isReplayableAgentEvent(event)
+        ) {
+          await this.sessionPersistence.appendConversationReplayEntry(
+            snapshot,
+            {
+              kind: 'agent_event',
+              event,
+            },
+          );
         }
 
         yield event;
       }
 
-      const runtimeSession = await this.coreAdapter.loadSession(runtimeSessionId);
+      const runtimeSession =
+        await this.coreAdapter.loadSession(runtimeSessionId);
       const synced = this.syncRuntimeSessionSnapshot(
         sessionId,
         runtimeSession,
@@ -223,8 +237,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     try {
       await this.coreAdapter.cancel(runtimeSessionId);
       this.coreAdapter.unregisterSessionToolProvider?.(runtimeSessionId);
-    } catch {
-    }
+    } catch {}
 
     const meta = this.sessionIndex.get(sessionId);
     if (meta) {
@@ -269,7 +282,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     runtimeSessionId: string;
     restored: boolean;
   }> {
-    const existingRuntimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+    const existingRuntimeSessionId =
+      this.runtimeSessionIds.get(sessionId) ?? sessionId;
     const existing = await this.tryLoadRuntimeSession(sessionId);
     if (existing) {
       return {
@@ -310,7 +324,9 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     return {
       agentId: session.agentId,
       mode: session.mode,
-      ...(session.context.cwd === undefined ? {} : { cwd: session.context.cwd }),
+      ...(session.context.cwd === undefined
+        ? {}
+        : { cwd: session.context.cwd }),
       ...(session.context.mcpServers === undefined
         ? {}
         : { mcpServers: session.context.mcpServers }),
@@ -330,7 +346,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       ...(session.runtimeConfig === undefined
         ? {}
         : { runtimeConfig: session.runtimeConfig }),
-      ...(session.mode === 'workflow' && session.context.workflowState !== undefined
+      ...(session.mode === 'workflow' &&
+      session.context.workflowState !== undefined
         ? { context: { ...session.context.workflowState } }
         : {}),
     };

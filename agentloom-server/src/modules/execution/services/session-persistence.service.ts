@@ -283,7 +283,9 @@ export class SessionPersistenceService {
         history: raw.context.history,
         cwd: raw.context?.cwd,
         mcpServers: raw.context?.mcpServers,
-        serverSandbox: raw.context?.serverSandbox as unknown as ServerSandboxBinding | undefined,
+        serverSandbox: raw.context?.serverSandbox as unknown as
+          | ServerSandboxBinding
+          | undefined,
         workflowState: raw.context?.workflowState,
         ...(raw.context?.terminalContinuity === undefined
           ? {}
@@ -383,7 +385,9 @@ export class SessionPersistenceService {
     });
   }
 
-  async loadConversationSession(sessionId: string): Promise<AgentSession | null> {
+  async loadConversationSession(
+    sessionId: string,
+  ): Promise<AgentSession | null> {
     const [record] = await this.tenantDb
       .select({
         sessionSnapshot: schema.acpConversationSessions.sessionSnapshot,
@@ -458,7 +462,9 @@ export class SessionPersistenceService {
       return [];
     }
 
-    const parsed = ConversationReplayEntriesSchema.safeParse(record.replayEntries);
+    const parsed = ConversationReplayEntriesSchema.safeParse(
+      record.replayEntries,
+    );
     if (!parsed.success) {
       throw buildIntegrityError(sessionId, 'replay entries', parsed.error);
     }

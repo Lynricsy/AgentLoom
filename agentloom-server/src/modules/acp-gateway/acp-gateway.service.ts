@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { AGENT_RUNTIME, type IAgentRuntime } from '../agent/ports/agent-runtime.port';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../agent/ports/agent-runtime.port';
 import { AcpMessageRouter } from './acp-message-router';
 import type { AcpConnectionState } from './acp-types';
 

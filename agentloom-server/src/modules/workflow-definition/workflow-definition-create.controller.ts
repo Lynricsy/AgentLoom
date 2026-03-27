@@ -18,7 +18,10 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
-import { CaptureAuditLog, auditLogCaptureConfigs } from '../evidence/audit-log.capture';
+import {
+  CaptureAuditLog,
+  auditLogCaptureConfigs,
+} from '../evidence/audit-log.capture';
 import { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import {
   ImportWorkflowSchema,

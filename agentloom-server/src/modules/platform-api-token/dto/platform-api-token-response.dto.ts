@@ -13,8 +13,7 @@ export interface PlatformApiTokenResponse {
 }
 
 /** 仅在创建时一次性返回完整明文 token */
-export interface PlatformApiTokenCreateResponse
-  extends PlatformApiTokenResponse {
+export interface PlatformApiTokenCreateResponse extends PlatformApiTokenResponse {
   token: string;
 }
 

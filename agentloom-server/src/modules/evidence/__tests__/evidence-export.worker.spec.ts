@@ -103,7 +103,10 @@ function createExportJob(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createChainResult(totalNodes: number, integrityIssues: unknown[] = []) {
+function createChainResult(
+  totalNodes: number,
+  integrityIssues: unknown[] = [],
+) {
   return {
     cached: false,
     response: {
@@ -247,7 +250,10 @@ describe('EvidenceExportWorker', () => {
       }),
     );
 
-    const expectedStorageKey = buildEvidenceExportStorageKey(TENANT_ID, 'export-1');
+    const expectedStorageKey = buildEvidenceExportStorageKey(
+      TENANT_ID,
+      'export-1',
+    );
     const expectedFileName = buildEvidenceExportArchiveFileName('export-1');
     expect(updateRecorder.set).toHaveBeenNthCalledWith(
       2,
@@ -275,7 +281,9 @@ describe('EvidenceExportWorker', () => {
     const exportData = JSON.parse(
       await zip.file(EVIDENCE_EXPORT_BUNDLE_DATA_PATH)!.async('string'),
     );
-    const report = await zip.file(EVIDENCE_EXPORT_BUNDLE_REPORT_PATH)!.async('string');
+    const report = await zip
+      .file(EVIDENCE_EXPORT_BUNDLE_REPORT_PATH)!
+      .async('string');
 
     expect(Object.keys(zip.files).sort()).toEqual(
       [

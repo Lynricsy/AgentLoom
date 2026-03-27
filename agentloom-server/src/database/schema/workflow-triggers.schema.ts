@@ -84,10 +84,7 @@ export const workflowTriggers = pgTable(
     index('idx_workflow_triggers_workflow_id').on(table.workflowDefinitionId),
     index('idx_workflow_triggers_tenant_id').on(table.tenantId),
     index('idx_workflow_triggers_type').on(table.tenantId, table.type),
-    index('idx_workflow_triggers_enabled').on(
-      table.tenantId,
-      table.isEnabled,
-    ),
+    index('idx_workflow_triggers_enabled').on(table.tenantId, table.isEnabled),
     ...createDirectTenantPolicies('workflow_triggers'),
   ],
 );
@@ -136,7 +133,6 @@ export const workflowTriggerHistory = pgTable(
   ],
 );
 
-export type WorkflowTriggerHistory =
-  typeof workflowTriggerHistory.$inferSelect;
+export type WorkflowTriggerHistory = typeof workflowTriggerHistory.$inferSelect;
 export type NewWorkflowTriggerHistory =
   typeof workflowTriggerHistory.$inferInsert;

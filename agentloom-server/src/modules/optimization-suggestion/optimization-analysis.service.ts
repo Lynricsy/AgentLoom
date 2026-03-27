@@ -94,13 +94,18 @@ export class OptimizationAnalysisService {
 
     const analyzers = this.getAnalyzers();
     const analysisWindow = this.createAnalysisWindow();
-    const suggestionsToInsert: typeof schema.optimizationSuggestions.$inferInsert[] = [];
+    const suggestionsToInsert: (typeof schema.optimizationSuggestions.$inferInsert)[] =
+      [];
     let analyzed = 0;
     const autonomyCap =
-      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(tenantId);
+      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(
+        tenantId,
+      );
 
     for (const workflow of workflows) {
-      const agentNodes = workflow.nodes.filter((node) => this.isAgentNode(node));
+      const agentNodes = workflow.nodes.filter((node) =>
+        this.isAgentNode(node),
+      );
 
       for (const node of agentNodes) {
         try {
@@ -143,14 +148,18 @@ export class OptimizationAnalysisService {
 
           const candidates = analyzers
             .map((analyzer) => analyzer.analyze(context))
-            .filter((candidate): candidate is SuggestionCandidate => candidate !== null);
+            .filter(
+              (candidate): candidate is SuggestionCandidate =>
+                candidate !== null,
+            );
 
-          const existingSuggestionTypes = await this.getExistingPendingSuggestionTypes(
-            tenantDb,
-            tenantId,
-            workflow.id,
-            node.id,
-          );
+          const existingSuggestionTypes =
+            await this.getExistingPendingSuggestionTypes(
+              tenantDb,
+              tenantId,
+              workflow.id,
+              node.id,
+            );
 
           for (const candidate of candidates) {
             if (existingSuggestionTypes.has(candidate.suggestionType)) {
@@ -169,7 +178,8 @@ export class OptimizationAnalysisService {
               rationale: candidate.rationale,
               impactEstimate: candidate.impactEstimate ?? null,
               analysisMetadata: {
-                totalRecords: telemetryRecords.length + executionSummaries.length,
+                totalRecords:
+                  telemetryRecords.length + executionSummaries.length,
                 analyzerVersion: 'optimization-analysis-v1',
               },
               analysisPeriodStart: analysisWindow.start,
@@ -179,7 +189,8 @@ export class OptimizationAnalysisService {
 
           analyzed += 1;
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'unknown error';
+          const message =
+            error instanceof Error ? error.message : 'unknown error';
           const stack = error instanceof Error ? error.stack : undefined;
 
           this.logger.error(
@@ -191,7 +202,9 @@ export class OptimizationAnalysisService {
     }
 
     if (suggestionsToInsert.length > 0) {
-      await tenantDb.insert(schema.optimizationSuggestions).values(suggestionsToInsert);
+      await tenantDb
+        .insert(schema.optimizationSuggestions)
+        .values(suggestionsToInsert);
     }
 
     return {
@@ -227,7 +240,8 @@ export class OptimizationAnalysisService {
         return {
           modelId: this.readString(value.modelId, value.id) ?? 'unknown-model',
           modelName:
-            this.readString(value.modelName, value.name, value.modelId) ?? 'unknown-model',
+            this.readString(value.modelName, value.name, value.modelId) ??
+            'unknown-model',
           provider: this.readString(value.provider) ?? 'unknown-provider',
         };
       case 'timeout_adjustment':
@@ -257,7 +271,8 @@ export class OptimizationAnalysisService {
         return {
           modelId: this.readString(value.modelId, value.id) ?? 'unknown-model',
           modelName:
-            this.readString(value.modelName, value.name, value.modelId) ?? 'unknown-model',
+            this.readString(value.modelName, value.name, value.modelId) ??
+            'unknown-model',
           provider: this.readString(value.provider) ?? 'unknown-provider',
         };
       case 'timeout_adjustment':
@@ -303,7 +318,11 @@ export class OptimizationAnalysisService {
       ...nodeData,
       model,
       tools,
-      timeoutMs: this.readNumber(nodeData.timeoutMs, config.timeoutMs, settings.timeoutMs),
+      timeoutMs: this.readNumber(
+        nodeData.timeoutMs,
+        config.timeoutMs,
+        settings.timeoutMs,
+      ),
       autonomyMode:
         this.readString(
           nodeData.autonomyMode,
@@ -319,15 +338,21 @@ export class OptimizationAnalysisService {
     nodeData: Record<string, unknown>,
     config: Record<string, unknown>,
   ): Record<string, unknown> {
-    const directModel = this.asRecord(nodeData.model) ?? this.asRecord(config.model);
-    const modelConfig = this.asRecord(nodeData.modelConfig) ?? this.asRecord(config.modelConfig);
-    const connectedModelNodeId = this.readString(modelConfig?.connectedModelNodeId);
+    const directModel =
+      this.asRecord(nodeData.model) ?? this.asRecord(config.model);
+    const modelConfig =
+      this.asRecord(nodeData.modelConfig) ?? this.asRecord(config.modelConfig);
+    const connectedModelNodeId = this.readString(
+      modelConfig?.connectedModelNodeId,
+    );
 
     if (!connectedModelNodeId) {
       return directModel ?? modelConfig ?? {};
     }
 
-    const connectedNode = workflow.nodes.find((candidate) => candidate.id === connectedModelNodeId);
+    const connectedNode = workflow.nodes.find(
+      (candidate) => candidate.id === connectedModelNodeId,
+    );
     const connectedNodeData = this.asRecord(connectedNode?.data) ?? {};
     const connectedConfig = this.asRecord(connectedNodeData.config) ?? {};
 
@@ -497,7 +522,10 @@ export class OptimizationAnalysisService {
       .where(
         and(
           eq(schema.optimizationSuggestions.tenantId, tenantId),
-          eq(schema.optimizationSuggestions.workflowDefinitionId, workflowDefinitionId),
+          eq(
+            schema.optimizationSuggestions.workflowDefinitionId,
+            workflowDefinitionId,
+          ),
           eq(schema.optimizationSuggestions.nodeId, nodeId),
           eq(schema.optimizationSuggestions.status, 'pending'),
         ),
@@ -540,18 +568,23 @@ export class OptimizationAnalysisService {
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+    return typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : null;
   }
 
   private readString(...values: unknown[]): string | null {
-    const resolved = values.find((value): value is string => typeof value === 'string' && value.length > 0);
+    const resolved = values.find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
 
     return resolved ?? null;
   }
 
   private readNumber(...values: unknown[]): number | null {
     const resolved = values.find(
-      (value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0,
+      (value): value is number =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0,
     );
 
     return resolved ?? null;

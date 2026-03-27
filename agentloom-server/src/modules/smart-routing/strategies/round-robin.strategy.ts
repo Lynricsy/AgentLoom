@@ -29,10 +29,14 @@ export class RoundRobinRouter extends BaseRouterStrategy {
         modelId: c.id,
         modelName: c.name,
         provider: c.provider,
-        score: i === selectedIndex ? 100 : Math.max(100 - Math.abs(i - selectedIndex) * 10, 0),
-        reasoning: i === selectedIndex
-          ? `轮转选中，位置 #${selectedIndex + 1}`
-          : `轮转等待，位置 #${i + 1}`,
+        score:
+          i === selectedIndex
+            ? 100
+            : Math.max(100 - Math.abs(i - selectedIndex) * 10, 0),
+        reasoning:
+          i === selectedIndex
+            ? `轮转选中，位置 #${selectedIndex + 1}`
+            : `轮转等待，位置 #${i + 1}`,
       })),
       reasoning: `轮转路由：租户 ${context.tenantId} 第 ${currentIndex + 1} 次请求，选择位置 #${selectedIndex + 1} 的 ${selected.name}`,
       routerType: this.name,

@@ -32,7 +32,11 @@ import { PluginSignatureService } from './plugin-signature.service';
       defaultJobOptions: earningsSettlementQueueDefaultJobOptions,
     }),
   ],
-  controllers: [PluginController, PluginDeveloperKeyController, PluginMarketplaceController],
+  controllers: [
+    PluginController,
+    PluginDeveloperKeyController,
+    PluginMarketplaceController,
+  ],
   providers: [
     PluginService,
     PluginSignatureService,

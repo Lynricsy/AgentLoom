@@ -34,9 +34,8 @@ type AuditLogLookupFilters = Omit<ListAuditLogsQuery, 'page' | 'pageSize'> & {
 };
 
 type AuditLogTable = typeof auditLogs | typeof auditLogArchives;
-type AuditLogTableRow<TTable extends AuditLogTable> = TTable extends typeof auditLogs
-  ? AuditLog
-  : AuditLogArchive;
+type AuditLogTableRow<TTable extends AuditLogTable> =
+  TTable extends typeof auditLogs ? AuditLog : AuditLogArchive;
 
 type AuditLogRecallRecord = AuditLog | AuditLogArchive;
 
@@ -64,7 +63,10 @@ export class AuditLogService {
         metadata: input.metadata ?? null,
       };
 
-      const [record] = await tenantDb.insert(auditLogs).values(values).returning();
+      const [record] = await tenantDb
+        .insert(auditLogs)
+        .values(values)
+        .returning();
 
       if (!record) {
         throw new Error('Failed to record audit log');
@@ -168,10 +170,7 @@ export class AuditLogService {
     >;
   }
 
-  private buildHotConditions(
-    tenantId: string,
-    filters: AuditLogLookupFilters,
-  ) {
+  private buildHotConditions(tenantId: string, filters: AuditLogLookupFilters) {
     const conditions = [eq(auditLogs.tenantId, tenantId)];
 
     if (filters.id) {
@@ -273,7 +272,8 @@ export class AuditLogService {
     }
 
     return [...merged.values()].sort((left, right) => {
-      const createdAtDiff = left.createdAt.getTime() - right.createdAt.getTime();
+      const createdAtDiff =
+        left.createdAt.getTime() - right.createdAt.getTime();
 
       if (createdAtDiff !== 0) {
         return createdAtDiff;

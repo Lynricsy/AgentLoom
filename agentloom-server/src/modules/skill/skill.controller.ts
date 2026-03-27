@@ -40,7 +40,10 @@ import {
   UpdateSkillSchema,
   type UpdateSkillDtoType,
 } from './dto/update-skill.dto';
-import { SkillQuerySchema, type SkillQueryDtoType } from './dto/skill-query.dto';
+import {
+  SkillQuerySchema,
+  type SkillQueryDtoType,
+} from './dto/skill-query.dto';
 import { SkillService } from './skill.service';
 import { SkillStorageService } from './skill-storage.service';
 
@@ -92,10 +95,11 @@ export class SkillController {
     const userId = req.user.sub;
 
     const { metadata, files } = await this.parseMultipart(req);
-    const dto = new ZodValidationPipe(CreateSkillSchema).transform(
-      metadata,
-      { type: 'body', metatype: undefined, data: undefined },
-    ) as CreateSkillDtoType;
+    const dto = new ZodValidationPipe(CreateSkillSchema).transform(metadata, {
+      type: 'body',
+      metatype: undefined,
+      data: undefined,
+    }) as CreateSkillDtoType;
 
     return this.skillService.create(tenantId, userId, dto, files);
   }
@@ -135,7 +139,8 @@ export class SkillController {
       properties: {
         metadata: {
           type: 'string',
-          description: 'Skill 更新元数据 JSON（name/description/content/occVersion）',
+          description:
+            'Skill 更新元数据 JSON（name/description/content/occVersion）',
         },
         files: {
           type: 'array',
@@ -159,10 +164,11 @@ export class SkillController {
     const userId = req.user.sub;
 
     const { metadata, files } = await this.parseMultipart(req);
-    const dto = new ZodValidationPipe(UpdateSkillSchema).transform(
-      metadata,
-      { type: 'body', metatype: undefined, data: undefined },
-    ) as UpdateSkillDtoType;
+    const dto = new ZodValidationPipe(UpdateSkillSchema).transform(metadata, {
+      type: 'body',
+      metatype: undefined,
+      data: undefined,
+    }) as UpdateSkillDtoType;
 
     return this.skillService.update(tenantId, userId, id, dto, files);
   }
@@ -321,9 +327,7 @@ export class SkillController {
     return req.tenantId;
   }
 
-  private async parseMultipart(
-    req: AuthenticatedRequest,
-  ): Promise<{
+  private async parseMultipart(req: AuthenticatedRequest): Promise<{
     metadata: Record<string, unknown>;
     files: Array<{
       fieldname: string;

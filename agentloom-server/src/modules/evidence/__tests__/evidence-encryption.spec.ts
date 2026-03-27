@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RedisCacheService } from '../../../common/redis/redis-cache.service';
 import { DRIZZLE } from '../../../database/database.module';
-import { LlmEncryptionService, type EncryptedPayload } from '../../llm/llm-encryption.service';
+import {
+  LlmEncryptionService,
+  type EncryptedPayload,
+} from '../../llm/llm-encryption.service';
 import { EvidenceService } from '../evidence.service';
 
 const mocks = vi.hoisted(() => ({
@@ -63,7 +66,9 @@ type CapturedInsertValue = {
   encryptionMetadata?: Record<string, unknown>;
 };
 
-function createAgentDecisionPacketInput(overrides: Record<string, unknown> = {}) {
+function createAgentDecisionPacketInput(
+  overrides: Record<string, unknown> = {},
+) {
   return {
     sourceType: 'agent_decision' as const,
     agentDecision: {
@@ -216,13 +221,14 @@ function normalizeForHash(value: unknown): unknown {
 }
 
 function computeStoredPacketHash(packet: Record<string, unknown>): string {
-  const hashSource = 'encryptedPacket' in packet
-    ? {
-        sourceType: packet.sourceType,
-        encryptedPacket: packet.encryptedPacket,
-        summary: packet.summary,
-      }
-    : packet;
+  const hashSource =
+    'encryptedPacket' in packet
+      ? {
+          sourceType: packet.sourceType,
+          encryptedPacket: packet.encryptedPacket,
+          summary: packet.summary,
+        }
+      : packet;
 
   return createHash('sha256')
     .update(JSON.stringify(normalizeForHash(hashSource)))
@@ -315,15 +321,19 @@ describe('EvidenceService encryption integration', () => {
         packet,
       });
 
-      const [inserted] = insertMock.getCapturedValues() as CapturedInsertValue[];
-      const encryptedPlaintext = mocks.llmEncryptionService.encryptForTenant.mock
-        .calls[0]?.[2] as string;
+      const [inserted] =
+        insertMock.getCapturedValues() as CapturedInsertValue[];
+      const encryptedPlaintext = mocks.llmEncryptionService.encryptForTenant
+        .mock.calls[0]?.[2] as string;
 
       expect(mocks.llmEncryptionService.isE2EEEnabled).toHaveBeenCalledWith(
         TENANT_ID,
         ORG_ID,
       );
-      const plaintextPacket = JSON.parse(encryptedPlaintext) as Record<string, unknown>;
+      const plaintextPacket = JSON.parse(encryptedPlaintext) as Record<
+        string,
+        unknown
+      >;
 
       expect(plaintextPacket).toMatchObject({
         sourceType,
@@ -380,18 +390,22 @@ describe('EvidenceService encryption integration', () => {
     queueOrgLookup([{ id: ORG_ID }]);
     const insertMock = setupInsertReturning();
 
-    const promise = service.createBatchEvidenceRecords(TENANT_ID, EXECUTION_ID, [
-      {
-        stepId: STEP_ID,
-        sourceType: 'agent_decision',
-        packet: createAgentDecisionPacketInput(),
-      },
-      {
-        stepId: STEP_ID,
-        sourceType: 'tool_output',
-        packet: createToolOutputPacketInput(),
-      },
-    ]);
+    const promise = service.createBatchEvidenceRecords(
+      TENANT_ID,
+      EXECUTION_ID,
+      [
+        {
+          stepId: STEP_ID,
+          sourceType: 'agent_decision',
+          packet: createAgentDecisionPacketInput(),
+        },
+        {
+          stepId: STEP_ID,
+          sourceType: 'tool_output',
+          packet: createToolOutputPacketInput(),
+        },
+      ],
+    );
 
     await vi.advanceTimersByTimeAsync(50);
     await promise;
@@ -412,7 +426,9 @@ describe('EvidenceService encryption integration', () => {
   });
 
   it('加密失败时会按条目优雅降级并保留原始明文数据', async () => {
-    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
 
     mocks.uuidv7
       .mockReturnValueOnce(GENERATED_ID_1)
@@ -427,32 +443,48 @@ describe('EvidenceService encryption integration', () => {
         createEncryptedPayload({ ciphertext: 'second-entry-ciphertext' }),
       );
 
-    const promise = service.createBatchEvidenceRecords(TENANT_ID, EXECUTION_ID, [
-      {
-        stepId: STEP_ID,
-        sourceType: 'agent_decision',
-        packet: createAgentDecisionPacketInput(),
-      },
-      {
-        stepId: STEP_ID,
-        sourceType: 'tool_output',
-        packet: createToolOutputPacketInput(),
-      },
-    ]);
+    const promise = service.createBatchEvidenceRecords(
+      TENANT_ID,
+      EXECUTION_ID,
+      [
+        {
+          stepId: STEP_ID,
+          sourceType: 'agent_decision',
+          packet: createAgentDecisionPacketInput(),
+        },
+        {
+          stepId: STEP_ID,
+          sourceType: 'tool_output',
+          packet: createToolOutputPacketInput(),
+        },
+      ],
+    );
 
     await vi.advanceTimersByTimeAsync(50);
     await promise;
 
-    const [firstEntry, secondEntry] = insertMock.getCapturedValues() as CapturedInsertValue[];
+    const [firstEntry, secondEntry] =
+      insertMock.getCapturedValues() as CapturedInsertValue[];
 
-    expect(mocks.llmEncryptionService.encryptForTenant).toHaveBeenCalledTimes(2);
+    expect(mocks.llmEncryptionService.encryptForTenant).toHaveBeenCalledTimes(
+      2,
+    );
     expect(firstEntry).not.toHaveProperty('isEncrypted');
     expect(firstEntry).not.toHaveProperty('encryptionMetadata');
-    expect(firstEntry.contentHash).toBe(firstEntry.packet.contentHash as string);
+    expect(firstEntry.contentHash).toBe(
+      firstEntry.packet.contentHash as string,
+    );
     expect(secondEntry.isEncrypted).toBe(true);
-    expect(secondEntry.packet).toHaveProperty('encryptedPacket.ciphertext', 'second-entry-ciphertext');
-    expect(secondEntry.contentHash).toBe(secondEntry.packet.contentHash as string);
-    expect(secondEntry.contentHash).toBe(computeStoredPacketHash(secondEntry.packet));
+    expect(secondEntry.packet).toHaveProperty(
+      'encryptedPacket.ciphertext',
+      'second-entry-ciphertext',
+    );
+    expect(secondEntry.contentHash).toBe(
+      secondEntry.packet.contentHash as string,
+    );
+    expect(secondEntry.contentHash).toBe(
+      computeStoredPacketHash(secondEntry.packet),
+    );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('E2EE: 证据加密失败，保留明文'),
       { evidenceId: GENERATED_ID_1 },

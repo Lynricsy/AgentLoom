@@ -1,5 +1,10 @@
 import { Inject, Logger, Optional } from '@nestjs/common';
-import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import {
+  InjectQueue,
+  OnWorkerEvent,
+  Processor,
+  WorkerHost,
+} from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import * as schema from '../../database/schema';
 import type { TypeMismatchInfo } from '../../database/schema/execution-steps.schema';
@@ -206,11 +211,7 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (toolPermission) {
         runtime.registerSessionMetadata?.(sessionId!, tenantId, stepId);
-        this.registerMemoryToolsProvider(
-          runtime,
-          sessionId,
-          memorySessionIds,
-        );
+        this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
         const toolLoopState = this.loadToolLoopStateFromCheckpoint(step);
         accumulatedContent = toolLoopState.partialContent;
         decision = toolLoopState.decision;
@@ -402,14 +403,18 @@ export class AgentTaskWorker extends WorkerHost {
       let isEncrypted = false;
       try {
         const orgId = await this.resolveOrgId(tenantId);
-        if (orgId && (await this.llmEncryptionService.isE2EEEnabled(tenantId, orgId))) {
-          const encryptedContent = await this.llmEncryptionService.encryptForTenant(
-            tenantId,
-            orgId,
-            typeof accumulatedContent === 'string'
-              ? accumulatedContent
-              : JSON.stringify(accumulatedContent),
-          );
+        if (
+          orgId &&
+          (await this.llmEncryptionService.isE2EEEnabled(tenantId, orgId))
+        ) {
+          const encryptedContent =
+            await this.llmEncryptionService.encryptForTenant(
+              tenantId,
+              orgId,
+              typeof accumulatedContent === 'string'
+                ? accumulatedContent
+                : JSON.stringify(accumulatedContent),
+            );
           result.encryptedContent = encryptedContent;
           result.content = '[ENCRYPTED]';
           result.encryptionMetadata = {
@@ -657,7 +662,8 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       const finalError =
-        this.isFallbackChainStrategy(smartRouting?.strategy) && !authenticationFailed
+        this.isFallbackChainStrategy(smartRouting?.strategy) &&
+        !authenticationFailed
           ? new AllModelsFallbackExhaustedException(
               smartRouting?.routingNodeId ?? step.nodeId,
             )
@@ -791,7 +797,9 @@ export class AgentTaskWorker extends WorkerHost {
     await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
     this.cleanupMemoryToolsProvider(
       this.agentRuntime,
-      typeof checkpointData.sessionId === 'string' ? checkpointData.sessionId : null,
+      typeof checkpointData.sessionId === 'string'
+        ? checkpointData.sessionId
+        : null,
       [],
     );
   }
@@ -918,7 +926,8 @@ export class AgentTaskWorker extends WorkerHost {
     }
 
     try {
-      const bootSequence = await this.memoryFusionService.bootAll(memorySessionIds);
+      const bootSequence =
+        await this.memoryFusionService.bootAll(memorySessionIds);
       const memoryPrompt = this.buildMemoryBootPrompt(bootSequence);
       return this.prependSystemPrompt(memoryPrompt, baseSystemPrompt);
     } catch (error) {
@@ -953,7 +962,12 @@ export class AgentTaskWorker extends WorkerHost {
 
     if (bootSequence.index.length) {
       sections.push(
-        ['## Memory Index', ...bootSequence.index.map((path) => `- ${path.domain}://${path.pathString}`)].join('\n'),
+        [
+          '## Memory Index',
+          ...bootSequence.index.map(
+            (path) => `- ${path.domain}://${path.pathString}`,
+          ),
+        ].join('\n'),
       );
     }
 
@@ -1643,7 +1657,8 @@ export class AgentTaskWorker extends WorkerHost {
     const normalizedNodeData = this.asRecord(nodeData) ?? {};
     const config = this.asRecord(normalizedNodeData.config) ?? {};
     const settings = this.asRecord(normalizedNodeData.settings) ?? {};
-    const autonomyConfig = this.asRecord(normalizedNodeData.autonomyConfig) ?? {};
+    const autonomyConfig =
+      this.asRecord(normalizedNodeData.autonomyConfig) ?? {};
 
     return (
       this.readString(
@@ -1711,11 +1726,12 @@ export class AgentTaskWorker extends WorkerHost {
     try {
       const timeoutAction = await this.withTenantContext(tenantId, async () => {
         const context = await this.loadInterventionTimeoutContext(executionId);
-        const resolvedPolicy = await this.interventionPolicyService.resolvePolicy(
-          tenantId,
-          context.workflowDefinitionId,
-          step.nodeId,
-        );
+        const resolvedPolicy =
+          await this.interventionPolicyService.resolvePolicy(
+            tenantId,
+            context.workflowDefinitionId,
+            step.nodeId,
+          );
         const escalationCount = job.data.escalationCount ?? 0;
 
         if (resolvedPolicy.timeoutAction === 'approve') {
@@ -1896,11 +1912,19 @@ export class AgentTaskWorker extends WorkerHost {
     error: Error,
   ) {
     const orderedCandidateIds = [
-      ...nextSmartRouting.candidateModelIds.slice(nextSmartRouting.currentModelIndex),
-      ...nextSmartRouting.candidateModelIds.slice(0, nextSmartRouting.currentModelIndex),
+      ...nextSmartRouting.candidateModelIds.slice(
+        nextSmartRouting.currentModelIndex,
+      ),
+      ...nextSmartRouting.candidateModelIds.slice(
+        0,
+        nextSmartRouting.currentModelIndex,
+      ),
     ];
     const evaluatedModelsById = new Map(
-      (nextSmartRouting.evaluatedModels ?? []).map((model) => [model.modelId, model]),
+      (nextSmartRouting.evaluatedModels ?? []).map((model) => [
+        model.modelId,
+        model,
+      ]),
     );
     const attemptsSummary = attempts
       .map((attempt) => `第 ${attempt.attempt} 次：${attempt.error}`)
@@ -2027,7 +2051,11 @@ export class AgentTaskWorker extends WorkerHost {
       .catch((learningError: unknown) => {
         this.logger.warn(
           `Smart routing learning enqueue skipped: ${learningError instanceof Error ? learningError.message : String(learningError)}`,
-          { tenantId, stepId, routingDecisionId: smartRouting.routingDecisionId },
+          {
+            tenantId,
+            stepId,
+            routingDecisionId: smartRouting.routingDecisionId,
+          },
         );
       });
   }
@@ -2039,7 +2067,9 @@ export class AgentTaskWorker extends WorkerHost {
   ): Promise<{ modelId: string; provider: string } | null> {
     const selectedModelId =
       smartRouting.selectedModelId ||
-      (typeof nodeData.llmModelConfigId === 'string' ? nodeData.llmModelConfigId : null);
+      (typeof nodeData.llmModelConfigId === 'string'
+        ? nodeData.llmModelConfigId
+        : null);
 
     if (!selectedModelId) {
       return null;
@@ -2069,7 +2099,8 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   private estimateTokenCount(value: unknown): number {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value ?? {});
+    const serialized =
+      typeof value === 'string' ? value : JSON.stringify(value ?? {});
     return Math.max(0, Math.ceil(serialized.length / 4));
   }
 

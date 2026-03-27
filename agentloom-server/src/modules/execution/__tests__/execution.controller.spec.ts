@@ -98,7 +98,11 @@ describe('ExecutionController', () => {
   describe('runWorkflow', () => {
     it('应启动工作流执行并返回 { data }', async () => {
       mockService.runWorkflow.mockResolvedValue(mockExecution);
-      const dto = { inputParams: { source: 'manual' }, launchSource: undefined, schemaVersion: undefined };
+      const dto = {
+        inputParams: { source: 'manual' },
+        launchSource: undefined,
+        schemaVersion: undefined,
+      };
 
       const result = await controller.runWorkflow(
         WORKFLOW_ID,
@@ -461,7 +465,9 @@ describe('ExecutionController', () => {
       try {
         await controller.listPtySessions(EXECUTION_ID, TENANT_ID);
       } catch (e) {
-        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect((e as HttpException).getStatus()).toBe(
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
         expect((e as HttpException).getResponse()).toEqual({
           error: 'SANDBOX_UNAVAILABLE',
           message: 'sandbox connection failed',
@@ -492,7 +498,11 @@ describe('ExecutionController', () => {
       mockSandboxAgentAdapter.ptyBufferDump.mockResolvedValue(bufferData);
 
       const body = { sessionId: 'pty-1', offset: 0, limit: 100 };
-      const result = await controller.ptyBufferDump(EXECUTION_ID, body, TENANT_ID);
+      const result = await controller.ptyBufferDump(
+        EXECUTION_ID,
+        body,
+        TENANT_ID,
+      );
 
       expect(result).toEqual({ data: bufferData });
       expect(mockSandboxAgentAdapter.ptyBufferDump).toHaveBeenCalledWith(
@@ -508,7 +518,11 @@ describe('ExecutionController', () => {
       mockSandboxAgentAdapter.ptyBufferDump.mockResolvedValue(bufferData);
 
       const body = { sessionId: 'pty-1', pattern: 'error' };
-      const result = await controller.ptyBufferDump(EXECUTION_ID, body, TENANT_ID);
+      const result = await controller.ptyBufferDump(
+        EXECUTION_ID,
+        body,
+        TENANT_ID,
+      );
 
       expect(result).toEqual({ data: bufferData });
       expect(mockSandboxAgentAdapter.ptyBufferDump).toHaveBeenCalledWith(
@@ -525,7 +539,11 @@ describe('ExecutionController', () => {
       );
 
       await expect(
-        controller.ptyBufferDump(EXECUTION_ID, { sessionId: 'pty-1' }, TENANT_ID),
+        controller.ptyBufferDump(
+          EXECUTION_ID,
+          { sessionId: 'pty-1' },
+          TENANT_ID,
+        ),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -575,7 +593,9 @@ describe('ExecutionController', () => {
           TENANT_ID,
         );
       } catch (e) {
-        expect((e as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect((e as HttpException).getStatus()).toBe(
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
       }
     });
   });

@@ -60,7 +60,9 @@ describe('SharedResourcesModule', () => {
   it('should expose sandbox and memory providers from registry after module init', () => {
     module.onModuleInit();
 
-    expect(registry.getProvider(SANDBOX_RESOURCE_TYPE)).toBe(sandboxResourceProvider);
+    expect(registry.getProvider(SANDBOX_RESOURCE_TYPE)).toBe(
+      sandboxResourceProvider,
+    );
     expect(registry.getProvider('memory')).toBe(memoryResourceProvider);
   });
 

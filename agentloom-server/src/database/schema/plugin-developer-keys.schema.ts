@@ -14,10 +14,10 @@ import { organizations } from './organizations.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 
-export const pluginDeveloperKeyStatusEnum = pgEnum('plugin_developer_key_status', [
-  'active',
-  'revoked',
-]);
+export const pluginDeveloperKeyStatusEnum = pgEnum(
+  'plugin_developer_key_status',
+  ['active', 'revoked'],
+);
 
 export const pluginDeveloperKeys = pgTable(
   'plugin_developer_keys',

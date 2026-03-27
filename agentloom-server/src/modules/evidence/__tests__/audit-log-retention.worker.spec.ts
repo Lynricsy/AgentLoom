@@ -188,7 +188,9 @@ describe('AuditLogRetentionWorker', () => {
     expect(archivedCount).toBe(0);
     expect(tx.delete).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Skipped audit log purge because archive verification returned 0 rows'),
+      expect.stringContaining(
+        'Skipped audit log purge because archive verification returned 0 rows',
+      ),
     );
   });
 });

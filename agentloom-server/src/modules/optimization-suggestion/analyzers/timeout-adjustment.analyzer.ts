@@ -17,26 +17,34 @@ export class TimeoutAdjustmentAnalyzer implements SuggestionAnalyzer {
     const currentTimeoutMs = this.resolveTimeout(context.nodeConfig);
     const latencies = context.stepTelemetries
       .map((record) => record.telemetryData.latencyMs)
-      .filter((value): value is number => typeof value === 'number' && value > 0);
-    const timeoutErrorCount = context.stepTelemetries.reduce((count, record) => {
-      const currentErrors = record.telemetryData.errors ?? [];
-
-      return (
-        count +
-        currentErrors.filter(
-          (error) =>
-            error.type === 'timeout' ||
-            /timeout/i.test(error.type ?? '') ||
-            /timed out|timeout/i.test(error.message ?? ''),
-        ).length
+      .filter(
+        (value): value is number => typeof value === 'number' && value > 0,
       );
-    }, 0);
+    const timeoutErrorCount = context.stepTelemetries.reduce(
+      (count, record) => {
+        const currentErrors = record.telemetryData.errors ?? [];
+
+        return (
+          count +
+          currentErrors.filter(
+            (error) =>
+              error.type === 'timeout' ||
+              /timeout/i.test(error.type ?? '') ||
+              /timed out|timeout/i.test(error.message ?? ''),
+          ).length
+        );
+      },
+      0,
+    );
 
     if (latencies.length === 0 && timeoutErrorCount === 0) {
       return null;
     }
 
-    const p95Latency = latencies.length > 0 ? this.calculatePercentile(latencies, 0.95) : currentTimeoutMs;
+    const p95Latency =
+      latencies.length > 0
+        ? this.calculatePercentile(latencies, 0.95)
+        : currentTimeoutMs;
 
     if (timeoutErrorCount > 0) {
       const suggestedTimeoutMs = Math.max(
@@ -46,7 +54,10 @@ export class TimeoutAdjustmentAnalyzer implements SuggestionAnalyzer {
 
       return {
         suggestionType: 'timeout_adjustment',
-        confidence: Math.max(MIN_CONFIDENCE, Math.min(0.95, 0.7 + timeoutErrorCount * 0.05)),
+        confidence: Math.max(
+          MIN_CONFIDENCE,
+          Math.min(0.95, 0.7 + timeoutErrorCount * 0.05),
+        ),
         currentValue: { timeoutMs: currentTimeoutMs },
         suggestedValue: { timeoutMs: suggestedTimeoutMs },
         rationale: `检测到 ${timeoutErrorCount} 次 timeout 相关错误，当前延迟 p95 为 ${p95Latency}ms，建议提高超时阈值。`,
@@ -80,7 +91,9 @@ export class TimeoutAdjustmentAnalyzer implements SuggestionAnalyzer {
   private resolveTimeout(nodeConfig: Record<string, unknown>): number {
     const timeoutMs = nodeConfig.timeoutMs;
 
-    return typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+    return typeof timeoutMs === 'number' &&
+      Number.isFinite(timeoutMs) &&
+      timeoutMs > 0
       ? timeoutMs
       : DEFAULT_TIMEOUT_MS;
   }

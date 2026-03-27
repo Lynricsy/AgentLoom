@@ -26,7 +26,9 @@ export const memoryInstanceStatusEnum = pgEnum('memory_instance_status', [
 export const agentMemoryInstances = pgTable(
   'agent_memory_instances',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),

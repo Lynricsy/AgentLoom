@@ -132,7 +132,9 @@ export class PluginEarningsService {
       totalRevenue: normalizeFixedScaleDecimal(parsedData.totalRevenue),
       developerShare: normalizeFixedScaleDecimal(parsedData.developerShare),
       platformShare: normalizeFixedScaleDecimal(parsedData.platformShare),
-      listingCommission: normalizeFixedScaleDecimal(parsedData.listingCommission),
+      listingCommission: normalizeFixedScaleDecimal(
+        parsedData.listingCommission,
+      ),
       currency: parsedData.currency,
       payoutStatus: parsedData.payoutStatus,
       metadata: parsedData.metadata,
@@ -255,16 +257,11 @@ export class PluginEarningsService {
     const rows = await this.tenantDb
       .select({
         bucket,
-        totalRevenue:
-          sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
-        developerShare:
-          sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
-        platformShare:
-          sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
-        listingCommission:
-          sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
-        totalExecutions:
-          sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
+        totalRevenue: sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
+        developerShare: sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
+        platformShare: sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
+        listingCommission: sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
+        totalExecutions: sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
       })
       .from(pluginEarnings)
       .where(whereClause)
@@ -294,16 +291,11 @@ export class PluginEarningsService {
         pluginDbId: pluginEarnings.pluginDbId,
         pluginId: pluginEarnings.pluginId,
         pluginName: sql<string | null>`max(${plugins.name})`,
-        totalRevenue:
-          sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
-        developerShare:
-          sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
-        platformShare:
-          sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
-        listingCommission:
-          sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
-        totalExecutions:
-          sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
+        totalRevenue: sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
+        developerShare: sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
+        platformShare: sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
+        listingCommission: sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
+        totalExecutions: sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
       })
       .from(pluginEarnings)
       .leftJoin(plugins, eq(pluginEarnings.pluginDbId, plugins.id))
@@ -388,22 +380,14 @@ export class PluginEarningsService {
     const whereClause = this.buildWhereClause(conditions);
     const [summary] = await this.tenantDb
       .select({
-        totalRevenue:
-          sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
-        totalDeveloperShare:
-          sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
-        totalPlatformShare:
-          sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
-        totalListingCommission:
-          sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
-        pendingPayout:
-          sql<string>`coalesce(sum(case when ${pluginEarnings.payoutStatus} = 'pending' then ${pluginEarnings.developerShare} else 0 end), 0)::text`,
-        completedPayout:
-          sql<string>`coalesce(sum(case when ${pluginEarnings.payoutStatus} = 'completed' then ${pluginEarnings.developerShare} else 0 end), 0)::text`,
-        totalExecutions:
-          sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
-        pluginCount:
-          sql<number>`coalesce(count(distinct ${pluginEarnings.pluginDbId}), 0)::int`,
+        totalRevenue: sql<string>`coalesce(sum(${pluginEarnings.totalRevenue}), 0)::text`,
+        totalDeveloperShare: sql<string>`coalesce(sum(${pluginEarnings.developerShare}), 0)::text`,
+        totalPlatformShare: sql<string>`coalesce(sum(${pluginEarnings.platformShare}), 0)::text`,
+        totalListingCommission: sql<string>`coalesce(sum(${pluginEarnings.listingCommission}), 0)::text`,
+        pendingPayout: sql<string>`coalesce(sum(case when ${pluginEarnings.payoutStatus} = 'pending' then ${pluginEarnings.developerShare} else 0 end), 0)::text`,
+        completedPayout: sql<string>`coalesce(sum(case when ${pluginEarnings.payoutStatus} = 'completed' then ${pluginEarnings.developerShare} else 0 end), 0)::text`,
+        totalExecutions: sql<number>`coalesce(sum(${pluginEarnings.totalExecutions}), 0)::int`,
+        pluginCount: sql<number>`coalesce(count(distinct ${pluginEarnings.pluginDbId}), 0)::int`,
       })
       .from(pluginEarnings)
       .where(whereClause);
@@ -413,7 +397,9 @@ export class PluginEarningsService {
       totalDeveloperShare: normalizeFixedScaleDecimal(
         summary?.totalDeveloperShare,
       ),
-      totalPlatformShare: normalizeFixedScaleDecimal(summary?.totalPlatformShare),
+      totalPlatformShare: normalizeFixedScaleDecimal(
+        summary?.totalPlatformShare,
+      ),
       totalListingCommission: normalizeFixedScaleDecimal(
         summary?.totalListingCommission,
       ),

@@ -47,8 +47,7 @@ export class NotificationProcessor extends WorkerHost {
       }
 
       const notifyChannels = this.resolveNotifyChannels(notification.body);
-      const allowsInApp =
-        !notifyChannels || notifyChannels.includes('in_app');
+      const allowsInApp = !notifyChannels || notifyChannels.includes('in_app');
       const allowsPush =
         !notifyChannels || notifyChannels.includes(NOTIFICATION_CHANNEL_PUSH);
 

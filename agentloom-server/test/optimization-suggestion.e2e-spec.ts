@@ -67,9 +67,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import { NodeSchedulerService } from '../src/modules/execution/node-scheduler.service';
-import {
-  OPTIMIZATION_ANALYSIS_QUEUE,
-} from '../src/modules/optimization-suggestion/optimization-analysis.constants';
+import { OPTIMIZATION_ANALYSIS_QUEUE } from '../src/modules/optimization-suggestion/optimization-analysis.constants';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -368,7 +366,7 @@ describe('OptimizationSuggestion E2E', () => {
       .overrideProvider(NodeSchedulerService)
       .useValue(nodeSchedulerMock)
       .overrideProvider(BullRegistrar)
-      .useValue(bullRegistrarMock)
+      .useValue(bullRegistrarMock);
 
     moduleBuilder = moduleBuilder
       .overrideProvider(getOptionsToken())
@@ -722,10 +720,9 @@ describe('OptimizationSuggestion E2E', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveLength(2);
-      expect(response.body.data.map((item: { id: string }) => item.id)).toEqual([
-        newerSuggestion.id,
-        olderSuggestion.id,
-      ]);
+      expect(response.body.data.map((item: { id: string }) => item.id)).toEqual(
+        [newerSuggestion.id, olderSuggestion.id],
+      );
     });
   });
 
@@ -780,8 +777,12 @@ describe('OptimizationSuggestion E2E', () => {
           config?: Record<string, unknown>;
         };
       }>;
-      const targetNode = nodes.find((node) => node.id === workflow.targetNodeId);
-      const siblingNode = nodes.find((node) => node.id === workflow.siblingNodeId);
+      const targetNode = nodes.find(
+        (node) => node.id === workflow.targetNodeId,
+      );
+      const siblingNode = nodes.find(
+        (node) => node.id === workflow.siblingNodeId,
+      );
 
       expect(updatedWorkflow.updated_by).toBe(tenant.user.id);
       expect(targetNode?.data?.config).toMatchObject({
@@ -1039,7 +1040,9 @@ describe('OptimizationSuggestion E2E', () => {
         .get('/api/v1/optimization-suggestions')
         .set(tenantOne.headers);
       const crossTenantApplyResponse = await request(app!.getHttpServer())
-        .post(`/api/v1/optimization-suggestions/${tenantTwoSuggestion.id}/apply`)
+        .post(
+          `/api/v1/optimization-suggestions/${tenantTwoSuggestion.id}/apply`,
+        )
         .set(tenantOne.headers);
 
       expect(listResponse.status).toBe(200);
@@ -1060,5 +1063,4 @@ describe('OptimizationSuggestion E2E', () => {
       });
     });
   });
-
 });

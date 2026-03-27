@@ -124,108 +124,128 @@ export class NotificationListener {
   async handleQuotaUpdated(
     event: ResourceGovernanceQuotaUpdatedEvent,
   ): Promise<void> {
-    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
-      const recipients = await this.findEditorRecipients(tenantDb, event.tenantId);
+    await this.runInIndependentTenantTransaction(
+      event.tenantId,
+      async (tenantDb) => {
+        const recipients = await this.findEditorRecipients(
+          tenantDb,
+          event.tenantId,
+        );
 
-      if (recipients.length === 0) {
-        return;
-      }
+        if (recipients.length === 0) {
+          return;
+        }
 
-      const notificationInput = this.buildQuotaUpdatedNotificationInput(event);
+        const notificationInput =
+          this.buildQuotaUpdatedNotificationInput(event);
 
-      await Promise.all(
-        recipients.map(({ userId }) =>
-          this.notificationService.create(event.tenantId, {
-            userId,
-            ...notificationInput,
-          }),
-        ),
-      );
-    });
+        await Promise.all(
+          recipients.map(({ userId }) =>
+            this.notificationService.create(event.tenantId, {
+              userId,
+              ...notificationInput,
+            }),
+          ),
+        );
+      },
+    );
   }
 
   @OnEvent(ResourceGovernanceEventName.CONTROLS_UPDATED)
   async handleControlsUpdated(
     event: ResourceGovernanceControlsUpdatedEvent,
   ): Promise<void> {
-    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
-      const recipients = await this.findEditorRecipients(tenantDb, event.tenantId);
+    await this.runInIndependentTenantTransaction(
+      event.tenantId,
+      async (tenantDb) => {
+        const recipients = await this.findEditorRecipients(
+          tenantDb,
+          event.tenantId,
+        );
 
-      if (recipients.length === 0) {
-        return;
-      }
+        if (recipients.length === 0) {
+          return;
+        }
 
-      const notificationInput = this.buildControlsUpdatedNotificationInput(event);
+        const notificationInput =
+          this.buildControlsUpdatedNotificationInput(event);
 
-      await Promise.all(
-        recipients.map(({ userId }) =>
-          this.notificationService.create(event.tenantId, {
-            userId,
-            ...notificationInput,
-          }),
-        ),
-      );
-    });
+        await Promise.all(
+          recipients.map(({ userId }) =>
+            this.notificationService.create(event.tenantId, {
+              userId,
+              ...notificationInput,
+            }),
+          ),
+        );
+      },
+    );
   }
 
   @OnEvent(ResourceGovernanceEventName.EXECUTION_START_BLOCKED)
   async handleExecutionStartBlocked(
     event: ResourceGovernanceExecutionStartBlockedEvent,
   ): Promise<void> {
-    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
-      const [context, recipients] = await Promise.all([
-        this.findWorkflowContext(tenantDb, event.tenantId, event.workflowId),
-        this.findEditorRecipients(tenantDb, event.tenantId),
-      ]);
+    await this.runInIndependentTenantTransaction(
+      event.tenantId,
+      async (tenantDb) => {
+        const [context, recipients] = await Promise.all([
+          this.findWorkflowContext(tenantDb, event.tenantId, event.workflowId),
+          this.findEditorRecipients(tenantDb, event.tenantId),
+        ]);
 
-      if (!context || recipients.length === 0) {
-        return;
-      }
+        if (!context || recipients.length === 0) {
+          return;
+        }
 
-      const notificationInput = this.buildExecutionStartBlockedNotificationInput(
-        event,
-        context,
-      );
+        const notificationInput =
+          this.buildExecutionStartBlockedNotificationInput(event, context);
 
-      await Promise.all(
-        recipients.map(({ userId }) =>
-          this.notificationService.create(event.tenantId, {
-            userId,
-            ...notificationInput,
-          }),
-        ),
-      );
-    });
+        await Promise.all(
+          recipients.map(({ userId }) =>
+            this.notificationService.create(event.tenantId, {
+              userId,
+              ...notificationInput,
+            }),
+          ),
+        );
+      },
+    );
   }
 
   @OnEvent(ResourceGovernanceEventName.EXECUTION_TERMINATED)
   async handleExecutionTerminated(
     event: ResourceGovernanceExecutionTerminatedEvent,
   ): Promise<void> {
-    await this.runInIndependentTenantTransaction(event.tenantId, async (tenantDb) => {
-      const [context, recipients] = await Promise.all([
-        this.findExecutionContext(tenantDb, event.tenantId, event.executionId),
-        this.findEditorRecipients(tenantDb, event.tenantId),
-      ]);
+    await this.runInIndependentTenantTransaction(
+      event.tenantId,
+      async (tenantDb) => {
+        const [context, recipients] = await Promise.all([
+          this.findExecutionContext(
+            tenantDb,
+            event.tenantId,
+            event.executionId,
+          ),
+          this.findEditorRecipients(tenantDb, event.tenantId),
+        ]);
 
-      if (!context || recipients.length === 0) {
-        return;
-      }
+        if (!context || recipients.length === 0) {
+          return;
+        }
 
-      const notificationInput = this.buildExecutionTerminatedNotificationInput(
-        event,
-        context,
-      );
+        const notificationInput =
+          this.buildExecutionTerminatedNotificationInput(event, context);
 
-      await Promise.all(
-        recipients.map(({ userId }) =>
-          this.notificationService.create(event.tenantId, {
-            userId,
-            ...notificationInput,
-          }),
-        ),
-      );
-    });
+        await Promise.all(
+          recipients.map(({ userId }) =>
+            this.notificationService.create(event.tenantId, {
+              userId,
+              ...notificationInput,
+            }),
+          ),
+        );
+      },
+    );
   }
 
   private async findWorkflowContext(

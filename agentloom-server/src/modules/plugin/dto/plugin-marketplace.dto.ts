@@ -29,9 +29,12 @@ const PricePerExecutionSchema = z
 
 const UuidSchema = z
   .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, {
-    message: '必须是合法的 UUID',
-  });
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    {
+      message: '必须是合法的 UUID',
+    },
+  );
 
 const SubmitPluginListingSchemaBase = z
   .object({
@@ -48,7 +51,8 @@ const SubmitPluginListingSchemaBase = z
 
 export const SubmitPluginListingSchema = SubmitPluginListingSchemaBase.refine(
   (value) =>
-    value.pricingModel !== 'per_execution' || value.pricePerExecution !== undefined,
+    value.pricingModel !== 'per_execution' ||
+    value.pricePerExecution !== undefined,
   {
     message: 'pricingModel 为 per_execution 时必须提供 pricePerExecution',
     path: ['pricePerExecution'],
@@ -66,7 +70,8 @@ export const UpdatePluginListingSchema = SubmitPluginListingSchemaBase.partial()
   .strict()
   .refine(
     (value) =>
-      value.pricingModel !== 'per_execution' || value.pricePerExecution !== undefined,
+      value.pricingModel !== 'per_execution' ||
+      value.pricePerExecution !== undefined,
     {
       message: 'pricingModel 为 per_execution 时必须提供 pricePerExecution',
       path: ['pricePerExecution'],

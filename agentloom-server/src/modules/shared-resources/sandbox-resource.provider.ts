@@ -21,16 +21,19 @@ export type SandboxResourceInstance = {
 };
 
 @Injectable()
-export class SandboxResourceProvider
-  implements SharedResourceProvider<SandboxResourceConfig, SandboxResourceInstance>
-{
+export class SandboxResourceProvider implements SharedResourceProvider<
+  SandboxResourceConfig,
+  SandboxResourceInstance
+> {
   private readonly logger = new Logger(SandboxResourceProvider.name);
 
   readonly type = SANDBOX_RESOURCE_TYPE;
 
   constructor(private readonly sandboxService: SandboxService) {}
 
-  async create(config: SandboxResourceConfig): Promise<SandboxResourceInstance> {
+  async create(
+    config: SandboxResourceConfig,
+  ): Promise<SandboxResourceInstance> {
     const session = await this.sandboxService.createSandboxSession({
       sandboxNodeId: config.sandboxNodeId,
       config: config.config,
@@ -60,7 +63,9 @@ export class SandboxResourceProvider
       await this.sandboxService.destroySandbox(session.executionId, tenantId);
     }
 
-    this.logger.debug(`Destroyed sandbox resource: session ${instance.sessionId}`);
+    this.logger.debug(
+      `Destroyed sandbox resource: session ${instance.sessionId}`,
+    );
   }
 
   async share(

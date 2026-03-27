@@ -22,7 +22,12 @@ export class HealthMonitorService {
     modelId: string,
     error: Error,
   ): Promise<CircuitBreakerSnapshot> {
-    return this.circuitBreaker.recordFailure(tenantId, provider, modelId, error);
+    return this.circuitBreaker.recordFailure(
+      tenantId,
+      provider,
+      modelId,
+      error,
+    );
   }
 
   async getHealthStatus(

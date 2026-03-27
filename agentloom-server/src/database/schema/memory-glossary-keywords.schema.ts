@@ -15,7 +15,9 @@ import { createDirectTenantPolicies } from './rls-policies';
 export const memoryGlossaryKeywords = pgTable(
   'memory_glossary_keywords',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     instanceId: uuid('instance_id')
       .notNull()
       .references(() => agentMemoryInstances.id, { onDelete: 'cascade' }),
@@ -42,7 +44,6 @@ export const memoryGlossaryKeywords = pgTable(
   ],
 );
 
-export type MemoryGlossaryKeyword =
-  typeof memoryGlossaryKeywords.$inferSelect;
+export type MemoryGlossaryKeyword = typeof memoryGlossaryKeywords.$inferSelect;
 export type NewMemoryGlossaryKeyword =
   typeof memoryGlossaryKeywords.$inferInsert;

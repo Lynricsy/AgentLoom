@@ -79,7 +79,10 @@ export class AuditLogRetentionWorker extends WorkerHost {
       return 0;
     }
 
-    await tx.insert(auditLogArchives).values(selectedRows).onConflictDoNothing();
+    await tx
+      .insert(auditLogArchives)
+      .values(selectedRows)
+      .onConflictDoNothing();
 
     const selectedIds = selectedRows.map((row) => row.id);
     const archivedRows = await tx

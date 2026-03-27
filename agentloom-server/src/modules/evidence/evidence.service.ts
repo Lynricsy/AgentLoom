@@ -28,10 +28,10 @@ import type {
   CreateEvidenceRecordDto,
   EvidenceChainNode,
   EvidenceChainResponse,
-   EvidenceEncryptionMetadataDto,
+  EvidenceEncryptionMetadataDto,
   EvidencePacketDto,
   EvidencePacketInputDto,
-   EvidencePacketSummary,
+  EvidencePacketSummary,
   EvidenceSourceType,
   IntegrityIssue,
 } from './dto/evidence.dto';
@@ -57,7 +57,10 @@ import {
 } from './evidence.exceptions';
 
 type EvidenceRecordRow = typeof evidenceRecords.$inferSelect;
-type EvidenceRecord = Omit<EvidenceRecordRow, 'packet' | 'encryptionMetadata'> & {
+type EvidenceRecord = Omit<
+  EvidenceRecordRow,
+  'packet' | 'encryptionMetadata'
+> & {
   packet: EvidencePacketDto;
   encryptionMetadata: EvidenceEncryptionMetadataDto | null;
 };
@@ -274,7 +277,9 @@ export class EvidenceService {
         .where(whereClause),
     ]);
 
-    const normalizedData = data.map((record) => this.projectEvidenceRecord(record).record);
+    const normalizedData = data.map(
+      (record) => this.projectEvidenceRecord(record).record,
+    );
     const enrichedData = includeChunkContent
       ? await this.enrichWithChunkContent(tenantDb, normalizedData)
       : normalizedData;
@@ -857,13 +862,13 @@ export class EvidenceService {
   ): Promise<void> {
     const encryptable = prepared.filter((p) =>
       EvidenceService.ENCRYPTABLE_SOURCE_TYPES.includes(
-        p.insertValue.sourceType as EvidenceSourceType,
+        p.insertValue.sourceType,
       ),
     );
 
     if (encryptable.length === 0) return;
 
-    const tenantId = encryptable[0]!.insertValue.tenantId;
+    const tenantId = encryptable[0].insertValue.tenantId;
     let orgId: string | null = null;
 
     try {
@@ -1269,7 +1274,10 @@ export class EvidenceService {
     );
     const sourceStatusMap = await this.checkSourceAvailability(flatRecords);
 
-    const { roots, integrityIssues } = this.flatToTree(flatRecords, sourceStatusMap);
+    const { roots, integrityIssues } = this.flatToTree(
+      flatRecords,
+      sourceStatusMap,
+    );
 
     const totalNodes = flatRecords.length;
     const chainCompleteness =
@@ -1437,16 +1445,16 @@ export class EvidenceService {
       };
       const projection = this.projectEvidenceRecord(rawRecord);
 
-        return {
-          id: projection.record.id,
-          executionId: projection.record.executionId,
-          stepId: projection.record.stepId,
-          tenantId: projection.record.tenantId,
-          sourceType: projection.record.sourceType,
-          packet: projection.record.packet as EvidencePacketDto,
-          contentHash: projection.record.contentHash,
-          currentHash: projection.currentHash,
-          hashValid: projection.hashValid,
+      return {
+        id: projection.record.id,
+        executionId: projection.record.executionId,
+        stepId: projection.record.stepId,
+        tenantId: projection.record.tenantId,
+        sourceType: projection.record.sourceType,
+        packet: projection.record.packet,
+        contentHash: projection.record.contentHash,
+        currentHash: projection.currentHash,
+        hashValid: projection.hashValid,
         parentEvidenceId: projection.record.parentEvidenceId,
         isEncrypted: projection.record.isEncrypted,
         encryptionMetadata: projection.record.encryptionMetadata,
@@ -1808,7 +1816,10 @@ export class EvidenceService {
       this.readLegacyEncryptedPayload(record.encryptionMetadata) ??
       this.buildSyntheticEncryptedPayload(record.encryptionMetadata);
 
-    if (packet.sourceType !== 'agent_decision' && packet.sourceType !== 'tool_output') {
+    if (
+      packet.sourceType !== 'agent_decision' &&
+      packet.sourceType !== 'tool_output'
+    ) {
       return packet;
     }
 
@@ -1834,11 +1845,13 @@ export class EvidenceService {
     }
 
     const metadata = record.encryptionMetadata;
-    const payload = 'encryptedPacket' in packet ? packet.encryptedPacket : undefined;
+    const payload =
+      'encryptedPacket' in packet ? packet.encryptedPacket : undefined;
 
     return {
       isEncrypted: record.isEncrypted,
-      ...(typeof metadata?.keyFingerprint === 'string' || payload?.keyFingerprint
+      ...(typeof metadata?.keyFingerprint === 'string' ||
+      payload?.keyFingerprint
         ? {
             keyFingerprint:
               (typeof metadata?.keyFingerprint === 'string'
@@ -1866,12 +1879,17 @@ export class EvidenceService {
     };
   }
 
-  private matchesRecordHash(record: EvidenceRecordRow, currentHash: string): boolean {
+  private matchesRecordHash(
+    record: EvidenceRecordRow,
+    currentHash: string,
+  ): boolean {
     if (this.compareHashes(record.contentHash, currentHash)) {
       return true;
     }
 
-    const legacyPayload = this.readLegacyEncryptedPayload(record.encryptionMetadata);
+    const legacyPayload = this.readLegacyEncryptedPayload(
+      record.encryptionMetadata,
+    );
     if (!record.isEncrypted || !legacyPayload) {
       return false;
     }
@@ -1909,7 +1927,8 @@ export class EvidenceService {
       iv: '',
       authTag: '',
       aad: '',
-      keyFingerprint: typeof raw?.keyFingerprint === 'string' ? raw.keyFingerprint : '',
+      keyFingerprint:
+        typeof raw?.keyFingerprint === 'string' ? raw.keyFingerprint : '',
       algorithm:
         typeof raw?.algorithm === 'string'
           ? raw.algorithm
@@ -1924,7 +1943,8 @@ export class EvidenceService {
 
     const payload = value as unknown as Record<string, unknown>;
     return {
-      ciphertext: typeof payload.ciphertext === 'string' ? payload.ciphertext : '',
+      ciphertext:
+        typeof payload.ciphertext === 'string' ? payload.ciphertext : '',
       encryptedSessionKey:
         typeof payload.encryptedSessionKey === 'string'
           ? payload.encryptedSessionKey
@@ -1933,7 +1953,9 @@ export class EvidenceService {
       authTag: typeof payload.authTag === 'string' ? payload.authTag : '',
       aad: typeof payload.aad === 'string' ? payload.aad : '',
       keyFingerprint:
-        typeof payload.keyFingerprint === 'string' ? payload.keyFingerprint : '',
+        typeof payload.keyFingerprint === 'string'
+          ? payload.keyFingerprint
+          : '',
       algorithm:
         typeof payload.algorithm === 'string'
           ? payload.algorithm

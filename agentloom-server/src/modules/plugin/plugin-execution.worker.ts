@@ -5,19 +5,14 @@ import type { Readable } from 'node:stream';
 
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { PLUGIN_EXECUTION_QUEUE } from './plugin.constants';
-import {
-  PluginSandboxException,
-} from './plugin.exceptions';
+import { PluginSandboxException } from './plugin.exceptions';
 import {
   PluginSandboxService,
   type PluginExecutionResult,
   type SandboxConfig,
 } from './plugin-sandbox.service';
 import { PluginUsageService } from './plugin-usage.service';
-import {
-  PluginService,
-  type PluginUsageSourceContext,
-} from './plugin.service';
+import { PluginService, type PluginUsageSourceContext } from './plugin.service';
 
 export interface PluginExecutionJobData {
   tenantId: string;
@@ -50,12 +45,12 @@ export class PluginExecutionWorker extends WorkerHost {
     super();
   }
 
-  async process(job: Job<PluginExecutionJobData>): Promise<PluginExecutionJobResult> {
+  async process(
+    job: Job<PluginExecutionJobData>,
+  ): Promise<PluginExecutionJobResult> {
     const { tenantId, pluginId, nodeType, inputs, config } = job.data;
 
-    this.logger.log(
-      `处理插件执行: ${pluginId}/${nodeType} (job=${job.id})`,
-    );
+    this.logger.log(`处理插件执行: ${pluginId}/${nodeType} (job=${job.id})`);
 
     const plugin = await this.pluginService.findActiveByPluginId(
       pluginId,
@@ -65,9 +60,7 @@ export class PluginExecutionWorker extends WorkerHost {
 
     const wasmBundleUrl = plugin.wasmBundleUrl;
     if (!wasmBundleUrl) {
-      this.logger.warn(
-        `插件 "${pluginId}" 未关联 WASM bundle，返回占位结果`,
-      );
+      this.logger.warn(`插件 "${pluginId}" 未关联 WASM bundle，返回占位结果`);
       return {
         status: 'completed',
         outputs: {},
@@ -77,8 +70,9 @@ export class PluginExecutionWorker extends WorkerHost {
 
     const wasmBuffer = await this.downloadWasmBuffer(wasmBundleUrl, pluginId);
 
-    const manifest = (plugin.manifest ?? {}) as Record<string, unknown>;
-    const manifestSandboxConfig = this.sandboxService.buildSandboxConfig(manifest);
+    const manifest = plugin.manifest ?? {};
+    const manifestSandboxConfig =
+      this.sandboxService.buildSandboxConfig(manifest);
     const mergedConfig = this.applyRuntimeConfigRestrictions(
       manifestSandboxConfig,
       config,
@@ -106,7 +100,8 @@ export class PluginExecutionWorker extends WorkerHost {
     };
 
     if (result.success) {
-      const sourceContext = await this.pluginService.resolveUsageSourceContext(plugin);
+      const sourceContext =
+        await this.pluginService.resolveUsageSourceContext(plugin);
 
       this.recordUsage(job.data, plugin, workerResult, sourceContext).catch(
         (err) => {
@@ -196,7 +191,10 @@ export class PluginExecutionWorker extends WorkerHost {
   }
 
   private resolveFunctionName(config: Record<string, unknown>): string {
-    if (typeof config.functionName === 'string' && config.functionName.trim().length > 0) {
+    if (
+      typeof config.functionName === 'string' &&
+      config.functionName.trim().length > 0
+    ) {
       return config.functionName.trim();
     }
 
@@ -236,11 +234,17 @@ export class PluginExecutionWorker extends WorkerHost {
     return restrictedConfig;
   }
 
-  private tightenNumericLimit(current: number | undefined, requested: number): number {
+  private tightenNumericLimit(
+    current: number | undefined,
+    requested: number,
+  ): number {
     return current === undefined ? requested : Math.min(current, requested);
   }
 
-  private intersectAllowedHosts(current: string[], requested: string[]): string[] {
+  private intersectAllowedHosts(
+    current: string[],
+    requested: string[],
+  ): string[] {
     if (current.length === 0) {
       return [];
     }
@@ -262,7 +266,11 @@ export class PluginExecutionWorker extends WorkerHost {
       return undefined;
     }
 
-    return [...new Set(value.filter((item): item is string => typeof item === 'string'))];
+    return [
+      ...new Set(
+        value.filter((item): item is string => typeof item === 'string'),
+      ),
+    ];
   }
 
   private normalizeOutputs(output: unknown): Record<string, unknown> {

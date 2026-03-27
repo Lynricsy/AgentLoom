@@ -29,7 +29,9 @@ function createCandidate(
   };
 }
 
-function createContext(overrides: Partial<RoutingContext> = {}): RoutingContext {
+function createContext(
+  overrides: Partial<RoutingContext> = {},
+): RoutingContext {
   return {
     inputTokenCount: 1_500,
     tenantId: 'tenant-1',
@@ -44,7 +46,8 @@ function createMockDb(queryResults: unknown[][]): { db: MockDb } {
   let callIndex = 0;
 
   const selectMock = vi.fn(() => {
-    const result = queryResults[Math.min(callIndex, queryResults.length - 1)] ?? [];
+    const result =
+      queryResults[Math.min(callIndex, queryResults.length - 1)] ?? [];
     callIndex += 1;
 
     return {

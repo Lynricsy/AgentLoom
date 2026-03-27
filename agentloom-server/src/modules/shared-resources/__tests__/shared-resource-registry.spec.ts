@@ -5,9 +5,10 @@ import {
   type SharedResourceProvider,
 } from '../shared-resource-registry';
 
-function createMockProvider(
-  type: string,
-): SharedResourceProvider<unknown, unknown> & {
+function createMockProvider(type: string): SharedResourceProvider<
+  unknown,
+  unknown
+> & {
   create: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
   share: ReturnType<typeof vi.fn>;
@@ -86,9 +87,7 @@ describe('SharedResourceRegistry', () => {
     });
 
     it('should throw for unregistered type', async () => {
-      await expect(
-        registry.createResource('unknown', {}),
-      ).rejects.toThrow(
+      await expect(registry.createResource('unknown', {})).rejects.toThrow(
         'No SharedResourceProvider registered for type "unknown"',
       );
     });

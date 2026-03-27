@@ -16,10 +16,12 @@ import {
   type NewMemorySession,
 } from '../memory-sessions.schema';
 
-type MemorySessionConfigHasBootUris =
-  MemorySessionConfig extends { bootUris: string[]; fusionPriority: number }
-    ? true
-    : false;
+type MemorySessionConfigHasBootUris = MemorySessionConfig extends {
+  bootUris: string[];
+  fusionPriority: number;
+}
+  ? true
+  : false;
 
 type DirectImportSmoke = [MemorySession, NewMemorySession, MemorySessionConfig];
 type BarrelImportSmoke = [

@@ -21,7 +21,10 @@ function readServerVersion(): string {
     readFileSync(packageJsonPath, 'utf8'),
   ) as PackageJsonShape;
 
-  if (typeof packageJson.version !== 'string' || packageJson.version.length === 0) {
+  if (
+    typeof packageJson.version !== 'string' ||
+    packageJson.version.length === 0
+  ) {
     throw new Error('agentloom-server/package.json 缺少有效 version');
   }
 
@@ -81,7 +84,11 @@ export class InitializeHandler {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 
-    if (!SUPPORTED_PROTOCOL_VERSIONS.some((version) => version === protocolVersion)) {
+    if (
+      !SUPPORTED_PROTOCOL_VERSIONS.some(
+        (version) => version === protocolVersion,
+      )
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params', {
         requestedProtocolVersion: protocolVersion,
         supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
@@ -178,7 +185,9 @@ export class InitializeHandler {
     return normalizedRoots;
   }
 
-  private readFsCapability(value: unknown): NonNullable<AcpClientCapabilities['fs']> {
+  private readFsCapability(
+    value: unknown,
+  ): NonNullable<AcpClientCapabilities['fs']> {
     if (!isPlainObject(value)) {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
@@ -210,7 +219,10 @@ export class InitializeHandler {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 
-    if (typeof value.create !== 'boolean' || typeof value.output !== 'boolean') {
+    if (
+      typeof value.create !== 'boolean' ||
+      typeof value.output !== 'boolean'
+    ) {
       throw new AcpJsonRpcError(-32602, 'Invalid params');
     }
 

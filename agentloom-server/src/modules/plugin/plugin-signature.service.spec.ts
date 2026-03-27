@@ -46,7 +46,11 @@ async function createUnsignedArchive(): Promise<Buffer> {
   zip.file('dist/index.js', 'export default { nodes: [] };\n');
   zip.file(
     'package.json',
-    JSON.stringify({ name: 'server-signature-fixture', version: '1.0.0', type: 'module' }),
+    JSON.stringify({
+      name: 'server-signature-fixture',
+      version: '1.0.0',
+      type: 'module',
+    }),
   );
 
   return zip.generateAsync({
@@ -103,9 +107,8 @@ describe('PluginSignatureService', () => {
 
   describe('verifyArchiveSignature', () => {
     it('应验证最终归档中的 canonical 签名', async () => {
-      const { archiveBuffer, signature, contentHash } = await createSignedArchive(
-        privateKeyPem,
-      );
+      const { archiveBuffer, signature, contentHash } =
+        await createSignedArchive(privateKeyPem);
 
       const result = await service.verifyArchiveSignature(
         archiveBuffer,
@@ -140,7 +143,8 @@ describe('PluginSignatureService', () => {
     });
 
     it('篡改归档内容时应抛出 PluginSignatureInvalidException', async () => {
-      const { archiveBuffer, signature } = await createSignedArchive(privateKeyPem);
+      const { archiveBuffer, signature } =
+        await createSignedArchive(privateKeyPem);
       const tamperedArchive = await tamperArchive(
         archiveBuffer,
         'dist/index.js',
@@ -191,7 +195,8 @@ describe('PluginSignatureService', () => {
       const ecPublicKeyPem = ecKeyPair.publicKey
         .export({ type: 'spki', format: 'pem' })
         .toString();
-      const { archiveBuffer, signature } = await createSignedArchive(privateKeyPem);
+      const { archiveBuffer, signature } =
+        await createSignedArchive(privateKeyPem);
 
       await expect(
         service.verifyArchiveSignature(
@@ -259,9 +264,9 @@ describe('PluginSignatureService', () => {
     it('应拒绝 RSA-1024 弱密钥', () => {
       const weakKeyPair = createRsaKeyPair(1024);
 
-      expect(() => service.validatePublicKey(exportPublicKeyPem(weakKeyPair))).toThrow(
-        PluginDeveloperKeyInvalidException,
-      );
+      expect(() =>
+        service.validatePublicKey(exportPublicKeyPem(weakKeyPair)),
+      ).toThrow(PluginDeveloperKeyInvalidException);
     });
   });
 

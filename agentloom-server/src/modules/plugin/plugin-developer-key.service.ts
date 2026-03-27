@@ -50,7 +50,8 @@ export class PluginDeveloperKeyService {
   ): Promise<PluginDeveloperKey> {
     this.signatureService.validatePublicKey(publicKeyPem);
 
-    const keyFingerprint = this.signatureService.computeKeyFingerprint(publicKeyPem);
+    const keyFingerprint =
+      this.signatureService.computeKeyFingerprint(publicKeyPem);
 
     const [existing] = await this.tenantDb
       .select()
@@ -132,7 +133,10 @@ export class PluginDeveloperKeyService {
       .select()
       .from(pluginDeveloperKeys)
       .where(
-        and(eq(pluginDeveloperKeys.id, keyId), eq(pluginDeveloperKeys.orgId, orgId)),
+        and(
+          eq(pluginDeveloperKeys.id, keyId),
+          eq(pluginDeveloperKeys.orgId, orgId),
+        ),
       )
       .limit(1);
 
@@ -160,7 +164,10 @@ export class PluginDeveloperKeyService {
         updatedAt: revokedAt,
       })
       .where(
-        and(eq(pluginDeveloperKeys.id, keyId), eq(pluginDeveloperKeys.orgId, orgId)),
+        and(
+          eq(pluginDeveloperKeys.id, keyId),
+          eq(pluginDeveloperKeys.orgId, orgId),
+        ),
       )
       .returning();
 
@@ -182,7 +189,10 @@ export class PluginDeveloperKeyService {
         and(
           eq(pluginDeveloperKeys.orgId, orgId),
           eq(pluginDeveloperKeys.keyFingerprint, fingerprint),
-          eq(pluginDeveloperKeys.status, 'active' satisfies DeveloperKeyStatusDto),
+          eq(
+            pluginDeveloperKeys.status,
+            'active' satisfies DeveloperKeyStatusDto,
+          ),
         ),
       )
       .limit(1);

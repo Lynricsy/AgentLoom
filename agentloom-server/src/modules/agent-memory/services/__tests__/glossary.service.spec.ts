@@ -15,9 +15,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -325,7 +324,9 @@ describe('GlossaryService', () => {
 
       tenantDb.select.mockReturnValueOnce(createSelectChain(keywords));
 
-      await expect(service.getKeywordsForNode(NODE_ID)).resolves.toEqual(keywords);
+      await expect(service.getKeywordsForNode(NODE_ID)).resolves.toEqual(
+        keywords,
+      );
       expect(mocks.operators.eq).toHaveBeenCalledWith(
         memoryGlossaryKeywords.nodeId,
         NODE_ID,

@@ -72,7 +72,9 @@ export class AutonomyUpgradeAnalyzer implements SuggestionAnalyzer {
     };
   }
 
-  private resolveCurrentMode(nodeConfig: Record<string, unknown>): (typeof UPGRADE_PATH)[number] {
+  private resolveCurrentMode(
+    nodeConfig: Record<string, unknown>,
+  ): (typeof UPGRADE_PATH)[number] {
     const candidates = [
       nodeConfig.autonomyMode,
       this.readNestedMode(nodeConfig.autonomyConfig),
@@ -100,7 +102,9 @@ export class AutonomyUpgradeAnalyzer implements SuggestionAnalyzer {
       return undefined;
     }
 
-    return (value as Record<string, unknown>).mode ??
-      (value as Record<string, unknown>).autonomyMode;
+    return (
+      (value as Record<string, unknown>).mode ??
+      (value as Record<string, unknown>).autonomyMode
+    );
   }
 }

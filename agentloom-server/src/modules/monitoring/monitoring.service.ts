@@ -11,7 +11,10 @@ import {
   workflowDefinitions,
   workflowExecutions,
 } from '../../database/schema';
-import { AGENT_TASK_QUEUE, type AgentTaskJobData } from '../execution/execution.constants';
+import {
+  AGENT_TASK_QUEUE,
+  type AgentTaskJobData,
+} from '../execution/execution.constants';
 import { ResourceGovernanceService } from '../resource-governance/resource-governance.service';
 import { ResourceGovernanceAccessDeniedException } from '../resource-governance/resource-governance.exceptions';
 import type {
@@ -104,9 +107,17 @@ export class MonitoringService {
     const windowConfig = WINDOW_CONFIG[params.window];
     const windowStart = new Date(now.getTime() - windowConfig.durationMs);
 
-    return runInTenantTransaction(this.db, params.tenantId, async (tenantDb) => {
-      const [governanceState, executions, notificationRows, blockedAuditRows, queueJobs] =
-        await Promise.all([
+    return runInTenantTransaction(
+      this.db,
+      params.tenantId,
+      async (tenantDb) => {
+        const [
+          governanceState,
+          executions,
+          notificationRows,
+          blockedAuditRows,
+          queueJobs,
+        ] = await Promise.all([
           this.resourceGovernanceService.getEffectiveState(
             params.organizationId,
             params.userId,
@@ -137,46 +148,51 @@ export class MonitoringService {
           this.listTenantQueueJobs(params.tenantId),
         ]);
 
-      if (governanceState.quota.tenantId !== params.tenantId) {
-        throw new ResourceGovernanceAccessDeniedException();
-      }
+        if (governanceState.quota.tenantId !== params.tenantId) {
+          throw new ResourceGovernanceAccessDeniedException();
+        }
 
-      const executionIds = executions.map((execution) => execution.id);
-      const workflowIds = [...new Set(executions.map((execution) => execution.workflowDefinitionId))];
+        const executionIds = executions.map((execution) => execution.id);
+        const workflowIds = [
+          ...new Set(
+            executions.map((execution) => execution.workflowDefinitionId),
+          ),
+        ];
 
-      const [summaryRows, workflowRows] = await Promise.all([
-        executionIds.length > 0
-          ? tenantDb.query.agentExecutionRecords.findMany({
-              where: and(
-                eq(agentExecutionRecords.tenantId, params.tenantId),
-                eq(agentExecutionRecords.recordType, 'execution_summary'),
-                inArray(agentExecutionRecords.executionId, executionIds),
-              ),
-            })
-          : Promise.resolve([] as ExecutionSummaryRow[]),
-        workflowIds.length > 0
-          ? tenantDb.query.workflowDefinitions.findMany({
-              where: and(
-                eq(workflowDefinitions.tenantId, params.tenantId),
-                inArray(workflowDefinitions.id, workflowIds),
-              ),
-            })
-          : Promise.resolve([] as WorkflowDefinitionRow[]),
-      ]);
+        const [summaryRows, workflowRows] = await Promise.all([
+          executionIds.length > 0
+            ? tenantDb.query.agentExecutionRecords.findMany({
+                where: and(
+                  eq(agentExecutionRecords.tenantId, params.tenantId),
+                  eq(agentExecutionRecords.recordType, 'execution_summary'),
+                  inArray(agentExecutionRecords.executionId, executionIds),
+                ),
+              })
+            : Promise.resolve([] as ExecutionSummaryRow[]),
+          workflowIds.length > 0
+            ? tenantDb.query.workflowDefinitions.findMany({
+                where: and(
+                  eq(workflowDefinitions.tenantId, params.tenantId),
+                  inArray(workflowDefinitions.id, workflowIds),
+                ),
+              })
+            : Promise.resolve([] as WorkflowDefinitionRow[]),
+        ]);
 
-      return this.buildDashboard({
-        window: params.window,
-        now,
-        windowStart,
-        governanceState,
-        executions,
-        summaryRows,
-        workflowRows,
-        notificationRows,
-        blockedAuditRows,
-        queueJobs,
-      });
-    });
+        return this.buildDashboard({
+          window: params.window,
+          now,
+          windowStart,
+          governanceState,
+          executions,
+          summaryRows,
+          workflowRows,
+          notificationRows,
+          blockedAuditRows,
+          queueJobs,
+        });
+      },
+    );
   }
 
   private buildDashboard(input: {
@@ -197,7 +213,9 @@ export class MonitoringService {
     const workflowNameById = new Map(
       input.workflowRows.map((workflow) => [workflow.id, workflow.name]),
     );
-    const dedupedSignals = this.dedupeNotificationSignals(input.notificationRows);
+    const dedupedSignals = this.dedupeNotificationSignals(
+      input.notificationRows,
+    );
     const governanceBlocks = input.blockedAuditRows.length;
     const queueDepth = input.queueJobs.length;
 
@@ -209,8 +227,10 @@ export class MonitoringService {
       (execution) => execution.status === 'failed',
     ).length;
     const terminalCount = completedCount + failedCount;
-    const successRate = terminalCount > 0 ? (completedCount / terminalCount) * 100 : 0;
-    const failureRate = terminalCount > 0 ? (failedCount / terminalCount) * 100 : 0;
+    const successRate =
+      terminalCount > 0 ? (completedCount / terminalCount) * 100 : 0;
+    const failureRate =
+      terminalCount > 0 ? (failedCount / terminalCount) * 100 : 0;
     const averageDurationMs = this.calculateAverageDuration(
       input.executions,
       summaryByExecutionId,
@@ -308,7 +328,9 @@ export class MonitoringService {
       bucketStartMs += bucketMs
     ) {
       const bucketStart = new Date(bucketStartMs);
-      const bucketEnd = new Date(Math.min(bucketStartMs + bucketMs, input.now.getTime()));
+      const bucketEnd = new Date(
+        Math.min(bucketStartMs + bucketMs, input.now.getTime()),
+      );
       const bucketExecutions = input.executions.filter((execution) =>
         this.isWithinBucket(execution.createdAt, bucketStart, bucketEnd),
       );
@@ -320,9 +342,13 @@ export class MonitoringService {
       ).length;
       const bucketTerminalCount = bucketCompletedCount + bucketFailedCount;
       const bucketFailureRate =
-        bucketTerminalCount > 0 ? (bucketFailedCount / bucketTerminalCount) * 100 : 0;
+        bucketTerminalCount > 0
+          ? (bucketFailedCount / bucketTerminalCount) * 100
+          : 0;
       const bucketSuccessRate =
-        bucketTerminalCount > 0 ? (bucketCompletedCount / bucketTerminalCount) * 100 : 0;
+        bucketTerminalCount > 0
+          ? (bucketCompletedCount / bucketTerminalCount) * 100
+          : 0;
       const bucketGovernanceBlocks = input.blockedAuditRows.filter((record) =>
         this.isWithinBucket(record.createdAt, bucketStart, bucketEnd),
       ).length;
@@ -381,7 +407,8 @@ export class MonitoringService {
         title: '队列压力抬升',
         reason: `当前 agent-task 队列快照中仍有 ${input.queueDepth} 个属于该组织的待处理或运行中作业。`,
         detectedAt: input.now.toISOString(),
-        affectedSummary: '该指标来自当前 queue snapshot，只反映此刻积压与活跃作业，不代表完整历史队列曲线。',
+        affectedSummary:
+          '该指标来自当前 queue snapshot，只反映此刻积压与活跃作业，不代表完整历史队列曲线。',
         source: 'derived',
       });
     }
@@ -422,40 +449,51 @@ export class MonitoringService {
       );
     }
 
-    const workflowHotspots = [...new Set(input.executions.map((item) => item.workflowDefinitionId))]
+    const workflowHotspots = [
+      ...new Set(input.executions.map((item) => item.workflowDefinitionId)),
+    ]
       .map((workflowId) => {
         const items = input.executions.filter(
           (execution) => execution.workflowDefinitionId === workflowId,
         );
-        const failedCount = items.filter((execution) => execution.status === 'failed').length;
-        const terminalCount = items.filter(
-          (execution) => execution.status === 'completed' || execution.status === 'failed',
+        const failedCount = items.filter(
+          (execution) => execution.status === 'failed',
         ).length;
-        const workflowControl = input.governanceState.governance.workflowControls.find(
-          (control) => control.targetId === workflowId,
-        );
+        const terminalCount = items.filter(
+          (execution) =>
+            execution.status === 'completed' || execution.status === 'failed',
+        ).length;
+        const workflowControl =
+          input.governanceState.governance.workflowControls.find(
+            (control) => control.targetId === workflowId,
+          );
         const blockedCount = blockedCountByWorkflowId.get(workflowId) ?? 0;
         const failureRate =
-          terminalCount > 0 ? this.roundRate((failedCount / terminalCount) * 100) : null;
+          terminalCount > 0
+            ? this.roundRate((failedCount / terminalCount) * 100)
+            : null;
         const queueDepth = null;
-        const status = workflowControl?.status === 'paused'
-          ? 'governance-paused'
-          : blockedCount > 0
-            ? 'blocked'
-            : failedCount > 0
-              ? 'failed'
-              : items.some(
-                    (execution) =>
-                      execution.status === 'running' || execution.status === 'pending',
-                  )
-                ? 'running'
-                : 'healthy';
+        const status =
+          workflowControl?.status === 'paused'
+            ? 'governance-paused'
+            : blockedCount > 0
+              ? 'blocked'
+              : failedCount > 0
+                ? 'failed'
+                : items.some(
+                      (execution) =>
+                        execution.status === 'running' ||
+                        execution.status === 'pending',
+                    )
+                  ? 'running'
+                  : 'healthy';
 
         return {
           id: `workflow-${workflowId}`,
           kind: 'workflow' as const,
           label:
-            input.workflowNameById.get(workflowId) ?? `工作流 ${workflowId.slice(0, 8)}`,
+            input.workflowNameById.get(workflowId) ??
+            `工作流 ${workflowId.slice(0, 8)}`,
           impactSummary:
             workflowControl?.status === 'paused'
               ? '该工作流当前处于治理暂停状态，新的执行会被组织治理规则拦截。'
@@ -468,10 +506,15 @@ export class MonitoringService {
           failureRate,
           queueDepth,
           status,
-          lastSeenAt: this.maxDate(items.map((execution) => execution.createdAt)).toISOString(),
+          lastSeenAt: this.maxDate(
+            items.map((execution) => execution.createdAt),
+          ).toISOString(),
           linkTarget:
             workflowControl?.status === 'paused' || blockedCount > 0
-              ? { type: 'resource-governance', href: '/settings/resource-quotas' }
+              ? {
+                  type: 'resource-governance',
+                  href: '/settings/resource-quotas',
+                }
               : undefined,
         } satisfies MonitoringHotspotDto;
       })
@@ -487,7 +530,8 @@ export class MonitoringService {
           workflowQueueDepthByExecutionId.has(execution.id),
       )
       .map((execution) => {
-        const queueDepth = workflowQueueDepthByExecutionId.get(execution.id) ?? null;
+        const queueDepth =
+          workflowQueueDepthByExecutionId.get(execution.id) ?? null;
         const status =
           execution.status === 'failed'
             ? 'failed'
@@ -538,19 +582,28 @@ export class MonitoringService {
     failureRate: number;
     alerts: MonitoringAlertSummaryDto[];
   }): MonitoringRiskSummaryDto {
-    const hasCriticalAlert = input.alerts.some((alert) => alert.severity === 'critical');
-    const level: MonitoringRiskSummaryDto['level'] = input.governancePauseActive ||
+    const hasCriticalAlert = input.alerts.some(
+      (alert) => alert.severity === 'critical',
+    );
+    const level: MonitoringRiskSummaryDto['level'] =
+      input.governancePauseActive ||
       hasCriticalAlert ||
       input.failureRate >= 25 ||
       input.queueDepth >= 10
-      ? 'critical'
-      : input.governanceBlocks > 0 || input.alerts.length > 0 || input.failureRate >= 10
-        ? 'warning'
-        : 'stable';
+        ? 'critical'
+        : input.governanceBlocks > 0 ||
+            input.alerts.length > 0 ||
+            input.failureRate >= 10
+          ? 'warning'
+          : 'stable';
 
-    const primaryLinkTarget = input.governancePauseActive || input.governanceBlocks > 0
-      ? ({ type: 'resource-governance', href: '/settings/resource-quotas' } satisfies MonitoringLinkTargetDto)
-      : input.alerts.find((alert) => alert.linkTarget)?.linkTarget;
+    const primaryLinkTarget =
+      input.governancePauseActive || input.governanceBlocks > 0
+        ? ({
+            type: 'resource-governance',
+            href: '/settings/resource-quotas',
+          } satisfies MonitoringLinkTargetDto)
+        : input.alerts.find((alert) => alert.linkTarget)?.linkTarget;
 
     if (level === 'critical') {
       return {
@@ -593,7 +646,9 @@ export class MonitoringService {
     };
   }
 
-  private async listTenantQueueJobs(tenantId: string): Promise<QueueJobSnapshot[]> {
+  private async listTenantQueueJobs(
+    tenantId: string,
+  ): Promise<QueueJobSnapshot[]> {
     const jobs = await this.agentTaskQueue.getJobs([...QUEUE_STATES]);
 
     return jobs
@@ -606,7 +661,9 @@ export class MonitoringService {
       }));
   }
 
-  private dedupeNotificationSignals(rows: NotificationRow[]): NotificationSignal[] {
+  private dedupeNotificationSignals(
+    rows: NotificationRow[],
+  ): NotificationSignal[] {
     const deduped = new Map<string, NotificationSignal>();
 
     for (const row of rows) {
@@ -616,7 +673,9 @@ export class MonitoringService {
         this.readString(body.executionId) ?? '',
         this.readString(body.workflowId) ?? '',
         this.readString(body.reason) ?? this.readString(body.errorReason) ?? '',
-        this.readString(body.requestedAt) ?? this.readString(body.timelineUrl) ?? '',
+        this.readString(body.requestedAt) ??
+          this.readString(body.timelineUrl) ??
+          '',
       ].join(':');
 
       if (!deduped.has(key)) {
@@ -634,13 +693,17 @@ export class MonitoringService {
     );
   }
 
-  private toAlert(signal: NotificationSignal): MonitoringAlertSummaryDto | null {
+  private toAlert(
+    signal: NotificationSignal,
+  ): MonitoringAlertSummaryDto | null {
     const detectedAt =
       this.readString(signal.body.requestedAt) ??
       this.readString(signal.body.effectedAt) ??
       signal.createdAt.toISOString();
     const timelineUrl = this.readString(signal.body.timelineUrl);
-    const resourceGovernanceUrl = this.readString(signal.body.resourceGovernanceUrl);
+    const resourceGovernanceUrl = this.readString(
+      signal.body.resourceGovernanceUrl,
+    );
 
     switch (signal.type) {
       case 'execution_failed':
@@ -650,13 +713,18 @@ export class MonitoringService {
           category: 'anomalous-execution',
           title: signal.title,
           reason:
-            this.readString(signal.body.errorReason) ?? '执行失败，请进入执行详情查看时间线。',
+            this.readString(signal.body.errorReason) ??
+            '执行失败，请进入执行详情查看时间线。',
           detectedAt,
           affectedSummary:
-            this.readString(signal.body.executionId) ?? '有执行在当前窗口内失败。',
+            this.readString(signal.body.executionId) ??
+            '有执行在当前窗口内失败。',
           source: 'notifications',
           linkTarget: timelineUrl
-            ? { type: 'execution', href: timelineUrl as `/executions/${string}` }
+            ? {
+                type: 'execution',
+                href: timelineUrl as `/executions/${string}`,
+              }
             : undefined,
         };
       case 'intervention_required':
@@ -675,7 +743,10 @@ export class MonitoringService {
             '有执行进入人工介入链路。',
           source: 'notifications',
           linkTarget: timelineUrl
-            ? { type: 'execution', href: timelineUrl as `/executions/${string}` }
+            ? {
+                type: 'execution',
+                href: timelineUrl as `/executions/${string}`,
+              }
             : undefined,
         };
       case 'resource_governance_execution_blocked':
@@ -685,8 +756,7 @@ export class MonitoringService {
           category: 'governance-block',
           title: signal.title,
           reason:
-            this.readString(signal.body.reason) ??
-            '新的执行已被治理规则阻止。',
+            this.readString(signal.body.reason) ?? '新的执行已被治理规则阻止。',
           detectedAt,
           affectedSummary:
             this.readString(signal.body.workflowName) ??
@@ -695,7 +765,10 @@ export class MonitoringService {
           source: 'notifications',
           linkTarget:
             resourceGovernanceUrl === '/settings/resource-quotas'
-              ? { type: 'resource-governance', href: '/settings/resource-quotas' }
+              ? {
+                  type: 'resource-governance',
+                  href: '/settings/resource-quotas',
+                }
               : undefined,
         };
       case 'resource_governance_execution_terminated':
@@ -705,15 +778,17 @@ export class MonitoringService {
           category: 'anomalous-execution',
           title: signal.title,
           reason:
-            this.readString(signal.body.reason) ??
-            '异常执行已被治理流程终止。',
+            this.readString(signal.body.reason) ?? '异常执行已被治理流程终止。',
           detectedAt,
           affectedSummary:
             this.readString(signal.body.executionId) ??
             '有异常执行在当前窗口内被终止。',
           source: 'notifications',
           linkTarget: timelineUrl
-            ? { type: 'execution', href: timelineUrl as `/executions/${string}` }
+            ? {
+                type: 'execution',
+                href: timelineUrl as `/executions/${string}`,
+              }
             : undefined,
         };
       default:
@@ -726,7 +801,10 @@ export class MonitoringService {
     summaryByExecutionId: Map<string, ExecutionSummaryRow['summaryData']>,
   ): number | null {
     const durations = executions
-      .map((execution) => summaryByExecutionId.get(execution.id)?.executionDurationMs ?? null)
+      .map(
+        (execution) =>
+          summaryByExecutionId.get(execution.id)?.executionDurationMs ?? null,
+      )
       .filter((value): value is number => value !== null);
 
     if (durations.length === 0) {
@@ -734,7 +812,8 @@ export class MonitoringService {
     }
 
     return Math.round(
-      durations.reduce((total, duration) => total + duration, 0) / durations.length,
+      durations.reduce((total, duration) => total + duration, 0) /
+        durations.length,
     );
   }
 
@@ -755,7 +834,9 @@ export class MonitoringService {
   }
 
   private isWithinBucket(value: Date, start: Date, end: Date): boolean {
-    return value.getTime() >= start.getTime() && value.getTime() < end.getTime();
+    return (
+      value.getTime() >= start.getTime() && value.getTime() < end.getTime()
+    );
   }
 
   private formatBucketLabel(window: MonitoringWindow, value: Date): string {

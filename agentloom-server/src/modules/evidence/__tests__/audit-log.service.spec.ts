@@ -99,17 +99,25 @@ function getStringChunkText(chunk: unknown): string | null {
   }
 
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === 'string').join('');
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .join('');
   }
 
   return null;
 }
 
 function isQueryContainer(chunk: unknown): chunk is { queryChunks: unknown[] } {
-  return !!chunk && typeof chunk === 'object' && Array.isArray((chunk as { queryChunks?: unknown }).queryChunks);
+  return (
+    !!chunk &&
+    typeof chunk === 'object' &&
+    Array.isArray((chunk as { queryChunks?: unknown }).queryChunks)
+  );
 }
 
-function extractPredicates(whereClause: unknown): Array<(row: AuditLogRow) => boolean> {
+function extractPredicates(
+  whereClause: unknown,
+): Array<(row: AuditLogRow) => boolean> {
   const predicates: Array<(row: AuditLogRow) => boolean> = [];
 
   function visit(chunk: unknown) {
@@ -152,7 +160,8 @@ function parseComparison(queryChunks: unknown[]) {
       typeof (chunk as { name: unknown }).name === 'string' &&
       (chunk as { name: string }).name in COLUMN_NAME_TO_ROW_KEY
     ) {
-      columnName = (chunk as { name: keyof typeof COLUMN_NAME_TO_ROW_KEY }).name;
+      columnName = (chunk as { name: keyof typeof COLUMN_NAME_TO_ROW_KEY })
+        .name;
       continue;
     }
 
@@ -163,7 +172,12 @@ function parseComparison(queryChunks: unknown[]) {
       continue;
     }
 
-    if (chunk && typeof chunk === 'object' && 'value' in chunk && 'encoder' in chunk) {
+    if (
+      chunk &&
+      typeof chunk === 'object' &&
+      'value' in chunk &&
+      'encoder' in chunk
+    ) {
       value = (chunk as { value: unknown }).value;
     }
   }
@@ -259,9 +273,11 @@ function createTenantSelectDb(results: Map<object, unknown[]>) {
         const rows = (results.get(table) ?? []) as AuditLogRow[];
         const filteredRows = filterRowsByWhereClause(rows, whereClause);
         const orderedQuery = Object.assign(Promise.resolve(filteredRows), {
-          limit: vi.fn().mockImplementation(async (limit: number) =>
-            filteredRows.slice(0, limit),
-          ),
+          limit: vi
+            .fn()
+            .mockImplementation(async (limit: number) =>
+              filteredRows.slice(0, limit),
+            ),
         });
 
         return {

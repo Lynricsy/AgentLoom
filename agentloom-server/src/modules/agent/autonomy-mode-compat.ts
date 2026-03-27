@@ -1,7 +1,4 @@
-import {
-  DEFAULT_AUTONOMY_CONFIG,
-  type AutonomyMode,
-} from './dto/autonomy.dto';
+import { DEFAULT_AUTONOMY_CONFIG, type AutonomyMode } from './dto/autonomy.dto';
 
 export const CANONICAL_AUTONOMY_MODE_ORDER = [
   'MANUAL_CONFIRM',
@@ -59,7 +56,9 @@ export function isCanonicalAutonomyMode(
   );
 }
 
-export function isLegacyAutonomyMode(mode: unknown): mode is LegacyAutonomyMode {
+export function isLegacyAutonomyMode(
+  mode: unknown,
+): mode is LegacyAutonomyMode {
   return (
     typeof mode === 'string' &&
     LEGACY_AUTONOMY_MODE_ORDER.includes(mode as LegacyAutonomyMode)
@@ -103,7 +102,9 @@ export function normalizeAutonomyMode(mode: unknown): NormalizedAutonomyMode {
 }
 
 export function compareAutonomyModes(left: unknown, right: unknown): number {
-  const leftRank = AUTONOMY_MODE_RANK.get(normalizeAutonomyMode(left).canonicalMode);
+  const leftRank = AUTONOMY_MODE_RANK.get(
+    normalizeAutonomyMode(left).canonicalMode,
+  );
   const rightRank = AUTONOMY_MODE_RANK.get(
     normalizeAutonomyMode(right).canonicalMode,
   );
@@ -121,10 +122,11 @@ export function clampAutonomyModeToCap(
 ): ClampedAutonomyMode {
   const normalizedMode = normalizeAutonomyMode(mode);
   const normalizedCap = normalizeAutonomyMode(cap);
-  const exceedsCap = compareAutonomyModes(
-    normalizedMode.canonicalMode,
-    normalizedCap.canonicalMode,
-  ) > 0;
+  const exceedsCap =
+    compareAutonomyModes(
+      normalizedMode.canonicalMode,
+      normalizedCap.canonicalMode,
+    ) > 0;
 
   return {
     ...normalizedMode,

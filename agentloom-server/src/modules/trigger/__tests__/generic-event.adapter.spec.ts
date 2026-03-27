@@ -56,7 +56,9 @@ describe('GenericEventAdapter', () => {
         eventSource: 'generic',
         eventType: 'custom_event',
       };
-      expect(adapter.matchesTrigger(createPayload('custom_event'), config)).toBe(true);
+      expect(
+        adapter.matchesTrigger(createPayload('custom_event'), config),
+      ).toBe(true);
     });
 
     it('should not match when event type differs', () => {
@@ -64,7 +66,9 @@ describe('GenericEventAdapter', () => {
         eventSource: 'generic',
         eventType: 'other_event',
       };
-      expect(adapter.matchesTrigger(createPayload('custom_event'), config)).toBe(false);
+      expect(
+        adapter.matchesTrigger(createPayload('custom_event'), config),
+      ).toBe(false);
     });
 
     it('should match case-insensitively', () => {
@@ -72,7 +76,9 @@ describe('GenericEventAdapter', () => {
         eventSource: 'generic',
         eventType: 'CUSTOM_EVENT',
       };
-      expect(adapter.matchesTrigger(createPayload('custom_event'), config)).toBe(true);
+      expect(
+        adapter.matchesTrigger(createPayload('custom_event'), config),
+      ).toBe(true);
     });
 
     it('should match all events when eventType is empty', () => {
@@ -80,14 +86,18 @@ describe('GenericEventAdapter', () => {
         eventSource: 'generic',
         eventType: '',
       };
-      expect(adapter.matchesTrigger(createPayload('anything'), config)).toBe(true);
+      expect(adapter.matchesTrigger(createPayload('anything'), config)).toBe(
+        true,
+      );
     });
 
     it('should match all events when eventType is undefined', () => {
       const config = {
         eventSource: 'generic',
       } as ApiEventTriggerConfig;
-      expect(adapter.matchesTrigger(createPayload('anything'), config)).toBe(true);
+      expect(adapter.matchesTrigger(createPayload('anything'), config)).toBe(
+        true,
+      );
     });
   });
 });

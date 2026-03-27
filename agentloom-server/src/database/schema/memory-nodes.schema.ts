@@ -19,7 +19,9 @@ export interface MemoryNodeMetadata {
 export const memoryNodes = pgTable(
   'memory_nodes',
   {
-    id: uuid('id').primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
     instanceId: uuid('instance_id')
       .notNull()
       .references(() => agentMemoryInstances.id, { onDelete: 'cascade' }),

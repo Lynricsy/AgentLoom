@@ -33,7 +33,9 @@ function readString(
   key: string,
 ): string | null {
   const candidate = value?.[key];
-  return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+  return typeof candidate === 'string' && candidate.length > 0
+    ? candidate
+    : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -62,7 +64,9 @@ function getTenantId(request: AuditLogHttpRequest): string | null {
 
 function getParam(request: AuditLogHttpRequest, key: string): string | null {
   const candidate = request.params?.[key];
-  return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+  return typeof candidate === 'string' && candidate.length > 0
+    ? candidate
+    : null;
 }
 
 function createUserActorRecord(

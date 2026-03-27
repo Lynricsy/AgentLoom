@@ -49,9 +49,8 @@ const EvidenceExportFilterInputSchema = z
     };
   });
 
-export const CreateEvidenceExportJobSchema = EvidenceExportFilterInputSchema.transform(
-  (filters) => ({ filters }),
-);
+export const CreateEvidenceExportJobSchema =
+  EvidenceExportFilterInputSchema.transform((filters) => ({ filters }));
 
 export type EvidenceExportFiltersDto = z.infer<
   typeof EvidenceExportFilterInputSchema

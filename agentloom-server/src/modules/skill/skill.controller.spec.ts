@@ -72,7 +72,9 @@ function getHttpCode(controller: any, methodName: string): number | undefined {
 describe('SkillController', () => {
   let controller: SkillController;
   let skillService: ReturnType<typeof mocks.createMockSkillService>;
-  let skillStorageService: ReturnType<typeof mocks.createMockSkillStorageService>;
+  let skillStorageService: ReturnType<
+    typeof mocks.createMockSkillStorageService
+  >;
   let storageService: ReturnType<typeof mocks.createMockStorageService>;
 
   beforeEach(async () => {
@@ -96,7 +98,11 @@ describe('SkillController', () => {
   describe('metadata', () => {
     it('create: CREATED + owner/admin/creator', () => {
       expect(getHttpCode(controller, 'create')).toBe(HttpStatus.CREATED);
-      expect(getRoles(controller, 'create')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'create')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
     });
 
     it('findAll: no roles', () => {
@@ -108,7 +114,11 @@ describe('SkillController', () => {
     });
 
     it('update: owner/admin/creator', () => {
-      expect(getRoles(controller, 'update')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'update')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
     });
 
     it('delete: NO_CONTENT + owner/admin', () => {
@@ -117,7 +127,11 @@ describe('SkillController', () => {
     });
 
     it('archive: owner/admin/creator', () => {
-      expect(getRoles(controller, 'archive')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'archive')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
     });
 
     it('listFiles: no roles', () => {
@@ -130,24 +144,38 @@ describe('SkillController', () => {
 
     it('uploadFile: CREATED + owner/admin/creator', () => {
       expect(getHttpCode(controller, 'uploadFile')).toBe(HttpStatus.CREATED);
-      expect(getRoles(controller, 'uploadFile')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'uploadFile')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
     });
 
     it('deleteFile: NO_CONTENT + owner/admin/creator', () => {
       expect(getHttpCode(controller, 'deleteFile')).toBe(HttpStatus.NO_CONTENT);
-      expect(getRoles(controller, 'deleteFile')).toEqual(['owner', 'admin', 'creator']);
+      expect(getRoles(controller, 'deleteFile')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
     });
   });
 
   // ─── Endpoint delegation ───────────────────────────────────────────────
   describe('findAll', () => {
     it('delegates to skillService.findAll', async () => {
-      const response = { data: [], meta: { total: 0, page: 1, pageSize: 20, totalPages: 0 } };
+      const response = {
+        data: [],
+        meta: { total: 0, page: 1, pageSize: 20, totalPages: 0 },
+      };
       skillService.findAll.mockResolvedValue(response);
 
       const result = await controller.findAll({ page: 1, pageSize: 20 });
       expect(result).toEqual(response);
-      expect(skillService.findAll).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+      expect(skillService.findAll).toHaveBeenCalledWith({
+        page: 1,
+        pageSize: 20,
+      });
     });
   });
 
@@ -178,7 +206,11 @@ describe('SkillController', () => {
 
       const result = await controller.archive(makeReq(), SKILL_ID);
       expect(result).toEqual(record);
-      expect(skillService.archive).toHaveBeenCalledWith(TENANT_ID, USER_ID, SKILL_ID);
+      expect(skillService.archive).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        SKILL_ID,
+      );
     });
   });
 
@@ -189,7 +221,10 @@ describe('SkillController', () => {
 
       const result = await controller.listFiles(makeReq(), SKILL_ID);
       expect(result).toEqual(files);
-      expect(skillStorageService.listSkillFiles).toHaveBeenCalledWith(TENANT_ID, SKILL_ID);
+      expect(skillStorageService.listSkillFiles).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+      );
     });
   });
 
@@ -204,9 +239,18 @@ describe('SkillController', () => {
         send: vi.fn().mockReturnValue('sent'),
       };
 
-      const result = await controller.downloadFile(makeReq(), SKILL_ID, 'test.md', reply);
+      const result = await controller.downloadFile(
+        makeReq(),
+        SKILL_ID,
+        'test.md',
+        reply,
+      );
       expect(result).toBe('sent');
-      expect(skillStorageService.downloadSkillFile).toHaveBeenCalledWith(TENANT_ID, SKILL_ID, 'test.md');
+      expect(skillStorageService.downloadSkillFile).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+        'test.md',
+      );
       expect(reply.header).toHaveBeenCalledWith(
         'Content-Disposition',
         `attachment; filename="${encodeURIComponent('test.md')}"`,
@@ -225,7 +269,10 @@ describe('SkillController', () => {
       expect(storageService.delete).toHaveBeenCalledWith(
         `tenants/${TENANT_ID}/skills/${SKILL_ID}/test.md`,
       );
-      expect(skillService.refreshFileMeta).toHaveBeenCalledWith(TENANT_ID, SKILL_ID);
+      expect(skillService.refreshFileMeta).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+      );
     });
   });
 

@@ -56,7 +56,11 @@ function buildFakeToken(
     'base64url',
   );
   const payload = Buffer.from(
-    JSON.stringify({ sub, exp, ...(sessionId ? { session_id: sessionId } : {}) }),
+    JSON.stringify({
+      sub,
+      exp,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }),
   ).toString('base64url');
   return `${header}.${payload}.fake-sig`;
 }
@@ -98,10 +102,7 @@ describe('AuthService — session management', () => {
 
   describe('listSessions', () => {
     it('成功：活跃セッション一覧と is_current フラグを返す', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       mockExecute.mockResolvedValue({
         rows: [MOCK_SESSION_ROW],
@@ -132,10 +133,7 @@ describe('AuthService — session management', () => {
 
   describe('revokeSession', () => {
     it('成功：別セッションを正常に取消', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       mockExecute.mockResolvedValueOnce({
         rows: [{ id: mocks.MOCK_OTHER_SESSION_ID }],
@@ -152,10 +150,7 @@ describe('AuthService — session management', () => {
     });
 
     it('エラー：現在のセッションを取り消そうとすると 400 を投げる', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       try {
         await authService.revokeSession(token, mocks.MOCK_SESSION_ID);
@@ -173,10 +168,7 @@ describe('AuthService — session management', () => {
     });
 
     it('エラー：存在しないセッション ID で 404 を投げる', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       mockExecute.mockResolvedValueOnce({ rows: [] });
 
@@ -187,9 +179,7 @@ describe('AuthService — session management', () => {
         expect(error).toBeInstanceOf(DomainException);
         const de = error as DomainException;
         expect(de.getStatus()).toBe(HttpStatus.NOT_FOUND);
-        expect(de.type).toBe(
-          'https://agentloom.dev/errors/session-not-found',
-        );
+        expect(de.type).toBe('https://agentloom.dev/errors/session-not-found');
       }
 
       expect(mockExecute).toHaveBeenCalledTimes(1);
@@ -198,10 +188,7 @@ describe('AuthService — session management', () => {
 
   describe('revokeAllSessions', () => {
     it('成功：現在のセッション以外を全て削除し revokedCount を返す', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       mockExecute.mockResolvedValueOnce({
         rows: [
@@ -218,10 +205,7 @@ describe('AuthService — session management', () => {
     });
 
     it('成功：削除対象セッションが無い場合は revokedCount=0 を返す', async () => {
-      const token = buildFakeToken(
-        mocks.MOCK_USER_ID,
-        mocks.MOCK_SESSION_ID,
-      );
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
 
       mockExecute.mockResolvedValueOnce({
         rows: [{ id: mocks.MOCK_SESSION_ID }],

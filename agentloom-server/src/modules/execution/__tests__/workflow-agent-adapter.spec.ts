@@ -11,9 +11,9 @@ const { mockResolveSubAgent } = vi.hoisted(() => ({
 }));
 
 vi.mock('../node-handlers/sub-agent.handler', async () => {
-  const actual = await vi.importActual<typeof import('../node-handlers/sub-agent.handler')>(
-    '../node-handlers/sub-agent.handler',
-  );
+  const actual = await vi.importActual<
+    typeof import('../node-handlers/sub-agent.handler')
+  >('../node-handlers/sub-agent.handler');
 
   return {
     ...actual,
@@ -142,7 +142,9 @@ describe('WorkflowAgentAdapter', () => {
         id: agentDefinitionId,
         publishedVersionId: `${agentDefinitionId}-version`,
         systemPrompt:
-          agentDefinitionId === 'parent-agent' ? '父 Agent 提示词' : '子 Agent 提示词',
+          agentDefinitionId === 'parent-agent'
+            ? '父 Agent 提示词'
+            : '子 Agent 提示词',
         sandboxConfig:
           agentDefinitionId === 'parent-agent'
             ? { cpu: 2, memory: 1024, disk: 4, timeout: 5 }
@@ -267,7 +269,9 @@ describe('WorkflowAgentAdapter', () => {
     mockSandboxRuntime.prompt.mockImplementation(
       (_sessionId: string, content: ContentBlock[]) => {
         expect(content[0]).toMatchObject({ type: 'text' });
-        expect((content[0] as { text: string }).text).toContain('[image:image/png]');
+        expect((content[0] as { text: string }).text).toContain(
+          '[image:image/png]',
+        );
         expect(content[1]).toMatchObject({
           type: 'image',
           mimeType: 'image/png',
@@ -495,14 +499,17 @@ describe('WorkflowAgentAdapter', () => {
       sandboxConfig: null,
     });
 
-    const adapter = createAdapter({
-      db,
-      agentRuntime: mockAgentRuntime,
-      runtimeAdapterFactory: mockRuntimeAdapterFactory,
-      agentDefinitionService: mockAgentDefinitionService,
-      sandboxService: mockSandboxService,
-      eventBridge: mockEventBridge,
-    }, { agentDefinitionId: 'no-snap-agent' });
+    const adapter = createAdapter(
+      {
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+      },
+      { agentDefinitionId: 'no-snap-agent' },
+    );
 
     await expect(
       adapter.execute({

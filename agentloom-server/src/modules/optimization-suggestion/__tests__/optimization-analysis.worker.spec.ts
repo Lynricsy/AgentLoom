@@ -53,7 +53,9 @@ describe('OptimizationAnalysisWorker', () => {
   });
 
   it('onCompleted 应记录成功日志', () => {
-    const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    const logSpy = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => {});
 
     worker.onCompleted(createJob({ tenantId: 'tenant-1' }));
 
@@ -63,7 +65,9 @@ describe('OptimizationAnalysisWorker', () => {
   });
 
   it('onFailed 应记录失败日志', () => {
-    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
 
     worker.onFailed(createJob({ tenantId: 'tenant-1' }), new Error('boom'));
 
@@ -73,20 +77,32 @@ describe('OptimizationAnalysisWorker', () => {
   });
 
   it('onCompleted 在 job 缺失时也应记录兜底日志', () => {
-    const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    const logSpy = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => {});
 
     worker.onCompleted(undefined);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"jobId":null'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"tenantId":null'));
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"jobId":null'),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"tenantId":null'),
+    );
   });
 
   it('onFailed 在 job 缺失时也应记录兜底字段', () => {
-    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
 
     worker.onFailed(undefined, new Error('boom'));
 
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('"attempt":null'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('"tenantId":null'));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"attempt":null'),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"tenantId":null'),
+    );
   });
 });

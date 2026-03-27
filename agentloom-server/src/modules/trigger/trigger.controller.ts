@@ -65,10 +65,16 @@ export class TriggerController {
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ): Promise<{ data: WorkflowTriggerResponse }> {
-    let data = await this.triggerService.create(tenantId, userId, workflowId, dto);
+    let data = await this.triggerService.create(
+      tenantId,
+      userId,
+      workflowId,
+      dto,
+    );
 
     if (data.type === 'cron' && data.isEnabled) {
-      const nextFireAt = await this.triggerSchedulerService.registerCronJob(data);
+      const nextFireAt =
+        await this.triggerSchedulerService.registerCronJob(data);
       data = this.withNextFireAt(data, nextFireAt);
     }
 
@@ -98,7 +104,11 @@ export class TriggerController {
     @Param('triggerId', ParseUUIDPipe) triggerId: string,
     @CurrentTenant() tenantId: string,
   ): Promise<{ data: WorkflowTriggerResponse }> {
-    const data = await this.findTriggerForWorkflow(tenantId, workflowId, triggerId);
+    const data = await this.findTriggerForWorkflow(
+      tenantId,
+      workflowId,
+      triggerId,
+    );
     return { data: this.sanitizeTrigger(data) };
   }
 
@@ -113,14 +123,19 @@ export class TriggerController {
     @Body() dto: UpdateTriggerDto,
     @CurrentTenant() tenantId: string,
   ): Promise<{ data: WorkflowTriggerResponse }> {
-    const existing = await this.findTriggerForWorkflow(tenantId, workflowId, triggerId);
+    const existing = await this.findTriggerForWorkflow(
+      tenantId,
+      workflowId,
+      triggerId,
+    );
     let data = await this.triggerService.update(tenantId, triggerId, dto);
 
     if (existing.type === 'cron') {
       await this.triggerSchedulerService.removeCronJob(triggerId);
 
       if (data.isEnabled) {
-        const nextFireAt = await this.triggerSchedulerService.registerCronJob(data);
+        const nextFireAt =
+          await this.triggerSchedulerService.registerCronJob(data);
         data = this.withNextFireAt(data, nextFireAt);
       } else {
         data = this.withNextFireAt(data, null);
@@ -141,7 +156,11 @@ export class TriggerController {
     @Param('triggerId', ParseUUIDPipe) triggerId: string,
     @CurrentTenant() tenantId: string,
   ): Promise<void> {
-    const existing = await this.findTriggerForWorkflow(tenantId, workflowId, triggerId);
+    const existing = await this.findTriggerForWorkflow(
+      tenantId,
+      workflowId,
+      triggerId,
+    );
 
     await this.triggerService.remove(tenantId, triggerId);
 
@@ -160,12 +179,17 @@ export class TriggerController {
     @Param('triggerId', ParseUUIDPipe) triggerId: string,
     @CurrentTenant() tenantId: string,
   ): Promise<{ data: WorkflowTriggerResponse }> {
-    const existing = await this.findTriggerForWorkflow(tenantId, workflowId, triggerId);
+    const existing = await this.findTriggerForWorkflow(
+      tenantId,
+      workflowId,
+      triggerId,
+    );
     let data = await this.triggerService.toggle(tenantId, triggerId);
 
     if (existing.type === 'cron') {
       if (data.isEnabled) {
-        const nextFireAt = await this.triggerSchedulerService.registerCronJob(data);
+        const nextFireAt =
+          await this.triggerSchedulerService.registerCronJob(data);
         data = this.withNextFireAt(data, nextFireAt);
       } else {
         await this.triggerSchedulerService.removeCronJob(triggerId);

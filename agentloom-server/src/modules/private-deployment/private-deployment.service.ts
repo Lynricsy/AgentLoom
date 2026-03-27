@@ -126,7 +126,9 @@ export class PrivateDeploymentService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    @Inject(AuditLogService) @Optional() private readonly auditLogService: AuditLogService | undefined,
+    @Inject(AuditLogService)
+    @Optional()
+    private readonly auditLogService: AuditLogService | undefined,
     private readonly encryptionService: EncryptionService,
     private readonly configService: ConfigService,
   ) {}
@@ -139,10 +141,14 @@ export class PrivateDeploymentService {
     organizationId: string,
     userId: string,
   ): Promise<PrivateDeploymentResponseDto> {
-    const organization = await this.ensureOrganizationAccess(organizationId, userId);
-    const stored = await this.tenantDb.query.privateDeploymentSettings.findFirst({
-      where: eq(privateDeploymentSettings.organizationId, organizationId),
-    });
+    const organization = await this.ensureOrganizationAccess(
+      organizationId,
+      userId,
+    );
+    const stored =
+      await this.tenantDb.query.privateDeploymentSettings.findFirst({
+        where: eq(privateDeploymentSettings.organizationId, organizationId),
+      });
 
     return this.toResponseDto(stored ?? this.createDefaultRecord(organization));
   }
@@ -152,11 +158,15 @@ export class PrivateDeploymentService {
     dto: UpdatePrivateDeploymentSettingsDto,
     userId: string,
   ): Promise<PrivateDeploymentResponseDto> {
-    const organization = await this.ensureOrganizationAccess(organizationId, userId);
+    const organization = await this.ensureOrganizationAccess(
+      organizationId,
+      userId,
+    );
     const validated = UpdatePrivateDeploymentSettingsSchema.parse(dto);
-    const existing = await this.tenantDb.query.privateDeploymentSettings.findFirst({
-      where: eq(privateDeploymentSettings.organizationId, organizationId),
-    });
+    const existing =
+      await this.tenantDb.query.privateDeploymentSettings.findFirst({
+        where: eq(privateDeploymentSettings.organizationId, organizationId),
+      });
 
     const beforeRecord = existing ?? this.createDefaultRecord(organization);
     const beforeResponse = await this.toResponseDto(beforeRecord);
@@ -192,7 +202,9 @@ export class PrivateDeploymentService {
         },
       });
 
-      this.logger.log(`Created private deployment settings for ${organizationId}`);
+      this.logger.log(
+        `Created private deployment settings for ${organizationId}`,
+      );
       return response;
     }
 
@@ -224,7 +236,9 @@ export class PrivateDeploymentService {
       },
     });
 
-    this.logger.log(`Updated private deployment settings for ${organizationId}`);
+    this.logger.log(
+      `Updated private deployment settings for ${organizationId}`,
+    );
     return response;
   }
 
@@ -334,7 +348,9 @@ export class PrivateDeploymentService {
       requestedSecretRef:
         nextLlmMode === 'direct' ? null : dto.llmProxy?.apiKeySecretRef,
       existing: this.getPrivateCloudApiKeyEnvelope(current),
-      derivedSecretRef: this.buildLlmProxyApiKeySecretRef(current.organizationId),
+      derivedSecretRef: this.buildLlmProxyApiKeySecretRef(
+        current.organizationId,
+      ),
     });
 
     const nextCertificateSource = dto.certificates
@@ -342,15 +358,11 @@ export class PrivateDeploymentService {
       : current.certificateSource;
     const shouldClearCertificateMaterial = nextCertificateSource !== 'uploaded';
     const certificatePem = this.resolveEncryptedValue(
-      shouldClearCertificateMaterial
-        ? null
-        : dto.certificates?.certificatePem,
+      shouldClearCertificateMaterial ? null : dto.certificates?.certificatePem,
       this.readEncryptedValue(this.getCertificatePemEnvelope(current)),
     );
     const certificatePrivateKey = this.resolveEncryptedValue(
-      shouldClearCertificateMaterial
-        ? null
-        : dto.certificates?.privateKeyPem,
+      shouldClearCertificateMaterial ? null : dto.certificates?.privateKeyPem,
       this.readEncryptedValue(this.getCertificatePrivateKeyEnvelope(current)),
     );
     const licenseKey = this.resolveEncryptedValue(
@@ -418,7 +430,9 @@ export class PrivateDeploymentService {
     }
 
     if (params.requestedSecretRef === undefined) {
-      return this.readEncryptedValue(params.existing) ?? this.emptyEncryptedValue();
+      return (
+        this.readEncryptedValue(params.existing) ?? this.emptyEncryptedValue()
+      );
     }
 
     if (params.requestedSecretRef === null) {
@@ -452,7 +466,9 @@ export class PrivateDeploymentService {
     return this.encryptionService.encrypt(plaintext);
   }
 
-  private readEncryptedValue(data: NullableEncryptedData): EncryptedData | null {
+  private readEncryptedValue(
+    data: NullableEncryptedData,
+  ): EncryptedData | null {
     if (!this.hasEncryptedValue(data)) {
       return null;
     }
@@ -557,8 +573,10 @@ export class PrivateDeploymentService {
       certificatePemEncryptedDek: record.certificatePemEncryptedDek,
       certificatePemIv: record.certificatePemIv,
       certificatePemAuthTag: record.certificatePemAuthTag,
-      certificatePrivateKeyEncryptedKey: record.certificatePrivateKeyEncryptedKey,
-      certificatePrivateKeyEncryptedDek: record.certificatePrivateKeyEncryptedDek,
+      certificatePrivateKeyEncryptedKey:
+        record.certificatePrivateKeyEncryptedKey,
+      certificatePrivateKeyEncryptedDek:
+        record.certificatePrivateKeyEncryptedDek,
       certificatePrivateKeyIv: record.certificatePrivateKeyIv,
       certificatePrivateKeyAuthTag: record.certificatePrivateKeyAuthTag,
       licenseKeyEncryptedKey: record.licenseKeyEncryptedKey,
@@ -627,8 +645,12 @@ export class PrivateDeploymentService {
       version: record.version,
       ...(record.createdBy ? { createdBy: record.createdBy } : {}),
       ...(record.updatedBy ? { updatedBy: record.updatedBy } : {}),
-      ...(record.createdAt ? { createdAt: record.createdAt.toISOString() } : {}),
-      ...(record.updatedAt ? { updatedAt: record.updatedAt.toISOString() } : {}),
+      ...(record.createdAt
+        ? { createdAt: record.createdAt.toISOString() }
+        : {}),
+      ...(record.updatedAt
+        ? { updatedAt: record.updatedAt.toISOString() }
+        : {}),
     };
   }
 
@@ -698,8 +720,12 @@ export class PrivateDeploymentService {
     }
   }
 
-  private decryptLicenseKey(record: PrivateDeploymentRecordLike): string | null {
-    const encrypted = this.readEncryptedValue(this.getLicenseKeyEnvelope(record));
+  private decryptLicenseKey(
+    record: PrivateDeploymentRecordLike,
+  ): string | null {
+    const encrypted = this.readEncryptedValue(
+      this.getLicenseKeyEnvelope(record),
+    );
     if (!encrypted) {
       return null;
     }
@@ -749,7 +775,9 @@ export class PrivateDeploymentService {
   }
 
   private getDeploymentMode(): DeploymentMode {
-    const configured = this.configService.get<DeploymentMode>('APP_DEPLOYMENT_MODE');
+    const configured = this.configService.get<DeploymentMode>(
+      'APP_DEPLOYMENT_MODE',
+    );
     return configured === 'private' ? 'private' : 'saas';
   }
 

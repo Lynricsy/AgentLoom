@@ -124,7 +124,10 @@ export class PluginMarketplaceController {
     @CurrentUser('sub') userId: string,
   ) {
     const parsedDto = SubmitPluginListingSchema.parse(dto);
-    const plugin = await this.pluginService.findById(parsedDto.pluginDbId, tenantId);
+    const plugin = await this.pluginService.findById(
+      parsedDto.pluginDbId,
+      tenantId,
+    );
 
     this.ensurePluginCanManageMarketplace(plugin, userId);
 
@@ -240,10 +243,11 @@ export class PluginMarketplaceController {
       ...parsedQuery,
       orgId,
     });
-    const currentMonthSummary = await this.pluginEarningsService.getDashboardSummary({
-      orgId,
-      ...this.resolveCurrentMonthRange(),
-    });
+    const currentMonthSummary =
+      await this.pluginEarningsService.getDashboardSummary({
+        orgId,
+        ...this.resolveCurrentMonthRange(),
+      });
 
     return {
       totalRevenue: summary.totalRevenue,
@@ -388,7 +392,7 @@ export class PluginMarketplaceController {
     const currentPluginDbId = this.requirePluginDbId(currentListing, id);
 
     const currentPlugin = await this.pluginService.findById(
-      currentPluginDbId!,
+      currentPluginDbId,
       tenantId,
     );
     this.ensurePluginCanManageMarketplace(currentPlugin, userId);
@@ -440,10 +444,7 @@ export class PluginMarketplaceController {
   ) {
     const currentListing = await this.findPluginListingById(tenantId, id);
     const pluginDbId = this.requirePluginDbId(currentListing, id);
-    const plugin = await this.pluginService.findById(
-      pluginDbId!,
-      tenantId,
-    );
+    const plugin = await this.pluginService.findById(pluginDbId, tenantId);
 
     this.ensurePluginCanManageMarketplace(plugin, userId);
 
@@ -493,7 +494,10 @@ export class PluginMarketplaceController {
   @ApiOperation({ summary: '重新上架插件 Marketplace listing' })
   @ApiResponse({ status: 200, description: '插件 listing 重新上架完成' })
   @ApiResponse({ status: 404, description: '插件 listing 不存在' })
-  @ApiResponse({ status: 409, description: '状态冲突（非 unlisted/review_failed 状态）' })
+  @ApiResponse({
+    status: 409,
+    description: '状态冲突（非 unlisted/review_failed 状态）',
+  })
   async relist(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,
@@ -501,10 +505,7 @@ export class PluginMarketplaceController {
   ) {
     const currentListing = await this.findPluginListingById(tenantId, id);
     const pluginDbId = this.requirePluginDbId(currentListing, id);
-    const plugin = await this.pluginService.findById(
-      pluginDbId!,
-      tenantId,
-    );
+    const plugin = await this.pluginService.findById(pluginDbId, tenantId);
 
     this.ensurePluginCanManageMarketplace(plugin, userId);
 
@@ -595,7 +596,10 @@ export class PluginMarketplaceController {
     }
   }
 
-  private requirePluginDbId(listing: MarketplaceListing, listingId: string): string {
+  private requirePluginDbId(
+    listing: MarketplaceListing,
+    listingId: string,
+  ): string {
     if (!listing.pluginDbId) {
       throw new MarketplaceListingConflictException(
         `插件 listing ${listingId} 未绑定插件记录，无法继续操作`,
@@ -611,7 +615,10 @@ export class PluginMarketplaceController {
     userId: string,
     plugin: PluginRecord,
     dto: SubmitPluginListingDtoType,
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     const [created] = await this.tenantDb
       .insert(marketplaceListings)
       .values({
@@ -672,7 +679,10 @@ export class PluginMarketplaceController {
     currentListing: MarketplaceListing,
     plugin: PluginRecord,
     dto: SubmitPluginListingDtoType,
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     return this.reviewExistingListing(
       tenantId,
       userId,
@@ -690,10 +700,20 @@ export class PluginMarketplaceController {
     plugin: PluginRecord,
     dto: Pick<
       SubmitPluginListingDtoType,
-      'title' | 'summary' | 'category' | 'tags' | 'pricingModel' | 'pricePerExecution'
+      | 'title'
+      | 'summary'
+      | 'category'
+      | 'tags'
+      | 'pricingModel'
+      | 'pricePerExecution'
     >,
-    action: 'plugin_marketplace_listing_resubmitted' | 'plugin_marketplace_listing_relisted',
-  ): Promise<{ listing: MarketplaceListing; reviewResult: MarketplaceReviewResult }> {
+    action:
+      | 'plugin_marketplace_listing_resubmitted'
+      | 'plugin_marketplace_listing_relisted',
+  ): Promise<{
+    listing: MarketplaceListing;
+    reviewResult: MarketplaceReviewResult;
+  }> {
     await this.tenantDb
       .update(marketplaceListings)
       .set({
@@ -704,7 +724,7 @@ export class PluginMarketplaceController {
         tags: dto.tags ?? [],
         pricingModel: dto.pricingModel,
         pricePerExecution:
-          dto.pricingModel === 'free' ? null : dto.pricePerExecution ?? null,
+          dto.pricingModel === 'free' ? null : (dto.pricePerExecution ?? null),
         status: 'pending_review',
         submittedBy: userId,
         submittedAt: new Date(),

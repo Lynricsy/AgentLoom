@@ -21,7 +21,9 @@ const hoisted = vi.hoisted(() => {
 
   class MockPiAgent {
     static instances: MockPiAgent[] = [];
-    static script: ((agent: MockPiAgent, input: string) => Promise<void>) | null = null;
+    static script:
+      | ((agent: MockPiAgent, input: string) => Promise<void>)
+      | null = null;
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
     readonly setTools = vi.fn((tools: unknown[]) => {
@@ -121,7 +123,9 @@ type InjectedTool = {
 function createSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(Array.isArray(result) ? result : [result]),
+      where: vi
+        .fn()
+        .mockResolvedValue(Array.isArray(result) ? result : [result]),
     }),
   };
 }
@@ -196,8 +200,12 @@ describe('compiler → runtime tool injection E2E', () => {
     hoisted.zodToTypeBox.mockClear();
     hoisted.getTenantDb.mockClear();
 
-    mockDb = { select: vi.fn().mockReturnValue(createSelectChain([defaultModelConfig])) };
-    mockPiAiAdapter = { getModel: vi.fn().mockResolvedValue('mock-language-model') };
+    mockDb = {
+      select: vi.fn().mockReturnValue(createSelectChain([defaultModelConfig])),
+    };
+    mockPiAiAdapter = {
+      getModel: vi.fn().mockResolvedValue('mock-language-model'),
+    };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn().mockResolvedValue({
         transportType: 'streamable_http',
@@ -235,7 +243,9 @@ describe('compiler → runtime tool injection E2E', () => {
 
     subAgentToolsProvider = new SubAgentToolsProvider(
       compiler,
-      mockEventBridge as unknown as ConstructorParameters<typeof SubAgentToolsProvider>[1],
+      mockEventBridge as unknown as ConstructorParameters<
+        typeof SubAgentToolsProvider
+      >[1],
     );
 
     hoisted.MockPiAgent.script = async (agent) => {
@@ -285,7 +295,9 @@ describe('compiler → runtime tool injection E2E', () => {
       );
     }
 
-    await collectEvents(adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]));
+    await collectEvents(
+      adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+    );
 
     const agent = hoisted.MockPiAgent.instances[0];
     const tools = (agent.setTools.mock.lastCall?.[0] ?? []) as InjectedTool[];
@@ -351,7 +363,9 @@ describe('compiler → runtime tool injection E2E', () => {
       'wait_for_subagents',
       'get_subagent_status',
     ]);
-    expect(tools.every((tool) => typeof tool.execute === 'function')).toBe(true);
+    expect(tools.every((tool) => typeof tool.execute === 'function')).toBe(
+      true,
+    );
   });
 
   it('Knowledge chain: 画布 knowledge 节点编译后会注入知识检索工具', async () => {
@@ -411,7 +425,10 @@ describe('compiler → runtime tool injection E2E', () => {
       connectToAgentMain('http-1', 'tools-in'),
     ];
 
-    const { runtimeConfig, tools } = await compileAndLoadTools({ nodes, edges });
+    const { runtimeConfig, tools } = await compileAndLoadTools({
+      nodes,
+      edges,
+    });
 
     expect(runtimeConfig.tools).toEqual([
       expect.objectContaining({ toolType: 'mcp', name: 'search_docs' }),
@@ -459,7 +476,10 @@ describe('compiler → runtime tool injection E2E', () => {
       connectToAgentMain('knowledge-connected', 'knowledge-in'),
     ];
 
-    const { runtimeConfig, tools } = await compileAndLoadTools({ nodes, edges });
+    const { runtimeConfig, tools } = await compileAndLoadTools({
+      nodes,
+      edges,
+    });
     const toolNames = tools.map((tool) => tool.name);
 
     expect(runtimeConfig.tools).toEqual([

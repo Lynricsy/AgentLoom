@@ -89,7 +89,10 @@ describe('OAuthController', () => {
       reply as unknown as FastifyReply,
     );
 
-    expect(oauthService.handleCallback).toHaveBeenCalledWith('oauth-code-123', undefined);
+    expect(oauthService.handleCallback).toHaveBeenCalledWith(
+      'oauth-code-123',
+      undefined,
+    );
     expect(reply.code).toHaveBeenCalledWith(302);
     expect(reply.redirect).toHaveBeenCalledWith(
       'http://localhost:5173/auth/callback?access_token=token-a&refresh_token=token-b',

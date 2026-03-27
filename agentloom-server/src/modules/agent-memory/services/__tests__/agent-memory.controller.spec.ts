@@ -20,9 +20,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>(
-    'drizzle-orm',
-  );
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -631,7 +630,10 @@ describe('AgentMemoryController', () => {
         }),
       );
 
-      const updates = updateQuery.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      const updates = updateQuery.set.mock.calls[0]?.[0] as Record<
+        string,
+        unknown
+      >;
       expect(result).toEqual({ data: updated });
       expect(updates).toMatchObject({
         description: '新的实例描述',
@@ -778,11 +780,7 @@ describe('AgentMemoryController', () => {
       mockEdgeService.getChildEdges.mockResolvedValueOnce(childEdges);
       mockEdgeService.getParentEdges.mockResolvedValueOnce(parentEdges);
 
-      const result = await controller.getNode(
-        TENANT_ID,
-        INSTANCE_ID,
-        NODE_ID,
-      );
+      const result = await controller.getNode(TENANT_ID, INSTANCE_ID, NODE_ID);
 
       expect(result.data.id).toBe(NODE_ID);
       expect(result.data.versions).toEqual(versions);

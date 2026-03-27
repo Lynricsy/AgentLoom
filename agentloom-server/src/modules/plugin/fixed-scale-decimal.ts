@@ -12,7 +12,9 @@ export type FixedScaleDecimalInput =
   | null
   | undefined;
 
-function normalizeDecimalInput(value: Exclude<FixedScaleDecimalInput, FixedScaleDecimal>): string {
+function normalizeDecimalInput(
+  value: Exclude<FixedScaleDecimalInput, FixedScaleDecimal>,
+): string {
   if (value === null || value === undefined) {
     return '0';
   }
@@ -32,7 +34,9 @@ function normalizeDecimalInput(value: Exclude<FixedScaleDecimalInput, FixedScale
   return value.trim();
 }
 
-function parseScaledValue(value: Exclude<FixedScaleDecimalInput, FixedScaleDecimal>): bigint {
+function parseScaledValue(
+  value: Exclude<FixedScaleDecimalInput, FixedScaleDecimal>,
+): bigint {
   const normalized = normalizeDecimalInput(value);
 
   if (!SIGNED_FIXED_SCALE_DECIMAL_REGEX.test(normalized)) {
@@ -94,7 +98,8 @@ export class FixedScaleDecimal {
   }
 
   multiplyInteger(value: number | bigint): FixedScaleDecimal {
-    const multiplier = typeof value === 'bigint' ? value : BigInt(Math.trunc(value));
+    const multiplier =
+      typeof value === 'bigint' ? value : BigInt(Math.trunc(value));
     return new FixedScaleDecimal(this.scaledValue * multiplier);
   }
 
@@ -118,6 +123,8 @@ export class FixedScaleDecimal {
   }
 }
 
-export function normalizeFixedScaleDecimal(value: FixedScaleDecimalInput): string {
+export function normalizeFixedScaleDecimal(
+  value: FixedScaleDecimalInput,
+): string {
   return FixedScaleDecimal.from(value).toString();
 }

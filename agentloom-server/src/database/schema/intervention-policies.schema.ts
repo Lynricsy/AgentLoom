@@ -18,7 +18,9 @@ import { workflowDefinitions } from './workflow-definitions.schema';
 export const interventionPolicies = pgTable(
   'intervention_policies',
   {
-    id: uuid().primaryKey().default(sql`uuid_generate_v7()`),
+    id: uuid()
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
 
     workflowId: uuid('workflow_id')
       .notNull()

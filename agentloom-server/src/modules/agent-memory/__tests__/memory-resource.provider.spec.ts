@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('drizzle-orm', async () => {
-  const actual = await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
+  const actual =
+    await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
 
   return {
     ...actual,
@@ -257,7 +258,9 @@ describe('MemoryResourceProvider', () => {
 
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
 
-      await expect(provider.share(instance, 'consumer-fallback')).resolves.toBeUndefined();
+      await expect(
+        provider.share(instance, 'consumer-fallback'),
+      ).resolves.toBeUndefined();
 
       const updatePayload = updateQuery.set.mock.calls[0]?.[0] as {
         config: Record<string, unknown>;
@@ -284,7 +287,9 @@ describe('MemoryResourceProvider', () => {
       const registry = {
         getProvider: vi.fn().mockReturnValue({ type: MEMORY_RESOURCE_TYPE }),
       };
-      const memoryProvider = { type: MEMORY_RESOURCE_TYPE } as MemoryResourceProvider;
+      const memoryProvider = {
+        type: MEMORY_RESOURCE_TYPE,
+      } as MemoryResourceProvider;
       const module = new AgentMemoryModule(
         registry as never,
         memoryProvider as never,
@@ -298,7 +303,9 @@ describe('MemoryResourceProvider', () => {
       const registry = {
         getProvider: vi.fn().mockReturnValue(undefined),
       };
-      const memoryProvider = { type: MEMORY_RESOURCE_TYPE } as MemoryResourceProvider;
+      const memoryProvider = {
+        type: MEMORY_RESOURCE_TYPE,
+      } as MemoryResourceProvider;
       const module = new AgentMemoryModule(
         registry as never,
         memoryProvider as never,

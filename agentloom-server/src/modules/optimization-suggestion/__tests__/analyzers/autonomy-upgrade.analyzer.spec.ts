@@ -24,15 +24,22 @@ function createTelemetry(
         : [],
       selfRepairs: options.hasSelfRepair ? [{ success: true }] : [],
     },
-    createdAt: new Date(`2026-03-${options.day.toString().padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${options.day.toString().padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
-function createSummary(executionId: string, day: number): ExecutionSummaryRecord {
+function createSummary(
+  executionId: string,
+  day: number,
+): ExecutionSummaryRecord {
   return {
     executionId,
     summaryData: { status: 'completed' },
-    createdAt: new Date(`2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`),
+    createdAt: new Date(
+      `2026-03-${day.toString().padStart(2, '0')}T00:00:00.000Z`,
+    ),
   };
 }
 
@@ -45,8 +52,9 @@ function createContext(
       day: (index % 28) + 1,
     }),
   );
-  const executionSummaries = Array.from({ length: executionCount }, (_, index) =>
-    createSummary(`${index + 1}`, (index % 28) + 1),
+  const executionSummaries = Array.from(
+    { length: executionCount },
+    (_, index) => createSummary(`${index + 1}`, (index % 28) + 1),
   );
 
   return {
