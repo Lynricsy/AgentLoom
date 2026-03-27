@@ -235,3 +235,21 @@ npm test                           # 容器 HTTP 适配层测试
 - **InProcessAgentAdapter (pi-agent-core)**: `InProcessAgentAdapter` 作为持久化包装层，将 live runtime 操作委托给 `PiAgentCoreAdapter`（基于 `pi-agent-core` 的 `Agent` 类），自身维护 workflow checkpoint、conversation durable snapshot、replay ledger。`streamFn` 适配器桥接 Vercel AI SDK `streamText()` 与 pi-agent-core 的 `StreamFn` 接口。工具 schema 通过 `tool-schema-converter.ts` 在 Zod ↔ TypeBox 之间转换
 - **ESM 动态导入**: pi-mono 包为纯 ESM，NestJS (CommonJS) 侧通过 `await import()` 动态导入。`pi-imports.ts` 提供统一的惰性导入入口（`importPiAgentCore()`、`importPiAi()`）
 - **沙箱工具权限**: `SandboxAgentAdapter` 实现 Promise gate 工具权限机制，容器通过 `POST /agent-conversations/:id/tool-permission` 回调通知权限请求，30s 超时默认拒绝
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+Use the `/trellis:start` command when starting a new session to:
+- Initialize your developer identity
+- Understand current project context
+- Read relevant guidelines
+
+Use `@/.trellis/` to learn:
+- Development workflow (`workflow.md`)
+- Project structure guidelines (`spec/`)
+- Developer workspace (`workspace/`)
+
+Keep this managed block so 'trellis update' can refresh the instructions.
+
+<!-- TRELLIS:END -->
