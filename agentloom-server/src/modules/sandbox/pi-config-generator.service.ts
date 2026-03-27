@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import type { McpServerConfig } from '../agent/types/agent-session.types';
+
 export interface PiModelConfig {
   provider: string;
   model: string;
@@ -18,6 +20,7 @@ export interface PiConfigInput {
   systemPrompt?: string | null;
   modelConfig?: PiModelConfig | null;
   skills?: SkillInput[];
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 export interface PiConfigBundle {
@@ -26,6 +29,8 @@ export interface PiConfigBundle {
   systemPrompt: string;
   /** Outer key = skill directory name (kebab-case), inner map = filename → content */
   skills: Record<string, Record<string, string>>;
+  /** JSON string of MCP server configurations keyed by server name */
+  mcpServers: string;
 }
 
 // Maps AgentLoom provider name → pi-ai API identifier
@@ -205,6 +210,21 @@ export class PiConfigGeneratorService {
   }
 
   /**
+   * Generate mcp-servers.json content for the sandbox container.
+   *
+   * Serializes the MCP server configurations as a JSON object keyed by
+   * server name. Each entry follows the Claude Code MCP config format
+   * (transportType, command/args/env for stdio, url/headers for HTTP).
+   */
+  generateMcpServersJson(input: PiConfigInput): string {
+    if (!input.mcpServers || Object.keys(input.mcpServers).length === 0) {
+      return '{}';
+    }
+
+    return JSON.stringify(input.mcpServers, null, 2);
+  }
+
+  /**
    * Generate all config files in one call.
    * Returns a bundle ready to mount at /config/ inside the sandbox container.
    */
@@ -214,6 +234,7 @@ export class PiConfigGeneratorService {
       models: this.generateModelsJson(input),
       systemPrompt: this.generateSystemPrompt(input),
       skills: this.generateSkillFiles(input),
+      mcpServers: this.generateMcpServersJson(input),
     };
   }
 

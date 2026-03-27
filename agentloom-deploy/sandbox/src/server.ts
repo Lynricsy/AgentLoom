@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
+import { createPtyExtension } from './pty-extension.js';
+import { createMcpExtension } from './mcp-extension.js';
 import type { PTYManager } from './pty/pty-manager.js';
 import type {
   CreateSessionRequest,
@@ -14,11 +16,12 @@ export interface SandboxServerOptions {
   host?: string;
   port?: number;
   sessionFactory: SessionFactory;
-  ptyManager?: PTYManager | null;
+  /** 获取当前 PTY manager（支持 session factory 动态设置） */
+  getPtyManager?: () => PTYManager | null;
 }
 
 export async function createSandboxServer(options: SandboxServerOptions) {
-  const { host = '0.0.0.0', port = 8080, sessionFactory, ptyManager = null } = options;
+  const { host = '0.0.0.0', port = 8080, sessionFactory, getPtyManager } = options;
 
   const app = Fastify({ logger: true });
   const adapter = new AcpAdapter(sessionFactory);
@@ -104,6 +107,7 @@ export async function createSandboxServer(options: SandboxServerOptions) {
     if (!sessionId) {
       return reply.code(400).send({ error: 'sessionId is required' });
     }
+    const ptyManager = getPtyManager?.() ?? null;
     if (!ptyManager) {
       return reply.code(503).send({ error: 'PTY manager not available' });
     }
@@ -117,6 +121,7 @@ export async function createSandboxServer(options: SandboxServerOptions) {
   });
 
   app.get('/v1/pty/sessions', async (_request, reply) => {
+    const ptyManager = getPtyManager?.() ?? null;
     if (!ptyManager) {
       return reply.code(200).send([]);
     }
@@ -128,6 +133,7 @@ export async function createSandboxServer(options: SandboxServerOptions) {
     if (!sessionId || !data) {
       return reply.code(400).send({ error: 'sessionId and data are required' });
     }
+    const ptyManager = getPtyManager?.() ?? null;
     if (!ptyManager) {
       return reply.code(503).send({ error: 'PTY manager not available' });
     }
@@ -162,25 +168,56 @@ async function defaultSessionFactory(): Promise<never> {
 
 export async function startServer() {
   let factory: SessionFactory = defaultSessionFactory;
+  let currentPtyManager: PTYManager | null = null;
 
   try {
     const piAgent = await import('@mariozechner/pi-coding-agent');
+
     factory = async (cwd, config) => {
-      const { createAgentSession, SessionManager, SettingsManager, AuthStorage } = piAgent;
+      const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, AuthStorage } = piAgent;
+
+      // PTY extension（每个 session 创建独立的 PTYManager）
+      const ptyExt = createPtyExtension({
+        onPtyEvent: () => {},
+        workdir: cwd,
+      });
+      currentPtyManager = ptyExt.manager;
+
+      // MCP extension（根据配置连接 MCP 服务器，发现并注册工具）
+      const mcpExt = createMcpExtension({
+        mcpServers: config.mcpServers,
+      });
+
+      // 构建 DefaultResourceLoader，注入所有 extension factories
+      // 结构化类型与 pi-coding-agent 的 ExtensionFactory 运行时兼容，使用 as any 桥接
+      const resourceLoader = new DefaultResourceLoader({
+        cwd,
+        extensionFactories: [mcpExt.register, ptyExt.register] as any,
+      });
+      await resourceLoader.reload();
+
+      // 创建 agent session，传入 resourceLoader
+      // model 类型在 SandboxConfig 中是 string，pi-coding-agent 在内部解析
       const { session } = await createAgentSession({
         cwd,
         sessionManager: SessionManager.inMemory(cwd),
         settingsManager: SettingsManager.inMemory(config.settings ?? {}),
         authStorage: AuthStorage.inMemory(),
-        model: config.model,
+        model: config.model as any,
+        resourceLoader,
       });
-      return session;
+
+      // AgentSession 与 IAgentSession 结构兼容（subscribe 事件类型是超集）
+      return session as unknown as import('./types.js').IAgentSession;
     };
   } catch {
     console.warn('pi-coding-agent not found, using stub factory');
   }
 
-  await createSandboxServer({ sessionFactory: factory });
+  await createSandboxServer({
+    sessionFactory: factory,
+    getPtyManager: () => currentPtyManager,
+  });
 }
 
 const isMainModule =

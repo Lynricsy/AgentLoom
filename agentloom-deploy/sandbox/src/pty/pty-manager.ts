@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-// @ts-expect-error node-pty is provided in the sandbox runtime image and mocked in unit tests.
+// node-pty is provided in the sandbox runtime image and mocked in unit tests.
 import { spawn as nodePtySpawn } from 'node-pty';
 
 import { RingBuffer } from './ring-buffer.js';

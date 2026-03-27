@@ -6,6 +6,7 @@ import type {
   CreateSessionRequest,
   CreateSessionResponse,
   AbortResponse,
+  McpServersConfig,
 } from './types.js';
 
 export interface SandboxConfig {
@@ -13,12 +14,14 @@ export interface SandboxConfig {
   model?: string;
   settings?: Record<string, unknown>;
   models?: Record<string, unknown>;
+  mcpServers?: McpServersConfig;
 }
 
 const CONFIG_PATHS = {
   settings: '/config/settings.json',
   models: '/config/models.json',
   systemPrompt: '/config/system-prompt.md',
+  mcpServers: '/config/mcp-servers.json',
 } as const;
 
 async function readJsonFile(path: string): Promise<Record<string, unknown> | null> {
@@ -38,16 +41,18 @@ async function readTextFile(path: string): Promise<string | null> {
 }
 
 export async function loadSandboxConfig(): Promise<SandboxConfig> {
-  const [settings, models, systemPrompt] = await Promise.all([
+  const [settings, models, systemPrompt, mcpServers] = await Promise.all([
     readJsonFile(CONFIG_PATHS.settings),
     readJsonFile(CONFIG_PATHS.models),
     readTextFile(CONFIG_PATHS.systemPrompt),
+    readJsonFile(CONFIG_PATHS.mcpServers),
   ]);
   return {
     settings: settings ?? undefined,
     models: models ?? undefined,
     systemPrompt: systemPrompt ?? undefined,
     model: (settings as Record<string, string> | null)?.model ?? process.env['SANDBOX_MODEL'],
+    mcpServers: (mcpServers as McpServersConfig | null) ?? undefined,
   };
 }
 

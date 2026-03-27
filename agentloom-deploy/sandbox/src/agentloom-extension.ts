@@ -1,15 +1,7 @@
 import { requestPermission } from './event-stream.js';
 import type { PermissionCallbackRequest } from './types.js';
 
-export interface McpToolDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  execute?: (params: Record<string, unknown>) => Promise<unknown>;
-}
-
 export interface AgentLoomExtensionOptions {
-  mcpTools?: McpToolDefinition[];
   permissionCallbackUrl?: string;
   sessionId: string;
   onEvent?: (event: AgentLoomExtensionEvent) => void;
@@ -111,43 +103,9 @@ export type ExtensionFactory = (pi: PiExtensionAPI) => void | Promise<void>;
 export function createAgentLoomExtension(
   options: AgentLoomExtensionOptions,
 ): ExtensionFactory {
-  const { mcpTools = [], permissionCallbackUrl, sessionId, onEvent } = options;
+  const { permissionCallbackUrl, sessionId, onEvent } = options;
 
   return (pi: PiExtensionAPI): void => {
-    for (const tool of mcpTools) {
-      const executeFn = tool.execute;
-
-      pi.registerTool({
-        name: `mcp_${tool.name}`,
-        label: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-        execute: async (
-          toolCallId: string,
-          params: Record<string, unknown>,
-        ): Promise<PiAgentToolResult> => {
-          if (executeFn) {
-            try {
-              const result = await executeFn(params);
-              return {
-                resultForAssistant:
-                  typeof result === 'string'
-                    ? result
-                    : JSON.stringify(result, null, 2),
-              };
-            } catch (err) {
-              const message =
-                err instanceof Error ? err.message : String(err);
-              return { resultForAssistant: `Error: ${message}` };
-            }
-          }
-          return {
-            resultForAssistant: `MCP tool "${tool.name}" has no execute handler`,
-          };
-        },
-      });
-    }
-
     if (permissionCallbackUrl) {
       pi.on(
         'tool_call',

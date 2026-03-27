@@ -107,6 +107,10 @@ export class DockerService {
           path.join(configTmpDir, 'system-prompt.md'),
           bundle.systemPrompt,
         );
+        fs.writeFileSync(
+          path.join(configTmpDir, 'mcp-servers.json'),
+          bundle.mcpServers,
+        );
 
         // Write skill directories for pi-mono loadSkills() discovery
         for (const [skillName, skillFiles] of Object.entries(bundle.skills)) {

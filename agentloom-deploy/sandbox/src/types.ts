@@ -49,8 +49,27 @@ export interface IAgentSession {
   dispose(): void;
 }
 
+/** MCP Server 连接配置（单个服务器） */
+export interface McpServerConfig {
+  transportType: 'stdio' | 'sse' | 'streamable_http';
+  /** stdio transport: 启动命令 */
+  command?: string;
+  /** stdio transport: 命令参数 */
+  args?: string[];
+  /** stdio transport: 环境变量 */
+  env?: Record<string, string>;
+  /** sse/streamable_http transport: 服务器 URL */
+  url?: string;
+  /** sse/streamable_http transport: 请求头 */
+  headers?: Record<string, string>;
+}
+
+/** MCP 服务器配置映射：server name → config */
+export type McpServersConfig = Record<string, McpServerConfig>;
+
 export interface CreateSessionRequest {
   cwd?: string;
+  mcpServers?: McpServersConfig;
 }
 
 export interface CreateSessionResponse {
@@ -62,11 +81,6 @@ export interface PromptRequest {
   text: string;
   /** AgentLoom 服务器权限回调 URL（工具执行前 POST 请求，30s 超时默认拒绝） */
   permissionCallbackUrl?: string;
-  mcpTools?: Array<{
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  }>;
 }
 
 export interface AbortRequest {

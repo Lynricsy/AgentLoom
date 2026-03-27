@@ -16,6 +16,7 @@
   "dependencies": {
     "fastify": "^5.3.3",
     "@mariozechner/pi-coding-agent": "^0.62.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {

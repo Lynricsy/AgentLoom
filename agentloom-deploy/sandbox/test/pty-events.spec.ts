@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SandboxAgentEvent } from '../src/types.js';
 
-vi.mock('node-pty', () => ({}));
+vi.mock('node-pty', () => ({ spawn: vi.fn() }));
 vi.mock('@mariozechner/pi-coding-agent', () => ({}));
 
 vi.mock('../src/acp-adapter.js', async () => {
@@ -122,7 +122,7 @@ describe('PTY REST endpoints', () => {
         subscribe: vi.fn(() => () => {}),
         dispose: vi.fn(),
       }),
-      ptyManager: mockPtyManager,
+      getPtyManager: () => mockPtyManager,
     });
   });
 
