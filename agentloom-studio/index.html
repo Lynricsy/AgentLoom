@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgentLoom Studio</title>
+    <script>
+      // Prevent flash of wrong theme before React hydrates
+      (function () {
+        var theme = localStorage.getItem('agentloom-theme') || 'system';
+        var resolved = theme;
+        if (theme === 'system') {
+          resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(resolved);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

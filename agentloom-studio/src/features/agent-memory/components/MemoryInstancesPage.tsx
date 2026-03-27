@@ -145,10 +145,11 @@ export function MemoryInstancesPage() {
         <>
           {/* 卡片网格 */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {displayItems.map((instance) => (
+            {displayItems.map((instance, i) => (
               <div
                 key={instance.id}
-                className="group relative rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+                className="card-hover-lift card-stagger-enter group relative rounded-xl border border-border bg-card p-4"
+                style={{ animationDelay: `${i * 40}ms` }}
               >
                 {/* 可点击区域 */}
                 <button
