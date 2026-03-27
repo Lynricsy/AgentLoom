@@ -332,6 +332,7 @@ export class TriggerService {
         const parsedConfig = WebhookConfigCreateSchema.parse(config);
 
         return {
+          authMode: parsedConfig.authMode,
           token: randomBytes(WEBHOOK_TOKEN_LENGTH).toString('hex'),
           secret: randomBytes(WEBHOOK_SECRET_LENGTH).toString('hex'),
           ipWhitelist: parsedConfig.ipWhitelist,
@@ -356,6 +357,7 @@ export class TriggerService {
         const parsedConfig = WebhookConfigCreateSchema.parse(nextConfig);
 
         return {
+          authMode: parsedConfig.authMode,
           token: currentWebhookConfig.token,
           secret: currentWebhookConfig.secret,
           ipWhitelist: parsedConfig.ipWhitelist,

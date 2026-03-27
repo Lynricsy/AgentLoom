@@ -17,6 +17,8 @@ export const NODE_TYPES = [
   'sandbox',
   'manual-trigger',
   'schedule-trigger',
+  'webhook-trigger',
+  'api-event-trigger',
   'knowledge-base',
   'text-output',
   'json-output',
@@ -232,15 +234,25 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Globe',
     description: 'HTTP 请求工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('request', 'request', 'input', 'json')],
-    outputPorts: [createPort('response', 'response', 'output', 'json')],
+    inputPorts: [createPort('request', 'JSON', 'input', 'json')],
+    outputPorts: [createPort('response', 'JSON', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
         url: createConfigField('string', 'URL'),
         method: createConfigField('string', 'Method', {
           enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+          default: 'GET',
         }),
+        headers: createConfigField('string', 'Headers'),
+        queryParams: createConfigField('string', 'Query Params'),
+        body: createConfigField('string', 'Body'),
+        authType: createConfigField('string', '认证方式', {
+          enum: ['none', 'bearer', 'basic', 'api-key'],
+          default: 'none',
+        }),
+        authConfig: createConfigField('string', '认证配置'),
+        timeout: createConfigField('number', '超时时间', { default: 30 }),
       },
       required: ['url', 'method'],
     },
@@ -328,8 +340,49 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       type: 'object',
       properties: {
         cron: createConfigField('string', 'Cron'),
+        timezone: createConfigField('string', '时区', { default: 'UTC' }),
       },
       required: ['cron'],
+    },
+  },
+  'webhook-trigger': {
+    type: 'webhook-trigger',
+    category: 'trigger',
+    label: 'Webhook',
+    icon: 'Webhook',
+    description: 'Webhook 触发器',
+    colorToken: CATEGORY_COLOR_TOKENS.trigger,
+    inputPorts: [],
+    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    configSchema: {
+      type: 'object',
+      properties: {
+        authMode: createConfigField('string', '鉴权模式', {
+          enum: ['simple', 'signed'],
+          default: 'simple',
+        }),
+        ipWhitelist: createConfigField('string', 'IP 白名单'),
+      },
+      required: [],
+    },
+  },
+  'api-event-trigger': {
+    type: 'api-event-trigger',
+    category: 'trigger',
+    label: 'API Event',
+    icon: 'Radio',
+    description: 'API 事件触发器',
+    colorToken: CATEGORY_COLOR_TOKENS.trigger,
+    inputPorts: [],
+    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    configSchema: {
+      type: 'object',
+      properties: {
+        eventSource: createConfigField('string', '事件来源'),
+        eventType: createConfigField('string', '事件类型'),
+        filterExpression: createConfigField('string', '过滤表达式'),
+      },
+      required: ['eventSource', 'eventType'],
     },
   },
   'knowledge-base': {
@@ -383,9 +436,15 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     configSchema: {
       type: 'object',
       properties: {
-        expression: createConfigField('string', 'Expression'),
+        mode: createConfigField('string', '判断模式', {
+          enum: ['expression', 'field-comparison'],
+          default: 'expression',
+        }),
+        expression: createConfigField('string', '条件表达式'),
+        conditionField: createConfigField('string', '字段名'),
+        expectedValue: createConfigField('string', '期望值'),
       },
-      required: ['expression'],
+      required: ['mode'],
     },
   },
   loop: {
@@ -476,20 +535,20 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
-      createPort('text-in', '文本输入', 'input', 'text', {
+      createPort('text-in', '文本', 'input', 'text', {
         description: '文本格式输入数据',
       }),
-      createPort('json-in', 'JSON 输入', 'input', 'json', {
+      createPort('json-in', 'JSON', 'input', 'json', {
         description: 'JSON 格式输入数据',
       }),
     ],
     outputPorts: [
-      createPort('text-out', '文本输出', 'output', 'text', {
+      createPort('text-out', '文本', 'output', 'text', {
         description: '文本格式转换结果',
         multiple: true,
         maxConnections: null,
       }),
-      createPort('json-out', 'JSON 输出', 'output', 'json', {
+      createPort('json-out', 'JSON', 'output', 'json', {
         description: 'JSON 格式转换结果',
         multiple: true,
         maxConnections: null,

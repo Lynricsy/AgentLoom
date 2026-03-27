@@ -79,24 +79,30 @@ export class WebhookController {
     }
 
     try {
-      if (!rawBody) {
-        throw new WebhookVerificationFailedException('缺少原始请求体');
+      const webhookConfig = WebhookConfigSchema.parse(trigger.config);
+      // 向后兼容：已有的 webhook 无 authMode 字段时视为 'signed'
+      const authMode = webhookConfig.authMode ?? 'signed';
+
+      if (authMode === 'signed') {
+        if (!rawBody) {
+          throw new WebhookVerificationFailedException('缺少原始请求体');
+        }
+
+        const signatureHeader = this.getHeaderValue(
+          request.headers[WEBHOOK_SIGNATURE_HEADER],
+        );
+        const timestampHeader = this.getHeaderValue(
+          request.headers[WEBHOOK_TIMESTAMP_HEADER],
+        );
+
+        this.webhookService.verifySignature(
+          webhookConfig.secret,
+          rawBody,
+          signatureHeader,
+          timestampHeader,
+        );
       }
 
-      const webhookConfig = WebhookConfigSchema.parse(trigger.config);
-      const signatureHeader = this.getHeaderValue(
-        request.headers[WEBHOOK_SIGNATURE_HEADER],
-      );
-      const timestampHeader = this.getHeaderValue(
-        request.headers[WEBHOOK_TIMESTAMP_HEADER],
-      );
-
-      this.webhookService.verifySignature(
-        webhookConfig.secret,
-        rawBody,
-        signatureHeader,
-        timestampHeader,
-      );
       this.webhookService.checkIpWhitelist(trigger, clientIp);
     } catch (error) {
       if (error instanceof WebhookVerificationFailedException) {

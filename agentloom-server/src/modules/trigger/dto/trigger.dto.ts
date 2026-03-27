@@ -16,8 +16,12 @@ export const CronConfigSchema = z
   })
   .strict();
 
+export const WebhookAuthModeSchema = z.enum(['simple', 'signed']);
+export type WebhookAuthMode = z.infer<typeof WebhookAuthModeSchema>;
+
 export const WebhookConfigCreateSchema = z
   .object({
+    authMode: WebhookAuthModeSchema.default('simple'),
     ipWhitelist: z
       .array(z.string().ip({ message: '无效的 IP 地址' }))
       .optional()
@@ -27,6 +31,7 @@ export const WebhookConfigCreateSchema = z
 
 export const WebhookConfigSchema = z
   .object({
+    authMode: WebhookAuthModeSchema.optional(),
     token: z.string(),
     secret: z.string(),
     ipWhitelist: z.array(z.string()),

@@ -26,6 +26,11 @@ import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
 import { MemoryConfigPanel } from './MemoryConfigPanel'
+import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
+import { ConditionConfigPanel } from './ConditionConfigPanel'
+import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
+import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
+import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
 import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
@@ -305,6 +310,46 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
       <SkillPanel
         config={node.data.config}
         onApply={(config) => onConfigChange({ config })}
+      />
+    ),
+  },
+  'input-preprocessor': {
+    render: ({ node, onConfigChange }) => (
+      <InputPreprocessorConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'condition': {
+    render: ({ node, onConfigChange }) => (
+      <ConditionConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'schedule-trigger': {
+    render: ({ node, onConfigChange }) => (
+      <ScheduleTriggerConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'webhook-trigger': {
+    render: ({ node, onConfigChange }) => (
+      <WebhookTriggerConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'api-event-trigger': {
+    render: ({ node, onConfigChange }) => (
+      <ApiEventTriggerConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
       />
     ),
   },

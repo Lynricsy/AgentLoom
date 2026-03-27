@@ -7,14 +7,18 @@ export interface CronTriggerConfig {
   timezone: string
 }
 
+export type WebhookAuthMode = 'simple' | 'signed'
+
 export interface WebhookTriggerConfig {
   token: string
   secret?: string
   ipWhitelist: string[]
+  authMode?: WebhookAuthMode
 }
 
 export interface WebhookTriggerConfigInput {
   ipWhitelist: string[]
+  authMode?: WebhookAuthMode
 }
 
 export interface ApiEventTriggerConfig {

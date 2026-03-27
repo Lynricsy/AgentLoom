@@ -204,7 +204,7 @@ describe('TriggerService', () => {
         description: '接收回调',
         isEnabled: true,
         type: 'webhook',
-        config: { ipWhitelist: ['127.0.0.1'] },
+        config: { authMode: 'simple' as const, ipWhitelist: ['127.0.0.1'] },
       });
 
       expect(result.type).toBe('webhook');
@@ -214,6 +214,7 @@ describe('TriggerService', () => {
           tenantId: TENANT_ID,
           createdBy: USER_ID,
           config: {
+            authMode: 'simple',
             token: Buffer.alloc(32, 1).toString('hex'),
             secret: Buffer.alloc(48, 2).toString('hex'),
             ipWhitelist: ['127.0.0.1'],
@@ -230,7 +231,7 @@ describe('TriggerService', () => {
           name: 'Webhook 触发器',
           isEnabled: true,
           type: 'webhook',
-          config: { ipWhitelist: [] },
+          config: { authMode: 'simple' as const, ipWhitelist: [] },
         }),
       ).rejects.toThrow(WorkflowNotPublishedException);
     });
@@ -307,7 +308,7 @@ describe('TriggerService', () => {
       db.update.mockReturnValue(updateChain.chain);
 
       const result = await service.update(TENANT_ID, TRIGGER_ID, {
-        config: { ipWhitelist: ['10.0.0.2'] },
+        config: { authMode: 'simple' as const, ipWhitelist: ['10.0.0.2'] },
       });
 
       expect(result.config).toEqual({
@@ -318,6 +319,7 @@ describe('TriggerService', () => {
       expect(updateChain.set).toHaveBeenCalledWith(
         expect.objectContaining({
           config: {
+            authMode: 'simple',
             token: 'persisted-token',
             secret: 'persisted-secret',
             ipWhitelist: ['10.0.0.2'],

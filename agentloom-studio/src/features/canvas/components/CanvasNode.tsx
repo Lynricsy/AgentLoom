@@ -27,7 +27,9 @@ import {
   Play,
   Plug,
   Puzzle,
+  Radio,
   Repeat,
+  Webhook,
   type LucideIcon,
 } from 'lucide-react'
 import { Position, type NodeProps } from '@xyflow/react'
@@ -62,6 +64,13 @@ import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 import { PluginNodeBody } from './nodes/PluginNodeBody'
 import { AgentNodeBody } from './nodes/AgentNodeBody'
 import { MemoryNodeBody } from './nodes/MemoryNodeBody'
+import { InputPreprocessorNodeBody } from './nodes/InputPreprocessorNodeBody'
+import { ConditionNodeBody } from './nodes/ConditionNodeBody'
+import { HttpToolNodeBody } from './nodes/HttpToolNodeBody'
+import { ManualTriggerNodeBody } from './nodes/ManualTriggerNodeBody'
+import { ScheduleTriggerNodeBody } from './nodes/ScheduleTriggerNodeBody'
+import { WebhookTriggerNodeBody } from './nodes/WebhookTriggerNodeBody'
+import { ApiEventTriggerNodeBody } from './nodes/ApiEventTriggerNodeBody'
 import { SkillBody } from '../../agent-canvas/components/nodes/SkillBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
@@ -83,7 +92,9 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Repeat,
   Package,
   Puzzle,
+  Radio,
   BrainCircuit,
+  Webhook,
 }
 
 type NodeShellStatus =
@@ -356,11 +367,11 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-testid={`canvas-node-${id}`}
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'canvas-node-shell relative rounded-lg border bg-card text-card-foreground shadow-sm transition-[width,box-shadow,border-color] duration-200',
+        'canvas-node-shell relative rounded-lg border bg-card text-card-foreground transition-[width,box-shadow,border-color,transform] duration-200',
         lod === 'full' && 'min-w-[180px] max-w-[260px]',
         lod === 'compact' && 'min-w-[156px] max-w-[180px]',
         lod === 'minimal' && 'h-[80px] min-w-[80px] max-w-[80px]',
-        selected && 'ring-2 ring-primary shadow-md',
+        selected && 'ring-0',
         data.nodeType === 'llm-model' && llmState === 'unconfigured' && 'border-border/80 bg-muted/10',
         data.nodeType === 'llm-model' && llmState === 'warning' && 'border-warning/40 bg-warning/5',
         isSearchActive && isMatch && !isCurrent && 'search-match',
@@ -540,6 +551,20 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <AgentNodeBody data={data as WorkflowAgentNodeData} hasSchemaConnection={hasSchemaConnection} />
           ) : data.nodeType === 'skill' ? (
             <SkillBody data={data} />
+          ) : data.nodeType === 'input-preprocessor' ? (
+            <InputPreprocessorNodeBody config={data.config} />
+          ) : data.nodeType === 'condition' ? (
+            <ConditionNodeBody config={data.config} />
+          ) : data.nodeType === 'http-tool' ? (
+            <HttpToolNodeBody config={data.config} />
+          ) : data.nodeType === 'manual-trigger' ? (
+            <ManualTriggerNodeBody />
+          ) : data.nodeType === 'schedule-trigger' ? (
+            <ScheduleTriggerNodeBody config={data.config} />
+          ) : data.nodeType === 'webhook-trigger' ? (
+            <WebhookTriggerNodeBody config={data.config} />
+          ) : data.nodeType === 'api-event-trigger' ? (
+            <ApiEventTriggerNodeBody config={data.config} />
           ) : (
             config.description
           )}
