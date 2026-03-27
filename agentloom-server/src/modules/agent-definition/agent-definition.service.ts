@@ -805,12 +805,15 @@ export class AgentDefinitionService {
     if (nodeType === 'code-tool') {
       const language = data.language;
       const code = data.code;
+      const timeout =
+        typeof data.timeout === 'number' ? data.timeout : undefined;
       if (typeof language === 'string' && language.length > 0) {
         return {
           ...baseBinding,
           toolType: 'code',
           language: language as AgentCodeToolBinding['language'],
           ...(typeof code === 'string' ? { code } : {}),
+          ...(timeout !== undefined ? { timeout } : {}),
         };
       }
 
@@ -820,6 +823,7 @@ export class AgentDefinitionService {
           ? { language: language as AgentCodeToolBinding['language'] }
           : {}),
         ...(typeof code === 'string' ? { code } : {}),
+        ...(timeout !== undefined ? { timeout } : {}),
       };
     }
 

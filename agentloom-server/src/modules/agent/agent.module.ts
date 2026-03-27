@@ -11,6 +11,7 @@ import {
   AgentAdapterFactory,
 } from './agent-adapter.factory';
 import { AutonomyResolverService } from './autonomy-resolver.service';
+import { CodeExecutionService } from './code-execution.service';
 import { InProcessAgentAdapter } from './in-process-agent.adapter';
 import { OutputFormatService } from './output-format.service';
 import { AGENT_RUNTIME } from './ports/agent-runtime.port';
@@ -28,6 +29,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
   ],
   providers: [
     AutonomyResolverService,
+    CodeExecutionService,
     OutputFormatService,
     AgentSessionFactory,
     SessionPersistenceService,
@@ -38,6 +40,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
   ],
   exports: [
     AutonomyResolverService,
+    CodeExecutionService,
     OutputFormatService,
     AgentSessionFactory,
     SessionPersistenceService,

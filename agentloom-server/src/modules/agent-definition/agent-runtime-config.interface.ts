@@ -37,6 +37,8 @@ export interface AgentCodeToolBinding extends AgentToolBindingBase {
   toolType: 'code';
   language: 'typescript' | 'javascript' | 'python' | 'bash';
   code?: string;
+  /** 执行超时时间（秒） */
+  timeout?: number;
 }
 
 export type LegacyAgentToolBinding = AgentToolBindingBase & {

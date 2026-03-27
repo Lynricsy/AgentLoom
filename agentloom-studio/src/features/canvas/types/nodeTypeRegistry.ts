@@ -47,6 +47,7 @@ export type PortShape =
   | 'hexagon'
   | 'triangle'
   | 'book'
+  | 'arrow'
 
 export interface PortDefinition {
   id: string
@@ -106,6 +107,7 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
   knowledge: { label: 'Knowledge', colorToken: 'var(--color-type-knowledge)', shape: 'book' },
   skill: { label: 'Skill', colorToken: 'var(--color-type-skill)', shape: 'diamond' },
   agent: { label: 'Agent', colorToken: '#F97316', shape: 'circle' },
+  exec: { label: 'Exec', colorToken: 'var(--color-type-exec)', shape: 'arrow' },
 }
 
 const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
@@ -234,8 +236,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Globe',
     description: 'HTTP 请求工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('request', 'JSON', 'input', 'json')],
-    outputPorts: [createPort('response', 'JSON', 'output', 'json')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('request', 'JSON', 'input', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('response', 'JSON', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -264,14 +266,17 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Code',
     description: '代码执行工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('input', 'input', 'input', 'json'), createPort('sandbox', 'sandbox', 'input', 'sandbox')],
-    outputPorts: [createPort('result', 'result', 'output', 'json'), createPort('stdout', 'stdout', 'output', 'text')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('input', 'input', 'input', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('result', 'result', 'output', 'json'), createPort('stdout', 'stdout', 'output', 'text')],
     configSchema: {
       type: 'object',
       properties: {
-        language: createConfigField('string', 'Language', {
+        language: createConfigField('string', '语言', {
           enum: ['typescript', 'javascript', 'python', 'bash'],
         }),
+        code: createConfigField('string', '代码', { default: '' }),
+        description: createConfigField('string', '描述'),
+        timeout: createConfigField('number', '超时时间', { default: 30 }),
       },
       required: ['language'],
     },
@@ -324,7 +329,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '手动触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'schedule-trigger': {
@@ -335,7 +340,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '定时触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -353,7 +358,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'Webhook 触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -374,7 +379,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'API 事件触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -409,7 +414,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'FileText',
     description: '文本输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('content', 'content', 'input', 'text')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('content', 'content', 'input', 'text')],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -420,7 +425,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Braces',
     description: 'JSON 输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('content', 'content', 'input', 'json')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('content', 'content', 'input', 'json')],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -431,7 +436,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'GitBranch',
     description: '条件分支节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('input', 'input', 'input', 'json')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('input', 'input', 'input', 'json')],
     outputPorts: [createPort('matched', 'matched', 'output', 'json'), createPort('unmatched', 'unmatched', 'output', 'json')],
     configSchema: {
       type: 'object',
@@ -454,7 +459,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Repeat',
     description: '循环控制节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('items', 'items', 'input', 'json')],
+    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('items', 'items', 'input', 'json')],
     outputPorts: [createPort('item', 'item', 'output', 'json'), createPort('done', 'done', 'output', 'json')],
     configSchema: {
       type: 'object',
@@ -535,6 +540,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
+      createPort('exec_in', '', 'input', 'exec'),
       createPort('text-in', '文本', 'input', 'text', {
         description: '文本格式输入数据',
       }),
@@ -543,6 +549,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
+      createPort('exec_out', '', 'output', 'exec'),
       createPort('text-out', '文本', 'output', 'text', {
         description: '文本格式转换结果',
         multiple: true,
@@ -731,6 +738,7 @@ function cloneTypeSchema(schema: TypeSchema): TypeSchema {
     case 'knowledge':
     case 'skill':
     case 'agent':
+    case 'exec':
       return {
         ...schema,
         examples: schema.examples ? [...schema.examples] : undefined,

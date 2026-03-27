@@ -6,15 +6,42 @@
 @import "@xyflow/react/dist/style.css";
 
 @theme {
-  --color-brand: #09090b;
-  --color-brand-foreground: #fafafa;
-  --color-background: #09090b;
-  --color-foreground: #fafafa;
-  --color-surface: #18181b;
-  --color-surface-elevated: #27272a;
-  --color-border: #3f3f46;
-  --color-muted: #a1a1aa;
-  --color-muted-foreground: #71717a;
+  /* 品牌色 */
+  --color-primary: #6366F1;
+  --color-primary-hover: #818CF8;
+  --color-primary-glow: rgba(99,102,241,0.2);
+  --color-primary-foreground: #FFFFFF;
+  --color-brand: #6366F1;
+  --color-brand-foreground: #FFFFFF;
+
+  /* 基础色 */
+  --color-background: #050506;
+  --color-foreground: #EDEDEF;
+  --color-surface: #0a0a0c;
+  --color-surface-elevated: #141418;
+
+  /* 文字 */
+  --color-muted: #8A8F98;
+  --color-muted-foreground: #5E6068;
+
+  /* 边框与输入 */
+  --color-border: rgba(255,255,255,0.08);
+  --color-border-hover: rgba(255,255,255,0.15);
+  --color-input: rgba(255,255,255,0.08);
+
+  /* 卡片与弹出层 */
+  --color-card: #0a0a0c;
+  --color-card-foreground: #EDEDEF;
+  --color-popover: #141418;
+  --color-popover-foreground: #EDEDEF;
+
+  /* 状态色 */
+  --color-success: #22C55E;
+  --color-warning: #EAB308;
+  --color-error: #EF4444;
+  --color-info: #3B82F6;
+
+  /* 数据类型色 (两主题共用) */
   --color-type-model: #a78bfa;
   --color-type-text: #38bdf8;
   --color-type-json: #2dd4bf;
@@ -24,16 +51,19 @@
   --color-type-sandbox: #a3e635;
   --color-type-knowledge: #34d399;
   --color-type-skill: #A855F7;
+  --color-type-exec: #94a3b8;
+
+  /* 兼容性色 (两主题共用) */
   --color-compat-l0: #22c55e;
   --color-compat-l1: #eab308;
   --color-compat-l2: #f97316;
   --color-compat-l3: #ef4444;
-  --color-success: #22c55e;
-  --color-warning: #eab308;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+
+  /* 字体 */
   --font-sans: "Inter Variable", "Noto Sans SC Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  /* 间距 */
   --spacing-toolbar: 44px;
   --spacing-palette-expanded: 220px;
   --spacing-palette-collapsed: 52px;
@@ -43,13 +73,202 @@
   --spacing-mapping-panel: 320px;
 }
 
+/* ─── Light theme (default) ──────────────────────────── */
+:root {
+  color-scheme: light;
+  --color-primary: #6366F1;
+  --color-primary-hover: #4F46E5;
+  --color-primary-glow: rgba(99,102,241,0.08);
+  --color-primary-foreground: #FFFFFF;
+  --color-brand: #6366F1;
+  --color-brand-foreground: #FFFFFF;
+  --color-background: #F5F3FF;
+  --color-foreground: #1E1B4B;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F8F7FF;
+  --color-muted: #64748B;
+  --color-muted-foreground: #94A3B8;
+  --color-border: #E0E7FF;
+  --color-border-hover: #C7D2FE;
+  --color-input: #E0E7FF;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #1E1B4B;
+  --color-popover: #F8F7FF;
+  --color-popover-foreground: #1E1B4B;
+  --color-success: #059669;
+  --color-error: #DC2626;
+  --color-warning: #D97706;
+  --color-info: #2563EB;
+  --color-brand-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
+}
+
+/* ─── Dark theme ─────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+  --color-primary: #6366F1;
+  --color-primary-hover: #818CF8;
+  --color-primary-glow: rgba(99,102,241,0.2);
+  --color-primary-foreground: #FFFFFF;
+  --color-brand: #6366F1;
+  --color-brand-foreground: #FFFFFF;
+  --color-background: #050506;
+  --color-foreground: #EDEDEF;
+  --color-surface: #0a0a0c;
+  --color-surface-elevated: #141418;
+  --color-muted: #8A8F98;
+  --color-muted-foreground: #5E6068;
+  --color-border: rgba(255,255,255,0.08);
+  --color-border-hover: rgba(255,255,255,0.15);
+  --color-input: rgba(255,255,255,0.08);
+  --color-card: #0a0a0c;
+  --color-card-foreground: #EDEDEF;
+  --color-popover: #141418;
+  --color-popover-foreground: #EDEDEF;
+  --color-success: #22C55E;
+  --color-error: #EF4444;
+  --color-warning: #EAB308;
+  --color-info: #3B82F6;
+  --color-brand-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
+}
+
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
+}
+
+/* ─── Node visual enhancements ──────────────────────── */
+.canvas-node-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--node-color, var(--color-border)) 8%, transparent) 0%, transparent 40%),
+    var(--color-card);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.2),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 12%, transparent);
+}
+
+.canvas-node-shell:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.3),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 25%, transparent);
+}
+
+.canvas-node-shell[data-selected="true"] {
+  box-shadow:
+    0 0 0 2px var(--color-primary),
+    0 0 20px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    0 4px 16px rgba(0,0,0,0.3);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 32%),
+    var(--color-card);
+}
+
+.canvas-node-shell[data-shell-status="running"] {
+  animation: node-running-glow 2s ease-in-out infinite;
+}
+
+@keyframes node-running-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-primary) 30%, transparent),
+      0 0 12px color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-primary) 50%, transparent),
+      0 0 24px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+}
+
+.canvas-node-shell[data-shell-status="failed"] {
+  animation: node-error-shake 0.4s ease-in-out;
+}
+
+@keyframes node-error-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+
+/* ─── Card hover effects ────────────────────────────── */
+.card-hover-lift {
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out, border-color 200ms ease-out;
+}
+
+.card-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.12),
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+.dark .card-hover-lift:hover {
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.4),
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* ─── Staggered entrance animation ──────────────────── */
+@keyframes card-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-stagger-enter {
+  animation: card-fade-in 300ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-node-shell:hover { transform: none; }
+  .canvas-node-shell[data-shell-status="running"] { animation: none; }
+  .canvas-node-shell[data-shell-status="failed"] { animation: none; }
+  .card-hover-lift:hover { transform: none; }
+  .card-stagger-enter { animation: none; }
+  .shimmer { animation: none; }
+  .btn-interact { transition: none; }
+}
+
+/* ─── Shimmer skeleton ──────────────────────────────── */
+@keyframes shimmer-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-muted) 25%,
+    color-mix(in srgb, var(--color-muted) 60%, var(--color-surface-elevated)) 50%,
+    var(--color-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ─── Button micro-interactions ─────────────────────── */
+.btn-interact {
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.btn-interact:hover {
+  transform: scale(1.02);
+}
+
+.btn-interact:active {
+  transform: scale(0.97);
 }
 
 .react-flow {
@@ -91,6 +310,7 @@ body {
 .typed-port-shape--triangle { border-radius: 50% 50% 2px 2px !important; width: 10px !important; height: 10px !important; }
 .typed-port-shape--book { border-radius: 2px 5px 5px 2px !important; width: 10px !important; height: 12px !important; }
 .typed-port-shape--capsule { border-radius: 9999px !important; width: 14px !important; height: 8px !important; }
+.typed-port-shape--arrow { width: 10px !important; height: 10px !important; border-radius: 2px 50% 50% 2px !important; }
 
 .typed-port-state--idle { background: transparent !important; }
 .typed-port-state--hover { transform: translateY(-50%) scale(1.15) !important; }

@@ -36,6 +36,7 @@ import type {
   ToolCallEvent,
   ToolPermissionRequest,
 } from './types/tool-call-event.types';
+import type { CodeExecutionService } from './code-execution.service';
 
 const PERMISSION_EXEMPT_TOOLS = new Set([
   'call_subagent',
@@ -258,6 +259,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     private readonly piAiAdapter: PiAiAdapter,
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
+    @Optional() private readonly codeExecutionService?: CodeExecutionService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -738,23 +740,32 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     return {
       name,
       tool: tool({
-        description:
-          binding.description ??
-          `调用 ${binding.language} 代码片段工具（当前为受限占位执行）`,
+        description: binding.description ?? `执行 ${binding.language} 代码片段`,
         inputSchema: jsonSchema(CODE_TOOL_INPUT_SCHEMA),
         execute: async (input) => {
           const args = this.normalizeExecuteArgs(
             input,
             binding.parameterOverrides,
           );
-          return {
-            success: false,
-            message: `In-process runtime 当前不会直接执行 ${binding.language} 代码工具，请改用沙箱运行时。`,
-            toolId: binding.toolId,
+
+          if (!this.codeExecutionService) {
+            return {
+              success: false,
+              message: `In-process runtime 未配置 CodeExecutionService，无法执行 ${binding.language} 代码工具。`,
+              toolId: binding.toolId,
+              language: binding.language,
+              code: binding.code ?? '',
+              input: args,
+            };
+          }
+
+          const result = await this.codeExecutionService.execute({
             language: binding.language,
             code: binding.code ?? '',
             input: args,
-          };
+            timeout: binding.timeout ?? 30,
+          });
+          return result;
         },
       }),
     };

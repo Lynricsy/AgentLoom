@@ -21,6 +21,7 @@ import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 import { SandboxConfigPanel } from './SandboxConfigPanel'
 import { InterventionPanel } from './InterventionPanel'
 import { HttpToolConfigPanel } from './HttpToolConfigPanel'
+import { CodeToolConfigPanel } from './CodeToolConfigPanel'
 import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
@@ -265,6 +266,16 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
     handlesValidation: true,
     render: ({ node, onConfigChange, onValidationChange }) => (
       <HttpToolConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
+    ),
+  },
+  'code-tool': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <CodeToolConfigPanel
         config={node.data.config}
         onApply={onConfigChange}
         onValidationChange={onValidationChange}

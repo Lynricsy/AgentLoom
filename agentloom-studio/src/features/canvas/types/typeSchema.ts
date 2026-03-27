@@ -9,6 +9,7 @@ export const PORT_DATA_TYPES = [
   'knowledge',
   'skill',
   'agent',
+  'exec',
 ] as const
 
 export type PortDataType = (typeof PORT_DATA_TYPES)[number]

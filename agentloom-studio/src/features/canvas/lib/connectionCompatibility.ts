@@ -310,6 +310,11 @@ export function arePortDataTypesCompatible(
   sourceType: PortDataType,
   targetType: PortDataType,
 ): boolean {
+  // exec 端口只能连接 exec 端口，不参与任何类型变换
+  if (sourceType === 'exec' || targetType === 'exec') {
+    return sourceType === 'exec' && targetType === 'exec'
+  }
+
   if (sourceType === targetType) {
     return true
   }

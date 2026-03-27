@@ -67,6 +67,7 @@ import { MemoryNodeBody } from './nodes/MemoryNodeBody'
 import { InputPreprocessorNodeBody } from './nodes/InputPreprocessorNodeBody'
 import { ConditionNodeBody } from './nodes/ConditionNodeBody'
 import { HttpToolNodeBody } from './nodes/HttpToolNodeBody'
+import { CodeToolNodeBody } from './nodes/CodeToolNodeBody'
 import { ManualTriggerNodeBody } from './nodes/ManualTriggerNodeBody'
 import { ScheduleTriggerNodeBody } from './nodes/ScheduleTriggerNodeBody'
 import { WebhookTriggerNodeBody } from './nodes/WebhookTriggerNodeBody'
@@ -557,6 +558,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <ConditionNodeBody config={data.config} />
           ) : data.nodeType === 'http-tool' ? (
             <HttpToolNodeBody config={data.config} />
+          ) : data.nodeType === 'code-tool' ? (
+            <CodeToolNodeBody config={data.config} />
           ) : data.nodeType === 'manual-trigger' ? (
             <ManualTriggerNodeBody />
           ) : data.nodeType === 'schedule-trigger' ? (

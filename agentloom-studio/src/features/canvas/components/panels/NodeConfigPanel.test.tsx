@@ -262,11 +262,11 @@ describe('NodeConfigPanel', () => {
   })
 
   it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {
-    mocks.node = createNode('code-tool')
+    mocks.node = createNode('loop')
 
     render(<NodeConfigPanel />)
 
-    expect(screen.getByText('Dynamic Form: language')).toBeInTheDocument()
+    expect(screen.getByText('Dynamic Form: maxIterations')).toBeInTheDocument()
   })
 
   it('shows the empty state when a node has no additional config schema', () => {
@@ -299,7 +299,7 @@ describe('NodeConfigPanel', () => {
 
   it('forwards validation state changes from dynamic config forms to the canvas store', async () => {
     const user = userEvent.setup()
-    mocks.node = createNode('code-tool')
+    mocks.node = createNode('loop')
 
     render(<NodeConfigPanel />)
     await user.click(screen.getByRole('button', { name: '触发动态表单校验' }))

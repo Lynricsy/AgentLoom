@@ -5,6 +5,7 @@ import { AgentSessionFactory } from '../execution/services/agent-session-factory
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import { RagService } from '../knowledge/services/rag.service';
 import { McpService } from '../mcp/mcp.service';
+import { CodeExecutionService } from './code-execution.service';
 import { PiAgentCoreAdapter } from './pi-agent-core.adapter';
 import type {
   IAgentRuntime,
@@ -40,6 +41,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     private readonly piAiAdapter: PiAiAdapter,
     private readonly agentSessionFactory: AgentSessionFactory,
     private readonly sessionPersistence: SessionPersistenceService,
+    private readonly codeExecutionService: CodeExecutionService,
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
   ) {
@@ -49,6 +51,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       this.piAiAdapter,
       this.mcpService,
       this.ragService,
+      this.codeExecutionService,
     );
   }
 
