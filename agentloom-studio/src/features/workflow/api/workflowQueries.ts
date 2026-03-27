@@ -1,8 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '../../../shared/api/client'
-import type { ApiResponse } from '../../../shared/types/api'
-import type { WorkflowDefinition, WorkflowInputSchema } from '../types'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { apiClient } from '@/shared/api/client'
+import type { ApiResponse } from '@/shared/types/api'
+import type { ListWorkflowsParams, WorkflowDefinition, WorkflowInputSchema } from '../types'
+import { listWorkflows } from './workflowApi'
 import { workflowKeys } from './workflowKeys'
+
+export function useWorkflowList(params: ListWorkflowsParams = {}) {
+  return useQuery({
+    queryKey: workflowKeys.list(params as Record<string, unknown>),
+    queryFn: () => listWorkflows(params),
+    placeholderData: keepPreviousData,
+  })
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

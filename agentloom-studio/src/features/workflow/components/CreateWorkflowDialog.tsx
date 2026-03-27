@@ -5,19 +5,19 @@ import { Loader2, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { useCreateAgent } from '../api/agentMutations'
+import { useCreateWorkflow } from '../api/workflowMutations'
 
-interface CreateOrchestrationDialogProps {
+interface CreateWorkflowDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog({
+export const CreateWorkflowDialog = memo(function CreateWorkflowDialog({
   open,
   onOpenChange,
-}: CreateOrchestrationDialogProps) {
+}: CreateWorkflowDialogProps) {
   const navigate = useNavigate()
-  const createAgent = useCreateAgent()
+  const createWorkflow = useCreateWorkflow()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
@@ -31,18 +31,17 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const agentName = name.trim() || '未命名智能体'
-    if (createAgent.isPending) return
+    if (!name.trim() || createWorkflow.isPending) return
 
     try {
-      const agent = await createAgent.mutateAsync({
-        name: agentName,
+      const workflow = await createWorkflow.mutateAsync({
+        name: name.trim(),
         description: description.trim() || undefined,
       })
       handleOpenChange(false)
-      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+      navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
     } catch {
-      // 创建失败时保持对话框打开，mutation 错误由 TanStack Query 管理
+      // mutation 错误由 TanStack Query 管理
     }
   }
 
@@ -66,10 +65,10 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
           <div className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <Dialog.Title className="text-base font-semibold text-foreground">
-                新建 Agent
+                新建工作流
               </Dialog.Title>
               <Dialog.Description className="text-xs text-muted-foreground">
-                创建一个新的智能体
+                创建一个新的自动化工作流
               </Dialog.Description>
             </div>
             <Dialog.Close className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
@@ -80,12 +79,12 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
 
           <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-name" className="text-sm font-medium text-foreground">
-                名称
+              <label htmlFor="wf-name" className="text-sm font-medium text-foreground">
+                名称 <span className="text-red-400">*</span>
               </label>
               <Input
-                id="agent-name"
-                placeholder="未命名智能体"
+                id="wf-name"
+                placeholder="输入工作流名称"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
@@ -93,12 +92,12 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-desc" className="text-sm font-medium text-foreground">
+              <label htmlFor="wf-desc" className="text-sm font-medium text-foreground">
                 描述
               </label>
               <textarea
-                id="agent-desc"
-                placeholder="可选，简要描述智能体的功能"
+                id="wf-desc"
+                placeholder="可选，简要描述工作流的功能"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
@@ -112,8 +111,8 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
                   取消
                 </Button>
               </Dialog.Close>
-              <Button type="submit" disabled={createAgent.isPending}>
-                {createAgent.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={!name.trim() || createWorkflow.isPending}>
+                {createWorkflow.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
                 创建
               </Button>
             </div>

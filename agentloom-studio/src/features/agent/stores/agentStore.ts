@@ -13,6 +13,7 @@ interface AgentState {
   filters: AgentListFilters
   selectedAgentId: string | null
   settingsPanelOpen: boolean
+  selectedAgentIds: Set<string>
 }
 
 interface AgentActions {
@@ -23,6 +24,9 @@ interface AgentActions {
   openSettingsPanel: () => void
   closeSettingsPanel: () => void
   toggleSettingsPanel: () => void
+  toggleAgentSelection: (id: string) => void
+  selectAllAgents: (ids: string[]) => void
+  clearAgentSelection: () => void
 }
 
 const DEFAULT_FILTERS: AgentListFilters = {
@@ -38,6 +42,7 @@ export const useAgentStore = create<AgentState & AgentActions>()(
       filters: { ...DEFAULT_FILTERS },
       selectedAgentId: null,
       settingsPanelOpen: false,
+      selectedAgentIds: new Set<string>(),
 
       setFilters: (partial) =>
         set(
@@ -101,6 +106,37 @@ export const useAgentStore = create<AgentState & AgentActions>()(
           },
           false,
           'agent/toggleSettingsPanel',
+        ),
+
+      toggleAgentSelection: (id) =>
+        set(
+          (state) => {
+            if (state.selectedAgentIds.has(id)) {
+              state.selectedAgentIds.delete(id)
+            } else {
+              state.selectedAgentIds.add(id)
+            }
+          },
+          false,
+          'agent/toggleAgentSelection',
+        ),
+
+      selectAllAgents: (ids) =>
+        set(
+          (state) => {
+            state.selectedAgentIds = new Set(ids)
+          },
+          false,
+          'agent/selectAllAgents',
+        ),
+
+      clearAgentSelection: () =>
+        set(
+          (state) => {
+            state.selectedAgentIds = new Set()
+          },
+          false,
+          'agent/clearAgentSelection',
         ),
     })),
     { name: 'AgentStore' },

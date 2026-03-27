@@ -1,18 +1,18 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  Bot,
+  Archive,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
   Edit3,
   LayoutGrid,
   List,
-  Loader2,
   MoreHorizontal,
   Plus,
   Search,
-  Trash2,
+  Workflow,
   X,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -26,21 +26,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogTitle,
-} from '@/shared/ui/alert-dialog'
 import { useToast } from '@/shared/ui/toast'
 import { formatRelativeTime } from '@/features/canvas'
-import { useAgentList } from '../api/agentQueries'
-import { useDeleteAgent } from '../api/agentMutations'
-import { useAgentStore } from '../stores/agentStore'
-import { CreateOrchestrationDialog } from './CreateOrchestrationDialog'
-import type { AgentDefinition, AgentStatus } from '../types'
+import { useExportWorkflow } from '../api/workflowMutations'
+import { useWorkflowList } from '../api/workflowQueries'
+import { downloadWorkflowExport } from '../lib/workflowExportImport'
+import { useWorkflowStore } from '../stores/workflowStore'
+import { CreateWorkflowDialog } from './CreateWorkflowDialog'
+import { ArchiveDialog } from './ArchiveDialog'
+import type { WorkflowDefinition, WorkflowStatus } from '../types'
 
 type ViewMode = 'grid' | 'list'
 
@@ -51,7 +45,7 @@ const STATUS_OPTIONS = [
   { value: 'archived', label: '已归档' },
 ] as const
 
-function getStatusBadgeClasses(status: AgentStatus): string {
+function getStatusBadgeClasses(status: WorkflowStatus): string {
   switch (status) {
     case 'published':
       return 'bg-emerald-500/10 text-emerald-500'
@@ -62,7 +56,7 @@ function getStatusBadgeClasses(status: AgentStatus): string {
   }
 }
 
-function getStatusLabel(status: AgentStatus): string {
+function getStatusLabel(status: WorkflowStatus): string {
   switch (status) {
     case 'published':
       return '已发布'
@@ -73,25 +67,27 @@ function getStatusLabel(status: AgentStatus): string {
   }
 }
 
-interface AgentCardProps {
-  agent: AgentDefinition
+interface WorkflowCardProps {
+  workflow: WorkflowDefinition
   selected: boolean
   batchMode: boolean
   onSelect: (id: string) => void
-  onClick: (agent: AgentDefinition) => void
-  onEdit: (agent: AgentDefinition) => void
-  onDelete: (agent: AgentDefinition) => void
+  onClick: (workflow: WorkflowDefinition) => void
+  onEdit: (workflow: WorkflowDefinition) => void
+  onExport: (workflow: WorkflowDefinition) => void
+  onArchive: (workflow: WorkflowDefinition) => void
 }
 
-const AgentCard = memo(function AgentCard({
-  agent,
+const WorkflowCard = memo(function WorkflowCard({
+  workflow,
   selected,
   batchMode,
   onSelect,
   onClick,
   onEdit,
-  onDelete,
-}: AgentCardProps) {
+  onExport,
+  onArchive,
+}: WorkflowCardProps) {
   return (
     <div
       className={cn(
@@ -109,8 +105,8 @@ const AgentCard = memo(function AgentCard({
       >
         <Checkbox
           checked={selected}
-          onCheckedChange={() => onSelect(agent.id)}
-          aria-label={`选择 ${agent.name}`}
+          onCheckedChange={() => onSelect(workflow.id)}
+          aria-label={`选择 ${workflow.name}`}
           onClick={(e) => e.stopPropagation()}
         />
       </div>
@@ -131,22 +127,31 @@ const AgentCard = memo(function AgentCard({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
-                onEdit(agent)
+                onEdit(workflow)
               }}
             >
               <Edit3 className="h-4 w-4" />
               编辑
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onExport(workflow)
+              }}
+            >
+              <Download className="h-4 w-4" />
+              导出
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive
               onClick={(e) => {
                 e.stopPropagation()
-                onDelete(agent)
+                onArchive(workflow)
               }}
             >
-              <Trash2 className="h-4 w-4" />
-              删除
+              <Archive className="h-4 w-4" />
+              归档
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -155,36 +160,36 @@ const AgentCard = memo(function AgentCard({
       <button
         type="button"
         className="flex flex-1 flex-col gap-3 text-left focus-visible:outline-none"
-        onClick={() => onClick(agent)}
+        onClick={() => onClick(workflow)}
       >
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Bot className="h-5 w-5" />
+            <Workflow className="h-5 w-5" />
           </div>
           <span
             className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-              getStatusBadgeClasses(agent.status),
+              getStatusBadgeClasses(workflow.status),
             )}
           >
-            {getStatusLabel(agent.status)}
+            {getStatusLabel(workflow.status)}
           </span>
         </div>
 
         <div className="flex flex-col gap-1">
-          <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
+          <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
           <p className="line-clamp-2 text-xs text-muted-foreground">
-            {agent.description || '暂无描述'}
+            {workflow.description || '暂无描述'}
           </p>
         </div>
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {formatRelativeTime(new Date(agent.updatedAt))}
+            {formatRelativeTime(new Date(workflow.updatedAt))}
           </span>
           <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-medium">
-            v{agent.version}
+            v{workflow.version}
           </span>
         </div>
       </button>
@@ -192,25 +197,27 @@ const AgentCard = memo(function AgentCard({
   )
 })
 
-interface AgentListItemProps {
-  agent: AgentDefinition
+interface WorkflowListItemProps {
+  workflow: WorkflowDefinition
   selected: boolean
   batchMode: boolean
   onSelect: (id: string) => void
-  onClick: (agent: AgentDefinition) => void
-  onEdit: (agent: AgentDefinition) => void
-  onDelete: (agent: AgentDefinition) => void
+  onClick: (workflow: WorkflowDefinition) => void
+  onEdit: (workflow: WorkflowDefinition) => void
+  onExport: (workflow: WorkflowDefinition) => void
+  onArchive: (workflow: WorkflowDefinition) => void
 }
 
-const AgentListItem = memo(function AgentListItem({
-  agent,
+const WorkflowListItem = memo(function WorkflowListItem({
+  workflow,
   selected,
   batchMode,
   onSelect,
   onClick,
   onEdit,
-  onDelete,
-}: AgentListItemProps) {
+  onExport,
+  onArchive,
+}: WorkflowListItemProps) {
   return (
     <div
       className={cn(
@@ -226,29 +233,29 @@ const AgentListItem = memo(function AgentListItem({
       >
         <Checkbox
           checked={selected}
-          onCheckedChange={() => onSelect(agent.id)}
-          aria-label={`选择 ${agent.name}`}
+          onCheckedChange={() => onSelect(workflow.id)}
+          aria-label={`选择 ${workflow.name}`}
         />
       </div>
 
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-4 text-left focus-visible:outline-none"
-        onClick={() => onClick(agent)}
+        onClick={() => onClick(workflow)}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Bot className="h-4 w-4" />
+          <Workflow className="h-4 w-4" />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
+            <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
             <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-              v{agent.version}
+              v{workflow.version}
             </span>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {agent.description || '暂无描述'}
+            {workflow.description || '暂无描述'}
           </p>
         </div>
 
@@ -256,14 +263,14 @@ const AgentListItem = memo(function AgentListItem({
           <span
             className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-              getStatusBadgeClasses(agent.status),
+              getStatusBadgeClasses(workflow.status),
             )}
           >
-            {getStatusLabel(agent.status)}
+            {getStatusLabel(workflow.status)}
           </span>
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
-            {formatRelativeTime(new Date(agent.updatedAt))}
+            {formatRelativeTime(new Date(workflow.updatedAt))}
           </span>
         </div>
       </button>
@@ -279,14 +286,18 @@ const AgentListItem = memo(function AgentListItem({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(agent)}>
+            <DropdownMenuItem onClick={() => onEdit(workflow)}>
               <Edit3 className="h-4 w-4" />
               编辑
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExport(workflow)}>
+              <Download className="h-4 w-4" />
+              导出
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onClick={() => onDelete(agent)}>
-              <Trash2 className="h-4 w-4" />
-              删除
+            <DropdownMenuItem destructive onClick={() => onArchive(workflow)}>
+              <Archive className="h-4 w-4" />
+              归档
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -295,7 +306,7 @@ const AgentListItem = memo(function AgentListItem({
   )
 })
 
-function AgentCardSkeleton() {
+function WorkflowCardSkeleton() {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-start justify-between">
@@ -314,35 +325,35 @@ function AgentCardSkeleton() {
   )
 }
 
-export function AgentListPage() {
+export function WorkflowListPage() {
   const navigate = useNavigate()
   const { notify } = useToast()
-  const filters = useAgentStore((s) => s.filters)
-  const setFilters = useAgentStore((s) => s.setFilters)
-  const setPage = useAgentStore((s) => s.setPage)
-  const selectedAgentIds = useAgentStore((s) => s.selectedAgentIds)
-  const toggleAgentSelection = useAgentStore((s) => s.toggleAgentSelection)
-  const selectAllAgents = useAgentStore((s) => s.selectAllAgents)
-  const clearAgentSelection = useAgentStore((s) => s.clearAgentSelection)
+  const filters = useWorkflowStore((s) => s.filters)
+  const setFilters = useWorkflowStore((s) => s.setFilters)
+  const setPage = useWorkflowStore((s) => s.setPage)
+  const selectedWorkflowIds = useWorkflowStore((s) => s.selectedWorkflowIds)
+  const toggleSelection = useWorkflowStore((s) => s.toggleSelection)
+  const selectAll = useWorkflowStore((s) => s.selectAll)
+  const clearSelection = useWorkflowStore((s) => s.clearSelection)
 
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [searchInput, setSearchInput] = useState(filters.search)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<AgentDefinition | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinition | null>(null)
 
-  const deleteAgent = useDeleteAgent()
+  const exportWorkflow = useExportWorkflow()
 
-  const { data, isLoading } = useAgentList({
+  const { data, isLoading } = useWorkflowList({
     page: filters.page,
     pageSize: filters.pageSize,
     status: filters.status || undefined,
     search: filters.search || undefined,
   })
 
-  const agents = useMemo(() => data?.data ?? [], [data?.data])
+  const workflows = useMemo(() => data?.data ?? [], [data?.data])
   const meta = data?.meta
 
-  const batchMode = selectedAgentIds.size > 0
+  const batchMode = selectedWorkflowIds.size > 0
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -359,42 +370,44 @@ export function AgentListPage() {
     [setFilters],
   )
 
-  const handleAgentClick = useCallback(
-    (agent: AgentDefinition) => {
-      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+  const handleWorkflowClick = useCallback(
+    (workflow: WorkflowDefinition) => {
+      navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
     },
     [navigate],
   )
 
   const handleEdit = useCallback(
-    (agent: AgentDefinition) => {
-      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+    (workflow: WorkflowDefinition) => {
+      navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
     },
     [navigate],
   )
 
-  const handleDelete = useCallback((agent: AgentDefinition) => {
-    setDeleteTarget(agent)
+  const handleExport = useCallback(
+    async (workflow: WorkflowDefinition) => {
+      try {
+        const data = await exportWorkflow.mutateAsync(workflow.id)
+        downloadWorkflowExport(data, workflow.slug)
+        notify({ description: '工作流导出成功', variant: 'success' })
+      } catch {
+        notify({ title: '导出失败', description: '请稍后重试', variant: 'error' })
+      }
+    },
+    [exportWorkflow, notify],
+  )
+
+  const handleArchive = useCallback((workflow: WorkflowDefinition) => {
+    setArchiveTarget(workflow)
   }, [])
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTarget) return
-    try {
-      await deleteAgent.mutateAsync(deleteTarget.id)
-      notify({ description: 'Agent 已删除', variant: 'success' })
-      setDeleteTarget(null)
-    } catch {
-      notify({ title: '删除失败', description: '请稍后重试', variant: 'error' })
-    }
-  }, [deleteTarget, deleteAgent, notify])
-
   const handleSelectAll = useCallback(() => {
-    if (selectedAgentIds.size === agents.length) {
-      clearAgentSelection()
+    if (selectedWorkflowIds.size === workflows.length) {
+      clearSelection()
     } else {
-      selectAllAgents(agents.map((a) => a.id))
+      selectAll(workflows.map((w) => w.id))
     }
-  }, [clearAgentSelection, selectAllAgents, selectedAgentIds.size, agents])
+  }, [clearSelection, selectAll, selectedWorkflowIds.size, workflows])
 
   const handlePrevPage = useCallback(() => {
     if (filters.page > 1) {
@@ -413,10 +426,8 @@ export function AgentListPage() {
       <div className="border-b border-border/60 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Agent</h1>
-            <p className="text-sm text-muted-foreground">
-              管理和配置你的智能体
-            </p>
+            <h1 className="text-lg font-semibold text-foreground">工作流</h1>
+            <p className="text-sm text-muted-foreground">管理和配置你的工作流</p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" />
@@ -428,7 +439,7 @@ export function AgentListPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="搜索 Agent..."
+              placeholder="搜索工作流..."
               value={searchInput}
               onChange={(e) => handleSearch(e.target.value)}
               className="pl-9"
@@ -482,9 +493,9 @@ export function AgentListPage() {
           <div className="mt-3 flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
             <Checkbox
               checked={
-                selectedAgentIds.size === agents.length
+                selectedWorkflowIds.size === workflows.length
                   ? true
-                  : selectedAgentIds.size > 0
+                  : selectedWorkflowIds.size > 0
                     ? 'indeterminate'
                     : false
               }
@@ -492,13 +503,13 @@ export function AgentListPage() {
               aria-label="全选"
             />
             <span className="text-sm text-foreground">
-              已选择 {selectedAgentIds.size} 项
+              已选择 {selectedWorkflowIds.size} 项
             </span>
             <div className="flex-1" />
             <Button
               variant="ghost"
               size="sm"
-              onClick={clearAgentSelection}
+              onClick={clearSelection}
             >
               <X className="mr-1 h-3.5 w-3.5" />
               取消选择
@@ -511,16 +522,16 @@ export function AgentListPage() {
         {isLoading ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
-              <AgentCardSkeleton key={`skeleton-${String(i)}`} />
+              <WorkflowCardSkeleton key={`skeleton-${String(i)}`} />
             ))}
           </div>
-        ) : agents.length === 0 ? (
+        ) : workflows.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-              <Bot className="h-8 w-8 text-muted-foreground/50" />
+              <Workflow className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {filters.search || filters.status ? '没有找到匹配的 Agent' : '还没有创建任何 Agent'}
+              {filters.search || filters.status ? '没有找到匹配的工作流' : '还没有创建任何工作流'}
             </p>
             {!filters.search && !filters.status && (
               <Button
@@ -529,38 +540,40 @@ export function AgentListPage() {
                 onClick={() => setCreateDialogOpen(true)}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                创建第一个 Agent
+                创建第一个工作流
               </Button>
             )}
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3">
-            {agents.map((agent, i) => (
-              <div key={agent.id} className="card-stagger-enter" style={{ animationDelay: `${i * 40}ms` }}>
-                <AgentCard
-                  agent={agent}
-                  selected={selectedAgentIds.has(agent.id)}
+            {workflows.map((workflow, i) => (
+              <div key={workflow.id} className="card-stagger-enter" style={{ animationDelay: `${i * 40}ms` }}>
+                <WorkflowCard
+                  workflow={workflow}
+                  selected={selectedWorkflowIds.has(workflow.id)}
                   batchMode={batchMode}
-                  onSelect={toggleAgentSelection}
-                  onClick={handleAgentClick}
+                  onSelect={toggleSelection}
+                  onClick={handleWorkflowClick}
                   onEdit={handleEdit}
-                  onDelete={handleDelete}
+                  onExport={handleExport}
+                  onArchive={handleArchive}
                 />
               </div>
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {agents.map((agent, i) => (
-              <div key={agent.id} className="card-stagger-enter" style={{ animationDelay: `${i * 30}ms` }}>
-                <AgentListItem
-                  agent={agent}
-                  selected={selectedAgentIds.has(agent.id)}
+            {workflows.map((workflow, i) => (
+              <div key={workflow.id} className="card-stagger-enter" style={{ animationDelay: `${i * 30}ms` }}>
+                <WorkflowListItem
+                  workflow={workflow}
+                  selected={selectedWorkflowIds.has(workflow.id)}
                   batchMode={batchMode}
-                  onSelect={toggleAgentSelection}
-                  onClick={handleAgentClick}
+                  onSelect={toggleSelection}
+                  onClick={handleWorkflowClick}
                   onEdit={handleEdit}
-                  onDelete={handleDelete}
+                  onExport={handleExport}
+                  onArchive={handleArchive}
                 />
               </div>
             ))}
@@ -571,7 +584,7 @@ export function AgentListPage() {
       {meta && meta.totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border/60 px-6 py-3">
           <span className="text-xs text-muted-foreground">
-            {meta.total} 个 Agent, 第 {meta.page}/{meta.totalPages} 页
+            {meta.total} 个工作流, 第 {meta.page}/{meta.totalPages} 页
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -596,36 +609,20 @@ export function AgentListPage() {
         </div>
       )}
 
-      <CreateOrchestrationDialog
+      <CreateWorkflowDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
       />
 
-      {/* 删除确认对话框 */}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogTitle>确认删除</AlertDialogTitle>
-          <AlertDialogDescription>
-            确定要删除 Agent &ldquo;{deleteTarget?.name}&rdquo; 吗？此操作不可撤销，所有关联数据将被永久移除。
-          </AlertDialogDescription>
-          <div className="mt-6 flex justify-end gap-2">
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
-              onClick={handleConfirmDelete}
-              disabled={deleteAgent.isPending}
-            >
-              {deleteAgent.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              删除
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
+      {archiveTarget && (
+        <ArchiveDialog
+          open
+          workflowId={archiveTarget.id}
+          onOpenChange={(open) => {
+            if (!open) setArchiveTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }

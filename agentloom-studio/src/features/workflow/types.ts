@@ -181,3 +181,12 @@ export interface ImportWorkflowResult {
   name: string
   slug: string
 }
+
+export interface ListWorkflowsParams {
+  page?: number
+  pageSize?: number
+  status?: string
+  search?: string
+}
+
+export type WorkflowListResponse = PaginatedResponse<WorkflowDefinition>

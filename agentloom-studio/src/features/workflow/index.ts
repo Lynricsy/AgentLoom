@@ -13,10 +13,12 @@ export type {
   ImportValidationResult,
   WorkflowImportPayload,
   ImportWorkflowResult,
+  ListWorkflowsParams,
+  WorkflowListResponse,
 } from './types'
-export { createWorkflow, exportWorkflow, validateImport, importWorkflow } from './api/workflowApi'
+export { createWorkflow, listWorkflows, exportWorkflow, validateImport, importWorkflow } from './api/workflowApi'
 export { workflowKeys } from './api/workflowKeys'
-export { useWorkflow } from './api/workflowQueries'
+export { useWorkflow, useWorkflowList } from './api/workflowQueries'
 export {
   useUpdateWorkflow,
   useCreateWorkflow,
@@ -37,6 +39,9 @@ export { ArchiveDialog } from './components/ArchiveDialog'
 export { PublishSheet } from './components/PublishSheet'
 export { VersionHistoryPanel } from './components/VersionHistoryPanel'
 export { WorkflowImportDialog } from './components/WorkflowImportDialog'
+export { CreateWorkflowDialog } from './components/CreateWorkflowDialog'
+export { WorkflowListPage } from './components/WorkflowListPage'
+export { useWorkflowStore } from './stores/workflowStore'
 export {
   WORKFLOW_EXPORT_FILE_EXTENSION,
   MAX_IMPORT_FILE_SIZE,

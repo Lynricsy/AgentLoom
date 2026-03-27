@@ -1,12 +1,11 @@
-import { Outlet, createRootRoute, Link } from "@tanstack/react-router";
+import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
-import {
-  NotificationBell,
-  useNotificationSocket,
-} from "@/features/notification";
+import { useNotificationSocket } from "@/features/notification";
+import { AppSidebar } from "@/shared/components/app-sidebar";
+import { SettingsLayout } from "@/shared/components/settings-layout";
 import { indexRoute } from "./index";
 import { workflowCanvasRoute } from "./workflows/$workflowId";
 import { knowledgeBasesRoute } from "./settings/knowledge-bases";
@@ -29,6 +28,7 @@ import { authCallbackRoute } from './auth/callback'
 import { loginRoute } from './auth/login'
 import { registerRoute } from './auth/register'
 import { onboardingRoute } from './onboarding'
+import { workflowsIndexRoute } from './workflows/workflows.index'
 import { agentsIndexRoute } from './agents/agents.index'
 import { agentDetailRoute } from './agents/agents.$agentId'
 import { agentNewConversationRoute } from './agents/agents.$agentId.conversations.new'
@@ -85,69 +85,14 @@ export function RootLayout() {
     return <Outlet />;
   }
 
-  return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <header className="border-b border-border/60 bg-background/85 backdrop-blur">
-        <div className="flex h-14 items-center justify-between px-4 sm:px-6">
-          <nav className="flex items-center gap-1">
-            <Link
-              to="/workflows/$workflowId"
-              params={{ workflowId: "draft" }}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              工作流
-            </Link>
-            <Link
-              to="/agents"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              Agent
-            </Link>
-            <Link
-              to="/templates"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              模板
-            </Link>
-            <Link
-              to="/marketplace"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              市场
-            </Link>
-            <Link
-              to="/settings/tool-library"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              工具库
-            </Link>
-            <Link
-              to="/developer-console/earnings"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              收益
-            </Link>
-            <Link
-              to="/memory"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              记忆
-            </Link>
-            <Link
-              to="/settings/skills"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-muted [&.active]:text-foreground"
-            >
-              技能
-            </Link>
-          </nav>
-          <NotificationBell />
-        </div>
-      </header>
+  const isSettingsRoute = pathname.startsWith('/settings');
 
-      <div className="min-h-0 flex-1">
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+      {isSettingsRoute ? <SettingsLayout /> : <AppSidebar />}
+      <div className="min-h-0 flex-1 overflow-hidden">
         <Outlet />
       </div>
-
       <TanStackRouterDevtools />
     </div>
   );
@@ -159,6 +104,7 @@ export const rootRoute = createRootRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  workflowsIndexRoute,
   workflowCanvasRoute,
   executionDebugRoute,
   knowledgeBasesRoute,

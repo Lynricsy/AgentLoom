@@ -5,8 +5,8 @@ import type {
 } from '../types'
 import { workflowKeys } from './workflowKeys'
 import { createWorkflow, exportWorkflow, importWorkflow, validateImport } from './workflowApi'
-import { apiClient, toSnakeBody } from '../../../shared/api/client'
-import type { ApiResponse } from '../../../shared/types/api'
+import { apiClient, toSnakeBody } from '@/shared/api/client'
+import type { ApiResponse } from '@/shared/types/api'
 import type { WorkflowDefinition, WorkflowImportFileContent } from '../types'
 
 export function useUpdateWorkflow(id: string) {
