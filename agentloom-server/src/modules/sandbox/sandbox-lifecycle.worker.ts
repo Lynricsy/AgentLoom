@@ -288,8 +288,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         .set({
           status: 'failed',
           stoppedAt: new Date(),
-          })
-          .where(eq(schema.sandboxSessions.id, sessionId));
+        })
+        .where(eq(schema.sandboxSessions.id, sessionId));
 
       if (binding.executionId) {
         await tenantDb
@@ -365,7 +365,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const tenantScopedPath = normalizedPath.startsWith(`tenants/${tenantId}/`)
       ? normalizedPath
       : normalizedPath
-      ? `tenants/${tenantId}/${normalizedPath}`
+        ? `tenants/${tenantId}/${normalizedPath}`
         : `tenants/${tenantId}/sandboxes/${bindingId}`;
 
     return tenantScopedPath.endsWith('.tar')
@@ -413,7 +413,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
     tenantId: string,
   ) {
     if (binding.executionId) {
-      return this.sandboxService.getSandboxSession(binding.executionId, tenantId);
+      return this.sandboxService.getSandboxSession(
+        binding.executionId,
+        tenantId,
+      );
     }
 
     if (binding.agentConversationId) {

@@ -96,4 +96,5 @@ export interface AgentRuntimeConfig {
   sandboxConfig?: SandboxConfig;
   routingConfig?: AgentRoutingConfig;
   memoryInstanceIds?: string[];
+  skillIds?: string[];
 }

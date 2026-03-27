@@ -63,6 +63,7 @@ const mockPiConfigGenerator = {
     settings: '{"model":"claude-sonnet-4-20250514"}',
     models: '{"models":[]}',
     systemPrompt: '# System Prompt',
+    skills: {},
   }),
 } as unknown as PiConfigGeneratorService;
 
@@ -543,7 +544,7 @@ describe('DockerService', () => {
     it('piContext 未提供时不应挂载 /config 或注入环境变量', async () => {
       await service.createContainer('session-no-pi', DEFAULT_CONFIG);
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
       expect(callArgs.Env).toBeUndefined();
       expect(callArgs.HostConfig.Binds).toEqual([
         'sandbox-session-no-pi-workspace:/workspace',
@@ -565,13 +566,15 @@ describe('DockerService', () => {
         piContext.piConfigInput,
       );
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
 
       expect(callArgs.Env).toContain('PI_CODING_AGENT_DIR=/config');
       expect(callArgs.Env).toContain('ANTHROPIC_API_KEY=sk-test-anthropic');
       expect(callArgs.Env).toEqual(
         expect.arrayContaining([
-          expect.stringContaining('PERMISSION_CALLBACK_URL=http://host.docker.internal:4000/api/v1/agent-conversations/conv-123/tool-permission'),
+          expect.stringContaining(
+            'PERMISSION_CALLBACK_URL=http://host.docker.internal:4000/api/v1/agent-conversations/conv-123/tool-permission',
+          ),
         ]),
       );
 
@@ -584,7 +587,7 @@ describe('DockerService', () => {
         'host.docker.internal:host-gateway',
       ]);
 
-      const tmpDir = binds[1]!.split(':')[0]!;
+      const tmpDir = binds[1].split(':')[0];
       expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, 'models.json'))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, 'system-prompt.md'))).toBe(true);
@@ -601,7 +604,7 @@ describe('DockerService', () => {
 
       await service.createContainer('session-port', DEFAULT_CONFIG, piContext);
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
       expect(callArgs.Env).toEqual(
         expect.arrayContaining([
           'PERMISSION_CALLBACK_URL=http://host.docker.internal:3000/api/v1/agent-conversations/conv-456/tool-permission',
@@ -609,7 +612,7 @@ describe('DockerService', () => {
       );
 
       const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1]!.split(':')[0]!;
+      const tmpDir = binds[1].split(':')[0];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -618,16 +621,20 @@ describe('DockerService', () => {
         piConfigInput: { systemPrompt: 'test' },
       };
 
-      await service.createContainer('session-no-conv', DEFAULT_CONFIG, piContext);
+      await service.createContainer(
+        'session-no-conv',
+        DEFAULT_CONFIG,
+        piContext,
+      );
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
       const permUrlEntry = (callArgs.Env as string[]).find((e: string) =>
         e.startsWith('PERMISSION_CALLBACK_URL='),
       );
       expect(permUrlEntry).toBeUndefined();
 
       const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1]!.split(':')[0]!;
+      const tmpDir = binds[1].split(':')[0];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -642,14 +649,18 @@ describe('DockerService', () => {
 
       await service.createContainer('session-keys', DEFAULT_CONFIG, piContext);
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
       const env: string[] = callArgs.Env;
       expect(env).toContain('OPENAI_API_KEY=sk-openai');
-      expect(env.find((e: string) => e.startsWith('ANTHROPIC_API_KEY='))).toBeUndefined();
-      expect(env.find((e: string) => e.startsWith('GOOGLE_API_KEY='))).toBeUndefined();
+      expect(
+        env.find((e: string) => e.startsWith('ANTHROPIC_API_KEY=')),
+      ).toBeUndefined();
+      expect(
+        env.find((e: string) => e.startsWith('GOOGLE_API_KEY=')),
+      ).toBeUndefined();
 
       const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1]!.split(':')[0]!;
+      const tmpDir = binds[1].split(':')[0];
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -662,11 +673,15 @@ describe('DockerService', () => {
         conversationId: 'conv-fake',
       };
 
-      await fakeService.createContainer('session-fake', DEFAULT_CONFIG, piContext);
+      await fakeService.createContainer(
+        'session-fake',
+        DEFAULT_CONFIG,
+        piContext,
+      );
 
       expect(mockPiConfigGenerator.generateConfigBundle).not.toHaveBeenCalled();
 
-      const callArgs = mockDocker.createContainer.mock.calls[0]![0];
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
       expect(callArgs.Env).toBeUndefined();
       expect(callArgs.HostConfig.Binds).toEqual([
         'sandbox-session-fake-workspace:/workspace',
@@ -674,6 +689,67 @@ describe('DockerService', () => {
       expect(callArgs.HostConfig.ExtraHosts).toBeUndefined();
 
       delete process.env.ACP_TEST_FAKE_RUNTIME;
+    });
+
+    it('piConfigInput 包含 skills 时应在 tmpdir 下创建 skill 目录和文件', async () => {
+      mockPiConfigGenerator.generateConfigBundle = vi.fn().mockReturnValue({
+        settings: '{}',
+        models: '{}',
+        systemPrompt: 'prompt',
+        skills: {
+          'code-review': {
+            'SKILL.md': '---\nname: code-review\n---\n\nReview code.',
+            'examples.md': '# Examples',
+          },
+          testing: {
+            'SKILL.md': '---\nname: testing\n---\n\nWrite tests.',
+          },
+        },
+      });
+
+      const piContext = {
+        piConfigInput: { systemPrompt: 'test' },
+        conversationId: 'conv-skills',
+      };
+
+      await service.createContainer(
+        'session-skills',
+        DEFAULT_CONFIG,
+        piContext,
+      );
+
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
+      const binds: string[] = callArgs.HostConfig.Binds;
+      const tmpDir = binds[1].split(':')[0];
+
+      // Verify skill directories were created
+      expect(
+        fs.existsSync(path.join(tmpDir, 'skills', 'code-review', 'SKILL.md')),
+      ).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(tmpDir, 'skills', 'code-review', 'examples.md'),
+        ),
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, 'skills', 'testing', 'SKILL.md')),
+      ).toBe(true);
+
+      // Verify file content
+      const skillMd = fs.readFileSync(
+        path.join(tmpDir, 'skills', 'code-review', 'SKILL.md'),
+        'utf-8',
+      );
+      expect(skillMd).toContain('name: code-review');
+      expect(skillMd).toContain('Review code.');
+
+      const examplesMd = fs.readFileSync(
+        path.join(tmpDir, 'skills', 'code-review', 'examples.md'),
+        'utf-8',
+      );
+      expect(examplesMd).toBe('# Examples');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     });
   });
 });

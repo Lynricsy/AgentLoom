@@ -8,66 +8,72 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 
-const { mockTenantDb, mockDbExecute, mockTransactionStorage } = vi.hoisted(() => {
-  const selectResult: unknown[] = [];
-  const insertResult: unknown[] = [];
-  const updateResult: unknown[] = [];
+const { mockTenantDb, mockDbExecute, mockTransactionStorage } = vi.hoisted(
+  () => {
+    const selectResult: unknown[] = [];
+    const insertResult: unknown[] = [];
+    const updateResult: unknown[] = [];
 
-  const createChain = (resultRef: { current: unknown[] }) => {
-    const chain: Record<string, any> = {};
-    chain.from = vi.fn().mockReturnValue(chain);
-    chain.where = vi.fn().mockReturnValue(chain);
-    chain.orderBy = vi.fn().mockReturnValue(chain);
-    chain.limit = vi.fn().mockReturnValue(chain);
-    chain.offset = vi.fn().mockImplementation(() => {
-      return resultRef.current;
+    const createChain = (resultRef: { current: unknown[] }) => {
+      const chain: Record<string, any> = {};
+      chain.from = vi.fn().mockReturnValue(chain);
+      chain.where = vi.fn().mockReturnValue(chain);
+      chain.orderBy = vi.fn().mockReturnValue(chain);
+      chain.limit = vi.fn().mockReturnValue(chain);
+      chain.offset = vi.fn().mockImplementation(() => {
+        return resultRef.current;
+      });
+      return chain;
+    };
+
+    const selectChain = createChain({
+      get current() {
+        return selectResult;
+      },
     });
-    return chain;
-  };
-
-  const selectChain = createChain({ get current() { return selectResult; } });
-  // Make select chain resolve as a promise when accessed directly (no offset)
-  selectChain.limit = vi.fn().mockReturnValue(selectResult);
-  selectChain.where = vi.fn().mockReturnValue({
-    ...selectChain,
-    orderBy: vi.fn().mockReturnValue({
+    // Make select chain resolve as a promise when accessed directly (no offset)
+    selectChain.limit = vi.fn().mockReturnValue(selectResult);
+    selectChain.where = vi.fn().mockReturnValue({
       ...selectChain,
-      limit: vi.fn().mockReturnValue({
+      orderBy: vi.fn().mockReturnValue({
         ...selectChain,
-        offset: vi.fn().mockResolvedValue(selectResult),
+        limit: vi.fn().mockReturnValue({
+          ...selectChain,
+          offset: vi.fn().mockResolvedValue(selectResult),
+        }),
       }),
-    }),
-    limit: vi.fn().mockResolvedValue(selectResult),
-  });
+      limit: vi.fn().mockResolvedValue(selectResult),
+    });
 
-  const insertChain: Record<string, any> = {};
-  insertChain.values = vi.fn().mockReturnValue(insertChain);
-  insertChain.returning = vi.fn().mockImplementation(() => insertResult);
+    const insertChain: Record<string, any> = {};
+    insertChain.values = vi.fn().mockReturnValue(insertChain);
+    insertChain.returning = vi.fn().mockImplementation(() => insertResult);
 
-  const updateChain: Record<string, any> = {};
-  updateChain.set = vi.fn().mockReturnValue(updateChain);
-  updateChain.where = vi.fn().mockReturnValue(updateChain);
-  updateChain.returning = vi.fn().mockImplementation(() => updateResult);
+    const updateChain: Record<string, any> = {};
+    updateChain.set = vi.fn().mockReturnValue(updateChain);
+    updateChain.where = vi.fn().mockReturnValue(updateChain);
+    updateChain.returning = vi.fn().mockImplementation(() => updateResult);
 
-  const mockTenantDb = {
-    select: vi.fn().mockReturnValue(selectChain),
-    insert: vi.fn().mockReturnValue(insertChain),
-    update: vi.fn().mockReturnValue(updateChain),
-    execute: vi.fn(),
-    transaction: vi.fn(),
-    _selectResult: selectResult,
-    _insertResult: insertResult,
-    _updateResult: updateResult,
-  };
+    const mockTenantDb = {
+      select: vi.fn().mockReturnValue(selectChain),
+      insert: vi.fn().mockReturnValue(insertChain),
+      update: vi.fn().mockReturnValue(updateChain),
+      execute: vi.fn(),
+      transaction: vi.fn(),
+      _selectResult: selectResult,
+      _insertResult: insertResult,
+      _updateResult: updateResult,
+    };
 
-  return {
-    mockTenantDb,
-    mockDbExecute: vi.fn(),
-    mockTransactionStorage: {
-      getStore: vi.fn(),
-    },
-  };
-});
+    return {
+      mockTenantDb,
+      mockDbExecute: vi.fn(),
+      mockTransactionStorage: {
+        getStore: vi.fn(),
+      },
+    };
+  },
+);
 
 vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn(() => mockTenantDb),
@@ -114,7 +120,9 @@ vi.mock('../../database/schema', () => ({
 }));
 
 vi.mock('../organization/slug.utils', () => ({
-  generateSlug: vi.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
+  generateSlug: vi.fn((name: string) =>
+    name.toLowerCase().replace(/\s+/g, '-'),
+  ),
   appendSlugSuffix: vi.fn((slug: string) => `${slug}-1`),
 }));
 
@@ -183,7 +191,12 @@ function makeVersion(overrides: Partial<Record<string, any>> = {}) {
     tenantId: 'tenant-1',
     versionNumber: 1,
     label: 'v1',
-    snapshot: { nodes: [], edges: [], viewport: null, metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 } },
+    snapshot: {
+      nodes: [],
+      edges: [],
+      viewport: null,
+      metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+    },
     publishedAt: null,
     archivedAt: null,
     createdBy: 'user-1',
@@ -214,7 +227,9 @@ describe('AgentDefinitionService', () => {
     mockTransactionStorage.getStore.mockReturnValue(undefined);
 
     // 设置 db.transaction mock：执行 callback 并传入 txClient
-    (mockTenantDb as any).transaction = vi.fn(async (cb: any) => cb(mockTxClient));
+    (mockTenantDb as any).transaction = vi.fn(async (cb: any) =>
+      cb(mockTxClient),
+    );
 
     // txClient chain helpers
     const makeTxSelectChain = (result: unknown[]) => {
@@ -242,7 +257,9 @@ describe('AgentDefinitionService', () => {
 
     // 默认 tx behavior
     const agent = makeAgent();
-    mockTxClient.select.mockReturnValue(makeTxSelectChain([agent]).from(undefined));
+    mockTxClient.select.mockReturnValue(
+      makeTxSelectChain([agent]).from(undefined),
+    );
     mockTxClient.execute.mockResolvedValue(undefined);
 
     // Fix: 让 select().from() chain 正确
@@ -293,12 +310,15 @@ describe('AgentDefinitionService', () => {
     });
 
     it('slug 冲突时自动重试生成新 slug', async () => {
-      const uniqueViolation = Object.assign(new Error('unique violation'), { code: '23505' });
+      const uniqueViolation = Object.assign(new Error('unique violation'), {
+        code: '23505',
+      });
       const created = makeAgent({ slug: 'test-agent-1' });
 
       const insertChain: Record<string, any> = {};
       insertChain.values = vi.fn().mockReturnValue(insertChain);
-      insertChain.returning = vi.fn()
+      insertChain.returning = vi
+        .fn()
         .mockRejectedValueOnce(uniqueViolation)
         .mockResolvedValueOnce([created]);
       mockTenantDb.insert.mockReturnValue(insertChain);
@@ -323,7 +343,9 @@ describe('AgentDefinitionService', () => {
     });
 
     it('重试次数用尽后仍冲突应抛出原始错误', async () => {
-      const uniqueViolation = Object.assign(new Error('unique violation'), { code: '23505' });
+      const uniqueViolation = Object.assign(new Error('unique violation'), {
+        code: '23505',
+      });
       const insertChain: Record<string, any> = {};
       insertChain.values = vi.fn().mockReturnValue(insertChain);
       insertChain.returning = vi.fn().mockRejectedValue(uniqueViolation);
@@ -728,7 +750,12 @@ describe('AgentDefinitionService', () => {
 
       expect(capturedSetClause).toBeDefined();
       expect(capturedSetClause!.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
-      expect(capturedSetClause!.sandboxConfig).toEqual({ cpu: 2, memory: 512, disk: 1, timeout: 60 });
+      expect(capturedSetClause!.sandboxConfig).toEqual({
+        cpu: 2,
+        memory: 512,
+        disk: 1,
+        timeout: 60,
+      });
       // metadata 应包含 inputSchema (via SQL jsonb_set)
       expect(capturedSetClause!.metadata).toBeDefined();
     });
@@ -742,7 +769,11 @@ describe('AgentDefinitionService', () => {
       });
 
       await expect(
-        service.saveCanvas('nonexistent', { canvasNodes: [], canvasEdges: [] }, 'user-1'),
+        service.saveCanvas(
+          'nonexistent',
+          { canvasNodes: [], canvasEdges: [] },
+          'user-1',
+        ),
       ).rejects.toThrow(AgentNotFoundException);
     });
 
@@ -756,7 +787,11 @@ describe('AgentDefinitionService', () => {
       });
 
       await expect(
-        service.saveCanvas('agent-1', { canvasNodes: [], canvasEdges: [] }, 'user-1'),
+        service.saveCanvas(
+          'agent-1',
+          { canvasNodes: [], canvasEdges: [] },
+          'user-1',
+        ),
       ).rejects.toThrow(AgentArchivedException);
     });
   });
@@ -765,14 +800,42 @@ describe('AgentDefinitionService', () => {
   describe('buildRuntimeConfigFromNodes', () => {
     it('应正确编译各种节点类型', () => {
       const nodes = [
-        { id: 'n1', type: 'llm-model', data: { modelId: 'gpt-4', temperature: 0.7 } },
-        { id: 'n2', type: 'http-tool', data: { name: 'search', description: 'Search API' } },
-        { id: 'n3', type: 'code-tool', data: { toolId: 'code-1', name: 'calculator' } },
+        {
+          id: 'n1',
+          type: 'llm-model',
+          data: { modelId: 'gpt-4', temperature: 0.7 },
+        },
+        {
+          id: 'n2',
+          type: 'http-tool',
+          data: { name: 'search', description: 'Search API' },
+        },
+        {
+          id: 'n3',
+          type: 'code-tool',
+          data: { toolId: 'code-1', name: 'calculator' },
+        },
         { id: 'n4', type: 'mcp-tool', data: { name: 'mcp-tool-1' } },
-        { id: 'n5', type: 'knowledge-base', data: { knowledgeBaseId: 'kb-1', topK: 5 } },
-        { id: 'n6', type: 'sub-agent', data: { agentDefinitionId: 'child-1', alias: 'writer' } },
-        { id: 'n7', type: 'input-preprocessor', data: { preprocessorType: 'jmespath', config: {} } },
-        { id: 'n8', type: 'smart-routing', data: { strategy: 'COST_OPTIMIZED' } },
+        {
+          id: 'n5',
+          type: 'knowledge-base',
+          data: { knowledgeBaseId: 'kb-1', topK: 5 },
+        },
+        {
+          id: 'n6',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'child-1', alias: 'writer' },
+        },
+        {
+          id: 'n7',
+          type: 'input-preprocessor',
+          data: { preprocessorType: 'jmespath', config: {} },
+        },
+        {
+          id: 'n8',
+          type: 'smart-routing',
+          data: { strategy: 'COST_OPTIMIZED' },
+        },
         { id: 'n9', type: 'unknown-type', data: {} }, // 未知类型应被忽略
       ];
 
@@ -817,67 +880,140 @@ describe('AgentDefinitionService', () => {
         {
           id: 'model-connected',
           type: 'agent',
-          data: { nodeType: 'llm-model', config: { modelId: 'gpt-4.1', temperature: 0.2 } },
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'gpt-4.1', temperature: 0.2 },
+          },
         },
         {
           id: 'tool-connected',
           type: 'tool',
-          data: { nodeType: 'http-tool', label: 'HTTP 请求', config: { name: 'search' } },
+          data: {
+            nodeType: 'http-tool',
+            label: 'HTTP 请求',
+            config: { name: 'search' },
+          },
         },
         {
           id: 'tool-orphan',
           type: 'tool',
-          data: { nodeType: 'code-tool', config: { toolId: 'code-orphan', name: 'orphan' } },
+          data: {
+            nodeType: 'code-tool',
+            config: { toolId: 'code-orphan', name: 'orphan' },
+          },
         },
         {
           id: 'tool-wrong-handle',
           type: 'tool',
-          data: { nodeType: 'mcp-tool', config: { toolId: 'mcp-wrong', name: 'wrong-handle' } },
+          data: {
+            nodeType: 'mcp-tool',
+            config: { toolId: 'mcp-wrong', name: 'wrong-handle' },
+          },
         },
         {
           id: 'kb-connected',
           type: 'knowledge',
-          data: { nodeType: 'knowledge-base', config: { knowledgeBaseId: 'kb-1', topK: 5 } },
+          data: {
+            nodeType: 'knowledge-base',
+            config: { knowledgeBaseId: 'kb-1', topK: 5 },
+          },
         },
         {
           id: 'sub-connected',
           type: 'agent',
-          data: { nodeType: 'sub-agent', config: { agentDefinitionId: 'child-1', alias: 'writer' } },
+          data: {
+            nodeType: 'sub-agent',
+            config: { agentDefinitionId: 'child-1', alias: 'writer' },
+          },
         },
         {
           id: 'pre-connected',
           type: 'tool',
-          data: { nodeType: 'input-preprocessor', config: { preprocessorType: 'jmespath', config: { foo: 'bar' } } },
+          data: {
+            nodeType: 'input-preprocessor',
+            config: { preprocessorType: 'jmespath', config: { foo: 'bar' } },
+          },
         },
         {
           id: 'routing-connected',
           type: 'agent',
-          data: { nodeType: 'smart-routing', config: { strategy: 'QUALITY_FIRST' } },
+          data: {
+            nodeType: 'smart-routing',
+            config: { strategy: 'QUALITY_FIRST' },
+          },
         },
         {
           id: 'sandbox-connected',
           type: 'tool',
           data: {
             nodeType: 'sandbox',
-            config: { enabled: true, cpuLimit: 2, memoryLimitMb: 1024, timeoutSeconds: 600 },
+            config: {
+              enabled: true,
+              cpuLimit: 2,
+              memoryLimitMb: 1024,
+              timeoutSeconds: 600,
+            },
           },
         },
       ];
 
       const edges = [
-        { id: 'e1', source: 'model-connected', target: 'main', targetHandle: 'model-in' },
-        { id: 'e2', source: 'tool-connected', target: 'main', targetHandle: 'tools-in' },
-        { id: 'e3', source: 'tool-wrong-handle', target: 'main', targetHandle: 'knowledge-in' },
-        { id: 'e4', source: 'kb-connected', target: 'main', targetHandle: 'knowledge-in' },
-        { id: 'e5', source: 'sub-connected', target: 'main', targetHandle: 'sub-agents-in' },
-        { id: 'e6', source: 'pre-connected', target: 'main', targetHandle: 'input-preprocessor-in' },
-        { id: 'e7', source: 'routing-connected', target: 'main', targetHandle: 'model-in' },
-        { id: 'e8', source: 'sandbox-connected', target: 'main', targetHandle: 'sandbox-in' },
+        {
+          id: 'e1',
+          source: 'model-connected',
+          target: 'main',
+          targetHandle: 'model-in',
+        },
+        {
+          id: 'e2',
+          source: 'tool-connected',
+          target: 'main',
+          targetHandle: 'tools-in',
+        },
+        {
+          id: 'e3',
+          source: 'tool-wrong-handle',
+          target: 'main',
+          targetHandle: 'knowledge-in',
+        },
+        {
+          id: 'e4',
+          source: 'kb-connected',
+          target: 'main',
+          targetHandle: 'knowledge-in',
+        },
+        {
+          id: 'e5',
+          source: 'sub-connected',
+          target: 'main',
+          targetHandle: 'sub-agents-in',
+        },
+        {
+          id: 'e6',
+          source: 'pre-connected',
+          target: 'main',
+          targetHandle: 'input-preprocessor-in',
+        },
+        {
+          id: 'e7',
+          source: 'routing-connected',
+          target: 'main',
+          targetHandle: 'model-in',
+        },
+        {
+          id: 'e8',
+          source: 'sandbox-connected',
+          target: 'main',
+          targetHandle: 'sandbox-in',
+        },
       ];
 
       const config = service.buildRuntimeConfigFromNodes(nodes as any[], edges);
 
-      expect(config.modelConfig).toMatchObject({ modelId: 'gpt-4.1', temperature: 0.2 });
+      expect(config.modelConfig).toMatchObject({
+        modelId: 'gpt-4.1',
+        temperature: 0.2,
+      });
       expect(config.tools).toEqual([
         expect.objectContaining({ name: 'search' }),
       ]);
@@ -885,7 +1021,10 @@ describe('AgentDefinitionService', () => {
         expect.objectContaining({ knowledgeBaseId: 'kb-1', topK: 5 }),
       ]);
       expect(config.subAgents).toEqual([
-        expect.objectContaining({ agentDefinitionId: 'child-1', alias: 'writer' }),
+        expect.objectContaining({
+          agentDefinitionId: 'child-1',
+          alias: 'writer',
+        }),
       ]);
       expect(config.inputPreprocessors).toEqual([
         expect.objectContaining({ type: 'jmespath', config: { foo: 'bar' } }),
@@ -910,7 +1049,10 @@ describe('AgentDefinitionService', () => {
         {
           id: 'model-legacy',
           type: 'agent',
-          data: { nodeType: 'llm-model', config: { modelId: 'claude-3-7-sonnet' } },
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'claude-3-7-sonnet' },
+          },
         },
         {
           id: 'tool-legacy',
@@ -920,18 +1062,33 @@ describe('AgentDefinitionService', () => {
         {
           id: 'sandbox-legacy',
           type: 'tool',
-          data: { nodeType: 'sandbox', config: { enabled: true, cpuLimit: 1.5, memoryLimitMb: 768, timeoutSeconds: 120 } },
+          data: {
+            nodeType: 'sandbox',
+            config: {
+              enabled: true,
+              cpuLimit: 1.5,
+              memoryLimitMb: 768,
+              timeoutSeconds: 120,
+            },
+          },
         },
       ];
 
       const config = service.buildRuntimeConfigFromNodes(nodes as any[], []);
 
-      expect(config.modelConfig).toMatchObject({ modelId: 'claude-3-7-sonnet' });
+      expect(config.modelConfig).toMatchObject({
+        modelId: 'claude-3-7-sonnet',
+      });
       expect(config.tools).toEqual([
         expect.objectContaining({ name: 'legacy-search' }),
       ]);
       expect(config.sandboxConfig).toEqual(
-        expect.objectContaining({ cpu: 1.5, memory: 768, timeout: 120, disk: 1 }),
+        expect.objectContaining({
+          cpu: 1.5,
+          memory: 768,
+          timeout: 120,
+          disk: 1,
+        }),
       );
     });
 
@@ -951,16 +1108,18 @@ describe('AgentDefinitionService', () => {
       ];
 
       const skillIds = (service as any).extractConversationSkillIds(nodes, [
-        { source: 'skill-connected', target: 'main', targetHandle: 'skills-in' },
+        {
+          source: 'skill-connected',
+          target: 'main',
+          targetHandle: 'skills-in',
+        },
       ]);
 
       expect(skillIds).toEqual(['skill-1']);
     });
 
     it('knowledge-base 无 knowledgeBaseId 时应被忽略', () => {
-      const nodes = [
-        { id: 'n1', type: 'knowledge-base', data: {} },
-      ];
+      const nodes = [{ id: 'n1', type: 'knowledge-base', data: {} }];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
@@ -968,9 +1127,7 @@ describe('AgentDefinitionService', () => {
     });
 
     it('sub-agent 无 agentDefinitionId 时应被忽略', () => {
-      const nodes = [
-        { id: 'n1', type: 'sub-agent', data: {} },
-      ];
+      const nodes = [{ id: 'n1', type: 'sub-agent', data: {} }];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
@@ -978,9 +1135,7 @@ describe('AgentDefinitionService', () => {
     });
 
     it('input-preprocessor 无 type 时应被忽略', () => {
-      const nodes = [
-        { id: 'n1', type: 'input-preprocessor', data: {} },
-      ];
+      const nodes = [{ id: 'n1', type: 'input-preprocessor', data: {} }];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
@@ -1045,7 +1200,11 @@ describe('AgentDefinitionService', () => {
 
     it('工具节点 enabled=false 时应 enabled 为 false', () => {
       const nodes = [
-        { id: 'n1', type: 'http-tool', data: { name: 'disabled-tool', enabled: false } },
+        {
+          id: 'n1',
+          type: 'http-tool',
+          data: { name: 'disabled-tool', enabled: false },
+        },
       ];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
@@ -1068,9 +1227,7 @@ describe('AgentDefinitionService', () => {
     });
 
     it('smart-routing 无 strategy 时应默认 FALLBACK_CHAIN', () => {
-      const nodes = [
-        { id: 'n1', type: 'smart-routing', data: {} },
-      ];
+      const nodes = [{ id: 'n1', type: 'smart-routing', data: {} }];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
@@ -1079,46 +1236,88 @@ describe('AgentDefinitionService', () => {
 
     it('子代理别名重复时应抛出错误', () => {
       const nodes = [
-        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'helper' } },
-        { id: 'n2', type: 'sub-agent', data: { agentDefinitionId: 'agent-b', alias: 'helper' } },
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-a', alias: 'helper' },
+        },
+        {
+          id: 'n2',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-b', alias: 'helper' },
+        },
       ];
 
-      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('子代理别名重复: helper');
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent'),
+      ).toThrow('子代理别名重复: helper');
     });
 
     it('子代理别名格式非法（数字开头）时应抛出错误', () => {
       const nodes = [
-        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: '123abc' } },
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-a', alias: '123abc' },
+        },
       ];
 
-      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('子代理别名格式非法: 123abc');
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent'),
+      ).toThrow('子代理别名格式非法: 123abc');
     });
 
     it('子代理别名格式合法时不应抛出错误', () => {
       const nodes = [
-        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'my-agent_1' } },
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-a', alias: 'my-agent_1' },
+        },
       ];
 
-      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+      const config = service.buildRuntimeConfigFromNodes(
+        nodes,
+        [],
+        'current-agent',
+      );
 
       expect(config.subAgents![0].alias).toBe('my-agent_1');
     });
 
     it('子代理引用自身时应抛出错误', () => {
       const nodes = [
-        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'current-agent', alias: 'self' } },
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'current-agent', alias: 'self' },
+        },
       ];
 
-      expect(() => service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent')).toThrow('不能将自身作为子代理引用');
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent'),
+      ).toThrow('不能将自身作为子代理引用');
     });
 
     it('子代理引用合法且别名唯一时应正常编译', () => {
       const nodes = [
-        { id: 'n1', type: 'sub-agent', data: { agentDefinitionId: 'agent-a', alias: 'workerA' } },
-        { id: 'n2', type: 'sub-agent', data: { agentDefinitionId: 'agent-b', alias: 'workerB' } },
+        {
+          id: 'n1',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-a', alias: 'workerA' },
+        },
+        {
+          id: 'n2',
+          type: 'sub-agent',
+          data: { agentDefinitionId: 'agent-b', alias: 'workerB' },
+        },
       ];
 
-      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+      const config = service.buildRuntimeConfigFromNodes(
+        nodes,
+        [],
+        'current-agent',
+      );
 
       expect(config.subAgents).toHaveLength(2);
       expect(config.subAgents![0].alias).toBe('workerA');
@@ -1128,7 +1327,11 @@ describe('AgentDefinitionService', () => {
     it('相同节点通过相同 targetHandle 重复连接到 agent-main 时只编译一次（compiledNodeIds 去重）', () => {
       const nodes = [
         { id: 'main', type: 'agent-main', data: {} },
-        { id: 'tool-1', type: 'http-tool', data: { url: 'https://api.example.com', method: 'GET' } },
+        {
+          id: 'tool-1',
+          type: 'http-tool',
+          data: { url: 'https://api.example.com', method: 'GET' },
+        },
       ];
       const edges = [
         { source: 'tool-1', target: 'main', targetHandle: 'tools-in' },
@@ -1285,16 +1488,26 @@ describe('AgentDefinitionService', () => {
         },
       ];
 
-      const config = service.buildRuntimeConfigFromNodes(nodes, [], 'current-agent');
+      const config = service.buildRuntimeConfigFromNodes(
+        nodes,
+        [],
+        'current-agent',
+      );
 
       expect(config.subAgents).toHaveLength(1);
       expect(config.subAgents![0].alias).toBe('abcdefgh');
-      expect(config.subAgents![0].agentDefinitionId).toBe('abcdefgh-1234-5678-9abc-def012345678');
+      expect(config.subAgents![0].agentDefinitionId).toBe(
+        'abcdefgh-1234-5678-9abc-def012345678',
+      );
     });
 
     it('沙箱 enabled=false 时不应设置 sandboxConfig', () => {
       const nodes = [
-        { id: 'sb-1', type: 'sandbox', data: { enabled: false, cpu: 4, memory: 2048 } },
+        {
+          id: 'sb-1',
+          type: 'sandbox',
+          data: { enabled: false, cpu: 4, memory: 2048 },
+        },
       ];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
@@ -1303,9 +1516,7 @@ describe('AgentDefinitionService', () => {
     });
 
     it('沙箱 enabled 未设置时应使用默认值编译', () => {
-      const nodes = [
-        { id: 'sb-2', type: 'sandbox', data: {} },
-      ];
+      const nodes = [{ id: 'sb-2', type: 'sandbox', data: {} }];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
@@ -1328,6 +1539,7 @@ describe('AgentDefinitionService', () => {
 
       const config = service.buildRuntimeConfigFromNodes(nodes, edges);
 
+      expect(config.skillIds).toEqual(['skill-abc']);
       expect(config.tools).toBeUndefined();
       expect(config.modelConfig).toBeUndefined();
     });
@@ -1336,7 +1548,11 @@ describe('AgentDefinitionService', () => {
       const nodes = [
         { id: 'main', type: 'agent-main', data: {} },
         { id: 'model-1', type: 'llm-model', data: { modelId: 'gpt-4' } },
-        { id: 'routing-1', type: 'smart-routing', data: { strategy: 'QUALITY_FIRST' } },
+        {
+          id: 'routing-1',
+          type: 'smart-routing',
+          data: { strategy: 'QUALITY_FIRST' },
+        },
       ];
       const edges = [
         { source: 'model-1', target: 'main', targetHandle: 'model-in' },
@@ -1468,16 +1684,21 @@ describe('AgentDefinitionService', () => {
   describe('createVersion', () => {
     it('应成功创建版本并返回版本 DTO', async () => {
       const agent = makeAgent();
-      const version = makeVersion({ versionNumber: 1, createdAt: new Date('2025-01-01') });
+      const version = makeVersion({
+        versionNumber: 1,
+        createdAt: new Date('2025-01-01'),
+      });
 
       let selectCallCount = 0;
       mockTxClient.select.mockImplementation(() => {
         selectCallCount += 1;
         const c: Record<string, any> = {};
         c.from = vi.fn().mockReturnValue(c);
-        c.where = vi.fn().mockResolvedValue(
-          selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
-        );
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
+          );
         return c;
       });
 
@@ -1539,9 +1760,11 @@ describe('AgentDefinitionService', () => {
         selectCallCount += 1;
         const c: Record<string, any> = {};
         c.from = vi.fn().mockReturnValue(c);
-        c.where = vi.fn().mockResolvedValue(
-          selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
-        );
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
+          );
         return c;
       });
 
@@ -1556,7 +1779,11 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await service.createVersion('agent-1', { changelog: longChangelog }, 'user-1');
+      await service.createVersion(
+        'agent-1',
+        { changelog: longChangelog },
+        'user-1',
+      );
 
       expect(capturedValues).toBeDefined();
       expect(capturedValues!.label).toBe(`v1 - ${'A'.repeat(50)}`);
@@ -1568,7 +1795,11 @@ describe('AgentDefinitionService', () => {
     it('应返回分页版本列表', async () => {
       const versions = [
         makeVersion({ versionNumber: 2, createdAt: new Date('2025-01-02') }),
-        makeVersion({ id: 'version-2', versionNumber: 1, createdAt: new Date('2025-01-01') }),
+        makeVersion({
+          id: 'version-2',
+          versionNumber: 1,
+          createdAt: new Date('2025-01-01'),
+        }),
       ];
 
       const rowsChain: Record<string, any> = {};
@@ -1622,16 +1853,21 @@ describe('AgentDefinitionService', () => {
         nodes: [{ id: 'n1', type: 'llm-model', data: {} }],
       });
       const version = makeVersion({ createdAt: new Date('2025-01-01') });
-      const updated = makeAgent({ status: 'published', publishedVersionId: 'version-1' });
+      const updated = makeAgent({
+        status: 'published',
+        publishedVersionId: 'version-1',
+      });
 
       let selectCallCount = 0;
       mockTxClient.select.mockImplementation(() => {
         selectCallCount += 1;
         const c: Record<string, any> = {};
         c.from = vi.fn().mockReturnValue(c);
-        c.where = vi.fn().mockResolvedValue(
-          selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
-        );
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
+          );
         return c;
       });
 

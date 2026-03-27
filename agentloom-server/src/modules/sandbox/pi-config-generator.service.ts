@@ -7,16 +7,25 @@ export interface PiModelConfig {
   apiBaseUrl?: string;
 }
 
+export interface SkillInput {
+  name: string;
+  description: string;
+  /** Map of filename to content. Must contain a "SKILL.md" entry. */
+  files: Record<string, string>;
+}
+
 export interface PiConfigInput {
   systemPrompt?: string | null;
   modelConfig?: PiModelConfig | null;
-  skillContent?: string | null;
+  skills?: SkillInput[];
 }
 
 export interface PiConfigBundle {
   settings: string;
   models: string;
   systemPrompt: string;
+  /** Outer key = skill directory name (kebab-case), inner map = filename → content */
+  skills: Record<string, Record<string, string>>;
 }
 
 // Maps AgentLoom provider name → pi-ai API identifier
@@ -105,8 +114,7 @@ export class PiConfigGeneratorService {
     }
 
     const api =
-      PROVIDER_API_MAP[modelCfg.provider] ??
-      `${modelCfg.provider}-completions`;
+      PROVIDER_API_MAP[modelCfg.provider] ?? `${modelCfg.provider}-completions`;
     const baseUrl =
       modelCfg.apiBaseUrl ??
       PROVIDER_BASE_URL_MAP[modelCfg.provider] ??
@@ -133,26 +141,71 @@ export class PiConfigGeneratorService {
   /**
    * Generate system-prompt.md content for the pi-coding-agent container.
    *
-   * Combines the agent's system prompt with pre-resolved skill content
-   * (from `SkillResolverService.resolveSkillsForAgent()`).
+   * Returns only the agent's system prompt. Skills are written as
+   * independent files under skills/ and discovered by pi-mono's loadSkills().
    */
   generateSystemPrompt(input: PiConfigInput): string {
-    const parts: string[] = [];
-
     if (input.systemPrompt?.trim()) {
-      parts.push(input.systemPrompt.trim());
+      return input.systemPrompt.trim();
     }
 
-    if (input.skillContent?.trim()) {
-      // Skill content is already formatted as <available_skills> XML
-      parts.push(input.skillContent.trim());
-    }
-
-    return parts.join('\n\n');
+    return '';
   }
 
   /**
-   * Generate all three config files in one call.
+   * Generate skill file maps from structured skill inputs.
+   *
+   * Each skill becomes a directory containing at least SKILL.md with
+   * YAML frontmatter (name + description) followed by the skill body.
+   * Additional files from the skill's files map are included as-is.
+   *
+   * @returns Record<dirName, Record<filename, content>>
+   */
+  generateSkillFiles(
+    input: PiConfigInput,
+  ): Record<string, Record<string, string>> {
+    const skills = input.skills;
+    if (!skills?.length) {
+      return {};
+    }
+
+    const result: Record<string, Record<string, string>> = {};
+
+    for (const skill of skills) {
+      const dirName = this.sanitizeSkillName(skill.name);
+
+      const description = this.escapeYamlString(
+        skill.description.length > 1024
+          ? skill.description.slice(0, 1024)
+          : skill.description,
+      );
+
+      const frontmatter = [
+        '---',
+        `name: ${dirName}`,
+        `description: ${description}`,
+        '---',
+      ].join('\n');
+
+      const skillBody = skill.files['SKILL.md'] ?? '';
+      const skillMd = `${frontmatter}\n\n${skillBody}`;
+
+      const files: Record<string, string> = { 'SKILL.md': skillMd };
+
+      for (const [filename, content] of Object.entries(skill.files)) {
+        if (filename !== 'SKILL.md') {
+          files[filename] = content;
+        }
+      }
+
+      result[dirName] = files;
+    }
+
+    return result;
+  }
+
+  /**
+   * Generate all config files in one call.
    * Returns a bundle ready to mount at /config/ inside the sandbox container.
    */
   generateConfigBundle(input: PiConfigInput): PiConfigBundle {
@@ -160,6 +213,36 @@ export class PiConfigGeneratorService {
       settings: this.generateSettings(input),
       models: this.generateModelsJson(input),
       systemPrompt: this.generateSystemPrompt(input),
+      skills: this.generateSkillFiles(input),
     };
+  }
+
+  /**
+   * Sanitize a name to kebab-case for pi-mono skill directory naming.
+   * Only [a-z0-9-], no leading/trailing -, no --, max 64 chars.
+   */
+  private sanitizeSkillName(name: string): string {
+    let kebab = name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/--+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    if (kebab.length > 64) {
+      kebab = kebab.slice(0, 64).replace(/-+$/, '');
+    }
+
+    return kebab || 'unnamed-skill';
+  }
+
+  /**
+   * Escape a string for safe inclusion as a YAML scalar value.
+   * Wraps in double quotes if the value contains YAML-special characters.
+   */
+  private escapeYamlString(value: string): string {
+    if (/[:\n\r#'"{}[\]|>&*!?,]/.test(value)) {
+      return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    }
+    return value;
   }
 }

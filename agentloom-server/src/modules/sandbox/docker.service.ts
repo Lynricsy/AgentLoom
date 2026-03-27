@@ -73,9 +73,7 @@ export class DockerService {
   private readonly useFakeExecRuntime: boolean;
   private readonly logger = new Logger(DockerService.name);
 
-  constructor(
-    private readonly piConfigGenerator: PiConfigGeneratorService,
-  ) {
+  constructor(private readonly piConfigGenerator: PiConfigGeneratorService) {
     this.docker = new Docker();
     this.useFakeExecRuntime = process.env.ACP_TEST_FAKE_RUNTIME === '1';
   }
@@ -92,14 +90,10 @@ export class DockerService {
       const extraBinds: string[] = [];
       const extraHosts: string[] = [];
 
-      if (
-        !this.useFakeExecRuntime &&
-        piContext?.piConfigInput
-      ) {
-        const bundle =
-          this.piConfigGenerator.generateConfigBundle(
-            piContext.piConfigInput,
-          );
+      if (!this.useFakeExecRuntime && piContext?.piConfigInput) {
+        const bundle = this.piConfigGenerator.generateConfigBundle(
+          piContext.piConfigInput,
+        );
 
         configTmpDir = fs.mkdtempSync(
           path.join(os.tmpdir(), `sandbox-pi-config-${sessionId}-`),
@@ -108,14 +102,20 @@ export class DockerService {
           path.join(configTmpDir, 'settings.json'),
           bundle.settings,
         );
-        fs.writeFileSync(
-          path.join(configTmpDir, 'models.json'),
-          bundle.models,
-        );
+        fs.writeFileSync(path.join(configTmpDir, 'models.json'), bundle.models);
         fs.writeFileSync(
           path.join(configTmpDir, 'system-prompt.md'),
           bundle.systemPrompt,
         );
+
+        // Write skill directories for pi-mono loadSkills() discovery
+        for (const [skillName, skillFiles] of Object.entries(bundle.skills)) {
+          const skillDir = path.join(configTmpDir, 'skills', skillName);
+          fs.mkdirSync(skillDir, { recursive: true });
+          for (const [filename, content] of Object.entries(skillFiles)) {
+            fs.writeFileSync(path.join(skillDir, filename), content);
+          }
+        }
 
         extraBinds.push(`${configTmpDir}:/config:ro`);
         containerEnv.push('PI_CODING_AGENT_DIR=/config');
@@ -170,10 +170,7 @@ export class DockerService {
           NanoCpus: config.cpu * CPU_CORE_TO_NANO,
           Memory: config.memory * MB_TO_BYTES,
           StorageOpt: { size: `${config.disk}G` },
-          Binds: [
-            `sandbox-${sessionId}-workspace:/workspace`,
-            ...extraBinds,
-          ],
+          Binds: [`sandbox-${sessionId}-workspace:/workspace`, ...extraBinds],
           ...(extraHosts.length > 0 ? { ExtraHosts: extraHosts } : {}),
         },
       });
@@ -410,10 +407,7 @@ export class DockerService {
     };
   }
 
-  private trackExecStream(
-    execId: string,
-    stream: NodeJS.ReadableStream,
-  ): void {
+  private trackExecStream(execId: string, stream: NodeJS.ReadableStream): void {
     this.execStreams.set(execId, stream);
 
     stream.on('close', () => {
@@ -633,7 +627,9 @@ export class DockerService {
     return { execId };
   }
 
-  private async waitForFakeExecExit(execId: string): Promise<DockerExecExitInfo> {
+  private async waitForFakeExecExit(
+    execId: string,
+  ): Promise<DockerExecExitInfo> {
     const fakeExec = this.fakeExecs.get(execId);
 
     if (!fakeExec) {

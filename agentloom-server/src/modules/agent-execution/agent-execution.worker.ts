@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  OnWorkerEvent,
-  Processor,
-  WorkerHost,
-} from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -21,7 +17,10 @@ import {
 import { memorySessions, type MemorySession } from '../../database/schema';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
-import type { DecisionEvent, StopReason } from '../agent/types/agent-event.types';
+import type {
+  DecisionEvent,
+  StopReason,
+} from '../agent/types/agent-event.types';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import type {
   ContentBlock,
@@ -32,8 +31,15 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import { SandboxService } from '../sandbox/sandbox.service';
+import type {
+  PiConfigInput,
+  SkillInput,
+} from '../sandbox/pi-config-generator.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
-import { MemoryResourceProvider, type MemoryResourceInstance } from '../agent-memory/memory-resource.provider';
+import {
+  MemoryResourceProvider,
+  type MemoryResourceInstance,
+} from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
@@ -140,7 +146,10 @@ export class AgentExecutionWorker extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job<AgentConversationExecutionJobData> | undefined, error: Error) {
+  onFailed(
+    job: Job<AgentConversationExecutionJobData> | undefined,
+    error: Error,
+  ) {
     if (!job) {
       return;
     }
@@ -156,7 +165,10 @@ export class AgentExecutionWorker extends WorkerHost {
     tenantId: string,
   ): Promise<void> {
     const abort = new AbortController();
-    const activeRun = this.executionService.registerActiveRun(conversationId, abort);
+    const activeRun = this.executionService.registerActiveRun(
+      conversationId,
+      abort,
+    );
 
     if (!activeRun) {
       this.logger.debug(
@@ -191,8 +203,12 @@ export class AgentExecutionWorker extends WorkerHost {
       conversationStatus = context.conversation.status;
 
       if (context.conversation.status !== 'active') {
-        terminalStatus = context.conversation.status === 'failed' ? 'failed' : 'cancelled';
-        await this.cleanupConversationMemorySessions(tenantId, executionMetadata.memorySessionIds);
+        terminalStatus =
+          context.conversation.status === 'failed' ? 'failed' : 'cancelled';
+        await this.cleanupConversationMemorySessions(
+          tenantId,
+          executionMetadata.memorySessionIds,
+        );
         return;
       }
 
@@ -226,10 +242,14 @@ export class AgentExecutionWorker extends WorkerHost {
         this.abortTrackedSubAgents(subAgentTracker, abort.signal.reason);
       };
 
-      abort.signal.addEventListener('abort', () => {
-        cancelSubAgents();
-        void cancelRuntime();
-      }, { once: true });
+      abort.signal.addEventListener(
+        'abort',
+        () => {
+          cancelSubAgents();
+          void cancelRuntime();
+        },
+        { once: true },
+      );
 
       executionMetadata = await this.updateExecutionMetadata(
         tenantId,
@@ -322,7 +342,9 @@ export class AgentExecutionWorker extends WorkerHost {
         executionId: conversationId,
         status: terminalStatus,
         errorMessage:
-          error instanceof Error ? error.message : 'Agent conversation execution failed',
+          error instanceof Error
+            ? error.message
+            : 'Agent conversation execution failed',
       });
 
       if (!abort.signal.aborted) {
@@ -416,7 +438,8 @@ export class AgentExecutionWorker extends WorkerHost {
         );
         runtimeConfig.sandboxConfig =
           snapshot.sandboxConfig ?? definition.sandboxConfig ?? undefined;
-        systemPrompt = snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
+        systemPrompt =
+          snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
       } else {
         runtimeConfig = await this.agentDefinitionService.compileCanvas(
           definition.id,
@@ -460,11 +483,24 @@ export class AgentExecutionWorker extends WorkerHost {
     );
 
     if (context.runtimeConfig.sandboxConfig) {
+      // For sandbox path, resolve skills as structured files for pi-mono discovery
+      // instead of embedding them into the system prompt string
+      const skillPayloads = await this.resolveSkillPayloads(context);
+      const piConfigInput: PiConfigInput = {
+        systemPrompt: context.systemPrompt,
+        ...(skillPayloads.length > 0
+          ? {
+              skills: skillPayloads.map((skill) => this.toSkillInput(skill)),
+            }
+          : {}),
+      };
+
       await this.sandboxService.createSandboxSession({
         sandboxNodeId: null,
         config: context.runtimeConfig.sandboxConfig,
         tenantId,
         agentConversationId: conversationId,
+        piConfigInput,
       });
     }
 
@@ -492,7 +528,12 @@ export class AgentExecutionWorker extends WorkerHost {
       }
     }
 
-    const baseSystemPrompt = await this.resolveConversationSkillPrompt(context);
+    // For sandbox path, skills are passed as independent files via piConfigInput
+    // so the system prompt should not include skill content.
+    // For non-sandbox path, embed skills into the system prompt as before.
+    const baseSystemPrompt = context.hasSandbox
+      ? context.systemPrompt
+      : await this.resolveConversationSkillPrompt(context);
 
     const systemPrompt = await this.resolveConversationSystemPrompt(
       memorySessionIds,
@@ -689,26 +730,22 @@ export class AgentExecutionWorker extends WorkerHost {
             content: turnResult.assistantText,
             toolCalls:
               turnResult.toolCalls.length > 0
-                ? turnResult.toolCalls.map(
-                    (call) => ({
-                      id: call.id,
-                      tool: call.tool,
-                      args: call.args,
-                      status: call.status,
-                      ...(call.transitions
-                        ? { transitions: [...call.transitions] }
-                        : {}),
-                      ...(call.result !== undefined
-                        ? { result: call.result }
-                        : {}),
-                      ...(call.error !== undefined
-                        ? { error: call.error }
-                        : {}),
-                      ...(call.permissionRequest
-                        ? { permissionRequest: call.permissionRequest }
-                        : {}),
-                    }),
-                  )
+                ? turnResult.toolCalls.map((call) => ({
+                    id: call.id,
+                    tool: call.tool,
+                    args: call.args,
+                    status: call.status,
+                    ...(call.transitions
+                      ? { transitions: [...call.transitions] }
+                      : {}),
+                    ...(call.result !== undefined
+                      ? { result: call.result }
+                      : {}),
+                    ...(call.error !== undefined ? { error: call.error } : {}),
+                    ...(call.permissionRequest
+                      ? { permissionRequest: call.permissionRequest }
+                      : {}),
+                  }))
                 : null,
             toolResults:
               turnResult.toolResults.length > 0 ? turnResult.toolResults : null,
@@ -734,7 +771,10 @@ export class AgentExecutionWorker extends WorkerHost {
       await dbClient
         .update(agentConversations)
         .set({
-          metadata: this.writeExecutionMetadata(baseMetadata, executionMetadata),
+          metadata: this.writeExecutionMetadata(
+            baseMetadata,
+            executionMetadata,
+          ),
           updatedAt: new Date(),
         })
         .where(eq(agentConversations.id, conversationId));
@@ -750,11 +790,17 @@ export class AgentExecutionWorker extends WorkerHost {
     patch: Partial<ConversationExecutionMetadata>,
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const nextExecutionMetadata = this.mergeExecutionMetadata(baseMetadata, patch);
+      const nextExecutionMetadata = this.mergeExecutionMetadata(
+        baseMetadata,
+        patch,
+      );
       await dbClient
         .update(agentConversations)
         .set({
-          metadata: this.writeExecutionMetadata(baseMetadata, nextExecutionMetadata),
+          metadata: this.writeExecutionMetadata(
+            baseMetadata,
+            nextExecutionMetadata,
+          ),
           updatedAt: new Date(),
         })
         .where(eq(agentConversations.id, conversationId));
@@ -769,29 +815,33 @@ export class AgentExecutionWorker extends WorkerHost {
     metadata: ConversationExecutionMetadata,
   ): Promise<ConversationExecutionMetadata> {
     try {
-      return await runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-        const [conversation] = await dbClient
-          .select({ metadata: agentConversations.metadata })
-          .from(agentConversations)
-          .where(eq(agentConversations.id, conversationId))
-          .limit(1);
+      return await runInTenantTransaction(
+        this.db,
+        tenantId,
+        async (dbClient) => {
+          const [conversation] = await dbClient
+            .select({ metadata: agentConversations.metadata })
+            .from(agentConversations)
+            .where(eq(agentConversations.id, conversationId))
+            .limit(1);
 
-        if (!conversation) {
-          return metadata;
-        }
+          if (!conversation) {
+            return metadata;
+          }
 
-        const nextMetadata = this.writeExecutionMetadata(
-          conversation.metadata,
-          metadata,
-        );
+          const nextMetadata = this.writeExecutionMetadata(
+            conversation.metadata,
+            metadata,
+          );
 
-        await dbClient
-          .update(agentConversations)
-          .set({ metadata: nextMetadata, updatedAt: new Date() })
-          .where(eq(agentConversations.id, conversationId));
+          await dbClient
+            .update(agentConversations)
+            .set({ metadata: nextMetadata, updatedAt: new Date() })
+            .where(eq(agentConversations.id, conversationId));
 
-        return this.readExecutionMetadata(nextMetadata);
-      });
+          return this.readExecutionMetadata(nextMetadata);
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to update conversation ${conversationId} metadata: ${error instanceof Error ? error.message : String(error)}`,
@@ -831,7 +881,11 @@ export class AgentExecutionWorker extends WorkerHost {
     metadata: Record<string, unknown>,
   ): ConversationExecutionMetadata {
     const execution = metadata['execution'];
-    if (!execution || typeof execution !== 'object' || Array.isArray(execution)) {
+    if (
+      !execution ||
+      typeof execution !== 'object' ||
+      Array.isArray(execution)
+    ) {
       return {};
     }
 
@@ -963,7 +1017,8 @@ export class AgentExecutionWorker extends WorkerHost {
     }
 
     try {
-      const bootSequence = await this.memoryFusionService.bootAll(memorySessionIds);
+      const bootSequence =
+        await this.memoryFusionService.bootAll(memorySessionIds);
       const memoryPrompt = this.buildMemoryBootPrompt(bootSequence);
       return this.prependSystemPrompt(memoryPrompt, baseSystemPrompt);
     } catch (error) {
@@ -986,6 +1041,52 @@ export class AgentExecutionWorker extends WorkerHost {
     });
   }
 
+  /**
+   * Resolve skill payloads as structured data without embedding into prompt.
+   * Used by the sandbox code path to produce independent skill files.
+   */
+  private async resolveSkillPayloads(
+    context: ConversationExecutionContext,
+  ): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
+    if (!this.skillResolverService) {
+      return [];
+    }
+
+    const skillIds = this.extractConversationSkillIds(
+      context.canvasNodes,
+      context.canvasEdges,
+    );
+
+    if (!skillIds.length) {
+      return [];
+    }
+
+    try {
+      return await this.skillResolverService.resolveSkillsForAgent(
+        context.conversation.tenantId,
+        skillIds,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve skill payloads for agent ${context.conversation.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Convert a SkillPromptPayload to a SkillInput for PiConfigInput.
+   */
+  private toSkillInput(
+    skill: import('../skill/skill.types').SkillPromptPayload,
+  ): SkillInput {
+    return {
+      name: skill.name,
+      description: skill.description,
+      files: { 'SKILL.md': skill.content ?? '' },
+    };
+  }
+
   private async resolveSkillAugmentedPrompt(params: {
     tenantId: string;
     agentDefinitionId: string;
@@ -997,7 +1098,10 @@ export class AgentExecutionWorker extends WorkerHost {
       return params.baseSystemPrompt;
     }
 
-    const skillIds = this.extractConversationSkillIds(params.nodes, params.edges);
+    const skillIds = this.extractConversationSkillIds(
+      params.nodes,
+      params.edges,
+    );
 
     if (!skillIds.length) {
       return params.baseSystemPrompt;
@@ -1052,15 +1156,20 @@ export class AgentExecutionWorker extends WorkerHost {
       ? connectedSkillNodes
       : skillNodes;
 
-    return [...new Set(activeSkillNodes.map((node) => this.extractSkillId(node)))].filter(
-      (skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0,
+    return [
+      ...new Set(activeSkillNodes.map((node) => this.extractSkillId(node))),
+    ].filter(
+      (skillId): skillId is string =>
+        typeof skillId === 'string' && skillId.length > 0,
     );
   }
 
-  private extractSkillId(node: AgentVersionSnapshot['nodes'][number]): string | null {
+  private extractSkillId(
+    node: AgentVersionSnapshot['nodes'][number],
+  ): string | null {
     const nodeData =
       node.data && typeof node.data === 'object' && !Array.isArray(node.data)
-        ? (node.data as Record<string, unknown>)
+        ? node.data
         : null;
     const config =
       nodeData?.config &&
@@ -1104,7 +1213,12 @@ export class AgentExecutionWorker extends WorkerHost {
 
     if (bootSequence.index.length) {
       sections.push(
-        ['## Memory Index', ...bootSequence.index.map((path) => `- ${path.domain}://${path.pathString}`)].join('\n'),
+        [
+          '## Memory Index',
+          ...bootSequence.index.map(
+            (path) => `- ${path.domain}://${path.pathString}`,
+          ),
+        ].join('\n'),
       );
     }
 
@@ -1146,9 +1260,9 @@ export class AgentExecutionWorker extends WorkerHost {
     subAgentTracker: SubAgentExecutionTracker;
   }): void {
     if (
-      !params.runtimeConfig.subAgents?.length
-      || !this.subAgentToolsProvider
-      || !params.runtime.registerSessionToolProvider
+      !params.runtimeConfig.subAgents?.length ||
+      !this.subAgentToolsProvider ||
+      !params.runtime.registerSessionToolProvider
     ) {
       return;
     }
@@ -1167,7 +1281,8 @@ export class AgentExecutionWorker extends WorkerHost {
             params.currentAgentDefinitionId,
           ]),
         },
-        (subAgentParams) => this.executeSubAgent(subAgentParams, params.subAgentTracker),
+        (subAgentParams) =>
+          this.executeSubAgent(subAgentParams, params.subAgentTracker),
       ),
     );
   }
@@ -1195,13 +1310,15 @@ export class AgentExecutionWorker extends WorkerHost {
             versionSnapshot.edges,
             params.agentDefinition.id,
           )
-        : await this.agentDefinitionService.compileCanvas(params.agentDefinition.id);
+        : await this.agentDefinitionService.compileCanvas(
+            params.agentDefinition.id,
+          );
 
       runtimeConfig.sandboxConfig =
-        versionSnapshot?.sandboxConfig
-        ?? runtimeConfig.sandboxConfig
-        ?? params.agentDefinition.sandboxConfig
-        ?? undefined;
+        versionSnapshot?.sandboxConfig ??
+        runtimeConfig.sandboxConfig ??
+        params.agentDefinition.sandboxConfig ??
+        undefined;
 
       const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
       const memorySessionIds = await this.ensureAttachedMemorySessions(
@@ -1229,7 +1346,9 @@ export class AgentExecutionWorker extends WorkerHost {
         nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
         edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
         baseSystemPrompt:
-          versionSnapshot?.systemPrompt ?? params.agentDefinition.systemPrompt ?? undefined,
+          versionSnapshot?.systemPrompt ??
+          params.agentDefinition.systemPrompt ??
+          undefined,
       });
       const systemPrompt = await this.resolveConversationSystemPrompt(
         memorySessionIds,
@@ -1380,7 +1499,9 @@ export class AgentExecutionWorker extends WorkerHost {
       return task;
     }
 
-    return ['任务：', task.trim(), '', '额外上下文：', context.trim()].join('\n');
+    return ['任务：', task.trim(), '', '额外上下文：', context.trim()].join(
+      '\n',
+    );
   }
 
   private abortTrackedSubAgents(
@@ -1394,9 +1515,10 @@ export class AgentExecutionWorker extends WorkerHost {
     }
   }
 
-  private combineAbortSignals(
-    signals: Array<AbortSignal | undefined>,
-  ): { signal: AbortSignal; cleanup: () => void } {
+  private combineAbortSignals(signals: Array<AbortSignal | undefined>): {
+    signal: AbortSignal;
+    cleanup: () => void;
+  } {
     const controller = new AbortController();
     const listeners = new Map<AbortSignal, () => void>();
 
@@ -1444,7 +1566,9 @@ export class AgentExecutionWorker extends WorkerHost {
       status === 'completed'
         ? this.summarizeSubAgentText(result?.content)
         : this.summarizeSubAgentText(
-            error instanceof Error ? error.message : String(error ?? 'unknown error'),
+            error instanceof Error
+              ? error.message
+              : String(error ?? 'unknown error'),
           );
     const notice: SubAgentCompletionNotice = {
       type: 'subagent_completion_notice',
@@ -1516,11 +1640,14 @@ export class AgentExecutionWorker extends WorkerHost {
     }
 
     try {
-      const sessions = await runInTenantTransaction(this.db, tenantId, async (dbClient) =>
-        dbClient
-          .select()
-          .from(memorySessions)
-          .where(and(eq(memorySessions.tenantId, tenantId))),
+      const sessions = await runInTenantTransaction(
+        this.db,
+        tenantId,
+        async (dbClient) =>
+          dbClient
+            .select()
+            .from(memorySessions)
+            .where(and(eq(memorySessions.tenantId, tenantId))),
       );
       const instances = sessions
         .filter((session) => memorySessionIds.includes(session.id))

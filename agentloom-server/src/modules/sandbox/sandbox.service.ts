@@ -12,6 +12,7 @@ import type {
 } from '../../database/schema';
 import { SandboxNotFoundException } from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
+import type { PiConfigInput } from './pi-config-generator.service';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 
@@ -21,6 +22,7 @@ type CreateSandboxSessionParams = {
   config: SandboxConfig;
   tenantId: string;
   agentConversationId?: string;
+  piConfigInput?: PiConfigInput;
 };
 
 @Injectable()
@@ -42,6 +44,7 @@ export class SandboxService {
     config,
     tenantId,
     agentConversationId,
+    piConfigInput,
   }: CreateSandboxSessionParams): Promise<SandboxSession> {
     const existing = await this.findActiveSession({
       executionId,
@@ -78,6 +81,7 @@ export class SandboxService {
       ...(session.agentConversationId
         ? { agentConversationId: session.agentConversationId }
         : {}),
+      ...(piConfigInput ? { piConfigInput } : {}),
     });
 
     this.logger.log(
@@ -232,7 +236,11 @@ export class SandboxService {
       .select()
       .from(schema.sandboxSessions)
       .where(
-        this.buildActiveSessionWhere({ executionId, agentConversationId, tenantId }),
+        this.buildActiveSessionWhere({
+          executionId,
+          agentConversationId,
+          tenantId,
+        }),
       )
       .limit(1);
 

@@ -7,10 +7,7 @@ import { DRIZZLE } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { AgentVersionSnapshot } from '../../database/schema/agent-definitions.schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import {
-  generateSlug,
-  appendSlugSuffix,
-} from '../organization/slug.utils';
+import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import type { CreateAgentDefinitionDto } from './dto/create-agent-definition.dto';
 import type { UpdateAgentDefinitionDto } from './dto/update-agent-definition.dto';
 import type { SaveAgentCanvasDto } from './dto/save-agent-canvas.dto';
@@ -42,7 +39,10 @@ import type {
   AgentModelConfig,
 } from './agent-runtime-config.interface';
 
-type AgentDbClient = Pick<DrizzleDB, 'execute' | 'insert' | 'select' | 'update'>;
+type AgentDbClient = Pick<
+  DrizzleDB,
+  'execute' | 'insert' | 'select' | 'update'
+>;
 
 const MAX_SLUG_RETRIES = 3;
 
@@ -129,11 +129,15 @@ export class AgentDefinitionService {
           })
           .returning();
 
-        this.logger.log(`Agent definition created: ${created.id} (${created.slug})`);
+        this.logger.log(
+          `Agent definition created: ${created.id} (${created.slug})`,
+        );
         return serializeAgentDefinitionDetail(created);
       } catch (error) {
         const isUniqueViolation =
-          error instanceof Error && 'code' in error && (error as any).code === '23505';
+          error instanceof Error &&
+          'code' in error &&
+          (error as any).code === '23505';
 
         if (!isUniqueViolation || attempt === MAX_SLUG_RETRIES) {
           throw error;
@@ -146,9 +150,7 @@ export class AgentDefinitionService {
     throw new Error('Unreachable: slug retry loop exhausted');
   }
 
-  async findAll(
-    query: ListAgentDefinitionsQueryDto,
-  ): Promise<{
+  async findAll(query: ListAgentDefinitionsQueryDto): Promise<{
     data: AgentDefinitionResponseDto[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
@@ -169,7 +171,7 @@ export class AgentDefinitionService {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const sortColumn = SORT_COLUMN_MAP[sort as keyof typeof SORT_COLUMN_MAP] ?? SORT_COLUMN_MAP.updatedAt;
+    const sortColumn = SORT_COLUMN_MAP[sort] ?? SORT_COLUMN_MAP.updatedAt;
     const orderFn = order === 'asc' ? asc : desc;
 
     const [rows, countResult] = await Promise.all([
@@ -212,7 +214,9 @@ export class AgentDefinitionService {
     return serializeAgentDefinition(row);
   }
 
-  async findDetailById(agentId: string): Promise<AgentDefinitionDetailResponseDto> {
+  async findDetailById(
+    agentId: string,
+  ): Promise<AgentDefinitionDetailResponseDto> {
     const [row] = await this.tenantDb
       .select()
       .from(schema.agentDefinitions)
@@ -251,8 +255,10 @@ export class AgentDefinitionService {
       };
 
       if (dto.name !== undefined) setClause.name = dto.name;
-      if (dto.description !== undefined) setClause.description = dto.description;
-      if (dto.globalSandboxConfig !== undefined) setClause.sandboxConfig = dto.globalSandboxConfig;
+      if (dto.description !== undefined)
+        setClause.description = dto.description;
+      if (dto.globalSandboxConfig !== undefined)
+        setClause.sandboxConfig = dto.globalSandboxConfig;
 
       const updateResult = await dbClient
         .update(schema.agentDefinitions)
@@ -333,9 +339,12 @@ export class AgentDefinitionService {
         updatedAt: new Date(),
       };
 
-      if (dto.canvasViewport !== undefined) setClause.viewport = dto.canvasViewport;
-      if (dto.globalSandboxConfig !== undefined) setClause.sandboxConfig = dto.globalSandboxConfig;
-      if (dto.inputSchema !== undefined) setClause.metadata = sql`
+      if (dto.canvasViewport !== undefined)
+        setClause.viewport = dto.canvasViewport;
+      if (dto.globalSandboxConfig !== undefined)
+        setClause.sandboxConfig = dto.globalSandboxConfig;
+      if (dto.inputSchema !== undefined)
+        setClause.metadata = sql`
         jsonb_set(
           COALESCE(${schema.agentDefinitions.metadata}, '{}'),
           '{inputSchema}',
@@ -355,7 +364,11 @@ export class AgentDefinitionService {
 
   async compileCanvas(agentId: string): Promise<AgentRuntimeConfig> {
     const detail = await this.findDetailById(agentId);
-    return this.buildRuntimeConfigFromNodes(detail.nodes, detail.edges, agentId);
+    return this.buildRuntimeConfigFromNodes(
+      detail.nodes,
+      detail.edges,
+      agentId,
+    );
   }
 
   buildRuntimeConfigFromNodes(
@@ -391,12 +404,16 @@ export class AgentDefinitionService {
           .map((node) => ({ source: node.id }));
 
     const compiledNodeIds = new Set<string>();
-    this.extractConversationSkillIds(nodes, relevantEdges);
+    const skillIds = this.extractConversationSkillIds(nodes, relevantEdges);
 
     for (const edge of relevantEdges) {
       const sourceNode = nodesById.get(edge.source) ?? edge;
-      const nodeId = typeof sourceNode?.id === 'string' ? sourceNode.id : undefined;
-      if (nodeId && compiledNodeIds.has(`${nodeId}:${edge.targetHandle ?? '*'}`)) {
+      const nodeId =
+        typeof sourceNode?.id === 'string' ? sourceNode.id : undefined;
+      if (
+        nodeId &&
+        compiledNodeIds.has(`${nodeId}:${edge.targetHandle ?? '*'}`)
+      ) {
         continue;
       }
 
@@ -469,9 +486,7 @@ export class AgentDefinitionService {
         }
 
         case 'skill': {
-          if (!agentMainNode || targetHandle === 'skills-in') {
-            this.extractSkillId(sourceNode);
-          }
+          // Skill IDs are collected by extractConversationSkillIds() above
           break;
         }
 
@@ -489,9 +504,12 @@ export class AgentDefinitionService {
     }
 
     if (tools.length > 0) config.tools = tools;
-    if (knowledgeBindings.length > 0) config.knowledgeBindings = knowledgeBindings;
+    if (knowledgeBindings.length > 0)
+      config.knowledgeBindings = knowledgeBindings;
     if (subAgents.length > 0) config.subAgents = subAgents;
-    if (inputPreprocessors.length > 0) config.inputPreprocessors = inputPreprocessors;
+    if (inputPreprocessors.length > 0)
+      config.inputPreprocessors = inputPreprocessors;
+    if (skillIds.length > 0) config.skillIds = skillIds;
 
     return config;
   }
@@ -655,7 +673,9 @@ export class AgentDefinitionService {
         .where(eq(schema.agentDefinitions.id, agentId))
         .returning();
 
-      this.logger.log(`Agent definition published: ${agentId} → version ${version.id}`);
+      this.logger.log(
+        `Agent definition published: ${agentId} → version ${version.id}`,
+      );
       return serializeAgentDefinitionDetail(updated);
     });
   }
@@ -725,11 +745,15 @@ export class AgentDefinitionService {
         data.mcpServerConfigId ?? data.mcp_server_config_id;
       const toolName = data.toolName ?? data.tool_name;
       const inputSchema =
-        data.inputSchema && typeof data.inputSchema === 'object' && !Array.isArray(data.inputSchema)
+        data.inputSchema &&
+        typeof data.inputSchema === 'object' &&
+        !Array.isArray(data.inputSchema)
           ? data.inputSchema
           : undefined;
       const portMapping =
-        data.portMapping && typeof data.portMapping === 'object' && !Array.isArray(data.portMapping)
+        data.portMapping &&
+        typeof data.portMapping === 'object' &&
+        !Array.isArray(data.portMapping)
           ? data.portMapping
           : undefined;
 
@@ -753,7 +777,7 @@ export class AgentDefinitionService {
         ...(inputSchema === undefined ? {} : { inputSchema }),
         ...(portMapping === undefined ? {} : { portMapping }),
       };
-    };
+    }
 
     if (nodeType === 'http-tool') {
       const url = data.url;
@@ -811,7 +835,8 @@ export class AgentDefinitionService {
     return {
       knowledgeBaseId: kbId,
       topK: data.topK ?? data.top_k,
-      similarityThreshold: data.similarityThreshold ?? data.similarity_threshold,
+      similarityThreshold:
+        data.similarityThreshold ?? data.similarity_threshold,
       enabled: data.enabled !== false,
     };
   }
@@ -838,7 +863,9 @@ export class AgentDefinitionService {
     if (!type) return null;
 
     const nestedConfig =
-      data.config && typeof data.config === 'object' && !Array.isArray(data.config)
+      data.config &&
+      typeof data.config === 'object' &&
+      !Array.isArray(data.config)
         ? (data.config as Record<string, any>)
         : null;
     const resolvedConfig =
@@ -847,7 +874,7 @@ export class AgentDefinitionService {
       (nestedConfig.preprocessorType !== undefined ||
         nestedConfig.transformType !== undefined ||
         nestedConfig.type !== undefined)
-        ? nestedConfig.config ?? nestedConfig.preprocessorConfig
+        ? (nestedConfig.config ?? nestedConfig.preprocessorConfig)
         : data.config);
 
     return {
@@ -856,9 +883,7 @@ export class AgentDefinitionService {
     };
   }
 
-  private extractRoutingConfig(
-    data: Record<string, any>,
-  ): AgentRoutingConfig {
+  private extractRoutingConfig(data: Record<string, any>): AgentRoutingConfig {
     return {
       strategy: data.strategy ?? 'FALLBACK_CHAIN',
       candidateModelIds: data.candidateModelIds ?? data.candidate_model_ids,
@@ -881,7 +906,9 @@ export class AgentDefinitionService {
         ? (node.data as Record<string, any>)
         : {};
     const config =
-      data.config && typeof data.config === 'object' && !Array.isArray(data.config)
+      data.config &&
+      typeof data.config === 'object' &&
+      !Array.isArray(data.config)
         ? (data.config as Record<string, any>)
         : {};
 
@@ -916,7 +943,9 @@ export class AgentDefinitionService {
       ? connectedSkillNodes
       : skillNodes;
 
-    return [...new Set(activeSkillNodes.map((node) => this.extractSkillId(node)))].filter(
+    return [
+      ...new Set(activeSkillNodes.map((node) => this.extractSkillId(node))),
+    ].filter(
       (skillId): skillId is string =>
         typeof skillId === 'string' && skillId.length > 0,
     );
@@ -970,7 +999,7 @@ function toVersionResponseDto(
     agentDefinitionId: version.agentDefinitionId,
     versionNumber: version.versionNumber,
     label: version.label,
-    snapshot: version.snapshot as AgentVersionSnapshot,
+    snapshot: version.snapshot,
     publishedAt: version.publishedAt?.toISOString() ?? null,
     archivedAt: version.archivedAt?.toISOString() ?? null,
     createdBy: version.createdBy,

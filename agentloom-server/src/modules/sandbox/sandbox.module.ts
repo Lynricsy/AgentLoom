@@ -29,6 +29,11 @@ import { PiConfigGeneratorService } from './pi-config-generator.service';
     SandboxLifecycleWorker,
     PiConfigGeneratorService,
   ],
-  exports: [SandboxService, DockerService, SandboxLifecycleProducer, PiConfigGeneratorService],
+  exports: [
+    SandboxService,
+    DockerService,
+    SandboxLifecycleProducer,
+    PiConfigGeneratorService,
+  ],
 })
 export class SandboxModule {}
