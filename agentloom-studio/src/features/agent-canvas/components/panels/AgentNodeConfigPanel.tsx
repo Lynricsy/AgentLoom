@@ -1,14 +1,12 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { cn } from '@/shared/lib/utils';
-import type { CanvasNodeData } from '@/features/canvas/types';
+import type { CanvasNode, CanvasNodeData } from '@/features/canvas/types';
+import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas/components/panels/customPanelRegistry';
 import {
   useAgentCanvasSelectedNodeId,
   useAgentCanvasNodes,
   useAgentCanvasActions,
 } from '../../stores/agent-canvas.store';
-import { SkillPanel } from './SkillPanel';
-import { SubAgentConfigPanel } from './SubAgentConfigPanel';
-import { SandboxNodeConfigPanel } from './SandboxNodeConfigPanel';
 
 interface AgentNodeConfigPanelProps {
   className?: string;
@@ -21,6 +19,14 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   const nodes = useAgentCanvasNodes();
   const { updateNodeData, deleteSelectedNode } = useAgentCanvasActions();
 
+  const handlePatchNode = useCallback(
+    (patch: Record<string, unknown>) => {
+      if (!selectedNodeId) return;
+      updateNodeData(selectedNodeId, patch as Partial<CanvasNodeData>);
+    },
+    [selectedNodeId, updateNodeData],
+  );
+
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
@@ -28,6 +34,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   if (!selectedNode) return null;
 
   const nodeData = selectedNode.data as CanvasNodeData;
+
+  // 查找共享注册表中的面板
+  const customPanel = CUSTOM_PANEL_REGISTRY[nodeData.nodeType as string];
 
   return (
     <div
@@ -53,53 +62,45 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       </div>
 
       <div className="p-3 overflow-y-auto">
-        <NodeConfigContent
-          nodeType={nodeData.nodeType}
-          config={nodeData.config}
-          onConfigChange={(config) => updateNodeData(selectedNode.id, { config })}
-        />
+        {customPanel ? (
+          customPanel.render({
+            node: selectedNode as unknown as CanvasNode,
+            onConfigChange: handlePatchNode,
+            onValidationChange: () => {},
+          })
+        ) : (
+          <AgentOnlyNodeConfig
+            nodeData={nodeData}
+            onConfigChange={(config) => updateNodeData(selectedNode.id, { config })}
+          />
+        )}
       </div>
     </div>
   );
 });
 
-const NodeConfigContent = memo(function NodeConfigContent({
-  nodeType,
-  config,
+/**
+ * Agent Canvas 专属节点配置（不在 CUSTOM_PANEL_REGISTRY 中的类型）
+ */
+const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
+  nodeData,
   onConfigChange,
 }: {
-  nodeType: string;
-  config: Record<string, unknown>;
+  nodeData: CanvasNodeData;
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
-  switch (nodeType) {
-    case 'llm-model':
-      return (
-        <LlmModelConfigStub config={config} onConfigChange={onConfigChange} />
-      );
+  switch (nodeData.nodeType as string) {
     case 'smart-routing':
       return (
         <SmartRoutingConfigStub
-          config={config}
+          config={nodeData.config}
           onConfigChange={onConfigChange}
         />
-      );
-    case 'skill':
-      return (
-        <SkillPanel config={config} onApply={onConfigChange} />
-      );
-    case 'sub-agent':
-      return (
-        <SubAgentConfigPanel config={config} onApply={onConfigChange} />
-      );
-    case 'sandbox':
-      return (
-        <SandboxNodeConfigPanel config={config} onApply={onConfigChange} />
       );
     default:
       return (
         <div className="text-xs text-neutral-500">
-          Node configuration for <strong>{nodeType}</strong> not yet available.
+          Node configuration for <strong>{nodeData.nodeType}</strong> not yet available.
         </div>
       );
   }
@@ -109,54 +110,6 @@ interface StubConfigProps {
   config: Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
 }
-
-const LlmModelConfigStub = memo(function LlmModelConfigStub({
-  config,
-  onConfigChange,
-}: StubConfigProps) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">Model</span>
-        <input
-          type="text"
-          value={(config.model as string) ?? ''}
-          onChange={(e) => onConfigChange({ ...config, model: e.target.value })}
-          placeholder="e.g. gpt-4o"
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-blue-500"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">Temperature</span>
-        <input
-          type="number"
-          min={0}
-          max={2}
-          step={0.1}
-          value={(config.temperature as number) ?? 0.7}
-          onChange={(e) =>
-            onConfigChange({ ...config, temperature: Number(e.target.value) })
-          }
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-xs text-neutral-200 outline-none focus:border-blue-500"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">Max Tokens</span>
-        <input
-          type="number"
-          min={1}
-          max={128000}
-          step={256}
-          value={(config.maxTokens as number) ?? 4096}
-          onChange={(e) =>
-            onConfigChange({ ...config, maxTokens: Number(e.target.value) })
-          }
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-xs text-neutral-200 outline-none focus:border-blue-500"
-        />
-      </div>
-    </div>
-  );
-});
 
 const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
   config,

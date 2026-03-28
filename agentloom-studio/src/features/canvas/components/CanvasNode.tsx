@@ -19,6 +19,7 @@ import {
   Container,
   Database,
   FileText,
+  Filter,
   GitBranch,
   GitFork,
   Globe,
@@ -73,6 +74,7 @@ import { ScheduleTriggerNodeBody } from './nodes/ScheduleTriggerNodeBody'
 import { WebhookTriggerNodeBody } from './nodes/WebhookTriggerNodeBody'
 import { ApiEventTriggerNodeBody } from './nodes/ApiEventTriggerNodeBody'
 import { SkillBody } from '../../agent-canvas/components/nodes/SkillBody'
+import { SubAgentNodeBody } from '../../agent-canvas/components/nodes/SubAgentNodeBody'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -96,6 +98,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Radio,
   BrainCircuit,
   Webhook,
+  Filter,
 }
 
 type NodeShellStatus =
@@ -552,6 +555,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <AgentNodeBody data={data as WorkflowAgentNodeData} hasSchemaConnection={hasSchemaConnection} />
           ) : data.nodeType === 'skill' ? (
             <SkillBody data={data} />
+          ) : (data.nodeType as string) === 'sub-agent' ? (
+            <SubAgentNodeBody data={data} />
           ) : data.nodeType === 'input-preprocessor' ? (
             <InputPreprocessorNodeBody config={data.config} />
           ) : data.nodeType === 'condition' ? (

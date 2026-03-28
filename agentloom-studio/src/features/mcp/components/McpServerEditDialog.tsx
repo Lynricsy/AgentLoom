@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Loader2,
@@ -212,7 +212,7 @@ export function McpServerEditDialog({
       { id: server.id, data: payload },
       {
         onSuccess: () => {
-          notify({ title: "已保存", variant: "success" });
+          notify({ title: "已保存", description: "MCP Server 配置已更新", variant: "success" });
           onOpenChange(false);
         },
       },
