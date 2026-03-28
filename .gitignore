@@ -114,3 +114,4 @@ node-compile-cache/
 /scenario-*.txt
 /agent-conversation-qa-*.png
 .amp/
+.ace-tool/
