@@ -79,48 +79,12 @@ describe('mcpToolMapping', () => {
   })
 
   describe('buildMcpToolPorts', () => {
-    it('builds input ports from metadata and always includes tool output', () => {
-      const metadata: BackendPortMappingMetadata = {
-        inputs: [
-          { name: 'query', dataType: 'text', description: '搜索词', required: true },
-          { name: 'modelConfig', dataType: 'model', description: '模型标识' },
-          { name: 'selectedTool', dataType: 'tool', description: '目标工具' },
-          { name: 'sandboxSession', dataType: 'sandbox', description: '沙箱会话' },
-          { name: 'knowledgeBase', dataType: 'knowledge', description: '知识库' },
-          { name: 'limit', dataType: 'number', description: '结果数量' },
-        ],
-        outputs: [{ name: 'results', dataType: 'json' }],
-      }
+    it('returns empty inputPorts and a single tool output port', () => {
+      const { inputPorts, outputPorts } = buildMcpToolPorts()
 
-      const { inputPorts, outputPorts } = buildMcpToolPorts(metadata)
-
-      expect(inputPorts).toHaveLength(6)
-      expect(inputPorts[0]).toMatchObject({ id: 'query', dataType: 'text', direction: 'input', required: true })
-      expect(inputPorts[1]).toMatchObject({ id: 'modelConfig', dataType: 'model', direction: 'input', required: false })
-      expect(inputPorts[2]).toMatchObject({ id: 'selectedTool', dataType: 'tool', direction: 'input', required: false })
-      expect(inputPorts[3]).toMatchObject({ id: 'sandboxSession', dataType: 'sandbox', direction: 'input', required: false })
-      expect(inputPorts[4]).toMatchObject({ id: 'knowledgeBase', dataType: 'knowledge', direction: 'input', required: false })
-      expect(inputPorts[5]).toMatchObject({ id: 'limit', dataType: 'json', direction: 'input', required: false })
-
+      expect(inputPorts).toHaveLength(0)
       expect(outputPorts).toHaveLength(1)
       expect(outputPorts[0]).toMatchObject({ id: 'tool-output', dataType: 'tool', direction: 'output' })
-    })
-
-    it('returns only tool output when metadata is null', () => {
-      const { inputPorts, outputPorts } = buildMcpToolPorts(null)
-
-      expect(inputPorts).toHaveLength(0)
-      expect(outputPorts).toHaveLength(1)
-      expect(outputPorts[0]!.dataType).toBe('tool')
-    })
-
-    it('returns only tool output when metadata has empty inputs', () => {
-      const metadata: BackendPortMappingMetadata = { inputs: [], outputs: [] }
-
-      const { inputPorts, outputPorts } = buildMcpToolPorts(metadata)
-
-      expect(inputPorts).toHaveLength(0)
-      expect(outputPorts).toHaveLength(1)
     })
   })
 })

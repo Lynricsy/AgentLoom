@@ -34,7 +34,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
       icon: NODE_CATEGORIES.tool.icon,
       color: NODE_CATEGORIES.tool.color,
       items: activeTools.map((tool): PaletteNodeItem => {
-        const ports = buildMcpToolPorts(tool.portMappingMetadata)
+        const ports = buildMcpToolPorts()
         return {
           type: 'mcp-tool',
           label: tool.title ?? tool.name,
