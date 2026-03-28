@@ -100,20 +100,25 @@ export class DockerService {
         );
         fs.writeFileSync(
           path.join(configTmpDir, 'settings.json'),
-          bundle.settings,
+          bundle.settings ?? '{}',
         );
-        fs.writeFileSync(path.join(configTmpDir, 'models.json'), bundle.models);
+        fs.writeFileSync(
+          path.join(configTmpDir, 'models.json'),
+          bundle.models ?? '{}',
+        );
         fs.writeFileSync(
           path.join(configTmpDir, 'system-prompt.md'),
-          bundle.systemPrompt,
+          bundle.systemPrompt ?? '',
         );
         fs.writeFileSync(
           path.join(configTmpDir, 'mcp-servers.json'),
-          bundle.mcpServers,
+          bundle.mcpServers ?? '{}',
         );
 
         // Write skill directories for pi-mono loadSkills() discovery
-        for (const [skillName, skillFiles] of Object.entries(bundle.skills)) {
+        for (const [skillName, skillFiles] of Object.entries(
+          bundle.skills ?? {},
+        )) {
           const skillDir = path.join(configTmpDir, 'skills', skillName);
           fs.mkdirSync(skillDir, { recursive: true });
           for (const [filename, content] of Object.entries(skillFiles)) {

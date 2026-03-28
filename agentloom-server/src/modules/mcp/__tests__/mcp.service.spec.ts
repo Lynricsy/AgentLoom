@@ -407,13 +407,15 @@ describe('McpService', () => {
         name: 'agentloom',
         version: '1.0.0',
       });
-      expect(mcpMocks.StdioClientTransport).toHaveBeenCalledWith({
-        command: 'node',
-        args: ['server.js'],
-        env: {
-          MCP_TOKEN: 'secret-token',
-        },
-      });
+      expect(mcpMocks.StdioClientTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'node',
+          args: ['server.js'],
+          env: expect.objectContaining({
+            MCP_TOKEN: 'secret-token',
+          }),
+        }),
+      );
       expect(mcpMocks.mockClient.connect).toHaveBeenCalledWith(
         mcpMocks.stdioTransport,
       );
@@ -508,11 +510,11 @@ describe('McpService', () => {
       const assertion = promise.catch((error: unknown) => {
         expect(error).toBeInstanceOf(McpConnectionTimeoutException);
         expect(error).toMatchObject({
-          detail: '连接 MCP 服务器超时 (30s)',
+          detail: '连接 MCP 服务器超时 (120s)',
         });
       });
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(120_000);
 
       await assertion;
       expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();

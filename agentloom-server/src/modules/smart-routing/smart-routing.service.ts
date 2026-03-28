@@ -386,9 +386,7 @@ export class SmartRoutingService {
       };
     } catch (error) {
       throw new NotFoundException(
-        error instanceof Error
-          ? error.message
-          : `Strategy \"${name}\" not found`,
+        error instanceof Error ? error.message : `Strategy "${name}" not found`,
       );
     }
   }

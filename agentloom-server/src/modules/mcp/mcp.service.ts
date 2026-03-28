@@ -373,10 +373,7 @@ export class McpService {
     };
   }
 
-  async findConfigById(
-    tenantId: string,
-    configId: string,
-  ) {
+  async findConfigById(tenantId: string, configId: string) {
     const config = await this.getSavedConfigOrThrow(configId, tenantId);
 
     const tools = await this.tenantDb
