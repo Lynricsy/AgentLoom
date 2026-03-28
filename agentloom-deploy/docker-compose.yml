@@ -6,6 +6,8 @@ x-server-app: &server-app
     context: ..
     dockerfile: agentloom-deploy/docker/server.Dockerfile
   restart: unless-stopped
+  group_add:
+    - '${HOST_DOCKER_GID:-969}'
   environment: &server-env
     APP_PORT: ${APP_PORT:-3000}
     APP_NODE_ENV: ${APP_NODE_ENV:-production}
@@ -28,6 +30,8 @@ x-server-app: &server-app
     APP_MINIO_BUCKET: ${APP_MINIO_BUCKET:-agentloom-documents}
     APP_QDRANT_URL: ${APP_QDRANT_URL:-http://qdrant:6333}
     FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
   networks:
     - frontend_net
     - app_net

@@ -39,7 +39,7 @@ check_pi_tarballs() {
   if [[ ! -d "$pi_tarballs_dir" ]] || [[ -z "$(ls -A "$pi_tarballs_dir" 2>/dev/null)" ]]; then
     printf '⚠ .pi-tarballs 目录不存在或为空: %s\n' "$pi_tarballs_dir"
     if [[ -f "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh" ]]; then
-      printf '  正在运行 prepare-pi-tarballs.sh ...\n'
+      printf '  正在运行 prepare-pi-tarballs.sh（默认从 GitHub 拉取 pi-mono，可用 PI_MONO_DIR/PI_MONO_REF 覆盖）...\n'
       bash "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh"
     else
       printf '  跳过 pi-tarballs 准备（脚本不存在）。Server 构建可能失败。\n'

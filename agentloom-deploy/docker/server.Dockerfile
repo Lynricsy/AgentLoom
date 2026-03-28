@@ -1,4 +1,6 @@
-# PREREQUISITE: Run scripts/prepare-pi-tarballs.sh first
+# PREREQUISITE: Run agentloom-deploy/scripts/prepare-pi-tarballs.sh first.
+# The script defaults to cloning badlogic/pi-mono from GitHub at a pinned ref
+# and publishes the tarballs into agentloom-deploy/docker/.pi-tarballs.
 # Build context: project root (-f agentloom-deploy/docker/server.Dockerfile .)
 
 # ── Stage 1: deps ─────────────────────────────────────────────────

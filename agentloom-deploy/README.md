@@ -40,7 +40,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 `agentloom-deploy/.env.template` 汇总了 Compose 与 Helm 共享的环境合同，变量名和应用真实代码对齐，包括：
 
 - shared：`APP_DEPLOYMENT_MODE`、`APP_DATABASE_URL`、`APP_REDIS_URL`、`APP_MINIO_*`、`APP_QDRANT_URL`
-- server：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`、`APP_SUPABASE_*`、`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`
+- server：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`、`APP_SUPABASE_*`、`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`HOST_DOCKER_GID`
 - studio：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`
 - 运维自动化：`POSTGRES_BACKUP_RETENTION_DAYS`、`MINIO_BACKUP_RETENTION_DAYS`
 
@@ -109,11 +109,17 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - `APP_JWT_SECRET`
 - `APP_MASTER_ENCRYPTION_KEY`
 
+此外，当前沙箱生命周期会由 `server` / `worker` 直接通过宿主 Docker daemon 拉起 `agentloom/sandbox:latest`，因此 `.env` 里还需要设置：
+
+- `HOST_DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)`
+
 其中 `APP_MASTER_ENCRYPTION_KEY` 必须是 **32 字节 Base64**，例如：
 
 ```bash
 openssl rand -base64 32
 ```
+
+如果宿主机没有 Docker socket，或 socket 的 group id 没有正确映射到 `HOST_DOCKER_GID`，`POST /api/v1/sandboxes` 会先返回 `201`，随后在异步 `sandbox-lifecycle` worker 中因无法连接 `/var/run/docker.sock` 而把 session 置为 `failed`。
 
 ### 2. 初始化数据库
 
@@ -132,7 +138,46 @@ openssl rand -base64 32
 
 > 之所以要先 bootstrap 这些角色与 `auth.users`，是因为当前应用迁移既会引用 `auth.users(id)`，也会向 `supabase_auth_admin` / `authenticated` 授权；而私有化部署默认使用的是普通 PostgreSQL，而不是已经预置这些角色与 schema 的 Supabase 托管实例。
 
+此外，`init-db.sh` 在发现 `agentloom-deploy/docker/.pi-tarballs` 缺失时，会自动调用 `agentloom-deploy/scripts/prepare-pi-tarballs.sh`。该脚本默认从 `https://github.com/badlogic/pi-mono` 拉取源码并构建 tarballs，因此 server/worker 的 Docker 构建不再依赖宿主机预先准备固定的 `pi-mono` 工作树。
+
 ### 3. 启动全栈
+
+在首次启动全栈前，先准备 sandbox runtime 镜像：
+
+```bash
+bash agentloom-deploy/sandbox/build.sh
+```
+
+这一步会先调用共享的 `agentloom-deploy/scripts/prepare-pi-tarballs.sh`，再在宿主机上构建 `agentloom/sandbox:latest`。当前 `server` / `worker` 只负责通过 Docker daemon 拉起该镜像，并不会在 `docker compose up` 时自动帮你构建它。
+
+默认行为：
+
+- 从 `https://github.com/badlogic/pi-mono` 拉取源码
+- 默认锁定 `PI_MONO_REF=576e5e1a2fbe1abbbad96b696f4058cffd8391ca`
+- 生成 4 个 tarball：`pi-tui.tgz`、`pi-ai.tgz`、`pi-agent-core.tgz`、`pi-coding-agent.tgz`
+- 同时发布到 `agentloom-deploy/docker/.pi-tarballs` 与 `agentloom-deploy/sandbox/.pi-tarballs`
+
+如果你想覆盖默认来源，可以显式指定：
+
+- 使用本地 checkout：`PI_MONO_DIR=/your/path/to/pi-mono`
+- 升级/回退到其它提交、tag 或分支：`PI_MONO_REF=<commit|tag|branch>`
+- 切换上游仓库：`PI_MONO_REPO_URL=<git-url>`
+
+例如：
+
+```bash
+PI_MONO_DIR=/your/path/to/pi-mono bash agentloom-deploy/sandbox/build.sh
+```
+
+```bash
+PI_MONO_REF=main bash agentloom-deploy/sandbox/build.sh
+```
+
+如果你只想预热 tarballs，而暂时不构建 sandbox 镜像，可单独执行：
+
+```bash
+./agentloom-deploy/scripts/prepare-pi-tarballs.sh
+```
 
 ```bash
 docker compose \
@@ -147,6 +192,10 @@ docker compose \
 
 ```bash
 time ./agentloom-deploy/scripts/init-db.sh
+
+time ./agentloom-deploy/scripts/prepare-pi-tarballs.sh
+
+time docker build -t agentloom/sandbox:latest agentloom-deploy/sandbox
 
 time docker compose \
   -f agentloom-deploy/docker-compose.yml \
@@ -163,6 +212,8 @@ docker compose \
 
 - `postgres`、`redis`、`minio`、`qdrant`、`server`、`worker`、`studio`、`reverse-proxy` 全部为 `running`，且需要 healthcheck 的服务进入 `healthy`。
 - `curl http://localhost:8080/healthz` 与 `curl http://localhost:8080/api/v1/health` 返回成功。
+- `cat agentloom-deploy/docker/.pi-tarballs/pi-mono-source.txt` 与 `cat agentloom-deploy/sandbox/.pi-tarballs/pi-mono-source.txt` 都能看到一致的 `resolved_commit`。
+- `docker image inspect agentloom/sandbox:latest` 成功，且 `docker compose exec -T server sh -c 'ls -l /var/run/docker.sock && id'` 能看到挂载后的 Docker socket 与补充 group。
 - 首次从 `.env.template` 到 `docker compose up -d --build` 的总耗时应记录在交付单中；若明显超过 30 分钟，优先检查镜像缓存、主机磁盘性能与企业代理下载带宽。
 
 ### 4. 验证
@@ -326,5 +377,6 @@ helm upgrade --install agentloom \
 2. **`server` 也会消费队列。** 即使只把对外流量指向 `server`，它仍会启动 BullMQ processors 和启动期 scheduler。
 3. **`worker` 不应暴露到外网。** 这套资产只通过 Nginx / Ingress 暴露 `server`。
 4. **认证能力取决于 Supabase 配置。** private 模式允许空配，但空配不代表 Supabase 相关登录能力可用。
+5. **沙箱依赖宿主 Docker daemon。** 当前 Compose 路径下，`server` 和 `worker` 需要挂载 `/var/run/docker.sock`，并通过 `HOST_DOCKER_GID` 获得访问权限；同时宿主机必须预先构建 `agentloom/sandbox:latest`。
 
 这几个 caveat 需要继续保留到后续 story / 运维文档阶段，直到仓库真正出现独立的 runtime role split 为止。

@@ -2,9 +2,10 @@ FROM archlinux:latest
 
 # nodejs/npm: runtime + build toolchain
 # git/python: required by pi-coding-agent internals
+# unzip: bun installer hard dependency
 # ripgrep/fd: pi-coding-agent built-in file search tools
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm nodejs npm git python ripgrep fd curl make gcc && \
+    pacman -S --noconfirm nodejs npm git python ripgrep fd curl make gcc unzip && \
     pacman -Scc --noconfirm
 
 # uv: fast Python package manager
@@ -22,9 +23,10 @@ RUN mkdir -p /workspace
 
 WORKDIR /app
 
-# .pi-tarballs/ holds npm-packed tarballs of local pi-mono packages (produced by
-# build.sh). package.docker.json adds npm `overrides` that redirect every
-# @mariozechner/* dep to these local tarballs instead of the npm registry.
+# .pi-tarballs/ holds npm-packed tarballs produced by
+# ../scripts/prepare-pi-tarballs.sh. By default that script clones badlogic/
+# pi-mono from GitHub, then package.docker.json redirects every @mariozechner/*
+# dependency to these local tarballs instead of the npm registry.
 COPY .pi-tarballs/ .pi-tarballs/
 COPY package.docker.json package.json
 

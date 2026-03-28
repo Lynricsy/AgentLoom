@@ -16,6 +16,7 @@
   "dependencies": {
     "fastify": "^5.3.3",
     "@mariozechner/pi-coding-agent": "file:.pi-tarballs/pi-coding-agent.tgz",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "node-pty": "^1.0.0"
   },
   "devDependencies": {
