@@ -155,7 +155,7 @@ export const InterventionPanel = memo(function InterventionPanel({
           {suggestedContentText && (
             <div>
               <dt className="text-muted-foreground">建议内容</dt>
-              <dd className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-[#050816] px-2 py-1.5 font-mono leading-5 text-slate-100">
+              <dd className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono leading-5 text-foreground">
                 {suggestedContentText}
               </dd>
             </div>
@@ -225,7 +225,7 @@ export const InterventionPanel = memo(function InterventionPanel({
           </label>
           <textarea
             id="intervention-modified-content"
-            className="w-full rounded-lg border border-border/70 bg-[#050816] px-2 py-1.5 font-mono text-xs leading-5 text-slate-100 focus:border-primary/50 focus:outline-none"
+            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
             rows={5}
             value={modifiedContent}
             onChange={(e) => setModifiedContent(e.target.value)}
@@ -239,7 +239,7 @@ export const InterventionPanel = memo(function InterventionPanel({
           </label>
           <textarea
             id="intervention-feedback"
-            className="w-full rounded-lg border border-border/70 bg-[#050816] px-2 py-1.5 font-mono text-xs leading-5 text-slate-100 focus:border-primary/50 focus:outline-none"
+            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
             rows={2}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -284,7 +284,7 @@ export const InterventionPanel = memo(function InterventionPanel({
           </label>
           <textarea
             id="intervention-reject-feedback"
-            className="w-full rounded-lg border border-border/70 bg-[#050816] px-2 py-1.5 font-mono text-xs leading-5 text-slate-100 focus:border-primary/50 focus:outline-none"
+            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
             rows={3}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}

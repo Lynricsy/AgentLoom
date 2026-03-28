@@ -8,31 +8,13 @@ import {
 import { ToolCallList } from '@/features/execution/components/ToolCallList'
 import type { StepStatus } from '@/features/execution/types'
 import { cn } from '@/shared/lib/utils'
-import {
-  LlmModelConfigPanel,
-  parseLlmModelConfig,
-  type LlmNodeDataPatch,
-} from '@/features/llm'
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
-import { McpToolConfigPanel } from './McpToolConfigPanel'
-import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
-import { SandboxConfigPanel } from './SandboxConfigPanel'
+import {
+  CUSTOM_PANEL_REGISTRY,
+} from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
-import { HttpToolConfigPanel } from './HttpToolConfigPanel'
-import { CodeToolConfigPanel } from './CodeToolConfigPanel'
-import { ReusableBlockPanel } from './ReusableBlockPanel'
-import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
-import { PluginConfigPanel } from './PluginConfigPanel'
-import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
-import { MemoryConfigPanel } from './MemoryConfigPanel'
-import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
-import { ConditionConfigPanel } from './ConditionConfigPanel'
-import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
-import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
-import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
-import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 
 interface NodeConfigPanelProps {
@@ -210,168 +192,6 @@ interface NodeConfigDispatchProps {
   onValidationChange: (hasErrors: boolean) => void
 }
 
-interface CustomPanelRendererProps {
-  node: CanvasNode
-  onConfigChange: (patch: Record<string, unknown>) => void
-  onValidationChange: (hasErrors: boolean) => void
-}
-
-interface CustomPanelEntry {
-  handlesValidation?: boolean
-  render: (props: CustomPanelRendererProps) => React.ReactNode
-}
-
-const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], CustomPanelEntry>> = {
-  'llm-model': {
-    render: ({ node, onConfigChange }) => {
-      const handleLlmChange = (patch: LlmNodeDataPatch) => {
-        onConfigChange({
-          config: patch.config,
-          llmConfigId: patch.llmConfigId,
-          parameters: patch.parameters,
-          label: patch.label,
-        })
-      }
-
-      return (
-        <LlmModelConfigPanel
-          config={parseLlmModelConfig(node.data.config ?? null)}
-          onApply={handleLlmChange}
-        />
-      )
-    },
-  },
-  'mcp-tool': {
-    render: ({ node, onConfigChange }) => (
-      <McpToolConfigPanel
-        data={node.data}
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'knowledge-base': {
-    handlesValidation: true,
-    render: ({ node, onConfigChange, onValidationChange }) => (
-      <KnowledgeBaseConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-        onValidationChange={onValidationChange}
-      />
-    ),
-  },
-  sandbox: {
-    render: ({ node, onConfigChange }) => (
-      <SandboxConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'http-tool': {
-    handlesValidation: true,
-    render: ({ node, onConfigChange, onValidationChange }) => (
-      <HttpToolConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-        onValidationChange={onValidationChange}
-      />
-    ),
-  },
-  'code-tool': {
-    handlesValidation: true,
-    render: ({ node, onConfigChange, onValidationChange }) => (
-      <CodeToolConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-        onValidationChange={onValidationChange}
-      />
-    ),
-  },
-  'reusable-block': {
-    render: ({ node, onConfigChange }) => (
-      <ReusableBlockPanel data={node.data} onApply={onConfigChange} />
-    ),
-  },
-  'smart-routing': {
-    render: ({ node, onConfigChange }) => (
-      <SmartRoutingConfigPanel node={node} onConfigChange={onConfigChange} />
-    ),
-  },
-  'plugin': {
-    handlesValidation: true,
-    render: ({ node, onConfigChange }) => (
-      <PluginConfigPanel node={node} onConfigChange={onConfigChange} />
-    ),
-  },
-  'agent': {
-    render: ({ node, onConfigChange }) => (
-      <AgentNodeConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'memory': {
-    handlesValidation: true,
-    render: ({ node, onConfigChange, onValidationChange }) => (
-      <MemoryConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-        onValidationChange={onValidationChange}
-      />
-    ),
-  },
-  'skill': {
-    render: ({ node, onConfigChange }) => (
-      <SkillPanel
-        config={node.data.config}
-        onApply={(config) => onConfigChange({ config })}
-      />
-    ),
-  },
-  'input-preprocessor': {
-    render: ({ node, onConfigChange }) => (
-      <InputPreprocessorConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'condition': {
-    render: ({ node, onConfigChange }) => (
-      <ConditionConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'schedule-trigger': {
-    render: ({ node, onConfigChange }) => (
-      <ScheduleTriggerConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'webhook-trigger': {
-    render: ({ node, onConfigChange }) => (
-      <WebhookTriggerConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-  'api-event-trigger': {
-    render: ({ node, onConfigChange }) => (
-      <ApiEventTriggerConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
-  },
-}
-
 const NodeConfigDispatch = memo(function NodeConfigDispatch({
   node,
   onConfigChange,
@@ -547,7 +367,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
         </div>
 
         <pre
-          className="min-h-40 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-[#050816] px-3 py-3 font-mono text-xs leading-6 text-slate-100"
+          className="min-h-40 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-surface px-3 py-3 font-mono text-xs leading-6 text-foreground"
           data-testid="node-execution-output"
         >
           {nodeState?.output || outputPlaceholder}

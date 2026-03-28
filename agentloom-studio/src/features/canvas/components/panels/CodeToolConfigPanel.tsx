@@ -146,7 +146,7 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         <Suspense
           fallback={
             <div
-              className="flex h-[300px] flex-col gap-2 rounded-md border border-border bg-[#1e1e1e] p-4"
+              className="flex h-[300px] flex-col gap-2 rounded-md border border-border bg-surface p-4"
               data-testid="code-tool-editor-fallback"
             >
               <div className="h-4 w-28 animate-pulse rounded bg-muted/60" />

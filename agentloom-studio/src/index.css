@@ -8,38 +8,38 @@
 @theme {
   /* 品牌色 */
   --color-primary: #6366F1;
-  --color-primary-hover: #818CF8;
-  --color-primary-glow: rgba(99,102,241,0.2);
+  --color-primary-hover: #4F46E5;
+  --color-primary-glow: rgba(99,102,241,0.08);
   --color-primary-foreground: #FFFFFF;
   --color-brand: #6366F1;
   --color-brand-foreground: #FFFFFF;
 
-  /* 基础色 */
-  --color-background: #050506;
-  --color-foreground: #EDEDEF;
-  --color-surface: #0a0a0c;
-  --color-surface-elevated: #141418;
+  /* 基础色 (light defaults — :root 和 .dark 各自覆盖) */
+  --color-background: #F5F3FF;
+  --color-foreground: #1E1B4B;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F8F7FF;
 
   /* 文字 */
-  --color-muted: #8A8F98;
-  --color-muted-foreground: #5E6068;
+  --color-muted: #64748B;
+  --color-muted-foreground: #94A3B8;
 
   /* 边框与输入 */
-  --color-border: rgba(255,255,255,0.08);
-  --color-border-hover: rgba(255,255,255,0.15);
-  --color-input: rgba(255,255,255,0.08);
+  --color-border: #E0E7FF;
+  --color-border-hover: #C7D2FE;
+  --color-input: #E0E7FF;
 
   /* 卡片与弹出层 */
-  --color-card: #0a0a0c;
-  --color-card-foreground: #EDEDEF;
-  --color-popover: #141418;
-  --color-popover-foreground: #EDEDEF;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #1E1B4B;
+  --color-popover: #F8F7FF;
+  --color-popover-foreground: #1E1B4B;
 
   /* 状态色 */
-  --color-success: #22C55E;
-  --color-warning: #EAB308;
-  --color-error: #EF4444;
-  --color-info: #3B82F6;
+  --color-success: #059669;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+  --color-info: #2563EB;
 
   /* 数据类型色 (两主题共用) */
   --color-type-model: #a78bfa;

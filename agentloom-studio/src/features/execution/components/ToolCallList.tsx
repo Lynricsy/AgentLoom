@@ -107,7 +107,7 @@ function ToolCallCard({
             参数
           </button>
           {argsExpanded && (
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[#050816] px-2 py-1.5 font-mono text-[11px] leading-5 text-slate-300">
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface px-2 py-1.5 font-mono text-[11px] leading-5 text-muted-foreground">
               {JSON.stringify(tc.args, null, 2)}
             </pre>
           )}
@@ -119,7 +119,7 @@ function ToolCallCard({
           <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             结果
           </p>
-          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[#050816] px-2 py-1.5 font-mono text-[11px] leading-5 text-emerald-300">
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface px-2 py-1.5 font-mono text-[11px] leading-5 text-success">
             {typeof tc.result === 'string'
               ? tc.result
               : JSON.stringify(tc.result, null, 2)}
