@@ -250,3 +250,65 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Resource management bug fixes and MCP edit enhancement
+
+**Date**: 2026-03-28
+**Task**: Resource management bug fixes and MCP edit enhancement
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## Bug Fixes (from manual testing)
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| MCP test 422 | `toSnakeBody` converted `transportType` → `transport_type`, broke Zod discriminatedUnion | Removed `toSnakeBody` from all MCP API calls |
+| Skill creation 400 | ky default `Content-Type: application/json` overrode FormData boundary | Removed hardcoded default header |
+| Skill creation 500 (FST_FILES_LIMIT) | Fastify global `files: 1` limit | Increased to `files: 50` |
+| Skill description truncation | Frontmatter regex only captured first line | Added YAML block scalar + continuation line parsing |
+| Skill dropdown clipped | Table `overflow-hidden` clipped absolute dropdown | Replaced with Radix DropdownMenu (Portal) |
+| Skill edit toLowerCase error | Backend returns `{ name, size }`, frontend expected `{ fileName, sizeBytes }` | Updated `SkillFileInfo` type |
+| stdio MCP timeout | `StdioClientTransport` replaces `process.env` with user env, losing PATH | Merge `process.env` with user env |
+| stdio MCP still timeout | npx first-run download exceeds 30s | Increased connect timeout to 120s |
+
+## Enhancements
+
+| Feature | Description |
+|---------|-------------|
+| MCP edit dialog | Rewrote as 3-tab dialog: Info / Connection / Tools |
+| MCP update API | Extended `PATCH configs/:id` to support connection field updates with re-encryption |
+| MCP detail API | Added `command`, `args`, `url`, `credentialKeys` to GET response |
+| Skill browse page | Replaced table layout with card grid matching MCP page style |
+
+## Key Files Modified
+- `agentloom-server/src/modules/mcp/mcp.service.ts` — env merge, timeout, detail/update logic
+- `agentloom-server/src/modules/mcp/dto/update-mcp-server-config.dto.ts` — extended with connection union
+- `agentloom-studio/src/features/mcp/components/McpServerEditDialog.tsx` — full rewrite
+- `agentloom-studio/src/features/skill/components/SkillBrowsePage.tsx` — table → card grid
+- `agentloom-studio/src/features/skill/components/CreateSkillDialog.tsx` — multipart + frontmatter fixes
+- `agentloom-studio/src/shared/api/client.ts` — removed hardcoded Content-Type
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `33007ab` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
