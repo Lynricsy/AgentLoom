@@ -3,188 +3,162 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CanvasNodeData } from '../../types'
 import { McpToolConfigPanel } from './McpToolConfigPanel'
 
-const mockUseMcpTools = vi.fn()
 const mockUseMcpServerConfigs = vi.fn()
-
-vi.mock('../../api/mcpToolQueries', () => ({
-  useMcpTools: (...args: unknown[]) => mockUseMcpTools(...args),
-}))
+const mockUseMcpServerConfig = vi.fn()
 
 vi.mock('@/features/mcp', () => ({
   useMcpServerConfigs: (...args: unknown[]) => mockUseMcpServerConfigs(...args),
+  useMcpServerConfig: (...args: unknown[]) => mockUseMcpServerConfig(...args),
 }))
 
 function createMcpNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeData {
   return {
-    label: 'Test MCP Tool',
+    label: 'Test MCP Server',
     nodeType: 'mcp-tool',
     category: 'tool',
     config: {
-      inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+      mcpServerConfigId: 'server-1',
+      mcpServerName: 'Test Server',
+      enabledToolIds: ['tool-1', 'tool-2'],
+      tools: [
+        {
+          id: 'tool-1',
+          name: 'search',
+          title: 'Search Tool',
+          description: 'Search the web',
+          inputSchema: null,
+          outputSchema: null,
+          portMappingMetadata: null,
+          source: 'mcp',
+          mcpServerConfigId: 'server-1',
+          isActive: true,
+          annotations: null,
+        },
+        {
+          id: 'tool-2',
+          name: 'read',
+          title: 'Read Tool',
+          description: 'Read a file',
+          inputSchema: null,
+          outputSchema: null,
+          portMappingMetadata: null,
+          source: 'mcp',
+          mcpServerConfigId: 'server-1',
+          isActive: true,
+          annotations: null,
+        },
+      ],
     },
-    inputPorts: [
-      {
-        id: 'p1',
-        label: 'Prompt',
-        direction: 'input' as const,
-        dataType: 'text' as const,
-        required: false,
-        multiple: false,
-        maxConnections: 1,
-        schema: { kind: 'text' as const, title: 'Prompt' },
-      },
-    ],
+    inputPorts: [],
     outputPorts: [
       {
-        id: 'p2',
-        label: 'Result',
+        id: 'tool-output',
+        label: 'Tool',
         direction: 'output' as const,
-        dataType: 'json' as const,
+        dataType: 'tool' as const,
         required: false,
         multiple: false,
-        maxConnections: 1,
-        schema: {
-          kind: 'json' as const,
-          shape: 'object' as const,
-          title: 'Result',
-          properties: {},
-          additionalProperties: true,
-        },
+        maxConnections: null,
+        schema: { kind: 'tool' as const },
       },
     ],
-    description: 'A test MCP tool description',
-    mcpToolDefinitionId: 'tool-def-abc',
+    description: 'A test MCP server',
     ...overrides,
   }
 }
 
 function setupHookDefaults(overrides?: {
-  tools?: unknown[]
-  toolsLoading?: boolean
   servers?: unknown[]
   serversLoading?: boolean
+  serverDetail?: unknown
+  detailLoading?: boolean
 }) {
-  mockUseMcpTools.mockReturnValue({
-    data: overrides?.tools ?? [],
-    isLoading: overrides?.toolsLoading ?? false,
-  })
   mockUseMcpServerConfigs.mockReturnValue({
     data: overrides?.servers != null ? { data: overrides.servers } : { data: [] },
     isLoading: overrides?.serversLoading ?? false,
   })
+  mockUseMcpServerConfig.mockReturnValue({
+    data: overrides?.serverDetail ?? null,
+    isLoading: overrides?.detailLoading ?? false,
+  })
 }
 
 describe('McpToolConfigPanel', () => {
-  it('renders MCP Tool badge', () => {
+  it('renders MCP Server badge', () => {
     setupHookDefaults()
     render(
       <McpToolConfigPanel
         data={createMcpNodeData()}
-        config={createMcpNodeData().config}
         onApply={vi.fn()}
       />,
     )
-    expect(screen.getByText('MCP Tool')).toBeInTheDocument()
+    expect(screen.getByText('MCP Server')).toBeInTheDocument()
   })
 
-  it('renders tool selector label', () => {
+  it('renders server selection label when not configured', () => {
     setupHookDefaults()
     render(
       <McpToolConfigPanel
-        data={createMcpNodeData()}
-        config={createMcpNodeData().config}
+        data={createMcpNodeData({ config: {} })}
         onApply={vi.fn()}
       />,
     )
-    expect(screen.getByText('选择工具')).toBeInTheDocument()
+    expect(screen.getByText('选择 MCP Server')).toBeInTheDocument()
   })
 
-  it('shows loading state while tools are loading', () => {
-    setupHookDefaults({ toolsLoading: true })
+  it('shows loading state while servers are loading', () => {
+    setupHookDefaults({ serversLoading: true })
     render(
       <McpToolConfigPanel
-        data={createMcpNodeData()}
-        config={createMcpNodeData().config}
+        data={createMcpNodeData({ config: {} })}
         onApply={vi.fn()}
       />,
     )
     expect(screen.getByText('加载中...')).toBeInTheDocument()
   })
 
-  it('shows missing tool warning when ID is set but tool not found', () => {
-    setupHookDefaults({ tools: [] })
-    render(
-      <McpToolConfigPanel
-        data={createMcpNodeData({ mcpToolDefinitionId: 'nonexistent-id' })}
-        config={{}}
-        onApply={vi.fn()}
-      />,
-    )
-    expect(screen.getByTestId('mcp-tool-missing-warning')).toBeInTheDocument()
-  })
-
-  it('shows tool details when selected tool is found', () => {
-    setupHookDefaults({
-      tools: [
-        {
-          id: 'tool-def-abc',
-          name: 'my-tool',
-          title: 'My Tool',
-          description: 'Tool description',
-          isActive: true,
-          mcpServerConfigId: 'server-1',
-          inputSchema: { type: 'object' },
-          portMappingMetadata: null,
-        },
-      ],
-      servers: [{ id: 'server-1', name: 'Test Server' }],
-    })
+  it('shows configured server info when server is selected', () => {
+    setupHookDefaults()
     render(
       <McpToolConfigPanel
         data={createMcpNodeData()}
-        config={createMcpNodeData().config}
         onApply={vi.fn()}
       />,
     )
-    // Tool name appears in both select option and detail card
-    expect(screen.getAllByText('My Tool').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Tool description')).toBeInTheDocument()
+    expect(screen.getByText('Test Server')).toBeInTheDocument()
+    expect(screen.getByText('2 / 2 个工具已启用')).toBeInTheDocument()
   })
 
-  it('renders input ports when tool is selected and ports exist', () => {
-    setupHookDefaults({
-      tools: [
-        {
-          id: 'tool-def-abc',
-          name: 'my-tool',
-          title: 'My Tool',
-          isActive: true,
-          mcpServerConfigId: 'server-1',
-          inputSchema: null,
-          portMappingMetadata: null,
-        },
-      ],
-    })
+  it('shows tool list toggle for configured server', () => {
+    setupHookDefaults()
     render(
       <McpToolConfigPanel
         data={createMcpNodeData()}
-        config={createMcpNodeData().config}
         onApply={vi.fn()}
       />,
     )
-    expect(screen.getByText('输入端口')).toBeInTheDocument()
-    expect(screen.getByText('Prompt')).toBeInTheDocument()
+    expect(screen.getByText('查看工具列表')).toBeInTheDocument()
   })
 
-  it('does not show missing warning when no tool ID is set', () => {
-    setupHookDefaults({ tools: [] })
+  it('shows clear button for configured server', () => {
+    setupHookDefaults()
     render(
       <McpToolConfigPanel
-        data={createMcpNodeData({ mcpToolDefinitionId: '' })}
-        config={{}}
+        data={createMcpNodeData()}
         onApply={vi.fn()}
       />,
     )
-    expect(screen.queryByTestId('mcp-tool-missing-warning')).not.toBeInTheDocument()
+    expect(screen.getByText('清除')).toBeInTheDocument()
+  })
+
+  it('does not render input ports section', () => {
+    setupHookDefaults()
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData()}
+        onApply={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText('输入端口')).not.toBeInTheDocument()
   })
 })

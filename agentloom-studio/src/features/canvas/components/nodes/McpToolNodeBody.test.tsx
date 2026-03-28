@@ -5,41 +5,28 @@ import { McpToolNodeBody } from './McpToolNodeBody'
 
 function createMcpNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeData {
   return {
-    label: 'Test MCP Tool',
+    label: 'Test MCP Server',
     nodeType: 'mcp-tool',
     category: 'tool',
-    config: {},
-    inputPorts: [
-      {
-        id: 'p1',
-        label: 'Prompt',
-        direction: 'input' as const,
-        dataType: 'text' as const,
-        required: false,
-        multiple: false,
-        maxConnections: 1,
-        schema: { kind: 'text' as const, title: 'Prompt' },
-      },
-    ],
+    config: {
+      mcpServerConfigId: 'server-1',
+      mcpServerName: 'My MCP Server',
+      enabledToolIds: ['tool-1', 'tool-2', 'tool-3'],
+      tools: [],
+    },
+    inputPorts: [],
     outputPorts: [
       {
-        id: 'p2',
-        label: 'Result',
+        id: 'tool-output',
+        label: 'Tool',
         direction: 'output' as const,
-        dataType: 'json' as const,
+        dataType: 'tool' as const,
         required: false,
         multiple: false,
-        maxConnections: 1,
-        schema: {
-          kind: 'json' as const,
-          shape: 'object' as const,
-          title: 'Result',
-          properties: {},
-          additionalProperties: true,
-        },
+        maxConnections: null,
+        schema: { kind: 'tool' as const },
       },
     ],
-    description: 'A test MCP tool description',
     ...overrides,
   }
 }
@@ -50,23 +37,29 @@ describe('McpToolNodeBody', () => {
     expect(screen.getByText('MCP')).toBeInTheDocument()
   })
 
-  it('renders description when present', () => {
-    render(<McpToolNodeBody data={createMcpNodeData({ description: 'My tool description' })} />)
-    expect(screen.getByText('My tool description')).toBeInTheDocument()
-  })
-
-  it('hides description when absent', () => {
-    render(<McpToolNodeBody data={createMcpNodeData({ description: undefined })} />)
-    expect(screen.queryByText('A test MCP tool description')).not.toBeInTheDocument()
-  })
-
-  it('shows port counts when ports exist', () => {
+  it('renders server name', () => {
     render(<McpToolNodeBody data={createMcpNodeData()} />)
-    expect(screen.getByText('1入 / 1出')).toBeInTheDocument()
+    expect(screen.getByText('My MCP Server')).toBeInTheDocument()
   })
 
-  it('hides port counts when no ports', () => {
-    render(<McpToolNodeBody data={createMcpNodeData({ inputPorts: [], outputPorts: [] })} />)
-    expect(screen.queryByText(/入/)).not.toBeInTheDocument()
+  it('renders tool count', () => {
+    render(<McpToolNodeBody data={createMcpNodeData()} />)
+    expect(screen.getByText('3 个工具')).toBeInTheDocument()
+  })
+
+  it('shows placeholder when not configured', () => {
+    render(<McpToolNodeBody data={createMcpNodeData({ config: {} })} />)
+    expect(screen.getByText('选择 MCP Server')).toBeInTheDocument()
+  })
+
+  it('falls back to config ID when server name is empty', () => {
+    render(
+      <McpToolNodeBody
+        data={createMcpNodeData({
+          config: { mcpServerConfigId: 'srv-abc', enabledToolIds: ['t1'] },
+        })}
+      />,
+    )
+    expect(screen.getByText('srv-abc')).toBeInTheDocument()
   })
 })
