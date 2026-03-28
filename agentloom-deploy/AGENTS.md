@@ -38,37 +38,6 @@ agentloom-deploy/
 ├── backups/                           # 备份输出目录（PG + MinIO）
 └── README.md                          # 私有部署手册
 ```
-agentloom-deploy/
-├── .env.template                      # 根环境变量模板（Compose/Helm 共用契约）
-├── docker-compose.yml                 # 根 Compose 入口（8 服务）
-├── nginx.conf                         # 反向代理配置
-├── docker/
-│   ├── docker-compose.prod.yml        # Compose 变体（与根 Compose 存在重复）
-│   ├── server.Dockerfile              # server/worker 共用镜像
-│   └── studio.Dockerfile              # Studio 静态资源镜像（运行时 sed 注入 VITE_*）
-├── envs/
-│   ├── .env.shared.example            # 共享变量拆分视图
-│   ├── .env.server.example            # Server 专属变量
-│   └── .env.studio.example            # Studio 专属变量
-├── kubernetes/helm/agentloom/         # Helm Chart
-│   ├── Chart.yaml
-│   ├── values.yaml                    # 默认 values
-│   ├── values.private.yaml            # 生产 overlay（2 副本、TLS、大容量 PVC）
-│   └── templates/                     # 15 个模板（含 BYOD fail() 守卫的 _helpers.tpl）
-├── sandbox/                           # 沙箱容器镜像与 HTTP 适配层（Node ≥22）
-│   ├── build.sh                       # 构建 agentloom/sandbox:latest 镜像
-│   ├── Dockerfile                     # archlinux + pi-coding-agent + Fastify HTTP
-│   ├── src/                           # Fastify v5 HTTP 适配层（server.ts, acp-adapter.ts, event-stream.ts, extension-factory.ts）
-│   └── test/                          # 容器 HTTP 适配层测试
-├── scripts/
-│   ├── init-db.sh                     # 数据库初始化（Supabase 兼容角色 bootstrap + migrate + seed）
-│   ├── backup-postgres.sh             # pg_dump -Fc + sha256 校验 + 结构验证
-│   ├── backup-minio.sh               # mc mirror 对象备份
-│   └── restore.sh                     # PG + MinIO 恢复（含前置校验与烟雾测试）
-├── systemd/                           # 备份定时任务（4 个 unit 文件）
-├── backups/                           # 备份输出目录（PG + MinIO）
-└── README.md                          # 私有部署手册
-```
 
 ## Docker Compose 部署
 
@@ -127,6 +96,92 @@ PG 备份完成后自动执行 `pg_restore --list` 结构校验，避免产生�
 - **运维**：`POSTGRES_BACKUP_RETENTION_DAYS`、`MINIO_BACKUP_RETENTION_DAYS`（默认均为 7）
 
 `envs/` 下提供按职责拆分的三份 example 文件，变量名与根模板一致。
+
+## 开发环境 Docker Compose 操作手册
+
+所有命令的工作目录为 `agentloom-deploy/`（即 `cd agentloom-deploy`）。
+
+### 前置条件
+
+- `supabase-shared` 外部网络必须存在（由 `docker-compose.supabase.yml` 创建）
+- `.env` 文件位于 `agentloom-deploy/.env`（从 `.env.template` 复制并填写）
+- Supabase 栈需先启动（主 Compose 的 `postgres` 依赖它）
+
+### 启动顺序
+
+```bash
+# 1. 首次：创建外部网络 + 启动 Supabase 栈
+cd agentloom-deploy
+docker compose -f docker-compose.supabase.yml up -d
+
+# 2. 启动主应用栈（含 DB 初始化）
+docker compose up -d
+
+# 3. 首次部署后运行数据库迁移+种子
+docker compose run --rm server-migrator sh -c "pnpm db:migrate && pnpm db:seed"
+```
+
+### 日常重建与重启
+
+```bash
+# 仅前端改动 → 重建 studio 镜像并重启
+docker compose build --no-cache studio && docker compose up -d studio
+
+# 仅后端改动 → 重建 server 镜像并重启 server + worker
+docker compose build --no-cache server && docker compose up -d server worker
+
+# 前后端都改了 → 重建全部应用镜像并重启
+docker compose build --no-cache studio server && docker compose up -d
+
+# 全量重建所有服务（含基础设施镜像拉取）
+docker compose up -d --build
+```
+
+### 状态查看与日志
+
+```bash
+docker compose ps -a           # 查看所有服务状态
+docker compose logs -f studio  # 跟踪 studio 日志
+docker compose logs -f server  # 跟踪 server 日志
+docker compose logs -f worker  # 跟踪 worker 日志
+```
+
+### 停止与清理
+
+```bash
+docker compose down            # 停止并移除容器（保留卷）
+docker compose down -v         # 停止并移除容器+卷（完全重置数据）
+```
+
+### 关键文件映射
+
+| 用途 | 文件 |
+|------|------|
+| 主 Compose 入口 | `agentloom-deploy/docker-compose.yml` |
+| Supabase 栈 | `agentloom-deploy/docker-compose.supabase.yml` |
+| 环境变量 | `agentloom-deploy/.env`（gitignored，从 `.env.template` 创建） |
+| Server Dockerfile | `agentloom-deploy/docker/server.Dockerfile` |
+| Studio Dockerfile | `agentloom-deploy/docker/studio.Dockerfile` |
+| Docs Dockerfile | `agentloom-deploy/docker/docs.Dockerfile` |
+| Nginx 配置 | `agentloom-deploy/nginx.conf` |
+
+### 访问地址
+
+| 服务 | URL |
+|------|-----|
+| Studio 前端 | `http://localhost:8080` |
+| API | `http://localhost:8080/api/v1/` |
+| Supabase Kong（Auth 网关） | `http://localhost:8000` |
+| MinIO Console | `http://127.0.0.1:9001`（需 SSH 隧道） |
+| Qdrant Dashboard | `http://127.0.0.1:6333/dashboard`（需 SSH 隧道） |
+
+### 镜像名称
+
+| 服务 | 镜像 tag |
+|------|----------|
+| server / worker | `agentloom/server:private-local` |
+| studio | `agentloom/studio:private-local` |
+| docs | `agentloom/docs:private-local` |
 
 ## 注意事项
 

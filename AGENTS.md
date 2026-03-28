@@ -201,6 +201,18 @@ pnpm lint:md                      # Markdown lint
 cd agentloom-deploy/sandbox
 bash build.sh                      # 构建 agentloom/sandbox:latest 镜像
 npm test                           # 容器 HTTP 适配层测试
+
+# Docker Compose 部署（工作目录: agentloom-deploy/）
+cd agentloom-deploy
+docker compose -f docker-compose.supabase.yml up -d  # 首次：启动 Supabase 栈
+docker compose up -d                                  # 启动主应用栈
+docker compose build --no-cache studio && docker compose up -d studio   # 仅重建前端
+docker compose build --no-cache server && docker compose up -d server worker  # 仅重建后端
+docker compose build --no-cache studio server && docker compose up -d  # 重建前后端
+docker compose ps -a                                  # 查看服务状态
+docker compose logs -f studio                         # 跟踪日志
+# 访问: http://localhost:8080 (Studio) | http://localhost:8080/api/v1/ (API)
+# 详见 agentloom-deploy/AGENTS.md "开发环境 Docker Compose 操作手册" 章节
 ```
 
 ## 注意事项
