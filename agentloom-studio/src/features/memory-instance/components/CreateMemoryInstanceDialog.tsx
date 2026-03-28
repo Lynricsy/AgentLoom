@@ -108,19 +108,25 @@ export function CreateMemoryInstanceDialog({
   function handleCreate() {
     if (!name.trim()) return
 
+    const trimmedName = name.trim()
+    const trimmedDescription = description.trim()
+    const trimmedSystemPromptOverride = systemPromptOverride.trim()
+
     createMutation.mutate(
       {
-        name: name.trim(),
-        description: description.trim() || null,
+        name: trimmedName,
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
         validDomains,
         coreMemoryUris,
-        systemPromptOverride: systemPromptOverride.trim() || null,
+        ...(trimmedSystemPromptOverride
+          ? { systemPromptOverride: trimmedSystemPromptOverride }
+          : {}),
       },
       {
         onSuccess: () => {
           notify({
             title: '已创建',
-            description: `记忆实例「${name.trim()}」已成功创建。`,
+            description: `记忆实例「${trimmedName}」已成功创建。`,
             variant: 'success',
           })
           handleOpenChange(false)

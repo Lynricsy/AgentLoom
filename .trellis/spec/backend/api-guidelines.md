@@ -147,6 +147,34 @@ See [Conventions](./conventions.md) for detailed DTO patterns.
 
 ---
 
+## Aggregation / Browse Endpoints
+
+For endpoints that return enriched or aggregated data (not raw DB rows), use a private helper method in the controller:
+
+```typescript
+// agent-memory.controller.ts — Node enrichment for browse UI
+@Get(':id/browse')
+async browse(@Param('id') id: string, @Query() query: BrowseQueryDto) {
+  const node = await this.pathResolverService.resolveUri(id, query.uri);
+  const enriched = await this.enrichNodeForBrowse(node, domain, pathString);
+  return { data: { node: enriched, children, breadcrumbs } };
+}
+
+private async enrichNodeForBrowse(node, domain, pathString) {
+  // Parallel fetch: paths, versions, child count, glossary keywords
+  const [paths, versions, [childCountRow], glossaryKeywords] = await Promise.all([...]);
+  return { ...enrichedFields };
+}
+```
+
+Key conventions:
+- Use `Promise.all` to parallelize DB lookups for enrichment
+- Response still follows `{ data }` envelope
+- For domain-level aggregation, use SQL `GROUP BY` rather than in-application aggregation
+- Controller glossary endpoints delegate directly to `GlossaryService` — the service handles validation and cache invalidation
+
+---
+
 ## Forbidden Patterns
 
 1. **Express APIs** — use `FastifyReply`/`FastifyRequest`
@@ -164,3 +192,4 @@ See [Conventions](./conventions.md) for detailed DTO patterns.
 - Complex controller: `src/modules/agent-definition/agent-definition.controller.ts`
 - Custom decorators: `src/common/decorators/`
 - Global filter: `src/common/filters/all-exceptions.filter.ts`
+- Browse/enrichment endpoint: `src/modules/agent-memory/agent-memory.controller.ts` (browse, domains, glossary)

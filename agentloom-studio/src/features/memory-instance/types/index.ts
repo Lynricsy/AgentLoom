@@ -33,9 +33,9 @@ export interface MemoryInstanceListParams {
 
 export interface CreateMemoryInstancePayload {
   name: string
-  description?: string | null
-  config?: Record<string, unknown> | null
-  systemPromptOverride?: string | null
+  description?: string
+  config?: Record<string, unknown>
+  systemPromptOverride?: string
   validDomains?: string[]
   coreMemoryUris?: string[]
 }

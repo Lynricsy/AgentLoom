@@ -65,6 +65,9 @@ import type {
   ReviewVersionDto,
   RollbackVersionDto,
   UpdateMemoryInstanceDto,
+  BrowseQueryDto,
+  AddGlossaryKeywordDto,
+  RemoveGlossaryKeywordDto,
 } from '../../dto';
 
 // ─── Types & Helpers ───────────────────────────────────────────────────
@@ -77,6 +80,7 @@ type SelectChain<TResult> = Promise<TResult[]> & {
   orderBy: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   offset: ReturnType<typeof vi.fn>;
+  groupBy: ReturnType<typeof vi.fn>;
 };
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -96,6 +100,7 @@ function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
   chain.orderBy = vi.fn().mockReturnValue(chain);
   chain.limit = vi.fn().mockReturnValue(chain);
   chain.offset = vi.fn().mockReturnValue(chain);
+  chain.groupBy = vi.fn().mockReturnValue(chain);
   return chain;
 }
 
@@ -1519,6 +1524,157 @@ describe('AgentMemoryController', () => {
         total: 1,
         totalPages: 1,
       });
+    });
+  });
+
+  // ─── Browse & Domains ───────────────────────────────────────────────
+
+  describe('browse', () => {
+    it('应浏览域根并返回子路径列表', async () => {
+      const childPath = createPath({
+        pathString: 'preferences',
+        nodeId: NODE_ID,
+      });
+      mockPathResolver.listChildren.mockResolvedValue([childPath]);
+
+      // navOnly=true: 每个子节点需查询 memoryEdges count
+      tenantDb.select.mockReturnValueOnce(createSelectChain([{ total: 2 }]));
+
+      const result = await controller.browse(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<BrowseQueryDto>({ uri: 'core://', navOnly: true }),
+      );
+
+      expect(result.data.node).toBeNull();
+      expect(result.data.children).toHaveLength(1);
+      expect(result.data.children[0].name).toBe('preferences');
+      expect(result.data.breadcrumbs).toEqual([]);
+      expect(mockPathResolver.listChildren).toHaveBeenCalledWith(
+        INSTANCE_ID,
+        'core://',
+      );
+    });
+
+    it('应解析具体路径并返回富化节点', async () => {
+      const node = createNode();
+      const version = createVersion({ content: '测试内容', version: 3 });
+      const path = createPath({
+        domain: 'core',
+        pathString: 'agent/preferences',
+      });
+
+      mockPathResolver.resolveUri.mockResolvedValue(node);
+      // enrichNodeForBrowse 内部 Promise.all 调用:
+      mockPathResolver.getPathsByNode.mockResolvedValue([path]);
+      mockVersionService.getVersionHistory.mockResolvedValue([version]);
+      tenantDb.select.mockReturnValueOnce(createSelectChain([{ total: 1 }])); // child count
+      mockGlossaryService.getKeywordsForNode.mockResolvedValue([]);
+
+      // 无子节点
+      mockPathResolver.listChildren.mockResolvedValue([]);
+
+      const result = await controller.browse(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<BrowseQueryDto>({ uri: 'core://agent/preferences', navOnly: false }),
+      );
+
+      expect(result.data.node).not.toBeNull();
+      expect(result.data.node!.name).toBe('preferences');
+      expect(result.data.node!.content).toBe('测试内容');
+      expect(result.data.node!.versionCount).toBe(1);
+      expect(result.data.breadcrumbs).toEqual([
+        { path: 'agent', label: 'agent' },
+        { path: 'agent/preferences', label: 'preferences' },
+      ]);
+    });
+
+    it('URI 解析失败时 node 应为 null', async () => {
+      mockPathResolver.resolveUri.mockRejectedValue(
+        new NotFoundException('Not found'),
+      );
+      mockPathResolver.listChildren.mockResolvedValue([]);
+
+      const result = await controller.browse(
+        TENANT_ID,
+        INSTANCE_ID,
+        d<BrowseQueryDto>({ uri: 'core://nonexistent', navOnly: false }),
+      );
+
+      expect(result.data.node).toBeNull();
+      expect(result.data.children).toEqual([]);
+    });
+  });
+
+  describe('listDomains', () => {
+    it('应返回域列表及根节点计数', async () => {
+      const rows = [
+        { domain: 'core', rootCount: 3 },
+        { domain: 'notes', rootCount: 5 },
+      ];
+      tenantDb.select.mockReturnValueOnce(createSelectChain(rows));
+
+      const result = await controller.listDomains(TENANT_ID, INSTANCE_ID);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0]).toEqual({ domain: 'core', rootCount: 3 });
+    });
+
+    it('无域时应返回空数组', async () => {
+      tenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+      const result = await controller.listDomains(TENANT_ID, INSTANCE_ID);
+
+      expect(result.data).toEqual([]);
+    });
+  });
+
+  // ─── Glossary Operations ────────────────────────────────────────────
+
+  describe('addGlossaryKeyword', () => {
+    it('应通过 GlossaryService 添加关键词', async () => {
+      const keyword = {
+        id: 'kw-1',
+        instanceId: INSTANCE_ID,
+        keyword: 'Agent',
+        nodeId: NODE_ID,
+        createdAt: NOW,
+      };
+      mockGlossaryService.addKeyword.mockResolvedValue(keyword);
+
+      const result = await controller.addGlossaryKeyword(
+        TENANT_ID,
+        INSTANCE_ID,
+        NODE_ID,
+        d<AddGlossaryKeywordDto>({ keyword: 'Agent' }),
+      );
+
+      expect(result).toEqual({ data: keyword });
+      expect(mockGlossaryService.addKeyword).toHaveBeenCalledWith(
+        INSTANCE_ID,
+        'Agent',
+        NODE_ID,
+      );
+    });
+  });
+
+  describe('removeGlossaryKeyword', () => {
+    it('应通过 GlossaryService 移除关键词', async () => {
+      mockGlossaryService.removeKeyword.mockResolvedValue(undefined);
+
+      await controller.removeGlossaryKeyword(
+        TENANT_ID,
+        INSTANCE_ID,
+        NODE_ID,
+        d<RemoveGlossaryKeywordDto>({ keyword: 'Agent' }),
+      );
+
+      expect(mockGlossaryService.removeKeyword).toHaveBeenCalledWith(
+        INSTANCE_ID,
+        'Agent',
+        NODE_ID,
+      );
     });
   });
 

@@ -5,6 +5,13 @@ import { z } from 'zod';
 
 const PageSizeSchema = z.coerce.number().int().min(1).max(100).optional();
 
+function preferDefined<T>(
+  primary: T | undefined,
+  fallback: T | undefined,
+): T | undefined {
+  return primary !== undefined ? primary : fallback;
+}
+
 export const PaginationQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
@@ -21,10 +28,14 @@ export const PaginationQuerySchema = z
 export const CreateMemoryInstanceSchema = z
   .object({
     name: z.string().min(1, '名称不能为空').max(255, '名称最长 255 个字符'),
-    description: z.string().max(2000, '描述最长 2000 个字符').optional(),
+    description: z
+      .string()
+      .max(2000, '描述最长 2000 个字符')
+      .optional()
+      .nullable(),
     config: z.record(z.string(), z.unknown()).optional(),
-    systemPromptOverride: z.string().max(10000).optional(),
-    system_prompt_override: z.string().max(10000).optional(),
+    systemPromptOverride: z.string().max(10000).optional().nullable(),
+    system_prompt_override: z.string().max(10000).optional().nullable(),
     validDomains: z.array(z.string().min(1).max(64)).optional(),
     valid_domains: z.array(z.string().min(1).max(64)).optional(),
     coreMemoryUris: z.array(z.string().min(1).max(512)).optional(),
@@ -34,7 +45,10 @@ export const CreateMemoryInstanceSchema = z
     name: v.name,
     description: v.description,
     config: v.config,
-    systemPromptOverride: v.systemPromptOverride ?? v.system_prompt_override,
+    systemPromptOverride: preferDefined(
+      v.systemPromptOverride,
+      v.system_prompt_override,
+    ),
     validDomains: v.validDomains ?? v.valid_domains,
     coreMemoryUris: v.coreMemoryUris ?? v.core_memory_uris,
   }));
@@ -60,7 +74,10 @@ export const UpdateMemoryInstanceSchema = z
     name: v.name,
     description: v.description,
     config: v.config,
-    systemPromptOverride: v.systemPromptOverride ?? v.system_prompt_override,
+    systemPromptOverride: preferDefined(
+      v.systemPromptOverride,
+      v.system_prompt_override,
+    ),
     validDomains: v.validDomains ?? v.valid_domains,
     coreMemoryUris: v.coreMemoryUris ?? v.core_memory_uris,
     status: v.status,

@@ -57,6 +57,27 @@ function createUpdateChainNoReturning() {
   };
 }
 
+function createPaginatedChain(dataResult: unknown[], countResult: number) {
+  return {
+    dataChain: {
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue(dataResult),
+            }),
+          }),
+        }),
+      }),
+    },
+    countChain: {
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ total: countResult }]),
+      }),
+    },
+  };
+}
+
 // ─── Test constants ──────────────────────────────────────────────────────────
 
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -382,25 +403,56 @@ describe('WorkspaceService', () => {
   // ─── findAll ────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
-    it('应当返回非 deleted 状态的快照列表', async () => {
+    it('应当返回非 deleted 状态的快照列表（分页）', async () => {
       const snapshots = [
         buildSnapshot({ id: 'snap-1', name: 'first' }),
         buildSnapshot({ id: 'snap-2', name: 'second' }),
       ];
-      db.select.mockReturnValueOnce(createSelectChainWithOrderBy(snapshots));
+      const { dataChain, countChain } = createPaginatedChain(snapshots, 2);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
 
       const result = await service.findAll(TEST_TENANT_ID);
 
-      expect(result).toHaveLength(2);
-      expect(db.select).toHaveBeenCalledOnce();
+      expect(result.data).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(db.select).toHaveBeenCalledTimes(2);
     });
 
-    it('没有快照时应当返回空数组', async () => {
-      db.select.mockReturnValueOnce(createSelectChainWithOrderBy([]));
+    it('没有快照时应当返回空数组和 total 为 0', async () => {
+      const { dataChain, countChain } = createPaginatedChain([], 0);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
 
       const result = await service.findAll(TEST_TENANT_ID);
 
-      expect(result).toEqual([]);
+      expect(result.data).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('应当支持分页参数', async () => {
+      const snapshots = [buildSnapshot({ id: 'snap-3', name: 'third' })];
+      const { dataChain, countChain } = createPaginatedChain(snapshots, 5);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
+
+      const result = await service.findAll(TEST_TENANT_ID, {
+        page: 2,
+        pageSize: 1,
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.total).toBe(5);
+    });
+
+    it('应当支持搜索过滤', async () => {
+      const snapshots = [buildSnapshot({ id: 'snap-4', name: 'my-workspace' })];
+      const { dataChain, countChain } = createPaginatedChain(snapshots, 1);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
+
+      const result = await service.findAll(TEST_TENANT_ID, {
+        search: 'my-workspace',
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.total).toBe(1);
     });
   });
 
