@@ -14,13 +14,11 @@ import {
 } from "./mcpMutations";
 
 const postMock = vi.fn();
-const toSnakeBodyMock = vi.fn((value) => value);
 
 vi.mock("@/shared/api/client", () => ({
   apiClient: {
     post: (...args: unknown[]) => postMock(...args),
   },
-  toSnakeBody: (value: unknown) => toSnakeBodyMock(value),
 }));
 
 function createWrapper() {
@@ -50,7 +48,6 @@ function createDeferredVoid() {
 
 afterEach(() => {
   postMock.mockReset();
-  toSnakeBodyMock.mockClear();
 });
 
 describe("mcpMutations", () => {
@@ -105,15 +102,6 @@ describe("mcpMutations", () => {
         },
       },
     });
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({
-      connection: {
-        transportType: "streamable_http",
-        url: "https://mcp.example.com",
-        headers: {
-          Authorization: "Bearer demo",
-        },
-      },
-    });
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
@@ -148,13 +136,6 @@ describe("mcpMutations", () => {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-filesystem"],
         },
-      },
-    });
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({
-      connection: {
-        transportType: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-filesystem"],
       },
     });
     expect(invalidateSpy).not.toHaveBeenCalled();

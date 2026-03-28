@@ -1,5 +1,6 @@
 import { memo, useCallback, Suspense, lazy, type ChangeEvent } from 'react'
 import { Code } from 'lucide-react'
+import { useTheme } from '@/shared/hooks/use-theme'
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
 
@@ -53,6 +54,7 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
   onApply,
   onValidationChange,
 }: CodeToolConfigPanelProps) {
+  const { resolvedTheme } = useTheme()
   const parsed = parseConfig(config)
 
   const applyPatch = useCallback(
@@ -162,7 +164,7 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
               language={MONACO_LANGUAGE_MAP[parsed.language]}
               value={parsed.code}
               onChange={handleCodeChange}
-              theme="vs-dark"
+              theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
               options={{
                 minimap: { enabled: false },
                 fontSize: 13,

@@ -4,7 +4,6 @@ import {
   mapBackendDataType,
   mapPortMappingToPortDefinition,
   type BackendPortMapping,
-  type BackendPortMappingMetadata,
 } from '../mcpToolMapping'
 
 describe('mcpToolMapping', () => {

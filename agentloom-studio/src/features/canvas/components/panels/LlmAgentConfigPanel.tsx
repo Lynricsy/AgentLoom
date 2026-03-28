@@ -12,6 +12,7 @@ import {
 } from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
 import { useOrganizationAutonomyPolicy } from '@/features/organization-autonomy-policy/hooks/useOrganizationAutonomyPolicy'
 import { getOrganizationIdFromToken } from '@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions'
+import { useTheme } from '@/shared/hooks/use-theme'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
 import { Select } from '@/shared/ui/select'
@@ -323,6 +324,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
   onApply,
   onValidationChange,
 }: LlmAgentConfigPanelProps) {
+  const { resolvedTheme } = useTheme()
   const authToken = useAuthToken()
   const organizationId = useMemo(() => getOrganizationIdFromToken(authToken) ?? undefined, [authToken])
   const { data: organizationAutonomyPolicy } = useOrganizationAutonomyPolicy(organizationId, {
@@ -647,7 +649,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
               defaultLanguage="markdown"
               value={systemPromptValue ?? ''}
               onChange={handleEditorChange}
-              theme="vs-dark"
+              theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
               options={{
                 minimap: { enabled: false },
                 lineNumbers: 'off',

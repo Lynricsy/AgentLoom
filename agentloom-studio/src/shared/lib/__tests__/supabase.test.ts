@@ -13,14 +13,43 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }))
 
+const ORIGINAL_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const ORIGINAL_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const mutableImportMetaEnv = import.meta.env as Record<string, string | undefined>
+
+function setSupabaseEnv({
+  url,
+  anonKey,
+}: {
+  url?: string
+  anonKey?: string
+}) {
+  if (url === undefined) {
+    delete mutableImportMetaEnv.VITE_SUPABASE_URL
+  } else {
+    mutableImportMetaEnv.VITE_SUPABASE_URL = url
+  }
+
+  if (anonKey === undefined) {
+    delete mutableImportMetaEnv.VITE_SUPABASE_ANON_KEY
+  } else {
+    mutableImportMetaEnv.VITE_SUPABASE_ANON_KEY = anonKey
+  }
+}
+
 describe('supabase client bootstrap', () => {
   beforeEach(() => {
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://test-project.supabase.co')
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'test-anon-key-value')
+    setSupabaseEnv({
+      url: 'https://test-project.supabase.co',
+      anonKey: 'test-anon-key-value',
+    })
   })
 
   afterEach(() => {
-    vi.unstubAllEnvs()
+    setSupabaseEnv({
+      url: ORIGINAL_SUPABASE_URL,
+      anonKey: ORIGINAL_SUPABASE_ANON_KEY,
+    })
     vi.resetModules()
   })
 
@@ -50,9 +79,8 @@ describe('supabase client bootstrap', () => {
   })
 
   it('throws when VITE_SUPABASE_URL is missing', async () => {
-    vi.unstubAllEnvs()
     vi.resetModules()
-    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'test-anon-key-value')
+    setSupabaseEnv({ anonKey: 'test-anon-key-value' })
 
     await expect(() => import('../supabase')).rejects.toThrow(
       'Missing Supabase environment variables',
@@ -60,9 +88,8 @@ describe('supabase client bootstrap', () => {
   })
 
   it('throws when VITE_SUPABASE_ANON_KEY is missing', async () => {
-    vi.unstubAllEnvs()
     vi.resetModules()
-    vi.stubEnv('VITE_SUPABASE_URL', 'https://test-project.supabase.co')
+    setSupabaseEnv({ url: 'https://test-project.supabase.co' })
 
     await expect(() => import('../supabase')).rejects.toThrow(
       'Missing Supabase environment variables',
@@ -70,8 +97,8 @@ describe('supabase client bootstrap', () => {
   })
 
   it('throws when both env vars are missing', async () => {
-    vi.unstubAllEnvs()
     vi.resetModules()
+    setSupabaseEnv({})
 
     await expect(() => import('../supabase')).rejects.toThrow(
       'Missing Supabase environment variables',

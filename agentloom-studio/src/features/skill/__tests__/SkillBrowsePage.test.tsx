@@ -226,7 +226,7 @@ describe('SkillBrowsePage', () => {
     it('显示文件数', () => {
       setupListReturn([makeSkill({ fileCount: 5 })]);
       render(<SkillBrowsePage />);
-      expect(screen.getByText('5 个')).toBeInTheDocument();
+      expect(screen.getByText('5 个文件')).toBeInTheDocument();
     });
   });
 
