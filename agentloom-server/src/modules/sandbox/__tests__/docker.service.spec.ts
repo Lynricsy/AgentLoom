@@ -142,6 +142,36 @@ describe('DockerService', () => {
       expect(mockContainer.start).toHaveBeenCalled();
     });
 
+    it('宿主不支持 StorageOpt.size 时应降级重试且继续创建容器', async () => {
+      vi.clearAllMocks();
+      mockContainer.start.mockResolvedValue(undefined);
+      mockDocker.createContainer
+        .mockRejectedValueOnce(
+          new Error(
+            "(HTTP code 500) server error - --storage-opt is supported only for overlay over xfs with 'pquota' mount option ",
+          ),
+        )
+        .mockResolvedValueOnce(mockContainer);
+
+      const result = await service.createContainer(
+        'session-storage-fallback',
+        DEFAULT_CONFIG,
+      );
+
+      expect(result.containerId).toBe('container-abc123');
+      expect(mockDocker.createContainer).toHaveBeenCalledTimes(2);
+
+      const firstCall = mockDocker.createContainer.mock.calls[0][0];
+      const secondCall = mockDocker.createContainer.mock.calls[1][0];
+
+      expect(firstCall.HostConfig.StorageOpt).toEqual({ size: '5G' });
+      expect(secondCall.HostConfig.StorageOpt).toBeUndefined();
+      expect(secondCall.HostConfig.Binds).toEqual([
+        'sandbox-session-storage-fallback-workspace:/workspace',
+      ]);
+      expect(mockContainer.start).toHaveBeenCalled();
+    });
+
     it('创建失败时应抛出 SandboxCreationException', async () => {
       mockDocker.createContainer.mockRejectedValueOnce(
         new Error('image not found'),

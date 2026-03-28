@@ -15,6 +15,22 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
+function formatMegabytes(megabytes: number): string {
+  if (megabytes <= 0) return '0 MB'
+  if (megabytes < 1024) return `${Math.round(megabytes)} MB`
+
+  const gigabytes = megabytes / 1024
+  return `${gigabytes.toFixed(gigabytes >= 10 ? 0 : 1)} GB`
+}
+
+function safePercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.round(value * 100) / 100
+}
+
 function ProgressBar({ percent, color }: { percent: number; color: string }) {
   const clamped = Math.min(100, Math.max(0, percent))
   return (
@@ -37,12 +53,12 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
   stats,
   compact = false,
 }: SandboxStatsDisplayProps) {
-  const cpuPercent = Math.round(stats.cpuPercent * 100) / 100
-  const memPercent = stats.memoryLimit > 0
-    ? Math.round((stats.memoryUsage / stats.memoryLimit) * 10000) / 100
+  const cpuPercent = safePercent(stats.cpuPercent)
+  const memPercent = stats.memoryLimitMb > 0
+    ? safePercent((stats.memoryUsageMb / stats.memoryLimitMb) * 100)
     : 0
   const diskPercent = stats.diskTotal && stats.diskUsage
-    ? Math.round((stats.diskUsage / stats.diskTotal) * 10000) / 100
+    ? safePercent((stats.diskUsage / stats.diskTotal) * 100)
     : null
 
   if (compact) {
@@ -91,7 +107,7 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Memory</span>
           <span className="font-medium text-foreground">
-            {formatBytes(stats.memoryUsage)} / {formatBytes(stats.memoryLimit)}
+            {formatMegabytes(stats.memoryUsageMb)} / {formatMegabytes(stats.memoryLimitMb)}
             <span className="ml-1 text-muted-foreground">({memPercent}%)</span>
           </span>
         </div>

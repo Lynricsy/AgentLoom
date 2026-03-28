@@ -159,7 +159,17 @@ export class DockerService {
         extraHosts.push('host.docker.internal:host-gateway');
       }
 
-      const container = await this.docker.createContainer({
+      const hostConfig: Docker.ContainerCreateOptions['HostConfig'] = {
+        PortBindings: {
+          [SANDBOX_AGENT_PORT]: [{ HostPort: '0' }],
+        },
+        NanoCpus: config.cpu * CPU_CORE_TO_NANO,
+        Memory: config.memory * MB_TO_BYTES,
+        Binds: [`sandbox-${sessionId}-workspace:/workspace`, ...extraBinds],
+        ...(extraHosts.length > 0 ? { ExtraHosts: extraHosts } : {}),
+      }
+
+      const createOptions: Docker.ContainerCreateOptions = {
         Image: SANDBOX_IMAGE,
         ExposedPorts: { [SANDBOX_AGENT_PORT]: {} },
         Healthcheck: {
@@ -173,16 +183,27 @@ export class DockerService {
         name: `sandbox-${sessionId}`,
         Labels: { 'agentloom.session': sessionId },
         HostConfig: {
-          PortBindings: {
-            [SANDBOX_AGENT_PORT]: [{ HostPort: '0' }],
-          },
-          NanoCpus: config.cpu * CPU_CORE_TO_NANO,
-          Memory: config.memory * MB_TO_BYTES,
+          ...hostConfig,
           StorageOpt: { size: `${config.disk}G` },
-          Binds: [`sandbox-${sessionId}-workspace:/workspace`, ...extraBinds],
-          ...(extraHosts.length > 0 ? { ExtraHosts: extraHosts } : {}),
         },
-      });
+      }
+
+      let container: Docker.Container
+      try {
+        container = await this.docker.createContainer(createOptions)
+      } catch (error) {
+        if (!this.isUnsupportedStorageOptError(error)) {
+          throw error
+        }
+
+        this.logger.warn(
+          `Docker storage quota is unsupported for session ${sessionId}, retrying without StorageOpt.size: ${error.message}`,
+        )
+        container = await this.docker.createContainer({
+          ...createOptions,
+          HostConfig: hostConfig,
+        })
+      }
 
       await container.start();
 
@@ -537,6 +558,13 @@ export class DockerService {
 
   private normalizeSignal(signal: string): string {
     return signal.replaceAll('-', '').toUpperCase();
+  }
+
+  private isUnsupportedStorageOptError(error: unknown): error is Error {
+    return (
+      error instanceof Error &&
+      error.message.includes('--storage-opt is supported only')
+    )
   }
 
   private toNodeSignal(signal: string): NodeJS.Signals {

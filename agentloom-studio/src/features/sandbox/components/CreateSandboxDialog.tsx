@@ -103,10 +103,7 @@ export function CreateSandboxDialog({
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="create-sandbox-desc"
-          className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl"
-        >
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4">
             <Dialog.Title className="text-lg font-semibold text-foreground">
@@ -121,7 +118,7 @@ export function CreateSandboxDialog({
               </button>
             </Dialog.Close>
           </div>
-          <Dialog.Description className="sr-only" id="create-sandbox-desc">
+          <Dialog.Description className="sr-only">
             创建新的持久化沙箱环境
           </Dialog.Description>
 

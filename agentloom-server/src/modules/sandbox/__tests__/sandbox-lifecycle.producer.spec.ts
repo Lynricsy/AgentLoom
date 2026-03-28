@@ -117,7 +117,7 @@ describe('SandboxLifecycleProducer', () => {
       {
         attempts: 1,
         delay: 14_400_000,
-        jobId: 'sandbox-timeout:s1',
+        jobId: 'sandbox-timeout-s1',
       },
     );
   });
@@ -141,7 +141,7 @@ describe('SandboxLifecycleProducer', () => {
       {
         attempts: 1,
         delay: 5_000,
-        jobId: 'sandbox-timeout:s-conv',
+        jobId: 'sandbox-timeout-s-conv',
       },
     );
   });

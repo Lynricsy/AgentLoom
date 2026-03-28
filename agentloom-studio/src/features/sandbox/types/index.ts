@@ -26,8 +26,8 @@ export type SandboxStatus = SandboxSession['status']
 
 export interface SandboxStats {
   cpuPercent: number
-  memoryUsage: number
-  memoryLimit: number
+  memoryUsageMb: number
+  memoryLimitMb: number
   diskUsage?: number
   diskTotal?: number
 }

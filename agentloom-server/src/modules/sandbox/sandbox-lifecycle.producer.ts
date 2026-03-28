@@ -78,7 +78,7 @@ export class SandboxLifecycleProducer {
       {
         attempts: 1,
         delay: params.delayMs,
-        jobId: `sandbox-timeout:${params.sessionId}`,
+        jobId: `sandbox-timeout-${params.sessionId}`,
       },
     );
   }
