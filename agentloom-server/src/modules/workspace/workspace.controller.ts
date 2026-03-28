@@ -45,7 +45,8 @@ export class WorkspaceController {
     @Req() req: AuthenticatedRequest,
   ) {
     const tenantId = this.getTenantId(req);
-    const organizationId = tenantId;
+    const organizationId = await this.getOrganizationId(req, tenantId);
+    const description = dto.description ?? undefined;
 
     let data: WorkspaceSnapshot;
     if (dto.sandboxSessionId) {
@@ -55,7 +56,7 @@ export class WorkspaceController {
         req.user.sub,
         dto.sandboxSessionId,
         dto.name,
-        dto.description,
+        description,
       );
     } else {
       data = await this.workspaceService.createEmpty(
@@ -63,7 +64,7 @@ export class WorkspaceController {
         organizationId,
         req.user.sub,
         dto.name,
-        dto.description,
+        description,
       );
     }
 
@@ -131,5 +132,18 @@ export class WorkspaceController {
     }
 
     return tenantId;
+  }
+
+  private async getOrganizationId(
+    req: AuthenticatedRequest,
+    tenantId: string,
+  ): Promise<string> {
+    const organizationId = req.user.orgId ?? req.user.org_id;
+
+    if (organizationId) {
+      return organizationId;
+    }
+
+    return this.workspaceService.resolveOrganizationId(tenantId);
   }
 }

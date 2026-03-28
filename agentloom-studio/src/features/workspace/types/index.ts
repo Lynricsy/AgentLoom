@@ -23,6 +23,6 @@ export interface WorkspaceListParams {
 
 export interface CreateWorkspacePayload {
   name: string
-  description?: string | null
+  description?: string
   createEmpty?: boolean
 }

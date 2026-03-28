@@ -21,6 +21,23 @@ export class WorkspaceService {
     private readonly dockerService: DockerService,
   ) {}
 
+  async resolveOrganizationId(tenantId: string): Promise<string> {
+    const tenantDb = getTenantDb(this.db);
+    const [organization] = await tenantDb
+      .select({ id: schema.organizations.id })
+      .from(schema.organizations)
+      .where(eq(schema.organizations.tenantId, tenantId))
+      .limit(1);
+
+    if (!organization) {
+      throw new NotFoundException(
+        `Organization for tenant ${tenantId} not found`,
+      );
+    }
+
+    return organization.id;
+  }
+
   async createFromSandbox(
     tenantId: string,
     organizationId: string,
@@ -110,7 +127,7 @@ export class WorkspaceService {
   async restoreToSandbox(
     workspaceId: string,
     containerId: string,
-    tenantId: string,
+    _tenantId: string,
   ): Promise<void> {
     const tenantDb = getTenantDb(this.db);
     const [snapshot] = await tenantDb

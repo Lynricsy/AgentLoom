@@ -36,17 +36,20 @@ export function CreateWorkspaceDialog({
   function handleCreate() {
     if (!name.trim()) return
 
+    const trimmedName = name.trim()
+    const trimmedDescription = description.trim()
+
     createMutation.mutate(
       {
-        name: name.trim(),
-        description: description.trim() || null,
+        name: trimmedName,
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
         createEmpty: true,
       },
       {
         onSuccess: () => {
           notify({
             title: '已创建',
-            description: `工作区「${name.trim()}」已成功创建。`,
+            description: `工作区「${trimmedName}」已成功创建。`,
             variant: 'success',
           })
           handleOpenChange(false)
@@ -68,10 +71,7 @@ export function CreateWorkspaceDialog({
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="create-ws-desc"
-          className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl"
-        >
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4">
             <Dialog.Title className="text-lg font-semibold text-foreground">
@@ -86,7 +86,7 @@ export function CreateWorkspaceDialog({
               </button>
             </Dialog.Close>
           </div>
-          <Dialog.Description className="sr-only" id="create-ws-desc">
+          <Dialog.Description className="sr-only">
             创建新的工作区
           </Dialog.Description>
 
