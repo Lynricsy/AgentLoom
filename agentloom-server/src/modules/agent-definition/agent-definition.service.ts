@@ -406,6 +406,7 @@ export class AgentDefinitionService {
     const knowledgeBindings: AgentKnowledgeBinding[] = [];
     const subAgents: AgentSubAgentRef[] = [];
     const inputPreprocessors: AgentInputPreprocessor[] = [];
+    const memoryInstanceIds: string[] = [];
 
     const agentMainNode = nodes.find(
       (node) => this.resolveNodeType(node) === 'agent-main',
@@ -509,6 +510,16 @@ export class AgentDefinitionService {
           break;
         }
 
+        case 'memory': {
+          if (!agentMainNode || targetHandle === 'memory-in') {
+            const memoryInstanceId = data.memoryInstanceId ?? data.config?.memoryInstanceId;
+            if (typeof memoryInstanceId === 'string' && memoryInstanceId) {
+              memoryInstanceIds.push(memoryInstanceId);
+            }
+          }
+          break;
+        }
+
         case 'skill': {
           // Skill IDs are collected by extractConversationSkillIds() above
           break;
@@ -534,6 +545,28 @@ export class AgentDefinitionService {
     if (inputPreprocessors.length > 0)
       config.inputPreprocessors = inputPreprocessors;
     if (skillIds.length > 0) config.skillIds = skillIds;
+    if (memoryInstanceIds.length > 0) config.memoryInstanceIds = memoryInstanceIds;
+
+    // 解析 workspace → sandbox 的 volume 边，注入 restoreWorkspaceId
+    if (config.sandboxConfig) {
+      for (const edge of edges) {
+        if (!edge?.source || !edge?.target) continue;
+        const sourceNode = nodesById.get(edge.source);
+        const targetNode = nodesById.get(edge.target);
+        if (!sourceNode || !targetNode) continue;
+
+        const sourceType = this.resolveNodeType(sourceNode);
+        const targetType = this.resolveNodeType(targetNode);
+
+        if (sourceType === 'workspace' && targetType === 'sandbox') {
+          const wsData = this.resolveNodeData(sourceNode);
+          const workspaceId = wsData.workspaceId ?? wsData.config?.workspaceId;
+          if (typeof workspaceId === 'string' && workspaceId) {
+            config.sandboxConfig.restoreWorkspaceId = workspaceId;
+          }
+        }
+      }
+    }
 
     return config;
   }
@@ -1045,6 +1078,7 @@ export class AgentDefinitionService {
       persistencePath: data.persistencePath,
       restoreWorkspaceId: data.restoreWorkspaceId,
       persistenceExpiryHours: data.persistenceExpiryHours,
+      persistentSandboxId: data.persistentSandboxId,
     };
   }
 }

@@ -42,6 +42,8 @@ export interface SandboxConfig {
   persistenceExpiryHours?: number;
   /** 持久沙箱名称（仅 persistent 模式使用） */
   name?: string;
+  /** 持久沙箱 session ID（persistent 模式下选择已有沙箱） */
+  persistentSandboxId?: string;
 }
 
 export const sandboxSessions = pgTable(
