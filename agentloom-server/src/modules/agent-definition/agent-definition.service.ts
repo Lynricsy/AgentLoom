@@ -343,14 +343,38 @@ export class AgentDefinitionService {
         setClause.viewport = dto.canvasViewport;
       if (dto.globalSandboxConfig !== undefined)
         setClause.sandboxConfig = dto.globalSandboxConfig;
-      if (dto.inputSchema !== undefined)
-        setClause.metadata = sql`
-        jsonb_set(
-          COALESCE(${schema.agentDefinitions.metadata}, '{}'),
-          '{inputSchema}',
-          ${JSON.stringify(dto.inputSchema)}::jsonb
-        )
-      `;
+      if (dto.workspaceSnapshotId !== undefined)
+        setClause.workspaceSnapshotId = dto.workspaceSnapshotId;
+
+      const metadataSetters: Array<{ path: string; value: unknown }> = [];
+      if (dto.inputSchema !== undefined) {
+        metadataSetters.push({ path: 'inputSchema', value: dto.inputSchema });
+      }
+      if (dto.memoryInstanceIds !== undefined) {
+        metadataSetters.push({
+          path: 'memoryInstanceIds',
+          value: dto.memoryInstanceIds,
+        });
+      }
+      if (dto.sandboxLifecycle !== undefined) {
+        metadataSetters.push({
+          path: 'sandboxLifecycle',
+          value: dto.sandboxLifecycle,
+        });
+      }
+
+      if (metadataSetters.length > 0) {
+        let metadataExpression = sql`COALESCE(${schema.agentDefinitions.metadata}, '{}'::jsonb)`;
+        for (const setter of metadataSetters) {
+          metadataExpression = sql`jsonb_set(
+            ${metadataExpression},
+            ${sql.raw(`'{${setter.path}}'`)},
+            ${JSON.stringify(setter.value)}::jsonb,
+            true
+          )`;
+        }
+        setClause.metadata = metadataExpression;
+      }
 
       const [updated] = await dbClient
         .update(schema.agentDefinitions)
@@ -696,6 +720,8 @@ export class AgentDefinitionService {
     agent: typeof schema.agentDefinitions.$inferSelect,
     releaseNotes?: string,
   ): AgentVersionSnapshot {
+    const canvasMetadata = this.extractCanvasMetadata(agent.metadata);
+
     return {
       nodes: agent.nodes,
       edges: agent.edges,
@@ -708,7 +734,47 @@ export class AgentDefinitionService {
         edgeCount: agent.edges?.length ?? 0,
         createdFromVersion: agent.version,
         releaseNotes,
+        ...(canvasMetadata.inputSchema === undefined
+          ? {}
+          : { inputSchema: canvasMetadata.inputSchema }),
+        ...(canvasMetadata.memoryInstanceIds === undefined
+          ? {}
+          : { memoryInstanceIds: canvasMetadata.memoryInstanceIds }),
+        ...(canvasMetadata.sandboxLifecycle === undefined
+          ? {}
+          : { sandboxLifecycle: canvasMetadata.sandboxLifecycle }),
       },
+    };
+  }
+
+  private extractCanvasMetadata(metadata: Record<string, unknown> | null): {
+    inputSchema?: Record<string, unknown>;
+    memoryInstanceIds?: string[];
+    sandboxLifecycle?: 'session' | 'persistent';
+  } {
+    const inputSchema =
+      metadata?.inputSchema &&
+      typeof metadata.inputSchema === 'object' &&
+      !Array.isArray(metadata.inputSchema)
+        ? (metadata.inputSchema as Record<string, unknown>)
+        : undefined;
+
+    const memoryInstanceIds = Array.isArray(metadata?.memoryInstanceIds)
+      ? metadata.memoryInstanceIds.filter(
+          (value): value is string => typeof value === 'string',
+        )
+      : undefined;
+
+    const sandboxLifecycle =
+      metadata?.sandboxLifecycle === 'session' ||
+      metadata?.sandboxLifecycle === 'persistent'
+        ? metadata.sandboxLifecycle
+        : undefined;
+
+    return {
+      inputSchema,
+      memoryInstanceIds,
+      sandboxLifecycle,
     };
   }
 

@@ -156,7 +156,12 @@ vi.mock('drizzle-orm', () => ({
   ilike: vi.fn((a: unknown, b: unknown) => [a, b]),
   max: vi.fn((col: unknown) => col),
   or: vi.fn((...args: unknown[]) => args),
-  sql: vi.fn((...args: unknown[]) => args),
+  sql: Object.assign(
+    vi.fn((...args: unknown[]) => args),
+    {
+      raw: vi.fn((value: string) => value),
+    },
+  ),
 }));
 
 function makeAgent(overrides: Partial<Record<string, any>> = {}) {
@@ -713,7 +718,7 @@ describe('AgentDefinitionService', () => {
       expect(result).toBeDefined();
     });
 
-    it('包含 viewport、globalSandboxConfig、inputSchema 时也应成功保存', async () => {
+    it('包含 viewport、globalSandboxConfig、metadata fields 与 workspaceSnapshotId 时也应成功保存', async () => {
       const agent = makeAgent();
       const updated = makeAgent({ version: 2 });
 
@@ -742,14 +747,20 @@ describe('AgentDefinitionService', () => {
           canvasNodes: [],
           canvasEdges: [],
           canvasViewport: { x: 0, y: 0, zoom: 1 },
+          workspaceSnapshotId: '019d2a7c-c19c-7a9c-8233-db2b87a23de4',
           globalSandboxConfig: { cpu: 2, memory: 512, disk: 1, timeout: 60 },
           inputSchema: { version: 1, collectionMode: 'form', fields: [] },
+          memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de5'],
+          sandboxLifecycle: 'persistent',
         },
         'user-1',
       );
 
       expect(capturedSetClause).toBeDefined();
       expect(capturedSetClause!.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+      expect(capturedSetClause!.workspaceSnapshotId).toBe(
+        '019d2a7c-c19c-7a9c-8233-db2b87a23de4',
+      );
       expect(capturedSetClause!.sandboxConfig).toEqual({
         cpu: 2,
         memory: 512,
@@ -1718,6 +1729,69 @@ describe('AgentDefinitionService', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe('version-1');
       expect(result.versionNumber).toBe(1);
+    });
+
+    it('应将 canvas metadata fields 冻结到版本快照中', async () => {
+      const agent = makeAgent({
+        sandboxConfig: {
+          cpu: 1,
+          memory: 512,
+          disk: 1,
+          timeout: 60,
+          lifecycleMode: 'persistent',
+        },
+        metadata: {
+          inputSchema: {
+            type: 'object',
+            properties: { question: { type: 'string' } },
+          },
+          memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de6'],
+          sandboxLifecycle: 'persistent',
+        },
+      });
+      const version = makeVersion({
+        versionNumber: 1,
+        createdAt: new Date('2025-01-01'),
+      });
+
+      let selectCallCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCallCount += 1;
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
+          );
+        return c;
+      });
+
+      let capturedValues: Record<string, any> | null = null;
+      mockTxClient.insert.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.values = vi.fn().mockImplementation((v: Record<string, any>) => {
+          capturedValues = v;
+          return c;
+        });
+        c.returning = vi.fn().mockResolvedValue([version]);
+        return c;
+      });
+
+      await service.createVersion(
+        'agent-1',
+        { changelog: 'Snapshot metadata' },
+        'user-1',
+      );
+
+      expect(capturedValues?.snapshot?.metadata).toMatchObject({
+        inputSchema: {
+          type: 'object',
+          properties: { question: { type: 'string' } },
+        },
+        memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de6'],
+        sandboxLifecycle: 'persistent',
+      });
     });
 
     it('Agent 不存在时应抛出 AgentNotFoundException', async () => {

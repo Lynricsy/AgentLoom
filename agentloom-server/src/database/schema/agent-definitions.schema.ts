@@ -112,6 +112,9 @@ export interface AgentVersionSnapshot {
     edgeCount: number;
     createdFromVersion: number;
     releaseNotes?: string | null;
+    inputSchema?: Record<string, unknown>;
+    memoryInstanceIds?: string[];
+    sandboxLifecycle?: 'session' | 'persistent';
   };
 }
 

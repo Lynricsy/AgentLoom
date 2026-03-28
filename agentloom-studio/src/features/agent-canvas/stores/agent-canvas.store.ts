@@ -86,7 +86,7 @@ interface AgentCanvasActions {
 
     loadAgent: (agentId: string) => Promise<void>;
     applyServerSnapshot: (
-      data: Pick<AgentDefinition, 'nodes' | 'edges' | 'viewport' | 'sandboxConfig' | 'workspaceSnapshotId' | 'memoryInstanceIds' | 'version' | 'name'>,
+      data: Pick<AgentDefinition, 'nodes' | 'edges' | 'viewport' | 'sandboxConfig' | 'workspaceSnapshotId' | 'inputSchema' | 'memoryInstanceIds' | 'sandboxLifecycle' | 'version' | 'name'>,
     ) => void;
     saveCanvas: () => Promise<void>;
     compileConfig: () => Promise<void>;
@@ -100,6 +100,7 @@ const DEFAULT_SANDBOX_CONFIG: AgentGlobalSandboxConfig = {
   cpuLimit: 1,
   memoryLimitMb: 512,
   timeoutSeconds: 300,
+  lifecycleMode: 'session',
 };
 
 const DEFAULT_INPUT_SCHEMA: AgentInputSchema = {
@@ -107,6 +108,48 @@ const DEFAULT_INPUT_SCHEMA: AgentInputSchema = {
   properties: {},
   required: [],
 };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeInputSchema(
+  inputSchema: AgentDefinition['inputSchema'],
+): AgentInputSchema {
+  if (
+    !inputSchema ||
+    typeof inputSchema !== 'object' ||
+    Array.isArray(inputSchema)
+  ) {
+    return { ...DEFAULT_INPUT_SCHEMA };
+  }
+
+  const properties =
+    inputSchema.properties &&
+    typeof inputSchema.properties === 'object' &&
+    !Array.isArray(inputSchema.properties)
+      ? inputSchema.properties
+      : {};
+
+  return {
+    type: inputSchema.type === 'object' ? 'object' : 'object',
+    properties: properties as AgentInputSchema['properties'],
+    required: Array.isArray(inputSchema.required)
+      ? inputSchema.required.filter(
+          (value): value is string => typeof value === 'string',
+        )
+      : [],
+  };
+}
+
+function normalizeWorkspaceSnapshotId(
+  workspaceId: string | null,
+): string | null | undefined {
+  if (workspaceId === null) {
+    return null;
+  }
+
+  return UUID_PATTERN.test(workspaceId) ? workspaceId : undefined;
+}
 
 function createInitialState(): AgentCanvasState {
   return {
@@ -361,6 +404,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           setSandboxLifecycle: (lifecycle) => {
             set((state) => {
               state.sandboxLifecycle = lifecycle;
+              state.globalSandboxConfig.lifecycleMode = lifecycle;
               state.isDirty = true;
             });
           },
@@ -398,7 +442,9 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 viewport: agent.viewport,
                 sandboxConfig: agent.sandboxConfig,
                 workspaceSnapshotId: agent.workspaceSnapshotId,
+                inputSchema: agent.inputSchema,
                 memoryInstanceIds: agent.memoryInstanceIds,
+                sandboxLifecycle: agent.sandboxLifecycle,
                 version: agent.version,
                 name: agent.name,
               });
@@ -420,9 +466,17 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 : ensureRequiredNodes(rawNodes);
               state.edges = (data.edges as AgentCanvasEdge[]) ?? [];
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
-              state.globalSandboxConfig = data.sandboxConfig ?? { ...DEFAULT_SANDBOX_CONFIG };
+              state.globalSandboxConfig = {
+                ...DEFAULT_SANDBOX_CONFIG,
+                ...(data.sandboxConfig ?? {}),
+              };
+              state.inputSchema = normalizeInputSchema(data.inputSchema);
               state.workspaceId = data.workspaceSnapshotId ?? null;
               state.memoryInstanceIds = data.memoryInstanceIds ?? [];
+              state.sandboxLifecycle =
+                data.sandboxLifecycle ??
+                data.sandboxConfig?.lifecycleMode ??
+                'session';
               state.version = data.version ?? 0;
               state.agentName = data.name ?? '';
               state.isDirty = isNewCanvas || rawNodes.length !== state.nodes.length;
@@ -438,8 +492,13 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               viewport,
               globalSandboxConfig,
               inputSchema,
+              memoryInstanceIds,
+              sandboxLifecycle,
+              workspaceId,
             } = get();
             if (!agentId) return;
+
+            const workspaceSnapshotId = normalizeWorkspaceSnapshotId(workspaceId);
 
             set((state) => {
               state.isSaving = true;
@@ -454,6 +513,11 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                     canvasViewport: viewport,
                     globalSandboxConfig,
                     inputSchema,
+                    memoryInstanceIds,
+                    sandboxLifecycle,
+                    ...(workspaceSnapshotId === undefined
+                      ? {}
+                      : { workspaceSnapshotId }),
                   },
                 })
                 .json<ApiResponse<Pick<AgentDefinition, 'version'>>>();

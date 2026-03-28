@@ -24,6 +24,12 @@ export const SaveAgentCanvasSchema = z.object({
 
   inputSchema: z.record(z.string(), z.unknown()).optional(),
 
+  memoryInstanceIds: z.array(z.string().uuid()).optional(),
+
+  sandboxLifecycle: z.enum(['session', 'persistent']).optional(),
+
+  workspaceSnapshotId: z.string().uuid().nullable().optional(),
+
   runtimeConfig: z.record(z.string(), z.unknown()).optional(),
 });
 

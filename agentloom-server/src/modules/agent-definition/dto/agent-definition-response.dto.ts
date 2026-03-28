@@ -28,6 +28,9 @@ export interface AgentDefinitionDetailResponseDto extends AgentDefinitionRespons
   viewport: ReactFlowViewport | null;
   sandboxConfig: SandboxConfig | null;
   workspaceSnapshotId: string | null;
+  inputSchema: Record<string, unknown> | null;
+  memoryInstanceIds: string[] | null;
+  sandboxLifecycle: 'session' | 'persistent' | null;
 }
 
 const LIST_FIELDS = [
@@ -56,7 +59,51 @@ type DetailRow = ListRow &
     | 'viewport'
     | 'sandboxConfig'
     | 'workspaceSnapshotId'
+    | 'metadata'
   >;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value == null || Array.isArray(value) || typeof value !== 'object') {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return value.every((item) => typeof item === 'string')
+    ? (value as string[])
+    : null;
+}
+
+function readDetailMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  sandboxConfig: SandboxConfig | null | undefined,
+) {
+  const normalizedMetadata = asRecord(metadata);
+  const inputSchema = asRecord(normalizedMetadata?.inputSchema) ?? null;
+  const memoryInstanceIds = asStringArray(
+    normalizedMetadata?.memoryInstanceIds,
+  );
+  const metadataLifecycle = normalizedMetadata?.sandboxLifecycle;
+  const sandboxLifecycle =
+    metadataLifecycle === 'session' || metadataLifecycle === 'persistent'
+      ? metadataLifecycle
+      : sandboxConfig?.lifecycleMode === 'session' ||
+          sandboxConfig?.lifecycleMode === 'persistent'
+        ? sandboxConfig.lifecycleMode
+        : null;
+
+  return {
+    inputSchema,
+    memoryInstanceIds,
+    sandboxLifecycle,
+  };
+}
 
 export function serializeAgentDefinition(
   row: ListRow,
@@ -80,6 +127,8 @@ export function serializeAgentDefinition(
 export function serializeAgentDefinitionDetail(
   row: DetailRow,
 ): AgentDefinitionDetailResponseDto {
+  const metadata = readDetailMetadata(row.metadata, row.sandboxConfig ?? null);
+
   return {
     ...serializeAgentDefinition(row),
     systemPrompt: row.systemPrompt ?? null,
@@ -88,5 +137,8 @@ export function serializeAgentDefinitionDetail(
     viewport: row.viewport ?? null,
     sandboxConfig: row.sandboxConfig ?? null,
     workspaceSnapshotId: row.workspaceSnapshotId ?? null,
+    inputSchema: metadata.inputSchema,
+    memoryInstanceIds: metadata.memoryInstanceIds,
+    sandboxLifecycle: metadata.sandboxLifecycle,
   };
 }

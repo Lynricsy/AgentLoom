@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAgentCanvasStore } from './agent-canvas.store';
 
-const { putMock } = vi.hoisted(() => ({
+const { getMock, putMock } = vi.hoisted(() => ({
+  getMock: vi.fn(),
   putMock: vi.fn(),
 }));
 
 vi.mock('@/shared/api/client', () => ({
   apiClient: {
+    get: getMock,
     put: putMock,
   },
 }));
 
-describe('agentCanvasStore.saveCanvas', () => {
+describe('agentCanvasStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useAgentCanvasStore.getState().actions.reset();
@@ -54,6 +56,8 @@ describe('agentCanvasStore.saveCanvas', () => {
       viewport: canvasViewport,
       globalSandboxConfig,
       inputSchema,
+      memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de2'],
+      sandboxLifecycle: 'persistent',
       isDirty: true,
       version: 3,
     });
@@ -72,6 +76,9 @@ describe('agentCanvasStore.saveCanvas', () => {
         canvasViewport,
         globalSandboxConfig,
         inputSchema,
+        memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de2'],
+        sandboxLifecycle: 'persistent',
+        workspaceSnapshotId: null,
       },
     });
 
@@ -85,5 +92,59 @@ describe('agentCanvasStore.saveCanvas', () => {
     expect(state.isDirty).toBe(false);
     expect(state.isSaving).toBe(false);
     expect(state.lastSavedAt).not.toBeNull();
+  });
+
+  it('hydrates input schema, memory bindings, and sandbox lifecycle from the detail response', async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: {
+          id: 'agent-1',
+          tenantId: 'tenant-1',
+          name: 'Loaded Agent',
+          slug: 'loaded-agent',
+          description: null,
+          systemPrompt: null,
+          nodes: [],
+          edges: [],
+          viewport: null,
+          sandboxConfig: { lifecycleMode: 'persistent' },
+          workspaceSnapshotId: null,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: 'Prompt' },
+            },
+            required: ['question'],
+          },
+          memoryInstanceIds: ['019d2a7c-c19c-7a9c-8233-db2b87a23de3'],
+          sandboxLifecycle: 'persistent',
+          version: 7,
+          status: 'draft',
+          publishedVersionId: null,
+          createdBy: 'user-1',
+          updatedBy: 'user-1',
+          createdAt: '2026-03-28T00:00:00.000Z',
+          updatedAt: '2026-03-28T00:00:00.000Z',
+        },
+      }),
+    });
+
+    await useAgentCanvasStore.getState().actions.loadAgent('agent-1');
+
+    const state = useAgentCanvasStore.getState();
+    expect(state.agentId).toBe('agent-1');
+    expect(state.agentName).toBe('Loaded Agent');
+    expect(state.inputSchema).toEqual({
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'Prompt' },
+      },
+      required: ['question'],
+    });
+    expect(state.memoryInstanceIds).toEqual([
+      '019d2a7c-c19c-7a9c-8233-db2b87a23de3',
+    ]);
+    expect(state.sandboxLifecycle).toBe('persistent');
+    expect(state.globalSandboxConfig.lifecycleMode).toBe('persistent');
   });
 });
