@@ -5,6 +5,11 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useCreateSandbox } from '../api/sandboxMutations'
 import { useToast } from '@/shared/ui/toast'
+import { SandboxPresetSelector } from './SandboxPresetSelector'
+import {
+  useSandboxPresetStore,
+  type SandboxPreset,
+} from '../stores/sandboxPresetStore'
 
 interface CreateSandboxDialogProps {
   open: boolean
@@ -26,12 +31,33 @@ export function CreateSandboxDialog({
   const [cpu, setCpu] = useState(1)
   const [memory, setMemory] = useState(512)
   const [disk, setDisk] = useState(2)
+  const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>(undefined)
+
+  const customPresets = useSandboxPresetStore((s) => s.customPresets)
+  const addPreset = useSandboxPresetStore((s) => s.addPreset)
+  const currentConfig = { cpu, memory, disk }
+
+  function handlePresetSelect(preset: SandboxPreset) {
+    setCpu(preset.cpu)
+    setMemory(preset.memory)
+    setDisk(preset.disk)
+    setSelectedPresetId(preset.id)
+  }
+
+  function handleSaveAsPreset(config: { cpu: number; memory: number; disk: number }) {
+    addPreset({ name: `自定义 ${customPresets.length + 1}`, ...config })
+  }
+
+  function clearPresetSelection() {
+    setSelectedPresetId(undefined)
+  }
 
   function resetForm() {
     setName('')
     setCpu(1)
     setMemory(512)
     setDisk(2)
+    setSelectedPresetId(undefined)
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -101,6 +127,14 @@ export function CreateSandboxDialog({
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-6 pb-2 space-y-4">
+            {/* Preset Selector */}
+            <SandboxPresetSelector
+              selectedPresetId={selectedPresetId}
+              onSelect={handlePresetSelect}
+              onSaveAsPreset={handleSaveAsPreset}
+              currentConfig={currentConfig}
+            />
+
             {/* Name */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground" htmlFor="sandbox-name">
@@ -129,9 +163,10 @@ export function CreateSandboxDialog({
                 max={4}
                 step={0.5}
                 value={cpu}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   setCpu(clamp(Number(e.target.value), 0.5, 4))
-                }
+                  clearPresetSelection()
+                }}
                 className="w-full"
               />
               <div className="mt-1 flex justify-between text-xs text-muted-foreground">
@@ -155,9 +190,10 @@ export function CreateSandboxDialog({
                 max={4096}
                 step={256}
                 value={memory}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   setMemory(clamp(Number(e.target.value), 256, 4096))
-                }
+                  clearPresetSelection()
+                }}
                 className="w-full"
               />
               <div className="mt-1 flex justify-between text-xs text-muted-foreground">
@@ -181,9 +217,10 @@ export function CreateSandboxDialog({
                 max={10}
                 step={1}
                 value={disk}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   setDisk(clamp(Number(e.target.value), 1, 10))
-                }
+                  clearPresetSelection()
+                }}
                 className="w-full"
               />
               <div className="mt-1 flex justify-between text-xs text-muted-foreground">

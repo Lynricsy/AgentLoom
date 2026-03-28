@@ -2,6 +2,15 @@ import { memo, useCallback, type ChangeEvent } from 'react'
 import { Container, Loader2 } from 'lucide-react'
 import { usePersistentSandboxes } from '@/features/sandbox/api/sandboxQueries'
 import type { SandboxSession } from '@/features/sandbox/types'
+import {
+  SandboxPresetSelector,
+} from '@/features/sandbox/components/SandboxPresetSelector'
+import {
+  useSandboxPresetStore,
+  getAllPresets,
+  findMatchingPreset,
+  type SandboxPreset,
+} from '@/features/sandbox/stores/sandboxPresetStore'
 
 interface SandboxConfigPanelProps {
   config: Record<string, unknown>
@@ -133,6 +142,26 @@ export const SandboxConfigPanel = memo(
       [applyPatch],
     )
 
+    const customPresets = useSandboxPresetStore((s) => s.customPresets)
+    const addPreset = useSandboxPresetStore((s) => s.addPreset)
+    const allPresets = getAllPresets(customPresets)
+    const currentSessionConfig = { cpu: sandbox.cpu, memory: sandbox.memory, disk: sandbox.disk }
+    const matchedPreset = findMatchingPreset(allPresets, currentSessionConfig)
+
+    const handlePresetSelect = useCallback(
+      (preset: SandboxPreset) => {
+        applyPatch({ cpu: preset.cpu, memory: preset.memory, disk: preset.disk })
+      },
+      [applyPatch],
+    )
+
+    const handleSaveAsPreset = useCallback(
+      (config: { cpu: number; memory: number; disk: number }) => {
+        addPreset({ name: `自定义 ${customPresets.length + 1}`, ...config })
+      },
+      [addPreset, customPresets.length],
+    )
+
     const handleCpu = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
         applyField('cpu', clamp(parseNumericValue(e.target.value, sandbox.cpu), 0.5, 4))
@@ -209,6 +238,15 @@ export const SandboxConfigPanel = memo(
 
         {sandbox.lifecycleMode === 'session' ? (
           <>
+            {/* Preset Selector */}
+            <SandboxPresetSelector
+              selectedPresetId={matchedPreset?.id}
+              onSelect={handlePresetSelect}
+              onSaveAsPreset={handleSaveAsPreset}
+              currentConfig={currentSessionConfig}
+              compact
+            />
+
             {/* CPU */}
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
