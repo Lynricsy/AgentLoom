@@ -197,6 +197,47 @@ Design tokens are CSS-variable-based: `text-foreground`, `bg-primary`, `border-b
 
 ---
 
+## Canvas Node Config Panel Registry
+
+Canvas 中每种节点的配置面板通过共享注册表 `CUSTOM_PANEL_REGISTRY` 集中管理，确保 Workflow Canvas 和 Agent Canvas 使用同一套面板实现。
+
+### 架构
+
+```
+customPanelRegistry.tsx        ← 单一数据源：节点类型 → 面板渲染函数
+  ├── NodeConfigPanel.tsx      ← Workflow Canvas 使用
+  └── AgentNodeConfigPanel.tsx ← Agent Canvas 使用
+```
+
+### 关键文件
+
+| 文件 | 职责 |
+|------|------|
+| `canvas/components/panels/customPanelRegistry.tsx` | 面板注册表定义 + 所有面板组件 import |
+| `canvas/components/panels/NodeConfigPanel.tsx` | Workflow Canvas 面板容器，查表渲染 |
+| `agent-canvas/components/panels/AgentNodeConfigPanel.tsx` | Agent Canvas 面板容器，查表渲染 |
+
+### 新增节点配置面板
+
+1. 创建面板组件（如 `MyToolConfigPanel.tsx`），遵循 Pattern B（memo + named function）
+2. 在 `customPanelRegistry.tsx` 中 import 并注册：
+   ```tsx
+   'my-tool': {
+     render: ({ node, onConfigChange }) => (
+       <MyToolConfigPanel config={node.data.config} onApply={onConfigChange} />
+     ),
+   },
+   ```
+3. 两个 Canvas 自动生效，无需分别修改
+
+### 注意事项
+
+- **禁止**在 `AgentNodeConfigPanel` 或 `NodeConfigPanel` 中直接写面板 switch/case
+- 面板的 `onApply` 签名应接受 `Record<string, unknown>` patch 对象
+- 如果面板需要管理自身验证状态，设置 `handlesValidation: true` 并使用 `onValidationChange` 回调
+
+---
+
 ## Examples
 
 - Shared UI primitives: `src/shared/ui/button.tsx`, `src/shared/ui/input.tsx`
