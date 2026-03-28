@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -19,6 +20,7 @@ import { TenantRequiredException } from '../../common/exceptions/auth.exceptions
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { CreateWorkspaceSchema } from './dto/create-workspace.dto';
+import { ListWorkspacesQueryDto } from './dto/list-workspaces-query.dto';
 import { WorkspaceService } from './workspace.service';
 import type { WorkspaceSnapshot } from '../../database/schema';
 
@@ -72,9 +74,28 @@ export class WorkspaceController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: 'List workspace snapshots' })
   @ApiResponse({ status: 200, description: 'Workspace snapshot list' })
-  async list(@Req() req: AuthenticatedRequest) {
-    const data = await this.workspaceService.findAll(this.getTenantId(req));
-    return { data };
+  async list(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListWorkspacesQueryDto,
+  ) {
+    const tenantId = this.getTenantId(req);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const result = await this.workspaceService.findAll(tenantId, {
+      page,
+      pageSize,
+      search: query.search,
+    });
+
+    return {
+      data: result.data,
+      meta: {
+        page,
+        pageSize,
+        total: result.total,
+        totalPages: Math.ceil(result.total / pageSize),
+      },
+    };
   }
 
   @Get(':id')

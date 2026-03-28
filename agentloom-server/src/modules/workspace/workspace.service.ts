@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, and, desc, ne } from 'drizzle-orm';
+import { eq, and, desc, ne, count, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -207,13 +207,43 @@ export class WorkspaceService {
     this.logger.log(`Workspace snapshot ${workspaceId} deleted`);
   }
 
-  async findAll(tenantId: string): Promise<schema.WorkspaceSnapshot[]> {
+  async findAll(
+    tenantId: string,
+    options: { page?: number; pageSize?: number; search?: string } = {},
+  ): Promise<{ data: schema.WorkspaceSnapshot[]; total: number }> {
     const tenantDb = getTenantDb(this.db);
-    return tenantDb
-      .select()
-      .from(schema.workspaceSnapshots)
-      .where(ne(schema.workspaceSnapshots.status, 'deleted'))
-      .orderBy(desc(schema.workspaceSnapshots.createdAt));
+    const page = options.page ?? 1;
+    const pageSize = options.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [ne(schema.workspaceSnapshots.status, 'deleted')];
+
+    if (options.search) {
+      conditions.push(
+        sql`${schema.workspaceSnapshots.name} ILIKE ${'%' + options.search + '%'}`,
+      );
+    }
+
+    const predicate = and(...conditions);
+
+    const [data, [countRow]] = await Promise.all([
+      tenantDb
+        .select()
+        .from(schema.workspaceSnapshots)
+        .where(predicate)
+        .orderBy(desc(schema.workspaceSnapshots.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      tenantDb
+        .select({ total: count() })
+        .from(schema.workspaceSnapshots)
+        .where(predicate),
+    ]);
+
+    return {
+      data,
+      total: countRow?.total ?? 0,
+    };
   }
 
   async findOne(

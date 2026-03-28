@@ -43,7 +43,7 @@ export async function createWorkspace(
   payload: CreateWorkspacePayload,
 ): Promise<Workspace> {
   const response = await apiClient
-    .post(BASE_PATH, { json: { ...payload, createEmpty: true } })
+    .post(BASE_PATH, { json: payload })
     .json<ApiEnvelope<Workspace>>()
   return response.data
 }
