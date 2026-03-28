@@ -5,7 +5,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -28,6 +28,8 @@ import type {
   ImportMcpToolsDto,
   ReimportMcpToolsDto,
 } from './dto/import-mcp-tools.dto';
+import type { McpServerConfigQueryType } from './dto/mcp-server-config-query.dto';
+import type { UpdateMcpServerConfigType } from './dto/update-mcp-server-config.dto';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
@@ -37,7 +39,7 @@ import {
   McpToolNotFoundException,
 } from './mcp.exceptions';
 
-const CONNECT_TIMEOUT_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 120_000;
 const LIST_TOOLS_TIMEOUT_MS = 60_000;
 const CALL_TOOL_TIMEOUT_MS = 60_000;
 
@@ -284,6 +286,199 @@ export class McpService {
       .select()
       .from(toolDefinitions)
       .where(and(...conditions));
+  }
+
+  async findAllConfigs(
+    tenantId: string,
+    query: McpServerConfigQueryType,
+  ): Promise<{
+    data: (SavedMcpConfig & { toolCount: number })[];
+    meta: { total: number; page: number; pageSize: number; totalPages: number };
+  }> {
+    const { page, pageSize, search, status, transportType } = query;
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [eq(mcpServerConfigs.tenantId, tenantId)];
+
+    if (search) {
+      conditions.push(
+        or(
+          ilike(mcpServerConfigs.name, `%${search}%`),
+          ilike(mcpServerConfigs.description, `%${search}%`),
+        )!,
+      );
+    }
+    if (status) {
+      conditions.push(eq(mcpServerConfigs.status, status));
+    }
+    if (transportType) {
+      conditions.push(eq(mcpServerConfigs.transportType, transportType));
+    }
+
+    const whereClause = and(...conditions);
+
+    const [rows, countResult] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(mcpServerConfigs)
+        .where(whereClause)
+        .orderBy(desc(mcpServerConfigs.updatedAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ total: sql<number>`count(*)::int` })
+        .from(mcpServerConfigs)
+        .where(whereClause),
+    ]);
+
+    const total = countResult[0]?.total ?? 0;
+
+    // 批量查询每个配置的活跃工具数量
+    const configIds = rows.map((r) => r.id);
+    let toolCountMap = new Map<string, number>();
+
+    if (configIds.length > 0) {
+      const toolCounts = await this.tenantDb
+        .select({
+          mcpServerConfigId: toolDefinitions.mcpServerConfigId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(toolDefinitions)
+        .where(
+          and(
+            inArray(toolDefinitions.mcpServerConfigId, configIds),
+            eq(toolDefinitions.isActive, true),
+          ),
+        )
+        .groupBy(toolDefinitions.mcpServerConfigId);
+
+      toolCountMap = new Map(
+        toolCounts.map((tc) => [tc.mcpServerConfigId!, tc.count]),
+      );
+    }
+
+    const data = rows.map((row) => ({
+      ...row,
+      toolCount: toolCountMap.get(row.id) ?? 0,
+    }));
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async findConfigById(
+    tenantId: string,
+    configId: string,
+  ) {
+    const config = await this.getSavedConfigOrThrow(configId, tenantId);
+
+    const tools = await this.tenantDb
+      .select()
+      .from(toolDefinitions)
+      .where(
+        and(
+          eq(toolDefinitions.mcpServerConfigId, configId),
+          eq(toolDefinitions.tenantId, tenantId),
+          eq(toolDefinitions.isActive, true),
+        ),
+      );
+
+    // 解密凭证只取 key 名，不暴露值
+    const credentials = this.decryptStoredCredentials(config);
+    const credentialKeys = credentials ? Object.keys(credentials) : [];
+
+    // 去掉加密二进制字段
+    const {
+      encryptedData: _ed,
+      encryptedDek: _ek,
+      iv: _iv,
+      authTag: _at,
+      ...safeConfig
+    } = config;
+
+    return { ...safeConfig, tools, credentialKeys };
+  }
+
+  async updateConfig(
+    tenantId: string,
+    configId: string,
+    data: UpdateMcpServerConfigType,
+  ): Promise<SavedMcpConfig> {
+    await this.getSavedConfigOrThrow(configId, tenantId);
+
+    const setClause: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+
+    if (data.name !== undefined) setClause.name = data.name;
+    if (data.description !== undefined)
+      setClause.description = data.description;
+    if (data.status !== undefined) setClause.status = data.status;
+
+    // 更新连接配置
+    if (data.connection) {
+      const conn = data.connection;
+      setClause.transportType = conn.transportType;
+
+      if (conn.transportType === 'stdio') {
+        setClause.command = conn.command;
+        setClause.args = conn.args ?? null;
+        setClause.url = null;
+      } else {
+        setClause.url = conn.url;
+        setClause.command = null;
+        setClause.args = null;
+      }
+
+      // 加密凭证
+      const credentials = this.extractCredentials(conn as McpConnection);
+      const encryptedFields = credentials
+        ? this.encryptionService.encrypt(JSON.stringify(credentials))
+        : null;
+
+      setClause.encryptedData = encryptedFields?.encryptedKey ?? null;
+      setClause.encryptedDek = encryptedFields?.encryptedDek ?? null;
+      setClause.iv = encryptedFields?.iv ?? null;
+      setClause.authTag = encryptedFields?.authTag ?? null;
+
+      // 重新计算指纹
+      setClause.connectionFingerprint = this.buildConnectionFingerprint(
+        conn as McpConnection,
+      );
+    }
+
+    const [updated] = await this.tenantDb
+      .update(mcpServerConfigs)
+      .set(setClause)
+      .where(
+        and(
+          eq(mcpServerConfigs.id, configId),
+          eq(mcpServerConfigs.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    return updated;
+  }
+
+  async deleteConfig(tenantId: string, configId: string): Promise<void> {
+    await this.getSavedConfigOrThrow(configId, tenantId);
+
+    await this.tenantDb
+      .delete(mcpServerConfigs)
+      .where(
+        and(
+          eq(mcpServerConfigs.id, configId),
+          eq(mcpServerConfigs.tenantId, tenantId),
+        ),
+      );
   }
 
   private async importToolsForConnection(input: {
@@ -903,7 +1098,16 @@ export class McpService {
         return new StdioClientTransport({
           command: connection.command,
           args: connection.args,
-          env: connection.env,
+          env: connection.env
+            ? {
+                ...(Object.fromEntries(
+                  Object.entries(process.env).filter(
+                    (e): e is [string, string] => e[1] != null,
+                  ),
+                ) as Record<string, string>),
+                ...connection.env,
+              }
+            : undefined,
         });
       case 'sse':
         return new SSEClientTransport(

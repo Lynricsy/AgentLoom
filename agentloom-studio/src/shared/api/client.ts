@@ -16,9 +16,9 @@ function readStoredToken(): string | undefined {
 
 export const apiClient = ky.create({
   prefixUrl: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // ky automatically sets Content-Type: application/json for `json:` requests
+  // and the browser sets multipart boundary for `body: FormData` requests.
+  // A hardcoded default would break FormData uploads.
   retry: {
     limit: 1,
     statusCodes: [401],

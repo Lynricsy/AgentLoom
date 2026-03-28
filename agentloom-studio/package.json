@@ -44,6 +44,7 @@
     "diff": "^8.0.3",
     "html-react-parser": "^5.2.7",
     "immer": "^10.2.0",
+    "jszip": "^3.10.1",
     "ky": "^1.14.3",
     "lucide-react": "^0.576.0",
     "markdown-it": "^14.1.0",

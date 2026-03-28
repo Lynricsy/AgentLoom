@@ -88,6 +88,43 @@ export interface ReimportMcpToolsPayload {
   conflictStrategy: McpImportConflictStrategy;
 }
 
+export interface McpServerConfigSummary {
+  id: string;
+  tenantId: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  transportType: McpTransportType;
+  status: 'active' | 'inactive' | 'error';
+  lastTestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  toolCount: number;
+}
+
+export interface McpServerConfigDetail extends Omit<McpServerConfigSummary, 'toolCount'> {
+  command?: string | null;
+  args?: string[] | null;
+  url?: string | null;
+  credentialKeys: string[];
+  tools: McpToolDefinition[];
+}
+
+export interface McpServerConfigQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: 'active' | 'inactive' | 'error';
+  transportType?: McpTransportType;
+}
+
+export interface UpdateMcpServerConfigPayload {
+  name?: string;
+  description?: string | null;
+  status?: 'active' | 'inactive';
+  connection?: McpConnectionConfig;
+}
+
 export interface McpImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

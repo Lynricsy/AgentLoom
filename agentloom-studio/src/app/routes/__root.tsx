@@ -39,6 +39,10 @@ import { memorySettingsRoute } from './memory.$id.settings'
 import { memoryGraphRoute } from './memory.$id.graph'
 import { memoryAuditRoute } from './memory.$id.audit'
 import { skillsRoute } from './skills'
+import { mcpServersRoute } from './resources/mcp-servers'
+import { llmModelsRoute } from './resources/llm-models'
+import { resourceSkillsRoute } from './resources/skills'
+import { resourceKnowledgeBasesRoute } from './resources/knowledge-bases'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -136,4 +140,8 @@ export const routeTree = rootRoute.addChildren([
   memoryGraphRoute,
   memoryAuditRoute,
   skillsRoute,
+  mcpServersRoute,
+  llmModelsRoute,
+  resourceSkillsRoute,
+  resourceKnowledgeBasesRoute,
 ]);

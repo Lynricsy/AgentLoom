@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { llmModelKeys } from '../api/llmModelKeys'
 import {
   createLlmModel,
+  deleteLlmModel,
   fetchApiKeys,
   fetchLlmModel,
   fetchLlmModels,
@@ -90,5 +91,18 @@ export function useTestPrivateCloudConnection() {
 export function usePrivateCloudModels() {
   return useMutation({
     mutationFn: fetchPrivateCloudModels,
+  })
+}
+
+export function useDeleteLlmModel() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: [...llmModelKeys.all, 'delete'] as const,
+    mutationFn: (id: string) => deleteLlmModel(id),
+    gcTime: 0,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: llmModelKeys.lists() })
+    },
   })
 }

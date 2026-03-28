@@ -33,6 +33,7 @@ export {
   fetchLlmModel,
   createLlmModel,
   updateLlmModel,
+  deleteLlmModel,
   fetchLlmProviders,
   fetchApiKeys,
   testPrivateCloudConnection,
@@ -40,6 +41,7 @@ export {
 } from './api/llmModelApi'
 export {
   useCreateLlmModel,
+  useDeleteLlmModel,
   useLlmApiKeys,
   useLlmModel,
   useLlmModels,
@@ -50,4 +52,6 @@ export {
 } from './hooks/useLlmModels'
 export { ProviderIcon } from './components/ProviderIcon'
 export { LlmModelConfigPanel } from './components/LlmModelConfigPanel'
+export { LlmModelConfigDialog } from './components/LlmModelConfigDialog'
+export { LlmModelManagementPage } from './components/LlmModelManagementPage'
 export { PrivateCloudConfigSection } from './components/PrivateCloudConfigSection'

@@ -16,6 +16,7 @@ export interface CreateSkillPayload {
   name: string;
   description?: string;
   content?: string;
+  files?: File[];
 }
 
 export interface UpdateSkillPayload {
@@ -47,10 +48,14 @@ export async function fetchSkillById(id: string): Promise<Skill> {
 }
 
 export async function createSkill(payload: CreateSkillPayload): Promise<Skill> {
+  const { files, ...metadata } = payload;
   const formData = new FormData();
-  formData.append('name', payload.name);
-  if (payload.description) formData.append('description', payload.description);
-  if (payload.content) formData.append('content', payload.content);
+  formData.append('metadata', JSON.stringify(metadata));
+  if (files) {
+    for (const file of files) {
+      formData.append('files', file, file.name);
+    }
+  }
 
   return apiClient
     .post(BASE_PATH, { body: formData })
@@ -62,9 +67,7 @@ export async function updateSkill(
   payload: UpdateSkillPayload,
 ): Promise<Skill> {
   const formData = new FormData();
-  if (payload.name != null) formData.append('name', payload.name);
-  if (payload.description != null) formData.append('description', payload.description);
-  if (payload.content != null) formData.append('content', payload.content);
+  formData.append('metadata', JSON.stringify(payload));
 
   return apiClient
     .put(`${BASE_PATH}/${id}`, { body: formData })
@@ -84,10 +87,8 @@ export async function archiveSkill(id: string): Promise<Skill> {
 // ---------- File Management ----------
 
 export interface SkillFileInfo {
-  fileName: string;
-  sizeBytes: number;
-  mimeType: string;
-  uploadedAt: string;
+  name: string;
+  size: number;
 }
 
 export async function fetchSkillFiles(id: string): Promise<SkillFileInfo[]> {

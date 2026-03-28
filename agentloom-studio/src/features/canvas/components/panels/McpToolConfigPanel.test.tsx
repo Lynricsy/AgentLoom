@@ -1,7 +1,18 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { CanvasNodeData } from '../../types'
 import { McpToolConfigPanel } from './McpToolConfigPanel'
+
+const mockUseMcpTools = vi.fn()
+const mockUseMcpServerConfigs = vi.fn()
+
+vi.mock('../../api/mcpToolQueries', () => ({
+  useMcpTools: (...args: unknown[]) => mockUseMcpTools(...args),
+}))
+
+vi.mock('@/features/mcp', () => ({
+  useMcpServerConfigs: (...args: unknown[]) => mockUseMcpServerConfigs(...args),
+}))
 
 function createMcpNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeData {
   return {
@@ -47,71 +58,133 @@ function createMcpNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeD
   }
 }
 
+function setupHookDefaults(overrides?: {
+  tools?: unknown[]
+  toolsLoading?: boolean
+  servers?: unknown[]
+  serversLoading?: boolean
+}) {
+  mockUseMcpTools.mockReturnValue({
+    data: overrides?.tools ?? [],
+    isLoading: overrides?.toolsLoading ?? false,
+  })
+  mockUseMcpServerConfigs.mockReturnValue({
+    data: overrides?.servers != null ? { data: overrides.servers } : { data: [] },
+    isLoading: overrides?.serversLoading ?? false,
+  })
+}
+
 describe('McpToolConfigPanel', () => {
   it('renders MCP Tool badge', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData()} />)
+    setupHookDefaults()
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData()}
+        config={createMcpNodeData().config}
+        onApply={vi.fn()}
+      />,
+    )
     expect(screen.getByText('MCP Tool')).toBeInTheDocument()
   })
 
-  it('renders description when present', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData()} />)
-    expect(screen.getByText('A test MCP tool description')).toBeInTheDocument()
-  })
-
-  it('hides description when absent', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData({ description: undefined })} />)
-    expect(screen.queryByText('A test MCP tool description')).not.toBeInTheDocument()
-  })
-
-  it('renders input ports list with labels and types', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData()} />)
-    expect(screen.getByText('输入端口')).toBeInTheDocument()
-    expect(screen.getByText('Prompt')).toBeInTheDocument()
-    expect(screen.getByText('text')).toBeInTheDocument()
-  })
-
-  it('renders required badge for required input ports', () => {
+  it('renders tool selector label', () => {
+    setupHookDefaults()
     render(
       <McpToolConfigPanel
-        data={createMcpNodeData({
-          inputPorts: [
-            {
-              id: 'required-port',
-              label: 'Prompt',
-              direction: 'input',
-              dataType: 'text',
-              required: true,
-              multiple: false,
-              maxConnections: 1,
-              schema: { kind: 'text', title: 'Prompt' },
-            },
-          ],
-        })}
-      />
+        data={createMcpNodeData()}
+        config={createMcpNodeData().config}
+        onApply={vi.fn()}
+      />,
     )
-
-    expect(screen.getByText('必填')).toBeInTheDocument()
+    expect(screen.getByText('选择工具')).toBeInTheDocument()
   })
 
-  it('renders inputSchema as formatted JSON', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData()} />)
-    expect(screen.getByText('Input Schema')).toBeInTheDocument()
-    expect(screen.getByText(/"query"/)).toBeInTheDocument()
+  it('shows loading state while tools are loading', () => {
+    setupHookDefaults({ toolsLoading: true })
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData()}
+        config={createMcpNodeData().config}
+        onApply={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('加载中...')).toBeInTheDocument()
   })
 
-  it('hides inputSchema section when schema is absent', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData({ config: {} })} />)
-    expect(screen.queryByText('Input Schema')).not.toBeInTheDocument()
+  it('shows missing tool warning when ID is set but tool not found', () => {
+    setupHookDefaults({ tools: [] })
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData({ mcpToolDefinitionId: 'nonexistent-id' })}
+        config={{}}
+        onApply={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('mcp-tool-missing-warning')).toBeInTheDocument()
   })
 
-  it('renders empty-state when no input ports exist', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData({ inputPorts: [] })} />)
-    expect(screen.getByText('无输入参数')).toBeInTheDocument()
+  it('shows tool details when selected tool is found', () => {
+    setupHookDefaults({
+      tools: [
+        {
+          id: 'tool-def-abc',
+          name: 'my-tool',
+          title: 'My Tool',
+          description: 'Tool description',
+          isActive: true,
+          mcpServerConfigId: 'server-1',
+          inputSchema: { type: 'object' },
+          portMappingMetadata: null,
+        },
+      ],
+      servers: [{ id: 'server-1', name: 'Test Server' }],
+    })
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData()}
+        config={createMcpNodeData().config}
+        onApply={vi.fn()}
+      />,
+    )
+    // Tool name appears in both select option and detail card
+    expect(screen.getAllByText('My Tool').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Tool description')).toBeInTheDocument()
   })
 
-  it('renders tool ID when mcpToolDefinitionId is present', () => {
-    render(<McpToolConfigPanel data={createMcpNodeData()} />)
-    expect(screen.getByText('Tool ID')).toBeInTheDocument()
-    expect(screen.getByText('tool-def-abc')).toBeInTheDocument()
+  it('renders input ports when tool is selected and ports exist', () => {
+    setupHookDefaults({
+      tools: [
+        {
+          id: 'tool-def-abc',
+          name: 'my-tool',
+          title: 'My Tool',
+          isActive: true,
+          mcpServerConfigId: 'server-1',
+          inputSchema: null,
+          portMappingMetadata: null,
+        },
+      ],
+    })
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData()}
+        config={createMcpNodeData().config}
+        onApply={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('输入端口')).toBeInTheDocument()
+    expect(screen.getByText('Prompt')).toBeInTheDocument()
+  })
+
+  it('does not show missing warning when no tool ID is set', () => {
+    setupHookDefaults({ tools: [] })
+    render(
+      <McpToolConfigPanel
+        data={createMcpNodeData({ mcpToolDefinitionId: '' })}
+        config={{}}
+        onApply={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('mcp-tool-missing-warning')).not.toBeInTheDocument()
   })
 })

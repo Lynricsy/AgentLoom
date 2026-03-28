@@ -242,7 +242,13 @@ const CUSTOM_PANEL_REGISTRY: Partial<Record<CanvasNode['data']['nodeType'], Cust
     },
   },
   'mcp-tool': {
-    render: ({ node }) => <McpToolConfigPanel data={node.data} />,
+    render: ({ node, onConfigChange }) => (
+      <McpToolConfigPanel
+        data={node.data}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
   },
   'knowledge-base': {
     handlesValidation: true,

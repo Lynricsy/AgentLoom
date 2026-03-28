@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   deactivateMcpTool,
+  deleteMcpServerConfig,
   discoverMcpTools,
   importMcpTools,
   rediscoverMcpTools,
   reimportMcpTools,
   testMcpConnection,
   testSavedMcpConnection,
+  updateMcpServerConfig,
 } from "./mcpApi";
 import { mcpKeys } from "./mcpKeys";
 import type {
@@ -14,6 +16,7 @@ import type {
   ImportMcpToolsPayload,
   ReimportMcpToolsPayload,
   TestMcpConnectionPayload,
+  UpdateMcpServerConfigPayload,
 } from "../types";
 
 export function useTestMcpConnection() {
@@ -92,6 +95,38 @@ export function useDeactivateMcpTool() {
       deactivateMcpTool(toolDefinitionId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: mcpKeys.lists() });
+    },
+  });
+}
+
+export function useUpdateMcpServerConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: [...mcpKeys.all, "update-config"],
+    gcTime: 0,
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateMcpServerConfigPayload;
+    }) => updateMcpServerConfig(id, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: mcpKeys.configs() });
+    },
+  });
+}
+
+export function useDeleteMcpServerConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: [...mcpKeys.all, "delete-config"],
+    gcTime: 0,
+    mutationFn: (id: string) => deleteMcpServerConfig(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: mcpKeys.configs() });
     },
   });
 }

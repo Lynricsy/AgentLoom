@@ -9,6 +9,7 @@ import {
   type DragEvent,
 } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import JSZip from 'jszip';
 import {
   X,
   Loader2,
@@ -17,6 +18,8 @@ import {
   Download,
   Trash2,
   AlertCircle,
+  Package,
+  CircleCheck,
 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -50,6 +53,49 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+/** 解析 SKILL.md frontmatter 中的 name 和 description */
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return {};
+  const yaml = match[1] ?? '';
+  const name = yaml.match(/^name:\s*(.+)$/m)?.[1]?.trim();
+
+  let description: string | undefined;
+  const descMatch = yaml.match(/^description:\s*(.*)$/m);
+  if (descMatch) {
+    const firstLine = (descMatch[1] ?? '').trim();
+    const afterDesc = yaml.slice((descMatch.index ?? 0) + descMatch[0].length);
+    const restLines = afterDesc.split(/\r?\n/).slice(1);
+
+    if (/^[>|][+-]?$/.test(firstLine)) {
+      // YAML block scalar (>, |, >-, |-)
+      const lines: string[] = [];
+      for (const line of restLines) {
+        if (/^\s+/.test(line) || line.trim() === '') {
+          lines.push(line.replace(/^ {2}/, ''));
+        } else {
+          break;
+        }
+      }
+      const joiner = firstLine.startsWith('>') ? ' ' : '\n';
+      description = lines.join(joiner).trim();
+    } else if (firstLine) {
+      // Plain scalar — collect indented continuation lines
+      const parts = [firstLine.replace(/^(['"])(.*)\1$/, '$2')];
+      for (const line of restLines) {
+        if (/^\s+\S/.test(line)) {
+          parts.push(line.trim());
+        } else {
+          break;
+        }
+      }
+      description = parts.join(' ');
+    }
+  }
+
+  return { name, description };
+}
+
 function EditorSkeleton() {
   return (
     <div className="flex h-[400px] flex-col gap-2 rounded-md border border-border bg-muted/30 p-4">
@@ -79,24 +125,24 @@ function FileItem({
 }: FileItemProps) {
   const handleDownload = useCallback(async () => {
     try {
-      const blob = await downloadSkillFile(skillId, file.fileName);
+      const blob = await downloadSkillFile(skillId, file.name);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.fileName;
+      a.download = file.name;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* noop */ }
-  }, [skillId, file.fileName]);
+  }, [skillId, file.name]);
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{file.fileName}</p>
+          <p className="truncate text-sm font-medium">{file.name}</p>
           <p className="text-xs text-muted-foreground">
-            {formatBytes(file.sizeBytes)}
+            {formatBytes(file.size)}
             {isMainContent && (
               <span className="ml-1.5 text-primary">(主内容)</span>
             )}
@@ -115,7 +161,7 @@ function FileItem({
         {!isMainContent && (
           <button
             type="button"
-            onClick={() => onDelete(file.fileName)}
+            onClick={() => onDelete(file.name)}
             disabled={isDeleting}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
             title="删除"
@@ -212,6 +258,129 @@ function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
   );
 }
 
+interface ImportDropZoneProps {
+  onFileSelected: (files: File[]) => void;
+  status: 'idle' | 'parsing' | 'success' | 'error';
+  message: string;
+  pendingFilesCount: number;
+  disabled: boolean;
+}
+
+function ImportDropZone({
+  onFileSelected,
+  status,
+  message,
+  pendingFilesCount,
+  disabled,
+}: ImportDropZoneProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDragOver = useCallback(
+    (e: DragEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      if (!disabled) setIsDragging(true);
+    },
+    [disabled],
+  );
+
+  const handleDragLeave = useCallback(() => setIsDragging(false), []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (disabled) return;
+      const files = Array.from(e.dataTransfer.files).filter(
+        (f) => f.name.endsWith('.md') || f.name.endsWith('.zip'),
+      );
+      if (files.length > 0) onFileSelected(files);
+    },
+    [disabled, onFileSelected],
+  );
+
+  const handleClick = useCallback(() => {
+    if (!disabled) inputRef.current?.click();
+  }, [disabled]);
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) onFileSelected(files);
+      e.target.value = '';
+    },
+    [onFileSelected],
+  );
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={handleClick}
+        disabled={disabled}
+        className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 transition-colors ${
+          isDragging
+            ? 'border-primary bg-primary/5'
+            : 'border-border hover:border-muted-foreground/50'
+        } ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+      >
+        <Package className="h-6 w-6 text-muted-foreground" />
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">
+            导入技能文件
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            拖放 SKILL.md 或 .zip 到此处，或{' '}
+            <span className="text-primary">点击选择</span>
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
+            支持 .md 和 .zip 格式
+          </p>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".md,.zip"
+          onChange={handleInputChange}
+          className="hidden"
+        />
+      </button>
+
+      {status === 'parsing' && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          正在解析...
+        </div>
+      )}
+
+      {status === 'success' && (
+        <div className="flex flex-col gap-1 rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-green-400">
+            <CircleCheck className="h-3.5 w-3.5" />
+            {message}
+          </div>
+          {pendingFilesCount > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <FileText className="h-3 w-3" />
+              {pendingFilesCount} 个附件文件
+            </div>
+          )}
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+          <p className="text-xs text-red-400">{message}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Monaco decoration for YAML frontmatter (`---` delimited block).
  * Uses deltaDecorations with line-level className, re-applied on content change.
@@ -278,6 +447,9 @@ export function CreateSkillDialog({
   const [nameError, setNameError] = useState('');
   const [fileError, setFileError] = useState('');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<'idle' | 'parsing' | 'success' | 'error'>('idle');
+  const [importMessage, setImportMessage] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const editorRef = useRef<IStandaloneCodeEditor | null>(null);
 
@@ -294,7 +466,7 @@ export function CreateSkillDialog({
 
   const files = filesQuery.data ?? [];
   const totalSize = useMemo(
-    () => files.reduce((sum, f) => sum + f.sizeBytes, 0),
+    () => files.reduce((sum, f) => sum + f.size, 0),
     [files],
   );
 
@@ -307,6 +479,9 @@ export function CreateSkillDialog({
       setNameError('');
       setFileError('');
       setDeletingFile(null);
+      setImportStatus('idle');
+      setImportMessage('');
+      setPendingFiles([]);
     } else if (open && !skill) {
       setName('');
       setDescription('');
@@ -314,6 +489,9 @@ export function CreateSkillDialog({
       setNameError('');
       setFileError('');
       setDeletingFile(null);
+      setImportStatus('idle');
+      setImportMessage('');
+      setPendingFiles([]);
     }
   }, [open, skill]);
 
@@ -336,6 +514,72 @@ export function CreateSkillDialog({
     },
     [],
   );
+
+  const handleImportFile = useCallback(async (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+
+    setImportStatus('parsing');
+    setImportMessage('');
+    setPendingFiles([]);
+
+    try {
+      const ext = file.name.toLowerCase().split('.').pop();
+
+      if (ext === 'md') {
+        const text = await file.text();
+        const fm = parseSkillFrontmatter(text);
+        if (fm.name) setName(fm.name);
+        if (fm.description) setDescription(fm.description);
+        setContent(text);
+        setImportStatus('success');
+        setImportMessage(`已解析: ${fm.name || file.name}`);
+      } else if (ext === 'zip') {
+        const jszip = new JSZip();
+        const zip = await jszip.loadAsync(file);
+
+        let skillMdContent: string | null = null;
+        const attachmentFiles: File[] = [];
+
+        for (const [relativePath, entry] of Object.entries(zip.files)) {
+          if (entry.dir) continue;
+          if (relativePath.includes('..')) continue;
+          if (relativePath.startsWith('__MACOSX/')) continue;
+
+          const fileName = relativePath.split('/').pop() || relativePath;
+
+          if (fileName.toUpperCase() === 'SKILL.MD') {
+            skillMdContent = await entry.async('string');
+          } else {
+            const blob = await entry.async('blob');
+            attachmentFiles.push(
+              new File([blob], fileName, { type: 'application/octet-stream' }),
+            );
+          }
+        }
+
+        if (!skillMdContent) {
+          setImportStatus('error');
+          setImportMessage('ZIP 中未找到 SKILL.md');
+          return;
+        }
+
+        const fm = parseSkillFrontmatter(skillMdContent);
+        if (fm.name) setName(fm.name);
+        if (fm.description) setDescription(fm.description);
+        setContent(skillMdContent);
+        setPendingFiles(attachmentFiles);
+        setImportStatus('success');
+        setImportMessage(`已解析: ${fm.name || file.name}`);
+      } else {
+        setImportStatus('error');
+        setImportMessage('不支持的文件格式，请选择 .md 或 .zip 文件');
+      }
+    } catch {
+      setImportStatus('error');
+      setImportMessage('文件读取失败');
+    }
+  }, []);
 
 
   const handleFilesSelected = useCallback(
@@ -386,7 +630,7 @@ export function CreateSkillDialog({
   );
 
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setNameError('技能名称不能为空');
@@ -405,14 +649,18 @@ export function CreateSkillDialog({
         { onSuccess: () => onOpenChange(false) },
       );
     } else {
-      createMutation.mutate(
-        {
+      try {
+        await createMutation.mutateAsync({
           name: trimmedName,
           description: description.trim() || undefined,
           content: content || undefined,
-        },
-        { onSuccess: () => onOpenChange(false) },
-      );
+          files: pendingFiles.length > 0 ? pendingFiles : undefined,
+        });
+
+        onOpenChange(false);
+      } catch {
+        /* createMutation 错误状态由 UI 处理 */
+      }
     }
   }, [
     name,
@@ -423,6 +671,7 @@ export function CreateSkillDialog({
     createMutation,
     updateMutation,
     onOpenChange,
+    pendingFiles,
   ]);
 
 
@@ -442,6 +691,17 @@ export function CreateSkillDialog({
                 <span className="sr-only">关闭</span>
               </Dialog.Close>
             </div>
+
+            {/* 导入区域 (仅新建模式) */}
+            {!isEditing && (
+              <ImportDropZone
+                onFileSelected={handleImportFile}
+                status={importStatus}
+                message={importMessage}
+                pendingFilesCount={pendingFiles.length}
+                disabled={isPending}
+              />
+            )}
 
             {/* 基础信息 */}
             <div className="flex flex-col gap-4">
@@ -464,11 +724,13 @@ export function CreateSkillDialog({
 
               <div className="space-y-1.5">
                 <Label>描述</Label>
-                <Input
+                <textarea
                   id="skill-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="简要描述技能的用途"
+                  rows={3}
+                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                 />
               </div>
             </div>
@@ -520,11 +782,49 @@ export function CreateSkillDialog({
               {/* --- 文件管理 Tab --- */}
               <TabsContent value="files" className="space-y-3">
                 {!isEditing ? (
-                  <div className="rounded-md border border-border bg-muted/20 px-4 py-8 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      请先创建技能，之后可在编辑模式中管理附件。
-                    </p>
-                  </div>
+                  pendingFiles.length === 0 ? (
+                    <div className="rounded-md border border-border bg-muted/20 px-4 py-8 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        导入 .zip 文件后，附件将自动出现在这里。
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-2">
+                        {pendingFiles.map((f, idx) => (
+                          <div
+                            key={`${f.name}-${idx}`}
+                            className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">{f.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatBytes(f.size)}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPendingFiles((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+                              title="移除"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        共 {pendingFiles.length} 个附件，创建技能时将一并上传
+                      </p>
+                    </>
+                  )
                 ) : (
                   <>
                     {/* 上传区域 */}
@@ -562,14 +862,14 @@ export function CreateSkillDialog({
                       <div className="flex flex-col gap-2">
                         {files.map((f) => (
                           <FileItem
-                            key={f.fileName}
+                            key={f.name}
                             file={f}
                             skillId={skill!.id}
                             isMainContent={
-                              f.fileName.toLowerCase() === 'skill.md'
+                              f.name.toLowerCase() === 'skill.md'
                             }
                             onDelete={handleDeleteFile}
-                            isDeleting={deletingFile === f.fileName}
+                            isDeleting={deletingFile === f.name}
                           />
                         ))}
                       </div>

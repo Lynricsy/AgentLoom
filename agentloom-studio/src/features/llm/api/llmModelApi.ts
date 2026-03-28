@@ -32,6 +32,10 @@ export async function updateLlmModel(id: string, config: UpdateLlmModelInput): P
   return res.data
 }
 
+export async function deleteLlmModel(id: string): Promise<void> {
+  await apiClient.delete(`llm-models/${id}`)
+}
+
 export async function fetchLlmProviders(): Promise<LlmProviderInfo[]> {
   const res = await apiClient.get('llm-providers').json<ApiResponse<LlmProviderInfo[]>>()
   return res.data

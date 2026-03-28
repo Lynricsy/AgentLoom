@@ -15,6 +15,13 @@ import {
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Select } from '@/shared/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/shared/ui/dropdown-menu';
 import { Pagination } from '@/shared/components';
 import { useSkillList, useDeleteSkill, useArchiveSkill } from '../api/skillQueries';
 import { CreateSkillDialog } from './CreateSkillDialog';
@@ -65,7 +72,7 @@ function BuiltinBadge() {
   );
 }
 
-interface SkillRowActionsProps {
+interface SkillCardActionsProps {
   skill: Skill;
   onView: (skill: Skill) => void;
   onEdit: (skill: Skill) => void;
@@ -73,74 +80,49 @@ interface SkillRowActionsProps {
   onDelete: (skill: Skill) => void;
 }
 
-function SkillRowActions({
+function SkillCardActions({
   skill,
   onView,
   onEdit,
   onArchive,
   onDelete,
-}: SkillRowActionsProps) {
-  const [open, setOpen] = useState(false);
-
+}: SkillCardActionsProps) {
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-      {open && (
-        <>
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-border bg-card py-1 shadow-xl">
-            <button
-              type="button"
-              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => { onView(skill); setOpen(false); }}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              查看详情
-            </button>
-            {!skill.isBuiltin && (
-              <>
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => { onEdit(skill); setOpen(false); }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  编辑
-                </button>
-                {skill.status === 'active' && (
-                  <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => { onArchive(skill); setOpen(false); }}
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                    归档
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-red-400 transition-colors hover:bg-red-500/10"
-                  onClick={() => { onDelete(skill); setOpen(false); }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  删除
-                </button>
-              </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuItem onClick={() => onView(skill)}>
+          <Eye className="h-3.5 w-3.5" />
+          查看详情
+        </DropdownMenuItem>
+        {!skill.isBuiltin && (
+          <>
+            <DropdownMenuItem onClick={() => onEdit(skill)}>
+              <Pencil className="h-3.5 w-3.5" />
+              编辑
+            </DropdownMenuItem>
+            {skill.status === 'active' && (
+              <DropdownMenuItem onClick={() => onArchive(skill)}>
+                <Archive className="h-3.5 w-3.5" />
+                归档
+              </DropdownMenuItem>
             )}
-          </div>
-        </>
-      )}
-    </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem destructive onClick={() => onDelete(skill)}>
+              <Trash2 className="h-3.5 w-3.5" />
+              删除
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -286,81 +268,56 @@ export function SkillBrowsePage() {
         </div>
       ) : (
         <>
-          {/* 表格 */}
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">名称</th>
-                  <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground md:table-cell">描述</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">状态</th>
-                  <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground lg:table-cell">文件</th>
-                  <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground xl:table-cell">更新时间</th>
-                  <th className="w-12 px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {skills.map((skill) => (
-                  <tr
-                    key={skill.id}
-                    className="border-b border-border/60 transition-colors hover:bg-muted/20"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                          <Zap className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <button
-                            type="button"
-                            className="cursor-pointer truncate text-sm font-medium text-foreground hover:text-primary"
-                            onClick={() => handleView(skill)}
-                          >
-                            {skill.name}
-                          </button>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {skill.isBuiltin && <BuiltinBadge />}
-                          </div>
-                        </div>
+          {/* 卡片列表 */}
+          <div className="grid gap-4 xl:grid-cols-2">
+            {skills.map((skill) => (
+              <article
+                key={skill.id}
+                className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-colors hover:border-border/80"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                        <Zap className="h-4 w-4" />
                       </div>
-                    </td>
-                    <td className="hidden px-4 py-3 md:table-cell">
-                      <p className="line-clamp-1 text-xs text-muted-foreground">
-                        {skill.description || '暂无描述'}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        className="cursor-pointer truncate text-sm font-semibold text-foreground hover:text-primary"
+                        onClick={() => handleView(skill)}
+                      >
+                        {skill.name}
+                      </button>
+                      {skill.isBuiltin && <BuiltinBadge />}
                       <StatusBadge status={skill.status} />
-                    </td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <FileText className="h-3.5 w-3.5" />
-                        <span>{skill.fileCount} 个</span>
-                        {skill.totalSizeBytes > 0 && (
-                          <span className="text-muted-foreground/60">
-                            ({formatBytes(skill.totalSizeBytes)})
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="hidden px-4 py-3 xl:table-cell">
-                      <span className="text-xs text-muted-foreground">
-                        {formatTimestamp(skill.updatedAt)}
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                      {skill.description || '暂无描述'}
+                    </p>
+                  </div>
+                  <SkillCardActions
+                    skill={skill}
+                    onView={handleView}
+                    onEdit={handleEdit}
+                    onArchive={handleArchive}
+                    onDelete={handleDelete}
+                  />
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    {skill.fileCount} 个文件
+                    {skill.totalSizeBytes > 0 && (
+                      <span className="text-muted-foreground/60">
+                        ({formatBytes(skill.totalSizeBytes)})
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <SkillRowActions
-                        skill={skill}
-                        onView={handleView}
-                        onEdit={handleEdit}
-                        onArchive={handleArchive}
-                        onDelete={handleDelete}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                  </span>
+                  <span>更新于 {formatTimestamp(skill.updatedAt)}</span>
+                </div>
+              </article>
+            ))}
           </div>
 
           {/* 分页 */}

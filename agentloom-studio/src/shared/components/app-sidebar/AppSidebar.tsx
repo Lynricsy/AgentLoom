@@ -1,19 +1,24 @@
 import { useCallback, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
-  Bot,
   BookOpen,
+  Bot,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Code,
   Compass,
+  Cpu,
+  Server,
   Settings,
+  Sparkles,
   Workflow,
 } from 'lucide-react'
 import { NotificationBell } from '@/features/notification'
 import { UserMenu } from './UserMenu'
 
 const STORAGE_KEY = 'agentloom-sidebar-collapsed'
+const GROUP_EXPANDED_KEY = 'agentloom-sidebar-group-expanded'
 
 interface NavItem {
   label: string
@@ -21,6 +26,13 @@ interface NavItem {
   to: string
   params?: Record<string, string>
   matchPrefix: string
+}
+
+interface NavGroup {
+  label: string
+  icon: typeof Workflow
+  matchPrefix: string
+  children: NavItem[]
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -56,6 +68,40 @@ const NAV_ITEMS: NavItem[] = [
   },
 ]
 
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: '资源',
+    icon: Server,
+    matchPrefix: '/resources',
+    children: [
+      {
+        label: 'MCP Servers',
+        icon: Server,
+        to: '/resources/mcp-servers',
+        matchPrefix: '/resources/mcp-servers',
+      },
+      {
+        label: 'LLM Models',
+        icon: Cpu,
+        to: '/resources/llm-models',
+        matchPrefix: '/resources/llm-models',
+      },
+      {
+        label: 'Skills',
+        icon: Sparkles,
+        to: '/resources/skills',
+        matchPrefix: '/resources/skills',
+      },
+      {
+        label: 'Knowledge Bases',
+        icon: BookOpen,
+        to: '/resources/knowledge-bases',
+        matchPrefix: '/resources/knowledge-bases',
+      },
+    ],
+  },
+]
+
 function getInitialCollapsed(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) === 'true'
@@ -64,8 +110,27 @@ function getInitialCollapsed(): boolean {
   }
 }
 
+function getInitialGroupExpanded(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(GROUP_EXPANDED_KEY)
+    if (raw) return JSON.parse(raw) as Record<string, boolean>
+  } catch {
+    /* noop */
+  }
+  return {}
+}
+
+function persistGroupExpanded(state: Record<string, boolean>) {
+  try {
+    localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(state))
+  } catch {
+    /* noop */
+  }
+}
+
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(getInitialCollapsed)
+  const [groupExpanded, setGroupExpanded] = useState(getInitialGroupExpanded)
   const location = useRouterState({ select: (s) => s.location })
   const pathname = location.pathname
 
@@ -73,6 +138,14 @@ export function AppSidebar() {
     setCollapsed((prev) => {
       const next = !prev
       localStorage.setItem(STORAGE_KEY, String(next))
+      return next
+    })
+  }, [])
+
+  const toggleGroup = useCallback((key: string) => {
+    setGroupExpanded((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+      persistGroupExpanded(next)
       return next
     })
   }, [])
@@ -106,6 +179,7 @@ export function AppSidebar() {
 
       {/* Main nav */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
+        {/* Flat nav items */}
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.matchPrefix)
           const Icon = item.icon
@@ -128,6 +202,92 @@ export function AppSidebar() {
               <Icon size={18} className="shrink-0" />
               {!collapsed && <span>{item.label}</span>}
             </Link>
+          )
+        })}
+
+        {/* Nav groups */}
+        {NAV_GROUPS.map((group) => {
+          const groupActive = isActive(group.matchPrefix)
+          const expanded = groupExpanded[group.matchPrefix] ?? groupActive
+          const GroupIcon = group.icon
+
+          // When sidebar is collapsed, show children directly as icon-only items
+          if (collapsed) {
+            return group.children.map((child) => {
+              const childActive = isActive(child.matchPrefix)
+              const ChildIcon = child.icon
+              return (
+                <Link
+                  key={child.to}
+                  to={child.to}
+                  className={`group relative flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                    childActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+                  }`}
+                  title={child.label}
+                >
+                  {childActive && (
+                    <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+                  )}
+                  <ChildIcon size={18} className="shrink-0" />
+                </Link>
+              )
+            })
+          }
+
+          return (
+            <div key={group.matchPrefix}>
+              {/* Group header */}
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.matchPrefix)}
+                className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  groupActive
+                    ? 'text-primary/80'
+                    : 'text-muted-foreground/60 hover:text-muted-foreground'
+                }`}
+              >
+                <GroupIcon size={16} className="shrink-0" />
+                <span className="flex-1 text-left">{group.label}</span>
+                {expanded ? (
+                  <ChevronDown size={14} className="shrink-0" />
+                ) : (
+                  <ChevronRight size={14} className="shrink-0" />
+                )}
+              </button>
+
+              {/* Group children with collapse animation */}
+              <div
+                className="overflow-hidden transition-all duration-200 ease-in-out"
+                style={{
+                  maxHeight: expanded ? `${group.children.length * 40}px` : '0px',
+                  opacity: expanded ? 1 : 0,
+                }}
+              >
+                {group.children.map((child) => {
+                  const childActive = isActive(child.matchPrefix)
+                  const ChildIcon = child.icon
+                  return (
+                    <Link
+                      key={child.to}
+                      to={child.to}
+                      className={`group relative flex items-center gap-3 rounded-lg py-1.5 pl-5 pr-2 text-sm font-medium transition-colors ${
+                        childActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+                      }`}
+                    >
+                      {childActive && (
+                        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+                      )}
+                      <ChildIcon size={16} className="shrink-0" />
+                      <span className="truncate">{child.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
           )
         })}
       </nav>

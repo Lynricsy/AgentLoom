@@ -25,3 +25,13 @@ export {
   type ImportedToolResult,
   type PortMapping,
 } from './import-mcp-tools.dto';
+export {
+  McpServerConfigQueryDto,
+  McpServerConfigQuerySchema,
+  type McpServerConfigQueryType,
+} from './mcp-server-config-query.dto';
+export {
+  UpdateMcpServerConfigDto,
+  UpdateMcpServerConfigSchema,
+  type UpdateMcpServerConfigType,
+} from './update-mcp-server-config.dto';
