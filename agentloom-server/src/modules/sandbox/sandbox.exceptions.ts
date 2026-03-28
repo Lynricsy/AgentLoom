@@ -56,3 +56,36 @@ export class SandboxNotFoundException extends DomainException {
     });
   }
 }
+
+export class SandboxNotPersistentException extends DomainException {
+  constructor(sessionId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-not-persistent',
+      title: '沙箱不是持久类型',
+      status: HttpStatus.BAD_REQUEST,
+      detail: `Sandbox session ${sessionId} is not a persistent sandbox`,
+    });
+  }
+}
+
+export class SandboxInvalidStateException extends DomainException {
+  constructor(sessionId: string, currentStatus: string, action: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-invalid-state',
+      title: '沙箱状态不允许此操作',
+      status: HttpStatus.CONFLICT,
+      detail: `Cannot ${action} sandbox ${sessionId}: current status is ${currentStatus}`,
+    });
+  }
+}
+
+export class SandboxStatsUnavailableException extends DomainException {
+  constructor(sessionId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-stats-unavailable',
+      title: '沙箱统计信息不可用',
+      status: HttpStatus.CONFLICT,
+      detail: `Container stats unavailable for sandbox ${sessionId}: container is not running`,
+    });
+  }
+}

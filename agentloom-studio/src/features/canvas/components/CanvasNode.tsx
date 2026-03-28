@@ -65,6 +65,7 @@ import { SmartRoutingNodeBody } from './nodes/SmartRoutingNodeBody'
 import { PluginNodeBody } from './nodes/PluginNodeBody'
 import { AgentNodeBody } from './nodes/AgentNodeBody'
 import { MemoryNodeBody } from './nodes/MemoryNodeBody'
+import { WorkspaceNodeBody } from './nodes/WorkspaceNodeBody'
 import { InputPreprocessorNodeBody } from './nodes/InputPreprocessorNodeBody'
 import { ConditionNodeBody } from './nodes/ConditionNodeBody'
 import { HttpToolNodeBody } from './nodes/HttpToolNodeBody'
@@ -551,6 +552,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <PluginNodeBody data={data as PluginNodeData} />
           ) : data.nodeType === 'memory' ? (
             <MemoryNodeBody config={data.config} />
+          ) : data.nodeType === 'workspace' ? (
+            <WorkspaceNodeBody config={data.config} />
           ) : data.nodeType === 'agent' ? (
             <AgentNodeBody data={data as WorkflowAgentNodeData} hasSchemaConnection={hasSchemaConnection} />
           ) : data.nodeType === 'skill' ? (

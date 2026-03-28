@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, notInArray, asc } from 'drizzle-orm';
+import { and, desc, eq, ilike, notInArray, asc, or, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -10,11 +10,18 @@ import type {
   SandboxLog,
   SandboxSession,
 } from '../../database/schema';
-import { SandboxNotFoundException } from './sandbox.exceptions';
+import {
+  SandboxInvalidStateException,
+  SandboxNotFoundException,
+  SandboxNotPersistentException,
+  SandboxStatsUnavailableException,
+} from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
+import { DockerService, type ContainerStats } from './docker.service';
 import type { PiConfigInput } from './pi-config-generator.service';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
+const DEFAULT_PERSISTENT_TIMEOUT = 24;
 
 type CreateSandboxSessionParams = {
   executionId?: string;
@@ -32,6 +39,7 @@ export class SandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
+    private readonly dockerService: DockerService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -155,7 +163,7 @@ export class SandboxService {
   async endConversationSandbox(
     agentConversationId: string,
     tenantId: string,
-    options: { archive?: boolean } = {},
+    _options: { archive?: boolean } = {},
   ): Promise<void> {
     const session = await this.findActiveSession({
       agentConversationId,
@@ -316,5 +324,238 @@ export class SandboxService {
       .from(schema.sandboxLogs)
       .where(eq(schema.sandboxLogs.sessionId, sessionId))
       .orderBy(asc(schema.sandboxLogs.createdAt));
+  }
+
+  // -- Sandbox Management API methods --
+
+  async listSandboxes(
+    tenantId: string,
+    query: {
+      page: number;
+      pageSize: number;
+      status?: SandboxSession['status'];
+      lifecycleMode?: 'session' | 'persistent';
+      search?: string;
+    },
+  ): Promise<{
+    data: SandboxSession[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }> {
+    const { page, pageSize, status, lifecycleMode, search } = query;
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [eq(schema.sandboxSessions.tenantId, tenantId)];
+
+    if (status) {
+      conditions.push(eq(schema.sandboxSessions.status, status));
+    }
+
+    if (lifecycleMode) {
+      conditions.push(
+        sql`${schema.sandboxSessions.config}->>'lifecycleMode' = ${lifecycleMode}`,
+      );
+    }
+
+    if (search) {
+      const pattern = `%${search}%`;
+      conditions.push(
+        or(
+          sql`${schema.sandboxSessions.config}->>'name' ILIKE ${pattern}`,
+          ilike(schema.sandboxSessions.id, pattern),
+        )!,
+      );
+    }
+
+    const whereClause = and(...conditions);
+
+    const [data, [{ total }]] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(schema.sandboxSessions)
+        .where(whereClause)
+        .orderBy(desc(schema.sandboxSessions.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ total: sql<number>`count(*)::int` })
+        .from(schema.sandboxSessions)
+        .where(whereClause),
+    ]);
+
+    const total_ = total ?? 0;
+
+    return {
+      data,
+      meta: {
+        page,
+        pageSize,
+        total: total_,
+        totalPages: total_ === 0 ? 0 : Math.ceil(total_ / pageSize),
+      },
+    };
+  }
+
+  async createPersistentSandbox(
+    tenantId: string,
+    params: { name: string; cpu: number; memory: number; disk: number },
+  ): Promise<SandboxSession> {
+    const config: SandboxConfig = {
+      cpu: params.cpu,
+      memory: params.memory,
+      disk: params.disk,
+      timeout: DEFAULT_PERSISTENT_TIMEOUT,
+      lifecycleMode: 'persistent',
+      name: params.name,
+    };
+
+    const [session] = await this.tenantDb
+      .insert(schema.sandboxSessions)
+      .values({
+        tenantId,
+        sandboxNodeId: null,
+        config,
+        status: 'creating',
+      })
+      .returning();
+
+    await this.lifecycleProducer.addCreateTask({
+      sessionId: session.id,
+      tenantId,
+      config,
+    });
+
+    this.logger.log(
+      `Created persistent sandbox ${session.id} (name=${params.name})`,
+    );
+
+    return session;
+  }
+
+  async getSessionById(sessionId: string): Promise<SandboxSession> {
+    const [session] = await this.tenantDb
+      .select()
+      .from(schema.sandboxSessions)
+      .where(eq(schema.sandboxSessions.id, sessionId))
+      .limit(1);
+
+    if (!session) {
+      throw new SandboxNotFoundException(sessionId);
+    }
+
+    return session;
+  }
+
+  async getContainerStats(sessionId: string): Promise<ContainerStats> {
+    const session = await this.getSessionById(sessionId);
+
+    if (
+      !session.containerId ||
+      TERMINAL_STATUSES.includes(
+        session.status as (typeof TERMINAL_STATUSES)[number],
+      )
+    ) {
+      throw new SandboxStatsUnavailableException(sessionId);
+    }
+
+    return this.dockerService.getContainerStats(session.containerId);
+  }
+
+  async stopSandbox(
+    sessionId: string,
+    tenantId: string,
+  ): Promise<SandboxSession> {
+    const session = await this.getSessionById(sessionId);
+
+    const stoppableStatuses = ['ready', 'busy', 'creating'];
+    if (!stoppableStatuses.includes(session.status)) {
+      throw new SandboxInvalidStateException(sessionId, session.status, 'stop');
+    }
+
+    await this.updateSessionStatus(sessionId, 'stopping');
+
+    await this.lifecycleProducer.addDestroyTask({
+      sessionId,
+      tenantId,
+      ...(session.containerId ? { containerId: session.containerId } : {}),
+      ...(session.config.persistencePath
+        ? { persistencePath: session.config.persistencePath }
+        : {}),
+    });
+
+    this.logger.log(`Enqueued stop for sandbox ${sessionId}`);
+
+    return this.getSessionById(sessionId);
+  }
+
+  async startSandbox(
+    sessionId: string,
+    tenantId: string,
+  ): Promise<SandboxSession> {
+    const session = await this.getSessionById(sessionId);
+
+    if ((session.config.lifecycleMode ?? 'session') !== 'persistent') {
+      throw new SandboxNotPersistentException(sessionId);
+    }
+
+    if (session.status !== 'stopped') {
+      throw new SandboxInvalidStateException(
+        sessionId,
+        session.status,
+        'start',
+      );
+    }
+
+    await this.updateSessionStatus(sessionId, 'creating');
+
+    await this.lifecycleProducer.addCreateTask({
+      sessionId,
+      tenantId,
+      config: session.config,
+    });
+
+    this.logger.log(`Enqueued start for persistent sandbox ${sessionId}`);
+
+    return this.getSessionById(sessionId);
+  }
+
+  async deleteSandbox(sessionId: string, tenantId: string): Promise<void> {
+    const session = await this.getSessionById(sessionId);
+
+    if ((session.config.lifecycleMode ?? 'session') !== 'persistent') {
+      throw new SandboxNotPersistentException(sessionId);
+    }
+
+    // If sandbox is running, stop the container first
+    if (
+      session.containerId &&
+      !TERMINAL_STATUSES.includes(
+        session.status as (typeof TERMINAL_STATUSES)[number],
+      )
+    ) {
+      try {
+        await this.dockerService.stopContainer(session.containerId);
+        await this.dockerService.removeContainer(session.containerId);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to cleanup container for sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    await runInTenantTransaction(this.db, tenantId, async () => {
+      const tenantDb = getTenantDb(this.db);
+
+      // Delete associated logs first
+      await tenantDb
+        .delete(schema.sandboxLogs)
+        .where(eq(schema.sandboxLogs.sessionId, sessionId));
+
+      // Delete the session
+      await tenantDb
+        .delete(schema.sandboxSessions)
+        .where(eq(schema.sandboxSessions.id, sessionId));
+    });
+
+    this.logger.log(`Deleted persistent sandbox ${sessionId}`);
   }
 }

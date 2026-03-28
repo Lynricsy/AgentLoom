@@ -31,6 +31,7 @@ export const NODE_TYPES = [
   'memory',
   'agent',
   'skill',
+  'workspace',
 ] as const
 
 export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
@@ -302,7 +303,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Container',
     description: '代码执行沙箱环境',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [],
+    inputPorts: [
+      createPort('volume-in', '工作区', 'input', 'volume', { required: false }),
+    ],
     outputPorts: [
       createPort('sandbox-output', 'Sandbox 环境', 'output', 'sandbox', {
         multiple: true,
@@ -681,6 +684,28 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         skillDescription: createConfigField('string', '技能描述'),
       },
       required: ['skillId'],
+    },
+  },
+  workspace: {
+    type: 'workspace',
+    category: 'tool',
+    label: 'Workspace',
+    icon: 'FolderOpen',
+    description: '持久化工作区卷',
+    colorToken: CATEGORY_COLOR_TOKENS.tool,
+    inputPorts: [],
+    outputPorts: [
+      createPort('volume-output', '工作区卷', 'output', 'volume', {
+        description: '挂载到沙箱的工作区存储',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        workspaceId: createConfigField('string', 'Workspace ID'),
+        workspaceName: createConfigField('string', '工作区名称'),
+      },
+      required: ['workspaceId'],
     },
   },
 }

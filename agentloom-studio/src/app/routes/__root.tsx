@@ -42,6 +42,9 @@ import { mcpServersRoute } from './resources/mcp-servers'
 import { llmModelsRoute } from './resources/llm-models'
 import { resourceSkillsRoute } from './resources/skills'
 import { resourceKnowledgeBasesRoute } from './resources/knowledge-bases'
+import { memoryInstancesRoute } from './resources/memory-instances'
+import { workspacesRoute } from './resources/workspaces'
+import { sandboxesRoute } from './resources/sandboxes'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -142,4 +145,7 @@ export const routeTree = rootRoute.addChildren([
   resourceSkillsRoute,
   resourceKnowledgeBasesRoute,
   resourceKnowledgeBaseDetailRoute,
+  memoryInstancesRoute,
+  workspacesRoute,
+  sandboxesRoute,
 ]);

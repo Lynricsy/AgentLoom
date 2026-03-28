@@ -26,6 +26,7 @@ import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
 import { MemoryConfigPanel } from './MemoryConfigPanel'
+import { WorkspaceConfigPanel } from './WorkspaceConfigPanel'
 import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
 import { ConditionConfigPanel } from './ConditionConfigPanel'
 import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
@@ -142,6 +143,14 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
         config={node.data.config}
         onApply={onConfigChange}
         onValidationChange={onValidationChange}
+      />
+    ),
+  },
+  'workspace': {
+    render: ({ node, onConfigChange }) => (
+      <WorkspaceConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
       />
     ),
   },

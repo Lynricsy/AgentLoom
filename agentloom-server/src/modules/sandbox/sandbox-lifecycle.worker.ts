@@ -236,7 +236,16 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const { sessionId, tenantId } = data;
     const binding = this.resolveBinding(data);
 
-    const session = await this.findActiveSessionForBinding(binding, tenantId);
+    let session: schema.SandboxSession | null;
+    if (binding.executionId || binding.agentConversationId) {
+      session = await this.findActiveSessionForBinding(binding, tenantId);
+    } else {
+      // Standalone persistent sandbox — look up directly by sessionId
+      session = await this.sandboxService
+        .getSessionById(sessionId)
+        .catch(() => null);
+    }
+
     if (
       !session ||
       TERMINAL_SANDBOX_STATUSES.includes(
@@ -377,18 +386,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
     executionId?: string;
     agentConversationId?: string;
   } {
-    if (data.executionId || data.agentConversationId) {
-      return {
-        ...(data.executionId ? { executionId: data.executionId } : {}),
-        ...(data.agentConversationId
-          ? { agentConversationId: data.agentConversationId }
-          : {}),
-      };
-    }
-
-    throw new SandboxCreationException(
-      'Missing executionId and agentConversationId in sandbox lifecycle job data',
-    );
+    return {
+      ...(data.executionId ? { executionId: data.executionId } : {}),
+      ...(data.agentConversationId
+        ? { agentConversationId: data.agentConversationId }
+        : {}),
+    };
   }
 
   private getBindingId(binding: {
@@ -403,9 +406,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       return binding.agentConversationId;
     }
 
-    throw new SandboxCreationException(
-      'Missing executionId and agentConversationId in sandbox lifecycle binding',
-    );
+    return 'standalone';
   }
 
   private findActiveSessionForBinding(
@@ -426,9 +427,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
     }
 
-    throw new SandboxCreationException(
-      'Missing executionId and agentConversationId in sandbox lifecycle binding',
-    );
+    // Standalone persistent sandbox — no binding, return null
+    return Promise.resolve(null);
   }
 
   @OnWorkerEvent('failed')

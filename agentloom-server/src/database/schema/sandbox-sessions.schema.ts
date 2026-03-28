@@ -40,6 +40,8 @@ export interface SandboxConfig {
   lifecycleMode?: 'session' | 'persistent';
   /** persistent 模式下的过期时间（小时），超过后自动销毁（仅 persistent 模式生效） */
   persistenceExpiryHours?: number;
+  /** 持久沙箱名称（仅 persistent 模式使用） */
+  name?: string;
 }
 
 export const sandboxSessions = pgTable(
@@ -78,7 +80,7 @@ export const sandboxSessions = pgTable(
     ),
     check(
       'chk_sandbox_sessions_fk',
-      sql`execution_id IS NOT NULL OR agent_conversation_id IS NOT NULL`,
+      sql`execution_id IS NOT NULL OR agent_conversation_id IS NOT NULL OR (config->>'lifecycleMode') = 'persistent'`,
     ),
     ...createDirectTenantPolicies('sandbox_sessions'),
   ],

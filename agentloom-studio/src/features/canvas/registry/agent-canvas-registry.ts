@@ -57,6 +57,7 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'input-preprocessor',
   'skill',
   'sandbox',
+  'workspace',
 ] as const satisfies readonly AgentCanvasNodeType[]
 
 export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
@@ -279,7 +280,9 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       description: '为 Agent 提供隔离的代码执行沙箱环境',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
       maxInstances: 1,
-      inputPorts: [],
+      inputPorts: [
+        createPort('volume-in', '工作区', 'input', 'volume', { required: false }),
+      ],
       outputPorts: [
         createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
           description: '沙箱环境输出，连接到 Agent Main',
@@ -294,6 +297,32 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           timeoutSeconds: createConfigField('number', '超时时间（秒）', { default: 300 }),
         },
         required: [],
+      },
+    },
+  ],
+  [
+    'workspace',
+    {
+      type: 'workspace',
+      category: 'tool',
+      label: '工作区',
+      icon: 'FolderOpen',
+      description: '为 Agent 提供持久化工作区存储卷',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
+      maxInstances: 1,
+      inputPorts: [],
+      outputPorts: [
+        createPort('volume-output', '工作区卷', 'output', 'volume', {
+          description: '挂载到沙箱的工作区存储',
+        }),
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: createConfigField('string', 'Workspace ID'),
+          workspaceName: createConfigField('string', '工作区名称'),
+        },
+        required: ['workspaceId'],
       },
     },
   ],
