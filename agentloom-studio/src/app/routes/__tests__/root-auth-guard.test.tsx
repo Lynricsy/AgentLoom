@@ -31,6 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
     <a href={to} {...rest}>{children}</a>
   ),
+  useRouterState: vi.fn().mockReturnValue({ pathname: '/' }),
 }));
 
 vi.mock('@tanstack/router-devtools', () => ({
@@ -39,8 +40,7 @@ vi.mock('@tanstack/router-devtools', () => ({
 
 vi.mock('../index', () => ({ indexRoute: {} }));
 vi.mock('../workflows/$workflowId', () => ({ workflowCanvasRoute: {} }));
-vi.mock('../settings/knowledge-bases', () => ({ knowledgeBasesRoute: {} }));
-vi.mock('../settings/knowledge-bases/$knowledgeBaseId', () => ({ knowledgeBaseDetailRoute: {} }));
+vi.mock('../resources/knowledge-bases.$knowledgeBaseId', () => ({ resourceKnowledgeBaseDetailRoute: {} }));
 vi.mock('../executions/$executionId', () => ({ executionDebugRoute: {} }));
 vi.mock('../settings/tool-library', () => ({ toolLibraryRoute: {} }));
 vi.mock('../settings/audit-logs', () => ({ auditLogsRoute: {} }));

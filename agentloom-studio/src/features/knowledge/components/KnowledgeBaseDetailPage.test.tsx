@@ -186,7 +186,7 @@ describe('KnowledgeBaseDetailPage', () => {
     await userEvent.click(backButton)
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/settings/knowledge-bases',
+      to: '/resources/knowledge-bases',
     })
   })
 

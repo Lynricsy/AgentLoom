@@ -457,7 +457,7 @@ export function KnowledgeBaseDetailPage({
           variant="ghost"
           size="sm"
           onClick={() =>
-            void navigate({ to: '/settings/knowledge-bases' })
+            void navigate({ to: '/resources/knowledge-bases' })
           }
           aria-label="返回知识库列表"
         >

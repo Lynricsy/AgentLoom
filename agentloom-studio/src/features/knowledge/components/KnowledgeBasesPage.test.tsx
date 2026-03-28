@@ -211,7 +211,7 @@ describe('KnowledgeBasesPage', () => {
     await userEvent.click(screen.getByText('测试KB'))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/settings/knowledge-bases/$knowledgeBaseId',
+      to: '/resources/knowledge-bases/$knowledgeBaseId',
       params: { knowledgeBaseId: 'kb-123' },
     })
   })
@@ -266,7 +266,7 @@ describe('KnowledgeBasesPage', () => {
     })
 
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/settings/knowledge-bases/$knowledgeBaseId',
+      to: '/resources/knowledge-bases/$knowledgeBaseId',
       params: { knowledgeBaseId: 'kb-new' },
     })
   })

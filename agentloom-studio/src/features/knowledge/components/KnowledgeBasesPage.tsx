@@ -31,7 +31,7 @@ function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
 
 /**
  * 知识库列表页面
- * 路由: /settings/knowledge-bases
+ * 路由: /resources/knowledge-bases
  * 功能: 展示知识库卡片列表、搜索过滤、创建知识库
  */
 export function KnowledgeBasesPage() {
@@ -130,7 +130,7 @@ export function KnowledgeBasesPage() {
           setNewKbName('')
           setNewKbDescription('')
           void navigate({
-            to: '/settings/knowledge-bases/$knowledgeBaseId',
+            to: '/resources/knowledge-bases/$knowledgeBaseId',
             params: { knowledgeBaseId: createdKnowledgeBase.id },
           })
         },
@@ -165,7 +165,7 @@ export function KnowledgeBasesPage() {
   const handleCardClick = useCallback(
     (kb: KnowledgeBase) => {
       void navigate({
-        to: '/settings/knowledge-bases/$knowledgeBaseId',
+        to: '/resources/knowledge-bases/$knowledgeBaseId',
         params: { knowledgeBaseId: kb.id },
       })
     },

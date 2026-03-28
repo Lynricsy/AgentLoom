@@ -9,7 +9,6 @@ import {
   Activity,
   Server,
   Gauge,
-  BookOpen,
   Wrench,
 } from 'lucide-react'
 
@@ -23,7 +22,6 @@ const SETTINGS_GROUPS: SettingsNavGroup[] = [
     label: '通用',
     items: [
       { label: '工具库', to: '/settings/tool-library', icon: Wrench, matchPrefix: '/settings/tool-library' },
-      { label: '知识库', to: '/settings/knowledge-bases', icon: BookOpen, matchPrefix: '/settings/knowledge-bases' },
     ],
   },
   {

@@ -8,8 +8,7 @@ import { AppSidebar } from "@/shared/components/app-sidebar";
 import { SettingsLayout } from "@/shared/components/settings-layout";
 import { indexRoute } from "./index";
 import { workflowCanvasRoute } from "./workflows/$workflowId";
-import { knowledgeBasesRoute } from "./settings/knowledge-bases";
-import { knowledgeBaseDetailRoute } from "./settings/knowledge-bases/$knowledgeBaseId";
+import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
 import { executionDebugRoute } from "./executions/$executionId";
 import { toolLibraryRoute } from "./settings/tool-library";
 import { auditLogsRoute } from './settings/audit-logs'
@@ -111,8 +110,6 @@ export const routeTree = rootRoute.addChildren([
   workflowsIndexRoute,
   workflowCanvasRoute,
   executionDebugRoute,
-  knowledgeBasesRoute,
-  knowledgeBaseDetailRoute,
   toolLibraryRoute,
   auditLogsRoute,
   templatesRoute,
@@ -144,4 +141,5 @@ export const routeTree = rootRoute.addChildren([
   llmModelsRoute,
   resourceSkillsRoute,
   resourceKnowledgeBasesRoute,
+  resourceKnowledgeBaseDetailRoute,
 ]);
