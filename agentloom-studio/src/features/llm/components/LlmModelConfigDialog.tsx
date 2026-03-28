@@ -95,7 +95,6 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
     name: values.name.trim(),
     provider: values.provider,
     modelName: values.modelName.trim(),
-    apiKeyId: values.apiKeyId || null,
     parameters: {
       temperature: values.temperature,
       maxTokens: values.maxTokens ? Number.parseInt(values.maxTokens, 10) : undefined,
@@ -107,6 +106,10 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
     isDefault: values.isDefault,
   }
 
+  if (values.apiKeyId) {
+    payload.apiKeyId = values.apiKeyId
+  }
+
   if (values.provider === 'private_cloud') {
     payload.endpointUrl = values.endpointUrl || undefined
     payload.authMethod = values.authMethod || undefined
@@ -115,10 +118,11 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
         ? values.authConfig
         : undefined
     payload.timeoutMs = values.timeoutMs
-    payload.apiKeyId =
-      values.authMethod === 'api_key' && values.apiKeyId
-        ? values.apiKeyId
-        : null
+    if (values.authMethod === 'api_key' && values.apiKeyId) {
+      payload.apiKeyId = values.apiKeyId
+    } else {
+      delete payload.apiKeyId
+    }
   }
 
   return payload

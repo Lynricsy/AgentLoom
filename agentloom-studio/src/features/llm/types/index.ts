@@ -88,7 +88,7 @@ export interface CreateLlmModelInput {
   provider: LlmProvider
   modelName: string
   parameters: LlmParameters
-  apiKeyId?: string | null
+  apiKeyId?: string
   isDefault?: boolean
   endpointUrl?: string
   authMethod?: string

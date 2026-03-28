@@ -33,7 +33,7 @@ const createLlmModelConfigSchema = z
       .min(1, '模型名称不能为空')
       .max(100, '模型名称不能超过 100 个字符'),
     parameters: z.record(z.string(), z.unknown()).optional().default({}),
-    apiKeyId: z.string().uuid('API Key ID 格式无效').optional(),
+    apiKeyId: z.string().uuid('API Key ID 格式无效').nullish(),
     isDefault: z.boolean().optional().default(false),
     endpointUrl: z
       .string()
