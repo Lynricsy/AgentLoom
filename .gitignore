@@ -115,3 +115,4 @@ node-compile-cache/
 /agent-conversation-qa-*.png
 .amp/
 .ace-tool/
+evidence-*.png
