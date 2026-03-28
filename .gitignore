@@ -113,3 +113,4 @@ node-compile-cache/
 /qa-*.md
 /scenario-*.txt
 /agent-conversation-qa-*.png
+.amp/
