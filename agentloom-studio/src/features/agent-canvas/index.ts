@@ -1,5 +1,4 @@
 export { AgentCanvas } from './components/AgentCanvas';
-export { AgentGlobalConfigBar } from './components/AgentGlobalConfigBar';
 export { AgentNodeConfigPanel } from './components/panels/AgentNodeConfigPanel';
 export {
   useAgentCanvasStore,

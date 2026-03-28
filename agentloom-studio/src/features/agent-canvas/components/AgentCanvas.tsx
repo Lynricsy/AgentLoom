@@ -19,7 +19,6 @@ import {
   type AgentCanvasEdge,
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
-import { AgentGlobalConfigBar } from './AgentGlobalConfigBar';
 import { AgentNodeConfigPanel } from './panels/AgentNodeConfigPanel';
 
 const NODE_TYPES = {
@@ -145,8 +144,7 @@ export const AgentCanvas = memo(function AgentCanvas({
         <Controls showInteractive={false} />
       </ReactFlow>
 
-      <AgentNodePalette className="absolute top-3 left-[19.5rem] z-10" />
-      <AgentGlobalConfigBar />
+      <AgentNodePalette className="absolute top-3 left-3 z-10" />
       <AgentNodeConfigPanel />
     </div>
   );

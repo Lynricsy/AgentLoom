@@ -54,6 +54,7 @@
   --color-type-knowledge: #34d399;
   --color-type-skill: #A855F7;
   --color-type-exec: #94a3b8;
+  --color-type-volume: #22c55e;
 
   /* 兼容性色 (两主题共用) */
   --color-compat-l0: #22c55e;

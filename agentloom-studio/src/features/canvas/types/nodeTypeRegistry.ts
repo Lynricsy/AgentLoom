@@ -108,6 +108,7 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
   skill: { label: 'Skill', colorToken: 'var(--color-type-skill)', shape: 'diamond' },
   agent: { label: 'Agent', colorToken: '#F97316', shape: 'circle' },
   exec: { label: 'Exec', colorToken: 'var(--color-type-exec)', shape: 'arrow' },
+  volume: { label: 'Volume', colorToken: 'var(--color-type-volume)', shape: 'square' },
 }
 
 const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
@@ -739,6 +740,7 @@ function cloneTypeSchema(schema: TypeSchema): TypeSchema {
     case 'skill':
     case 'agent':
     case 'exec':
+    case 'volume':
       return {
         ...schema,
         examples: schema.examples ? [...schema.examples] : undefined,

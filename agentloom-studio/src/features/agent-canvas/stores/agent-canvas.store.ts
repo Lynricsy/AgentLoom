@@ -528,6 +528,11 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 state.isSaving = false;
                 state.lastSavedAt = Date.now();
               });
+
+              // 保存成功后自动编译（不阻塞保存流程）
+              get().actions.compileConfig().catch((compileError) => {
+                console.warn('[AgentCanvasStore] 自动编译失败（保存已成功）:', compileError);
+              });
             } catch (error) {
               set((state) => {
                 state.isSaving = false;

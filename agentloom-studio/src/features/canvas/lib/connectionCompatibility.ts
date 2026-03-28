@@ -315,6 +315,11 @@ export function arePortDataTypesCompatible(
     return sourceType === 'exec' && targetType === 'exec'
   }
 
+  // volume 端口只能连接 volume 端口（严格类型匹配）
+  if (sourceType === 'volume' || targetType === 'volume') {
+    return sourceType === 'volume' && targetType === 'volume'
+  }
+
   if (sourceType === targetType) {
     return true
   }
