@@ -512,7 +512,8 @@ export class AgentDefinitionService {
 
         case 'memory': {
           if (!agentMainNode || targetHandle === 'memory-in') {
-            const memoryInstanceId = data.memoryInstanceId ?? data.config?.memoryInstanceId;
+            const memoryInstanceId =
+              data.memoryInstanceId ?? data.config?.memoryInstanceId;
             if (typeof memoryInstanceId === 'string' && memoryInstanceId) {
               memoryInstanceIds.push(memoryInstanceId);
             }
@@ -545,7 +546,8 @@ export class AgentDefinitionService {
     if (inputPreprocessors.length > 0)
       config.inputPreprocessors = inputPreprocessors;
     if (skillIds.length > 0) config.skillIds = skillIds;
-    if (memoryInstanceIds.length > 0) config.memoryInstanceIds = memoryInstanceIds;
+    if (memoryInstanceIds.length > 0)
+      config.memoryInstanceIds = memoryInstanceIds;
 
     // 解析 workspace → sandbox 的 volume 边，注入 restoreWorkspaceId
     if (config.sandboxConfig) {

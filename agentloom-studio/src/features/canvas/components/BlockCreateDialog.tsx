@@ -21,7 +21,7 @@ const BLOCK_CATEGORY_OPTIONS = [
 const derivedPortSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1, '请输入端口名称'),
-  dataType: z.enum(['model', 'text', 'json', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent', 'exec']),
+  dataType: z.enum(['model', 'text', 'json', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent', 'exec', 'volume']),
   sourceNodeId: z.string().min(1),
   sourcePortId: z.string().min(1),
 })

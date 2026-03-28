@@ -25,6 +25,7 @@ const SCHEMA_TYPE_LABELS: Record<Exclude<PortDataType, 'json'>, string> = {
   skill: '技能',
   agent: 'Agent',
   exec: '执行',
+  volume: '卷',
 }
 
 function toCodePoints(value: string): string[] {
