@@ -45,6 +45,7 @@ import { resourceKnowledgeBasesRoute } from './resources/knowledge-bases'
 import { memoryInstancesRoute } from './resources/memory-instances'
 import { workspacesRoute } from './resources/workspaces'
 import { sandboxesRoute } from './resources/sandboxes'
+import { memoryInstanceBrowseRoute } from './resources/memory-instances.$instanceId.browse'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
 
@@ -148,4 +149,5 @@ export const routeTree = rootRoute.addChildren([
   memoryInstancesRoute,
   workspacesRoute,
   sandboxesRoute,
+  memoryInstanceBrowseRoute,
 ]);

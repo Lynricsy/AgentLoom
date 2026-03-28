@@ -27,3 +27,8 @@ export {
   ReviewVersionDto,
   ListPendingReviewsQueryDto,
 } from './memory-audit.dto';
+export {
+  BrowseQueryDto,
+  AddGlossaryKeywordDto,
+  RemoveGlossaryKeywordDto,
+} from './memory-browse.dto';

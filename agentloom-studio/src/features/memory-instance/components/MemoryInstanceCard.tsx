@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
-import { MoreVertical, Pencil, Trash2, Archive, RotateCcw, Brain } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { MoreVertical, Pencil, Trash2, Archive, RotateCcw, Brain, Eye } from 'lucide-react'
 import { formatRelativeTime } from '@/features/canvas'
 import { cn } from '@/shared/lib/utils'
 import type { MemoryInstance } from '../types'
@@ -159,8 +160,16 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
       )}
 
       {/* Footer */}
-      <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
         <span>创建于 {formatRelativeTime(new Date(instance.createdAt))}</span>
+        <Link
+          to="/resources/memory-instances/$instanceId/browse"
+          params={{ instanceId: instance.id }}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          浏览
+        </Link>
       </div>
     </article>
   )

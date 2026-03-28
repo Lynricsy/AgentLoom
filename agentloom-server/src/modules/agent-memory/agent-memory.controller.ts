@@ -55,6 +55,9 @@ import {
   ReviewVersionDto,
   RollbackVersionDto,
   UpdateMemoryInstanceDto,
+  BrowseQueryDto,
+  AddGlossaryKeywordDto,
+  RemoveGlossaryKeywordDto,
 } from './dto';
 import { BootProtocolService } from './services/boot-protocol.service';
 import { GlossaryService } from './services/glossary.service';
@@ -394,6 +397,134 @@ export class AgentMemoryController {
     return { data: result };
   }
 
+  @Get(':id/browse')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '浏览记忆节点（含子节点和面包屑）' })
+  @ApiParam({ name: 'id', description: '记忆实例 ID' })
+  @ApiResponse({ status: 200, description: '浏览成功' })
+  async browse(
+    @CurrentTenant() tenantId: string,
+    @Param('id') id: string,
+    @Query() query: BrowseQueryDto,
+  ) {
+    const tenantDb = getTenantDb(this.db);
+    const uri = query.uri;
+
+    // Parse domain and path from URI
+    const sepIdx = uri.indexOf('://');
+    const domain = sepIdx > 0 ? uri.slice(0, sepIdx) : '';
+    const pathString = sepIdx > 0 ? uri.slice(sepIdx + 3) : '';
+
+    // Build breadcrumbs
+    const segments = pathString ? pathString.split('/') : [];
+    const breadcrumbs = segments.map((seg, i) => ({
+      path: segments.slice(0, i + 1).join('/'),
+      label: seg,
+    }));
+
+    // Resolve main node (null if browsing domain root)
+    let enrichedNode: Record<string, unknown> | null = null;
+    if (pathString) {
+      try {
+        const node = await this.pathResolverService.resolveUri(id, uri);
+        enrichedNode = await this.enrichNodeForBrowse(node, domain, pathString);
+      } catch (e) {
+        if (!(e instanceof NotFoundException)) throw e;
+      }
+    }
+
+    // Get child paths
+    const childPaths = await this.pathResolverService.listChildren(id, uri);
+    const children: Record<string, unknown>[] = [];
+
+    for (const childPath of childPaths) {
+      const childName =
+        childPath.pathString.split('/').pop() ?? childPath.pathString;
+
+      if (query.navOnly) {
+        // Lightweight data for sidebar tree navigation
+        const [childCountRow] = await tenantDb
+          .select({ total: count() })
+          .from(memoryEdges)
+          .where(eq(memoryEdges.parentNodeId, childPath.nodeId));
+
+        children.push({
+          id: childPath.nodeId,
+          nodeUuid: childPath.nodeId,
+          name: childName,
+          path: childPath.pathString,
+          domain,
+          content: null,
+          contentType: 'text',
+          priority: 0,
+          disclosure: '0',
+          isVirtual: false,
+          aliases: [],
+          glossaryKeywords: [],
+          glossaryMatches: [],
+          approxChildrenCount: childCountRow?.total ?? 0,
+          versionCount: 0,
+          latestVersion: 0,
+          createdAt: childPath.createdAt,
+          updatedAt: childPath.createdAt,
+        });
+      } else {
+        // Full enrichment for children
+        const [childNode] = await tenantDb
+          .select()
+          .from(memoryNodes)
+          .where(eq(memoryNodes.id, childPath.nodeId))
+          .limit(1);
+
+        if (childNode) {
+          children.push(
+            await this.enrichNodeForBrowse(
+              childNode,
+              domain,
+              childPath.pathString,
+            ),
+          );
+        }
+      }
+    }
+
+    return {
+      data: {
+        node: enrichedNode,
+        children,
+        breadcrumbs,
+      },
+    };
+  }
+
+  @Get(':id/domains')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '获取记忆域列表（含根节点计数）' })
+  @ApiParam({ name: 'id', description: '记忆实例 ID' })
+  @ApiResponse({ status: 200, description: '查询成功' })
+  async listDomains(
+    @CurrentTenant() tenantId: string,
+    @Param('id') id: string,
+  ) {
+    const tenantDb = getTenantDb(this.db);
+
+    const rows = await tenantDb
+      .select({
+        domain: memoryPaths.domain,
+        rootCount: count(),
+      })
+      .from(memoryPaths)
+      .where(
+        and(
+          eq(memoryPaths.instanceId, id),
+          sql`${memoryPaths.pathString} NOT LIKE '%/%'`,
+        ),
+      )
+      .groupBy(memoryPaths.domain);
+
+    return { data: rows };
+  }
+
   @Get(':id/search')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '全文搜索记忆节点' })
@@ -541,6 +672,46 @@ export class AgentMemoryController {
         totalPages: Math.ceil(total / pageSize),
       },
     };
+  }
+
+  // ─── Glossary Operations ────────────────────────────────────────────
+
+  @Post(':id/nodes/:nodeId/glossary')
+  @Roles('owner', 'admin', 'creator')
+  @ApiOperation({ summary: '添加术语表关键词' })
+  @ApiParam({ name: 'id', description: '记忆实例 ID' })
+  @ApiParam({ name: 'nodeId', description: '节点 ID' })
+  @ApiResponse({ status: 201, description: '创建成功' })
+  @ApiResponse({ status: 409, description: '关键词已存在' })
+  async addGlossaryKeyword(
+    @CurrentTenant() tenantId: string,
+    @Param('id') id: string,
+    @Param('nodeId') nodeId: string,
+    @Body() dto: AddGlossaryKeywordDto,
+  ) {
+    const keyword = await this.glossaryService.addKeyword(
+      id,
+      dto.keyword,
+      nodeId,
+    );
+
+    return { data: keyword };
+  }
+
+  @Delete(':id/nodes/:nodeId/glossary')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '移除术语表关键词' })
+  @ApiParam({ name: 'id', description: '记忆实例 ID' })
+  @ApiParam({ name: 'nodeId', description: '节点 ID' })
+  @ApiResponse({ status: 204, description: '删除成功' })
+  async removeGlossaryKeyword(
+    @CurrentTenant() tenantId: string,
+    @Param('id') id: string,
+    @Param('nodeId') nodeId: string,
+    @Body() dto: RemoveGlossaryKeywordDto,
+  ) {
+    await this.glossaryService.removeKeyword(id, dto.keyword, nodeId);
   }
 
   // ─── Edge Operations ─────────────────────────────────────────────────
@@ -878,6 +1049,58 @@ export class AgentMemoryController {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
+    };
+  }
+
+  // ─── Private Helpers ──────────────────────────────────────────────
+
+  private async enrichNodeForBrowse(
+    node: {
+      id: string;
+      contentType: string;
+      disclosureLevel: number;
+      createdAt: Date;
+    },
+    domain: string,
+    pathString: string,
+  ): Promise<Record<string, unknown>> {
+    const tenantDb = getTenantDb(this.db);
+
+    const [paths, versions, [childCountRow], glossaryKeywords] =
+      await Promise.all([
+        this.pathResolverService.getPathsByNode(node.id),
+        this.memoryVersionService.getVersionHistory(node.id),
+        tenantDb
+          .select({ total: count() })
+          .from(memoryEdges)
+          .where(eq(memoryEdges.parentNodeId, node.id)),
+        this.glossaryService.getKeywordsForNode(node.id),
+      ]);
+
+    const latestVersion = versions[0] ?? null;
+    const content = latestVersion?.content ?? null;
+    const name = pathString.split('/').pop() ?? pathString;
+
+    return {
+      id: node.id,
+      nodeUuid: node.id,
+      name,
+      path: pathString,
+      domain,
+      content,
+      contentType: node.contentType,
+      priority: 0,
+      disclosure: String(node.disclosureLevel),
+      isVirtual: versions.length === 0,
+      aliases: paths.map((p) => `${p.domain}://${p.pathString}`),
+      glossaryKeywords: glossaryKeywords.map((k) => k.keyword),
+      glossaryMatches: [],
+      approxChildrenCount: childCountRow?.total ?? 0,
+      contentSnippet: content ? content.slice(0, 200) : undefined,
+      versionCount: versions.length,
+      latestVersion: latestVersion?.version ?? 0,
+      createdAt: node.createdAt,
+      updatedAt: latestVersion?.createdAt ?? node.createdAt,
     };
   }
 }
