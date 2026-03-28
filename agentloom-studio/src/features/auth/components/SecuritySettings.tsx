@@ -36,6 +36,31 @@ interface SecurityInfo {
   activeMfaFactors: Array<{ id: string; type: string; createdAt: string }>
 }
 
+interface SecurityInfoResponse {
+  mfa: {
+    enabled: boolean
+    factors: Array<{
+      id: string
+      factorType: string
+      status: 'verified' | 'unverified'
+      createdAt: string
+    }>
+  }
+}
+
+interface SessionListResponse {
+  data: {
+    sessions: Array<{
+      id: string
+      userAgent: string | null
+      ip: string | null
+      createdAt: string | null
+      lastActiveAt: string | null
+      isCurrent: boolean
+    }>
+  }
+}
+
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, '请输入当前密码'),
@@ -88,8 +113,19 @@ export function SecuritySettings() {
   const fetchSecurityInfo = useCallback(async () => {
     try {
       setSecurityLoading(true)
-      const data = await apiClient.get('auth/security').json<SecurityInfo>()
-      setSecurityInfo(data)
+      const response = await apiClient
+        .get('auth/security')
+        .json<SecurityInfoResponse>()
+      setSecurityInfo({
+        mfaEnabled: response.mfa.enabled,
+        activeMfaFactors: response.mfa.factors
+          .filter((factor) => factor.status === 'verified')
+          .map((factor) => ({
+            id: factor.id,
+            type: factor.factorType,
+            createdAt: factor.createdAt,
+          })),
+      })
     } catch {
       setSecurityInfo({ mfaEnabled: false, activeMfaFactors: [] })
     } finally {
@@ -100,8 +136,19 @@ export function SecuritySettings() {
   const fetchSessions = useCallback(async () => {
     try {
       setSessionsLoading(true)
-      const data = await apiClient.get('auth/sessions').json<SessionInfo[]>()
-      setSessions(data)
+      const response = await apiClient
+        .get('auth/sessions')
+        .json<SessionListResponse>()
+      setSessions(
+        response.data.sessions.map((session) => ({
+          id: session.id,
+          createdAt: session.createdAt ?? '',
+          updatedAt: session.lastActiveAt ?? session.createdAt ?? '',
+          userAgent: session.userAgent ?? '',
+          ip: session.ip ?? '',
+          isCurrent: session.isCurrent,
+        })),
+      )
     } catch {
       notify({ description: '获取会话列表失败', variant: 'error' })
     } finally {
@@ -439,8 +486,12 @@ function parseUserAgent(ua: string): string {
 }
 
 function formatSessionTime(isoString: string): string {
+  if (!isoString) return '未知时间'
+
   try {
     const date = new Date(isoString)
+    if (Number.isNaN(date.getTime())) return '未知时间'
+
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMin = Math.floor(diffMs / 60000)

@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockNavigate = vi.fn();
-const mockSignUp = vi.fn();
+const mockApiPost = vi.fn();
+const mockApiJson = vi.fn();
+const mockSetSession = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
@@ -24,13 +26,14 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/shared/lib/supabase', () => ({
   supabase: {
     auth: {
-      signUp: (...args: unknown[]) => mockSignUp(...args),
-      signInWithOAuth: vi.fn().mockResolvedValue({ error: null }),
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
-      onAuthStateChange: vi.fn().mockReturnValue({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      }),
+      setSession: (...args: unknown[]) => mockSetSession(...args),
     },
+  },
+}));
+
+vi.mock('@/shared/api/client', () => ({
+  apiClient: {
+    post: (...args: unknown[]) => mockApiPost(...args),
   },
 }));
 
@@ -43,10 +46,19 @@ import { RegisterPage } from '../register';
 describe('RegisterPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSignUp.mockResolvedValue({
-      data: { user: {}, session: null },
-      error: null,
+    mockApiPost.mockReturnValue({
+      json: mockApiJson,
     });
+    mockApiJson.mockResolvedValue({
+      data: {
+        tokens: {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+          expiresIn: 3600,
+        },
+      },
+    });
+    mockSetSession.mockResolvedValue({ error: null });
   });
 
   it('渲染注册表单', () => {
@@ -69,7 +81,7 @@ describe('RegisterPage', () => {
       expect(screen.getByText('请输入有效的邮箱地址')).toBeInTheDocument();
     });
 
-    expect(mockSignUp).not.toHaveBeenCalled();
+    expect(mockApiPost).not.toHaveBeenCalled();
   });
 
   it('弱密码显示 NFR12 校验错误', async () => {
@@ -90,7 +102,7 @@ describe('RegisterPage', () => {
       expect(screen.getByText('密码至少 8 个字符')).toBeInTheDocument();
     });
 
-    expect(mockSignUp).not.toHaveBeenCalled();
+    expect(mockApiPost).not.toHaveBeenCalled();
   });
 
   it('缺少大写字母显示校验错误', async () => {
@@ -133,7 +145,7 @@ describe('RegisterPage', () => {
     });
   });
 
-  it('有效表单提交调用 signUp 并导航到登录页', async () => {
+  it('有效表单提交调用后端注册并初始化会话后跳转 onboarding', async () => {
     render(<RegisterPage />);
 
     fireEvent.change(screen.getByLabelText('邮箱'), {
@@ -148,10 +160,45 @@ describe('RegisterPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '注册' }));
 
     await waitFor(() => {
-      expect(mockSignUp).toHaveBeenCalledWith({
-        email: 'fox@ling.plus',
-        password: 'Password123',
+      expect(mockApiPost).toHaveBeenCalledWith('auth/register', {
+        json: {
+          email: 'fox@ling.plus',
+          password: 'Password123',
+        },
       });
+      expect(mockSetSession).toHaveBeenCalledWith({
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+      });
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: '/onboarding',
+      });
+    });
+  });
+
+  it('需要邮箱确认时跳转回登录页', async () => {
+    mockApiJson.mockResolvedValueOnce({
+      data: {
+        tokens: null,
+        emailConfirmationRequired: true,
+      },
+    });
+
+    render(<RegisterPage />);
+
+    fireEvent.change(screen.getByLabelText('邮箱'), {
+      target: { value: 'fox@ling.plus' },
+    });
+    fireEvent.change(screen.getByLabelText('密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.change(screen.getByLabelText('确认密码'), {
+      target: { value: 'Password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '注册' }));
+
+    await waitFor(() => {
+      expect(mockSetSession).not.toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith({
         to: '/login',
         search: { registered: 'true' },
@@ -160,10 +207,7 @@ describe('RegisterPage', () => {
   });
 
   it('API 错误时显示 server error', async () => {
-    mockSignUp.mockResolvedValue({
-      data: null,
-      error: { message: 'User already registered' },
-    });
+    mockApiJson.mockRejectedValue(new Error('User already registered'));
 
     render(<RegisterPage />);
 
@@ -185,10 +229,11 @@ describe('RegisterPage', () => {
     });
 
     expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockSetSession).not.toHaveBeenCalled();
   });
 
   it('网络异常时显示通用错误', async () => {
-    mockSignUp.mockRejectedValue(new Error('network error'));
+    mockApiJson.mockRejectedValue({});
 
     render(<RegisterPage />);
 

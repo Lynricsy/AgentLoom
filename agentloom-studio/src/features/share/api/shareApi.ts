@@ -1,4 +1,5 @@
 import { apiClient, toSnakeBody } from '@/shared/api/client';
+import type { ApiResponse } from '@/shared/types/api';
 import type {
   CreateSharePayload,
   PublicShareData,
@@ -9,9 +10,11 @@ import type {
 export async function createShare(
   payload: CreateSharePayload,
 ): Promise<ShareRecord> {
-  return apiClient
+  const response = await apiClient
     .post('workflow-shares', { json: toSnakeBody(payload) })
-    .json<ShareRecord>();
+    .json<ApiResponse<ShareRecord>>();
+
+  return response.data;
 }
 
 export async function listShares(

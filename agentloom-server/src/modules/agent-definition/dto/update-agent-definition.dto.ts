@@ -12,6 +12,7 @@ export const UpdateAgentDefinitionSchema = z
     description: z
       .string()
       .max(2000, { message: 'Agent 描述不能超过 2000 个字符' })
+      .nullable()
       .optional(),
 
     icon: z

@@ -10,7 +10,7 @@ export async function fetchPlugins(params?: {
 }): Promise<PaginatedResponse<PluginListItem>> {
   const searchParams = new URLSearchParams()
   if (params?.page) searchParams.set('page', String(params.page))
-  if (params?.pageSize) searchParams.set('page_size', String(params.pageSize))
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize))
   if (params?.search) searchParams.set('search', params.search)
   if (params?.status) searchParams.set('status', params.status)
 

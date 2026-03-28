@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
+import { HTTPError } from 'ky';
 import { z } from 'zod';
 
 import { AuthLayout } from '@/features/auth/components/AuthLayout';
 import { PasswordInput } from '@/features/auth/components/PasswordInput';
+import { apiClient } from '@/shared/api/client';
 import { supabase } from '@/shared/lib/supabase';
 import { Input } from '@/shared/ui/input';
 import { rootRoute } from '../__root';
@@ -32,6 +34,44 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+interface RegisterResponse {
+  data: {
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+    } | null;
+    emailConfirmationRequired?: boolean;
+  };
+}
+
+async function readRegisterErrorMessage(error: unknown): Promise<string> {
+  if (error instanceof HTTPError) {
+    try {
+      const payload = (await error.response.json()) as {
+        detail?: unknown;
+        message?: unknown;
+      };
+
+      if (typeof payload.detail === 'string' && payload.detail.length > 0) {
+        return payload.detail;
+      }
+
+      if (typeof payload.message === 'string' && payload.message.length > 0) {
+        return payload.message;
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+
+  return '注册过程中发生未知错误，请稍后重试';
+}
+
 export function RegisterPage() {
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -49,14 +89,36 @@ export function RegisterPage() {
   const onSubmit = async (data: RegisterFormValues) => {
     setServerError(null);
     setIsSubmitting(true);
-    try {
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-      });
 
-      if (error) {
-        setServerError(error.message);
+    try {
+      const result = await apiClient
+        .post('auth/register', {
+          json: {
+            email: data.email,
+            password: data.password,
+          },
+        })
+        .json<RegisterResponse>();
+
+      if (
+        result.data.tokens?.accessToken &&
+        result.data.tokens.refreshToken
+      ) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: result.data.tokens.accessToken,
+          refresh_token: result.data.tokens.refreshToken,
+        });
+
+        if (sessionError) {
+          setServerError('注册成功，但初始化登录状态失败，请前往登录页继续');
+          navigate({
+            to: '/login',
+            search: { registered: 'true' },
+          });
+          return;
+        }
+
+        navigate({ to: '/onboarding' });
         return;
       }
 
@@ -64,8 +126,8 @@ export function RegisterPage() {
         to: '/login',
         search: { registered: 'true' },
       });
-    } catch {
-      setServerError('注册过程中发生未知错误，请稍后重试');
+    } catch (error) {
+      setServerError(await readRegisterErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }

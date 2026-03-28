@@ -366,11 +366,15 @@ export function AgentSettingsPanel({ agentId, open, onClose }: AgentSettingsPane
   const handleSaveBasicInfo = useCallback(
     async (data: { name: string; description: string }) => {
       if (!agent) return
+
+      const trimmedName = data.name.trim()
+      const trimmedDescription = data.description.trim()
+
       try {
         await updateMutation.mutateAsync({
           version: agent.version,
-          name: data.name,
-          description: data.description || null,
+          name: trimmedName,
+          description: trimmedDescription || null,
         })
         notify({ title: '保存成功', description: 'Agent 信息已更新', variant: 'success' })
       } catch {

@@ -1,0 +1,2 @@
+ALTER TABLE "sandbox_sessions" DROP CONSTRAINT "chk_sandbox_sessions_fk";--> statement-breakpoint
+ALTER TABLE "sandbox_sessions" ADD CONSTRAINT "chk_sandbox_sessions_fk" CHECK (execution_id IS NOT NULL OR agent_conversation_id IS NOT NULL OR (config->>'lifecycleMode') = 'persistent');
