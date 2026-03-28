@@ -12,6 +12,7 @@ import {
 import type { ExecutionDetail, ExecutionStep, ExecutionStepStatus } from '../types'
 import { stepStatusMeta } from '../lib/presentation'
 import { cn } from '@/shared/lib/utils'
+import { useTheme } from '@/shared/hooks/use-theme'
 
 interface ReadonlyCanvasProps {
   graph: ExecutionDetail['workflowVersion']['graph']
@@ -83,6 +84,7 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
   selectedNodeId,
   onSelectNode,
 }: ReadonlyCanvasProps) {
+  const { resolvedTheme } = useTheme()
   const stepStatusByNodeId = useMemo(
     () => new Map(steps.map((step) => [step.nodeId, step.status])),
     [steps],
@@ -166,7 +168,7 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         zoomOnDoubleClick={false}
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
-        colorMode="dark"
+        colorMode={resolvedTheme}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <Controls showInteractive={false} className="!border-border !bg-surface-elevated !shadow-lg" />

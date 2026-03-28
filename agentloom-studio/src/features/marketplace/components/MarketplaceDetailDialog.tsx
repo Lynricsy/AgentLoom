@@ -12,6 +12,7 @@ import {
 import { Download, Loader2, Puzzle, Workflow, X } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import { useTheme } from '@/shared/hooks/use-theme'
 import {
   useListingReviews,
   usePublicListingDetail,
@@ -112,6 +113,7 @@ function WorkflowPreviewSection({
   listing: ListingDetailType & { listingType: 'workflow' }
   onInstallClick: () => void
 }) {
+  const { resolvedTheme } = useTheme()
   const previewNodes = useMemo(
     () => toPreviewNodes(listing.definition.nodes),
     [listing.definition.nodes],
@@ -156,7 +158,7 @@ function WorkflowPreviewSection({
               zoomOnDoubleClick={false}
               deleteKeyCode={null}
               proOptions={{ hideAttribution: true }}
-              colorMode="dark"
+              colorMode={resolvedTheme}
             >
               <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             </ReactFlow>

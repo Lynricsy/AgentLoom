@@ -13,6 +13,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import { Loader2, X } from 'lucide-react'
+import { useTheme } from '@/shared/hooks/use-theme'
 import { useToast } from '@/shared/ui/toast'
 import { useCreateWorkflow } from '@/features/workflow'
 import type { TemplateDetail } from '../types'
@@ -37,6 +38,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
 }: TemplateWizardDialogProps) {
   const navigate = useNavigate()
   const { notify } = useToast()
+  const { resolvedTheme } = useTheme()
   const createWorkflow = useCreateWorkflow()
 
   const {
@@ -183,7 +185,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                       zoomOnDoubleClick={false}
                       deleteKeyCode={null}
                       proOptions={{ hideAttribution: true }}
-                      colorMode="dark"
+                      colorMode={resolvedTheme}
                     >
                       <Background
                         variant={BackgroundVariant.Dots}

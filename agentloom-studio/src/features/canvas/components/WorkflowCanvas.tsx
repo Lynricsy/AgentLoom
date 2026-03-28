@@ -12,6 +12,7 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
+import { useTheme } from '@/shared/hooks/use-theme'
 import { useToast } from '@/shared/ui/toast'
 import type { WorkflowStatus } from '@/features/workflow/types'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -315,6 +316,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     toggleSearch,
   } = useCanvasActions()
   const { notify } = useToast()
+  const { resolvedTheme } = useTheme()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
   const isReadOnly = workflowStatus === 'archived'
@@ -926,7 +928,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         zoomOnScroll
         zoomOnDoubleClick={false}
         proOptions={{ hideAttribution: true }}
-        colorMode="dark"
+        colorMode={resolvedTheme}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <Controls

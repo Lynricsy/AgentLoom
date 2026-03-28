@@ -7,6 +7,10 @@ beforeEach(() => {
   vi.useRealTimers()
 })
 
+vi.mock('@/shared/hooks/use-theme', () => ({
+  useTheme: () => ({ theme: 'light', resolvedTheme: 'light', setTheme: vi.fn() }),
+}))
+
 vi.mock('@/shared/lib/supabase', () => ({
   supabase: {
     auth: {
