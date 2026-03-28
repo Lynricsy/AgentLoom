@@ -7,6 +7,16 @@ RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm nodejs npm git python ripgrep fd curl make gcc && \
     pacman -Scc --noconfirm
 
+# uv: fast Python package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    ln -s /root/.local/bin/uv /usr/local/bin/uv && \
+    ln -s /root/.local/bin/uvx /usr/local/bin/uvx
+
+# bun: fast JavaScript/TypeScript runtime
+RUN curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
+    ln -s /root/.bun/bin/bunx /usr/local/bin/bunx
+
 # /workspace is the agent working dir; healthcheck verifies its existence
 RUN mkdir -p /workspace
 
