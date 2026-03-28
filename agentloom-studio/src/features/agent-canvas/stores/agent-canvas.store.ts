@@ -431,7 +431,14 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           },
 
           saveCanvas: async () => {
-            const { agentId, nodes, edges, viewport, globalSandboxConfig, workspaceId, memoryInstanceIds, version } = get();
+            const {
+              agentId,
+              nodes,
+              edges,
+              viewport,
+              globalSandboxConfig,
+              inputSchema,
+            } = get();
             if (!agentId) return;
 
             set((state) => {
@@ -442,19 +449,17 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               const response = await apiClient
                 .put(`agent-definitions/${agentId}/canvas`, {
                   json: {
-                    nodes,
-                    edges,
-                    viewport,
-                    sandboxConfig: globalSandboxConfig,
-                    workspaceSnapshotId: workspaceId,
-                    memoryInstanceIds,
-                    version,
+                    canvasNodes: nodes,
+                    canvasEdges: edges,
+                    canvasViewport: viewport,
+                    globalSandboxConfig,
+                    inputSchema,
                   },
                 })
-                .json<{ version: number }>();
+                .json<ApiResponse<Pick<AgentDefinition, 'version'>>>();
 
               set((state) => {
-                state.version = response.version;
+                state.version = response.data.version;
                 state.isDirty = false;
                 state.isSaving = false;
                 state.lastSavedAt = Date.now();

@@ -1,9 +1,12 @@
+import { HTTPError } from 'ky';
 import { memo, useCallback, useState } from 'react';
 import { BrainCircuit, Container } from 'lucide-react';
 import { Switch } from '@/shared/ui/switch';
 import { Select } from '@/shared/ui/select';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
+import type { ApiError } from '@/shared/types/api';
+import { useToast } from '@/shared/ui/toast';
 import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances';
 import {
   useAgentCanvasActions,
@@ -19,6 +22,24 @@ const WORKSPACE_OPTIONS = [
   { value: '__none__', label: '(None)' },
   { value: 'default', label: 'Default Workspace' },
 ];
+
+type ApiProblemDetails = ApiError & {
+  errors?: Array<{ field?: string; message?: string }>;
+};
+
+async function resolveSaveErrorMessage(error: unknown): Promise<string> {
+  const fallback = 'Agent 画布保存失败，请稍后重试。';
+  if (!(error instanceof HTTPError)) {
+    return fallback;
+  }
+
+  try {
+    const payload = (await error.response.clone().json()) as ApiProblemDetails;
+    return payload.detail ?? payload.errors?.[0]?.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const InputSchemaEditor = memo(function InputSchemaEditor({
   schema,
@@ -103,6 +124,7 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
 }: {
   className?: string;
 }) {
+  const { notify } = useToast();
   const lifecycle = useAgentSandboxLifecycle();
   const workspaceId = useAgentWorkspaceId();
   const inputSchema = useAgentInputSchema();
@@ -131,6 +153,16 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
     },
     [memoryInstanceIds, setMemoryInstanceIds],
   );
+
+  const handleSave = useCallback(() => {
+    void saveCanvas().catch(async (error) => {
+      notify({
+        title: '保存失败',
+        description: await resolveSaveErrorMessage(error),
+        variant: 'error',
+      });
+    });
+  }, [notify, saveCanvas]);
 
   return (
     <div
@@ -276,7 +308,7 @@ export const AgentGlobalConfigBar = memo(function AgentGlobalConfigBar({
               variant="outline"
               size="sm"
               className="flex-1 text-xs"
-              onClick={() => void saveCanvas()}
+              onClick={handleSave}
               disabled={isSaving || !isDirty}
             >
               {isSaving ? 'Saving...' : 'Save'}
