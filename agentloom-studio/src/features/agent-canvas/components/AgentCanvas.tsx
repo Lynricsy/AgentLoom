@@ -25,6 +25,7 @@ const NODE_TYPES = {
   agent: CanvasNodeShell,
   tool: CanvasNodeShell,
   knowledge: CanvasNodeShell,
+  memory: CanvasNodeShell,
   control: CanvasNodeShell,
 };
 

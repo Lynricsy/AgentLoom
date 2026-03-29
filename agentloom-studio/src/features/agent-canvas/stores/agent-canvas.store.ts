@@ -22,6 +22,7 @@ import type { CanvasNodeData, CanvasEdgeData } from '@/features/canvas/types';
 import type { AgentCanvasNodeType } from '@/features/canvas/registry/agent-canvas-registry';
 import { AGENT_CANVAS_NODE_REGISTRY } from '@/features/canvas/registry/agent-canvas-registry';
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
+import { clonePortDefinitions } from '@/features/canvas/types/nodeTypeRegistry';
 
 enableMapSet();
 
@@ -205,6 +206,46 @@ function createRequiredNode(
 
 const AGENT_MAIN_DEFAULT_POSITION = { x: 400, y: 300 };
 const SANDBOX_DEFAULT_POSITION = { x: 600, y: 300 };
+const PORT_STATEFUL_AGENT_NODE_TYPES = new Set<AgentCanvasNodeType>(['smart-routing']);
+
+function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
+  const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined;
+  if (!nodeType) {
+    return node;
+  }
+
+  const config = AGENT_CANVAS_NODE_REGISTRY.get(nodeType);
+  if (!config) {
+    return node;
+  }
+
+  const shouldPreserveStoredPorts = PORT_STATEFUL_AGENT_NODE_TYPES.has(nodeType);
+  const nextInputPorts =
+    shouldPreserveStoredPorts && node.data.inputPorts.length > 0
+      ? node.data.inputPorts
+      : clonePortDefinitions(config.inputPorts);
+  const nextOutputPorts =
+    shouldPreserveStoredPorts && node.data.outputPorts.length > 0
+      ? node.data.outputPorts
+      : clonePortDefinitions(config.outputPorts);
+
+  return {
+    ...node,
+    type: config.category,
+    data: {
+      ...node.data,
+      label: node.data.label || config.label,
+      category: config.category,
+      description: node.data.description || config.description,
+      inputPorts: nextInputPorts,
+      outputPorts: nextOutputPorts,
+    },
+  };
+}
+
+function normalizePersistedNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
+  return nodes.map(normalizePersistedNode);
+}
 
 function ensureRequiredNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
   const hasAgentMain = nodes.some((n) => (n.data?.nodeType as string) === 'agent-main');
@@ -461,9 +502,10 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
             set((state) => {
               const rawNodes = (data.nodes as AgentCanvasNode[]) ?? [];
               const isNewCanvas = rawNodes.length === 0;
+              const normalizedNodes = normalizePersistedNodes(rawNodes);
               state.nodes = isNewCanvas
                 ? createInitialNodes()
-                : ensureRequiredNodes(rawNodes);
+                : ensureRequiredNodes(normalizedNodes);
               state.edges = (data.edges as AgentCanvasEdge[]) ?? [];
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
               state.globalSandboxConfig = {

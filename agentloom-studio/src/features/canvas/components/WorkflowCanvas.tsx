@@ -82,6 +82,7 @@ const nodeTypes: NodeTypes = {
   tool: CanvasNodeShell,
   trigger: CanvasNodeShell,
   knowledge: CanvasNodeShell,
+  memory: CanvasNodeShell,
   output: CanvasNodeShell,
   control: CanvasNodeShell,
 }

@@ -53,6 +53,7 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'smart-routing',
   'mcp-tool',
   'knowledge-base',
+  'memory',
   'sub-agent',
   'input-preprocessor',
   'skill',
@@ -171,6 +172,38 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           topK: createConfigField('number', '返回条数', { default: 5 }),
         },
         required: ['knowledgeBaseId'],
+      },
+    },
+  ],
+  [
+    'memory',
+    {
+      type: 'memory',
+      category: 'memory',
+      label: 'Memory',
+      icon: 'BrainCircuit',
+      description: '图谱记忆实例节点',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.memory,
+      inputPorts: [],
+      outputPorts: [
+        createPort('memory-out-0', 'Memory', 'output', 'json', {
+          description: '记忆会话引用',
+        }),
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          memoryInstanceId: createConfigField('string', 'Memory Instance'),
+          role: createConfigField('string', '角色', {
+            enum: ['primary', 'readonly'],
+            default: 'primary',
+          }),
+          fusionPriority: createConfigField('number', '融合优先级', {
+            default: 1,
+          }),
+          bootUris: createConfigField('string', '引导 URIs'),
+        },
+        required: ['memoryInstanceId'],
       },
     },
   ],
@@ -359,10 +392,10 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           maxConnections: null,
           description: '来自 Skill 节点的技能指令',
         }),
-        createPort('memory-in', '记忆', 'input', 'knowledge', {
+        createPort('memory-in', '记忆', 'input', 'json', {
           multiple: true,
           maxConnections: null,
-          description: '来自记忆/知识节点的记忆数据',
+          description: '来自 Memory 节点的记忆会话配置',
         }),
         createPort('system-prompt-in', '系统提示词', 'input', 'text', {
           maxConnections: 1,

@@ -104,7 +104,33 @@ describe('agentCanvasStore', () => {
           slug: 'loaded-agent',
           description: null,
           systemPrompt: null,
-          nodes: [],
+          nodes: [
+            {
+              id: 'agent-main',
+              type: 'agent',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'Agent Main',
+                nodeType: 'agent-main' as unknown as string,
+                category: 'agent',
+                description: 'old snapshot',
+                config: {},
+                inputPorts: [
+                  {
+                    id: 'memory-in',
+                    label: '记忆',
+                    direction: 'input',
+                    dataType: 'knowledge',
+                    required: false,
+                    multiple: true,
+                    maxConnections: null,
+                    schema: { kind: 'knowledge', title: '记忆' },
+                  },
+                ],
+                outputPorts: [],
+              },
+            },
+          ],
           edges: [],
           viewport: null,
           sandboxConfig: { lifecycleMode: 'persistent' },
@@ -146,5 +172,8 @@ describe('agentCanvasStore', () => {
     ]);
     expect(state.sandboxLifecycle).toBe('persistent');
     expect(state.globalSandboxConfig.lifecycleMode).toBe('persistent');
+    expect(
+      state.nodes[0]?.data.inputPorts.find((port) => port.id === 'memory-in')?.dataType,
+    ).toBe('json');
   });
 });
