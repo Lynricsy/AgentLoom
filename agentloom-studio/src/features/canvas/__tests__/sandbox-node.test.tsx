@@ -1,10 +1,33 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NODE_TYPE_REGISTRY } from '../types/nodeTypeRegistry'
 import { SandboxConfigPanel } from '../components/panels/SandboxConfigPanel'
 
+const mockUsePersistentSandboxes = vi.fn()
+
+vi.mock('@/features/sandbox/api/sandboxQueries', () => ({
+  usePersistentSandboxes: () => mockUsePersistentSandboxes(),
+}))
+
+vi.mock('@/features/sandbox/components/SandboxPresetSelector', () => ({
+  SandboxPresetSelector: () => <div>Preset Selector</div>,
+}))
+
+vi.mock('@/features/sandbox/stores/sandboxPresetStore', () => ({
+  useSandboxPresetStore: () => vi.fn(),
+  getAllPresets: () => [],
+  findMatchingPreset: () => undefined,
+}))
+
 describe('sandbox node registry', () => {
   const sandboxConfig = NODE_TYPE_REGISTRY.sandbox
+
+  beforeEach(() => {
+    mockUsePersistentSandboxes.mockReturnValue({
+      data: [],
+      isLoading: false,
+    })
+  })
 
   it('exists in NODE_TYPE_REGISTRY with correct type and category', () => {
     expect(sandboxConfig).toBeDefined()
@@ -14,8 +37,13 @@ describe('sandbox node registry', () => {
     expect(sandboxConfig.icon).toBe('Container')
   })
 
-  it('has no input ports', () => {
-    expect(sandboxConfig.inputPorts).toHaveLength(0)
+  it('has a volume input port for workspace mounting', () => {
+    expect(sandboxConfig.inputPorts).toHaveLength(1)
+    expect(sandboxConfig.inputPorts[0]).toMatchObject({
+      id: 'volume-in',
+      dataType: 'volume',
+      direction: 'input',
+    })
   })
 
   it('has a sandbox output port with correct config', () => {
@@ -33,13 +61,13 @@ describe('SandboxConfigPanel', () => {
   it('renders all config fields with default values', () => {
     render(<SandboxConfigPanel config={{}} onApply={vi.fn()} />)
 
+    expect(screen.getByText('Preset Selector')).toBeInTheDocument()
     expect(screen.getByLabelText('CPU 滑块')).toBeInTheDocument()
     expect(screen.getByLabelText('CPU 数值')).toBeInTheDocument()
     expect(screen.getByLabelText('Memory 滑块')).toBeInTheDocument()
     expect(screen.getByLabelText('Memory 数值')).toBeInTheDocument()
     expect(screen.getByLabelText('Disk 滑块')).toBeInTheDocument()
     expect(screen.getByLabelText('Disk 数值')).toBeInTheDocument()
-    expect(screen.getByLabelText(/Persistence Path/)).toBeInTheDocument()
     expect(screen.getByLabelText('Timeout 滑块')).toBeInTheDocument()
     expect(screen.getByLabelText('Timeout 数值')).toBeInTheDocument()
   })
@@ -47,7 +75,7 @@ describe('SandboxConfigPanel', () => {
   it('displays current config values in summary', () => {
     render(
       <SandboxConfigPanel
-        config={{ cpu: 2, memory: 1024, disk: 5, persistencePath: '/my/path', timeout: 4 }}
+        config={{ cpu: 2, memory: 1024, disk: 5, timeout: 4 }}
         onApply={vi.fn()}
       />,
     )
@@ -57,7 +85,7 @@ describe('SandboxConfigPanel', () => {
     expect(summary.textContent).toContain('1024')
     expect(summary.textContent).toContain('5')
     expect(summary.textContent).toContain('4')
-    expect(screen.getByText('Path: /my/path')).toBeInTheDocument()
+    expect(within(summary).getByText('临时')).toBeInTheDocument()
   })
 
   it('calls onApply when cpu slider is changed', () => {
@@ -84,15 +112,14 @@ describe('SandboxConfigPanel', () => {
     })
   })
 
-  it('calls onApply when persistence path is changed', () => {
+  it('calls onApply when switching to persistent mode', () => {
     const onApply = vi.fn()
     render(<SandboxConfigPanel config={{}} onApply={onApply} />)
 
-    const pathInput = screen.getByLabelText(/Persistence Path/)
-    fireEvent.change(pathInput, { target: { value: '/workspace' } })
+    fireEvent.click(screen.getByRole('button', { name: '持久' }))
 
     expect(onApply).toHaveBeenCalledWith({
-      config: expect.objectContaining({ persistencePath: '/workspace' }),
+      config: expect.objectContaining({ lifecycleMode: 'persistent' }),
     })
   })
 
@@ -118,5 +145,25 @@ describe('SandboxConfigPanel', () => {
     expect(onApply).toHaveBeenCalledWith({
       config: expect.objectContaining({ memory: 4096 }),
     })
+  })
+
+  it('在持久模式下展示当前已选沙箱名称', () => {
+    render(
+      <SandboxConfigPanel
+        config={{
+          lifecycleMode: 'persistent',
+          persistentSandboxId: 'sandbox-1',
+          persistentSandboxName: 'Shared Sandbox',
+        }}
+        onApply={vi.fn()}
+      />,
+    )
+
+    const summary = screen.getByText('当前配置').parentElement!
+
+    expect(screen.getByText('选择持久沙箱')).toBeInTheDocument()
+    expect(within(summary).getByText('Shared Sandbox')).toBeInTheDocument()
+    expect(within(summary).getByText('持久')).toBeInTheDocument()
+    expect(screen.queryByText('Preset Selector')).not.toBeInTheDocument()
   })
 })

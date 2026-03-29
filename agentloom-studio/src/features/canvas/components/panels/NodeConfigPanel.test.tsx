@@ -69,6 +69,14 @@ vi.mock('./KnowledgeBaseConfigPanel', () => ({
   ),
 }))
 
+vi.mock('../../../agent-canvas/components/panels/SkillPanel', () => ({
+  SkillPanel: () => <div>Skill Panel</div>,
+}))
+
+vi.mock('../../../agent-canvas/components/panels/SubAgentConfigPanel', () => ({
+  SubAgentConfigPanel: () => <div>Sub Agent Panel</div>,
+}))
+
 vi.mock('./SandboxConfigPanel', () => ({
   SandboxConfigPanel: () => <div>Sandbox Panel</div>,
 }))
@@ -134,8 +142,11 @@ vi.mock('./DynamicConfigForm', () => ({
   ),
 }))
 
-function createNode(nodeType: NodeType = 'manual-trigger', overrides: Partial<CanvasNode> = {}): CanvasNode {
-  const config = getNodeTypeConfig(nodeType)
+function createNode(
+  nodeType: NodeType | 'sub-agent' = 'manual-trigger',
+  overrides: Partial<CanvasNode> = {},
+): CanvasNode {
+  const config = getNodeTypeConfig(nodeType as NodeType)
 
   return {
     id: 'node-1',
@@ -249,6 +260,8 @@ describe('NodeConfigPanel', () => {
     ['llm-model', 'LLM Model Panel'],
     ['mcp-tool', 'MCP Panel'],
     ['knowledge-base', 'Knowledge Panel'],
+    ['skill', 'Skill Panel'],
+    ['sub-agent', 'Sub Agent Panel'],
     ['sandbox', 'Sandbox Panel'],
     ['http-tool', 'HTTP Tool Panel'],
     ['reusable-block', 'Reusable Block Panel'],

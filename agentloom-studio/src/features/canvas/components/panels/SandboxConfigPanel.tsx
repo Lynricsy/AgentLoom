@@ -156,10 +156,10 @@ export const SandboxConfigPanel = memo(
     )
 
     const handleSaveAsPreset = useCallback(
-      (config: { cpu: number; memory: number; disk: number }) => {
-        addPreset({ name: `自定义 ${customPresets.length + 1}`, ...config })
+      (preset: { name: string; cpu: number; memory: number; disk: number }) => {
+        addPreset(preset)
       },
-      [addPreset, customPresets.length],
+      [addPreset],
     )
 
     const handleCpu = useCallback(

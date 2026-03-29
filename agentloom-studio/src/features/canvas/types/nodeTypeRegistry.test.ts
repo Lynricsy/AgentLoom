@@ -39,6 +39,7 @@ describe('nodeTypeRegistry', () => {
       'memory',
       'agent',
       'skill',
+      'workspace',
     ])
   })
 
@@ -184,6 +185,7 @@ describe('nodeTypeRegistry', () => {
       'code-tool',
       'sandbox',
       'input-preprocessor',
+      'workspace',
       'manual-trigger',
       'schedule-trigger',
       'webhook-trigger',

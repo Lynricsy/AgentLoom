@@ -1,0 +1,180 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
+import { SubAgentConfigPanel } from './SubAgentConfigPanel'
+
+const mocks = vi.hoisted(() => {
+  const selectedAgent = {
+    id: 'agent-2',
+    tenantId: 'tenant-1',
+    name: 'Review Agent',
+    slug: 'review-agent',
+    description: '负责代码审查',
+    systemPrompt: null,
+    nodes: [],
+    edges: [],
+    viewport: null,
+    sandboxConfig: null,
+    workspaceSnapshotId: null,
+    inputSchema: null,
+    memoryInstanceIds: null,
+    sandboxLifecycle: null,
+    version: 1,
+    status: 'published' as const,
+    publishedVersionId: 'version-2',
+    createdBy: 'user-1',
+    updatedBy: 'user-1',
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-01T00:00:00Z',
+  }
+
+  return {
+    useAgentVersions: vi.fn(),
+    agentId: 'agent-current',
+    nodes: [] as Array<{ data: Record<string, unknown> }>,
+    selectedAgent,
+  }
+})
+
+vi.mock('@/features/agent/api/agentQueries', () => ({
+  useAgentVersions: mocks.useAgentVersions,
+}))
+
+vi.mock('../../stores/agent-canvas.store', () => ({
+  useAgentCanvasStore: (selector: (state: { agentId: string | null }) => unknown) =>
+    selector({ agentId: mocks.agentId }),
+  useAgentCanvasNodes: () => mocks.nodes,
+}))
+
+vi.mock('../AgentSearchPicker', () => ({
+  AgentSearchPicker: ({
+    onSelect,
+    onClear,
+  }: {
+    onSelect: (agent: AgentDefinition) => void
+    onClear: () => void
+  }) => (
+    <div>
+      <button type="button" onClick={() => onSelect(mocks.selectedAgent)}>
+        选择 Agent
+      </button>
+      <button type="button" onClick={onClear}>
+        清除 Agent
+      </button>
+    </div>
+  ),
+}))
+
+function createVersion(overrides: Partial<AgentVersion> = {}): AgentVersion {
+  return {
+    id: 'version-2',
+    agentDefinitionId: 'agent-2',
+    tenantId: 'tenant-1',
+    versionNumber: 2,
+    label: '稳定版',
+    snapshot: {
+      nodes: [],
+      edges: [],
+      viewport: null,
+      metadata: {
+        nodeCount: 0,
+        edgeCount: 0,
+        createdFromVersion: 1,
+      },
+    },
+    publishedAt: '2026-03-02T00:00:00Z',
+    archivedAt: null,
+    createdBy: 'user-1',
+    createdAt: '2026-03-02T00:00:00Z',
+    ...overrides,
+  }
+}
+
+describe('SubAgentConfigPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.nodes = []
+    mocks.useAgentVersions.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+    })
+  })
+
+  it('选择 agent 时生成 alias 并回填元数据', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+
+    render(<SubAgentConfigPanel config={{}} onApply={onApply} />)
+
+    await user.click(screen.getByRole('button', { name: '选择 Agent' }))
+
+    expect(onApply).toHaveBeenCalledWith({
+      agentDefinitionId: 'agent-2',
+      agentVersionId: null,
+      alias: 'review-agent',
+      _agentName: 'Review Agent',
+      _agentDescription: '负责代码审查',
+      _versionLabel: '',
+    })
+    expect(screen.getByDisplayValue('review-agent')).toBeInTheDocument()
+  })
+
+  it('对非法 alias 显示校验错误且不写回 patch', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+
+    render(
+      <SubAgentConfigPanel
+        config={{
+          agentDefinitionId: 'agent-2',
+          alias: 'review-agent',
+          _agentName: 'Review Agent',
+        }}
+        onApply={onApply}
+      />,
+    )
+
+    const aliasInput = screen.getByLabelText(/别名/)
+    await user.clear(aliasInput)
+    await user.type(aliasInput, '1 bad alias')
+
+    expect(
+      screen.getByText('别名必须以字母开头，仅包含字母、数字、下划线和连字符'),
+    ).toBeInTheDocument()
+    expect(onApply).not.toHaveBeenCalled()
+  })
+
+  it('选择版本时写回版本 id 与展示标签', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+
+    mocks.useAgentVersions.mockReturnValue({
+      data: {
+        data: [createVersion()],
+      },
+      isLoading: false,
+    })
+
+    render(
+      <SubAgentConfigPanel
+        config={{
+          agentDefinitionId: 'agent-2',
+          alias: 'review-agent',
+          _agentName: 'Review Agent',
+        }}
+        onApply={onApply}
+      />,
+    )
+
+    await user.selectOptions(screen.getByLabelText('版本'), 'version-2')
+
+    expect(onApply).toHaveBeenCalledWith({
+      agentDefinitionId: 'agent-2',
+      alias: 'review-agent',
+      _agentName: 'Review Agent',
+      agentVersionId: 'version-2',
+      _versionLabel: 'v2 (稳定版)',
+    })
+  })
+})

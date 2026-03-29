@@ -33,7 +33,6 @@ export function CreateSandboxDialog({
   const [disk, setDisk] = useState(2)
   const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>(undefined)
 
-  const customPresets = useSandboxPresetStore((s) => s.customPresets)
   const addPreset = useSandboxPresetStore((s) => s.addPreset)
   const currentConfig = { cpu, memory, disk }
 
@@ -44,8 +43,8 @@ export function CreateSandboxDialog({
     setSelectedPresetId(preset.id)
   }
 
-  function handleSaveAsPreset(config: { cpu: number; memory: number; disk: number }) {
-    addPreset({ name: `自定义 ${customPresets.length + 1}`, ...config })
+  function handleSaveAsPreset(preset: { name: string; cpu: number; memory: number; disk: number }) {
+    addPreset(preset)
   }
 
   function clearPresetSelection() {
