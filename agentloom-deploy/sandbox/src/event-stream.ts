@@ -20,6 +20,17 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
       }
       return null;
     }
+    case 'message_end': {
+      const providerError = readMessageEndError(event);
+      if (providerError) {
+        return {
+          type: 'error',
+          message: providerError,
+          code: 'MODEL_PROVIDER_ERROR',
+        };
+      }
+      return null;
+    }
     case 'tool_execution_start':
       return {
         type: 'tool_call_start',
@@ -31,13 +42,16 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
       return {
         type: 'tool_call_update',
         toolCallId: event.toolCallId,
+        toolName: event.toolName,
         content: readToolExecutionUpdateContent(event),
       };
     case 'tool_execution_end':
       return {
         type: 'tool_call_end',
         toolCallId: event.toolCallId,
+        toolName: event.toolName,
         result: event.result,
+        isError: event.isError,
       };
     case 'pty_spawned':
       return {
@@ -228,5 +242,55 @@ function readToolExecutionUpdateContent(
     return event.partialResult;
   }
 
+  if (isRecord(event.partialResult)) {
+    const text = readToolResultText(event.partialResult.content);
+    if (text) {
+      return text;
+    }
+  }
+
   return undefined;
+}
+
+function readToolResultText(value: unknown): string | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const parts = value.flatMap((item) => {
+    if (
+      isRecord(item)
+      && item.type === 'text'
+      && typeof item.text === 'string'
+      && item.text.length > 0
+    ) {
+      return [item.text];
+    }
+    return [];
+  });
+
+  return parts.length > 0 ? parts.join('\n') : undefined;
+}
+
+function readMessageEndError(
+  event: Extract<SandboxAgentEvent, { type: 'message_end' }>,
+): string | null {
+  const message = event.message;
+  if (!message || message.role !== 'assistant') {
+    return null;
+  }
+
+  if (message.stopReason !== 'error') {
+    return null;
+  }
+
+  if (typeof message.errorMessage === 'string' && message.errorMessage.length > 0) {
+    return message.errorMessage;
+  }
+
+  return 'Assistant message ended with provider error';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -3,6 +3,10 @@ import { Type } from '@sinclair/typebox';
 import { McpClient } from './mcp-client.js';
 import type { McpCallToolResult, McpContentItem } from './mcp-client.js';
 import type { McpServersConfig } from './types.js';
+import {
+  createTextToolResult,
+  formatToolTextResult,
+} from './agentloom-extension.js';
 import type {
   PiExtensionAPI,
   PiToolDefinition,
@@ -23,6 +27,12 @@ export interface McpExtensionResult {
   clients: Map<string, McpClient>;
 }
 
+const DEFAULT_MCP_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {},
+  additionalProperties: true,
+} satisfies Record<string, unknown>;
+
 function wrapExecute(
   fn: (params: Record<string, unknown>) => unknown,
 ): PiToolDefinition['execute'] {
@@ -33,14 +43,10 @@ function wrapExecute(
     try {
       const result = fn(params);
       const resolved = result instanceof Promise ? await result : result;
-      const text =
-        typeof resolved === 'string'
-          ? resolved
-          : JSON.stringify(resolved, null, 2);
-      return { resultForAssistant: text };
+      return createTextToolResult(formatToolTextResult(resolved));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return { resultForAssistant: `Error: ${message}` };
+      return createTextToolResult(`Error: ${message}`);
     }
   };
 }
@@ -120,8 +126,11 @@ export function createMcpExtension(options: McpExtensionOptions): McpExtensionRe
       for (const tool of tools) {
         const toolName = `mcp__${serverName}__${tool.name}`;
 
-        // MCP 工具的 inputSchema 是 JSON Schema；使用 Type.Unsafe() 包装为 TypeBox 兼容类型
-        const parameters = Type.Unsafe(tool.inputSchema ?? { type: 'object' });
+        // MCP 工具的 inputSchema 可能带有 draft-2020-12 的 `$schema`，
+        // pi 运行时的校验器不会自动加载对应 meta-schema；这里先做归一化。
+        const parameters = Type.Unsafe(
+          normalizeMcpToolInputSchema(tool.inputSchema),
+        );
 
         pi.registerTool({
           name: toolName,
@@ -157,4 +166,40 @@ export function createMcpExtension(options: McpExtensionOptions): McpExtensionRe
   };
 
   return { register, clients };
+}
+
+export function normalizeMcpToolInputSchema(
+  schema: unknown,
+): Record<string, unknown> {
+  if (!isPlainObject(schema)) {
+    return { ...DEFAULT_MCP_TOOL_INPUT_SCHEMA };
+  }
+
+  return normalizeSchemaNode(schema);
+}
+
+function normalizeSchemaNode(node: Record<string, unknown>): Record<string, unknown> {
+  const normalizedEntries = Object.entries(node)
+    .filter(([key]) => key !== '$schema')
+    .map(([key, value]) => [key, normalizeSchemaValue(value)] as const);
+
+  return Object.fromEntries(normalizedEntries);
+}
+
+function normalizeSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      isPlainObject(item) ? normalizeSchemaNode(item) : item,
+    );
+  }
+
+  if (isPlainObject(value)) {
+    return normalizeSchemaNode(value);
+  }
+
+  return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -90,12 +90,31 @@ describe('translateEvent', () => {
     const result = translateEvent({
       type: 'tool_execution_update',
       toolCallId: 'tc-1',
+      toolName: 'bash',
       content: 'output line',
     });
     expect(result).toEqual({
       type: 'tool_call_update',
       toolCallId: 'tc-1',
+      toolName: 'bash',
       content: 'output line',
+    });
+  });
+
+  it('should read tool_execution_update partialResult content blocks', () => {
+    const result = translateEvent({
+      type: 'tool_execution_update',
+      toolCallId: 'tc-1',
+      toolName: 'lookup_memory',
+      partialResult: {
+        content: [{ type: 'text', text: 'partial tool output' }],
+      },
+    });
+    expect(result).toEqual({
+      type: 'tool_call_update',
+      toolCallId: 'tc-1',
+      toolName: 'lookup_memory',
+      content: 'partial tool output',
     });
   });
 
@@ -103,12 +122,32 @@ describe('translateEvent', () => {
     const result = translateEvent({
       type: 'tool_execution_end',
       toolCallId: 'tc-1',
+      toolName: 'bash',
       result: { exitCode: 0 },
+      isError: false,
     });
     expect(result).toEqual({
       type: 'tool_call_end',
       toolCallId: 'tc-1',
+      toolName: 'bash',
       result: { exitCode: 0 },
+      isError: false,
+    });
+  });
+
+  it('should translate assistant message_end provider errors to error events', () => {
+    const result = translateEvent({
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        stopReason: 'error',
+        errorMessage: '403 {"error":{"type":"forbidden","message":"Request not allowed"}}',
+      },
+    });
+    expect(result).toEqual({
+      type: 'error',
+      code: 'MODEL_PROVIDER_ERROR',
+      message: '403 {"error":{"type":"forbidden","message":"Request not allowed"}}',
     });
   });
 
@@ -254,6 +293,37 @@ describe('streamSessionEvents', () => {
     expect(chunks).toHaveLength(1);
     const parsed = JSON.parse(chunks[0]!.replace('data: ', '').trim());
     expect(parsed.params.type).toBe('done');
+    expect(ended).toBe(true);
+  });
+
+  it('should surface assistant provider errors via SSE error event', () => {
+    const mock = createMockSession();
+    const chunks: string[] = [];
+    let ended = false;
+
+    streamSessionEvents({
+      session: mock,
+      sessionId: 'test-session',
+      write: (c) => chunks.push(c),
+      end: () => { ended = true; },
+    });
+
+    mock._emit({
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        stopReason: 'error',
+        errorMessage: '403 {"error":{"type":"forbidden","message":"Request not allowed"}}',
+      },
+    });
+
+    expect(chunks).toHaveLength(1);
+    const parsed = JSON.parse(chunks[0]!.replace('data: ', '').trim());
+    expect(parsed.params).toEqual({
+      type: 'error',
+      code: 'MODEL_PROVIDER_ERROR',
+      message: '403 {"error":{"type":"forbidden","message":"Request not allowed"}}',
+    });
     expect(ended).toBe(true);
   });
 
@@ -405,7 +475,11 @@ describe('AcpAdapter', () => {
     await adapter.init();
 
     await adapter.createNewSession({ cwd: '/custom/dir' });
-    expect(mockFactory).toHaveBeenCalledWith('/custom/dir', expect.any(Object));
+    expect(mockFactory).toHaveBeenCalledWith(
+      '/custom/dir',
+      expect.any(Object),
+      { cwd: '/custom/dir' },
+    );
   });
 
   it('should default cwd to /workspace', async () => {
@@ -413,6 +487,10 @@ describe('AcpAdapter', () => {
     await adapter.init();
 
     await adapter.createNewSession({});
-    expect(mockFactory).toHaveBeenCalledWith('/workspace', expect.any(Object));
+    expect(mockFactory).toHaveBeenCalledWith(
+      '/workspace',
+      expect.any(Object),
+      {},
+    );
   });
 });

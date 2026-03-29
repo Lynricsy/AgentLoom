@@ -11,7 +11,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { McpClient } from '../src/mcp-client.js';
-import { createMcpExtension } from '../src/mcp-extension.js';
+import {
+  createMcpExtension,
+  normalizeMcpToolInputSchema,
+} from '../src/mcp-extension.js';
 import type { McpServersConfig } from '../src/types.js';
 import type { PiExtensionAPI, PiToolDefinition } from '../src/agentloom-extension.js';
 
@@ -38,6 +41,48 @@ function makeFilesystemConfig(): McpServersConfig {
     },
   };
 }
+
+describe('normalizeMcpToolInputSchema', () => {
+  it('应递归移除 MCP schema 中的 $schema 元字段', () => {
+    const input = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+        },
+      },
+      anyOf: [
+        {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          properties: {
+            depth: { type: 'number' },
+          },
+        },
+      ],
+    };
+
+    expect(normalizeMcpToolInputSchema(input)).toEqual({
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+        },
+      },
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            depth: { type: 'number' },
+          },
+        },
+      ],
+    });
+    expect(input.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+  });
+});
 
 // --- Layer 1: McpClient 直接测试 ---
 
@@ -149,8 +194,13 @@ describe('createMcpExtension (integration)', () => {
         undefined,
         undefined,
       );
-      expect(result.resultForAssistant).toContain('Hello from MCP QA test!');
-      console.log('[QA] Tool execute result:', result.resultForAssistant);
+      expect(result.content).toEqual([
+        expect.objectContaining({
+          type: 'text',
+          text: expect.stringContaining('Hello from MCP QA test!'),
+        }),
+      ]);
+      console.log('[QA] Tool execute result:', result.content[0]?.text);
     }
 
     // 验证 session_shutdown 处理器已注册

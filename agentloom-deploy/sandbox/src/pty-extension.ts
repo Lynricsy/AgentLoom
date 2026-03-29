@@ -3,6 +3,10 @@ import { Type } from '@sinclair/typebox';
 
 import { PTYManager } from './pty/pty-manager.js';
 import type { PTYEvent } from './pty/types.js';
+import {
+  createTextToolResult,
+  formatToolTextResult,
+} from './agentloom-extension.js';
 import type {
   PiExtensionAPI,
   PiToolDefinition,
@@ -26,6 +30,7 @@ export interface PtyExtensionResult {
 }
 
 const WORKSPACE_PREFIX = '/workspace/';
+const WORKSPACE_ROOT = path.resolve(WORKSPACE_PREFIX);
 
 const PtySpawnSchema = Type.Object({
   command: Type.String({ description: 'Command to execute' }),
@@ -62,7 +67,8 @@ const PtyKillSchema = Type.Object({
 function validateCwd(workdir: string, cwd?: string): string {
   if (!cwd) return workdir;
   const resolved = path.resolve(workdir, cwd);
-  if (!resolved.startsWith(WORKSPACE_PREFIX)) {
+  const workspaceDescendantPrefix = `${WORKSPACE_ROOT}${path.sep}`;
+  if (resolved !== WORKSPACE_ROOT && !resolved.startsWith(workspaceDescendantPrefix)) {
     throw new Error(`cwd must be under ${WORKSPACE_PREFIX} — got: ${resolved}`);
   }
   return resolved;
@@ -78,14 +84,10 @@ function wrapExecute(
     try {
       const result = fn(params);
       const resolved = result instanceof Promise ? await result : result;
-      const text =
-        typeof resolved === 'string'
-          ? resolved
-          : JSON.stringify(resolved, null, 2);
-      return { resultForAssistant: text };
+      return createTextToolResult(formatToolTextResult(resolved));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return { resultForAssistant: `Error: ${message}` };
+      return createTextToolResult(`Error: ${message}`);
     }
   };
 }

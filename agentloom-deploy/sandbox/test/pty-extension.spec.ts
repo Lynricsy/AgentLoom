@@ -77,6 +77,14 @@ async function executeTool(
   return tool.execute('tc-1', params, undefined, undefined, {});
 }
 
+function readResultText(result: PiAgentToolResult): string {
+  return result.content
+    .flatMap((item) =>
+      item.type === 'text' && typeof item.text === 'string' ? [item.text] : [],
+    )
+    .join('\n');
+}
+
 describe('createPtyExtension', () => {
   const { mockManager } = mockPtyManagerModule;
 
@@ -194,7 +202,7 @@ describe('createPtyExtension', () => {
           title: 'My Shell',
         }),
       );
-      expect(result.resultForAssistant).toContain('pty_aabb1122');
+      expect(readResultText(result)).toContain('pty_aabb1122');
     });
 
     it('uses workdir as default cwd when not specified', async () => {
@@ -230,6 +238,44 @@ describe('createPtyExtension', () => {
         expect.objectContaining({ cwd: '/workspace/project' }),
       );
     });
+
+    it('accepts /workspace as a valid cwd root', async () => {
+      const spawnResult: PTYSessionInfo = {
+        id: 'pty_root0001',
+        pid: 7,
+        command: 'bash',
+        args: [],
+        cwd: '/workspace',
+        status: 'running',
+        createdAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+        title: 'bash',
+        notifyOnExit: false,
+        cols: 120,
+        rows: 40,
+        lineCount: 0,
+      };
+      mockManager.spawn.mockReturnValue(spawnResult);
+
+      const { register } = createPtyExtension({
+        onPtyEvent: vi.fn(),
+        workdir: '/workspace',
+      });
+
+      const mock = createMockPi();
+      register(mock.pi);
+
+      const tool = findTool(mock.registeredTools, 'pty_spawn');
+      const result = await executeTool(tool, {
+        command: 'bash',
+        cwd: '/workspace',
+      });
+
+      expect(mockManager.spawn).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: '/workspace' }),
+      );
+      expect(readResultText(result)).toContain('pty_root0001');
+    });
   });
 
   describe('cwd security restriction', () => {
@@ -248,8 +294,8 @@ describe('createPtyExtension', () => {
         cwd: '/etc/passwd',
       });
 
-      expect(result.resultForAssistant).toContain('Error');
-      expect(result.resultForAssistant).toContain('/workspace/');
+      expect(readResultText(result)).toContain('Error');
+      expect(readResultText(result)).toContain('/workspace/');
       expect(mockManager.spawn).not.toHaveBeenCalled();
     });
 
@@ -268,7 +314,7 @@ describe('createPtyExtension', () => {
         cwd: '/workspace/project/../../etc',
       });
 
-      expect(result.resultForAssistant).toContain('Error');
+      expect(readResultText(result)).toContain('Error');
       expect(mockManager.spawn).not.toHaveBeenCalled();
     });
 
@@ -326,7 +372,7 @@ describe('createPtyExtension', () => {
       });
 
       expect(mockManager.write).toHaveBeenCalledWith('pty_abc123', 'ls -la\n');
-      expect(result.resultForAssistant).toContain('success');
+      expect(readResultText(result)).toContain('success');
     });
   });
 
@@ -361,7 +407,7 @@ describe('createPtyExtension', () => {
           limit: 100,
         }),
       );
-      expect(result.resultForAssistant).toContain('file.txt');
+      expect(readResultText(result)).toContain('file.txt');
     });
   });
 
@@ -397,7 +443,7 @@ describe('createPtyExtension', () => {
       const result = await executeTool(tool, {});
 
       expect(mockManager.list).toHaveBeenCalled();
-      expect(result.resultForAssistant).toContain('pty_001');
+      expect(readResultText(result)).toContain('pty_001');
     });
   });
 
@@ -417,7 +463,7 @@ describe('createPtyExtension', () => {
       });
 
       expect(mockManager.kill).toHaveBeenCalledWith('pty_abc123', 'SIGTERM', false);
-      expect(result.resultForAssistant).toContain('success');
+      expect(readResultText(result)).toContain('success');
     });
 
     it('passes signal and cleanup options', async () => {
@@ -535,8 +581,8 @@ describe('createPtyExtension', () => {
       const tool = findTool(mock.registeredTools, 'pty_spawn');
       const result = await executeTool(tool, { command: 'bash' });
 
-      expect(result.resultForAssistant).toContain('Error');
-      expect(result.resultForAssistant).toContain('Maximum PTY sessions exceeded');
+      expect(readResultText(result)).toContain('Error');
+      expect(readResultText(result)).toContain('Maximum PTY sessions exceeded');
     });
 
     it('returns error message when manager.write() throws', async () => {
@@ -558,8 +604,8 @@ describe('createPtyExtension', () => {
         data: 'test',
       });
 
-      expect(result.resultForAssistant).toContain('Error');
-      expect(result.resultForAssistant).toContain('PTY session not found');
+      expect(readResultText(result)).toContain('Error');
+      expect(readResultText(result)).toContain('PTY session not found');
     });
   });
 });

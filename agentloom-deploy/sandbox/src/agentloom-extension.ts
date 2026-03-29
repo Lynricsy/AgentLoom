@@ -55,6 +55,7 @@ export interface PiToolDefinition {
   name: string;
   label: string;
   description: string;
+  promptSnippet?: string;
   parameters: unknown;
   execute: (
     toolCallId: string,
@@ -66,9 +67,34 @@ export interface PiToolDefinition {
 }
 
 export interface PiAgentToolResult {
-  resultForAssistant: string;
-  details?: unknown;
-  state?: unknown;
+  content: Array<{ type: 'text'; text: string }>;
+  details: unknown;
+}
+
+export function createTextToolResult(
+  text: string,
+  details: unknown = undefined,
+): PiAgentToolResult {
+  return {
+    content: [{ type: 'text', text }],
+    details,
+  };
+}
+
+export function formatToolTextResult(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === undefined) {
+    return 'null';
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 export interface PiToolCallEvent {
