@@ -441,3 +441,54 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 知识库 E2E 修复与后端 warning 收口
+
+**Date**: 2026-03-29
+**Task**: 知识库 E2E 修复与后端 warning 收口
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 结果 |
+|------|------|
+| 知识库配置 | 增加 embedding 模型用途与维度配置，支持为知识库绑定可配置维度的 embedding 模型 |
+| Agent 调用知识库 | 修复 sandbox agent 中知识库工具未注入的问题，恢复真实 `searchKnowledge_*` tool call |
+| 手工 QA | 在线上环境完成知识库管理与 Agent 调用知识库链路验证，确认返回校验码 `KB-ALPHA-20260329-FOX` |
+| 后端收口 | 修复测试/类型漂移并清零 ESLint warning，恢复后端 lint / typecheck / test 基线 |
+
+**验证**
+- `agentloom-server`：`eslint --max-warnings=0`、`tsc --noEmit`、`test` 全通过（278 files / 3407 tests）
+- `agentloom-studio`：构建与相关测试已在前序收口中通过
+- 线上 `https://agentloom.ling.plus/` 已完成手工浏览器 E2E 验证
+
+**相关提交**
+- `fbc4e54` `feat(knowledge): 🦊 add embedding config support and restore kb tools`
+- `27c05f4` `fix(server): 🦊 restore backend finish-work baseline`
+- `99f27eb` `fix(server): 🦊 eliminate backend lint warnings`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbc4e54` | (see git log) |
+| `27c05f4` | (see git log) |
+| `99f27eb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

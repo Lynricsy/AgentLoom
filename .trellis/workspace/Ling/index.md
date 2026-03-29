@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-03-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~443 | Active |
+| `journal-1.md` | ~494 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-03-29 | 知识库 E2E 修复与后端 warning 收口 | `fbc4e54`, `27c05f4`, `99f27eb` | `main` |
 | 8 | 2026-03-29 | 编排全流程修复与Memory节点前端收口 | `6f52976`, `4918122`, `fc710c0`, `419e380` | `main` |
 | 7 | 2026-03-29 | 资源节点任务链收口与 studio 前端全量清绿 | `a992018`, `6df4f5c`, `2bfed16`, `fd1ca57` | `main` |
 | 6 | 2026-03-28 | Resource management bug fixes and MCP edit enhancement | `33007ab` | `main` |
