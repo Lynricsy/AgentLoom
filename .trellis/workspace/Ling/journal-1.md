@@ -312,3 +312,79 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 资源节点任务链收口与 studio 前端全量清绿
+
+**Date**: 2026-03-29
+**Task**: 资源节点任务链收口与 studio 前端全量清绿
+**Branch**: `main`
+
+### Summary
+
+核查并收口资源节点任务链，补齐 ST5/ST6/ST7 缺口与回归测试，恢复 agentloom-studio 全量测试绿灯，并归档相关 Trellis 任务。
+
+### Main Changes
+
+## 本轮完成
+
+- 重新核查 `03-28-resource-nodes-and-pages`，确认主线任务只拆到 `ST7`，不存在后续未做子任务。
+- 补齐 `ST5: 节点验证与联调` 的真实收口工作：修正资源节点测试基线，补回 `llm-model / mcp-tool / knowledge-base / skill / sub-agent` 的关键回归证明。
+- 补齐 `ST6: 记忆内容浏览器` 的完成证据：新增 Memory Browser / Sidebar / Version History 等关键测试，覆盖入口、域树、编辑保存、版本回滚等主链路。
+- 修复 `ST7: 沙箱预设模板` 的真实缺口：保存预设时真正使用用户输入名称，并增加自定义预设重命名 UI。
+- 顺手清理 `agentloom-studio` 全量测试剩余红点，修复 `SecuritySettings` 与 `pluginQueries` 相关测试，使整个前端包恢复全绿。
+
+## 验证结果
+
+- `cd /root/AgentLoom/agentloom-studio && pnpm test --run` 通过：`206` 个测试文件、`1711` 个测试、`0 failures`
+- `cd /root/AgentLoom/agentloom-studio && pnpm typecheck` 通过
+- `cd /root/AgentLoom/agentloom-studio && pnpm lint` 通过：`0 error`，仍有仓库既有 warnings
+
+## 关键提交
+
+- `a992018` `fix(studio): 🩹 close resource task verification gaps`
+- `6df4f5c` `test(studio): ✅ align resource node test baselines`
+- `2bfed16` `test(studio): 🧪 restore full frontend test suite`
+- `fd1ca57` `chore(studio): 🧹 polish finish-work cleanup`
+
+## 本轮归档的任务
+
+- `03-28-st1-infra-volume-configbar`
+- `03-28-st2-memory-mgmt-node`
+- `03-28-st3-workspace-mgmt-node`
+- `03-28-st4-sandbox-mgmt-node`
+- `03-28-st5-compiler-adapt`
+- `03-28-st5-node-validation`
+- `03-28-st6-memory-browser`
+- `03-28-st7-sandbox-presets`
+- `03-28-resource-nodes-and-pages`
+- `03-28-st4-kb-mcp-node`
+- `03-27-resource-management-panels`
+
+## 为什么这样记录
+
+- 这轮最重要的不是“又做了几个测试”，而是把历史上已经实现但仍停在 `planning` 的资源任务链做了证据化核对并真正收口。
+- 归档前额外核对了 `KB 路由迁移 + MCP 节点配置` 这条旧子任务的 PRD、代码事实与测试证据，避免仅凭 task 状态或模糊记忆归档。
+- 现在 active tasks 列表里已经不再包含本轮资源任务，后续会话不会再被这些旧任务误导。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a992018` | (see git log) |
+| `6df4f5c` | (see git log) |
+| `2bfed16` | (see git log) |
+| `fd1ca57` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
