@@ -44,6 +44,7 @@ function createContext(
     tenantId: '11111111-1111-4111-8111-111111111111',
     workflowDefinitionId: '22222222-2222-4222-8222-222222222222',
     nodeId: 'agent-node-1',
+    autonomyCap: 'MANUAL_CONFIRM',
     nodeConfig: {
       tools: ['search', 'calculator', 'browser'],
     },

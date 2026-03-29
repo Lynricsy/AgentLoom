@@ -73,6 +73,7 @@ describe('KnowledgeBaseController', () => {
         chunkSize: 1024,
         chunkOverlap: 128,
         embeddingModel: 'text-embedding-3-small' as const,
+        embeddingModelConfigId: null,
       };
       const createdKB = {
         id: KB_ID,

@@ -24,13 +24,12 @@ function makeFakeSession(
     sandboxNodeId: null,
     tenantId: 'tenant-1',
     config: { image: 'node:20' } as any,
-    status: 'running',
+    status: 'ready',
     containerId: null,
     workspacePath: null,
     startedAt: null,
     stoppedAt: null,
     createdAt: new Date(),
-    updatedAt: new Date(),
     ...overrides,
   };
 }

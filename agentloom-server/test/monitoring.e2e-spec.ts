@@ -118,6 +118,10 @@ type SeededWorkflow = {
   snapshot: JSONValue;
 };
 
+function toJsonValue(value: unknown): JSONValue {
+  return value as JSONValue;
+}
+
 type SeededExecution = {
   executionId: string;
   workflowDefinitionId: string;
@@ -887,18 +891,20 @@ describe('Monitoring E2E', () => {
         NULL,
         'execution_summary',
         NULL,
-        ${ctx.adminSql.json({
-          totalSteps: 1,
-          completedSteps: 1,
-          failedSteps: 0,
-          totalToolCalls: 1,
-          totalErrors: 0,
-          totalSelfRepairs: 0,
-          totalTokens: 100,
-          totalLatencyMs: options.durationMs,
-          avgStepLatencyMs: options.durationMs,
-          executionDurationMs: options.durationMs,
-        })},
+        ${ctx.adminSql.json(
+          toJsonValue({
+            totalSteps: 1,
+            completedSteps: 1,
+            failedSteps: 0,
+            totalToolCalls: 1,
+            totalErrors: 0,
+            totalSelfRepairs: 0,
+            totalTokens: 100,
+            totalLatencyMs: options.durationMs,
+            avgStepLatencyMs: options.durationMs,
+            executionDurationMs: options.durationMs,
+          }),
+        )},
         NOW()
       )
     `;
@@ -936,7 +942,7 @@ describe('Monitoring E2E', () => {
         ${options.userId}::uuid,
         ${options.type}::notification_type_enum,
         ${options.title},
-        ${ctx.adminSql.json(options.body)},
+        ${ctx.adminSql.json(toJsonValue(options.body))},
         false,
         ${options.createdAt}
       )
@@ -986,7 +992,7 @@ describe('Monitoring E2E', () => {
         ${options.summary},
         NULL,
         NULL,
-        ${ctx.adminSql.json(options.metadata ?? null)},
+        ${ctx.adminSql.json(toJsonValue(options.metadata ?? null))},
         ${options.createdAt}
       )
     `;

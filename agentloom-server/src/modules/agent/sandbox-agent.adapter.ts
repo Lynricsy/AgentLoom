@@ -5,7 +5,13 @@ import {
   Optional,
   UnauthorizedException,
 } from '@nestjs/common';
-import { asSchema, jsonSchema, tool, type FlexibleSchema, type ToolSet } from 'ai';
+import {
+  asSchema,
+  jsonSchema,
+  tool,
+  type FlexibleSchema,
+  type ToolSet,
+} from 'ai';
 import { and, eq } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -1535,9 +1541,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
   }
 
-  private readContainerEventPayload(
-    envelope: ContainerEventEnvelope,
-  ): unknown {
+  private readContainerEventPayload(envelope: ContainerEventEnvelope): unknown {
     if ('data' in envelope && envelope.data !== undefined) {
       return envelope.data;
     }

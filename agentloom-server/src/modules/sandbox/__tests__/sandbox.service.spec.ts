@@ -455,7 +455,9 @@ describe('SandboxService', () => {
 
       expect(rendered).toContain('"sandbox_sessions"."id"::text ilike');
       expect(rendered).not.toContain('"sandbox_sessions"."id" ilike');
-      expect(rendered).toContain('"sandbox_sessions"."config"->>\'name\' ilike');
+      expect(rendered).toContain(
+        '"sandbox_sessions"."config"->>\'name\' ilike',
+      );
     });
   });
 

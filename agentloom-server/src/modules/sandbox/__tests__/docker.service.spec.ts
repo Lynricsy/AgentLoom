@@ -165,9 +165,13 @@ function inspectTarArchive(archiveBuffer: Buffer): {
     readEntry(entry: string): string {
       const entryCandidates = [`./${entry}`, entry];
       for (const candidate of entryCandidates) {
-        const extractResult = spawnSync('tar', ['-xOf', archivePath, candidate], {
-          encoding: 'utf-8',
-        });
+        const extractResult = spawnSync(
+          'tar',
+          ['-xOf', archivePath, candidate],
+          {
+            encoding: 'utf-8',
+          },
+        );
         if (extractResult.status === 0) {
           return extractResult.stdout;
         }
@@ -725,9 +729,11 @@ describe('DockerService', () => {
       process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
       process.env.APP_PORT = '4000';
       let uploadedArchive: Buffer | undefined;
-      mockContainer.putArchive.mockImplementationOnce(async (stream: Readable) => {
-        uploadedArchive = await readStreamToBuffer(stream);
-      });
+      mockContainer.putArchive.mockImplementationOnce(
+        async (stream: Readable) => {
+          uploadedArchive = await readStreamToBuffer(stream);
+        },
+      );
 
       await service.createContainer('session-pi', DEFAULT_CONFIG, piContext);
 
@@ -747,10 +753,9 @@ describe('DockerService', () => {
       expect(callArgs.HostConfig.Binds).toEqual([
         'sandbox-session-pi-workspace:/workspace',
       ]);
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
       expect(mockContainer.putArchive.mock.invocationCallOrder[0]).toBeLessThan(
         mockContainer.start.mock.invocationCallOrder[0],
       );
@@ -794,10 +799,9 @@ describe('DockerService', () => {
       expect(callArgs.HostConfig).not.toMatchObject({
         ExtraHosts: expect.anything(),
       });
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
     });
 
     it('conversationId 未提供时不应注入 PERMISSION_CALLBACK_URL', async () => {
@@ -816,10 +820,9 @@ describe('DockerService', () => {
         e.startsWith('PERMISSION_CALLBACK_URL='),
       );
       expect(permUrlEntry).toBeUndefined();
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
     });
 
     it('仅注入存在的 LLM API 密钥到容器环境', async () => {
@@ -842,10 +845,9 @@ describe('DockerService', () => {
       expect(
         env.find((e: string) => e.startsWith('GOOGLE_API_KEY=')),
       ).toBeUndefined();
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
     });
 
     it('存在模型配置时应解密并覆盖对应 provider 的容器 API Key', async () => {
@@ -888,13 +890,10 @@ describe('DockerService', () => {
       );
 
       const callArgs = mockDocker.createContainer.mock.calls[0][0];
-      expect(callArgs.Env).toContain(
-        'PRIVATE_CLOUD_API_KEY=sk-private-cloud',
-      );
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(callArgs.Env).toContain('PRIVATE_CLOUD_API_KEY=sk-private-cloud');
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
     });
 
     it('private_cloud 非 api_key 鉴权时应移除继承的 provider API Key', async () => {
@@ -930,10 +929,9 @@ describe('DockerService', () => {
           entry.startsWith('PRIVATE_CLOUD_API_KEY='),
         ),
       ).toBeUndefined();
-      expect(mockContainer.putArchive).toHaveBeenCalledWith(
-        expect.anything(),
-        { path: '/' },
-      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(expect.anything(), {
+        path: '/',
+      });
     });
 
     it('ACP_TEST_FAKE_RUNTIME=1 时应跳过 pi-config 生成', async () => {
@@ -988,9 +986,11 @@ describe('DockerService', () => {
         conversationId: 'conv-skills',
       };
       let uploadedArchive: Buffer | undefined;
-      mockContainer.putArchive.mockImplementationOnce(async (stream: Readable) => {
-        uploadedArchive = await readStreamToBuffer(stream);
-      });
+      mockContainer.putArchive.mockImplementationOnce(
+        async (stream: Readable) => {
+          uploadedArchive = await readStreamToBuffer(stream);
+        },
+      );
 
       await service.createContainer(
         'session-skills',

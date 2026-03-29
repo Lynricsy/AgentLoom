@@ -1813,7 +1813,11 @@ describe('AgentDefinitionService', () => {
         'user-1',
       );
 
-      expect(capturedValues?.snapshot?.metadata).toMatchObject({
+      const snapshotMetadata = (
+        capturedValues as { snapshot?: { metadata?: unknown } } | null
+      )?.snapshot?.metadata;
+
+      expect(snapshotMetadata).toMatchObject({
         inputSchema: {
           type: 'object',
           properties: { question: { type: 'string' } },

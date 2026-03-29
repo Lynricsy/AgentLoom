@@ -136,10 +136,8 @@ export class DockerService {
         NanoCpus: config.cpu * CPU_CORE_TO_NANO,
         Memory: config.memory * MB_TO_BYTES,
         Binds: [`sandbox-${sessionId}-workspace:/workspace`],
-        ...(sandboxNetwork
-          ? { NetworkMode: sandboxNetwork }
-          : {}),
-      }
+        ...(sandboxNetwork ? { NetworkMode: sandboxNetwork } : {}),
+      };
 
       const createOptions: Docker.ContainerCreateOptions = {
         Image: SANDBOX_IMAGE,
@@ -165,23 +163,23 @@ export class DockerService {
           ...hostConfig,
           StorageOpt: { size: `${config.disk}G` },
         },
-      }
+      };
 
-      let container: Docker.Container
+      let container: Docker.Container;
       try {
-        container = await this.docker.createContainer(createOptions)
+        container = await this.docker.createContainer(createOptions);
       } catch (error) {
         if (!this.isUnsupportedStorageOptError(error)) {
-          throw error
+          throw error;
         }
 
         this.logger.warn(
           `Docker storage quota is unsupported for session ${sessionId}, retrying without StorageOpt.size: ${error.message}`,
-        )
+        );
         container = await this.docker.createContainer({
           ...createOptions,
           HostConfig: hostConfig,
-        })
+        });
       }
 
       createdContainer = container;
@@ -233,7 +231,10 @@ export class DockerService {
       path.join(configDir, 'settings.json'),
       bundle.settings ?? '{}',
     );
-    fs.writeFileSync(path.join(configDir, 'models.json'), bundle.models ?? '{}');
+    fs.writeFileSync(
+      path.join(configDir, 'models.json'),
+      bundle.models ?? '{}',
+    );
     fs.writeFileSync(
       path.join(configDir, 'system-prompt.md'),
       bundle.systemPrompt ?? '',
@@ -293,7 +294,9 @@ export class DockerService {
     } catch (cleanupError) {
       this.logger.warn(
         `Failed to cleanup sandbox container for session ${sessionId}: ${
-          cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError)
         }`,
       );
     }
@@ -752,7 +755,7 @@ export class DockerService {
     return (
       error instanceof Error &&
       error.message.includes('--storage-opt is supported only')
-    )
+    );
   }
 
   private toNodeSignal(signal: string): NodeJS.Signals {

@@ -316,7 +316,9 @@ describe('createVercelStreamFn()', () => {
       unknown
     >;
     const message = done.message as Record<string, unknown>;
-    expect(message.content).toEqual([{ type: 'text', text: 'Recovered answer' }]);
+    expect(message.content).toEqual([
+      { type: 'text', text: 'Recovered answer' },
+    ]);
   });
 
   it('recovers final tool call content when fullStream only emits finish', async () => {

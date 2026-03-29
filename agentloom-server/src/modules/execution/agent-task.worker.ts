@@ -323,7 +323,11 @@ export class AgentTaskWorker extends WorkerHost {
         }
 
         if (isExistingSession) {
-          this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+          this.registerMemoryToolsProvider(
+            runtime,
+            sessionId,
+            memorySessionIds,
+          );
         }
 
         const initialContentBlocks = this.buildContentBlocks(input);

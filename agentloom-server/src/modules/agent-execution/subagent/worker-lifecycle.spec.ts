@@ -85,6 +85,7 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAgentDefinitionService.compileCanvas.mockResolvedValue({});
+    mockAdapterFactory.selectAdapter.mockReturnValue(mockRuntime);
     mockRuntime.createSession.mockResolvedValue(makeSession());
     mockRuntime.prompt.mockReturnValue(
       createAsyncIterable([

@@ -610,9 +610,7 @@ describe('AgentExecutionWorker', () => {
         expect.objectContaining({ id: 'session-1' }),
         'conversation-1',
         'tenant-1',
-        expect.arrayContaining([
-          expect.objectContaining({ id: 'message-1' }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ id: 'message-1' })]),
         true,
         historyMessages,
       );
@@ -985,10 +983,9 @@ describe('AgentExecutionWorker', () => {
         'agent-1',
       );
 
-      expect(mockSkillResolverService.resolveSkillsForAgent).toHaveBeenCalledWith(
-        'tenant-1',
-        ['skill-1'],
-      );
+      expect(
+        mockSkillResolverService.resolveSkillsForAgent,
+      ).toHaveBeenCalledWith('tenant-1', ['skill-1']);
       expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
         expect.objectContaining({
           piConfigInput: expect.objectContaining({
@@ -1067,7 +1064,11 @@ describe('AgentExecutionWorker', () => {
           session: ReturnType<typeof makeSession>,
           conversationId: string,
           tenantId: string,
-          pendingMessages: Array<{ id: string; content: string; createdAt: Date }>,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
           hasPriorTurns: boolean,
         ) => Promise<{
           assistantText: string;

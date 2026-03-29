@@ -32,7 +32,9 @@ describe('zodToTypeBox', () => {
     expect(TypeGuard.IsUnionLiteral(result)).toBe(true);
     const union = result as ReturnType<typeof Type.Union>;
     expect(union.anyOf).toHaveLength(3);
-    const consts = union.anyOf.map((item) => (item as { const: string }).const);
+    const consts = union.anyOf.map(
+      (item) => (item as unknown as { const: string }).const,
+    );
     expect(consts).toEqual(['foo', 'bar', 'baz']);
   });
 
@@ -130,8 +132,8 @@ describe('typeBoxToZod', () => {
     const result = typeBoxToZod(Type.Array(Type.String()));
     expect(result._def.type).toBe('array');
     expect(
-      (result._def as { element: { _def: { type: string } } }).element._def
-        .type,
+      (result._def as unknown as { element: { _def: { type: string } } })
+        .element._def.type,
     ).toBe('string');
   });
 
@@ -140,8 +142,11 @@ describe('typeBoxToZod', () => {
       Type.Union([Type.Literal('a'), Type.Literal('b'), Type.Literal('c')]),
     );
     expect(result._def.type).toBe('enum');
-    const entries = (result._def as { entries: Record<string, string> })
-      .entries;
+    const entries = (
+      result._def as unknown as {
+        entries: Record<string, string>;
+      }
+    ).entries;
     expect(Object.keys(entries)).toEqual(['a', 'b', 'c']);
   });
 
@@ -149,8 +154,8 @@ describe('typeBoxToZod', () => {
     const result = typeBoxToZod(Type.Union([Type.Number(), Type.Null()]));
     expect(result._def.type).toBe('nullable');
     expect(
-      (result._def as { innerType: { _def: { type: string } } }).innerType._def
-        .type,
+      (result._def as unknown as { innerType: { _def: { type: string } } })
+        .innerType._def.type,
     ).toBe('number');
   });
 
@@ -160,7 +165,9 @@ describe('typeBoxToZod', () => {
     );
     expect(result._def.type).toBe('object');
     const shape = (
-      result._def as { shape: Record<string, { _def: { type: string } }> }
+      result._def as unknown as {
+        shape: Record<string, { _def: { type: string } }>;
+      }
     ).shape;
     expect(shape.x._def.type).toBe('string');
     expect(shape.y._def.type).toBe('number');
@@ -171,7 +178,9 @@ describe('typeBoxToZod', () => {
       Type.Object({ x: Type.String(), y: Type.Optional(Type.Number()) }),
     );
     const shape = (
-      result._def as { shape: Record<string, { _def: { type: string } }> }
+      result._def as unknown as {
+        shape: Record<string, { _def: { type: string } }>;
+      }
     ).shape;
     expect(shape.x._def.type).toBe('string');
     expect(shape.y._def.type).toBe('optional');
@@ -181,8 +190,8 @@ describe('typeBoxToZod', () => {
     const result = typeBoxToZod(Type.Optional(Type.String()));
     expect(result._def.type).toBe('optional');
     expect(
-      (result._def as { innerType: { _def: { type: string } } }).innerType._def
-        .type,
+      (result._def as unknown as { innerType: { _def: { type: string } } })
+        .innerType._def.type,
     ).toBe('string');
   });
 
@@ -199,7 +208,9 @@ describe('typeBoxToZod', () => {
     const result = typeBoxToZod(schema);
     expect(result._def.type).toBe('object');
     const shape = (
-      result._def as { shape: Record<string, { _def: { type: string } }> }
+      result._def as unknown as {
+        shape: Record<string, { _def: { type: string } }>;
+      }
     ).shape;
     expect(shape.user._def.type).toBe('object');
     expect(shape.tags._def.type).toBe('array');
@@ -217,7 +228,7 @@ describe('round-trip', () => {
     const typeBox = zodToTypeBox(original);
     const roundTripped = typeBoxToZod(typeBox);
     const shape = (
-      roundTripped._def as {
+      roundTripped._def as unknown as {
         shape: Record<string, { _def: { type: string }; description?: string }>;
       }
     ).shape;
@@ -232,8 +243,11 @@ describe('round-trip', () => {
     const original = z.enum(['red', 'green', 'blue']);
     const roundTripped = typeBoxToZod(zodToTypeBox(original));
     expect(roundTripped._def.type).toBe('enum');
-    const entries = (roundTripped._def as { entries: Record<string, string> })
-      .entries;
+    const entries = (
+      roundTripped._def as unknown as {
+        entries: Record<string, string>;
+      }
+    ).entries;
     expect(Object.keys(entries)).toEqual(['red', 'green', 'blue']);
   });
 

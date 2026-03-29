@@ -840,10 +840,14 @@ export class AgentExecutionWorker extends WorkerHost {
   }
 
   private hasConcreteToolName(tool: string | undefined): boolean {
-    return typeof tool === 'string' && tool.length > 0 && tool !== 'unknown_tool';
+    return (
+      typeof tool === 'string' && tool.length > 0 && tool !== 'unknown_tool'
+    );
   }
 
-  private hasConcreteToolArgs(args: Record<string, unknown> | undefined): boolean {
+  private hasConcreteToolArgs(
+    args: Record<string, unknown> | undefined,
+  ): boolean {
     return !!args && Object.keys(args).length > 0;
   }
 
@@ -1355,7 +1359,9 @@ export class AgentExecutionWorker extends WorkerHost {
       ...(mcpServers ? { mcpServers } : {}),
       ...(params.skillPayloads?.length
         ? {
-            skills: params.skillPayloads.map((skill) => this.toSkillInput(skill)),
+            skills: params.skillPayloads.map((skill) =>
+              this.toSkillInput(skill),
+            ),
           }
         : {}),
     };
@@ -1461,7 +1467,9 @@ export class AgentExecutionWorker extends WorkerHost {
       provider,
       model,
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
-      ...(typeof apiKeyId === 'string' || apiKeyId === null ? { apiKeyId } : {}),
+      ...(typeof apiKeyId === 'string' || apiKeyId === null
+        ? { apiKeyId }
+        : {}),
       ...(authMethod ? { authMethod } : {}),
     };
   }
@@ -1506,7 +1514,9 @@ export class AgentExecutionWorker extends WorkerHost {
       return undefined;
     }
 
-    const configIds = this.extractEnabledMcpServerConfigIds(runtimeConfig.tools);
+    const configIds = this.extractEnabledMcpServerConfigIds(
+      runtimeConfig.tools,
+    );
     if (configIds.length === 0) {
       return undefined;
     }
@@ -1606,7 +1616,9 @@ export class AgentExecutionWorker extends WorkerHost {
     return `${base}_${suffix}`;
   }
 
-  private sanitizePiMcpServerKey(value: string | undefined): string | undefined {
+  private sanitizePiMcpServerKey(
+    value: string | undefined,
+  ): string | undefined {
     if (typeof value !== 'string' || value.trim().length === 0) {
       return undefined;
     }
@@ -1731,9 +1743,8 @@ export class AgentExecutionWorker extends WorkerHost {
     nodes: AgentVersionSnapshot['nodes'],
     edges: AgentVersionSnapshot['edges'],
   ): string[] {
-    const normalizedRuntimeSkillIds = this.normalizeRuntimeSkillIds(
-      runtimeSkillIds,
-    );
+    const normalizedRuntimeSkillIds =
+      this.normalizeRuntimeSkillIds(runtimeSkillIds);
     if (normalizedRuntimeSkillIds.length > 0) {
       return normalizedRuntimeSkillIds;
     }

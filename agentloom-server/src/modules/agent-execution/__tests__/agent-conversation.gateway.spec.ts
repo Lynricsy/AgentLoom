@@ -917,53 +917,47 @@ describe('AgentConversationGateway', () => {
 
   describe('mapExecutionEventToConversation', () => {
     it('should map OUTPUT_CHUNK to AGENT_MESSAGE_CHUNK', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 1,
-          event: ExecutionEventName.OUTPUT_CHUNK,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: { stepId: 'step-1', chunk: 'hello', index: 0 },
-        },
-      );
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 1,
+        event: ExecutionEventName.OUTPUT_CHUNK,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: { stepId: 'step-1', chunk: 'hello', index: 0 },
+      });
       expect(result).toBe(ConversationEventName.AGENT_MESSAGE_CHUNK);
     });
 
     it('should map STEP_AGENT_EVENT decision payload to AGENT_THINKING', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 2,
-          event: ExecutionEventName.STEP_AGENT_EVENT,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: {
-            stepId: 'step-1',
-            event: { type: 'decision', suggestedContent: '继续' },
-          },
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 2,
+        event: ExecutionEventName.STEP_AGENT_EVENT,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          event: { type: 'decision', suggestedContent: '继续' },
         },
-      );
+      });
       expect(result).toBe(ConversationEventName.AGENT_THINKING);
     });
 
     it('should map NODE_TOOL_CALL_STATUS to AGENT_TOOL_CALL', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 3,
-          event: ExecutionEventName.NODE_TOOL_CALL_STATUS,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: {
-            stepId: 'step-1',
-            nodeId: 'node-1',
-            toolCallId: 'tool-1',
-            tool: 'search',
-            status: 'pending',
-          },
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 3,
+        event: ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          toolCallId: 'tool-1',
+          tool: 'search',
+          status: 'pending',
         },
-      );
+      });
       expect(result).toBe(ConversationEventName.AGENT_TOOL_CALL);
     });
 
@@ -986,55 +980,49 @@ describe('AgentConversationGateway', () => {
     });
 
     it('should map EXECUTION_STATUS_CHANGED to STATUS_CHANGED', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 5,
-          event: ExecutionEventName.EXECUTION_STATUS_CHANGED,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: { executionId: 'conv-1', status: 'running' },
-        },
-      );
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 5,
+        event: ExecutionEventName.EXECUTION_STATUS_CHANGED,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: { executionId: 'conv-1', status: 'running' },
+      });
       expect(result).toBe(ConversationEventName.STATUS_CHANGED);
     });
 
     it('should map STEP_STATUS_CHANGED to STATUS_CHANGED', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 6,
-          event: ExecutionEventName.STEP_STATUS_CHANGED,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: {
-            stepId: 'step-1',
-            nodeId: 'node-1',
-            from: 'pending',
-            to: 'running',
-          },
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 6,
+        event: ExecutionEventName.STEP_STATUS_CHANGED,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          from: 'pending',
+          to: 'running',
         },
-      );
+      });
       expect(result).toBe(ConversationEventName.STATUS_CHANGED);
     });
 
     it('should return null for unmapped STEP_AGENT_EVENT payloads', () => {
-      const result = (gateway as any).mapExecutionEventToConversation(
-        {
-          eventId: 7,
-          event: ExecutionEventName.STEP_AGENT_EVENT,
-          timestamp: '2026-03-29T00:00:00.000Z',
-          executionId: 'conv-1',
-          tenantId: 'tenant-1',
-          data: {
-            stepId: 'step-1',
-            event: {
-              type: 'tool_call',
-              call: { id: 'tool-1', tool: 'search', status: 'pending' },
-            },
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 7,
+        event: ExecutionEventName.STEP_AGENT_EVENT,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          event: {
+            type: 'tool_call',
+            call: { id: 'tool-1', tool: 'search', status: 'pending' },
           },
         },
-      );
+      });
       expect(result).toBeNull();
     });
 

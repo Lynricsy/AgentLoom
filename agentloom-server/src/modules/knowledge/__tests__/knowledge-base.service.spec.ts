@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeBaseService } from '../knowledge-base.service';
 import { KnowledgeBaseNotFoundException } from '../knowledge.exceptions';
 import { DRIZZLE } from '../../../database/database.module';
+import { LlmService } from '../../llm/llm.service';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
@@ -60,6 +61,10 @@ function createGroupedWhereChain(result: unknown) {
 describe('KnowledgeBaseService', () => {
   let service: KnowledgeBaseService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let llmService: {
+    findById: ReturnType<typeof vi.fn>;
+    findDefaultByType: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -70,10 +75,18 @@ describe('KnowledgeBaseService', () => {
       update: vi.fn(),
       delete: vi.fn(),
     };
+    llmService = {
+      findById: vi.fn(),
+      findDefaultByType: vi.fn().mockResolvedValue(null),
+    };
     mocks.getTenantDb.mockReturnValue(db);
 
     const module = await Test.createTestingModule({
-      providers: [KnowledgeBaseService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        KnowledgeBaseService,
+        { provide: DRIZZLE, useValue: db },
+        { provide: LlmService, useValue: llmService },
+      ],
     }).compile();
 
     service = module.get<KnowledgeBaseService>(KnowledgeBaseService);
@@ -88,6 +101,7 @@ describe('KnowledgeBaseService', () => {
         chunkSize: 512,
         chunkOverlap: 64,
         embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
       };
       const expectedKB = {
         id: KB_ID,
@@ -190,6 +204,7 @@ describe('KnowledgeBaseService', () => {
         chunkSize: 512,
         chunkOverlap: 64,
         embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
         createdBy: USER_ID,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -229,6 +244,7 @@ describe('KnowledgeBaseService', () => {
         chunkSize: 512,
         chunkOverlap: 64,
         embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
         createdBy: USER_ID,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -238,6 +254,7 @@ describe('KnowledgeBaseService', () => {
         chunkSize: 1024,
         chunkOverlap: 128,
         embeddingModel: 'text-embedding-3-large',
+        embeddingModelConfigId: null,
       };
 
       const updateWhere = vi.fn().mockResolvedValue(undefined);
@@ -260,6 +277,7 @@ describe('KnowledgeBaseService', () => {
         chunkSize: 1024,
         chunkOverlap: 128,
         embeddingModel: 'text-embedding-3-large',
+        embeddingModelConfigId: null,
       });
 
       expect(db.update).toHaveBeenCalled();

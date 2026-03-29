@@ -54,6 +54,8 @@ function createConfig(overrides: Partial<LlmModelConfig> = {}): LlmModelConfig {
     authMethod: null,
     authConfig: null,
     timeoutMs: null,
+    modelType: 'chat',
+    embeddingDimensions: null,
     isDefault: false,
     createdAt: new Date(),
     updatedAt: new Date(),

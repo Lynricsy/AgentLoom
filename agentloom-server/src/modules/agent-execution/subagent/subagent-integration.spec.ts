@@ -215,6 +215,7 @@ describe('Sub-Agent Integration Tests', () => {
       meta: { total: 1, page: 1, pageSize: 100, totalPages: 1 },
     });
     mockAgentDefinitionService.compileCanvas.mockResolvedValue({});
+    mockAdapterFactory.selectAdapter.mockReturnValue(mockRuntime);
     mockRuntime.createSession.mockResolvedValue(makeSession());
     mockRuntime.prompt.mockReturnValue(
       createAsyncIterable([
@@ -645,7 +646,7 @@ describe('Sub-Agent Integration Tests', () => {
     });
 
     it('resolveSubAgent 在精确边界 currentDepth === maxDepth 时抛出', async () => {
-      const { resolveSubAgent } = await import('./resolve-subagent');
+      const { resolveSubAgent } = await import('./resolve-subagent.js');
 
       await expect(
         resolveSubAgent({

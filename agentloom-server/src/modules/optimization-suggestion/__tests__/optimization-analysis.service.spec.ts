@@ -14,7 +14,7 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
 }));
 
 import type { DrizzleDB } from '../../../database/database.module';
-import type { SuggestionCandidate } from '../analyzers';
+import type { AnalysisContext, SuggestionCandidate } from '../analyzers';
 import type { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { OptimizationAnalysisService } from '../optimization-analysis.service';
 
@@ -126,23 +126,58 @@ function createSummaryRecord(executionId: string, nodeId: string) {
 function createCandidate(
   suggestionType: SuggestionCandidate['suggestionType'],
 ): SuggestionCandidate {
-  return {
-    suggestionType,
-    confidence: 0.9,
-    currentValue: { current: true },
-    suggestedValue: { suggested: true },
-    rationale: `${suggestionType} rationale`,
-  };
+  switch (suggestionType) {
+    case 'model_downgrade':
+      return {
+        suggestionType,
+        confidence: 0.9,
+        currentValue: {
+          modelId: 'gpt-4',
+          modelName: 'GPT-4',
+          provider: 'openai',
+        },
+        suggestedValue: {
+          modelId: 'gpt-4o-mini',
+          modelName: 'GPT-4o Mini',
+          provider: 'openai',
+        },
+        rationale: `${suggestionType} rationale`,
+      };
+    case 'timeout_adjustment':
+      return {
+        suggestionType,
+        confidence: 0.9,
+        currentValue: { timeoutMs: 45_000 },
+        suggestedValue: { timeoutMs: 30_000 },
+        rationale: `${suggestionType} rationale`,
+      };
+    case 'tool_pruning':
+      return {
+        suggestionType,
+        confidence: 0.9,
+        currentValue: { tools: ['search', 'browser'], removedTools: [] },
+        suggestedValue: { tools: ['search'], removedTools: ['browser'] },
+        rationale: `${suggestionType} rationale`,
+      };
+    case 'autonomy_upgrade':
+      return {
+        suggestionType,
+        confidence: 0.9,
+        currentValue: { autonomyMode: 'RULE_BASED' },
+        suggestedValue: { autonomyMode: 'MANUAL_CONFIRM' },
+        rationale: `${suggestionType} rationale`,
+      };
+  }
 }
 
 function createAnalyzer(
   type: SuggestionCandidate['suggestionType'],
-  implementation?: (nodeId: string) => SuggestionCandidate | null,
+  implementation?: (context: AnalysisContext) => SuggestionCandidate | null,
 ) {
   return {
     type,
     analyze: vi.fn(
-      (context: { nodeId: string }) => implementation?.(context.nodeId) ?? null,
+      (context: AnalysisContext) => implementation?.(context) ?? null,
     ),
   };
 }
@@ -314,7 +349,7 @@ describe('OptimizationAnalysisService', () => {
     const insertChain = createInsertChain();
 
     modelDowngradeAnalyzer.analyze.mockImplementation(
-      (context: { nodeId: string }) => {
+      (context: AnalysisContext) => {
         if (context.nodeId === 'node-1') {
           throw new Error('boom');
         }
@@ -566,15 +601,23 @@ describe('OptimizationAnalysisService', () => {
     modelDowngradeAnalyzer.analyze.mockReturnValue({
       suggestionType: 'model_downgrade',
       confidence: 0.9,
-      currentValue: { modelId: 'gpt-4' },
-      suggestedValue: { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
+      currentValue: {
+        modelId: 'gpt-4',
+        modelName: 'gpt-4',
+        provider: 'unknown-provider',
+      },
+      suggestedValue: {
+        modelId: 'gpt-3.5-turbo',
+        modelName: 'GPT-3.5 Turbo',
+        provider: 'unknown-provider',
+      },
       rationale: 'downgrade rationale',
     });
     timeoutAdjustmentAnalyzer.analyze.mockReturnValue({
       suggestionType: 'timeout_adjustment',
       confidence: 0.8,
       currentValue: { timeoutMs: 45_000 },
-      suggestedValue: {},
+      suggestedValue: { timeoutMs: 30_000 },
       rationale: 'timeout rationale',
     });
     toolPruningAnalyzer.analyze.mockReturnValue({
@@ -587,7 +630,7 @@ describe('OptimizationAnalysisService', () => {
     autonomyUpgradeAnalyzer.analyze.mockReturnValue({
       suggestionType: 'autonomy_upgrade',
       confidence: 0.88,
-      currentValue: { mode: 'RULE_BASED' },
+      currentValue: { autonomyMode: 'RULE_BASED' },
       suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
       rationale: 'autonomy rationale',
     });
@@ -679,7 +722,7 @@ describe('OptimizationAnalysisService', () => {
       'RULE_BASED',
     );
     autonomyUpgradeAnalyzer.analyze.mockImplementation(
-      (context: { autonomyCap: string }) => {
+      (context: AnalysisContext) => {
         expect(context.autonomyCap).toBe('RULE_BASED');
         return createCandidate('autonomy_upgrade');
       },

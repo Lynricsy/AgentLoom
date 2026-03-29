@@ -169,7 +169,9 @@ export class LlmService {
         timeoutMs: privateCloudFields.timeoutMs,
         modelType: dto.modelType,
         embeddingDimensions:
-          dto.modelType === 'embedding' ? (dto.embeddingDimensions ?? null) : null,
+          dto.modelType === 'embedding'
+            ? (dto.embeddingDimensions ?? null)
+            : null,
       })
       .returning();
 

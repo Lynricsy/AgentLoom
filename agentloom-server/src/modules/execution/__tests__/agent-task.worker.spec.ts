@@ -416,22 +416,26 @@ describe('AgentTaskWorker', () => {
 
       await worker.process(createMockJob());
 
-      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith({
-        agentId: AGENT_ID,
-        mode: 'workflow',
-        tenantId: TENANT_ID,
-        llmModelConfigId: 'model-config-001',
-        systemPrompt: '你是翻译专家',
-        autonomyMode: 'LLM_SUGGEST',
-        context: {
-          executionId: EXECUTION_ID,
-          hasSandbox: false,
-          input,
-          nodeId: 'node-1',
-          stepId: STEP_ID,
+      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: expect.any(String),
+          agentId: AGENT_ID,
+          mode: 'workflow',
           tenantId: TENANT_ID,
-        },
-      });
+          llmModelConfigId: 'model-config-001',
+          systemPrompt: '你是翻译专家',
+          autonomyMode: 'LLM_SUGGEST',
+          mcpServers: undefined,
+          context: {
+            executionId: EXECUTION_ID,
+            hasSandbox: false,
+            input,
+            nodeId: 'node-1',
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+          },
+        }),
+      );
       expect(mockAgentRuntime.prompt).toHaveBeenCalledWith(SESSION_ID, [
         { type: 'text', text: JSON.stringify(input) },
       ]);
@@ -491,29 +495,33 @@ describe('AgentTaskWorker', () => {
       expect(mockMemoryFusionService.bootAll).toHaveBeenCalledWith([
         'memory-session-1',
       ]);
-      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith({
-        agentId: AGENT_ID,
-        mode: 'workflow',
-        tenantId: TENANT_ID,
-        llmModelConfigId: 'model-config-001',
-        systemPrompt:
-          'memory-system-prompt\n\n## Memory Boot\nmemory-boot\n\n## Memory Index\n- core://profile/name\n\n## Memory Glossary\n- fox -> node:node-1\n\n原始系统提示',
-        autonomyMode: 'LLM_SUGGEST',
-        context: {
-          executionId: EXECUTION_ID,
-          hasSandbox: false,
-          input,
-          nodeId: 'node-1',
-          stepId: STEP_ID,
+      expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: expect.any(String),
+          agentId: AGENT_ID,
+          mode: 'workflow',
           tenantId: TENANT_ID,
-          memorySessionIds: ['memory-session-1'],
-        },
-      });
+          llmModelConfigId: 'model-config-001',
+          systemPrompt:
+            'memory-system-prompt\n\n## Memory Boot\nmemory-boot\n\n## Memory Index\n- core://profile/name\n\n## Memory Glossary\n- fox -> node:node-1\n\n原始系统提示',
+          autonomyMode: 'LLM_SUGGEST',
+          mcpServers: undefined,
+          context: {
+            executionId: EXECUTION_ID,
+            hasSandbox: false,
+            input,
+            nodeId: 'node-1',
+            stepId: STEP_ID,
+            tenantId: TENANT_ID,
+            memorySessionIds: ['memory-session-1'],
+          },
+        }),
+      );
       expect(
         mockMemoryToolsService.createSessionToolProvider,
       ).toHaveBeenCalledWith(['memory-session-1']);
       expect(mockAgentRuntime.registerSessionToolProvider).toHaveBeenCalledWith(
-        SESSION_ID,
+        expect.any(String),
         toolProvider,
       );
     });

@@ -121,12 +121,17 @@ function resolvePrivateCloudApi(model: string): string {
   return 'openai-responses';
 }
 
-export function resolvePiModelApi(modelConfig: Pick<PiModelConfig, 'provider' | 'model'>): string {
+export function resolvePiModelApi(
+  modelConfig: Pick<PiModelConfig, 'provider' | 'model'>,
+): string {
   if (modelConfig.provider === 'private_cloud') {
     return resolvePrivateCloudApi(modelConfig.model);
   }
 
-  return PROVIDER_API_MAP[modelConfig.provider] ?? `${modelConfig.provider}-completions`;
+  return (
+    PROVIDER_API_MAP[modelConfig.provider] ??
+    `${modelConfig.provider}-completions`
+  );
 }
 
 export function resolvePiModelBaseUrl(
@@ -134,7 +139,9 @@ export function resolvePiModelBaseUrl(
   api: string,
 ): string | undefined {
   const baseUrl =
-    modelConfig.apiBaseUrl ?? PROVIDER_BASE_URL_MAP[modelConfig.provider] ?? undefined;
+    modelConfig.apiBaseUrl ??
+    PROVIDER_BASE_URL_MAP[modelConfig.provider] ??
+    undefined;
 
   if (!baseUrl) {
     return undefined;

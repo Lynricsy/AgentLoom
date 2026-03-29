@@ -210,7 +210,8 @@ class TestJwtAuthGuard implements CanActivate {
       sub: String(payload.sub ?? ''),
       email: String(payload.email ?? ''),
       aud: String(payload.aud ?? 'authenticated'),
-      jti: String(payload.jti ?? ''),
+      exp: Number(payload.exp ?? 0),
+      iat: Number(payload.iat ?? 0),
       tenantId: payload.tenantId ?? payload.tenant_id,
       tenantRole: payload.tenantRole ?? payload.tenant_role,
     };

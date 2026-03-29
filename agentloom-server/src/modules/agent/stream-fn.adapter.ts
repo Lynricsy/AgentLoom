@@ -136,9 +136,7 @@ function applyUsage(
   partial.usage.totalTokens = partial.usage.input + partial.usage.output;
 }
 
-function mapFinishReason(
-  finishReason: string | undefined,
-): DoneStopReason {
+function mapFinishReason(finishReason: string | undefined): DoneStopReason {
   return finishReason === 'tool-calls'
     ? 'toolUse'
     : finishReason === 'length'
@@ -526,7 +524,9 @@ export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
             error: {
               ...shallowClonePartial(partial),
               stopReason:
-                terminalError.reason === 'aborted' ? 'aborted' : ('error' as const),
+                terminalError.reason === 'aborted'
+                  ? 'aborted'
+                  : ('error' as const),
               errorMessage: terminalError.message,
             },
           });
@@ -553,9 +553,7 @@ export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
             ((await safeAwait(
               result.finishReason,
               undefined as string | undefined,
-            )) as
-              | string
-              | undefined),
+            )) as string | undefined),
         );
 
         partial.stopReason = stopReason;

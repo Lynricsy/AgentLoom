@@ -306,7 +306,10 @@ export class KnowledgeBaseService {
     requestedModelName?: string,
   ): Promise<{ modelName: string; modelConfigId: string | null }> {
     if (requestedModelConfigId) {
-      const config = await this.llmService.findById(requestedModelConfigId, tenantId);
+      const config = await this.llmService.findById(
+        requestedModelConfigId,
+        tenantId,
+      );
       if (config.modelType !== 'embedding') {
         throw new Error('知识库只能绑定 Embedding 模型配置');
       }

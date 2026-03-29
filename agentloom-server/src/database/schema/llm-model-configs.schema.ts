@@ -16,10 +16,7 @@ import { apiKeys } from './api-keys.schema';
 import { organizations } from './organizations.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 
-export const llmModelTypeEnum = pgEnum('llm_model_type', [
-  'chat',
-  'embedding',
-]);
+export const llmModelTypeEnum = pgEnum('llm_model_type', ['chat', 'embedding']);
 
 export const llmModelConfigs = pgTable(
   'llm_model_configs',

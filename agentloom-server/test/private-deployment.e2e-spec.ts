@@ -441,7 +441,7 @@ describe('Private Deployment E2E', () => {
       .digest('hex');
 
     ensureTestEnvironment(publicKey);
-    ({ AppModule } = await import('../src/app.module'));
+    ({ AppModule } = await import('../src/app.module.js'));
 
     ctx = await createRlsTestContext();
     await bootstrapResourceGovernanceSchema(ctx);

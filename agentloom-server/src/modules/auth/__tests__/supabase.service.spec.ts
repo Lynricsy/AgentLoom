@@ -45,7 +45,7 @@ vi.mock('@supabase/supabase-js', () => ({
 function createMockConfigService(values: Record<string, string | undefined>) {
   return {
     get: vi.fn((key: string) => values[key]),
-  } as ConfigService;
+  } as unknown as ConfigService;
 }
 
 describe('SupabaseService', () => {

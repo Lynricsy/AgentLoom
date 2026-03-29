@@ -65,7 +65,8 @@ function serializeToolCalls(
       return [];
     }
 
-    const tool = readString(entry.tool) ?? readString(entry.name) ?? 'unknown_tool';
+    const tool =
+      readString(entry.tool) ?? readString(entry.name) ?? 'unknown_tool';
 
     return [
       {
@@ -79,7 +80,11 @@ function serializeToolCalls(
           ? { transitions: serializeTransitions(entry.transitions)! }
           : {}),
         ...(serializePermissionRequest(entry.permissionRequest)
-          ? { permissionRequest: serializePermissionRequest(entry.permissionRequest)! }
+          ? {
+              permissionRequest: serializePermissionRequest(
+                entry.permissionRequest,
+              )!,
+            }
           : {}),
       } satisfies MessageToolCallDto,
     ];

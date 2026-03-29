@@ -6,10 +6,7 @@ import { EvidenceEventName } from '../../evidence/evidence.events';
 import { RagService } from '../services/rag.service';
 import { EmbeddingService } from '../services/embedding.service';
 import { DocumentChunkService } from '../document-chunk.service';
-import {
-  VECTOR_STORE,
-  EMBEDDING_MODEL,
-} from '../knowledge.constants';
+import { VECTOR_STORE, EMBEDDING_MODEL } from '../knowledge.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import type { VectorStore } from '../interfaces/vector-store.interface';
 import { LlmService } from '../../llm/llm.service';
@@ -52,25 +49,21 @@ describe('RagService', () => {
   let eventEmitter: { emit: Mock };
 
   function mockFallbackEmbeddingConfig(embeddingModel = EMBEDDING_MODEL) {
-    mockDb.limit
-      .mockResolvedValueOnce([{ id: ORG_ID }])
-      .mockResolvedValueOnce([
-        {
-          embeddingModel,
-          embeddingModelConfigId: null,
-        },
-      ]);
+    mockDb.limit.mockResolvedValueOnce([{ id: ORG_ID }]).mockResolvedValueOnce([
+      {
+        embeddingModel,
+        embeddingModelConfigId: null,
+      },
+    ]);
   }
 
   function mockBoundEmbeddingConfig() {
-    mockDb.limit
-      .mockResolvedValueOnce([{ id: ORG_ID }])
-      .mockResolvedValueOnce([
-        {
-          embeddingModel: EMBEDDING_MODEL,
-          embeddingModelConfigId: 'cfg-embedding-1',
-        },
-      ]);
+    mockDb.limit.mockResolvedValueOnce([{ id: ORG_ID }]).mockResolvedValueOnce([
+      {
+        embeddingModel: EMBEDDING_MODEL,
+        embeddingModelConfigId: 'cfg-embedding-1',
+      },
+    ]);
     llmService.findById.mockResolvedValue({
       id: 'cfg-embedding-1',
       modelType: 'embedding',

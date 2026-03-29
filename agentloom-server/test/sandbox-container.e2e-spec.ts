@@ -37,8 +37,8 @@ import type {
   AgentEventListener,
   SseEventEnvelope,
 } from '../../agentloom-deploy/sandbox/src/types.js';
+import type { SessionFactory } from '../../agentloom-deploy/sandbox/src/acp-adapter.js';
 import { createSandboxServer } from '../../agentloom-deploy/sandbox/src/server.js';
-import type { FastifyInstance } from 'fastify';
 
 interface MockSession extends IAgentSession {
   _listeners: AgentEventListener[];
@@ -100,13 +100,15 @@ function parseSseEvents(body: string): SseEventEnvelope[] {
 }
 
 describe('Sandbox HTTP Contract (in-process)', () => {
-  let app: FastifyInstance;
+  let app: Awaited<ReturnType<typeof createSandboxServer>>;
   let mockSession: MockSession;
-  let sessionFactory: ReturnType<typeof vi.fn>;
+  let sessionFactory: SessionFactory;
+  let sessionFactoryMock: ReturnType<typeof vi.fn>;
 
   beforeAll(async () => {
     mockSession = createMockSession();
-    sessionFactory = vi.fn().mockResolvedValue(mockSession);
+    sessionFactoryMock = vi.fn().mockResolvedValue(mockSession);
+    sessionFactory = sessionFactoryMock as unknown as SessionFactory;
     app = await createSandboxServer({
       host: '127.0.0.1',
       port: 0,
@@ -122,7 +124,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
 
   beforeEach(() => {
     mockSession = createMockSession();
-    sessionFactory.mockResolvedValue(mockSession);
+    sessionFactoryMock.mockResolvedValue(mockSession);
   });
 
   describe('GET /health', () => {
@@ -161,8 +163,9 @@ describe('Sandbox HTTP Contract (in-process)', () => {
         payload: { cwd: '/custom/workspace' },
       });
 
-      expect(sessionFactory).toHaveBeenCalledWith(
+      expect(sessionFactoryMock).toHaveBeenCalledWith(
         '/custom/workspace',
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -174,8 +177,9 @@ describe('Sandbox HTTP Contract (in-process)', () => {
         payload: {},
       });
 
-      expect(sessionFactory).toHaveBeenCalledWith(
+      expect(sessionFactoryMock).toHaveBeenCalledWith(
         '/workspace',
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -325,8 +329,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
         json: async () => ({ allowed: true }),
       });
 
-      globalThis.fetch =
-        permissionFetch as unknown as typeof globalThis.fetch;
+      globalThis.fetch = permissionFetch as unknown as typeof globalThis.fetch;
 
       try {
         mockSession.prompt = vi.fn().mockImplementation(async () => {

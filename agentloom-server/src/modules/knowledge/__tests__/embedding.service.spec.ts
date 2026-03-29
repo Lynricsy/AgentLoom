@@ -76,7 +76,10 @@ describe('EmbeddingService', () => {
 
   describe('generateEmbeddings', () => {
     it('should return empty array for empty input', async () => {
-      const result = await service.generateEmbeddings([], createRuntimeConfig());
+      const result = await service.generateEmbeddings(
+        [],
+        createRuntimeConfig(),
+      );
 
       expect(result).toEqual([]);
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -145,7 +148,10 @@ describe('EmbeddingService', () => {
         .mockResolvedValueOnce(createEmbeddingResponse(batch1Embeddings))
         .mockResolvedValueOnce(createEmbeddingResponse(batch2Embeddings));
 
-      const result = await service.generateEmbeddings(texts, createRuntimeConfig());
+      const result = await service.generateEmbeddings(
+        texts,
+        createRuntimeConfig(),
+      );
 
       expect(fetchSpy).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(EMBEDDING_BATCH_SIZE + 5);
@@ -176,12 +182,10 @@ describe('EmbeddingService', () => {
     });
 
     it('should throw on API error after retries exhausted', async () => {
-      vi
-        .spyOn(
-          service as unknown as { sleep: (ms: number) => Promise<void> },
-          'sleep',
-        )
-        .mockResolvedValue(undefined);
+      vi.spyOn(
+        service as unknown as { sleep: (ms: number) => Promise<void> },
+        'sleep',
+      ).mockResolvedValue(undefined);
       fetchSpy.mockImplementation(() =>
         Promise.resolve(new Response('rate limited', { status: 429 })),
       );
@@ -203,12 +207,10 @@ describe('EmbeddingService', () => {
     });
 
     it('should retry on failure and succeed', async () => {
-      vi
-        .spyOn(
-          service as unknown as { sleep: (ms: number) => Promise<void> },
-          'sleep',
-        )
-        .mockResolvedValue(undefined);
+      vi.spyOn(
+        service as unknown as { sleep: (ms: number) => Promise<void> },
+        'sleep',
+      ).mockResolvedValue(undefined);
       fetchSpy
         .mockImplementationOnce(() =>
           Promise.resolve(new Response('error', { status: 500 })),

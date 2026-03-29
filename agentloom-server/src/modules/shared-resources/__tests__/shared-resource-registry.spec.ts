@@ -13,11 +13,15 @@ function createMockProvider(type: string): SharedResourceProvider<
   destroy: ReturnType<typeof vi.fn>;
   share: ReturnType<typeof vi.fn>;
 } {
+  const create = vi.fn<SharedResourceProvider<unknown, unknown>['create']>();
+  const destroy = vi.fn<SharedResourceProvider<unknown, unknown>['destroy']>();
+  const share = vi.fn<SharedResourceProvider<unknown, unknown>['share']>();
+
   return {
     type,
-    create: vi.fn(),
-    destroy: vi.fn(),
-    share: vi.fn(),
+    create,
+    destroy,
+    share,
   };
 }
 

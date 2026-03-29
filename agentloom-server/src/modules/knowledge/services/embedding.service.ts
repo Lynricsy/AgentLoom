@@ -52,7 +52,11 @@ export class EmbeddingService {
 
     for (let i = 0; i < texts.length; i += EMBEDDING_BATCH_SIZE) {
       const batch = texts.slice(i, i + EMBEDDING_BATCH_SIZE);
-      const embeddings = await this.callEmbeddingApiWithRetry(batch, config, apiKey);
+      const embeddings = await this.callEmbeddingApiWithRetry(
+        batch,
+        config,
+        apiKey,
+      );
       allEmbeddings.push(...embeddings);
     }
 

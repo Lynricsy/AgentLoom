@@ -1,6 +1,6 @@
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
