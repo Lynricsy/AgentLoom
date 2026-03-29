@@ -26,7 +26,11 @@ import type {
   ToolCall,
   ToolCallStatus,
 } from '../types';
-import { useSubAgentStreams } from '../stores/agent-conversation.store';
+import {
+  useConversationActions,
+  useConversationId,
+  useSubAgentStreams,
+} from '../stores/agent-conversation.store';
 import {
   SubAgentStreamView,
   SubAgentCompletionNotice,
@@ -111,6 +115,29 @@ const ToolCallItem = memo(function ToolCallItem({
 }: {
   toolCall: ToolCall;
 }) {
+  const conversationId = useConversationId();
+  const { resolveToolPermission } = useConversationActions();
+  const [submittingAction, setSubmittingAction] = useState<
+    'approve' | 'deny' | null
+  >(null);
+  const isAwaitingPermission = toolCall.status === 'awaiting_permission';
+
+  const handlePermission = useCallback(
+    async (action: 'approve' | 'deny') => {
+      if (!conversationId || submittingAction) {
+        return;
+      }
+
+      setSubmittingAction(action);
+      try {
+        await resolveToolPermission(toolCall.id, action);
+      } finally {
+        setSubmittingAction(null);
+      }
+    },
+    [conversationId, resolveToolPermission, submittingAction, toolCall.id],
+  );
+
   return (
     <div className="flex items-start gap-2 py-1.5 text-xs">
       <ToolStatusIcon status={toolCall.status} />
@@ -132,6 +159,39 @@ const ToolCallItem = memo(function ToolCallItem({
           <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-[11px] leading-relaxed text-error max-h-40 overflow-y-auto">
             {toolCall.error}
           </pre>
+        )}
+        {isAwaitingPermission && toolCall.permissionRequest && (
+          <div className="mt-2 rounded border border-warning/30 bg-warning/5 p-2 text-[11px] leading-relaxed text-muted-foreground">
+            {toolCall.permissionRequest.description && (
+              <p>{toolCall.permissionRequest.description}</p>
+            )}
+            {toolCall.permissionRequest.resourcePaths &&
+              toolCall.permissionRequest.resourcePaths.length > 0 && (
+                <pre className="mt-1 overflow-x-auto rounded bg-background p-2 text-[11px] text-muted-foreground">
+                  {toolCall.permissionRequest.resourcePaths.join('\n')}
+                </pre>
+              )}
+          </div>
+        )}
+        {isAwaitingPermission && conversationId && (
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className="rounded border border-success/40 px-2 py-1 text-[11px] text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void handlePermission('approve')}
+              disabled={submittingAction !== null}
+            >
+              {submittingAction === 'approve' ? '批准中…' : '批准'}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-error/40 px-2 py-1 text-[11px] text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void handlePermission('deny')}
+              disabled={submittingAction !== null}
+            >
+              {submittingAction === 'deny' ? '拒绝中…' : '拒绝'}
+            </button>
+          </div>
         )}
       </div>
     </div>

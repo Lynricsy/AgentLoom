@@ -3,7 +3,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
-import { apiClient } from '@/shared/api/client';
+import { apiClient, toSnakeBody } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/stores/auth.store';
 import type { PaginatedResponse } from '@/shared/types/api';
 import type {
@@ -90,6 +90,10 @@ interface AgentConversationActions {
     disconnect: () => void;
     sendMessage: (content: string) => void;
     cancelExecution: () => void;
+    resolveToolPermission: (
+      toolCallId: string,
+      action: 'approve' | 'deny',
+    ) => Promise<void>;
     selectFile: (path: string | null) => void;
     loadHistory: (conversationId: string) => Promise<void>;
     reset: () => void;
@@ -358,7 +362,11 @@ function normalizeHistoryToolCalls(value: unknown): ToolCall[] {
     return [
       {
         id: toolCallId,
-        tool: readString(item.tool) ?? readString(item.name) ?? 'unknown_tool',
+        tool:
+          readString(item.tool) ??
+          readString(item.toolName) ??
+          readString(item.name) ??
+          'unknown_tool',
         ...(item.args !== undefined ? { args: item.args } : {}),
         ...(item.result !== undefined ? { result: item.result } : {}),
         ...(readString(item.error) ? { error: readString(item.error)! } : {}),
@@ -478,9 +486,12 @@ function normalizeToolPayload(raw: unknown): ToolResultPayload | null {
     toolCallId,
     tool:
       readString(root.tool) ??
+      readString(root.toolName) ??
       readString(root.name) ??
       readString(data.tool) ??
+      readString(data.toolName) ??
       readString(data.name) ??
+      readString(event.toolName) ??
       readString(call.tool) ??
       'unknown_tool',
     ...(root.args !== undefined
@@ -668,9 +679,11 @@ function ensureAssistantMessage(
 function upsertToolCall(message: ConversationMessage, payload: ToolResultPayload): void {
   const existing = message.toolCalls.find((toolCall) => toolCall.id === payload.toolCallId)
   const now = Date.now()
+  const nextTool =
+    isConcreteToolName(payload.tool) || !existing ? payload.tool : existing.tool
 
   if (existing) {
-    existing.tool = payload.tool
+    existing.tool = nextTool
     if (payload.args !== undefined) existing.args = payload.args
     if (payload.result !== undefined) existing.result = payload.result
     if (payload.error !== undefined) existing.error = payload.error
@@ -683,7 +696,7 @@ function upsertToolCall(message: ConversationMessage, payload: ToolResultPayload
 
   message.toolCalls.push({
     id: payload.toolCallId,
-    tool: payload.tool,
+    tool: nextTool,
     ...(payload.args !== undefined ? { args: payload.args } : {}),
     ...(payload.result !== undefined ? { result: payload.result } : {}),
     ...(payload.error !== undefined ? { error: payload.error } : {}),
@@ -695,6 +708,10 @@ function upsertToolCall(message: ConversationMessage, payload: ToolResultPayload
     startedAt: now,
     updatedAt: now,
   })
+}
+
+function isConcreteToolName(tool: string): boolean {
+  return tool.length > 0 && tool !== 'unknown_tool'
 }
 
 function finishStreamingAssistantMessage(
@@ -1130,6 +1147,41 @@ export const useAgentConversationStore = create<
             });
           },
 
+          resolveToolPermission: async (toolCallId, action) => {
+            const { conversationId } = get();
+            if (!conversationId) return;
+
+            await apiClient
+              .post(
+                `agent-conversations/${conversationId}/tool-permissions/${toolCallId}/resolve`,
+                { json: toSnakeBody({ action }) },
+              )
+              .json<void>();
+
+            set((s) => {
+              for (const message of s.messages) {
+                const toolCall = message.toolCalls.find((item) => item.id === toolCallId)
+                if (!toolCall) {
+                  continue
+                }
+
+                const nextStatus = action === 'approve' ? 'in_progress' : 'denied'
+                const now = new Date().toISOString()
+                toolCall.transitions = [
+                  ...(toolCall.transitions ?? []),
+                  {
+                    from: toolCall.status,
+                    to: nextStatus,
+                    timestamp: now,
+                    source: 'user',
+                  },
+                ]
+                toolCall.status = nextStatus
+                toolCall.updatedAt = Date.now()
+              }
+            })
+          },
+
           selectFile: (path) => {
             set((s) => {
               s.selectedFilePath = path;
@@ -1227,6 +1279,9 @@ export const useConversationStatus = () =>
 
 export const useConversationActions = () =>
   useAgentConversationStore((s) => s.actions);
+
+export const useConversationId = () =>
+  useAgentConversationStore((s) => s.conversationId);
 
 export const useTerminalEntries = () =>
   useAgentConversationStore((s) => s.terminalEntries);
