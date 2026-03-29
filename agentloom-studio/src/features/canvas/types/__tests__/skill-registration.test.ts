@@ -9,8 +9,8 @@ describe('skill 注册验证', () => {
       expect(PORT_DATA_TYPES).toContain('skill');
     });
 
-    it('共 11 种端口数据类型', () => {
-      expect(PORT_DATA_TYPES).toHaveLength(11);
+    it('共 12 种端口数据类型', () => {
+      expect(PORT_DATA_TYPES).toHaveLength(12);
     });
 
     it('包含所有 canonical 数据类型', () => {
@@ -26,6 +26,7 @@ describe('skill 注册验证', () => {
         'skill',
         'agent',
         'exec',
+        'volume',
       ];
       expect(PORT_DATA_TYPES).toEqual(expected);
     });

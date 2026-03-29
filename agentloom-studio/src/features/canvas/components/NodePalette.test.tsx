@@ -140,6 +140,7 @@ describe('NodePalette', () => {
       'code-tool',
       'sandbox',
       'input-preprocessor',
+      'workspace',
       'manual-trigger',
       'schedule-trigger',
       'webhook-trigger',

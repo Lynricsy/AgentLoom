@@ -35,7 +35,7 @@ describe('SandboxNodeBody', () => {
 
   it('renders config info', () => {
     render(<SandboxNodeBody data={createSandboxNodeData()} />)
-    expect(screen.getByText('2 core · 1024 MB · 5 GB')).toBeInTheDocument()
+    expect(screen.getByText('2C / 1024M / 5G')).toBeInTheDocument()
   })
 
   it('renders description when present', () => {
