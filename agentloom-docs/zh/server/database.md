@@ -106,7 +106,7 @@ AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 
 | `memory_nodes`             | 记忆图节点（instance_id/content_type/metadata/disclosure_level）       |
 | `memory_edges`             | 记忆图边（instance_id/parent_node_id/child_node_id/name/priority, 循环检测） |
 | `memory_paths`             | URI 路径绑定（instance_id/domain/path_string/node_id）                 |
-| `memory_node_versions`     | 节点版本历史（node_id/content/mode: create\|patch\|append/review_status） |
+| `memory_versions`          | 节点版本历史（node_id/content/version/review_status/deprecated/migrated_to） |
 | `memory_sessions`          | 记忆会话（双 FK: execution_id OR agent_conversation_id + CHECK, 对齐 sandbox_sessions） |
 | `memory_glossary_keywords` | 词汇表关键词（Aho-Corasick 自动标注）                                  |
 
@@ -473,12 +473,15 @@ erDiagram
         uuid node_id FK
     }
 
-    memory_node_versions {
+    memory_versions {
         uuid id PK
         uuid node_id FK
-        jsonb content
-        enum mode "create|patch|append"
+        text content
+        int version
+        boolean deprecated
+        uuid migrated_to
         enum review_status "pending|approved|rejected"
+        text patch_summary
     }
 
     memory_sessions {
@@ -500,7 +503,7 @@ erDiagram
     agent_memory_instances ||--o{ memory_paths : "has paths"
     agent_memory_instances ||--o{ memory_sessions : "has sessions"
     agent_memory_instances ||--o{ memory_glossary_keywords : "has keywords"
-    memory_nodes ||--o{ memory_node_versions : "has versions"
+    memory_nodes ||--o{ memory_versions : "has versions"
     memory_nodes ||--o{ memory_paths : "bound to"
     memory_nodes ||--o{ memory_edges : "parent"
     memory_nodes ||--o{ memory_edges : "child"
