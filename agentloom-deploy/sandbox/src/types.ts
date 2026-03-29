@@ -1,7 +1,7 @@
 /** pi-coding-agent AgentSessionEvent 简化子集，仅含 sandbox SSE 需转发的事件 */
 export type SandboxAgentEvent =
   | { type: 'agent_start' }
-  | { type: 'agent_end' }
+  | { type: 'agent_end'; stopReason?: string }
   | { type: 'turn_start' }
   | { type: 'turn_end' }
   | { type: 'message_start' }
@@ -122,7 +122,7 @@ export type SseEventParams =
   | { type: 'tool_call_start'; toolName: string; toolCallId: string; input: unknown }
   | { type: 'tool_call_update'; toolCallId: string; content?: string }
   | { type: 'tool_call_end'; toolCallId: string; result?: unknown }
-  | { type: 'done' }
+  | { type: 'done'; stopReason?: string }
   | { type: 'error'; message: string; code?: string }
   | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
   | { type: 'pty_output'; sessionId: string; data: string }

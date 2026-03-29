@@ -33,6 +33,10 @@ export class AuditLogListener {
   async handleExecutionStatusChanged(
     payload: ExecutionStatusAuditPayload,
   ): Promise<void> {
+    if (payload.executionType === 'conversation') {
+      return;
+    }
+
     if (!CRITICAL_EXECUTION_STATUSES.has(payload.status)) {
       return;
     }

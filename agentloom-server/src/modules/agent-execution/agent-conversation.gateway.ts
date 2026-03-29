@@ -376,6 +376,10 @@ export class AgentConversationGateway
   handleExecutionStatusChanged(
     payload: ExecutionStatusChangedPayload & { tenantId: string },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -408,6 +412,10 @@ export class AgentConversationGateway
       executionId: string;
     },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -431,6 +439,10 @@ export class AgentConversationGateway
       executionId: string;
     },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -439,26 +451,25 @@ export class AgentConversationGateway
 
     switch (eventType) {
       case 'thinking':
+      case 'plan':
+      case 'decision':
         conversationEvent = ConversationEventName.AGENT_THINKING;
         break;
       case 'message_chunk':
         conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
         break;
-      case 'tool_call':
-        conversationEvent = ConversationEventName.AGENT_TOOL_CALL;
-        break;
-      case 'tool_result':
-        conversationEvent = ConversationEventName.AGENT_TOOL_RESULT;
-        break;
       case 'terminal_output':
+      case 'pty.output':
         conversationEvent = ConversationEventName.SANDBOX_TERMINAL_OUTPUT;
         break;
       case 'file_change':
         conversationEvent = ConversationEventName.SANDBOX_FILE_CHANGE;
         break;
+      case 'tool_call':
+      case 'done':
+        return;
       default:
-        conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
-        break;
+        return;
     }
 
     const envelope = this.buildEventPayload(
@@ -481,6 +492,10 @@ export class AgentConversationGateway
       executionId: string;
     },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -509,6 +524,10 @@ export class AgentConversationGateway
       executionId: string;
     },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -532,6 +551,10 @@ export class AgentConversationGateway
       executionId: string;
     },
   ): void {
+    if (payload.executionType && payload.executionType !== 'conversation') {
+      return;
+    }
+
     const conversationId = payload.executionId;
     if (!this.hasSubscribers(conversationId)) return;
 
@@ -557,17 +580,23 @@ export class AgentConversationGateway
   }): void {
     if (!this.hasSubscribers(payload.conversationId)) return;
 
-    const envelope = this.buildEventPayload(
-      payload.conversationId,
-      payload.tenantId,
-      payload as unknown as Record<string, unknown>,
-    );
-    this.broadcastConversationEvent(
-      payload.tenantId,
-      payload.conversationId,
-      ConversationEventName.SANDBOX_FILE_CHANGE,
-      envelope,
-    );
+    for (const path of payload.changedFiles) {
+      const envelope = this.buildEventPayload(
+        payload.conversationId,
+        payload.tenantId,
+        {
+          path,
+          changeType: 'modified',
+          timestamp: payload.timestamp,
+        },
+      );
+      this.broadcastConversationEvent(
+        payload.tenantId,
+        payload.conversationId,
+        ConversationEventName.SANDBOX_FILE_CHANGE,
+        envelope,
+      );
+    }
   }
 
   @OnEvent('conversation.subagent.event')
@@ -697,24 +726,46 @@ export class AgentConversationGateway
     );
     if (missedEvents && missedEvents.length > 0) {
       for (const event of missedEvents) {
-        const conversationEvent = this.mapExecutionEventToConversation(
-          event.event,
-        );
-        client.emit(conversationEvent, event);
+        const conversationEvent = this.mapExecutionEventToConversation(event);
+        if (conversationEvent) {
+          client.emit(conversationEvent, event);
+        }
       }
     }
   }
 
   private mapExecutionEventToConversation(
-    executionEvent: string,
-  ): ConversationEventName {
-    switch (executionEvent) {
+    executionEvent: ExecutionEvent,
+  ): ConversationEventName | null {
+    switch (executionEvent.event) {
       case ExecutionEventName.OUTPUT_CHUNK:
         return ConversationEventName.AGENT_MESSAGE_CHUNK;
-      case ExecutionEventName.STEP_AGENT_EVENT:
-        return ConversationEventName.AGENT_THINKING;
-      case ExecutionEventName.NODE_TOOL_CALL_STATUS:
-        return ConversationEventName.AGENT_TOOL_CALL;
+      case ExecutionEventName.STEP_AGENT_EVENT: {
+        const eventType = (executionEvent.data as StepAgentEventPayload).event
+          ?.type as string | undefined;
+        switch (eventType) {
+          case 'thinking':
+          case 'plan':
+          case 'decision':
+            return ConversationEventName.AGENT_THINKING;
+          case 'message_chunk':
+            return ConversationEventName.AGENT_MESSAGE_CHUNK;
+          case 'pty.output':
+          case 'terminal_output':
+            return ConversationEventName.SANDBOX_TERMINAL_OUTPUT;
+          case 'file_change':
+            return ConversationEventName.SANDBOX_FILE_CHANGE;
+          default:
+            return null;
+        }
+      }
+      case ExecutionEventName.NODE_TOOL_CALL_STATUS: {
+        const toolCallStatus = executionEvent.data as ToolCallStatusPayload;
+        return toolCallStatus.status === 'completed' ||
+          toolCallStatus.status === 'failed'
+          ? ConversationEventName.AGENT_TOOL_RESULT
+          : ConversationEventName.AGENT_TOOL_CALL;
+      }
       case ExecutionEventName.EXECUTION_STATUS_CHANGED:
         return ConversationEventName.STATUS_CHANGED;
       case ExecutionEventName.STEP_STATUS_CHANGED:
@@ -723,7 +774,7 @@ export class AgentConversationGateway
       case ExecutionEventName.NODE_INTERVENTION_RESOLVED:
         return ConversationEventName.STATUS_CHANGED;
       default:
-        return ConversationEventName.AGENT_MESSAGE_CHUNK;
+        return null;
     }
   }
 

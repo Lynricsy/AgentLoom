@@ -334,6 +334,20 @@ describe('WorkspaceService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('空工作区快照恢复时应当直接跳过归档下载', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 0, status: 'ready' });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+
+      await service.restoreToSandbox(
+        TEST_WORKSPACE_ID,
+        TEST_CONTAINER_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+      expect(mockDockerService.putArchive).not.toHaveBeenCalled();
+    });
   });
 
   // ─── createEmpty ────────────────────────────────────────────────────────

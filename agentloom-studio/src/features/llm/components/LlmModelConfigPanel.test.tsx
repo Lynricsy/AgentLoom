@@ -88,23 +88,37 @@ describe('LlmModelConfigPanel', () => {
     await user.click(screen.getByRole('button', { name: '选择已有配置' }))
     await user.selectOptions(screen.getByRole('combobox'), 'cfg-1')
 
-    expect(onApply).toHaveBeenCalledWith({
-      config: expect.objectContaining({
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          llmConfigId: 'cfg-1',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          name: 'OpenAI 主模型',
+        }),
         llmConfigId: 'cfg-1',
+        modelId: 'gpt-4o',
+        name: 'OpenAI 主模型',
         provider: 'openai',
         modelName: 'gpt-4o',
-      }),
-      llmConfigId: 'cfg-1',
-      parameters: {
+        apiKeyId: null,
+        isDefault: false,
+        parameters: {
+          temperature: 0.7,
+          maxTokens: undefined,
+          topP: 1,
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+          stop: [],
+        },
         temperature: 0.7,
         maxTokens: undefined,
         topP: 1,
         frequencyPenalty: 0,
         presencePenalty: 0,
-        stop: [],
-      },
-      label: 'gpt-4o',
-    })
+        label: 'gpt-4o',
+      }),
+    )
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         title: '已应用模型配置',
@@ -146,17 +160,30 @@ describe('LlmModelConfigPanel', () => {
       } satisfies CreateLlmModelInput)
     })
 
-    expect(onApply).toHaveBeenCalledWith({
-      config: expect.objectContaining({
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          llmConfigId: 'cfg-2',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          name: '新建 OpenAI 配置',
+        }),
         llmConfigId: 'cfg-2',
+        modelId: 'gpt-4o',
+        name: '新建 OpenAI 配置',
         provider: 'openai',
         modelName: 'gpt-4o',
-        name: '新建 OpenAI 配置',
+        apiKeyId: null,
+        isDefault: false,
+        parameters: savedModel.parameters,
+        temperature: 0.7,
+        maxTokens: undefined,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        label: 'gpt-4o',
       }),
-      llmConfigId: 'cfg-2',
-      parameters: savedModel.parameters,
-      label: 'gpt-4o',
-    })
+    )
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'LLM 配置已保存',

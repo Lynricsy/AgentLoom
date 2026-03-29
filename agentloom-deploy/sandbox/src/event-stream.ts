@@ -64,7 +64,11 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
         sessionId: event.sessionId,
       };
     case 'agent_end':
-      return { type: 'done' };
+      return {
+        type: 'done',
+        stopReason:
+          typeof event.stopReason === 'string' ? event.stopReason : undefined,
+      };
     default:
       return null;
   }

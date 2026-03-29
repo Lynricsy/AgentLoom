@@ -26,10 +26,23 @@ export async function fetchWorkspaces(
 }
 
 export async function fetchAllWorkspaces(): Promise<Workspace[]> {
-  const response = await apiClient
-    .get(BASE_PATH, { searchParams: { pageSize: 1000 } })
-    .json<WorkspaceListResponse>()
-  return response.data
+  const allItems: Workspace[] = []
+  let page = 1
+  const pageSize = 100
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const response = await fetchWorkspaces({ page, pageSize })
+    allItems.push(...response.data)
+
+    if (page >= response.meta.totalPages) {
+      break
+    }
+
+    page += 1
+  }
+
+  return allItems
 }
 
 export async function fetchWorkspaceDetail(id: string): Promise<Workspace> {

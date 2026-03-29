@@ -175,7 +175,7 @@ describe('AgentConversationGateway', () => {
         {
           eventId: 7,
           event: ExecutionEventName.STEP_AGENT_EVENT,
-          data: { type: 'thinking' },
+          data: { event: { type: 'decision', suggestedContent: '继续处理' } },
         },
       ]);
 
@@ -446,13 +446,27 @@ describe('AgentConversationGateway', () => {
 
         expect(server.to).not.toHaveBeenCalled();
       });
+
+      it('should ignore workflow execution events', () => {
+        gateway.handleExecutionStatusChanged({
+          executionId: 'conv-1',
+          status: 'running',
+          tenantId: 'tenant-1',
+          executionType: 'workflow',
+        });
+
+        expect(server.to).not.toHaveBeenCalled();
+      });
     });
 
     describe('handleStepAgentEvent', () => {
-      it('should map thinking event to AGENT_THINKING', () => {
+      it('should map decision event to AGENT_THINKING', () => {
         gateway.handleStepAgentEvent({
           stepId: 'step-1',
-          event: { type: 'thinking', content: 'reasoning...' } as any,
+          event: {
+            type: 'decision',
+            suggestedContent: 'reasoning...',
+          } as any,
           tenantId: 'tenant-1',
           executionId: 'conv-1',
         });
@@ -481,36 +495,29 @@ describe('AgentConversationGateway', () => {
         );
       });
 
-      it('should map tool_call to AGENT_TOOL_CALL', () => {
+      it('should ignore tool_call because canonical tool events come from NODE_TOOL_CALL_STATUS', () => {
         gateway.handleStepAgentEvent({
           stepId: 'step-1',
-          event: { type: 'tool_call', name: 'search' } as any,
+          event: {
+            type: 'tool_call',
+            call: { id: 'tc-1', tool: 'search', status: 'pending' },
+          } as any,
           tenantId: 'tenant-1',
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
-          .value.emit;
-        expect(emitFn).toHaveBeenCalledWith(
-          ConversationEventName.AGENT_TOOL_CALL,
-          expect.any(Object),
-        );
+        expect(server.to).not.toHaveBeenCalled();
       });
 
-      it('should map tool_result to AGENT_TOOL_RESULT', () => {
+      it('should ignore done events because completion is emitted via execution status', () => {
         gateway.handleStepAgentEvent({
           stepId: 'step-1',
-          event: { type: 'tool_result', result: 'done' } as any,
+          event: { type: 'done', stopReason: 'end_turn' } as any,
           tenantId: 'tenant-1',
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
-          .value.emit;
-        expect(emitFn).toHaveBeenCalledWith(
-          ConversationEventName.AGENT_TOOL_RESULT,
-          expect.any(Object),
-        );
+        expect(server.to).not.toHaveBeenCalled();
       });
 
       it('should map terminal_output to SANDBOX_TERMINAL_OUTPUT', () => {
@@ -548,7 +555,7 @@ describe('AgentConversationGateway', () => {
         );
       });
 
-      it('should default unknown event types to AGENT_MESSAGE_CHUNK', () => {
+      it('should ignore unknown event types', () => {
         gateway.handleStepAgentEvent({
           stepId: 'step-1',
           event: { type: 'unknown_event' } as any,
@@ -556,12 +563,19 @@ describe('AgentConversationGateway', () => {
           executionId: 'conv-1',
         });
 
-        const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
-          .value.emit;
-        expect(emitFn).toHaveBeenCalledWith(
-          ConversationEventName.AGENT_MESSAGE_CHUNK,
-          expect.any(Object),
-        );
+        expect(server.to).not.toHaveBeenCalled();
+      });
+
+      it('should ignore workflow step agent events', () => {
+        gateway.handleStepAgentEvent({
+          stepId: 'step-1',
+          event: { type: 'message_chunk', content: 'hello' } as any,
+          tenantId: 'tenant-1',
+          executionId: 'conv-1',
+          executionType: 'workflow',
+        });
+
+        expect(server.to).not.toHaveBeenCalled();
       });
     });
 
@@ -642,6 +656,20 @@ describe('AgentConversationGateway', () => {
           expect.any(Object),
         );
       });
+
+      it('should ignore workflow intervention events', () => {
+        gateway.handleInterventionRequired({
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          nodeName: 'Agent Node',
+          requestedAt: new Date().toISOString(),
+          tenantId: 'tenant-1',
+          executionId: 'conv-1',
+          executionType: 'workflow',
+        });
+
+        expect(server.to).not.toHaveBeenCalled();
+      });
     });
 
     describe('handleInterventionResolved', () => {
@@ -662,6 +690,21 @@ describe('AgentConversationGateway', () => {
           ConversationEventName.STATUS_CHANGED,
           expect.any(Object),
         );
+      });
+
+      it('should ignore workflow intervention resolution events', () => {
+        gateway.handleInterventionResolved({
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          action: 'approve',
+          resolvedBy: 'user-1',
+          resolvedAt: new Date().toISOString(),
+          tenantId: 'tenant-1',
+          executionId: 'conv-1',
+          executionType: 'workflow',
+        });
+
+        expect(server.to).not.toHaveBeenCalled();
       });
     });
   });
@@ -875,44 +918,136 @@ describe('AgentConversationGateway', () => {
   describe('mapExecutionEventToConversation', () => {
     it('should map OUTPUT_CHUNK to AGENT_MESSAGE_CHUNK', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        ExecutionEventName.OUTPUT_CHUNK,
+        {
+          eventId: 1,
+          event: ExecutionEventName.OUTPUT_CHUNK,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: { stepId: 'step-1', chunk: 'hello', index: 0 },
+        },
       );
       expect(result).toBe(ConversationEventName.AGENT_MESSAGE_CHUNK);
     });
 
-    it('should map STEP_AGENT_EVENT to AGENT_THINKING', () => {
+    it('should map STEP_AGENT_EVENT decision payload to AGENT_THINKING', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        ExecutionEventName.STEP_AGENT_EVENT,
+        {
+          eventId: 2,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: {
+            stepId: 'step-1',
+            event: { type: 'decision', suggestedContent: '继续' },
+          },
+        },
       );
       expect(result).toBe(ConversationEventName.AGENT_THINKING);
     });
 
     it('should map NODE_TOOL_CALL_STATUS to AGENT_TOOL_CALL', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        {
+          eventId: 3,
+          event: ExecutionEventName.NODE_TOOL_CALL_STATUS,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tool-1',
+            tool: 'search',
+            status: 'pending',
+          },
+        },
       );
       expect(result).toBe(ConversationEventName.AGENT_TOOL_CALL);
     });
 
+    it('should map completed NODE_TOOL_CALL_STATUS to AGENT_TOOL_RESULT', () => {
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 4,
+        event: ExecutionEventName.NODE_TOOL_CALL_STATUS,
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          toolCallId: 'tool-1',
+          tool: 'search',
+          status: 'completed',
+        },
+      });
+      expect(result).toBe(ConversationEventName.AGENT_TOOL_RESULT);
+    });
+
     it('should map EXECUTION_STATUS_CHANGED to STATUS_CHANGED', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        ExecutionEventName.EXECUTION_STATUS_CHANGED,
+        {
+          eventId: 5,
+          event: ExecutionEventName.EXECUTION_STATUS_CHANGED,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: { executionId: 'conv-1', status: 'running' },
+        },
       );
       expect(result).toBe(ConversationEventName.STATUS_CHANGED);
     });
 
     it('should map STEP_STATUS_CHANGED to STATUS_CHANGED', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        ExecutionEventName.STEP_STATUS_CHANGED,
+        {
+          eventId: 6,
+          event: ExecutionEventName.STEP_STATUS_CHANGED,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            from: 'pending',
+            to: 'running',
+          },
+        },
       );
       expect(result).toBe(ConversationEventName.STATUS_CHANGED);
     });
 
-    it('should map unknown events to AGENT_MESSAGE_CHUNK', () => {
+    it('should return null for unmapped STEP_AGENT_EVENT payloads', () => {
       const result = (gateway as any).mapExecutionEventToConversation(
-        'unknown.event',
+        {
+          eventId: 7,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          timestamp: '2026-03-29T00:00:00.000Z',
+          executionId: 'conv-1',
+          tenantId: 'tenant-1',
+          data: {
+            stepId: 'step-1',
+            event: {
+              type: 'tool_call',
+              call: { id: 'tool-1', tool: 'search', status: 'pending' },
+            },
+          },
+        },
       );
-      expect(result).toBe(ConversationEventName.AGENT_MESSAGE_CHUNK);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for unknown events', () => {
+      const result = (gateway as any).mapExecutionEventToConversation({
+        eventId: 8,
+        event: 'unknown.event',
+        timestamp: '2026-03-29T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {},
+      });
+      expect(result).toBeNull();
     });
   });
 });

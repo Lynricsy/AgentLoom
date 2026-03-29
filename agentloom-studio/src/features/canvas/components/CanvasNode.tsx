@@ -252,7 +252,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const nodeExecutionState = useNodeExecutionState(id)
   const hasValidationError = useNodeHasValidationError(id)
   const lod = useLevelOfDetail()
-  const llmConfig = data.nodeType === 'llm-model' ? parseLlmModelConfig(data.config) : null
+  const llmConfig = data.nodeType === 'llm-model' ? parseLlmModelConfig(data) : null
   const hasProviderDefaultKey = useMemo(() => {
     if (!llmConfig) {
       return false
@@ -261,7 +261,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     return activeApiKeys.some((apiKey) => apiKey.provider === llmConfig.provider && apiKey.isDefault)
   }, [activeApiKeys, llmConfig])
   const llmState = data.nodeType === 'llm-model'
-    ? getLlmConfigState(data.config, hasProviderDefaultKey)
+    ? getLlmConfigState(data, hasProviderDefaultKey)
     : null
   const providerInfo = llmConfig ? getProviderInfo(llmConfig.provider) : null
   const colorToken = getNodeColorToken(
@@ -534,7 +534,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       {lod === 'full' ? (
         <div data-slot="body" className="px-3 py-2 text-xs text-muted-foreground">
           {data.nodeType === 'llm-model' ? (
-            <LlmModelNodeBody config={data.config} state={llmState ?? 'unconfigured'} />
+            <LlmModelNodeBody source={data} state={llmState ?? 'unconfigured'} />
           ) : data.nodeType === 'mcp-tool' ? (
             <McpToolNodeBody data={data} />
           ) : data.nodeType === 'knowledge-base' ? (

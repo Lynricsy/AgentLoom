@@ -508,4 +508,18 @@ describe('NotificationListener', () => {
 
     expect(notificationService.create).not.toHaveBeenCalled();
   });
+
+  it('conversation 执行事件不应创建工作流通知', async () => {
+    await listener.handleExecutionStatusChanged({
+      tenantId: 'tenant-1',
+      executionId: 'conversation-1',
+      status: 'completed',
+      executionType: 'conversation',
+      completedSteps: 1,
+      totalSteps: 1,
+    });
+
+    expect(notificationService.create).not.toHaveBeenCalled();
+    expect(db.select).not.toHaveBeenCalled();
+  });
 });

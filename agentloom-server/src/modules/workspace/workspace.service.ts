@@ -151,6 +151,13 @@ export class WorkspaceService {
       `Restoring workspace ${workspaceId} to container ${containerId}`,
     );
 
+    if ((snapshot.sizeBytes ?? 0) === 0) {
+      this.logger.log(
+        `Workspace ${workspaceId} is empty, skipping archive restore for container ${containerId}`,
+      );
+      return;
+    }
+
     const archiveStream = await this.storageService.download(
       snapshot.storageKey,
     );

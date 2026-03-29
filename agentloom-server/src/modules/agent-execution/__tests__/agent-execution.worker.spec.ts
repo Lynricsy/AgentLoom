@@ -91,6 +91,7 @@ function createAsyncIterable<T>(items: readonly T[]): AsyncIterable<T> {
 type WorkerInternals = {
   loadConversationExecutionContext: ReturnType<typeof vi.fn>;
   prepareRuntimeSession: ReturnType<typeof vi.fn>;
+  loadConversationHistoryMessages: ReturnType<typeof vi.fn>;
   loadPendingUserMessages: ReturnType<typeof vi.fn>;
   updateExecutionMetadata: ReturnType<typeof vi.fn>;
   persistConversationTurn: ReturnType<typeof vi.fn>;
@@ -482,6 +483,94 @@ describe('AgentExecutionWorker', () => {
         expect.any(AbortSignal),
         expect.objectContaining({ abortControllers: expect.any(Map) }),
         'agent-1',
+      );
+    });
+
+    it('session 未恢复时会在首轮重建历史消息上下文', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      const historyMessages = [
+        {
+          id: 'history-1',
+          role: 'assistant',
+          content: '上一轮已调用工具并给出结论',
+          toolCalls: [
+            {
+              tool: 'search_query',
+              status: 'completed',
+            },
+          ],
+          metadata: {},
+          createdAt: new Date('2026-03-29T10:00:00.000Z'),
+        },
+      ];
+
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(
+          makeActiveContext({
+            executionMetadata: { lastProcessedMessageId: 'message-0' },
+          }),
+        );
+      workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
+        runtime: mockRuntime,
+        session: makeSession(),
+        memorySessionIds: [],
+        restoredExistingSession: false,
+      });
+      workerInternals.loadConversationHistoryMessages = vi
+        .fn()
+        .mockResolvedValue(historyMessages);
+      workerInternals.loadPendingUserMessages = vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: 'message-1',
+            content: '继续基于之前的结果推进',
+            createdAt: new Date('2026-03-29T10:05:00.000Z'),
+          },
+        ])
+        .mockResolvedValueOnce([]);
+      workerInternals.updateExecutionMetadata = vi.fn().mockResolvedValue({
+        sessionId: 'session-1',
+        lastProcessedMessageId: 'message-0',
+        runningState: 'running',
+      });
+      workerInternals.runConversationTurn = vi.fn().mockResolvedValue({
+        assistantText: '收到，我继续处理。',
+        stopReason: 'end_turn',
+        toolCalls: [],
+        toolResults: [],
+      });
+      workerInternals.persistConversationTurn = vi.fn().mockResolvedValue({
+        sessionId: 'session-1',
+        lastProcessedMessageId: 'message-1',
+        lastStopReason: 'end_turn',
+        runningState: 'running',
+      });
+      workerInternals.safeUpdateExecutionMetadata = vi.fn().mockResolvedValue({
+        sessionId: 'session-1',
+        runningState: 'idle',
+      });
+
+      await worker.executeAgentLoop('conversation-1', 'tenant-1');
+
+      expect(
+        workerInternals.loadConversationHistoryMessages,
+      ).toHaveBeenCalledWith('conversation-1', 'tenant-1', 'message-1');
+      expect(workerInternals.runConversationTurn).toHaveBeenCalledWith(
+        mockRuntime,
+        expect.objectContaining({ id: 'session-1' }),
+        'conversation-1',
+        'tenant-1',
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'message-1' }),
+        ]),
+        true,
+        historyMessages,
       );
     });
   });

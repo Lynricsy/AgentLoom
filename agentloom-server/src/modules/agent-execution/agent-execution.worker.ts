@@ -94,10 +94,20 @@ type PendingMessage = {
   createdAt: Date;
 };
 
+type ConversationHistoryMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  toolCalls: Record<string, unknown>[] | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+};
+
 type RuntimeSessionContext = {
   runtime: IAgentRuntime;
   session: AgentSession;
   memorySessionIds: string[];
+  restoredExistingSession: boolean;
 };
 
 type SubAgentExecutionTracker = {
@@ -227,6 +237,9 @@ export class AgentExecutionWorker extends WorkerHost {
       runtime = runtimeSessionContext.runtime;
       session = runtimeSessionContext.session;
       memorySessionIds = runtimeSessionContext.memorySessionIds ?? [];
+      let shouldRebuildHistoryOnce =
+        Boolean(context.executionMetadata.lastProcessedMessageId) &&
+        !runtimeSessionContext.restoredExistingSession;
 
       const cancelRuntime = async () => {
         if (!runtime || !session) {
@@ -273,6 +286,7 @@ export class AgentExecutionWorker extends WorkerHost {
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
         executionId: conversationId,
         status: 'running',
+        executionType: 'conversation',
       });
 
       while (!abort.signal.aborted) {
@@ -300,6 +314,15 @@ export class AgentExecutionWorker extends WorkerHost {
           break;
         }
 
+        const historyMessages =
+          executionMetadata.lastProcessedMessageId && shouldRebuildHistoryOnce
+            ? await this.loadConversationHistoryMessages(
+                conversationId,
+                tenantId,
+                pendingMessages[0]?.id,
+              )
+            : [];
+
         const turnResult = await this.runConversationTurn(
           runtime,
           session,
@@ -307,6 +330,7 @@ export class AgentExecutionWorker extends WorkerHost {
           tenantId,
           pendingMessages,
           Boolean(executionMetadata.lastProcessedMessageId),
+          historyMessages,
         );
 
         executionMetadata = await this.persistConversationTurn(
@@ -321,6 +345,7 @@ export class AgentExecutionWorker extends WorkerHost {
           conversationMetadata,
           executionMetadata,
         );
+        shouldRebuildHistoryOnce = false;
 
         if (turnResult.stopReason === 'cancelled') {
           terminalStatus = 'cancelled';
@@ -345,6 +370,7 @@ export class AgentExecutionWorker extends WorkerHost {
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
         executionId: conversationId,
         status: terminalStatus,
+        executionType: 'conversation',
         errorMessage:
           error instanceof Error
             ? error.message
@@ -375,6 +401,7 @@ export class AgentExecutionWorker extends WorkerHost {
     this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
       executionId: conversationId,
       status: terminalStatus,
+      executionType: 'conversation',
     });
   }
 
@@ -522,7 +549,12 @@ export class AgentExecutionWorker extends WorkerHost {
           currentDepth: 0,
           subAgentTracker,
         });
-        return { runtime, session, memorySessionIds };
+        return {
+          runtime,
+          session,
+          memorySessionIds,
+          restoredExistingSession: true,
+        };
       } catch (error) {
         this.logger.debug(
           `Failed to resume conversation session ${sessionId}, creating a new one: ${error instanceof Error ? error.message : String(error)}`,
@@ -571,7 +603,12 @@ export class AgentExecutionWorker extends WorkerHost {
       subAgentTracker,
     });
 
-    return { runtime, session, memorySessionIds };
+    return {
+      runtime,
+      session,
+      memorySessionIds,
+      restoredExistingSession: false,
+    };
   }
 
   private resolveConversationRuntime(
@@ -619,6 +656,37 @@ export class AgentExecutionWorker extends WorkerHost {
     });
   }
 
+  private async loadConversationHistoryMessages(
+    conversationId: string,
+    tenantId: string,
+    beforeMessageId?: string,
+  ): Promise<ConversationHistoryMessage[]> {
+    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
+      const messages = await dbClient
+        .select({
+          id: agentMessages.id,
+          role: agentMessages.role,
+          content: agentMessages.content,
+          toolCalls: agentMessages.toolCalls,
+          metadata: agentMessages.metadata,
+          createdAt: agentMessages.createdAt,
+        })
+        .from(agentMessages)
+        .where(eq(agentMessages.conversationId, conversationId))
+        .orderBy(asc(agentMessages.createdAt), asc(agentMessages.id));
+
+      if (!beforeMessageId) {
+        return messages;
+      }
+
+      const boundaryIndex = messages.findIndex(
+        (message) => message.id === beforeMessageId,
+      );
+
+      return boundaryIndex >= 0 ? messages.slice(0, boundaryIndex) : messages;
+    });
+  }
+
   private async runConversationTurn(
     runtime: IAgentRuntime,
     session: AgentSession,
@@ -626,13 +694,18 @@ export class AgentExecutionWorker extends WorkerHost {
     tenantId: string,
     pendingMessages: PendingMessage[],
     hasPriorTurns: boolean,
+    historyMessages: ConversationHistoryMessage[] = [],
   ): Promise<ConversationTurnResult> {
     const toolCalls = new Map<string, ToolCallEvent>();
     let assistantText = '';
     let decision: DecisionEvent | undefined;
     let lastStopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
-    let promptBlocks = this.buildPromptBlocks(pendingMessages, hasPriorTurns);
+    let promptBlocks = this.buildPromptBlocks(
+      pendingMessages,
+      hasPriorTurns,
+      historyMessages,
+    );
 
     while (true) {
       for await (const event of runtime.prompt(session.id, promptBlocks)) {
@@ -649,6 +722,7 @@ export class AgentExecutionWorker extends WorkerHost {
 
         this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
           stepId: conversationId,
+          executionType: 'conversation',
           event,
         });
 
@@ -659,6 +733,7 @@ export class AgentExecutionWorker extends WorkerHost {
             nodeId: conversationId,
             toolCallId: event.call.id,
             tool: event.call.tool,
+            executionType: 'conversation',
             status: event.call.status,
             args: event.call.args,
             result: event.call.result,
@@ -717,12 +792,12 @@ export class AgentExecutionWorker extends WorkerHost {
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
       let lastAssistantMessageId: string | undefined;
+      const isEmptyTurn =
+        turnResult.assistantText.length === 0 &&
+        turnResult.toolCalls.length === 0 &&
+        !turnResult.decision;
 
-      if (
-        turnResult.assistantText.length > 0 ||
-        turnResult.toolCalls.length > 0 ||
-        turnResult.decision
-      ) {
+      if (pendingMessages.length > 0 && turnResult.stopReason !== 'cancelled') {
         const [assistantMessage] = await dbClient
           .insert(agentMessages)
           .values({
@@ -754,6 +829,7 @@ export class AgentExecutionWorker extends WorkerHost {
             metadata: {
               ...(turnResult.decision ? { decision: turnResult.decision } : {}),
               stopReason: turnResult.stopReason,
+              ...(isEmptyTurn ? { emptyTurn: true } : {}),
             },
           })
           .returning({ id: agentMessages.id });
@@ -855,7 +931,27 @@ export class AgentExecutionWorker extends WorkerHost {
   private buildPromptBlocks(
     pendingMessages: PendingMessage[],
     hasPriorTurns: boolean,
+    historyMessages: ConversationHistoryMessage[] = [],
   ): ContentBlock[] {
+    if (historyMessages.length > 0) {
+      const latestPrompt =
+        pendingMessages.length === 1
+          ? pendingMessages[0].content
+          : pendingMessages
+              .map((message, index) => `${index + 1}. ${message.content}`)
+              .join('\n');
+
+      return [
+        {
+          type: 'text',
+          text:
+            `以下是该 conversation 已有的历史，请保持上下文连续：\n` +
+            `${this.formatConversationHistory(historyMessages)}\n\n` +
+            `请继续回应用户最新消息：\n${latestPrompt}`,
+        } satisfies TextContentBlock,
+      ];
+    }
+
     if (pendingMessages.length === 1) {
       return [
         {
@@ -877,6 +973,89 @@ export class AgentExecutionWorker extends WorkerHost {
           .join('\n')}`,
       } satisfies TextContentBlock,
     ];
+  }
+
+  private formatConversationHistory(
+    historyMessages: ConversationHistoryMessage[],
+  ): string {
+    return historyMessages
+      .map((message, index) => {
+        const toolSummary = this.describeConversationHistoryToolCalls(
+          message.toolCalls,
+        );
+
+        return [
+          `${index + 1}. ${this.describeConversationRole(message.role)}: ${this.describeConversationHistoryMessage(message)}`,
+          ...(toolSummary ? [`   工具调用: ${toolSummary}`] : []),
+        ].join('\n');
+      })
+      .join('\n\n');
+  }
+
+  private describeConversationRole(
+    role: ConversationHistoryMessage['role'],
+  ): string {
+    switch (role) {
+      case 'assistant':
+        return '助手';
+      case 'system':
+        return '系统';
+      case 'tool':
+        return '工具';
+      default:
+        return '用户';
+    }
+  }
+
+  private describeConversationHistoryMessage(
+    message: ConversationHistoryMessage,
+  ): string {
+    const trimmed = message.content.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+
+    if (message.metadata['emptyTurn'] === true) {
+      return '（该轮未返回可展示文本）';
+    }
+
+    if (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
+      return '（该轮主要执行了工具调用）';
+    }
+
+    return '（空消息）';
+  }
+
+  private describeConversationHistoryToolCalls(
+    toolCalls: ConversationHistoryMessage['toolCalls'],
+  ): string | null {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      return null;
+    }
+
+    const items = toolCalls.flatMap((toolCall) => {
+      if (!this.isRecord(toolCall)) {
+        return [];
+      }
+
+      const tool =
+        this.readStringValue(toolCall.tool) ??
+        this.readStringValue(toolCall.name) ??
+        'unknown_tool';
+      const status = this.readStringValue(toolCall.status) ?? 'pending';
+
+      return [`${tool} [${status}]`];
+    });
+
+    return items.length > 0 ? items.join('；') : null;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private readStringValue(value: unknown): string | undefined {
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
   }
 
   private readExecutionMetadata(

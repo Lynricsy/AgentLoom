@@ -56,6 +56,10 @@ export class NotificationListener {
   async handleExecutionStatusChanged(
     event: ExecutionStatusChangedEvent,
   ): Promise<void> {
+    if (event.executionType === 'conversation') {
+      return;
+    }
+
     if (!this.isExecutionNotificationStatus(event.status)) {
       return;
     }

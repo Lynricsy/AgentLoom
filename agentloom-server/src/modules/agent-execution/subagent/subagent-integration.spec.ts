@@ -201,6 +201,7 @@ function createWorker() {
     undefined,
     undefined,
     undefined,
+    undefined,
     mockSubAgentToolsProvider as never,
   );
 }

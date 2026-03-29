@@ -103,6 +103,21 @@ export interface LlmNodeDataPatch {
   llmConfigId: string | null
   parameters: LlmParameters
   label: string
+  modelId: string
+  name: string
+  provider: LlmProvider
+  modelName: string
+  apiKeyId: string | null
+  isDefault: boolean
+  endpointUrl?: string | null
+  authMethod?: string | null
+  authConfig?: Record<string, unknown> | null
+  timeoutMs?: number | null
+  temperature: number
+  maxTokens?: number
+  topP: number
+  frequencyPenalty: number
+  presencePenalty: number
 }
 
 export interface PrivateCloudAuthConfig {
@@ -242,28 +257,33 @@ export function parseLlmModelConfig(value: unknown): LlmModelConfig | null {
   }
 
   const record = value as Record<string, unknown>
-  const provider = isLlmProvider(record.provider) ? record.provider : null
-  const modelName = parseString(record.modelName) ?? parseString(record.modelId)
+  const nestedConfig =
+    typeof record.config === 'object' && record.config !== null
+      ? record.config as Record<string, unknown>
+      : null
+  const source = nestedConfig ? { ...nestedConfig, ...record } : record
+  const provider = isLlmProvider(source.provider) ? source.provider : null
+  const modelName = parseString(source.modelName) ?? parseString(source.modelId)
 
   if (!provider || !modelName) {
     return null
   }
 
   return {
-    llmConfigId: parseNullableString(record.llmConfigId) ?? parseNullableString(record.id),
-    name: parseString(record.name) ?? modelName,
+    llmConfigId: parseNullableString(source.llmConfigId) ?? parseNullableString(source.id),
+    name: parseString(source.name) ?? modelName,
     provider,
     modelName,
-    parameters: normalizeLlmParameters(record.parameters),
-    apiKeyId: parseNullableString(record.apiKeyId),
-    isDefault: record.isDefault === true,
-    endpointUrl: parseNullableString(record.endpointUrl),
-    authMethod: parseNullableString(record.authMethod),
-    authConfig: typeof record.authConfig === 'object' && record.authConfig !== null
-      ? record.authConfig as Record<string, unknown>
+    parameters: normalizeLlmParameters(source.parameters),
+    apiKeyId: parseNullableString(source.apiKeyId),
+    isDefault: source.isDefault === true,
+    endpointUrl: parseNullableString(source.endpointUrl),
+    authMethod: parseNullableString(source.authMethod),
+    authConfig: typeof source.authConfig === 'object' && source.authConfig !== null
+      ? source.authConfig as Record<string, unknown>
       : null,
-    timeoutMs: typeof record.timeoutMs === 'number' && Number.isFinite(record.timeoutMs)
-      ? record.timeoutMs
+    timeoutMs: typeof source.timeoutMs === 'number' && Number.isFinite(source.timeoutMs)
+      ? source.timeoutMs
       : null,
   }
 }
@@ -292,6 +312,21 @@ export function buildLlmNodePatch(model: LlmModelInfo): LlmNodeDataPatch {
     llmConfigId: config.llmConfigId,
     parameters: config.parameters,
     label: config.modelName,
+    modelId: config.modelName,
+    name: config.name,
+    provider: config.provider,
+    modelName: config.modelName,
+    apiKeyId: config.apiKeyId,
+    isDefault: config.isDefault,
+    endpointUrl: config.endpointUrl,
+    authMethod: config.authMethod,
+    authConfig: config.authConfig,
+    timeoutMs: config.timeoutMs,
+    temperature: config.parameters.temperature,
+    maxTokens: config.parameters.maxTokens,
+    topP: config.parameters.topP,
+    frequencyPenalty: config.parameters.frequencyPenalty,
+    presencePenalty: config.parameters.presencePenalty,
   }
 }
 

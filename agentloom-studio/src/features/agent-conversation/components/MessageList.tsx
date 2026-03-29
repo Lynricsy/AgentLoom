@@ -34,10 +34,13 @@ import {
 
 function ToolStatusIcon({ status }: { status: ToolCallStatus }) {
   switch (status) {
-    case 'running':
+    case 'pending':
+    case 'awaiting_permission':
+    case 'in_progress':
       return <Loader2 className="size-3.5 animate-spin text-info" />;
     case 'completed':
       return <CheckCircle2 className="size-3.5 text-success" />;
+    case 'denied':
     case 'failed':
       return <XCircle className="size-3.5 text-error" />;
   }
@@ -81,17 +84,26 @@ function CollapsibleSection({
 const SUB_AGENT_TOOL_NAMES = new Set(['call_subagent', 'spawn_subagent']);
 
 function isSubAgentToolCall(toolCall: ToolCall): boolean {
-  return SUB_AGENT_TOOL_NAMES.has(toolCall.name);
+  return SUB_AGENT_TOOL_NAMES.has(toolCall.tool);
 }
 
 function extractSubAgentHandle(toolCall: ToolCall): string | null {
   if (!toolCall.args) return null;
-  try {
-    const parsed = JSON.parse(toolCall.args);
-    return parsed.handle ?? parsed.subagentHandle ?? null;
-  } catch {
-    return null;
+  if (typeof toolCall.args === 'string') {
+    try {
+      const parsed = JSON.parse(toolCall.args) as Record<string, unknown>;
+      return (parsed.handle ?? parsed.subagentHandle ?? null) as string | null;
+    } catch {
+      return null;
+    }
   }
+
+  if (typeof toolCall.args === 'object') {
+    const parsed = toolCall.args as Record<string, unknown>;
+    return (parsed.handle ?? parsed.subagentHandle ?? null) as string | null;
+  }
+
+  return null;
 }
 
 const ToolCallItem = memo(function ToolCallItem({
@@ -104,16 +116,21 @@ const ToolCallItem = memo(function ToolCallItem({
       <ToolStatusIcon status={toolCall.status} />
       <div className="min-w-0 flex-1">
         <span className="font-mono font-medium text-foreground">
-          {toolCall.name}
+          {toolCall.tool}
         </span>
-        {toolCall.args && (
+        {toolCall.args !== undefined && (
           <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground">
-            {formatToolArgs(toolCall.args)}
+            {formatToolValue(toolCall.args)}
           </pre>
         )}
-        {toolCall.result && (
+        {toolCall.result !== undefined && (
           <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground max-h-40 overflow-y-auto">
-            {toolCall.result}
+            {formatToolValue(toolCall.result)}
+          </pre>
+        )}
+        {toolCall.error && (
+          <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-[11px] leading-relaxed text-error max-h-40 overflow-y-auto">
+            {toolCall.error}
           </pre>
         )}
       </div>
@@ -138,12 +155,28 @@ const SubAgentToolCallItem = memo(function SubAgentToolCallItem({
   return <SubAgentStreamView stream={stream} />;
 });
 
-function formatToolArgs(args: string): string {
-  try {
-    return JSON.stringify(JSON.parse(args), null, 2);
-  } catch {
-    return args;
+function formatToolValue(value: unknown): string {
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
   }
+
+  if (value == null) {
+    return 'null';
+  }
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
 }
 
 function TypingIndicator() {
@@ -165,6 +198,11 @@ const MessageBubble = memo(function MessageBubble({
 }) {
   const isUser = message.role === 'user';
   const hasThinking = !!message.thinking;
+  const showEmptyTurnPlaceholder =
+    !isUser &&
+    !message.content &&
+    !message.isStreaming &&
+    message.metadata?.emptyTurn === true;
 
   const { regularTools, subAgentTools, runningCount, completedCount } =
     useMemo(() => {
@@ -179,8 +217,15 @@ const MessageBubble = memo(function MessageBubble({
         } else {
           regular.push(tc);
         }
-        if (tc.status === 'running') running++;
-        else completed++;
+        if (
+          tc.status === 'pending' ||
+          tc.status === 'awaiting_permission' ||
+          tc.status === 'in_progress'
+        ) {
+          running++;
+        } else {
+          completed++;
+        }
       }
 
       return {
@@ -231,6 +276,8 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           ) : message.isStreaming ? (
             <TypingIndicator />
+          ) : showEmptyTurnPlaceholder ? (
+            <p className="italic text-muted-foreground">本轮未返回可展示内容</p>
           ) : null}
         </div>
 
@@ -356,7 +403,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
           )}
           {isExecuting &&
             !messages.some(
-              (m) => m.role === 'agent' && m.isStreaming,
+              (m) => m.role === 'assistant' && m.isStreaming,
             ) && (
               <div className="flex gap-3 px-4 py-3">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info">

@@ -17,9 +17,12 @@ export const ExecutionEventName = {
 export type ExecutionEventName =
   (typeof ExecutionEventName)[keyof typeof ExecutionEventName];
 
+export type ExecutionResourceType = 'workflow' | 'conversation';
+
 export interface ExecutionStatusChangedPayload {
   readonly executionId: string;
   readonly status: string;
+  readonly executionType?: ExecutionResourceType;
   readonly completedSteps?: number;
   readonly totalSteps?: number;
   readonly errorMessage?: string;
@@ -57,11 +60,13 @@ export interface StepStatusChangedPayload {
   readonly nodeId: string;
   readonly from: string;
   readonly to: string;
+  readonly executionType?: ExecutionResourceType;
   readonly errorDetail?: StructuredErrorDetail;
 }
 
 export interface StepAgentEventPayload {
   readonly stepId: string;
+  readonly executionType?: ExecutionResourceType;
   readonly event: AgentEvent;
 }
 
@@ -100,6 +105,7 @@ export interface InterventionRequiredPayload {
   readonly stepId: string;
   readonly nodeId: string;
   readonly nodeName: string;
+  readonly executionType?: ExecutionResourceType;
   readonly decision?: InterventionDecision;
   readonly partialContent?: string;
   readonly requestedAt: string;
@@ -108,6 +114,7 @@ export interface InterventionRequiredPayload {
 export interface InterventionResolvedPayload {
   readonly stepId: string;
   readonly nodeId: string;
+  readonly executionType?: ExecutionResourceType;
   readonly action: 'approve' | 'modify' | 'reject';
   readonly feedback?: string;
   readonly modifiedContent?: unknown;
@@ -121,6 +128,7 @@ export interface ToolCallStatusPayload {
   readonly nodeId: string;
   readonly toolCallId: string;
   readonly tool: string;
+  readonly executionType?: ExecutionResourceType;
   readonly status: ToolCallStatus;
   readonly args?: Record<string, unknown>;
   readonly result?: unknown;
@@ -138,6 +146,7 @@ export interface ToolPermissionRequiredPayload {
   readonly nodeId: string;
   readonly toolCallId: string;
   readonly tool: string;
+  readonly executionType?: ExecutionResourceType;
   readonly args: Record<string, unknown>;
   readonly requestedAt: string;
   readonly permissionRequest?: {
@@ -150,6 +159,7 @@ export interface ToolPermissionResolvedPayload {
   readonly stepId: string;
   readonly nodeId: string;
   readonly toolCallId: string;
+  readonly executionType?: ExecutionResourceType;
   readonly action: 'approve' | 'deny';
 }
 

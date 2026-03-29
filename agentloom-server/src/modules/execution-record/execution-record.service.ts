@@ -44,6 +44,10 @@ export class ExecutionRecordService {
   async handleStepStatusChanged(
     payload: StepStatusChangedEvent,
   ): Promise<void> {
+    if (payload.executionType === 'conversation') {
+      return;
+    }
+
     if (payload.to !== 'completed' && payload.to !== 'failed') {
       return;
     }
@@ -91,6 +95,10 @@ export class ExecutionRecordService {
   async handleExecutionStatusChanged(
     payload: ExecutionStatusChangedEvent,
   ): Promise<void> {
+    if (payload.executionType === 'conversation') {
+      return;
+    }
+
     if (payload.status !== 'completed' && payload.status !== 'failed') {
       return;
     }

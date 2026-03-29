@@ -50,17 +50,12 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'llm-model': {
     render: ({ node, onConfigChange }) => {
       const handleLlmChange = (patch: LlmNodeDataPatch) => {
-        onConfigChange({
-          config: patch.config,
-          llmConfigId: patch.llmConfigId,
-          parameters: patch.parameters,
-          label: patch.label,
-        })
+        onConfigChange(patch as unknown as Record<string, unknown>)
       }
 
       return (
         <LlmModelConfigPanel
-          config={parseLlmModelConfig(node.data.config ?? null)}
+          config={parseLlmModelConfig(node.data)}
           onApply={handleLlmChange}
         />
       )

@@ -10,7 +10,7 @@ import {
 type LlmNodeVisualState = 'unconfigured' | 'configured' | 'warning'
 
 interface LlmModelNodeBodyProps {
-  config: Record<string, unknown>
+  source: Record<string, unknown>
   state?: LlmNodeVisualState
 }
 
@@ -23,11 +23,11 @@ function extractHostname(url: string): string {
 }
 
 export const LlmModelNodeBody = memo(function LlmModelNodeBody({
-  config,
+  source,
   state,
 }: LlmModelNodeBodyProps) {
-  const llmConfig = parseLlmModelConfig(config)
-  const resolvedState = state ?? getLlmConfigState(config)
+  const llmConfig = parseLlmModelConfig(source)
+  const resolvedState = state ?? getLlmConfigState(source)
 
   if (!llmConfig) {
     return (

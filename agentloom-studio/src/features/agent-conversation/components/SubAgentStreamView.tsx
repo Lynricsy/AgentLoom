@@ -172,24 +172,28 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
   const toolCalls = toolCallEvents.map((tce) => {
     const tp = tce.payload as {
       toolCallId?: string;
+      tool?: string;
       name?: string;
-      args?: string;
+      args?: unknown;
+      status?: string;
     };
     const resultEvent = toolResultEvents.find((tre) => {
       const rp = tre.payload as { toolCallId?: string };
       return rp.toolCallId === tp.toolCallId;
     });
     const rp = resultEvent?.payload as {
-      result?: string;
+      result?: unknown;
+      error?: string;
       status?: string;
     } | undefined;
 
     return {
       id: tp.toolCallId ?? tce.id,
-      name: tp.name ?? 'unknown',
+      name: tp.tool ?? tp.name ?? 'unknown',
       args: tp.args,
       result: rp?.result,
-      status: rp ? (rp.status === 'failed' ? 'failed' : 'completed') : 'running',
+      error: rp?.error,
+      status: rp?.status ?? tp.status ?? 'running',
     };
   });
 
@@ -232,28 +236,42 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
 
       {toolCalls.length > 0 && (
         <SubAgentCollapsible
-          title={`Tool calls (${toolCalls.filter((t) => t.status !== 'running').length}/${toolCalls.length})`}
+          title={`Tool calls (${toolCalls.filter((t) => t.status !== 'running' && t.status !== 'pending' && t.status !== 'awaiting_permission' && t.status !== 'in_progress').length}/${toolCalls.length})`}
           icon={<Wrench className="size-3" />}
-          defaultOpen={toolCalls.some((t) => t.status === 'running')}
+          defaultOpen={toolCalls.some((t) => t.status === 'running' || t.status === 'pending' || t.status === 'in_progress')}
         >
           <div className="space-y-1">
             {toolCalls.map((tc) => (
               <div key={tc.id} className="flex items-start gap-2 py-1.5 text-xs">
                 <SubAgentToolStatusIcon
-                  status={tc.status as 'running' | 'completed' | 'failed'}
+                  status={
+                    tc.status as
+                      | 'running'
+                      | 'pending'
+                      | 'awaiting_permission'
+                      | 'in_progress'
+                      | 'completed'
+                      | 'failed'
+                      | 'denied'
+                  }
                 />
                 <div className="min-w-0 flex-1">
                   <span className="font-mono font-medium text-foreground">
                     {tc.name}
                   </span>
-                  {tc.args && (
+                  {tc.args !== undefined && (
                     <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground">
-                      {formatArgs(tc.args)}
+                      {formatValue(tc.args)}
                     </pre>
                   )}
-                  {tc.result && (
+                  {tc.result !== undefined && (
                     <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground max-h-40 overflow-y-auto">
-                      {tc.result}
+                      {formatValue(tc.result)}
+                    </pre>
+                  )}
+                  {tc.error && (
+                    <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-[11px] leading-relaxed text-error max-h-40 overflow-y-auto">
+                      {tc.error}
                     </pre>
                   )}
                 </div>
@@ -283,24 +301,51 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
 function SubAgentToolStatusIcon({
   status,
 }: {
-  status: 'running' | 'completed' | 'failed';
+  status:
+    | 'running'
+    | 'pending'
+    | 'awaiting_permission'
+    | 'in_progress'
+    | 'completed'
+    | 'failed'
+    | 'denied';
 }) {
   switch (status) {
     case 'running':
+    case 'pending':
+    case 'awaiting_permission':
+    case 'in_progress':
       return <Loader2 className="size-3.5 animate-spin text-info" />;
     case 'completed':
       return <CheckCircle2 className="size-3.5 text-success" />;
+    case 'denied':
     case 'failed':
       return <XCircle className="size-3.5 text-error" />;
   }
 }
 
-function formatArgs(args: string): string {
-  try {
-    return JSON.stringify(JSON.parse(args), null, 2);
-  } catch {
-    return args;
+function formatValue(value: unknown): string {
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
   }
+
+  if (value == null) {
+    return 'null';
+  }
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
 }
 
 export interface SubAgentStreamViewProps {

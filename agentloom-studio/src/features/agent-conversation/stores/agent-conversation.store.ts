@@ -8,6 +8,7 @@ import { useAuthStore } from '@/features/auth/stores/auth.store';
 import type { PaginatedResponse } from '@/shared/types/api';
 import type {
   ConversationMessage,
+  ConversationMessageMetadata,
   ConversationStatus,
   FileChange,
   FileTreeNode,
@@ -15,7 +16,6 @@ import type {
   SandboxStatus,
   MessageChunkPayload,
   ThinkingPayload,
-  ToolCallPayload,
   ToolResultPayload,
   AgentDonePayload,
   TerminalOutputPayload,
@@ -25,6 +25,10 @@ import type {
   SubAgentEventEnvelope,
   SubAgentRunStatus,
   SubAgentEvent,
+  ToolCall,
+  ToolCallPermissionRequest,
+  ToolCallStatus,
+  ToolCallTransition,
 } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1').replace(
@@ -152,6 +156,581 @@ function pushSubAgentEvent(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function readTimestamp(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) {
+      return parsed
+    }
+  }
+
+  return Date.now()
+}
+
+function normalizeMessageRole(value: unknown): ConversationMessage['role'] {
+  switch (value) {
+    case 'user':
+    case 'system':
+      return value
+    default:
+      return 'assistant'
+  }
+}
+
+function normalizeToolCallStatus(value: unknown): ToolCallStatus {
+  switch (value) {
+    case 'pending':
+    case 'awaiting_permission':
+    case 'denied':
+    case 'in_progress':
+    case 'completed':
+    case 'failed':
+      return value
+    default:
+      return 'pending'
+  }
+}
+
+function normalizeToolCallTransitions(value: unknown): ToolCallTransition[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  const transitions = value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return []
+    }
+
+    const to = normalizeOptionalToolCallStatus(item.to)
+    const timestamp = readString(item.timestamp)
+    const source =
+      item.source === 'runtime' ||
+      item.source === 'worker' ||
+      item.source === 'user'
+        ? item.source
+        : undefined
+
+    if (!to || !timestamp || !source) {
+      return []
+    }
+
+    return [
+      {
+        ...(normalizeOptionalToolCallStatus(item.from)
+          ? { from: normalizeOptionalToolCallStatus(item.from) }
+          : {}),
+        to,
+        timestamp,
+        source,
+      } satisfies ToolCallTransition,
+    ]
+  })
+
+  return transitions.length > 0 ? transitions : undefined
+}
+
+function normalizeOptionalToolCallStatus(
+  value: unknown,
+): ToolCallStatus | undefined {
+  switch (value) {
+    case 'pending':
+    case 'awaiting_permission':
+    case 'denied':
+    case 'in_progress':
+    case 'completed':
+    case 'failed':
+      return value
+    default:
+      return undefined
+  }
+}
+
+function normalizePermissionRequest(
+  value: unknown,
+): ToolCallPermissionRequest | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const description = readString(value.description)
+  const resourcePaths = Array.isArray(value.resourcePaths)
+    ? value.resourcePaths.filter(
+        (item): item is string => typeof item === 'string' && item.length > 0,
+      )
+    : []
+
+  if (!description && resourcePaths.length === 0) {
+    return undefined
+  }
+
+  return {
+    ...(description ? { description } : {}),
+    ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+  }
+}
+
+function unwrapConversationPayload(raw: unknown) {
+  const root = isRecord(raw) ? raw : {}
+  const data = isRecord(root.data) ? root.data : {}
+  const event = isRecord(root.event) ? root.event : {}
+  const subagent = normalizeSubAgentEnvelope(
+    root.subagent ?? data.subagent ?? event.subagent,
+  )
+
+  return { root, data, event, subagent }
+}
+
+function normalizeSubAgentEnvelope(value: unknown): SubAgentEventEnvelope | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const handle = readString(value.handle)
+  const alias = readString(value.alias)
+  const parentToolCallId = readString(value.parentToolCallId)
+  const depth = typeof value.depth === 'number' && Number.isFinite(value.depth)
+    ? value.depth
+    : undefined
+
+  if (!handle || !alias || !parentToolCallId || depth === undefined) {
+    return undefined
+  }
+
+  return {
+    handle: handle as SubAgentEventEnvelope['handle'],
+    alias,
+    depth,
+    parentToolCallId,
+  }
+}
+
+function normalizeMessageMetadata(value: unknown): ConversationMessageMetadata | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  return value as ConversationMessageMetadata
+}
+
+function normalizeConversationHistoryMessage(raw: unknown): ConversationMessage {
+  const record = isRecord(raw) ? raw : {}
+  const metadata = normalizeMessageMetadata(record.metadata)
+
+  return {
+    id: readString(record.id) ?? crypto.randomUUID(),
+    role: normalizeMessageRole(record.role),
+    content: readString(record.content) ?? '',
+    thinking: extractThinkingContent(record.metadata),
+    toolCalls: normalizeHistoryToolCalls(record.toolCalls),
+    isStreaming: false,
+    createdAt: readTimestamp(record.createdAt),
+    ...(metadata ? { metadata } : {}),
+  }
+}
+
+function normalizeHistoryToolCalls(value: unknown): ToolCall[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return []
+    }
+
+    const toolCallId = readString(item.id) ?? readString(item.toolCallId)
+    if (!toolCallId) {
+      return []
+    }
+
+    return [
+      {
+        id: toolCallId,
+        tool: readString(item.tool) ?? readString(item.name) ?? 'unknown_tool',
+        ...(item.args !== undefined ? { args: item.args } : {}),
+        ...(item.result !== undefined ? { result: item.result } : {}),
+        ...(readString(item.error) ? { error: readString(item.error)! } : {}),
+        status: normalizeToolCallStatus(item.status),
+        ...(normalizeToolCallTransitions(item.transitions)
+          ? { transitions: normalizeToolCallTransitions(item.transitions) }
+          : {}),
+        ...(normalizePermissionRequest(item.permissionRequest)
+          ? { permissionRequest: normalizePermissionRequest(item.permissionRequest) }
+          : {}),
+        startedAt: readTimestamp(item.startedAt),
+        updatedAt: readTimestamp(item.updatedAt),
+      } satisfies ToolCall,
+    ]
+  })
+}
+
+function extractThinkingContent(value: unknown): string | undefined {
+  if (!isRecord(value) || !isRecord(value.decision)) {
+    return undefined
+  }
+
+  const rationale = readString(value.decision.rationale)
+  const suggestedContent = readString(value.decision.suggestedContent)
+  const parts = [rationale, suggestedContent].filter(Boolean)
+
+  return parts.length > 0 ? parts.join('\n\n') : undefined
+}
+
+function normalizeMessageChunkPayload(raw: unknown): MessageChunkPayload | null {
+  const { root, data, event, subagent } = unwrapConversationPayload(raw)
+  const chunk =
+    readString(root.chunk) ??
+    readString(data.chunk) ??
+    readString(event.content) ??
+    readString(data.content)
+
+  if (!chunk) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    messageId:
+      readString(root.messageId) ??
+      readString(data.messageId) ??
+      readString(root.stepId) ??
+      readString(data.stepId) ??
+      readString(root.executionId) ??
+      'assistant-stream',
+    chunk,
+    ...(subagent ? { subagent } : {}),
+  }
+}
+
+function normalizeThinkingPayload(raw: unknown): ThinkingPayload | null {
+  const { root, data, event, subagent } = unwrapConversationPayload(raw)
+  const content =
+    readString(root.content) ??
+    readString(data.content) ??
+    readString(event.content) ??
+    readString(event.rationale) ??
+    readString(event.suggestedContent)
+
+  if (!content) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    messageId:
+      readString(root.messageId) ??
+      readString(data.messageId) ??
+      readString(root.stepId) ??
+      readString(data.stepId) ??
+      readString(root.executionId) ??
+      'assistant-stream',
+    content,
+    ...(subagent ? { subagent } : {}),
+  }
+}
+
+function normalizeToolPayload(raw: unknown): ToolResultPayload | null {
+  const { root, data, event, subagent } = unwrapConversationPayload(raw)
+  const call = isRecord(event.call) ? event.call : {}
+  const toolCallId =
+    readString(root.toolCallId) ??
+    readString(data.toolCallId) ??
+    readString(call.id) ??
+    readString(root.id)
+
+  if (!toolCallId) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    messageId:
+      readString(root.messageId) ??
+      readString(data.messageId) ??
+      readString(root.stepId) ??
+      readString(data.stepId) ??
+      readString(root.executionId) ??
+      'assistant-stream',
+    toolCallId,
+    tool:
+      readString(root.tool) ??
+      readString(root.name) ??
+      readString(data.tool) ??
+      readString(data.name) ??
+      readString(call.tool) ??
+      'unknown_tool',
+    ...(root.args !== undefined
+      ? { args: root.args }
+      : data.args !== undefined
+        ? { args: data.args }
+        : call.args !== undefined
+          ? { args: call.args }
+          : {}),
+    status: normalizeToolCallStatus(root.status ?? data.status ?? call.status),
+    ...(root.result !== undefined
+      ? { result: root.result }
+      : data.result !== undefined
+        ? { result: data.result }
+        : call.result !== undefined
+          ? { result: call.result }
+          : {}),
+    ...(readString(root.error) ??
+      readString(data.error) ??
+      readString(call.error)
+      ? {
+          error:
+            readString(root.error) ??
+            readString(data.error) ??
+            readString(call.error),
+        }
+      : {}),
+    ...(normalizeToolCallTransitions(
+      root.transitions ?? data.transitions ?? call.transitions,
+    )
+      ? {
+          transitions: normalizeToolCallTransitions(
+            root.transitions ?? data.transitions ?? call.transitions,
+          ),
+        }
+      : {}),
+    ...(normalizePermissionRequest(
+      root.permissionRequest ?? data.permissionRequest ?? call.permissionRequest,
+    )
+      ? {
+          permissionRequest: normalizePermissionRequest(
+            root.permissionRequest ?? data.permissionRequest ?? call.permissionRequest,
+          ),
+        }
+      : {}),
+    ...(subagent ? { subagent } : {}),
+  }
+}
+
+function normalizeAgentDonePayload(raw: unknown): AgentDonePayload {
+  const { root, data, subagent } = unwrapConversationPayload(raw)
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    ...(readString(root.messageId) ??
+      readString(data.messageId) ??
+      readString(root.stepId) ??
+      readString(data.stepId)
+      ? {
+          messageId:
+            readString(root.messageId) ??
+            readString(data.messageId) ??
+            readString(root.stepId) ??
+            readString(data.stepId),
+        }
+      : {}),
+    ...(subagent ? { subagent } : {}),
+  }
+}
+
+function normalizeTerminalOutputPayload(raw: unknown): TerminalOutputPayload | null {
+  const { root, data, event } = unwrapConversationPayload(raw)
+  const output =
+    readString(root.output) ??
+    readString(data.output) ??
+    readString(event.data) ??
+    (typeof root.data === 'string' ? root.data : undefined)
+
+  if (!output) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    output,
+    ...(readString(root.command) ?? readString(data.command)
+      ? { command: readString(root.command) ?? readString(data.command) }
+      : {}),
+    ...(readString(root.sessionId) ??
+      readString(data.sessionId) ??
+      readString(event.sessionId)
+      ? {
+          sessionId:
+            readString(root.sessionId) ??
+            readString(data.sessionId) ??
+            readString(event.sessionId),
+        }
+      : {}),
+  }
+}
+
+function normalizeFileChangePayload(raw: unknown): FileChangePayload | null {
+  const { root, data } = unwrapConversationPayload(raw)
+  const path = readString(root.path) ?? readString(data.path)
+  if (!path) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    path,
+    changeType: normalizeFileChangeType(root.changeType ?? data.changeType),
+    ...(readString(root.diff) ?? readString(data.diff)
+      ? { diff: readString(root.diff) ?? readString(data.diff) }
+      : {}),
+    ...(readString(root.content) ?? readString(data.content)
+      ? { content: readString(root.content) ?? readString(data.content) }
+      : {}),
+  }
+}
+
+function normalizeFileChangeType(
+  value: unknown,
+): FileChangePayload['changeType'] {
+  switch (value) {
+    case 'created':
+    case 'modified':
+    case 'deleted':
+      return value
+    default:
+      return 'modified'
+  }
+}
+
+function normalizeStatusChangedPayload(raw: unknown): StatusChangedPayload | null {
+  const { root, data } = unwrapConversationPayload(raw)
+  const status = readString(root.status) ?? readString(data.status)
+  if (!status) {
+    return null
+  }
+
+  return {
+    conversationId:
+      readString(root.conversationId) ??
+      readString(root.executionId) ??
+      readString(data.conversationId) ??
+      'unknown-conversation',
+    status: status as StatusChangedPayload['status'],
+  }
+}
+
+function ensureAssistantMessage(
+  messages: ConversationMessage[],
+  messageId: string,
+): ConversationMessage {
+  let message = messages.find((item) => item.id === messageId)
+  if (message) {
+    return message
+  }
+
+  message = {
+    id: messageId,
+    role: 'assistant',
+    content: '',
+    toolCalls: [],
+    isStreaming: true,
+    createdAt: Date.now(),
+  }
+  messages.push(message)
+  return message
+}
+
+function upsertToolCall(message: ConversationMessage, payload: ToolResultPayload): void {
+  const existing = message.toolCalls.find((toolCall) => toolCall.id === payload.toolCallId)
+  const now = Date.now()
+
+  if (existing) {
+    existing.tool = payload.tool
+    if (payload.args !== undefined) existing.args = payload.args
+    if (payload.result !== undefined) existing.result = payload.result
+    if (payload.error !== undefined) existing.error = payload.error
+    existing.status = payload.status
+    if (payload.transitions) existing.transitions = payload.transitions
+    if (payload.permissionRequest) existing.permissionRequest = payload.permissionRequest
+    existing.updatedAt = now
+    return
+  }
+
+  message.toolCalls.push({
+    id: payload.toolCallId,
+    tool: payload.tool,
+    ...(payload.args !== undefined ? { args: payload.args } : {}),
+    ...(payload.result !== undefined ? { result: payload.result } : {}),
+    ...(payload.error !== undefined ? { error: payload.error } : {}),
+    status: payload.status,
+    ...(payload.transitions ? { transitions: payload.transitions } : {}),
+    ...(payload.permissionRequest
+      ? { permissionRequest: payload.permissionRequest }
+      : {}),
+    startedAt: now,
+    updatedAt: now,
+  })
+}
+
+function finishStreamingAssistantMessage(
+  messages: ConversationMessage[],
+  messageId?: string,
+): void {
+  if (messageId) {
+    const message = messages.find((item) => item.id === messageId)
+    if (message) {
+      message.isStreaming = false
+      return
+    }
+  }
+
+  const latestStreamingAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.isStreaming)
+
+  if (latestStreamingAssistant) {
+    latestStreamingAssistant.isStreaming = false
+  }
+}
+
+function fileExistsInTree(tree: FileTreeNode[], path: string): boolean {
+  for (const node of tree) {
+    if (node.path === path) {
+      return true
+    }
+    if (node.children && fileExistsInTree(node.children, path)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 export const useAgentConversationStore = create<
   AgentConversationState & AgentConversationActions
 >()(
@@ -223,128 +802,157 @@ export const useAgentConversationStore = create<
 
             socket.on(
               'conversation.agent.message_chunk',
-              (payload: MessageChunkPayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.subagent) {
-                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'message_chunk', payload);
+                  const normalized = normalizeMessageChunkPayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
+                  if (normalized.subagent) {
+                    pushSubAgentEvent(
+                      s.subAgentStreams,
+                      normalized.subagent,
+                      'message_chunk',
+                      normalized,
+                    )
                     return;
                   }
-                  const msg = s.messages.find(
-                    (m) => m.id === payload.messageId,
-                  );
-                  if (msg) {
-                    msg.content += payload.chunk;
-                  } else {
-                    s.messages.push({
-                      id: payload.messageId,
-                      role: 'agent',
-                      content: payload.chunk,
-                      toolCalls: [],
-                      isStreaming: true,
-                      createdAt: Date.now(),
-                    });
-                  }
+
+                  const message = ensureAssistantMessage(
+                    s.messages,
+                    normalized.messageId,
+                  )
+                  message.content += normalized.chunk
+                  message.isStreaming = true
                 });
               },
             );
 
             socket.on(
               'conversation.agent.thinking',
-              (payload: ThinkingPayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.subagent) {
-                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'thinking', payload);
+                  const normalized = normalizeThinkingPayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
+                  if (normalized.subagent) {
+                    pushSubAgentEvent(
+                      s.subAgentStreams,
+                      normalized.subagent,
+                      'thinking',
+                      normalized,
+                    )
                     return;
                   }
-                  const msg = s.messages.find(
-                    (m) => m.id === payload.messageId,
-                  );
-                  if (msg) {
-                    msg.thinking =
-                      (msg.thinking ?? '') + payload.content;
-                  }
+
+                  const message = ensureAssistantMessage(
+                    s.messages,
+                    normalized.messageId,
+                  )
+                  message.thinking = (message.thinking ?? '') + normalized.content
                 });
               },
             );
 
             socket.on(
               'conversation.agent.tool_call',
-              (payload: ToolCallPayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.subagent) {
-                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'tool_call', payload);
+                  const normalized = normalizeToolPayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
+                  if (normalized.subagent) {
+                    pushSubAgentEvent(
+                      s.subAgentStreams,
+                      normalized.subagent,
+                      'tool_call',
+                      normalized,
+                    )
                     return;
                   }
-                  const msg = s.messages.find(
-                    (m) => m.id === payload.messageId,
-                  );
-                  if (msg) {
-                    msg.toolCalls.push({
-                      id: payload.toolCallId,
-                      name: payload.name,
-                      args: payload.args,
-                      status: 'running',
-                      startedAt: Date.now(),
-                      updatedAt: Date.now(),
-                    });
-                  }
+
+                  const message = ensureAssistantMessage(
+                    s.messages,
+                    normalized.messageId,
+                  )
+                  upsertToolCall(message, normalized)
                 });
               },
             );
 
             socket.on(
               'conversation.agent.tool_result',
-              (payload: ToolResultPayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.subagent) {
-                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'tool_result', payload);
+                  const normalized = normalizeToolPayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
+                  if (normalized.subagent) {
+                    pushSubAgentEvent(
+                      s.subAgentStreams,
+                      normalized.subagent,
+                      'tool_result',
+                      normalized,
+                    )
                     return;
                   }
-                  const msg = s.messages.find(
-                    (m) => m.id === payload.messageId,
-                  );
-                  if (msg) {
-                    const tc = msg.toolCalls.find(
-                      (t) => t.id === payload.toolCallId,
-                    );
-                    if (tc) {
-                      tc.result = payload.result;
-                      tc.status = payload.status;
-                      tc.updatedAt = Date.now();
-                    }
-                  }
+
+                  const message = ensureAssistantMessage(
+                    s.messages,
+                    normalized.messageId,
+                  )
+                  upsertToolCall(message, normalized)
                 });
               },
             );
 
             socket.on(
               'conversation.agent.done',
-              (payload: AgentDonePayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.subagent) {
-                    pushSubAgentEvent(s.subAgentStreams, payload.subagent, 'done', payload);
+                  const normalized = normalizeAgentDonePayload(payload)
+
+                  if (normalized.subagent) {
+                    pushSubAgentEvent(
+                      s.subAgentStreams,
+                      normalized.subagent,
+                      'done',
+                      normalized,
+                    )
                     return;
                   }
-                  const msg = s.messages.find(
-                    (m) => m.id === payload.messageId,
-                  );
-                  if (msg) {
-                    msg.isStreaming = false;
-                  }
-                  s.status = 'connected';
-                  s.sandboxStatus = 'idle';
+
+                  finishStreamingAssistantMessage(
+                    s.messages,
+                    normalized.messageId,
+                  )
+                  s.status = 'connected'
+                  s.sandboxStatus = 'idle'
                 });
               },
             );
 
             socket.on(
               'conversation.sandbox.terminal_output',
-              (payload: TerminalOutputPayload) => {
+              (payload: unknown) => {
                 set((s) => {
+                  const normalized = normalizeTerminalOutputPayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
                   s.terminalEntries.push({
                     id: crypto.randomUUID(),
-                    command: payload.command,
-                    output: payload.output,
+                    command: normalized.command,
+                    output: normalized.output,
+                    sessionId: normalized.sessionId,
                     timestamp: Date.now(),
                   });
                   if (
@@ -361,13 +969,26 @@ export const useAgentConversationStore = create<
 
             socket.on(
               'conversation.sandbox.file_change',
-              (payload: FileChangePayload) => {
+              (payload: unknown) => {
                 set((s) => {
+                  const normalized = normalizeFileChangePayload(payload)
+                  if (!normalized) {
+                    return
+                  }
+
+                  const existsBeforeChange =
+                    fileExistsInTree(s.fileTree, normalized.path) ||
+                    s.fileChanges.some((change) => change.path === normalized.path)
+                  const changeType =
+                    normalized.changeType === 'modified' && !existsBeforeChange
+                      ? 'created'
+                      : normalized.changeType
+
                   s.fileChanges.push({
-                    path: payload.path,
-                    changeType: payload.changeType,
-                    diff: payload.diff,
-                    content: payload.content,
+                    path: normalized.path,
+                    changeType,
+                    diff: normalized.diff,
+                    content: normalized.content,
                   });
                   if (s.fileChanges.length > FILE_CHANGE_LIMIT) {
                     s.fileChanges = s.fileChanges.slice(
@@ -376,8 +997,8 @@ export const useAgentConversationStore = create<
                   }
                   updateFileTreeFromChange(
                     s.fileTree,
-                    payload.path,
-                    payload.changeType,
+                    normalized.path,
+                    changeType,
                   );
                 });
               },
@@ -385,18 +1006,33 @@ export const useAgentConversationStore = create<
 
             socket.on(
               'conversation.status.changed',
-              (payload: StatusChangedPayload) => {
+              (payload: unknown) => {
                 set((s) => {
-                  if (payload.status === 'executing') {
-                    s.status = 'executing';
-                    s.sandboxStatus = 'running';
-                  } else if (payload.status === 'error') {
-                    s.status = 'error';
-                    s.sandboxStatus = 'error';
-                  } else {
-                    s.status = 'connected';
-                    s.sandboxStatus = 'idle';
+                  const normalized = normalizeStatusChangedPayload(payload)
+                  if (!normalized) {
+                    return
                   }
+
+                  if (
+                    normalized.status === 'running' ||
+                    normalized.status === 'executing'
+                  ) {
+                    s.status = 'executing'
+                    s.sandboxStatus = 'running'
+                    return
+                  }
+
+                  if (
+                    normalized.status === 'failed' ||
+                    normalized.status === 'error'
+                  ) {
+                    s.status = 'error'
+                    s.sandboxStatus = 'error'
+                    return
+                  }
+
+                  s.status = 'connected'
+                  s.sandboxStatus = 'idle'
                 });
               },
             );
@@ -504,14 +1140,12 @@ export const useAgentConversationStore = create<
             try {
               const response = await apiClient
                 .get(`agent-conversations/${conversationId}/messages`)
-                .json<PaginatedResponse<ConversationMessage>>();
+                .json<PaginatedResponse<unknown>>();
 
               set((s) => {
-                s.messages = response.data.map((m) => ({
-                  ...m,
-                  toolCalls: m.toolCalls ?? [],
-                  isStreaming: false,
-                }));
+                s.messages = response.data.map((message) =>
+                  normalizeConversationHistoryMessage(message),
+                )
               });
             } catch (error) {
               console.error(

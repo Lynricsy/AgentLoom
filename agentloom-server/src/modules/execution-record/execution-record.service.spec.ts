@@ -258,6 +258,15 @@ describe('ExecutionRecordService', () => {
     expect(tenantDb.insert).not.toHaveBeenCalled();
   });
 
+  it('should ignore conversation step status telemetry events', async () => {
+    await service.handleStepStatusChanged(
+      createStepPayload({ executionType: 'conversation' }),
+    );
+
+    expect(mocks.runInTenantTransaction).not.toHaveBeenCalled();
+    expect(tenantDb.insert).not.toHaveBeenCalled();
+  });
+
   it('should record completed step telemetry using the new telemetryData contract', async () => {
     tenantDb.queueSelectResult('limit', [
       createStep({
@@ -599,6 +608,15 @@ describe('ExecutionRecordService', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       `Failed to record execution summary for ${EXECUTION_ID}: summary write failed`,
     );
+  });
+
+  it('should ignore conversation execution summary events', async () => {
+    await service.handleExecutionStatusChanged(
+      createExecutionStatusPayload({ executionType: 'conversation' }),
+    );
+
+    expect(mocks.runInTenantTransaction).not.toHaveBeenCalled();
+    expect(tenantDb.insert).not.toHaveBeenCalled();
   });
 
   it('should return paginated execution records with telemetryData and summaryData', async () => {

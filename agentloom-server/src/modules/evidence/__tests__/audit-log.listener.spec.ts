@@ -100,6 +100,19 @@ describe('AuditLogListener', () => {
     expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
+  it('should ignore conversation execution events', async () => {
+    await listener.handleExecutionStatusChanged({
+      tenantId: TENANT_ID,
+      executionId: EXECUTION_ID,
+      status: 'completed',
+      executionType: 'conversation',
+      completedSteps: 1,
+      totalSteps: 1,
+    });
+
+    expect(auditLogService.record).not.toHaveBeenCalled();
+  });
+
   it('should record intervention resolutions exactly once with the resolved actor', async () => {
     await listener.handleInterventionResolved({
       tenantId: TENANT_ID,
