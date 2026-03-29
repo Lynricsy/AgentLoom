@@ -59,6 +59,7 @@ export async function loadSandboxConfig(): Promise<SandboxConfig> {
 export type SessionFactory = (
   cwd: string,
   config: SandboxConfig,
+  request: CreateSessionRequest,
 ) => Promise<IAgentSession>;
 
 export class AcpAdapter {
@@ -73,7 +74,7 @@ export class AcpAdapter {
 
   async createNewSession(req: CreateSessionRequest): Promise<CreateSessionResponse> {
     const cwd = req.cwd ?? '/workspace';
-    const session = await this.createSession(cwd, this.config ?? {});
+    const session = await this.createSession(cwd, this.config ?? {}, req);
     const id =
       typeof req.sessionId === 'string' && req.sessionId.trim().length > 0
         ? req.sessionId

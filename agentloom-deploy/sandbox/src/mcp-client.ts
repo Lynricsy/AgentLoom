@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -8,6 +10,9 @@ import type { McpServerConfig } from './types.js';
 const CONNECT_TIMEOUT_MS = 30_000;
 const LIST_TOOLS_TIMEOUT_MS = 60_000;
 const CALL_TOOL_TIMEOUT_MS = 60_000;
+const BUNDLED_STDIO_BINARIES = {
+  'grok-search': join(process.cwd(), 'node_modules', '.bin', 'grok-search'),
+} as const;
 
 /** MCP listTools 返回的单个工具类型 */
 export type McpTool = Awaited<ReturnType<Client['listTools']>>['tools'][number];
@@ -41,7 +46,9 @@ export class McpClient {
    * 根据 transportType 创建对应的 transport 并完成握手。
    */
   async connect(config: McpServerConfig): Promise<void> {
-    const transport = this.createTransport(config);
+    const transport = this.createTransport(
+      normalizeBundledMcpServerConfig(config),
+    );
     const client = new Client({ name: 'agentloom-sandbox', version: '1.0.0' });
 
     try {
@@ -202,6 +209,100 @@ export class McpClient {
       typeof transport.terminateSession === 'function'
     );
   }
+}
+
+export function normalizeBundledMcpServerConfig(
+  config: McpServerConfig,
+): McpServerConfig {
+  if (config.transportType !== 'stdio') {
+    return config;
+  }
+
+  const invocation = parseNpxPackageInvocation(config.command, config.args);
+  if (!invocation) {
+    return config;
+  }
+
+  const binaryPath =
+    BUNDLED_STDIO_BINARIES[
+      invocation.packageName as keyof typeof BUNDLED_STDIO_BINARIES
+    ];
+  if (!binaryPath || !existsSync(binaryPath)) {
+    return config;
+  }
+
+  return {
+    ...config,
+    command: binaryPath,
+    args: invocation.forwardedArgs,
+  };
+}
+
+function parseNpxPackageInvocation(
+  command?: string,
+  args?: string[],
+): { packageName: string; forwardedArgs: string[] } | null {
+  if (command !== 'npx') {
+    return null;
+  }
+
+  const tokens = [...(args ?? [])];
+  const forwardedArgs: string[] = [];
+  let packageSpec: string | null = null;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+
+    if (token === '--') {
+      forwardedArgs.push(...tokens.slice(index + 1));
+      break;
+    }
+
+    if (packageSpec === null && (token === '-y' || token === '--yes')) {
+      continue;
+    }
+
+    if (packageSpec === null && (token === '-p' || token === '--package')) {
+      const nextToken = tokens[index + 1];
+      if (!nextToken) {
+        return null;
+      }
+      packageSpec = nextToken;
+      index += 1;
+      continue;
+    }
+
+    if (packageSpec === null) {
+      packageSpec = token;
+      continue;
+    }
+
+    forwardedArgs.push(token);
+  }
+
+  if (packageSpec === null) {
+    return null;
+  }
+
+  return {
+    packageName: stripPackageVersion(packageSpec),
+    forwardedArgs,
+  };
+}
+
+function stripPackageVersion(packageSpec: string): string {
+  if (!packageSpec.startsWith('@')) {
+    const versionMarkerIndex = packageSpec.lastIndexOf('@');
+    return versionMarkerIndex > 0
+      ? packageSpec.slice(0, versionMarkerIndex)
+      : packageSpec;
+  }
+
+  const scopeSeparatorIndex = packageSpec.indexOf('/');
+  const versionMarkerIndex = packageSpec.lastIndexOf('@');
+  return versionMarkerIndex > scopeSeparatorIndex
+    ? packageSpec.slice(0, versionMarkerIndex)
+    : packageSpec;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

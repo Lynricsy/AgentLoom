@@ -13,7 +13,14 @@ export type SandboxAgentEvent =
         content?: { type: 'text'; text: string };
       };
     }
-  | { type: 'message_end' }
+  | {
+      type: 'message_end';
+      message?: {
+        role?: string;
+        stopReason?: string;
+        errorMessage?: string;
+      };
+    }
   | {
       type: 'tool_execution_start';
       toolName: string;
@@ -74,11 +81,27 @@ export interface McpServerConfig {
 /** MCP 服务器配置映射：server name → config */
 export type McpServersConfig = Record<string, McpServerConfig>;
 
+export interface RemoteToolDescriptor {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet?: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface RemoteToolExecutionConfig {
+  sessionId: string;
+  callbackUrl: string;
+  callbackToken: string;
+  tools: RemoteToolDescriptor[];
+}
+
 export interface CreateSessionRequest {
   /** 允许上层显式指定会话 ID，便于外部 runtime 与容器 session 对齐 */
   sessionId?: string;
   cwd?: string;
   mcpServers?: McpServersConfig;
+  remoteToolExecution?: RemoteToolExecutionConfig;
 }
 
 export interface CreateSessionResponse {
@@ -120,8 +143,8 @@ export interface SseEventEnvelope {
 export type SseEventParams =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call_start'; toolName: string; toolCallId: string; input: unknown }
-  | { type: 'tool_call_update'; toolCallId: string; content?: string }
-  | { type: 'tool_call_end'; toolCallId: string; result?: unknown }
+  | { type: 'tool_call_update'; toolCallId: string; toolName?: string; content?: string }
+  | { type: 'tool_call_end'; toolCallId: string; toolName?: string; result?: unknown; isError?: boolean }
   | { type: 'done'; stopReason?: string }
   | { type: 'error'; message: string; code?: string }
   | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
@@ -144,6 +167,17 @@ export interface PermissionCallbackRequest {
 
 export interface PermissionCallbackResponse {
   allowed: boolean;
+}
+
+export interface RemoteToolExecutionRequest {
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
+}
+
+export interface RemoteToolExecutionResponse {
+  result: unknown;
 }
 
 export interface SessionEntry {

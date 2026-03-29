@@ -69,6 +69,28 @@ describe('createPiSessionFactory', () => {
           url: 'https://example.com/sse',
         },
       },
+    }, {
+      remoteToolExecution: {
+        sessionId: 'session-123',
+        callbackUrl: 'http://worker-1:3000/api/v1/agent-runtime/sessions/session-123/tool-executions',
+        callbackToken: 'token-123',
+        tools: [
+          {
+            name: 'lookup_memory',
+            label: 'lookup_memory',
+            description: '检索记忆内容',
+            promptSnippet: '检索记忆内容',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+              },
+              required: ['query'],
+              additionalProperties: false,
+            },
+          },
+        ],
+      },
     });
 
     expect(result).toBe(session);
@@ -111,6 +133,13 @@ describe('createPiSessionFactory', () => {
         authStorage,
         modelRegistry,
         resourceLoader: expect.any(Object),
+        customTools: [
+          expect.objectContaining({
+            name: 'lookup_memory',
+            description: '检索记忆内容',
+            promptSnippet: '检索记忆内容',
+          }),
+        ],
       }),
     );
     expect(piAgent.createAgentSession.mock.calls[0]?.[0]).not.toHaveProperty('model');

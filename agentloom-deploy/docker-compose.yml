@@ -155,6 +155,9 @@ services:
   server:
     <<: *server-app
     command: ['node', 'dist/src/main.js']
+    environment:
+      <<: *server-env
+      APP_SANDBOX_CALLBACK_BASE_URL: ${APP_SANDBOX_CALLBACK_BASE_URL_SERVER:-http://server:3000/api/v1}
     expose:
       - '3000'
     deploy:
@@ -178,6 +181,9 @@ services:
   worker:
     <<: *server-app
     command: ['node', 'dist/src/main.js']
+    environment:
+      <<: *server-env
+      APP_SANDBOX_CALLBACK_BASE_URL: ${APP_SANDBOX_CALLBACK_BASE_URL_WORKER:-http://worker:3000/api/v1}
     networks:
       - app_net
       - sandbox_net

@@ -5,6 +5,7 @@ import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
 import { createPtyExtension } from './pty-extension.js';
 import { createMcpExtension } from './mcp-extension.js';
+import { createRemoteToolDefinitions } from './remote-tools.js';
 import type { PTYManager } from './pty/pty-manager.js';
 import type {
   CreateSessionRequest,
@@ -213,7 +214,7 @@ export function createPiSessionFactory(
   piAgent: PiCodingAgentBindings,
   setPtyManager?: (manager: PTYManager | null) => void,
 ): SessionFactory {
-  return async (cwd, config) => {
+  return async (cwd, config, request) => {
     const {
       createAgentSession,
       DefaultResourceLoader,
@@ -256,6 +257,7 @@ export function createPiSessionFactory(
       authStorage,
       modelRegistry,
       resourceLoader,
+      customTools: createRemoteToolDefinitions(request.remoteToolExecution),
     });
 
     // AgentSession 与 IAgentSession 结构兼容（subscribe 事件类型是超集）
