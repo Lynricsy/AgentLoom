@@ -126,7 +126,7 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
   const [editingPresetName, setEditingPresetName] = useState('')
 
-  // Determine if current config matches any preset
+  // 判断当前配置是否已经匹配某个预设
   const matchedPreset = currentConfig
     ? findMatchingPreset(allPresets, currentConfig)
     : undefined

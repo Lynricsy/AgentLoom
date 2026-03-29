@@ -75,8 +75,10 @@ describe('skill 注册验证', () => {
     it('skill 节点有 1 个 outputPort — skill-out', () => {
       const { outputPorts } = NODE_TYPE_REGISTRY.skill;
       expect(outputPorts).toHaveLength(1);
-      expect(outputPorts[0]!.id).toBe('skill-out');
-      expect(outputPorts[0]!.dataType).toBe('skill');
+      const skillOutputPort = outputPorts[0];
+      expect(skillOutputPort).toBeDefined();
+      expect(skillOutputPort?.id).toBe('skill-out');
+      expect(skillOutputPort?.dataType).toBe('skill');
     });
 
     it('skill 节点 configSchema 必填 skillId', () => {
@@ -97,8 +99,8 @@ describe('skill 注册验证', () => {
         (p) => p.id === 'skills',
       );
       expect(skillsPort).toBeDefined();
-      expect(skillsPort!.dataType).toBe('skill');
-      expect(skillsPort!.multiple).toBe(true);
+      expect(skillsPort?.dataType).toBe('skill');
+      expect(skillsPort?.multiple).toBe(true);
     });
   });
 });
