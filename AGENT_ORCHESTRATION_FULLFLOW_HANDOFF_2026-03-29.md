@@ -73,6 +73,13 @@
 - runtime 能根据 sandbox 生命周期策略重新挂接到合适的 sandbox / workspace
 - 因此，conversation durability 与 sandbox durability 必须解耦建模
 
+### D-05 Conversation 执行与 Workflow Execution 的审计/记录需要拆模
+
+- Agent Conversation 的运行记录不再复用 workflow-only 的 execution 外键模型。
+- `conversationId` 不能再写入任何指向 `workflow_executions.id` 的外键字段。
+- Conversation 与 Workflow Execution 的 evidence / execution summary 必须分离建模。
+- 短期修复允许先在 listener 层按执行类型分流，长期方案应提供 conversation 专属记录模型或显式多态资源模型。
+
 ## 缺陷列表
 
 ### AO-01 Workspace 选择器请求 422
@@ -294,10 +301,9 @@
 - 结果是把 `conversationId` 错当 `workflowExecutionId` 写库
 - 修复方向：
 - conversation 与 workflow 执行记录拆模
-- 至少要避免把 conversationId 写入 workflow-only 外键字段
-- 可选方案：
-- 对 conversation 执行跳过这两类 listener
-- 或新增 conversation 专属 evidence / execution record 表或可空 polymorphic 资源字段
+- 明确禁止把 conversationId 写入 workflow-only 外键字段
+- 短期先在 listener / 事件层按 conversation 与 workflow 分流
+- 中长期补齐 conversation 专属 evidence / execution record 表或显式多态资源模型
 - 验收标准：
 - conversation 执行完成后不再出现这两类写库 warning/error
 - workflow execution 原有审计与 summary 不回归
