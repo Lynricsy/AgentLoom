@@ -173,7 +173,7 @@ describe('useActivePlugins', () => {
     expect(callArgs[0]).toBe('plugins')
     const params = callArgs[1].searchParams as URLSearchParams
     expect(params.get('status')).toBe('active')
-    expect(params.get('page_size')).toBe('100')
+    expect(params.get('pageSize')).toBe('100')
   })
 })
 

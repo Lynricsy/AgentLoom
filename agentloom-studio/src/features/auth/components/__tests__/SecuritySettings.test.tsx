@@ -76,6 +76,47 @@ const mockSessions = [
   },
 ]
 
+function makeSecurityResponse(options?: { enabled?: boolean; factorIds?: string[] }) {
+  const enabled = options?.enabled ?? false
+  const factorIds = options?.factorIds ?? []
+
+  return {
+    mfa: {
+      enabled,
+      factors: factorIds.map((id) => ({
+        id,
+        factorType: 'totp',
+        status: 'verified' as const,
+        createdAt: new Date().toISOString(),
+      })),
+    },
+  }
+}
+
+function makeSessionsResponse(
+  sessions: Array<{
+    id: string
+    createdAt: string
+    updatedAt: string
+    userAgent: string
+    ip: string
+    isCurrent: boolean
+  }>,
+) {
+  return {
+    data: {
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        userAgent: session.userAgent,
+        ip: session.ip,
+        createdAt: session.createdAt,
+        lastActiveAt: session.updatedAt,
+        isCurrent: session.isCurrent,
+      })),
+    },
+  }
+}
+
 describe('SecuritySettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -83,10 +124,10 @@ describe('SecuritySettings', () => {
     mockUseMfa.mockReturnValue({ ...defaultMfa })
     mockApiGet.mockImplementation((url: string) => {
       if (url === 'auth/security') {
-        return Promise.resolve({ mfaEnabled: false, activeMfaFactors: [] })
+        return Promise.resolve(makeSecurityResponse())
       }
       if (url === 'auth/sessions') {
-        return Promise.resolve(mockSessions)
+        return Promise.resolve(makeSessionsResponse(mockSessions))
       }
       return Promise.resolve(null)
     })
@@ -213,12 +254,9 @@ describe('SecuritySettings', () => {
     it('MFA 已启用时显示禁用按钮', async () => {
       mockApiGet.mockImplementation((url: string) => {
         if (url === 'auth/security') {
-          return Promise.resolve({
-            mfaEnabled: true,
-            activeMfaFactors: [{ id: 'factor-1', type: 'totp', createdAt: new Date().toISOString() }],
-          })
+          return Promise.resolve(makeSecurityResponse({ enabled: true, factorIds: ['factor-1'] }))
         }
-        if (url === 'auth/sessions') return Promise.resolve(mockSessions)
+        if (url === 'auth/sessions') return Promise.resolve(makeSessionsResponse(mockSessions))
         return Promise.resolve(null)
       })
 
@@ -273,12 +311,9 @@ describe('SecuritySettings', () => {
 
       mockApiGet.mockImplementation((url: string) => {
         if (url === 'auth/security') {
-          return Promise.resolve({
-            mfaEnabled: true,
-            activeMfaFactors: [{ id: 'factor-1', type: 'totp', createdAt: new Date().toISOString() }],
-          })
+          return Promise.resolve(makeSecurityResponse({ enabled: true, factorIds: ['factor-1'] }))
         }
-        if (url === 'auth/sessions') return Promise.resolve(mockSessions)
+        if (url === 'auth/sessions') return Promise.resolve(makeSessionsResponse(mockSessions))
         return Promise.resolve(null)
       })
 
@@ -359,9 +394,9 @@ describe('SecuritySettings', () => {
     it('会话列表为空时显示空态文案', async () => {
       mockApiGet.mockImplementation((url: string) => {
         if (url === 'auth/security') {
-          return Promise.resolve({ mfaEnabled: false, activeMfaFactors: [] })
+          return Promise.resolve(makeSecurityResponse())
         }
-        if (url === 'auth/sessions') return Promise.resolve([])
+        if (url === 'auth/sessions') return Promise.resolve(makeSessionsResponse([]))
         return Promise.resolve(null)
       })
 
@@ -384,7 +419,7 @@ describe('SecuritySettings', () => {
     it('加载会话失败时显示错误提示', async () => {
       mockApiGet.mockImplementation((url: string) => {
         if (url === 'auth/security') {
-          return Promise.resolve({ mfaEnabled: false, activeMfaFactors: [] })
+          return Promise.resolve(makeSecurityResponse())
         }
         if (url === 'auth/sessions') return Promise.reject(new Error('network error'))
         return Promise.resolve(null)
