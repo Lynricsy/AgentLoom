@@ -243,10 +243,10 @@ docker compose logs -f studio                         # 跟踪日志
 - **Socket.IO `/agent-conversation` 协议**: 与 `/execution` namespace 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证
 - **docker-compose.dev.yml 仅 Qdrant**: PostgreSQL/Redis/MinIO 需外部部署或使用 Supabase
 - **WASM 产物已提交**: `agentloom-type-engine/pkg/` 包含构建后的 `.wasm` 文件
-- **沙箱容器运行时 (pi-coding-agent)**: `agentloom/sandbox:latest` 基于 archlinux 镜像，内嵌 `pi-coding-agent` + Fastify HTTP 适配层。容器暴露 `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答，兼容 JSON-RPC 2.0 envelope 与直接 AgentEvent 两种格式）、`POST /v1/abort`（取消）、`GET /health`（健康检查）。LLM API Key 通过环境变量注入。`PiConfigGeneratorService` 从 Agent 定义生成 pi 配置文件挂载到容器 `/config/`
+- **沙箱容器运行时 (pi-coding-agent)**: `agentloom/sandbox:latest` 基于 archlinux 镜像，内嵌 `pi-coding-agent` + Fastify HTTP 适配层。容器暴露 `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答，兼容 JSON-RPC 2.0 envelope 与直接 AgentEvent 两种格式）、`POST /v1/abort`（取消）、`GET /health`（健康检查）。LLM API Key 通过环境变量注入。standalone Agent 对话与 `WorkflowAgentAdapter` 当前默认都走该 sandbox runtime；若 Agent 未显式配置 sandbox，则服务端会合成默认 `SandboxConfig { cpu:1, memory:512, disk:2, timeout:2 }`。`PiConfigGeneratorService` 从 Agent 定义生成 pi 配置文件挂载到容器 `/config/`
 - **InProcessAgentAdapter (pi-agent-core)**: `InProcessAgentAdapter` 作为持久化包装层，将 live runtime 操作委托给 `PiAgentCoreAdapter`（基于 `pi-agent-core` 的 `Agent` 类），自身维护 workflow checkpoint、conversation durable snapshot、replay ledger。`streamFn` 适配器桥接 Vercel AI SDK `streamText()` 与 pi-agent-core 的 `StreamFn` 接口。工具 schema 通过 `tool-schema-converter.ts` 在 Zod ↔ TypeBox 之间转换
 - **ESM 动态导入**: pi-mono 包为纯 ESM，NestJS (CommonJS) 侧通过 `await import()` 动态导入。`pi-imports.ts` 提供统一的惰性导入入口（`importPiAgentCore()`、`importPiAi()`）
-- **沙箱工具权限**: `SandboxAgentAdapter` 保留 Promise gate 工具权限机制；仅当 `/v1/prompt` 显式提供 `permissionCallbackUrl` 时，容器才会通过 `POST /agent-conversations/:id/tool-permission` 发起权限回调，30s 超时默认拒绝。当前普通 Agent 对话主路径默认不启用该链路
+- **沙箱工具回调**: `SandboxAgentAdapter` 同时维护两类回调链路。1) Promise gate 工具权限：仅当 `/v1/prompt` 显式提供 `permissionCallbackUrl` 时，容器才会通过 `POST /agent-conversations/:id/tool-permission` 发起权限回调，30s 超时默认拒绝。2) session-local 工具执行：memory/subagent 等工具会在建会话时以 remote tool descriptor 注入容器，并通过 `POST /api/v1/agent-runtime/sessions/:sessionId/tool-executions` + callback token 回调到创建该 session 的同一进程；Compose 私有部署需分别为 `server` / `worker` 设置各自的 `APP_SANDBOX_CALLBACK_BASE_URL`
 <!-- TRELLIS:START -->
 # Trellis Instructions
 
