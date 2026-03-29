@@ -492,3 +492,54 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: 知识库迁移收尾与浏览器对话链路验收
+
+**Date**: 2026-03-30
+**Task**: 知识库迁移收尾与浏览器对话链路验收
+**Branch**: `main`
+
+### Summary
+
+完成知识库链路迁移收尾，修复对话实时事件卡住问题并补平 finish-work 清理项；真实浏览器 QA 通过，localhost 刷新白屏被定位为本地环境配置问题。
+
+### Main Changes
+
+| 项目 | 说明 |
+|------|------|
+| 知识库链路 | 完成 knowledge pipeline 向 knowledge nodes / LlamaIndex.TS 的迁移收尾，前后端、检索、Agent 对话链路已经联通。 |
+| 实时事件修复 | 修复 `agent-conversation` 在 worker 与 gateway 跨进程广播时的实时事件同步问题，避免前端 tool call 停留在“处理中”且最终消息无法闭环。 |
+| 质量补平 | 为通过 `finish-work` 清理 Studio 新增的非空断言，并补做二次验证，保证新增代码静态清洁。 |
+| 浏览器验收 | 在正式同源入口验证 `search_knowledge` 被真实调用，最终答案正确命中 `KB-ALPHA-20260329-FOX`，刷新后历史消息与 tool calls 可以恢复。 |
+| 环境结论 | `http://localhost:8080` 的硬刷新白屏被定位为本地 `.env` 中前端入口与 `VITE_SUPABASE_URL` 指向不同域名导致的认证 CORS 问题，不属于本次代码回归。 |
+
+**为什么这样记录**：
+- 本轮代码已经提交并推送到 `main`，自动化验证和人工验收均已完成，任务应当归档而不是继续保留在活动列表。
+- 将“真实回归修复”与“本地环境配置问题”明确分离，便于后续会话快速判断风险边界，避免重复排查错误方向。
+
+**验证结论**：
+- `agentloom-server`：`pnpm lint`、`pnpm exec tsc --noEmit -p tsconfig.json`、`pnpm test`（3382/3382 通过）
+- `agentloom-studio`：`pnpm test`（1707/1707 通过）、`pnpm build`
+- 定向测试：`agent-conversation.store.test.ts`、`KnowledgeBaseDetailPage.test.tsx`
+- 浏览器：同源入口 `https://agentloom.ling.plus` 的完整知识库问答链路通过
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ef1752a` | (see git log) |
+| `ad225bc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
