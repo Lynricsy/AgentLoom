@@ -388,3 +388,56 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 编排全流程修复与Memory节点前端收口
+
+**Date**: 2026-03-29
+**Task**: 编排全流程修复与Memory节点前端收口
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 类别 | 内容 |
+|------|------|
+| 测试报告 | 基于主站部署环境完成 Agent Orchestration 全流程测试，补充 E2E 交接报告，记录资源创建、编译发布、沙箱会话与工具调用链路结果。 |
+| Sandbox 修复 | 修复 sandbox 运行时工具结果契约漂移与 PTY 根目录校验问题，恢复 memory / MCP / subagent / PTY / workspace / skill 在主 Agent 对话链路中的可用性。 |
+| 前端修复 | 修复 Agent Canvas 中 memory 节点未注册、回退为默认长方形、无法连到主 Agent 的问题；补齐 palette 暴露与 ReactFlow `nodeTypes` 映射。 |
+| 历史兼容 | 在 Agent Canvas store 中增加旧快照端口归一化，保证历史 Agent 重新打开时能自动把过期的 `memory-in` 端口从 `knowledge` 修正为 `json`。 |
+| 规范同步 | 更新 `.trellis/spec/frontend/component-guidelines.md`，明确 Agent Canvas 新节点必须同步 registry、ReactFlow `nodeTypes`、palette 以及旧快照归一化逻辑。 |
+
+**验证**:
+- `cd agentloom-studio && pnpm typecheck`
+- `cd agentloom-studio && pnpm test`
+- 浏览器复测 `https://agentloom.ling.plus/agents/019d37fb-b735-7364-9060-1a601ef00346`
+- 确认 `memory` 节点恢复为正式节点形态，`main-memory -> main-agent-main` 边存在，`Agent Main` 面板显示 `输入端口: 记忆, 类型: JSON`
+
+**补充说明**:
+- 已归档任务：`03-29-fix-orchestration-fullflow-handoff-report`
+- 本轮最终工作区保持干净，可继续下一轮开发
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6f52976` | (see git log) |
+| `4918122` | (see git log) |
+| `fc710c0` | (see git log) |
+| `419e380` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
