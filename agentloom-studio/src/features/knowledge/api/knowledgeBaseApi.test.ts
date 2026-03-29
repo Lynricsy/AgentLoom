@@ -38,6 +38,7 @@ const mockKnowledgeBase: KnowledgeBase = {
   chunkSize: 512,
   chunkOverlap: 64,
   embeddingModel: 'text-embedding-3-small',
+  embeddingModelConfigId: null,
   documentCount: 0,
   chunkCount: 0,
   status: 'empty',

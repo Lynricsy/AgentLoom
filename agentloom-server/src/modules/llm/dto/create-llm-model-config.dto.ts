@@ -12,6 +12,10 @@ const LLM_PROVIDERS = [
 
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
+const LLM_MODEL_TYPES = ['chat', 'embedding'] as const;
+
+export type LlmModelType = (typeof LLM_MODEL_TYPES)[number];
+
 const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const;
 
 const PRIVATE_CLOUD_TIMEOUT_MIN = 5_000;
@@ -54,6 +58,12 @@ const createLlmModelConfigSchema = z
         `超时时间不能超过 ${PRIVATE_CLOUD_TIMEOUT_MAX}ms`,
       )
       .optional(),
+    modelType: z.enum(LLM_MODEL_TYPES).optional().default('chat'),
+    embeddingDimensions: z
+      .number()
+      .int('Embedding 维度必须为整数')
+      .min(1, 'Embedding 维度必须大于 0')
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.provider !== 'private_cloud') {
@@ -91,6 +101,7 @@ export class CreateLlmModelConfigDto extends createZodDto(
 
 export {
   LLM_PROVIDERS,
+  LLM_MODEL_TYPES,
   AUTH_METHODS,
   PRIVATE_CLOUD_TIMEOUT_MIN,
   PRIVATE_CLOUD_TIMEOUT_MAX,

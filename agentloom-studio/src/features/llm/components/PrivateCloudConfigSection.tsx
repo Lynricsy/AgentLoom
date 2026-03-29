@@ -30,6 +30,7 @@ interface ConnectionStatus {
 interface LlmModelFormValues {
   name: string
   provider: string
+  modelType: string
   modelName: string
   apiKeyId: string
   endpointUrl: string
@@ -56,7 +57,7 @@ export function PrivateCloudConfigSection() {
   const authMethod = useWatch({ control: form.control, name: 'authMethod' })
   const apiKeyId = useWatch({ control: form.control, name: 'apiKeyId' })
   const privateCloudApiKeys = useMemo(
-    () => (apiKeys ?? []).filter((key) => key.provider === 'private_cloud'),
+    () => apiKeys ?? [],
     [apiKeys],
   )
   const connectionSignature = `${endpointUrl ?? ''}::${authMethod ?? ''}::${apiKeyId ?? ''}`
@@ -232,8 +233,8 @@ export function PrivateCloudConfigSection() {
               >
                 <option value="">选择 API Key</option>
                 {privateCloudApiKeys.map((key) => (
-                  <option key={key.id} value={key.id}>
-                    {key.label} ({key.keyPreview})
+                <option key={key.id} value={key.id}>
+                    {key.label} ({key.provider} / {key.keyPreview})
                   </option>
                 ))}
               </Select>

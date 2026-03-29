@@ -9,13 +9,30 @@ import {
   type Mock,
 } from 'vitest';
 
-import { EmbeddingService } from '../services/embedding.service';
+import {
+  EmbeddingService,
+  type EmbeddingRuntimeConfig,
+} from '../services/embedding.service';
 import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import { EMBEDDING_MODEL, EMBEDDING_BATCH_SIZE } from '../knowledge.constants';
 
 const ORG_ID = 'org-1';
 const TENANT_ID = 'tenant-1';
 const API_KEY = 'sk-test-key';
+
+function createRuntimeConfig(
+  overrides: Partial<EmbeddingRuntimeConfig> = {},
+): EmbeddingRuntimeConfig {
+  return {
+    organizationId: ORG_ID,
+    tenantId: TENANT_ID,
+    provider: 'openai',
+    modelName: EMBEDDING_MODEL,
+    apiKeyId: null,
+    dimensions: null,
+    ...overrides,
+  };
+}
 
 function createEmbeddingResponse(embeddings: number[][]): Response {
   return new Response(
@@ -59,7 +76,7 @@ describe('EmbeddingService', () => {
 
   describe('generateEmbeddings', () => {
     it('should return empty array for empty input', async () => {
-      const result = await service.generateEmbeddings([], ORG_ID, TENANT_ID);
+      const result = await service.generateEmbeddings([], createRuntimeConfig());
 
       expect(result).toEqual([]);
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -74,8 +91,7 @@ describe('EmbeddingService', () => {
 
       const result = await service.generateEmbeddings(
         ['text1', 'text2'],
-        ORG_ID,
-        TENANT_ID,
+        createRuntimeConfig(),
       );
 
       expect(result).toEqual(embeddings);
@@ -99,7 +115,7 @@ describe('EmbeddingService', () => {
     it('should decrypt API key with correct parameters', async () => {
       fetchSpy.mockResolvedValue(createEmbeddingResponse([[0.1]]));
 
-      await service.generateEmbeddings(['text'], ORG_ID, TENANT_ID);
+      await service.generateEmbeddings(['text'], createRuntimeConfig());
 
       expect(
         decryptionBoundaryService.decryptConfiguredApiKey,
@@ -129,7 +145,7 @@ describe('EmbeddingService', () => {
         .mockResolvedValueOnce(createEmbeddingResponse(batch1Embeddings))
         .mockResolvedValueOnce(createEmbeddingResponse(batch2Embeddings));
 
-      const result = await service.generateEmbeddings(texts, ORG_ID, TENANT_ID);
+      const result = await service.generateEmbeddings(texts, createRuntimeConfig());
 
       expect(fetchSpy).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(EMBEDDING_BATCH_SIZE + 5);
@@ -150,8 +166,7 @@ describe('EmbeddingService', () => {
 
       const result = await service.generateEmbeddings(
         ['first', 'second'],
-        ORG_ID,
-        TENANT_ID,
+        createRuntimeConfig(),
       );
 
       expect(result).toEqual([
@@ -161,27 +176,39 @@ describe('EmbeddingService', () => {
     });
 
     it('should throw on API error after retries exhausted', async () => {
+      vi
+        .spyOn(
+          service as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep',
+        )
+        .mockResolvedValue(undefined);
       fetchSpy.mockImplementation(() =>
         Promise.resolve(new Response('rate limited', { status: 429 })),
       );
 
       await expect(
-        service.generateEmbeddings(['text'], ORG_ID, TENANT_ID),
-      ).rejects.toThrow('OpenAI Embedding API error 429');
+        service.generateEmbeddings(['text'], createRuntimeConfig()),
+      ).rejects.toThrow('Embedding API error 429');
       expect(fetchSpy).toHaveBeenCalledTimes(3);
-    }, 10_000);
+    });
 
     it('should not retry non-retryable 400 errors', async () => {
       fetchSpy.mockResolvedValue(new Response('bad request', { status: 400 }));
 
       await expect(
-        service.generateEmbeddings(['text'], ORG_ID, TENANT_ID),
-      ).rejects.toThrow('OpenAI Embedding API error 400');
+        service.generateEmbeddings(['text'], createRuntimeConfig()),
+      ).rejects.toThrow('Embedding API error 400');
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should retry on failure and succeed', async () => {
+      vi
+        .spyOn(
+          service as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep',
+        )
+        .mockResolvedValue(undefined);
       fetchSpy
         .mockImplementationOnce(() =>
           Promise.resolve(new Response('error', { status: 500 })),
@@ -190,14 +217,19 @@ describe('EmbeddingService', () => {
 
       const result = await service.generateEmbeddings(
         ['text'],
-        ORG_ID,
-        TENANT_ID,
+        createRuntimeConfig(),
       );
       expect(result).toEqual([[0.1, 0.2]]);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
-    }, 10_000);
+    });
 
     it('should honor Retry-After header when rate limited', async () => {
+      const sleepSpy = vi
+        .spyOn(
+          service as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep',
+        )
+        .mockResolvedValue(undefined);
       fetchSpy
         .mockResolvedValueOnce(
           new Response('rate limited', {
@@ -207,13 +239,11 @@ describe('EmbeddingService', () => {
         )
         .mockResolvedValueOnce(createEmbeddingResponse([[0.1, 0.2]]));
 
-      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-
       await expect(
-        service.generateEmbeddings(['text'], ORG_ID, TENANT_ID),
+        service.generateEmbeddings(['text'], createRuntimeConfig()),
       ).resolves.toEqual([[0.1, 0.2]]);
 
-      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 3000);
-    }, 10_000);
+      expect(sleepSpy).toHaveBeenCalledWith(3000);
+    });
   });
 });

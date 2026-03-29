@@ -1,14 +1,16 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { ArrowLeft, FileText, Trash2, Upload } from 'lucide-react'
 import { z } from 'zod'
+import { useLlmModels } from '@/features/llm'
 import { Pagination } from '@/shared/components'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Select } from '@/shared/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -31,7 +33,6 @@ import {
   type KnowledgeBaseStatus,
 } from '../types'
 
-const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
 const DOCUMENT_PAGE_SIZE = 20
 const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 const SUPPORTED_DOCUMENT_EXTENSIONS = ['.pdf', '.txt', '.md', '.docx'] as const
@@ -79,7 +80,7 @@ const knowledgeBaseSettingsSchema = z.object({
     .min(0, '分块重叠不能小于 0')
     .max(4096, '分块重叠不能大于 4096')
     .multipleOf(16, '分块重叠必须是 16 的倍数'),
-  embeddingModel: z.string().trim().min(1, '请输入 Embedding 模型'),
+  embeddingModelConfigId: z.string().trim().min(1, '请选择 Embedding 模型'),
 })
 
 type KnowledgeBaseSettingsFormInput = z.input<typeof knowledgeBaseSettingsSchema>
@@ -238,6 +239,7 @@ export function KnowledgeBaseDetailPage({
   const documents = documentResponse?.data ?? []
 
   const {
+    control,
     register,
     reset,
     handleSubmit,
@@ -251,9 +253,22 @@ export function KnowledgeBaseDetailPage({
     defaultValues: {
       chunkSize: 512,
       chunkOverlap: 64,
-      embeddingModel: DEFAULT_EMBEDDING_MODEL,
+      embeddingModelConfigId: '',
     },
   })
+  const { data: llmModels } = useLlmModels()
+  const embeddingModels = useMemo(
+    () => (llmModels ?? []).filter((model) => model.modelType === 'embedding'),
+    [llmModels],
+  )
+  const selectedEmbeddingModel = useMemo(
+    () =>
+      embeddingModels.find(
+        (model) => model.id === knowledgeBase?.embeddingModelConfigId,
+      ) ?? null,
+    [embeddingModels, knowledgeBase?.embeddingModelConfigId],
+  )
+  const canUploadDocuments = Boolean(knowledgeBase?.embeddingModelConfigId)
 
   useEffect(() => {
     if (!knowledgeBase) {
@@ -263,7 +278,7 @@ export function KnowledgeBaseDetailPage({
     reset({
       chunkSize: knowledgeBase.chunkSize,
       chunkOverlap: knowledgeBase.chunkOverlap,
-      embeddingModel: knowledgeBase.embeddingModel,
+      embeddingModelConfigId: knowledgeBase.embeddingModelConfigId ?? '',
     })
   }, [knowledgeBase, reset])
 
@@ -292,6 +307,14 @@ export function KnowledgeBaseDetailPage({
 
   const handleUpload = useCallback(
     (files: FileList | null) => {
+      if (!canUploadDocuments) {
+        notify({
+          description: '请先为知识库选择 Embedding 模型，再上传文档',
+          variant: 'error',
+        })
+        return
+      }
+
       if (!files?.length) {
         return
       }
@@ -341,7 +364,7 @@ export function KnowledgeBaseDetailPage({
         )
       })
     },
-    [knowledgeBaseId, removeUploadFeedback, updateUploadFeedback, uploadMutation],
+    [canUploadDocuments, knowledgeBaseId, notify, removeUploadFeedback, updateUploadFeedback, uploadMutation],
   )
 
   const handleFileInputChange = useCallback(
@@ -411,7 +434,7 @@ export function KnowledgeBaseDetailPage({
     reset({
       chunkSize: knowledgeBase.chunkSize,
       chunkOverlap: knowledgeBase.chunkOverlap,
-      embeddingModel: knowledgeBase.embeddingModel,
+      embeddingModelConfigId: knowledgeBase.embeddingModelConfigId ?? '',
     })
   }, [knowledgeBase, reset])
 
@@ -491,12 +514,18 @@ export function KnowledgeBaseDetailPage({
 
       <button
         type="button"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!canUploadDocuments) {
+            return
+          }
+          fileInputRef.current?.click()
+        }}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          'flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors',
+          'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors',
+          canUploadDocuments ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
           isDragOver
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-muted-foreground',
@@ -505,7 +534,9 @@ export function KnowledgeBaseDetailPage({
       >
         <Upload className="h-8 w-8 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          {uploadMutation.isPending
+          {!canUploadDocuments
+            ? '请先在下方知识库设置中选择 Embedding 模型'
+            : uploadMutation.isPending
             ? `正在并行上传 ${uploadFeedbacks.filter((item) => item.status === 'uploading').length} 个文件...`
             : '拖拽文件到此处或点击上传（支持多文件）'}
         </p>
@@ -518,6 +549,7 @@ export function KnowledgeBaseDetailPage({
           multiple
           accept={FILE_INPUT_ACCEPT}
           className="hidden"
+          disabled={!canUploadDocuments}
           onChange={handleFileInputChange}
           data-testid="file-input"
         />
@@ -580,10 +612,12 @@ export function KnowledgeBaseDetailPage({
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Embedding 模型</p>
           <p className="mt-1 text-lg font-semibold">
-            {knowledgeBase?.embeddingModel ?? DEFAULT_EMBEDDING_MODEL}
+            {knowledgeBase?.embeddingModel ?? '未配置'}
           </p>
           <p className="text-xs text-muted-foreground">
-            用于文档向量化与召回的模型
+            {selectedEmbeddingModel?.embeddingDimensions
+              ? `用于文档向量化与召回的模型 · ${selectedEmbeddingModel.embeddingDimensions} 维`
+              : '用于文档向量化与召回的模型'}
           </p>
         </div>
       </div>
@@ -658,28 +692,50 @@ export function KnowledgeBaseDetailPage({
 
           <div className="space-y-2">
             <label
-              htmlFor="embedding-model"
+              htmlFor="embedding-model-config"
               className="text-xs font-medium text-foreground"
             >
               Embedding 模型
             </label>
-            <Input
-              id="embedding-model"
-              type="text"
-              placeholder="例如 text-embedding-3-small"
-              disabled={updateSettingsMutation.isPending}
-              {...register('embeddingModel')}
+            <Controller
+              control={control}
+              name="embeddingModelConfigId"
+              render={({ field }) => (
+                <Select
+                  id="embedding-model-config"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={
+                    updateSettingsMutation.isPending ||
+                    embeddingModels.length === 0
+                  }
+                >
+                  <option value="">
+                    {embeddingModels.length === 0
+                      ? '请先到 LLM Models 添加 Embedding 模型'
+                      : '请选择 Embedding 模型'}
+                  </option>
+                  {embeddingModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} / {model.modelName}
+                      {model.embeddingDimensions
+                        ? ` / ${model.embeddingDimensions}维`
+                        : ''}
+                    </option>
+                  ))}
+                </Select>
+              )}
             />
-            {errors.embeddingModel && (
+            {errors.embeddingModelConfigId && (
               <p className="text-xs text-destructive">
-                {errors.embeddingModel.message}
+                {errors.embeddingModelConfigId.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-3 md:col-span-3 md:flex-row md:items-center md:justify-between">
             <p className="text-xs text-muted-foreground">
-              建议模型：`text-embedding-3-small`、`text-embedding-3-large`。
+              先在 `LLM Models` 页面添加用途为 Embedding 的模型配置，再在这里绑定到知识库。
             </p>
             <Button
               type="submit"

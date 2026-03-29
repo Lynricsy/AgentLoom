@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   useDeleteDocument: vi.fn(),
   useUpdateKnowledgeBaseSettings: vi.fn(),
   useKnowledgeBaseSocket: vi.fn(),
+  useLlmModels: vi.fn(),
   notify: vi.fn(),
   navigate: vi.fn(),
 }))
@@ -27,6 +28,10 @@ vi.mock('../hooks/useKnowledgeBases', () => ({
 
 vi.mock('../hooks/useKnowledgeBaseSocket', () => ({
   useKnowledgeBaseSocket: mocks.useKnowledgeBaseSocket,
+}))
+
+vi.mock('@/features/llm', () => ({
+  useLlmModels: mocks.useLlmModels,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -50,6 +55,7 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     chunkSize: 512,
     chunkOverlap: 64,
     embeddingModel: 'text-embedding-3-small',
+    embeddingModelConfigId: 'embedding-model-1',
     documentCount: 0,
     chunkCount: 0,
     status: 'empty',
@@ -129,6 +135,52 @@ function setupMocks(overrides: {
     isPending: false,
   })
   mocks.useKnowledgeBaseSocket.mockReturnValue({ documentEvents: {} })
+  mocks.useLlmModels.mockReturnValue({
+    data: [
+      {
+        id: 'embedding-model-1',
+        name: '默认 Embedding 模型',
+        provider: 'openai',
+        modelType: 'embedding',
+        modelName: 'text-embedding-3-small',
+        parameters: {
+          temperature: 0.7,
+          maxTokens: undefined,
+          topP: 1,
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+          stop: [],
+        },
+        apiKeyId: null,
+        embeddingDimensions: 1536,
+        isDefault: true,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        id: 'embedding-model-2',
+        name: '高级 Embedding 模型',
+        provider: 'private_cloud',
+        modelType: 'embedding',
+        modelName: 'Qwen/Qwen3-Embedding-8B',
+        parameters: {
+          temperature: 0.7,
+          maxTokens: undefined,
+          topP: 1,
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+          stop: [],
+        },
+        apiKeyId: 'key-1',
+        embeddingDimensions: 1024,
+        isDefault: false,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+        endpointUrl: 'https://api.siliconflow.cn',
+        authMethod: 'api_key',
+      },
+    ],
+  })
 
   return { uploadFn, deleteFn, updateSettingsFn }
 }
@@ -478,8 +530,7 @@ describe('KnowledgeBaseDetailPage', () => {
     await userEvent.type(chunkSizeInput, '1024')
     await userEvent.clear(chunkOverlapInput)
     await userEvent.type(chunkOverlapInput, '128')
-    await userEvent.clear(embeddingModelInput)
-    await userEvent.type(embeddingModelInput, 'text-embedding-3-large')
+    await userEvent.selectOptions(embeddingModelInput, 'embedding-model-2')
 
     await userEvent.click(screen.getByRole('button', { name: '保存设置' }))
 
@@ -489,7 +540,7 @@ describe('KnowledgeBaseDetailPage', () => {
         input: {
           chunkSize: 1024,
           chunkOverlap: 128,
-          embeddingModel: 'text-embedding-3-large',
+          embeddingModelConfigId: 'embedding-model-2',
         },
       }),
     )

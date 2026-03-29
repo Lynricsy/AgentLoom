@@ -9,6 +9,10 @@ export const LLM_PROVIDER_IDS = [
 
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number]
 
+export const LLM_MODEL_TYPES = ['chat', 'embedding'] as const
+
+export type LlmModelType = (typeof LLM_MODEL_TYPES)[number]
+
 export const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const
 
 export type AuthMethod = (typeof AUTH_METHODS)[number]
@@ -57,9 +61,11 @@ export interface LlmModelInfo {
   id: string
   name: string
   provider: LlmProvider
+  modelType?: LlmModelType
   modelName: string
   parameters: LlmParameters
   apiKeyId: string | null
+  embeddingDimensions?: number | null
   isDefault: boolean
   createdAt: string
   updatedAt: string
@@ -73,9 +79,11 @@ export interface LlmModelConfig extends Record<string, unknown> {
   llmConfigId: string | null
   name: string
   provider: LlmProvider
+  modelType: LlmModelType
   modelName: string
   parameters: LlmParameters
   apiKeyId: string | null
+  embeddingDimensions?: number | null
   isDefault: boolean
   endpointUrl?: string | null
   authMethod?: string | null
@@ -86,9 +94,11 @@ export interface LlmModelConfig extends Record<string, unknown> {
 export interface CreateLlmModelInput {
   name: string
   provider: LlmProvider
+  modelType: LlmModelType
   modelName: string
   parameters: LlmParameters
   apiKeyId?: string
+  embeddingDimensions?: number
   isDefault?: boolean
   endpointUrl?: string
   authMethod?: string
@@ -106,8 +116,10 @@ export interface LlmNodeDataPatch {
   modelId: string
   name: string
   provider: LlmProvider
+  modelType: LlmModelType
   modelName: string
   apiKeyId: string | null
+  embeddingDimensions?: number | null
   isDefault: boolean
   endpointUrl?: string | null
   authMethod?: string | null
@@ -273,9 +285,14 @@ export function parseLlmModelConfig(value: unknown): LlmModelConfig | null {
     llmConfigId: parseNullableString(source.llmConfigId) ?? parseNullableString(source.id),
     name: parseString(source.name) ?? modelName,
     provider,
+    modelType: source.modelType === 'embedding' ? 'embedding' : 'chat',
     modelName,
     parameters: normalizeLlmParameters(source.parameters),
     apiKeyId: parseNullableString(source.apiKeyId),
+    embeddingDimensions:
+      typeof source.embeddingDimensions === 'number' && Number.isFinite(source.embeddingDimensions)
+        ? source.embeddingDimensions
+        : null,
     isDefault: source.isDefault === true,
     endpointUrl: parseNullableString(source.endpointUrl),
     authMethod: parseNullableString(source.authMethod),
@@ -293,9 +310,11 @@ export function toLlmModelConfig(model: LlmModelInfo): LlmModelConfig {
     llmConfigId: model.id,
     name: model.name,
     provider: model.provider,
+    modelType: model.modelType ?? 'chat',
     modelName: model.modelName,
     parameters: normalizeLlmParameters(model.parameters),
     apiKeyId: model.apiKeyId,
+    embeddingDimensions: model.embeddingDimensions ?? null,
     isDefault: model.isDefault,
     endpointUrl: model.endpointUrl ?? null,
     authMethod: model.authMethod ?? null,
@@ -315,8 +334,10 @@ export function buildLlmNodePatch(model: LlmModelInfo): LlmNodeDataPatch {
     modelId: config.modelName,
     name: config.name,
     provider: config.provider,
+    modelType: config.modelType,
     modelName: config.modelName,
     apiKeyId: config.apiKeyId,
+    embeddingDimensions: config.embeddingDimensions,
     isDefault: config.isDefault,
     endpointUrl: config.endpointUrl,
     authMethod: config.authMethod,

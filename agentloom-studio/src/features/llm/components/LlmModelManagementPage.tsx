@@ -21,6 +21,7 @@ import {
   LLM_PROVIDERS,
   type AuthMethod,
   type LlmModelInfo,
+  type LlmModelType,
   type LlmProvider,
 } from '../types'
 import {
@@ -35,6 +36,10 @@ interface ProviderGroup {
   provider: LlmProvider
   providerName: string
   models: LlmModelInfo[]
+}
+
+function getModelTypeLabel(modelType: LlmModelType): string {
+  return modelType === 'embedding' ? 'Embedding' : '聊天'
 }
 
 function groupModelsByProvider(models: LlmModelInfo[]): ProviderGroup[] {
@@ -320,6 +325,9 @@ export function LlmModelManagementPage() {
                               <h3 className="truncate text-sm font-semibold text-foreground">
                                 {model.name}
                               </h3>
+                              <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-500">
+                                {getModelTypeLabel(model.modelType ?? 'chat')}
+                              </span>
                               {model.isDefault && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400">
                                   <Star className="h-3 w-3" />
@@ -335,11 +343,17 @@ export function LlmModelManagementPage() {
 
                         {/* 参数摘要 */}
                         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                          <span>temp: {model.parameters.temperature.toFixed(1)}</span>
-                          {typeof model.parameters.maxTokens === 'number' && (
-                            <span>maxTokens: {model.parameters.maxTokens}</span>
+                          {model.modelType === 'embedding' ? (
+                            <span>维度: {model.embeddingDimensions ?? '未配置'}</span>
+                          ) : (
+                            <>
+                              <span>temp: {model.parameters.temperature.toFixed(1)}</span>
+                              {typeof model.parameters.maxTokens === 'number' && (
+                                <span>maxTokens: {model.parameters.maxTokens}</span>
+                              )}
+                              <span>topP: {model.parameters.topP.toFixed(2)}</span>
+                            </>
                           )}
-                          <span>topP: {model.parameters.topP.toFixed(2)}</span>
                         </div>
 
                         {/* 操作按钮 */}

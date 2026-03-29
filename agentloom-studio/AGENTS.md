@@ -18,7 +18,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/marketplace/my-listings` | MyMarketplaceListingsPage | Marketplace 发布者自助管理页 |
 | `/settings/skills` | SkillBrowsePage | Skill 管理页：分类 Tabs + 搜索 + 启用状态筛选 + 卡片网格 + 详情/启停对话框 + `CreateSkillDialog`（Monaco 编辑器懒加载 SKILL.md 内容编辑） |
 | `/settings/knowledge-bases` | KnowledgeBasesPage | |
-| `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 |
+| `/settings/knowledge-bases/$id` | KnowledgeBaseDetailPage | WebSocket 实时状态 + embedding 模型配置绑定 |
 | `/settings/tool-library` | ToolLibraryPage | MCP imported tools 管理工作台，与 NodePalette 共享查询键 |
 | `/settings/audit-logs` | AuditLogPage | owner/admin 审计日志查询页：筛选 + 分页 + 详情 + 资源时序 |
 | `/settings/resource-quotas` | ResourceGovernancePage | owner/admin 资源治理设置页：7 个 canonical quota 字段、tenant/workflow governance pause、异常 execution 终止 |
@@ -47,7 +47,7 @@ src/
 │   ├── canvas/       # 工作流画布 (见子 AGENTS.md) ← 最复杂
 │   ├── execution/    # 执行监控 (hooks, stores, types)
 │   ├── workflow/     # 工作流列表/管理
-│   ├── knowledge/    # 知识库管理
+│   ├── knowledge/    # 知识库管理（详情页设置表单支持选择 embedding 模型配置）
 │   ├── mcp/          # MCP imported tools 管理工作台（shared api/keys/queries/mutations/components）
 │   ├── notification/ # 应用内通知（api/store/socket/bell dropdown）
 │   ├── evidence/    # 证据记录查询/展示 + 溯源链 + 引用面板 + 文档查看器 (types/api/hooks/stores/components/lib)
@@ -60,7 +60,7 @@ src/
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   ├── plugin/      # 插件 API 层（types/api/queries/keys），供画布 NodePalette 动态加载已安装插件
 │   ├── skill/       # Skill 管理功能（types/api/components/hooks）：`SkillBrowsePage`（`/settings/skills`）、`SkillCard`、`SkillDetailDialog`、`SkillBody`、`SkillPanel`、`SkillConfigPanel`、`CreateSkillDialog`（Monaco 编辑器懒加载）、`skill` 画布节点（工作流画布 + agent-canvas）
-│   ├── llm/          # LLM 模型配置
+│   ├── llm/          # LLM 模型配置（支持 `chat|embedding` 用途与 embedding 维度）
 │   ├── share/        # 工作流分享链接管理（types/api/hooks）
 │   ├── trigger/      # 工作流触发器管理 cron/webhook/api_event（types/api/hooks/components）
 │   ├── tenant-key/   # 租户 E2EE 密钥管理（clientCrypto/keyStorage/hooks/components）
@@ -133,7 +133,9 @@ src/
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
 - **Agent feature** (`features/agent/`): Agent CRUD 页面 (列表/创建/设置)。`agentApi.ts` 封装 Agent 定义与版本 REST API，`agentKeys.ts` 提供 TanStack Query key factory，`useAgentList`/`useAgentDetail` query hooks，`useCreateAgent`/`useUpdateAgent`/`usePublishAgent` mutations。`AgentListPage` 支持搜索与状态筛选
 - **Agent Canvas feature** (`features/agent-canvas/`): Agent 配置编辑器画布，使用 ReactFlow 渲染 `AGENT_CANVAS_NODE_REGISTRY` 子集节点（CPU/memory/timeout/lifecycle 等运行时参数），非执行 DAG。`agentCanvasStore` (Zustand) 管理画布状态，支持自动保存到 `agent_versions`
-- **Agent Conversation feature** (`features/agent-conversation/`): 三列对话 UI (对话列表/消息流/上下文面板)。`agentConversationStore` (Zustand) 管理消息列表与流式状态，`useAgentConversationSocket` 通过 Socket.IO `/agent-conversation` namespace 实现实时消息推送与 mid-stream injection。支持多轮对话与文件上下文
+- **Agent Conversation feature** (`features/agent-conversation/`): 三列对话 UI (对话列表/消息流/上下文面板)。`agentConversationStore` (Zustand) 管理消息列表与流式状态，页面进入时先通过 `GET /agent-conversations/:id/messages` 加载历史，再通过 Socket.IO `/agent-conversation` namespace 接续实时消息与 mid-stream injection。assistant 历史消息会保留 `toolCalls`，因此知识库检索结果可在消息列表中复现
+- **LLM feature** (`features/llm/`): 模型管理页支持 `chat|embedding` 两种用途；embedding 配置可录入 `embeddingDimensions`，列表卡片会展示 `Embedding` 标记与维度；`llmModelApi.ts` 对该资源使用 camelCase 请求体（如 `modelType`、`embeddingDimensions`），不要机械套用 `toSnakeBody()`
+- **Knowledge feature** (`features/knowledge/`): `KnowledgeBaseDetailPage` 设置表单使用 `embeddingModelConfigId` 绑定 embedding 模型配置，并且只展示 `modelType === 'embedding'` 的模型选项；文档列表与处理状态继续通过 REST + WebSocket 组合刷新
 - **Marketplace feature** (`features/marketplace/`): 同时覆盖发布者后台与公共浏览链路。公共侧数据层使用 `publicMarketplaceApi` / `publicMarketplaceQueries` / `publicMarketplaceMutations`，query key 仍集中在 `marketplaceKeys.ts` 的 `publicMarketplaceKeys`；对应 `/marketplace/browse`（公开列表/详情/评论）与已认证 `/marketplace/listings/:id/install|reviews`。public contract 已与 server 收口：列表/评论统一 `{ data, meta }`，install 返回 `{ workflowDefinitionId, name, message }`，submit-review 返回 `{ id, rating, content, createdAt }`；`usePublicListings()` staleTime 2min，`usePublicListingDetail()` staleTime 5min，`useListingReviews()` staleTime 2min。页面层形成 `MarketplaceBrowsePage` → `MarketplaceDetailDialog` → `MarketplaceInstallDialog/ReviewForm` 闭环：浏览页使用 `meta.total/totalPages`、分类/排序/空态已中文化；`MarketplaceListingCard` 使用 `作者：` / `次安装` 文案；`MarketplaceDetailDialog` 评价总数优先取 `reviewsQuery.data.meta.total ?? listing.reviewCount`，头部同步展示 `Download + {useCount} 次安装`，CTA 为“安装到工作区”；`MarketplaceInstallDialog` 默认名称为 `${title} 副本`，安装成功后改用 `workflowDefinitionId` 跳转 `/workflows/$workflowId`。该链路的 4 个 marketplace 定向测试文件已通过 23 个测试。
 - **Trigger feature** (`features/trigger/`): `features/trigger/`webhook config 只保证 `token + ipWhitelist`，`secret` 仅在创建成功返回中可选出现；`TriggerHistoryStatus` 包含 `signature_failed`；`WebhookConfigForm` 编辑态只展示 URL/Token 与“一次性 secret”提示，不再重复展示 secret；`API Event` 类型支持完整 CRUD 与启停操作，与  /  同等管理；当前 workflow 详情页仍然是 `WorkflowCanvasPage`（`/workflows/$workflowId`），不要为触发器发明独立 detail route
 - **MCP feature** (`features/mcp/`): 统一承载 imported tools 的 `mcpKeys` / `mcpApi` / `mcpQueries` / `mcpMutations` / `ToolLibraryPage` / `McpImportDialog`；shared data layer 现已补齐 `POST /mcp/test` 与 `POST /mcp/configs/:id/test` 前端类型，以及 `useTestMcpConnection()` / `useTestSavedMcpConnection()` mutations。`McpImportDialog` 为真正四步流（配置连接 → 测试连接 → 发现/选择工具 → 导入并同页复核回执），import 模式支持 `stdio | sse | streamable_http` 传输选择并跨步骤保留上下文；reimport 模式现先做 saved-config test，再在下一步独立 rediscover。`ToolLibraryPage` 现展示状态 / 来源 / 配置身份 / 导入与更新时间 / 端口摘要等管理元信息，停用确认使用 Radix Dialog 并在关闭后恢复焦点。`features/canvas/api/mcpToolQueries.ts` / `mcpToolKeys.ts` 仍作为兼容适配层复用 shared query key，确保工具库与 NodePalette 的 `Imported Tools` 同步刷新

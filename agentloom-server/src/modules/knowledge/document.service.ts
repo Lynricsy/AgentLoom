@@ -280,6 +280,8 @@ export class DocumentService {
       ),
     );
 
+    await this.ragService.deleteKnowledgeBaseCollection(knowledgeBaseId);
+
     return deletedDocuments.length;
   }
 

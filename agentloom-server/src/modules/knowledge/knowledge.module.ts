@@ -21,6 +21,7 @@ import {
   VECTOR_STORE,
 } from './knowledge.constants';
 import { ApiKeyModule } from '../api-key/api-key.module';
+import { LlmModule } from '../llm/llm.module';
 import { qdrantClientProvider } from './qdrant.provider';
 import { QdrantVectorStoreService } from './services/qdrant-vector-store.service';
 import { EmbeddingService } from './services/embedding.service';
@@ -45,6 +46,7 @@ import { RagService } from './services/rag.service';
       },
     ),
     ApiKeyModule,
+    LlmModule,
   ],
   controllers: [KnowledgeBaseController],
   providers: [

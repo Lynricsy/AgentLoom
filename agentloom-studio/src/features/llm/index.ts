@@ -2,6 +2,7 @@ export type {
   ApiKeyInfo,
   AuthMethod,
   FetchModelsInput,
+  LlmModelType,
   LlmProvider,
   LlmProviderInfo,
   LlmParameters,
@@ -18,6 +19,7 @@ export type {
 export {
   AUTH_METHODS,
   DEFAULT_LLM_PARAMETERS,
+  LLM_MODEL_TYPES,
   LLM_PROVIDERS,
   LLM_PROVIDER_IDS,
   buildLlmNodePatch,

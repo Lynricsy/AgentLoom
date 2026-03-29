@@ -67,6 +67,7 @@ export {
   type WorkflowVersionSnapshot,
 } from './workflow-versions.schema';
 export {
+  llmModelTypeEnum,
   llmModelConfigs,
   type LlmModelConfig,
   type NewLlmModelConfig,

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   AUTH_METHODS,
   LLM_PROVIDERS,
+  LLM_MODEL_TYPES,
   PRIVATE_CLOUD_TIMEOUT_MAX,
   PRIVATE_CLOUD_TIMEOUT_MIN,
 } from './create-llm-model-config.dto';
@@ -46,6 +47,12 @@ const updateLlmModelConfigSchema = z
         PRIVATE_CLOUD_TIMEOUT_MAX,
         `超时时间不能超过 ${PRIVATE_CLOUD_TIMEOUT_MAX}ms`,
       )
+      .nullish(),
+    modelType: z.enum(LLM_MODEL_TYPES).optional(),
+    embeddingDimensions: z
+      .number()
+      .int('Embedding 维度必须为整数')
+      .min(1, 'Embedding 维度必须大于 0')
       .nullish(),
   })
   .superRefine((data, ctx) => {

@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createDirectTenantPolicies } from './rls-policies';
+import { llmModelConfigs } from './llm-model-configs.schema';
 
 export const knowledgeBaseVisibilityEnum = pgEnum('knowledge_base_visibility', [
   'private',
@@ -40,6 +41,10 @@ export const knowledgeBases = pgTable(
     embeddingModel: varchar('embedding_model', { length: 255 })
       .notNull()
       .default('text-embedding-3-small'),
+    embeddingModelConfigId: uuid('embedding_model_config_id').references(
+      () => llmModelConfigs.id,
+      { onDelete: 'set null' },
+    ),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

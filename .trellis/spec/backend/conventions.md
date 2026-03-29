@@ -117,6 +117,72 @@ private get tenantDb(): DrizzleDB {
 
 ---
 
+## Scenario: Sandbox Runtime Knowledge Tool Injection
+
+### 1. Scope / Trigger
+
+- Trigger: touching `src/modules/agent/sandbox-agent.adapter.ts`, `AgentRuntimeConfig.knowledgeBindings`, or any constructor dependency used while building runtime tools for sandbox sessions.
+
+### 2. Signatures
+
+- `SandboxAgentAdapter.createRuntimeConfigToolProvider(session, runtimeConfig): SessionToolProvider | null`
+- `SandboxAgentAdapter.buildRuntimeConfigToolSet(session, runtimeConfig): Promise<ToolSet>`
+- `SandboxAgentAdapter.buildKnowledgeToolEntry(session, binding): Promise<{ name: string; tool: Tool } | null>`
+- `AgentRuntimeConfig.knowledgeBindings?: Array<{ knowledgeBaseId: string; topK?: number; similarityThreshold?: number; enabled: boolean }>`
+- Sandbox session bootstrap request: `POST /v1/session` with `remoteToolExecution.tools[]`
+
+### 3. Contracts
+
+- When `runtimeConfig.knowledgeBindings` contains at least one `enabled: true` binding and `session.tenantId` exists, sandbox session bootstrap must include a remote tool named `searchKnowledge_<knowledgeBaseId>`.
+- The tool description and prompt snippet must stay aligned with the bound knowledge base ID, because the sandbox runtime exposes them verbatim to the model.
+- Tool execution must call `RagService.search(query, tenantId, { knowledgeBaseId, limit, scoreThreshold })`.
+- `RagService` and `CodeExecutionService` constructor parameters in `SandboxAgentAdapter` must be imported as runtime values, not `import type`, because NestJS resolves class-based dependencies from runtime `design:paramtypes` metadata.
+- Returning `null` from `buildKnowledgeToolEntry()` is only valid for true runtime preconditions such as missing `session.tenantId`; it must not be used to hide broken DI wiring.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected Behavior | Verification Point |
+|-----------|-------------------|--------------------|
+| `knowledgeBindings` empty or absent | Do not send `remoteToolExecution` block for knowledge tools | Inspect `/v1/session` request payload |
+| Binding exists but `enabled=false` | Skip that binding | Unit test on `buildRuntimeConfigToolSet()` |
+| `session.tenantId` missing | `buildKnowledgeToolEntry()` returns `null` and no tool is exposed | Unit test with session precondition |
+| `RagService` or `CodeExecutionService` imported with `import type` | Broken wiring: tools silently disappear even though compile output contains bindings | Regression test on `Reflect.getMetadata('design:paramtypes', SandboxAgentAdapter)` |
+| Tool is executed by sandbox runtime | Server receives `POST /api/v1/agent-runtime/sessions/:sessionId/tool-executions` and returns RAG results | Manual/browser E2E plus server log |
+
+### 5. Good / Base / Bad Cases
+
+- Good: `knowledgeBindings=[{ knowledgeBaseId: 'kb-1', topK: 5, enabled: true }]` produces `searchKnowledge_kb-1` in `/v1/session`, the sandbox calls it, and the final assistant response includes retrieved content.
+- Base: no knowledge bindings means the sandbox still starts normally, but no `searchKnowledge_*` tool is advertised.
+- Bad: compile output contains `knowledgeBindings`, but `/v1/session` lacks `searchKnowledge_*` because constructor dependencies were erased by type-only imports.
+
+### 6. Tests Required
+
+- `src/modules/agent/__tests__/sandbox-agent.adapter.spec.ts`
+  - Assert `runtimeConfig.knowledgeBindings` becomes `remoteToolExecution.tools[]` entries named `searchKnowledge_*`.
+  - Assert `Reflect.getMetadata('design:paramtypes', SandboxAgentAdapter)` still contains `RagService` and `CodeExecutionService` at the constructor positions used by NestJS.
+- Manual/browser E2E:
+  - Bind a knowledge base to an agent.
+  - Ask for a unique marker only present in the knowledge base.
+  - Confirm the UI shows `searchKnowledge_*` tool usage and the assistant final answer contains the marker.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+import type { RagService } from '../knowledge/services/rag.service';
+import type { CodeExecutionService } from './code-execution.service';
+```
+
+#### Correct
+
+```typescript
+import { RagService } from '../knowledge/services/rag.service';
+import { CodeExecutionService } from './code-execution.service';
+```
+
+---
+
 ## Response Envelope
 
 All controllers return `{ data }` consistently:

@@ -1,16 +1,20 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import {
+  documents,
+  knowledgeBases,
+} from '../../../database/schema/knowledge-bases.schema';
 import { organizations } from '../../../database/schema/organizations.schema';
 import { EvidenceEventName } from '../../evidence/evidence.events';
 import { VECTOR_STORE, EMBEDDING_DIMENSIONS } from '../knowledge.constants';
 import { DocumentChunkService } from '../document-chunk.service';
 import { EmbeddingService } from './embedding.service';
+import { LlmService } from '../../llm/llm.service';
 import type {
   VectorStore,
   VectorPoint,
-  VectorFilter,
 } from '../interfaces/vector-store.interface';
 
 export interface RagSearchOptions {
@@ -43,11 +47,12 @@ export class RagService {
     @Inject(VECTOR_STORE) private readonly vectorStore: VectorStore,
     private readonly embeddingService: EmbeddingService,
     private readonly documentChunkService: DocumentChunkService,
+    private readonly llmService: LlmService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
-  private getCollectionName(tenantId: string): string {
-    return `knowledge_${tenantId}`;
+  private getCollectionName(knowledgeBaseId: string): string {
+    return `knowledge_${knowledgeBaseId}`;
   }
 
   private async resolveOrganizationId(tenantId: string): Promise<string> {
@@ -65,13 +70,6 @@ export class RagService {
   }
 
   async indexDocument(documentId: string, tenantId: string): Promise<void> {
-    const collectionName = this.getCollectionName(tenantId);
-
-    await this.vectorStore.createCollection(
-      collectionName,
-      EMBEDDING_DIMENSIONS,
-    );
-
     const chunks = await this.documentChunkService.findByDocumentId(
       documentId,
       tenantId,
@@ -84,13 +82,22 @@ export class RagService {
       return;
     }
 
-    const organizationId = await this.resolveOrganizationId(tenantId);
+    const knowledgeBaseId = chunks[0]!.knowledgeBaseId;
+    const embeddingConfig = await this.resolveEmbeddingConfig(
+      tenantId,
+      knowledgeBaseId,
+    );
+    const collectionName = this.getCollectionName(knowledgeBaseId);
+
+    await this.vectorStore.createCollection(
+      collectionName,
+      embeddingConfig.dimensions ?? EMBEDDING_DIMENSIONS,
+    );
 
     const texts = chunks.map((chunk) => chunk.content);
     const embeddings = await this.embeddingService.generateEmbeddings(
       texts,
-      organizationId,
-      tenantId,
+      embeddingConfig,
     );
 
     const points: VectorPoint[] = chunks.map((chunk, index) => ({
@@ -133,38 +140,34 @@ export class RagService {
     tenantId: string,
     options: RagSearchOptions = {},
   ): Promise<RagSearchResult[]> {
-    const collectionName = this.getCollectionName(tenantId);
+    if (!options.knowledgeBaseId) {
+      this.logger.warn(
+        'RagService.search 未提供 knowledgeBaseId，当前仅支持按知识库检索',
+      );
+      return [];
+    }
+
+    const collectionName = this.getCollectionName(options.knowledgeBaseId);
 
     const exists = await this.vectorStore.collectionExists(collectionName);
     if (!exists) {
       return [];
     }
 
-    const organizationId = await this.resolveOrganizationId(tenantId);
-
+    const embeddingConfig = await this.resolveEmbeddingConfig(
+      tenantId,
+      options.knowledgeBaseId,
+    );
     const [queryEmbedding] = await this.embeddingService.generateEmbeddings(
       [query],
-      organizationId,
-      tenantId,
+      embeddingConfig,
     );
-
-    const filter: VectorFilter | undefined = options.knowledgeBaseId
-      ? {
-          must: [
-            {
-              key: 'knowledgeBaseId',
-              match: { value: options.knowledgeBaseId },
-            },
-          ],
-        }
-      : undefined;
 
     const rawResults = await this.vectorStore.search({
       collectionName,
       vector: queryEmbedding,
       limit: options.limit ?? 10,
       scoreThreshold: options.scoreThreshold,
-      filter,
     });
 
     const results = rawResults.map((r) => ({
@@ -191,7 +194,18 @@ export class RagService {
   }
 
   async deleteByDocument(documentId: string, tenantId: string): Promise<void> {
-    const collectionName = this.getCollectionName(tenantId);
+    const [document] = await this.db
+      .select({
+        knowledgeBaseId: documents.knowledgeBaseId,
+      })
+      .from(documents)
+      .where(
+        and(eq(documents.id, documentId), eq(documents.tenantId, tenantId)),
+      )
+      .limit(1);
+    if (!document) return;
+
+    const collectionName = this.getCollectionName(document.knowledgeBaseId);
 
     const exists = await this.vectorStore.collectionExists(collectionName);
     if (!exists) return;
@@ -204,8 +218,70 @@ export class RagService {
     );
   }
 
-  async deleteCollection(tenantId: string): Promise<void> {
-    const collectionName = this.getCollectionName(tenantId);
+  async deleteKnowledgeBaseCollection(knowledgeBaseId: string): Promise<void> {
+    const collectionName = this.getCollectionName(knowledgeBaseId);
     await this.vectorStore.deleteCollection(collectionName);
+  }
+
+  private async resolveEmbeddingConfig(
+    tenantId: string,
+    knowledgeBaseId: string,
+  ): Promise<Parameters<EmbeddingService['generateEmbeddings']>[1]> {
+    const organizationId = await this.resolveOrganizationId(tenantId);
+    const [knowledgeBase] = await this.db
+      .select({
+        embeddingModel: knowledgeBases.embeddingModel,
+        embeddingModelConfigId: knowledgeBases.embeddingModelConfigId,
+      })
+      .from(knowledgeBases)
+      .where(
+        and(
+          eq(knowledgeBases.id, knowledgeBaseId),
+          eq(knowledgeBases.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!knowledgeBase) {
+      throw new Error(`Knowledge base not found: ${knowledgeBaseId}`);
+    }
+
+    if (knowledgeBase.embeddingModelConfigId) {
+      const config = await this.llmService.findById(
+        knowledgeBase.embeddingModelConfigId,
+        tenantId,
+      );
+      if (config.modelType !== 'embedding') {
+        throw new Error(
+          `Knowledge base ${knowledgeBaseId} 绑定的模型不是 Embedding 模型`,
+        );
+      }
+
+      if (config.provider !== 'openai' && config.provider !== 'private_cloud') {
+        throw new Error(
+          `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider}`,
+        );
+      }
+
+      return {
+        organizationId,
+        tenantId,
+        provider: config.provider,
+        modelName: config.modelName,
+        apiKeyId: config.apiKeyId,
+        endpointUrl: config.endpointUrl,
+        authMethod: config.authMethod,
+        dimensions: config.embeddingDimensions,
+      };
+    }
+
+    return {
+      organizationId,
+      tenantId,
+      provider: 'openai',
+      modelName: knowledgeBase.embeddingModel,
+      apiKeyId: null,
+      dimensions: null,
+    };
   }
 }

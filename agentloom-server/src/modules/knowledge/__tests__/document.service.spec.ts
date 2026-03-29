@@ -84,6 +84,7 @@ describe('DocumentService', () => {
   };
   let ragService: {
     deleteByDocument: ReturnType<typeof vi.fn>;
+    deleteKnowledgeBaseCollection: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -125,6 +126,7 @@ describe('DocumentService', () => {
 
     ragService = {
       deleteByDocument: vi.fn().mockResolvedValue(undefined),
+      deleteKnowledgeBaseCollection: vi.fn().mockResolvedValue(undefined),
     };
 
     const module = await Test.createTestingModule({
@@ -651,6 +653,9 @@ describe('DocumentService', () => {
         `${DOC_ID}-2`,
         TENANT_ID,
       );
+      expect(ragService.deleteKnowledgeBaseCollection).toHaveBeenCalledWith(
+        KB_ID,
+      );
     });
 
     it('对象存储部分清理失败时仍应返回已删除数量', async () => {
@@ -677,6 +682,10 @@ describe('DocumentService', () => {
       await expect(
         service.deleteByKnowledgeBase(KB_ID, TENANT_ID),
       ).resolves.toBe(2);
+
+      expect(ragService.deleteKnowledgeBaseCollection).toHaveBeenCalledWith(
+        KB_ID,
+      );
     });
 
     it('向量索引清理失败时应中止知识库级删除', async () => {
@@ -698,6 +707,7 @@ describe('DocumentService', () => {
 
       expect(db.delete).not.toHaveBeenCalled();
       expect(storageService.delete).not.toHaveBeenCalled();
+      expect(ragService.deleteKnowledgeBaseCollection).not.toHaveBeenCalled();
     });
   });
 

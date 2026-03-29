@@ -113,9 +113,11 @@ function createEmptyConfig(provider: LlmProvider = 'openai'): LlmModelConfig {
     llmConfigId: null,
     name: initialModelName || '未命名模型配置',
     provider,
+    modelType: 'chat',
     modelName: initialModelName,
     parameters: { ...DEFAULT_LLM_PARAMETERS },
     apiKeyId: null,
+    embeddingDimensions: null,
     isDefault: false,
     endpointUrl: provider === 'private_cloud' ? '' : null,
     authMethod: provider === 'private_cloud' ? 'api_key' : null,
@@ -158,6 +160,7 @@ function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
   const payload: CreateLlmModelInput = {
     name: values.name.trim(),
     provider: values.provider,
+    modelType: 'chat',
     modelName: values.modelName.trim(),
     parameters: {
       temperature: values.temperature,

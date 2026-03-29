@@ -147,6 +147,7 @@ describe('LlmModelConfigPanel', () => {
       expect(mocks.createMutateAsync).toHaveBeenCalledWith({
         name: '新建 OpenAI 配置',
         provider: 'openai',
+        modelType: 'chat',
         modelName: 'gpt-4o',
         parameters: {
           temperature: 0.7,

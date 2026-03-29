@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import {
-  EMBEDDING_MODEL,
   EMBEDDING_BATCH_SIZE,
   EMBEDDING_MAX_RETRIES,
 } from '../knowledge.constants';
@@ -22,6 +21,17 @@ class EmbeddingApiError extends Error {
   }
 }
 
+export interface EmbeddingRuntimeConfig {
+  organizationId: string;
+  tenantId: string;
+  provider: 'openai' | 'private_cloud';
+  modelName: string;
+  apiKeyId?: string | null;
+  endpointUrl?: string | null;
+  authMethod?: string | null;
+  dimensions?: number | null;
+}
+
 @Injectable()
 export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name);
@@ -32,26 +42,17 @@ export class EmbeddingService {
 
   async generateEmbeddings(
     texts: string[],
-    organizationId: string,
-    tenantId: string,
+    config: EmbeddingRuntimeConfig,
   ): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
-      {
-        apiKeyId: null,
-        organizationId,
-        tenantId,
-        provider: 'openai',
-      },
-      'EmbeddingService.generateEmbeddings',
-    );
+    const apiKey = await this.resolveApiKey(config);
 
     const allEmbeddings: number[][] = [];
 
     for (let i = 0; i < texts.length; i += EMBEDDING_BATCH_SIZE) {
       const batch = texts.slice(i, i + EMBEDDING_BATCH_SIZE);
-      const embeddings = await this.callEmbeddingApiWithRetry(batch, apiKey);
+      const embeddings = await this.callEmbeddingApiWithRetry(batch, config, apiKey);
       allEmbeddings.push(...embeddings);
     }
 
@@ -60,13 +61,14 @@ export class EmbeddingService {
 
   private async callEmbeddingApiWithRetry(
     texts: string[],
-    apiKey: string,
+    config: EmbeddingRuntimeConfig,
+    apiKey?: string,
   ): Promise<number[][]> {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= EMBEDDING_MAX_RETRIES; attempt++) {
       try {
-        return await this.callEmbeddingApi(texts, apiKey);
+        return await this.callEmbeddingApi(texts, config, apiKey);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const shouldRetry =
@@ -89,32 +91,55 @@ export class EmbeddingService {
 
   private async callEmbeddingApi(
     texts: string[],
-    apiKey: string,
+    config: EmbeddingRuntimeConfig,
+    apiKey?: string,
   ): Promise<number[][]> {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const body: Record<string, unknown> = {
+      model: config.modelName,
+      input: texts,
+    };
+    if (config.dimensions) {
+      body.dimensions = config.dimensions;
+    }
+
+    const response = await fetch(this.resolveEmbeddingEndpoint(config), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: texts,
-      }),
+      headers,
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       const body = await response.text();
       throw new EmbeddingApiError(
         response.status,
-        `OpenAI Embedding API error ${response.status}: ${body}`,
+        `Embedding API error ${response.status}: ${body}`,
         this.parseRetryAfterMs(response.headers.get('retry-after')),
       );
     }
 
     const json = (await response.json()) as EmbeddingApiResponse;
 
-    return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+    const embeddings = json.data
+      .sort((a, b) => a.index - b.index)
+      .map((d) => d.embedding);
+
+    if (
+      config.dimensions &&
+      embeddings.some((embedding) => embedding.length !== config.dimensions)
+    ) {
+      throw new Error(
+        `Embedding API 返回的向量维度与配置不一致，期望 ${config.dimensions}`,
+      );
+    }
+
+    return embeddings;
   }
 
   private sleep(ms: number): Promise<void> {
@@ -157,5 +182,51 @@ export class EmbeddingService {
 
     const retryAfterMs = retryAfterDate - Date.now();
     return retryAfterMs > 0 ? retryAfterMs : undefined;
+  }
+
+  private async resolveApiKey(
+    config: EmbeddingRuntimeConfig,
+  ): Promise<string | undefined> {
+    if (
+      config.provider === 'private_cloud' &&
+      config.authMethod &&
+      config.authMethod !== 'api_key'
+    ) {
+      return undefined;
+    }
+
+    return this.decryptionBoundaryService.decryptConfiguredApiKey(
+      {
+        apiKeyId: config.apiKeyId ?? null,
+        organizationId: config.organizationId,
+        tenantId: config.tenantId,
+        provider: config.provider,
+      },
+      'EmbeddingService.generateEmbeddings',
+    );
+  }
+
+  private resolveEmbeddingEndpoint(config: EmbeddingRuntimeConfig): string {
+    if (config.provider === 'openai') {
+      return 'https://api.openai.com/v1/embeddings';
+    }
+
+    if (!config.endpointUrl) {
+      throw new Error('私有云 Embedding 模型缺少 endpointUrl');
+    }
+
+    const normalizedBase = config.endpointUrl.replace(/\/+$/, '');
+    const url = new URL(normalizedBase);
+    const normalizedPath = url.pathname.replace(/\/+$/, '');
+
+    if (!normalizedPath || normalizedPath === '/') {
+      return `${normalizedBase}/v1/embeddings`;
+    }
+
+    if (normalizedPath.endsWith('/v1')) {
+      return `${normalizedBase}/embeddings`;
+    }
+
+    return `${normalizedBase}/embeddings`;
   }
 }

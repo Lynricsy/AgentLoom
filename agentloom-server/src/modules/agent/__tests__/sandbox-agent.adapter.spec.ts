@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jsonSchema, tool } from 'ai';
 
 import { SandboxAgentAdapter } from '../sandbox-agent.adapter';
+import { CodeExecutionService } from '../code-execution.service';
 import type { CreateSessionParams } from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
+import { RagService } from '../../knowledge/services/rag.service';
 
 vi.mock('@nestjs/common', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nestjs/common')>();
@@ -23,6 +25,7 @@ describe('SandboxAgentAdapter', () => {
   let adapter: SandboxAgentAdapter;
   let mockDb: {
     transaction: ReturnType<typeof vi.fn>;
+    select: ReturnType<typeof vi.fn>;
   };
   let mockSandboxService: {
     getSandboxSession: ReturnType<typeof vi.fn>;
@@ -32,6 +35,16 @@ describe('SandboxAgentAdapter', () => {
     getPromptUrl: ReturnType<typeof vi.fn>;
     healthCheck: ReturnType<typeof vi.fn>;
     getSessionUrl: ReturnType<typeof vi.fn>;
+  };
+  let mockMcpService: {
+    resolveRuntimeConnection: ReturnType<typeof vi.fn>;
+    callRuntimeTool: ReturnType<typeof vi.fn>;
+  };
+  let mockRagService: {
+    search: ReturnType<typeof vi.fn>;
+  };
+  let mockCodeExecutionService: {
+    execute: ReturnType<typeof vi.fn>;
   };
 
   const defaultParams: CreateSessionParams = {
@@ -55,6 +68,7 @@ describe('SandboxAgentAdapter', () => {
           execute: vi.fn(),
         }),
       ),
+      select: vi.fn(),
     };
     mockSandboxService = {
       getSandboxSession: vi.fn().mockResolvedValue({
@@ -75,6 +89,16 @@ describe('SandboxAgentAdapter', () => {
         .fn()
         .mockResolvedValue('http://127.0.0.1:49123/v1/session'),
     };
+    mockMcpService = {
+      resolveRuntimeConnection: vi.fn(),
+      callRuntimeTool: vi.fn(),
+    };
+    mockRagService = {
+      search: vi.fn().mockResolvedValue([]),
+    };
+    mockCodeExecutionService = {
+      execute: vi.fn(),
+    };
     // createSession 的容器初始化 POST 默认返回成功
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -85,6 +109,9 @@ describe('SandboxAgentAdapter', () => {
       mockDb as never,
       mockSandboxService as never,
       mockDockerService as never,
+      mockMcpService as never,
+      mockRagService as never,
+      mockCodeExecutionService as never,
     );
   });
 
@@ -123,6 +150,16 @@ describe('SandboxAgentAdapter', () => {
       },
     } as unknown as Response;
   }
+
+  it('应保留 RagService 与 CodeExecutionService 的 Nest 注入元数据', () => {
+    const paramTypes = Reflect.getMetadata(
+      'design:paramtypes',
+      SandboxAgentAdapter,
+    ) as unknown[];
+
+    expect(paramTypes[4]).toBe(RagService);
+    expect(paramTypes[5]).toBe(CodeExecutionService);
+  });
 
   describe('createSession', () => {
     it('应创建具有 sandbox 工作区路径的会话', async () => {
@@ -236,6 +273,40 @@ describe('SandboxAgentAdapter', () => {
         ],
       });
       expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('runtimeConfig 的 knowledgeBindings 应在 session 初始化时下发为 remote tool', async () => {
+      await adapter.createSession({
+        ...defaultParams,
+        runtimeConfig: {
+          knowledgeBindings: [
+            {
+              knowledgeBaseId: 'kb-qa-1',
+              topK: 3,
+              similarityThreshold: 0.42,
+              enabled: true,
+            },
+          ],
+        },
+      });
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const payload = JSON.parse(String(fetchCall?.[1]?.body)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(payload).toHaveProperty('remoteToolExecution');
+      expect(payload.remoteToolExecution).toMatchObject({
+        tools: [
+          expect.objectContaining({
+            name: 'searchKnowledge_kb-qa-1',
+            description: '在知识库 kb-qa-1 中检索相关内容',
+            promptSnippet: '在知识库 kb-qa-1 中检索相关内容',
+          }),
+        ],
+      });
+      expect(mockRagService.search).not.toHaveBeenCalled();
     });
 
     it('有 agentConversationId 和 tenantId 时也应调用 conversation sandbox 初始化', async () => {

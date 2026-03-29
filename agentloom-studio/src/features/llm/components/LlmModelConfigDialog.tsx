@@ -25,6 +25,7 @@ import { useToast } from '@/shared/ui/toast'
 import {
   DEFAULT_LLM_PARAMETERS,
   getProviderInfo,
+  LLM_MODEL_TYPES,
   LLM_PROVIDERS,
   LLM_PROVIDER_IDS,
   type CreateLlmModelInput,
@@ -41,10 +42,12 @@ import { ProviderIcon } from './ProviderIcon'
 import { PrivateCloudConfigSection } from './PrivateCloudConfigSection'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const EMBEDDING_PROVIDER_IDS = new Set<LlmProvider>(['openai', 'private_cloud'])
 
 const dialogFormSchema = z.object({
   name: z.string().trim().min(1, '请输入配置名称').max(100, '配置名称不能超过 100 个字符'),
   provider: z.enum(LLM_PROVIDER_IDS),
+  modelType: z.enum(LLM_MODEL_TYPES),
   modelName: z.string().trim().min(1, '请选择或输入模型名称'),
   apiKeyId: z.union([z.literal(''), z.string().trim().regex(UUID_PATTERN, '请选择有效的 API Key')]),
   temperature: z.number().min(0, 'Temperature 不能小于 0').max(2, 'Temperature 不能大于 2'),
@@ -60,6 +63,9 @@ const dialogFormSchema = z.object({
   authMethod: z.enum(['api_key', 'mtls', 'none']).optional(),
   authConfig: z.record(z.string(), z.string()).optional(),
   timeoutMs: z.number().int().min(5000, '超时时间不能小于 5000ms').max(600000, '超时时间不能大于 600000ms').optional(),
+  embeddingDimensions: z.string().trim().refine((value) => value.length === 0 || /^[1-9]\d*$/.test(value), {
+    message: 'Embedding 维度必须是正整数',
+  }),
 }).superRefine((values, ctx) => {
   if (values.provider !== 'private_cloud') return
 
@@ -86,6 +92,24 @@ const dialogFormSchema = z.object({
       message: '请选择 API Key',
     })
   }
+
+  if (values.modelType === 'embedding' && !EMBEDDING_PROVIDER_IDS.has(values.provider)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['provider'],
+      message: 'Embedding 模型仅支持 OpenAI 或 OpenAI 兼容私有云端点',
+    })
+  }
+}).superRefine((values, ctx) => {
+  if (values.modelType !== 'embedding') return
+
+  if (!values.embeddingDimensions) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['embeddingDimensions'],
+      message: '请填写 Embedding 维度',
+    })
+  }
 })
 
 type DialogFormValues = z.infer<typeof dialogFormSchema>
@@ -94,6 +118,7 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
   const payload: CreateLlmModelInput = {
     name: values.name.trim(),
     provider: values.provider,
+    modelType: values.modelType,
     modelName: values.modelName.trim(),
     parameters: {
       temperature: values.temperature,
@@ -104,6 +129,10 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
       stop: values.stop,
     },
     isDefault: values.isDefault,
+  }
+
+  if (values.modelType === 'embedding' && values.embeddingDimensions) {
+    payload.embeddingDimensions = Number.parseInt(values.embeddingDimensions, 10)
   }
 
   if (values.apiKeyId) {
@@ -135,6 +164,7 @@ function getDefaultFormValues(provider: LlmProvider = 'openai'): DialogFormValue
   return {
     name: '',
     provider,
+    modelType: 'chat',
     modelName: initialModel,
     apiKeyId: '',
     temperature: DEFAULT_LLM_PARAMETERS.temperature,
@@ -148,6 +178,7 @@ function getDefaultFormValues(provider: LlmProvider = 'openai'): DialogFormValue
     authMethod: 'none',
     authConfig: {},
     timeoutMs: undefined,
+    embeddingDimensions: '',
   }
 }
 
@@ -155,6 +186,7 @@ function modelToFormValues(model: LlmModelInfo): DialogFormValues {
   return {
     name: model.name,
     provider: model.provider,
+    modelType: model.modelType ?? 'chat',
     modelName: model.modelName,
     apiKeyId: model.apiKeyId ?? '',
     temperature: model.parameters.temperature,
@@ -170,6 +202,8 @@ function modelToFormValues(model: LlmModelInfo): DialogFormValues {
       Object.entries(model.authConfig ?? {}).map(([k, v]) => [k, String(v ?? '')]),
     ),
     timeoutMs: typeof model.timeoutMs === 'number' ? model.timeoutMs : undefined,
+    embeddingDimensions:
+      typeof model.embeddingDimensions === 'number' ? String(model.embeddingDimensions) : '',
   }
 }
 
@@ -197,12 +231,8 @@ export function LlmModelConfigDialog({
     defaultValues: editingModel ? modelToFormValues(editingModel) : getDefaultFormValues(),
   })
 
-  const providerCatalog = useMemo(
-    () => (providersQuery.data && providersQuery.data.length > 0 ? providersQuery.data : LLM_PROVIDERS),
-    [providersQuery.data],
-  )
-
   const selectedProvider = useWatch({ control: form.control, name: 'provider' })
+  const selectedModelType = useWatch({ control: form.control, name: 'modelType' })
   const selectedModelName = useWatch({ control: form.control, name: 'modelName' })
   const selectedApiKeyId = useWatch({ control: form.control, name: 'apiKeyId' })
   const selectedTemperature = useWatch({ control: form.control, name: 'temperature' })
@@ -211,10 +241,24 @@ export function LlmModelConfigDialog({
   const selectedPresencePenalty = useWatch({ control: form.control, name: 'presencePenalty' })
 
   const providerApiKeys = useMemo(
-    () => (apiKeysQuery.data ?? []).filter((item) => item.provider === selectedProvider),
+    () =>
+      selectedProvider === 'private_cloud'
+        ? (apiKeysQuery.data ?? [])
+        : (apiKeysQuery.data ?? []).filter((item) => item.provider === selectedProvider),
     [apiKeysQuery.data, selectedProvider],
   )
+  const providerCatalog = useMemo(() => {
+    const source =
+      providersQuery.data && providersQuery.data.length > 0
+        ? providersQuery.data
+        : LLM_PROVIDERS
 
+    if (selectedModelType !== 'embedding') {
+      return source
+    }
+
+    return source.filter((provider) => EMBEDDING_PROVIDER_IDS.has(provider.id))
+  }, [providersQuery.data, selectedModelType])
   const availableModels = useMemo(() => {
     const providerInfo = providerCatalog.find((item) => item.id === selectedProvider)
     const models = providerInfo ? [...providerInfo.models] : []
@@ -237,9 +281,22 @@ export function LlmModelConfigDialog({
     }
   }, [availableModels, form, isEditMode, selectedModelName, selectedProvider])
 
+  useEffect(() => {
+    if (selectedModelType !== 'embedding') {
+      return
+    }
+
+    if (EMBEDDING_PROVIDER_IDS.has(selectedProvider)) {
+      return
+    }
+
+    form.setValue('provider', 'openai', { shouldValidate: true, shouldDirty: true })
+  }, [form, selectedModelType, selectedProvider])
+
   // Provider 切换时清除不匹配的 API Key
   useEffect(() => {
     if (!selectedApiKeyId) return
+    if (selectedProvider === 'private_cloud') return
 
     const matchesProvider = providerApiKeys.some((apiKey) => apiKey.id === selectedApiKeyId)
     if (!matchesProvider) {
@@ -345,11 +402,25 @@ export function LlmModelConfigDialog({
           >
             {isEditMode
               ? '修改模型配置的参数和设置。'
-              : '配置新的 LLM 模型，选择提供商、模型和参数。'}
+              : '配置新的模型，选择用途、提供商、模型和参数。'}
           </Dialog.Description>
 
           <FormProvider {...form}>
             <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <Label>模型用途</Label>
+                <Controller
+                  control={form.control}
+                  name="modelType"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange} disabled={isEditMode}>
+                      <option value="chat">聊天 / 推理</option>
+                      <option value="embedding">Embedding / 向量化</option>
+                    </Select>
+                  )}
+                />
+              </div>
+
               {/* Provider 选择 */}
               <div className="space-y-2">
                 <Label>提供商</Label>
@@ -449,125 +520,142 @@ export function LlmModelConfigDialog({
                 ) : null}
               </div>
 
-              {/* 参数设置（可折叠） */}
-              <div className="rounded-lg border border-border">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
-                  onClick={() => setParamsExpanded(!paramsExpanded)}
-                >
-                  <span>参数设置</span>
-                  {paramsExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              {selectedModelType === 'embedding' ? (
+                <div className="space-y-2">
+                  <Label>Embedding 维度</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="例如 1536"
+                    {...form.register('embeddingDimensions')}
+                  />
+                  {form.formState.errors.embeddingDimensions ? (
+                    <p className="text-[11px] text-error">
+                      {form.formState.errors.embeddingDimensions.message}
+                    </p>
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-[11px] text-muted-foreground">
+                      向量库会按该维度创建索引，需与模型返回维度保持一致。
+                    </p>
                   )}
-                </button>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
+                    onClick={() => setParamsExpanded(!paramsExpanded)}
+                  >
+                    <span>参数设置</span>
+                    {paramsExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </button>
 
-                {paramsExpanded && (
-                  <div className="space-y-4 border-t border-border px-3 py-3">
-                    {/* Temperature */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Temperature</Label>
-                        <span className="text-[11px] text-muted-foreground">{selectedTemperature.toFixed(1)}</span>
+                  {paramsExpanded && (
+                    <div className="space-y-4 border-t border-border px-3 py-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label>Temperature</Label>
+                          <span className="text-[11px] text-muted-foreground">{selectedTemperature.toFixed(1)}</span>
+                        </div>
+                        <Controller
+                          control={form.control}
+                          name="temperature"
+                          render={({ field }) => (
+                            <Slider
+                              min={0}
+                              max={2}
+                              step={0.1}
+                              value={[field.value]}
+                              onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.temperature)}
+                            />
+                          )}
+                        />
                       </div>
-                      <Controller
-                        control={form.control}
-                        name="temperature"
-                        render={({ field }) => (
-                          <Slider
-                            min={0}
-                            max={2}
-                            step={0.1}
-                            value={[field.value]}
-                            onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.temperature)}
-                          />
-                        )}
-                      />
-                    </div>
 
-                    {/* Max Tokens */}
-                    <div className="space-y-2">
-                      <Label>Max Tokens</Label>
-                      <Input type="number" min={1} placeholder="留空表示使用模型默认值" {...form.register('maxTokens')} />
-                      {form.formState.errors.maxTokens ? (
-                        <p className="text-[11px] text-error">{form.formState.errors.maxTokens.message}</p>
-                      ) : null}
-                    </div>
-
-                    {/* Top P */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Top P</Label>
-                        <span className="text-[11px] text-muted-foreground">{selectedTopP.toFixed(2)}</span>
+                      <div className="space-y-2">
+                        <Label>Max Tokens</Label>
+                        <Input type="number" min={1} placeholder="留空表示使用模型默认值" {...form.register('maxTokens')} />
+                        {form.formState.errors.maxTokens ? (
+                          <p className="text-[11px] text-error">{form.formState.errors.maxTokens.message}</p>
+                        ) : null}
                       </div>
-                      <Controller
-                        control={form.control}
-                        name="topP"
-                        render={({ field }) => (
-                          <Slider
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={[field.value]}
-                            onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.topP)}
-                          />
-                        )}
-                      />
-                    </div>
 
-                    {/* Frequency Penalty */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Frequency Penalty</Label>
-                        <span className="text-[11px] text-muted-foreground">{selectedFrequencyPenalty.toFixed(1)}</span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label>Top P</Label>
+                          <span className="text-[11px] text-muted-foreground">{selectedTopP.toFixed(2)}</span>
+                        </div>
+                        <Controller
+                          control={form.control}
+                          name="topP"
+                          render={({ field }) => (
+                            <Slider
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={[field.value]}
+                              onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.topP)}
+                            />
+                          )}
+                        />
                       </div>
-                      <Controller
-                        control={form.control}
-                        name="frequencyPenalty"
-                        render={({ field }) => (
-                          <Slider
-                            min={0}
-                            max={2}
-                            step={0.1}
-                            value={[field.value]}
-                            onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.frequencyPenalty)}
-                          />
-                        )}
-                      />
-                    </div>
 
-                    {/* Presence Penalty */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Presence Penalty</Label>
-                        <span className="text-[11px] text-muted-foreground">{selectedPresencePenalty.toFixed(1)}</span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label>Frequency Penalty</Label>
+                          <span className="text-[11px] text-muted-foreground">{selectedFrequencyPenalty.toFixed(1)}</span>
+                        </div>
+                        <Controller
+                          control={form.control}
+                          name="frequencyPenalty"
+                          render={({ field }) => (
+                            <Slider
+                              min={0}
+                              max={2}
+                              step={0.1}
+                              value={[field.value]}
+                              onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.frequencyPenalty)}
+                            />
+                          )}
+                        />
                       </div>
-                      <Controller
-                        control={form.control}
-                        name="presencePenalty"
-                        render={({ field }) => (
-                          <Slider
-                            min={0}
-                            max={2}
-                            step={0.1}
-                            value={[field.value]}
-                            onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.presencePenalty)}
-                          />
-                        )}
-                      />
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label>Presence Penalty</Label>
+                          <span className="text-[11px] text-muted-foreground">{selectedPresencePenalty.toFixed(1)}</span>
+                        </div>
+                        <Controller
+                          control={form.control}
+                          name="presencePenalty"
+                          render={({ field }) => (
+                            <Slider
+                              min={0}
+                              max={2}
+                              step={0.1}
+                              value={[field.value]}
+                              onValueChange={(v) => field.onChange(v[0] ?? DEFAULT_LLM_PARAMETERS.presencePenalty)}
+                            />
+                          )}
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* 设为默认 */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>设为默认配置</Label>
                   <p className="text-[11px] text-muted-foreground">
-                    默认配置会在新建 LLM 节点时自动选中
+                    {selectedModelType === 'embedding'
+                      ? '默认 Embedding 模型会在新建知识库时自动选中'
+                      : '默认配置会在新建 LLM 节点时自动选中'}
                   </p>
                 </div>
                 <Controller

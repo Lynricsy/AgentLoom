@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  pgEnum,
   timestamp,
   unique,
   uuid,
@@ -14,6 +15,11 @@ import {
 import { apiKeys } from './api-keys.schema';
 import { organizations } from './organizations.schema';
 import { createDirectTenantPolicies } from './rls-policies';
+
+export const llmModelTypeEnum = pgEnum('llm_model_type', [
+  'chat',
+  'embedding',
+]);
 
 export const llmModelConfigs = pgTable(
   'llm_model_configs',
@@ -36,6 +42,8 @@ export const llmModelConfigs = pgTable(
     authMethod: varchar('auth_method', { length: 20 }),
     authConfig: jsonb('auth_config'),
     timeoutMs: integer('timeout_ms'),
+    modelType: llmModelTypeEnum('model_type').notNull().default('chat'),
+    embeddingDimensions: integer('embedding_dimensions'),
     isDefault: boolean('is_default').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

@@ -123,9 +123,81 @@ export async function createAgent(payload: CreateAgentPayload) {
 }
 ```
 
-- `toSnakeBody()` converts camelCase payload to snake_case
-- The `apiClient` afterResponse hook auto-converts snake_case responses back to camelCase
-- **Never put snake/camel conversion in individual API functions** -- the centralized client handles it
+- `toSnakeBody()` is opt-in and only for endpoints whose DTO/query contract explicitly accepts snake_case aliases
+- The `apiClient` afterResponse hook auto-converts JSON responses back to camelCase
+- Request bodies are **not** auto-converted by `apiClient`; verify the backend DTO before deciding whether to send camelCase as-is or wrap with `toSnakeBody()`
+
+---
+
+## Scenario: LLM Model + Knowledge Base Resource Forms
+
+### 1. Scope / Trigger
+
+- Trigger: touching `src/features/llm/api/llmModelApi.ts`, LLM model config dialogs/panels, or knowledge-base settings forms that bind an embedding model config.
+
+### 2. Signatures
+
+- `createLlmModel(config: CreateLlmModelInput): Promise<LlmModelInfo>`
+- `updateLlmModel(id: string, config: UpdateLlmModelInput): Promise<LlmModelInfo>`
+- `KnowledgeBaseDetailPage` settings form fields:
+  - `chunkSize`
+  - `chunkOverlap`
+  - `embeddingModelConfigId`
+- `LlmModelInfo` contract fields used by the UI:
+  - `modelType: 'chat' | 'embedding'`
+  - `embeddingDimensions?: number | null`
+
+### 3. Contracts
+
+- `llmModelApi.ts` must send LLM model payloads in camelCase because the backend DTO contract uses camelCase fields such as `modelType` and `embeddingDimensions`.
+- Knowledge base settings must send `embeddingModelConfigId` in camelCase so the backend can persist `knowledge_bases.embedding_model_config_id`.
+- The knowledge-base embedding selector must only offer models where `modelType === 'embedding'`.
+- LLM model management cards/dialogs must surface both the usage (`Chat` or `Embedding`) and the configured embedding dimension when present.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected Behavior | Verification Point |
+|-----------|-------------------|--------------------|
+| LLM create/update payload uses camelCase `modelType` / `embeddingDimensions` | Request succeeds and values round-trip back in response/UI | `llmModelApi.test.ts` plus browser QA |
+| LLM create/update payload is mechanically wrapped in `toSnakeBody()` | Endpoint contract drifts; request can 422 or silently miss extended fields | Regression test on request body shape |
+| `embeddingModelConfigId` empty in KB settings form | Client-side Zod validation blocks submit | `KnowledgeBaseDetailPage` form test |
+| KB settings page receives mixed chat + embedding models | UI filters to embedding-only choices | `KnowledgeBaseDetailPage.test.tsx` |
+| `embeddingDimensions <= 0` | Backend validation rejects the request | DTO contract in server + manual negative test if API changes |
+
+### 5. Good / Base / Bad Cases
+
+- Good: create a private-cloud embedding model with `modelType: 'embedding'`, `modelName: 'Qwen/Qwen3-Embedding-8B'`, and `embeddingDimensions: 4096`; the list card shows `Embedding` and `维度: 4096`, and KB settings can bind it.
+- Base: a normal chat model omits `embeddingDimensions`, stays selectable for chat use, and never appears in the KB embedding-model selector.
+- Bad: a frontend refactor blindly adds `toSnakeBody(config)` back into `llmModelApi.ts`, causing `modelType` / `embeddingDimensions` round-trip regressions.
+
+### 6. Tests Required
+
+- `src/features/llm/api/llmModelApi.test.ts`
+  - Assert create/update requests send camelCase `modelType` and `embeddingDimensions`.
+- `src/features/knowledge/components/KnowledgeBaseDetailPage.test.tsx`
+  - Assert the settings form only shows embedding models and submits `embeddingModelConfigId`.
+- Browser/manual QA:
+  - Search for the configured embedding model in `LLM Models`.
+  - Confirm the card renders `Embedding` and the configured dimension.
+  - Open KB detail and confirm the same model is selectable/bound.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+export async function createLlmModel(config: CreateLlmModelInput) {
+  return apiClient.post('llm-models', { json: toSnakeBody(config) });
+}
+```
+
+#### Correct
+
+```ts
+export async function createLlmModel(config: CreateLlmModelInput) {
+  return apiClient.post('llm-models', { json: config });
+}
+```
 
 ---
 
@@ -168,7 +240,7 @@ Key pattern: callbacks stored in a `useRef` to avoid socket reconnection on call
 
 1. **Loose string query keys** -- always use the key factory pattern
 2. **Inline API calls in components** -- extract to `{feature}Api.ts`
-3. **Manual snake/camel conversion in API functions** -- use `toSnakeBody()` and let the client handle responses
+3. **Blindly applying `toSnakeBody()` to every API request** -- only use it when the backend contract explicitly accepts snake_case
 4. **Skipping `gcTime: 0` on mutations** -- always set to avoid stale mutation cache
 
 ---

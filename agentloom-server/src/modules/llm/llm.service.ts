@@ -7,11 +7,14 @@ import { llmModelConfigs } from '../../database/schema/llm-model-configs.schema'
 import { organizations } from '../../database/schema/organizations.schema';
 import type { CreateLlmModelConfigDto } from './dto/create-llm-model-config.dto';
 import type { UpdateLlmModelConfigDto } from './dto/update-llm-model-config.dto';
+import type { LlmModelType } from './dto/create-llm-model-config.dto';
 import {
   LlmModelConfigConflictException,
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
 } from './llm.exceptions';
+
+const EMBEDDING_MODEL_PROVIDERS = new Set(['openai', 'private_cloud']);
 
 @Injectable()
 export class LlmService {
@@ -23,13 +26,27 @@ export class LlmService {
     return getTenantDb(this.db);
   }
 
-  private validatePrivateCloudConfig(params: {
+  private validateModelConfig(params: {
     provider: string;
+    modelType: LlmModelType;
     endpointUrl?: string | null;
     authMethod?: string | null;
     apiKeyId?: string | null;
+    embeddingDimensions?: number | null;
   }) {
     if (params.provider !== 'private_cloud') {
+      if (params.modelType === 'embedding') {
+        if (!EMBEDDING_MODEL_PROVIDERS.has(params.provider)) {
+          throw new LlmModelConfigValidationException(
+            'Embedding 模型仅支持 OpenAI 或 OpenAI 兼容私有云端点',
+          );
+        }
+        if (!params.embeddingDimensions) {
+          throw new LlmModelConfigValidationException(
+            'Embedding 模型必须配置向量维度',
+          );
+        }
+      }
       return;
     }
 
@@ -44,6 +61,12 @@ export class LlmService {
     if (params.authMethod === 'api_key' && !params.apiKeyId) {
       throw new LlmModelConfigValidationException(
         '私有云 API Key 认证必须选择 API Key',
+      );
+    }
+
+    if (params.modelType === 'embedding' && !params.embeddingDimensions) {
+      throw new LlmModelConfigValidationException(
+        'Embedding 模型必须配置向量维度',
       );
     }
   }
@@ -108,14 +131,16 @@ export class LlmService {
     }
 
     if (dto.isDefault) {
-      await this.clearDefaultInOrg(orgId);
+      await this.clearDefaultInOrg(orgId, dto.modelType);
     }
 
-    this.validatePrivateCloudConfig({
+    this.validateModelConfig({
       provider: dto.provider,
+      modelType: dto.modelType,
       endpointUrl: dto.endpointUrl,
       authMethod: dto.authMethod,
       apiKeyId: dto.apiKeyId,
+      embeddingDimensions: dto.embeddingDimensions,
     });
 
     const privateCloudFields = this.buildPrivateCloudFields({
@@ -142,6 +167,9 @@ export class LlmService {
         authMethod: privateCloudFields.authMethod,
         authConfig: privateCloudFields.authConfig,
         timeoutMs: privateCloudFields.timeoutMs,
+        modelType: dto.modelType,
+        embeddingDimensions:
+          dto.modelType === 'embedding' ? (dto.embeddingDimensions ?? null) : null,
       })
       .returning();
 
@@ -197,10 +225,37 @@ export class LlmService {
       );
   }
 
+  async findDefaultByType(tenantId: string, modelType: LlmModelType) {
+    const orgResult = await this.tenantDb
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.tenantId, tenantId))
+      .limit(1);
+
+    if (orgResult.length === 0) {
+      return null;
+    }
+
+    const results = await this.tenantDb
+      .select()
+      .from(llmModelConfigs)
+      .where(
+        and(
+          eq(llmModelConfigs.orgId, orgResult[0].id),
+          eq(llmModelConfigs.modelType, modelType),
+          eq(llmModelConfigs.isDefault, true),
+        ),
+      )
+      .limit(1);
+
+    return results[0] ?? null;
+  }
+
   async update(id: string, dto: UpdateLlmModelConfigDto, tenantId: string) {
     const existing = await this.findById(id, tenantId);
 
     const provider = dto.provider ?? existing.provider;
+    const modelType = dto.modelType ?? existing.modelType;
     const endpointUrl =
       'endpointUrl' in dto ? dto.endpointUrl : existing.endpointUrl;
     const authMethod =
@@ -215,12 +270,18 @@ export class LlmService {
           ? (existing.authConfig as Record<string, unknown>)
           : null;
     const timeoutMs = 'timeoutMs' in dto ? dto.timeoutMs : existing.timeoutMs;
+    const embeddingDimensions =
+      'embeddingDimensions' in dto
+        ? dto.embeddingDimensions
+        : existing.embeddingDimensions;
 
-    this.validatePrivateCloudConfig({
+    this.validateModelConfig({
       provider,
+      modelType,
       endpointUrl,
       authMethod,
       apiKeyId,
+      embeddingDimensions,
     });
 
     const privateCloudFields = this.buildPrivateCloudFields({
@@ -248,8 +309,9 @@ export class LlmService {
       }
     }
 
-    if (dto.isDefault === true) {
-      await this.clearDefaultInOrg(existing.orgId);
+    const nextIsDefault = dto.isDefault ?? existing.isDefault;
+    if (nextIsDefault) {
+      await this.clearDefaultInOrg(existing.orgId, modelType);
     }
 
     const updateData: Record<string, unknown> = {
@@ -286,6 +348,11 @@ export class LlmService {
     if ('apiKeyId' in dto || provider === 'private_cloud') {
       updateData.apiKeyId = privateCloudFields.apiKeyId ?? dto.apiKeyId ?? null;
     }
+    if ('modelType' in dto || 'embeddingDimensions' in dto) {
+      updateData.modelType = modelType;
+      updateData.embeddingDimensions =
+        modelType === 'embedding' ? (embeddingDimensions ?? null) : null;
+    }
 
     const [result] = await this.tenantDb
       .update(llmModelConfigs)
@@ -311,13 +378,14 @@ export class LlmService {
     this.logger.log(`删除 LLM 模型配置: ${id}`);
   }
 
-  private async clearDefaultInOrg(orgId: string) {
+  private async clearDefaultInOrg(orgId: string, modelType: LlmModelType) {
     await this.tenantDb
       .update(llmModelConfigs)
       .set({ isDefault: false, updatedAt: new Date() })
       .where(
         and(
           eq(llmModelConfigs.orgId, orgId),
+          eq(llmModelConfigs.modelType, modelType),
           eq(llmModelConfigs.isDefault, true),
         ),
       );

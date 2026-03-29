@@ -28,6 +28,7 @@ export interface KnowledgeBase {
   chunkSize: number;
   chunkOverlap: number;
   embeddingModel: string;
+  embeddingModelConfigId: string | null;
   documentCount: number;
   chunkCount: number;
   status: KnowledgeBaseStatus;
@@ -56,12 +57,14 @@ export interface CreateKnowledgeBaseInput {
   chunkSize?: number;
   chunkOverlap?: number;
   embeddingModel?: string;
+  embeddingModelConfigId?: string | null;
 }
 
 export interface UpdateKnowledgeBaseSettingsInput {
   chunkSize?: number;
   chunkOverlap?: number;
   embeddingModel?: string;
+  embeddingModelConfigId?: string | null;
 }
 
 export interface KnowledgeBaseNodeConfig extends Record<string, unknown> {

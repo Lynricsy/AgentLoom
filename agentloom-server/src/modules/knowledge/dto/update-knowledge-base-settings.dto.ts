@@ -29,11 +29,15 @@ export const UpdateKnowledgeBaseSettingsSchema = z
     chunk_overlap: ChunkOverlapSchema,
     embeddingModel: EmbeddingModelSchema,
     embedding_model: EmbeddingModelSchema,
+    embeddingModelConfigId: z.string().uuid().optional().nullish(),
+    embedding_model_config_id: z.string().uuid().optional().nullish(),
   })
   .transform((value) => ({
     chunkSize: value.chunkSize ?? value.chunk_size,
     chunkOverlap: value.chunkOverlap ?? value.chunk_overlap,
     embeddingModel: value.embeddingModel ?? value.embedding_model,
+    embeddingModelConfigId:
+      value.embeddingModelConfigId ?? value.embedding_model_config_id,
   }));
 
 export class UpdateKnowledgeBaseSettingsDto extends createZodDto(

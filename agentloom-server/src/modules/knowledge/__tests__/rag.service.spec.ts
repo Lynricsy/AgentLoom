@@ -6,15 +6,19 @@ import { EvidenceEventName } from '../../evidence/evidence.events';
 import { RagService } from '../services/rag.service';
 import { EmbeddingService } from '../services/embedding.service';
 import { DocumentChunkService } from '../document-chunk.service';
-import { VECTOR_STORE, EMBEDDING_DIMENSIONS } from '../knowledge.constants';
+import {
+  VECTOR_STORE,
+  EMBEDDING_MODEL,
+} from '../knowledge.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import type { VectorStore } from '../interfaces/vector-store.interface';
+import { LlmService } from '../../llm/llm.service';
 
 const TENANT_ID = 'tenant-1';
 const ORG_ID = 'org-1';
 const DOC_ID = '00000000-0000-0000-0000-000000000001';
 const KB_ID = 'kb-1';
-const COLLECTION = `knowledge_${TENANT_ID}`;
+const COLLECTION = `knowledge_${KB_ID}`;
 
 function createMockVectorStore(): Record<keyof VectorStore, Mock> {
   return {
@@ -43,13 +47,51 @@ describe('RagService', () => {
   let vectorStore: ReturnType<typeof createMockVectorStore>;
   let embeddingService: { generateEmbeddings: Mock };
   let documentChunkService: { findByDocumentId: Mock };
+  let llmService: { findById: Mock };
   let mockDb: { select: Mock; from: Mock; where: Mock; limit: Mock };
   let eventEmitter: { emit: Mock };
+
+  function mockFallbackEmbeddingConfig(embeddingModel = EMBEDDING_MODEL) {
+    mockDb.limit
+      .mockResolvedValueOnce([{ id: ORG_ID }])
+      .mockResolvedValueOnce([
+        {
+          embeddingModel,
+          embeddingModelConfigId: null,
+        },
+      ]);
+  }
+
+  function mockBoundEmbeddingConfig() {
+    mockDb.limit
+      .mockResolvedValueOnce([{ id: ORG_ID }])
+      .mockResolvedValueOnce([
+        {
+          embeddingModel: EMBEDDING_MODEL,
+          embeddingModelConfigId: 'cfg-embedding-1',
+        },
+      ]);
+    llmService.findById.mockResolvedValue({
+      id: 'cfg-embedding-1',
+      modelType: 'embedding',
+      provider: 'private_cloud',
+      modelName: 'Qwen/Qwen3-Embedding-8B',
+      apiKeyId: 'key-1',
+      endpointUrl: 'https://api.siliconflow.cn',
+      authMethod: 'api_key',
+      embeddingDimensions: 1024,
+    });
+  }
+
+  function mockDocumentLookup(knowledgeBaseId = KB_ID) {
+    mockDb.limit.mockResolvedValueOnce([{ knowledgeBaseId }]);
+  }
 
   beforeEach(async () => {
     vectorStore = createMockVectorStore();
     embeddingService = { generateEmbeddings: vi.fn() };
     documentChunkService = { findByDocumentId: vi.fn() };
+    llmService = { findById: vi.fn() };
     eventEmitter = { emit: vi.fn() };
 
     mockDb = {
@@ -61,7 +103,6 @@ describe('RagService', () => {
     mockDb.select.mockReturnValue(mockDb);
     mockDb.from.mockReturnValue(mockDb);
     mockDb.where.mockReturnValue(mockDb);
-    mockDb.limit.mockResolvedValue([{ id: ORG_ID }]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -70,6 +111,7 @@ describe('RagService', () => {
         { provide: VECTOR_STORE, useValue: vectorStore },
         { provide: EmbeddingService, useValue: embeddingService },
         { provide: DocumentChunkService, useValue: documentChunkService },
+        { provide: LlmService, useValue: llmService },
         { provide: EventEmitter2, useValue: eventEmitter },
       ],
     }).compile();
@@ -78,8 +120,9 @@ describe('RagService', () => {
   });
 
   describe('indexDocument', () => {
-    it('should index document chunks as vectors', async () => {
+    it('should index document chunks as vectors with bound embedding model config', async () => {
       const chunks = [createMockChunk(0), createMockChunk(1)];
+      mockBoundEmbeddingConfig();
       documentChunkService.findByDocumentId.mockResolvedValue(chunks);
       embeddingService.generateEmbeddings.mockResolvedValue([
         [0.1, 0.2],
@@ -90,7 +133,7 @@ describe('RagService', () => {
 
       expect(vectorStore.createCollection).toHaveBeenCalledWith(
         COLLECTION,
-        EMBEDDING_DIMENSIONS,
+        1024,
       );
       expect(documentChunkService.findByDocumentId).toHaveBeenCalledWith(
         DOC_ID,
@@ -98,8 +141,16 @@ describe('RagService', () => {
       );
       expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
         ['Chunk content 0', 'Chunk content 1'],
-        ORG_ID,
-        TENANT_ID,
+        {
+          organizationId: ORG_ID,
+          tenantId: TENANT_ID,
+          provider: 'private_cloud',
+          modelName: 'Qwen/Qwen3-Embedding-8B',
+          apiKeyId: 'key-1',
+          endpointUrl: 'https://api.siliconflow.cn',
+          authMethod: 'api_key',
+          dimensions: 1024,
+        },
       );
       expect(vectorStore.upsert).toHaveBeenCalledWith(COLLECTION, [
         {
@@ -132,12 +183,13 @@ describe('RagService', () => {
 
       await service.indexDocument(DOC_ID, TENANT_ID);
 
-      expect(vectorStore.createCollection).toHaveBeenCalled();
+      expect(vectorStore.createCollection).not.toHaveBeenCalled();
       expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
       expect(vectorStore.upsert).not.toHaveBeenCalled();
     });
 
     it('should rollback on upsert failure', async () => {
+      mockFallbackEmbeddingConfig();
       documentChunkService.findByDocumentId.mockResolvedValue([
         createMockChunk(0),
       ]);
@@ -154,6 +206,7 @@ describe('RagService', () => {
     });
 
     it('should re-throw original error even if rollback fails', async () => {
+      mockFallbackEmbeddingConfig();
       documentChunkService.findByDocumentId.mockResolvedValue([
         createMockChunk(0),
       ]);
@@ -172,7 +225,7 @@ describe('RagService', () => {
       documentChunkService.findByDocumentId.mockResolvedValue([
         createMockChunk(0),
       ]);
-      mockDb.limit.mockResolvedValue([]);
+      mockDb.limit.mockResolvedValueOnce([]);
 
       await expect(service.indexDocument(DOC_ID, TENANT_ID)).rejects.toThrow(
         `Organization not found for tenantId: ${TENANT_ID}`,
@@ -181,10 +234,20 @@ describe('RagService', () => {
   });
 
   describe('search', () => {
+    it('should return empty array when knowledgeBaseId is missing', async () => {
+      const results = await service.search('query text', TENANT_ID);
+
+      expect(results).toEqual([]);
+      expect(vectorStore.collectionExists).not.toHaveBeenCalled();
+      expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
+    });
+
     it('should return empty array when collection does not exist', async () => {
       vectorStore.collectionExists.mockResolvedValue(false);
 
-      const results = await service.search('query text', TENANT_ID);
+      const results = await service.search('query text', TENANT_ID, {
+        knowledgeBaseId: KB_ID,
+      });
 
       expect(results).toEqual([]);
       expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
@@ -192,72 +255,7 @@ describe('RagService', () => {
 
     it('should search with query embedding', async () => {
       vectorStore.collectionExists.mockResolvedValue(true);
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
-      vectorStore.search.mockResolvedValue([
-        {
-          id: 'chunk-0',
-          score: 0.95,
-          payload: {
-            content: 'Chunk content 0',
-            location: { page: 0 },
-            documentId: DOC_ID,
-            knowledgeBaseId: KB_ID,
-            chunkIndex: 0,
-          },
-        },
-      ]);
-
-      const results = await service.search('query text', TENANT_ID);
-
-      expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
-        ['query text'],
-        ORG_ID,
-        TENANT_ID,
-      );
-      expect(vectorStore.search).toHaveBeenCalledWith({
-        collectionName: COLLECTION,
-        vector: [0.5, 0.6],
-        limit: 10,
-        scoreThreshold: undefined,
-        filter: undefined,
-      });
-      expect(results).toEqual([
-        {
-          chunkId: 'chunk-0',
-          score: 0.95,
-          content: 'Chunk content 0',
-          location: { page: 0 },
-          documentId: DOC_ID,
-          knowledgeBaseId: KB_ID,
-          chunkIndex: 0,
-        },
-      ]);
-    });
-
-    it('should apply knowledgeBaseId filter when provided', async () => {
-      vectorStore.collectionExists.mockResolvedValue(true);
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.5]]);
-      vectorStore.search.mockResolvedValue([]);
-
-      await service.search('query', TENANT_ID, {
-        knowledgeBaseId: KB_ID,
-        limit: 5,
-        scoreThreshold: 0.8,
-      });
-
-      expect(vectorStore.search).toHaveBeenCalledWith({
-        collectionName: COLLECTION,
-        vector: [0.5],
-        limit: 5,
-        scoreThreshold: 0.8,
-        filter: {
-          must: [{ key: 'knowledgeBaseId', match: { value: KB_ID } }],
-        },
-      });
-    });
-
-    it('should emit RAG evidence event when evidenceContext is provided', async () => {
-      vectorStore.collectionExists.mockResolvedValue(true);
+      mockFallbackEmbeddingConfig();
       embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
       vectorStore.search.mockResolvedValue([
         {
@@ -274,6 +272,79 @@ describe('RagService', () => {
       ]);
 
       const results = await service.search('query text', TENANT_ID, {
+        knowledgeBaseId: KB_ID,
+      });
+
+      expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
+        ['query text'],
+        {
+          organizationId: ORG_ID,
+          tenantId: TENANT_ID,
+          provider: 'openai',
+          modelName: EMBEDDING_MODEL,
+          apiKeyId: null,
+          dimensions: null,
+        },
+      );
+      expect(vectorStore.search).toHaveBeenCalledWith({
+        collectionName: COLLECTION,
+        vector: [0.5, 0.6],
+        limit: 10,
+        scoreThreshold: undefined,
+      });
+      expect(results).toEqual([
+        {
+          chunkId: 'chunk-0',
+          score: 0.95,
+          content: 'Chunk content 0',
+          location: { page: 0 },
+          documentId: DOC_ID,
+          knowledgeBaseId: KB_ID,
+          chunkIndex: 0,
+        },
+      ]);
+    });
+
+    it('should honor custom limit and score threshold for a specific knowledge base', async () => {
+      vectorStore.collectionExists.mockResolvedValue(true);
+      mockFallbackEmbeddingConfig();
+      embeddingService.generateEmbeddings.mockResolvedValue([[0.5]]);
+      vectorStore.search.mockResolvedValue([]);
+
+      await service.search('query', TENANT_ID, {
+        knowledgeBaseId: KB_ID,
+        limit: 5,
+        scoreThreshold: 0.8,
+      });
+
+      expect(vectorStore.search).toHaveBeenCalledWith({
+        collectionName: COLLECTION,
+        vector: [0.5],
+        limit: 5,
+        scoreThreshold: 0.8,
+      });
+    });
+
+    it('should emit RAG evidence event when evidenceContext is provided', async () => {
+      vectorStore.collectionExists.mockResolvedValue(true);
+      mockFallbackEmbeddingConfig();
+      embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
+      vectorStore.search.mockResolvedValue([
+        {
+          id: 'chunk-0',
+          score: 0.95,
+          payload: {
+            content: 'Chunk content 0',
+            location: { page: 0 },
+            documentId: DOC_ID,
+            knowledgeBaseId: KB_ID,
+            chunkIndex: 0,
+          },
+        },
+      ]);
+
+      const results = await service.search('query text', TENANT_ID, {
+        knowledgeBaseId: KB_ID,
         evidenceContext: {
           executionId: 'exec-1',
           stepId: 'step-1',
@@ -307,6 +378,7 @@ describe('RagService', () => {
 
   describe('deleteByDocument', () => {
     it('should skip when collection does not exist', async () => {
+      mockDocumentLookup();
       vectorStore.collectionExists.mockResolvedValue(false);
 
       await service.deleteByDocument(DOC_ID, TENANT_ID);
@@ -315,6 +387,7 @@ describe('RagService', () => {
     });
 
     it('should delete vectors by documentId filter', async () => {
+      mockDocumentLookup();
       vectorStore.collectionExists.mockResolvedValue(true);
 
       await service.deleteByDocument(DOC_ID, TENANT_ID);
@@ -327,7 +400,7 @@ describe('RagService', () => {
 
   describe('deleteCollection', () => {
     it('should delegate to vectorStore.deleteCollection', async () => {
-      await service.deleteCollection(TENANT_ID);
+      await service.deleteKnowledgeBaseCollection(KB_ID);
 
       expect(vectorStore.deleteCollection).toHaveBeenCalledWith(COLLECTION);
     });

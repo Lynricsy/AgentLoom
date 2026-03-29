@@ -9,6 +9,8 @@ import {
   documents,
 } from '../../database/schema/knowledge-bases.schema';
 import { documentChunks } from '../../database/schema/document-chunks.schema';
+import { LlmService } from '../llm/llm.service';
+import { EMBEDDING_MODEL } from './knowledge.constants';
 import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
 import { KnowledgeBaseNotFoundException } from './knowledge.exceptions';
 
@@ -40,13 +42,21 @@ const EMPTY_COUNTERS: KnowledgeBaseStatusCounters = {
 
 @Injectable()
 export class KnowledgeBaseService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly llmService: LlmService,
+  ) {}
 
   async create(
     dto: CreateKnowledgeBaseDto,
     tenantId: string,
     userId: string,
   ): Promise<KnowledgeBaseSummary> {
+    const embeddingSelection = await this.resolveEmbeddingSelection(
+      tenantId,
+      dto.embeddingModelConfigId,
+      dto.embeddingModel,
+    );
     const db = getTenantDb(this.db);
     const [knowledgeBase] = await db
       .insert(knowledgeBases)
@@ -57,7 +67,8 @@ export class KnowledgeBaseService {
         visibility: dto.visibility,
         chunkSize: dto.chunkSize,
         chunkOverlap: dto.chunkOverlap,
-        embeddingModel: dto.embeddingModel,
+        embeddingModel: embeddingSelection.modelName,
+        embeddingModelConfigId: embeddingSelection.modelConfigId,
         createdBy: userId,
       })
       .returning();
@@ -155,15 +166,25 @@ export class KnowledgeBaseService {
     tenantId: string,
     dto: UpdateKnowledgeBaseSettingsDto,
   ): Promise<KnowledgeBaseSummary> {
-    await this.findByIdOrThrow(id, tenantId);
+    const existing = await this.findByIdOrThrow(id, tenantId);
 
     const db = getTenantDb(this.db);
     const updateData: Record<string, unknown> = {};
     if (dto.chunkSize !== undefined) updateData.chunkSize = dto.chunkSize;
     if (dto.chunkOverlap !== undefined)
       updateData.chunkOverlap = dto.chunkOverlap;
-    if (dto.embeddingModel !== undefined)
-      updateData.embeddingModel = dto.embeddingModel;
+    if (
+      dto.embeddingModel !== undefined ||
+      dto.embeddingModelConfigId !== undefined
+    ) {
+      const embeddingSelection = await this.resolveEmbeddingSelection(
+        tenantId,
+        dto.embeddingModelConfigId,
+        dto.embeddingModel ?? existing.embeddingModel,
+      );
+      updateData.embeddingModel = embeddingSelection.modelName;
+      updateData.embeddingModelConfigId = embeddingSelection.modelConfigId;
+    }
 
     if (Object.keys(updateData).length > 0) {
       await db
@@ -277,5 +298,38 @@ export class KnowledgeBaseService {
     }
 
     return 'failed';
+  }
+
+  private async resolveEmbeddingSelection(
+    tenantId: string,
+    requestedModelConfigId: string | null | undefined,
+    requestedModelName?: string,
+  ): Promise<{ modelName: string; modelConfigId: string | null }> {
+    if (requestedModelConfigId) {
+      const config = await this.llmService.findById(requestedModelConfigId, tenantId);
+      if (config.modelType !== 'embedding') {
+        throw new Error('知识库只能绑定 Embedding 模型配置');
+      }
+      return {
+        modelName: config.modelName,
+        modelConfigId: config.id,
+      };
+    }
+
+    const defaultEmbeddingModel = await this.llmService.findDefaultByType(
+      tenantId,
+      'embedding',
+    );
+    if (defaultEmbeddingModel) {
+      return {
+        modelName: defaultEmbeddingModel.modelName,
+        modelConfigId: defaultEmbeddingModel.id,
+      };
+    }
+
+    return {
+      modelName: requestedModelName ?? EMBEDDING_MODEL,
+      modelConfigId: null,
+    };
   }
 }

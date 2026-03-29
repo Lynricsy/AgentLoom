@@ -23,6 +23,7 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     chunkSize: 512,
     chunkOverlap: 64,
     embeddingModel: 'text-embedding-3-small',
+    embeddingModelConfigId: null,
     documentCount: 12,
     chunkCount: 80,
     status: 'ready',
