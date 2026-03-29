@@ -38,6 +38,41 @@
 - 截图：[evidence-workspace-created.png](/root/AgentLoom/evidence-workspace-created.png)
 - 截图：[evidence-sandbox-created-ready.png](/root/AgentLoom/evidence-sandbox-created-ready.png)
 
+## 已确定设计决策
+
+以下内容已由产品方向明确，不再作为开放设计问题：
+
+### D-01 Conversation 需要可继续，但 Sandbox / Workspace 不要求恢复到该对话当时的时间点
+
+- Conversation 是一等持久对象，必须可继续。
+- Sandbox 与 Workspace 各自按各自机制恢复，不要求随 conversation 一起回溯到“该轮对话发生时”的运行态。
+- 也就是说，需要恢复的是“对话历史与继续对话能力”，不是“完整会话现场快照”。
+
+### D-02 Flutter 端需要 Agent 历史对话列表，Studio 端不要求
+
+- Flutter 端需要提供 Agent 的历史对话列表。
+- 列表中的每个 conversation 都必须支持继续。
+- Studio 端当前不要求提供同等的历史对话入口。
+
+### D-03 继续对话时的 Sandbox 恢复策略
+
+- 如果该 Agent Conversation 使用的是临时 Sandbox：
+- 继续对话时直接新建一个 Sandbox。
+- 在新的 Sandbox 里继续已有 conversation。
+
+- 如果该 Agent Conversation 使用的是持久 Sandbox：
+- 继续对话时先启动该持久 Sandbox。
+- 然后在该 Sandbox 中继续已有 conversation。
+
+### D-04 设计约束结论
+
+- 不需要为 sandbox path 设计“按 conversation 时间点精确恢复 shell/PTY/工具中间态”的能力。
+- 需要保证的是：
+- conversation 历史可加载
+- 继续发送消息时，agent 能拿到已有对话上下文
+- runtime 能根据 sandbox 生命周期策略重新挂接到合适的 sandbox / workspace
+- 因此，conversation durability 与 sandbox durability 必须解耦建模
+
 ## 缺陷列表
 
 ### AO-01 Workspace 选择器请求 422
@@ -191,7 +226,7 @@
 
 ### AO-06 Sandbox 多轮会话恢复与空回合持久化设计不匹配
 
-- 状态：`Needs Fix Design`
+- 状态：`Ready to Fix`
 - 严重度：严重
 - 复现步骤：
 - 在同一 conversation 里发送第二条消息
@@ -213,14 +248,24 @@
 - 但 sandbox path 没有实现 durable session persistence
 - 一旦 runtime 返回“空回合”，当前持久化逻辑会直接吞掉这轮 assistant 结果
 - 修复方向：
-- 明确 sandbox conversation 的 session durability 方案
-- 方案 A：为 SandboxAgentAdapter 引入 durable session snapshot / replay
-- 方案 B：显式声明 sandbox conversation 每轮都是新 session，并在 prompt 构造时补全历史
-- 无论哪种方案，都要修复 `persistConversationTurn()` 对空回合的静默吞掉行为
+- 已定方案：Conversation 可继续，但 Sandbox / Workspace 不按 conversation 时间点恢复
+- 对临时 sandbox conversation：
+- 继续对话时新建 sandbox
+- 使用 conversation 历史重建 prompt 上下文
+- 对持久 sandbox conversation：
+- 继续对话时先启动持久 sandbox，再绑定已有 conversation 历史继续
+- 不要求恢复旧 PTY / shell / tool 中间态
+- 因此修复应转向：
+- 去掉 sandbox path 对 durable runtime session restore 的强依赖
+- 把 conversation history 作为继续对话的权威来源
+- 修复 `persistConversationTurn()` 对空回合的静默吞掉行为
+- 明确 metadata 中 `sessionId` 仅表示最近一次运行态会话，而不是 durable conversation identity
 - 验收标准：
 - 第二轮消息后，消息列表一定新增 assistant 或系统占位消息
-- session 恢复语义在代码和实际运行态一致
+- conversation 可继续，但允许 runtime session 在不同轮次变化
 - 刷新页面后历史消息不丢失
+- 临时 sandbox conversation 继续时会创建新 sandbox
+- 持久 sandbox conversation 继续时会启动并复用对应持久 sandbox
 
 ### AO-07 对话执行错误写入 workflow-only 审计/执行记录表
 
@@ -285,6 +330,7 @@
 5. AO-06 多轮 sandbox session 恢复语义与空回合持久化
 6. AO-07 conversation 执行的审计/summary 建模修正
 7. AO-01 workspace 分页合同修复
+8. Flutter 端补 Agent 历史对话列表与 continue 入口
 
 ## 回归建议
 
