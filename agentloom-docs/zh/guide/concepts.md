@@ -84,67 +84,81 @@ flowchart LR
 
 ## 节点类型
 
-AgentLoom 提供 **17 种节点类型**，按功能归为 **7 大类别**：
+AgentLoom 提供 **23 种节点类型**，按功能归为 **8 大类别**：
 
 ```mermaid
 flowchart TB
-    subgraph AI["AI 智能体"]
-        LLMAgent["llm-agent<br/>LLM 对话代理"]
-        Agent["agent<br/>独立 Agent 节点"]
+    subgraph AgentCat["Agent"]
+        ChatAgent["chat-agent<br/>LLM 对话代理"]
+        LLMModel["llm-model<br/>模型配置"]
+        SmartRouting2["smart-routing<br/>智能路由"]
+        AgentNode["agent<br/>独立 Agent 节点"]
+        SkillNode["skill<br/>Skill 注入"]
     end
 
-    subgraph DataFlow["数据流"]
-        Input["input<br/>工作流入口"]
-        Output["output<br/>工作流出口"]
-        Transform["transform<br/>数据转换"]
-        Merge["merge<br/>数据合并"]
-    end
-
-    subgraph Tools["工具集成"]
+    subgraph ToolCat["Tool"]
+        HTTPTool["http-tool<br/>HTTP 请求"]
+        CodeTool["code-tool<br/>代码执行"]
         MCPTool["mcp-tool<br/>MCP 工具调用"]
-        APICall["api-call<br/>HTTP 请求"]
+        SandboxNode["sandbox<br/>沙箱执行"]
+        InputPreprocessor["input-preprocessor<br/>输入预处理"]
+        WorkspaceNode["workspace<br/>工作区存储卷"]
     end
 
-    subgraph Knowledge["知识与检索"]
-        KnowledgeRetrieval["knowledge-retrieval<br/>知识库检索"]
+    subgraph TriggerCat["Trigger"]
+        ManualTrigger["manual-trigger<br/>手动触发"]
+        ScheduleTrigger["schedule-trigger<br/>定时触发"]
+        WebhookTrigger["webhook-trigger<br/>Webhook 触发"]
+        ApiEventTrigger["api-event-trigger<br/>API 事件触发"]
     end
 
-    subgraph Logic["逻辑控制"]
+    subgraph KnowledgeCat["Knowledge"]
+        KnowledgeBase["knowledge-base<br/>知识库检索"]
+    end
+
+    subgraph OutputCat["Output"]
+        TextOutput["text-output<br/>文本输出"]
+        JsonOutput["json-output<br/>JSON 输出"]
+    end
+
+    subgraph ControlCat["Control"]
         Condition["condition<br/>条件分支"]
         Loop["loop<br/>循环"]
-        Parallel["parallel<br/>并行执行"]
-    end
-
-    subgraph Routing["智能路由"]
-        SmartRouting["smart-routing<br/>模型选择"]
-    end
-
-    subgraph Ecosystem["生态扩展"]
-        Plugin["plugin<br/>WASM 插件"]
-        Sandbox["sandbox<br/>沙箱执行"]
         ReusableBlock["reusable-block<br/>可复用模块"]
-        Skill["skill<br/>Skill 注入"]
+    end
+
+    subgraph PluginCat["Plugin"]
+        Plugin["plugin<br/>WASM 插件"]
+    end
+
+    subgraph MemoryCat["Memory"]
+        Memory["memory<br/>Agent 记忆"]
     end
 ```
 
 ### 关键节点说明
 
-| 节点              | 说明                                                                      |
-| ----------------- | ------------------------------------------------------------------------- |
-| **llm-agent**     | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环                     |
-| **smart-routing** | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
-| **mcp-tool**      | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
-| **condition**     | 基于条件表达式分支，支持多条件分支                                        |
-| **plugin**        | 在 WASM 沙箱中执行第三方插件                                              |
-| **sandbox**       | ACP 沙箱环境，提供文件读写和终端操作能力                                  |
+| 节点                   | 说明                                                                      |
+| ---------------------- | ------------------------------------------------------------------------- |
+| **chat-agent**         | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环                     |
+| **smart-routing**      | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
+| **agent**              | 独立 Agent 节点，通过 `WorkflowAgentAdapter` 桥接 Agent 体系              |
+| **mcp-tool**           | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
+| **workspace**          | 工作区存储卷，提供 `volume` 端口输出供沙箱和 Agent 挂载                   |
+| **webhook-trigger**    | 外部系统通过 HTTP 回调触发工作流，含签名验证                              |
+| **api-event-trigger**  | 通过 Open API 接收外部事件触发工作流                                      |
+| **condition**          | 基于条件表达式分支，支持多条件分支                                        |
+| **plugin**             | 在 WASM 沙箱中执行第三方插件                                              |
+| **sandbox**            | ACP 沙箱环境，提供文件读写和终端操作能力                                  |
+| **memory**             | Agent 记忆节点，接入图拓扑记忆存储与检索                                  |
 
 ## 端口与数据类型
 
 每个节点通过**端口**（Port）与其他节点交换数据。端口分为输入端口和输出端口，每个端口携带一个**数据类型**标签。
 
-### 九种规范数据类型
+### 十种规范数据类型
 
-AgentLoom 定义了 **9 种规范端口数据类型**，在 Type Engine（Rust）、Studio（React）和 Server（NestJS）三端统一使用：
+AgentLoom 定义了 **10 种规范端口数据类型**，在 Type Engine（Rust）、Server（NestJS）和 Plugin SDK 三端统一使用：
 
 ```mermaid
 flowchart LR
@@ -158,20 +172,26 @@ flowchart LR
         sandbox["sandbox<br/>沙箱会话"]
         knowledge["knowledge<br/>知识库引用"]
         skill["skill<br/>Skill 注入"]
+        agent["agent<br/>Agent 引用"]
     end
 ```
 
 | 类型        | 描述                                  | 典型场景                        |
 | ----------- | ------------------------------------- | ------------------------------- |
-| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → llm-agent       |
-| `text`      | 纯文本内容                            | input → llm-agent → output      |
-| `json`      | 结构化 JSON 数据                      | transform → api-call → merge    |
+| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → chat-agent      |
+| `text`      | 纯文本内容                            | input → chat-agent → output     |
+| `json`      | 结构化 JSON 数据                      | code-tool → http-tool           |
 | `image`     | 图像数据（URL 或 Base64）             | 多模态 Agent 输入               |
 | `audio`     | 音频数据                              | 语音场景                        |
-| `tool`      | MCP 工具定义                          | mcp-tool → llm-agent            |
-| `sandbox`   | 沙箱会话引用                          | sandbox → llm-agent             |
-| `knowledge` | 知识库引用或检索结果                  | knowledge-retrieval → llm-agent |
-| `skill`     | Skill 行为指导注入                    | skill → llm-agent               |
+| `tool`      | MCP 工具定义                          | mcp-tool → chat-agent           |
+| `sandbox`   | 沙箱会话引用                          | sandbox → chat-agent            |
+| `knowledge` | 知识库引用或检索结果                  | knowledge-base → chat-agent     |
+| `skill`     | Skill 行为指导注入                    | skill → chat-agent              |
+| `agent`     | Agent 定义引用                        | agent → chat-agent（子代理桥接）|
+
+::: info Studio 扩展类型
+Studio 前端额外扩展了 `exec`（执行控制流）和 `volume`（工作区存储卷）两种 UI-only 类型，用于画布内的视觉连线，不参与 Type Engine 的兼容性检查。
+:::
 
 ### 类型兼容性
 
@@ -205,7 +225,7 @@ Studio 的 `mcpToolMapping` 兼容 legacy `number` / `boolean` 类型，自动�
 
 ## Agent 运行时
 
-AgentLoom 中的 `llm-agent` 节点采用**六角架构**（Hexagonal Architecture / Ports & Adapters）设计，将核心决策循环与外部依赖解耦：
+AgentLoom 中的 `chat-agent` 节点采用**六角架构**（Hexagonal Architecture / Ports & Adapters）设计，将核心决策循环与外部依赖解耦：
 
 ```mermaid
 flowchart TB
@@ -294,10 +314,10 @@ sequenceDiagram
 | **手动执行**  | Studio 画布中点击 Run 按钮             | 完整支持     |
 | **Cron 定时** | 基于 Cron 表达式的周期触发             | 完整支持     |
 | **Webhook**   | 外部系统通过 HTTP 回调触发，含签名验证 | 完整支持     |
-| **API 事件**  | 通过 Open API 编程触发                 | 预览（只读） |
+| **API 事件**  | 通过 Open API 编程触发                 | 完整支持     |
 
-::: warning API Event 限制
-`api_event` 类型触发器目前为预览状态，仅可通过 API 查看，不支持在 Studio 中创建或编辑。
+::: tip 事件适配器
+`api_event` 触发器通过 `EventSourceAdapterRegistry` 分发外部事件，内置 `GithubWebhookAdapter`（HMAC-SHA256 验签）和 `GenericEventAdapter`（通用透传）。
 :::
 
 ## 智能路由

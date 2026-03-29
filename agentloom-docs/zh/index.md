@@ -19,7 +19,7 @@ features:
     details: 将多个 AI Agent 编排为协作工作流，支持 DAG 调度引擎、状态机驱动执行、断点续跑与人工介入
   - icon: 🎨
     title: 可视化画布
-    details: 基于 React Flow 的拖拽式编辑器，16 种节点类型，实时端口类型兼容性检查（Rust WASM 驱动）
+    details: 基于 React Flow 的拖拽式编辑器，23 种节点类型，实时端口类型兼容性检查（Rust WASM 驱动）
   - icon: 🔌
     title: 插件生态系统
     details: 完整的 SDK + CLI + 市场，RSA-PSS 签名验证的 .alp 插件包，Extism WASM 沙箱隔离执行
