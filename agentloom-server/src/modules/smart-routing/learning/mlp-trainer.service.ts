@@ -12,7 +12,6 @@ import { routerModels } from '../../../database/schema/router-models.schema';
 import { matmul, relu } from '../strategies/ml/ml-math.utils';
 import {
   DEFAULT_ROUTING_LEARNING_CONFIG,
-  ROUTING_LEARNING_CONFIG_TOKEN,
   type RoutingLearningConfig,
   type RoutingMlpTrainingResult,
   type RoutingMlpTrainingSample,

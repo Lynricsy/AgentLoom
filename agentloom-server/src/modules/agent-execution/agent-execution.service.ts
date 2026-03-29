@@ -9,7 +9,7 @@ import {
   runInTenantTransaction,
 } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import type { DrizzleDB } from '../../database/database.module';
 import { agentConversations } from '../../database/schema/agent-conversations.schema';
 import { AgentConversationService } from '../agent-conversation/agent-conversation.service';
 import type { SendMessageDto } from '../agent-conversation/dto/send-message.dto';

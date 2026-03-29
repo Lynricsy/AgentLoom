@@ -19,13 +19,6 @@ function createSelectChain(result: unknown) {
   return { from, where };
 }
 
-function createSelectChainWithSingleJoin(result: unknown) {
-  const where = vi.fn().mockResolvedValue(result);
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const from = vi.fn().mockReturnValue({ leftJoin });
-  return { from, leftJoin, where };
-}
-
 function createSelectChainWithPaginatedJoin(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });

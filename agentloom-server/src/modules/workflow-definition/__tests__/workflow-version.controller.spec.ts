@@ -34,7 +34,9 @@ const MOCK_INPUT_SCHEMA = {
 };
 
 function getRoles(controller: object, method: string): string[] | undefined {
-  const handler = (controller as Record<string, unknown>)[method] as Function;
+  const handler = (controller as Record<string, unknown>)[method] as
+    | ((...args: never[]) => unknown)
+    | undefined;
   return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
 }
 

@@ -21,16 +21,6 @@ function createSelectChainWithLimit(result: unknown[]) {
   };
 }
 
-function createSelectChainWithOrderBy(result: unknown[]) {
-  return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockResolvedValue(result),
-      }),
-    }),
-  };
-}
-
 function createInsertChainReturning(result: unknown[]) {
   return {
     values: vi.fn().mockReturnValue({
@@ -323,7 +313,6 @@ describe('WorkspaceService', () => {
     });
 
     it('快照状态非 ready 时应当抛出 NotFoundException', async () => {
-      const snapshot = buildSnapshot({ status: 'creating' });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
 
       await expect(

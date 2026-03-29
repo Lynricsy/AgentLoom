@@ -117,8 +117,9 @@ const mockTxExecute = vi.fn().mockResolvedValue(undefined);
       provide: DRIZZLE,
       useValue: {
         execute: vi.fn().mockResolvedValue(undefined),
-        transaction: vi.fn(async (cb: Function) =>
-          cb({ execute: mockTxExecute }),
+        transaction: vi.fn(
+          async (cb: (tx: { execute: typeof mockTxExecute }) => unknown) =>
+            cb({ execute: mockTxExecute }),
         ),
       },
     },

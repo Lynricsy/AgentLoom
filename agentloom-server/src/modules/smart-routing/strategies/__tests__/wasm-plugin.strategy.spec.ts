@@ -181,7 +181,7 @@ describe('WasmPluginRouter', () => {
       await router.routeSingle(candidates, context);
 
       expect(executeMock).toHaveBeenCalledTimes(1);
-      const [wasmBuf, fnName, inputArg, sandboxConfig, pId] =
+      const [wasmBuf, fnName, inputArg, _sandboxConfig, pId] =
         executeMock.mock.calls[0];
       expect(wasmBuf).toBe(wasmBuffer);
       expect(fnName).toBe('route');

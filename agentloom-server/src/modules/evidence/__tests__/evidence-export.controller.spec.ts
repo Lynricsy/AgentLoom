@@ -2,10 +2,7 @@ import 'reflect-metadata';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  CreateEvidenceExportJobSchema,
-  type CreateEvidenceExportJobDto,
-} from '../dto/evidence-export.dto';
+import { CreateEvidenceExportJobSchema } from '../dto/evidence-export.dto';
 import { EvidenceExportController } from '../evidence-export.controller';
 
 const TENANT_ID = '00000000-0000-4000-8000-000000000001';

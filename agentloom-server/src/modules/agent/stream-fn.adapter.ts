@@ -283,7 +283,7 @@ export function createVercelStreamFn(model: LanguageModel, toolSet?: ToolSet) {
 
     const idToContentIndex = new Map<string, number>();
 
-    (async () => {
+    void (async () => {
       try {
         const streamTextInput: Record<string, unknown> = {
           model: invocation.model,

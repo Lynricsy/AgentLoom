@@ -33,22 +33,21 @@ export interface AgentDefinitionDetailResponseDto extends AgentDefinitionRespons
   sandboxLifecycle: 'session' | 'persistent' | null;
 }
 
-const LIST_FIELDS = [
-  'id',
-  'tenantId',
-  'name',
-  'slug',
-  'description',
-  'status',
-  'version',
-  'publishedVersionId',
-  'createdBy',
-  'updatedBy',
-  'createdAt',
-  'updatedAt',
-] as const;
+type ListField =
+  | 'id'
+  | 'tenantId'
+  | 'name'
+  | 'slug'
+  | 'description'
+  | 'status'
+  | 'version'
+  | 'publishedVersionId'
+  | 'createdBy'
+  | 'updatedBy'
+  | 'createdAt'
+  | 'updatedAt';
 
-type ListRow = Pick<AgentDefinition, (typeof LIST_FIELDS)[number]>;
+type ListRow = Pick<AgentDefinition, ListField>;
 
 type DetailRow = ListRow &
   Pick<

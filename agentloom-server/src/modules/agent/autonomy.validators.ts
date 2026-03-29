@@ -1,8 +1,3 @@
-import type {
-  AutonomyConfig,
-  AutonomyResolutionResult,
-  InferenceAnnotation,
-} from './dto/autonomy.dto';
 import {
   CANONICAL_AUTONOMY_MODE_ORDER,
   isCanonicalAutonomyMode,

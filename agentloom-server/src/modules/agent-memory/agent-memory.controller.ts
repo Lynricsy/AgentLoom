@@ -919,14 +919,6 @@ export class AgentMemoryController {
     const offset = (page - 1) * pageSize;
 
     // 查询版本变更记录作为审计条目
-    const predicate = eq(
-      memoryVersions.nodeId,
-      sql`ANY(
-      SELECT ${memoryNodes.id} FROM ${memoryNodes}
-      WHERE ${memoryNodes.instanceId} = ${id}
-    )`,
-    );
-
     const conditions = [
       sql`${memoryVersions.nodeId} IN (
         SELECT ${memoryNodes.id} FROM ${memoryNodes}

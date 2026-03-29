@@ -36,7 +36,6 @@ vi.mock('../../../../common/providers/tenant-aware-db.provider', () => ({
 
 import type { DrizzleDB } from '../../../../database/database.module';
 import {
-  agentMemoryInstances,
   getTenantId,
   memoryNodes,
   type MemoryInstance,

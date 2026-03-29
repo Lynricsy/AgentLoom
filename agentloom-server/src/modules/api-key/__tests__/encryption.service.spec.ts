@@ -8,7 +8,6 @@ const VALID_KEK = crypto.randomBytes(32).toString('base64');
 
 describe('EncryptionService', () => {
   let service: EncryptionService;
-  let configService: ConfigService;
 
   const createModule = async (masterKey?: string): Promise<TestingModule> => {
     return Test.createTestingModule({
@@ -28,7 +27,6 @@ describe('EncryptionService', () => {
     vi.clearAllMocks();
     const module = await createModule(VALID_KEK);
     service = module.get<EncryptionService>(EncryptionService);
-    configService = module.get<ConfigService>(ConfigService);
     service.onModuleInit();
   });
 

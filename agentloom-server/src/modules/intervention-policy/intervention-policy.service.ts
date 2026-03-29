@@ -3,14 +3,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import {
-  CreateInterventionPolicySchema,
-  type CreateInterventionPolicyDto,
-} from './dto/create-intervention-policy.dto';
-import {
-  UpdateInterventionPolicySchema,
-  type UpdateInterventionPolicyDto,
-} from './dto/update-intervention-policy.dto';
+import { CreateInterventionPolicySchema } from './dto/create-intervention-policy.dto';
+import { UpdateInterventionPolicySchema } from './dto/update-intervention-policy.dto';
 import type {
   InterventionPolicyResponseDto,
   ResolvedPolicyResponseDto,

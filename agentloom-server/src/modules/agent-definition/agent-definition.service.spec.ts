@@ -8,72 +8,69 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 
-const { mockTenantDb, mockDbExecute, mockTransactionStorage } = vi.hoisted(
-  () => {
-    const selectResult: unknown[] = [];
-    const insertResult: unknown[] = [];
-    const updateResult: unknown[] = [];
+const { mockTenantDb, mockTransactionStorage } = vi.hoisted(() => {
+  const selectResult: unknown[] = [];
+  const insertResult: unknown[] = [];
+  const updateResult: unknown[] = [];
 
-    const createChain = (resultRef: { current: unknown[] }) => {
-      const chain: Record<string, any> = {};
-      chain.from = vi.fn().mockReturnValue(chain);
-      chain.where = vi.fn().mockReturnValue(chain);
-      chain.orderBy = vi.fn().mockReturnValue(chain);
-      chain.limit = vi.fn().mockReturnValue(chain);
-      chain.offset = vi.fn().mockImplementation(() => {
-        return resultRef.current;
-      });
-      return chain;
-    };
-
-    const selectChain = createChain({
-      get current() {
-        return selectResult;
-      },
+  const createChain = (resultRef: { current: unknown[] }) => {
+    const chain: Record<string, any> = {};
+    chain.from = vi.fn().mockReturnValue(chain);
+    chain.where = vi.fn().mockReturnValue(chain);
+    chain.orderBy = vi.fn().mockReturnValue(chain);
+    chain.limit = vi.fn().mockReturnValue(chain);
+    chain.offset = vi.fn().mockImplementation(() => {
+      return resultRef.current;
     });
-    // Make select chain resolve as a promise when accessed directly (no offset)
-    selectChain.limit = vi.fn().mockReturnValue(selectResult);
-    selectChain.where = vi.fn().mockReturnValue({
+    return chain;
+  };
+
+  const selectChain = createChain({
+    get current() {
+      return selectResult;
+    },
+  });
+  // Make select chain resolve as a promise when accessed directly (no offset)
+  selectChain.limit = vi.fn().mockReturnValue(selectResult);
+  selectChain.where = vi.fn().mockReturnValue({
+    ...selectChain,
+    orderBy: vi.fn().mockReturnValue({
       ...selectChain,
-      orderBy: vi.fn().mockReturnValue({
+      limit: vi.fn().mockReturnValue({
         ...selectChain,
-        limit: vi.fn().mockReturnValue({
-          ...selectChain,
-          offset: vi.fn().mockResolvedValue(selectResult),
-        }),
+        offset: vi.fn().mockResolvedValue(selectResult),
       }),
-      limit: vi.fn().mockResolvedValue(selectResult),
-    });
+    }),
+    limit: vi.fn().mockResolvedValue(selectResult),
+  });
 
-    const insertChain: Record<string, any> = {};
-    insertChain.values = vi.fn().mockReturnValue(insertChain);
-    insertChain.returning = vi.fn().mockImplementation(() => insertResult);
+  const insertChain: Record<string, any> = {};
+  insertChain.values = vi.fn().mockReturnValue(insertChain);
+  insertChain.returning = vi.fn().mockImplementation(() => insertResult);
 
-    const updateChain: Record<string, any> = {};
-    updateChain.set = vi.fn().mockReturnValue(updateChain);
-    updateChain.where = vi.fn().mockReturnValue(updateChain);
-    updateChain.returning = vi.fn().mockImplementation(() => updateResult);
+  const updateChain: Record<string, any> = {};
+  updateChain.set = vi.fn().mockReturnValue(updateChain);
+  updateChain.where = vi.fn().mockReturnValue(updateChain);
+  updateChain.returning = vi.fn().mockImplementation(() => updateResult);
 
-    const mockTenantDb = {
-      select: vi.fn().mockReturnValue(selectChain),
-      insert: vi.fn().mockReturnValue(insertChain),
-      update: vi.fn().mockReturnValue(updateChain),
-      execute: vi.fn(),
-      transaction: vi.fn(),
-      _selectResult: selectResult,
-      _insertResult: insertResult,
-      _updateResult: updateResult,
-    };
+  const mockTenantDb = {
+    select: vi.fn().mockReturnValue(selectChain),
+    insert: vi.fn().mockReturnValue(insertChain),
+    update: vi.fn().mockReturnValue(updateChain),
+    execute: vi.fn(),
+    transaction: vi.fn(),
+    _selectResult: selectResult,
+    _insertResult: insertResult,
+    _updateResult: updateResult,
+  };
 
-    return {
-      mockTenantDb,
-      mockDbExecute: vi.fn(),
-      mockTransactionStorage: {
-        getStore: vi.fn(),
-      },
-    };
-  },
-);
+  return {
+    mockTenantDb,
+    mockTransactionStorage: {
+      getStore: vi.fn(),
+    },
+  };
+});
 
 vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn(() => mockTenantDb),
@@ -242,21 +239,6 @@ describe('AgentDefinitionService', () => {
       chain.from = vi.fn().mockReturnValue(chain);
       chain.where = vi.fn().mockReturnValue(chain);
       chain.limit = vi.fn().mockResolvedValue(result);
-      return chain;
-    };
-
-    const makeTxInsertChain = (result: unknown[]) => {
-      const chain: Record<string, any> = {};
-      chain.values = vi.fn().mockReturnValue(chain);
-      chain.returning = vi.fn().mockResolvedValue(result);
-      return chain;
-    };
-
-    const makeTxUpdateChain = (result: unknown[]) => {
-      const chain: Record<string, any> = {};
-      chain.set = vi.fn().mockReturnValue(chain);
-      chain.where = vi.fn().mockReturnValue(chain);
-      chain.returning = vi.fn().mockResolvedValue(result);
       return chain;
     };
 

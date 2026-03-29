@@ -2,7 +2,6 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 
 import { WorkspaceIntegrationService } from '../workspace-integration.service';
-import type { FileChangeEvent } from '../workspace-integration.service';
 
 const {
   mockDockerService,

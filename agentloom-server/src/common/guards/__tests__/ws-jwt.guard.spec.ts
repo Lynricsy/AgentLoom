@@ -15,7 +15,7 @@ vi.mock('jsonwebtoken', async (importOriginal) => {
   const mod = await importOriginal<Record<string, unknown>>();
   const actual = (mod.default ?? mod) as Record<string, unknown>;
   mockVerify.mockImplementation((...args: unknown[]) =>
-    (actual.verify as Function)(...args),
+    (actual.verify as (...verifyArgs: unknown[]) => unknown)(...args),
   );
   return { ...actual, default: actual, verify: mockVerify };
 });

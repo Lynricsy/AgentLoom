@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentConversationService } from '../../agent-conversation/agent-conversation.service';
 import {
   AgentExecutionService,
   AGENT_CONVERSATION_EXECUTION_JOB,
-  AGENT_CONVERSATION_EXECUTION_QUEUE,
 } from '../agent-execution.service';
 
 const { mockQueue, mockConversationService } = vi.hoisted(() => ({

@@ -12,9 +12,9 @@ function getRoles(
   controller: object,
   methodName: string,
 ): string[] | undefined {
-  const handler = (controller as Record<string, unknown>)[
-    methodName
-  ] as Function;
+  const handler = (controller as Record<string, unknown>)[methodName] as
+    | ((...args: never[]) => unknown)
+    | undefined;
   return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
 }
 

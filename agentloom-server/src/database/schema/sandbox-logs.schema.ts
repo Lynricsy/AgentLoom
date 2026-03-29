@@ -19,7 +19,7 @@ export const sandboxLogs = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [
+  () => [
     ...createJoinTenantPolicies(
       'sandbox_logs',
       'session_id',

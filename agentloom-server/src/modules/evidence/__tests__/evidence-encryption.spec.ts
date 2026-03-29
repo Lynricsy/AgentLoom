@@ -198,10 +198,6 @@ function createEncryptedPayload(
   };
 }
 
-function computeCiphertextHash(ciphertext: string): string {
-  return createHash('sha256').update(ciphertext).digest('hex');
-}
-
 function normalizeForHash(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeForHash(item));

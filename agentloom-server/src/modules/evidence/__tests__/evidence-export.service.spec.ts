@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import {
   StorageKeyInvalidException,
   StorageObjectNotFoundException,

@@ -179,11 +179,8 @@ export class TextChunkerService {
     };
 
     for (const sentence of sentences) {
-      const sentenceText = section.text.slice(sentence.start, sentence.end);
       const sentenceStart = sentence.start;
       const sentenceEnd = sentence.end;
-      const sentenceTokens = encode(sentenceText).length;
-
       if (
         currentStartLocal !== null &&
         currentEndLocal !== null &&

@@ -1,6 +1,6 @@
 import { Module, type Provider } from '@nestjs/common';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -19,8 +19,6 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
-import { ThrottleService } from '../execution/services/throttle.service';
-import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { AgentMemoryModule } from '../agent-memory/agent-memory.module';

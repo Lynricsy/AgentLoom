@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type {
-  AgentEvent,
   StopReason,
   ToolCallAgentEvent,
 } from '../../agent/types/agent-event.types';

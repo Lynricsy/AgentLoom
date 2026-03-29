@@ -72,24 +72,14 @@ vi.mock('jsonwebtoken', async (importOriginal) => {
   const mod = await importOriginal<Record<string, unknown>>();
   const actual = (mod.default ?? mod) as Record<string, unknown>;
   mockVerify.mockImplementation((...args: unknown[]) =>
-    (actual.verify as Function)(...args),
+    (actual.verify as (...verifyArgs: unknown[]) => unknown)(...args),
   );
   return { ...actual, default: actual, verify: mockVerify };
 });
 
-import * as jwt from 'jsonwebtoken';
 import { MemoryGateway } from '../../memory.gateway';
 import { TokenBlacklistService } from '../../../../common/services/token-blacklist.service';
 import { UserIdentityResolverService } from '../../../../common/services/user-identity-resolver.service';
-
-const JWT_SECRET = 'test-jwt-secret';
-
-function createToken(payload: Record<string, unknown>): string {
-  return jwt.sign({ aud: 'authenticated', ...payload }, JWT_SECRET, {
-    algorithm: 'HS256',
-    expiresIn: '1h',
-  });
-}
 
 describe('MemoryGateway', () => {
   let gateway: MemoryGateway;

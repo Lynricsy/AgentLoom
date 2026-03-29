@@ -6,7 +6,6 @@ import {
   EVIDENCE_EXPORT_CLEANUP_BATCH_SIZE,
   EVIDENCE_EXPORT_CLEANUP_JOB_ID,
   EVIDENCE_EXPORT_CLEANUP_JOB_NAME,
-  EVIDENCE_EXPORT_CLEANUP_QUEUE,
   EVIDENCE_EXPORT_CLEANUP_SCHEDULE,
 } from '../evidence-export.constants';
 import { EvidenceExportCleanupScheduler } from '../evidence-export.cleanup.scheduler';

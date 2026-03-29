@@ -287,7 +287,7 @@ export class OrganizationService {
     orgId: string,
     targetUserId: string,
     dto: UpdateMemberRoleDto,
-    actorUserId: string,
+    _actorUserId: string,
   ) {
     const org = await this.tenantDb.query.organizations.findFirst({
       where: eq(organizations.id, orgId),
