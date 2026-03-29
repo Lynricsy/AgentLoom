@@ -3,7 +3,9 @@ import {
   ReactFlow,
   Background,
   Controls,
+  type Edge,
   type Connection,
+  type Node,
   type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -12,6 +14,7 @@ import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';
 import { SmartEdge } from '@/features/canvas/components/edges/SmartEdge';
 import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette';
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
+import type { CanvasEdgeData, CanvasNodeData } from '@/features/canvas/types';
 import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
@@ -20,6 +23,12 @@ import {
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
 import { AgentNodeConfigPanel } from './panels/AgentNodeConfigPanel';
+
+type AgentCanvasNode = Node<CanvasNodeData>;
+type AgentCanvasReactFlowInstance = ReactFlowInstance<
+  AgentCanvasNode,
+  Edge<CanvasEdgeData>
+>;
 
 const NODE_TYPES = {
   agent: CanvasNodeShell,
@@ -55,7 +64,7 @@ export const AgentCanvas = memo(function AgentCanvas({
     reset,
   } = useAgentCanvasActions();
 
-  const reactFlowRef = useRef<ReactFlowInstance<any, any> | null>(null);
+  const reactFlowRef = useRef<AgentCanvasReactFlowInstance | null>(null);
   const { onDragOver, onDrop } = useAgentCanvasDrop(reactFlowRef);
 
   useEffect(() => {
@@ -65,7 +74,7 @@ export const AgentCanvas = memo(function AgentCanvas({
     };
   }, [agentId, loadAgent, reset]);
 
-  const onInit = useCallback((instance: ReactFlowInstance<any, any>) => {
+  const onInit = useCallback((instance: AgentCanvasReactFlowInstance) => {
     reactFlowRef.current = instance;
   }, []);
 

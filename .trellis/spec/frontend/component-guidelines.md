@@ -236,6 +236,34 @@ customPanelRegistry.tsx        ← 单一数据源：节点类型 → 面板渲�
 - 面板的 `onApply` 签名应接受 `Record<string, unknown>` patch 对象
 - 如果面板需要管理自身验证状态，设置 `handlesValidation: true` 并使用 `onValidationChange` 回调
 
+### Agent Canvas Node Registry Sync
+
+Agent Canvas 新增或修复节点时，不能只改 `CanvasNode.tsx` 或单个面板。`agent-canvas` 有一套独立于 workflow canvas 的节点注册和持久化快照加载链路，任何一处漏同步都会导致真实页面回退成 ReactFlow 默认方块节点，或者旧 Agent 继续保留过期端口元数据。
+
+#### 必须同步的文件
+
+| 文件 | 责任 |
+|------|------|
+| `features/canvas/registry/agent-canvas-registry.ts` | Agent Canvas 节点定义、端口契约、`maxInstances` |
+| `features/agent-canvas/components/AgentCanvas.tsx` | ReactFlow `nodeTypes` 映射；新增 category 时必须补渲染映射 |
+| `features/canvas/components/AgentNodePalette.tsx` | Agent 画布 palette 暴露入口 |
+| `features/agent-canvas/stores/agent-canvas.store.ts` | 历史快照加载与节点端口归一化 |
+
+#### 快照归一化规则
+
+- **固定端口节点**：加载历史快照时，必须使用 `AGENT_CANVAS_NODE_REGISTRY` 重新注水 `inputPorts/outputPorts`，否则旧 Agent 会继续显示已经过期的端口类型。
+- **动态端口节点**：如果节点允许用户运行时增删端口，则应保留持久化端口定义，不要被 registry 覆盖。
+- 当前 `smart-routing` 属于动态端口节点；像 `agent-main`、`memory`、`sandbox` 这类固定端口节点必须走归一化。
+
+#### 典型失败模式
+
+- registry 已新增节点，但 `AgentCanvas.tsx` 的 `nodeTypes` 没更新：
+  - 浏览器会显示 ReactFlow 默认长方形节点。
+- registry 的端口类型已修正，但旧快照仍保留旧 `inputPorts/outputPorts`：
+  - 真实页面上节点正文正常，但连线兼容判断仍按旧端口类型执行。
+- palette 未同步：
+  - 老 Agent 能显示，新建 Agent 却拖不出该节点。
+
 ---
 
 ## Examples

@@ -1,8 +1,20 @@
 import { render } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
 import type { CanvasNodeData } from '@/features/canvas/types';
 import { AgentCanvas } from './AgentCanvas';
+
+interface ReactFlowStubProps {
+  children?: ReactNode;
+  nodeTypes?: Record<string, unknown>;
+  isValidConnection?: (connection: {
+    source?: string | null;
+    sourceHandle?: string | null;
+    target?: string | null;
+    targetHandle?: string | null;
+  }) => boolean;
+}
 
 const mocks = vi.hoisted(() => ({
   nodes: [] as Array<{
@@ -12,7 +24,7 @@ const mocks = vi.hoisted(() => ({
     data: CanvasNodeData;
   }>,
   edges: [] as Array<Record<string, unknown>>,
-  lastReactFlowProps: null as Record<string, any> | null,
+  lastReactFlowProps: null as ReactFlowStubProps | null,
   onNodesChange: vi.fn(),
   onEdgesChange: vi.fn(),
   createConnection: vi.fn(),
@@ -26,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@xyflow/react', () => ({
-  ReactFlow: (props: Record<string, any>) => {
+  ReactFlow: (props: ReactFlowStubProps) => {
     mocks.lastReactFlowProps = props;
     return <div data-testid="react-flow">{props.children}</div>;
   },
@@ -117,10 +129,13 @@ describe('AgentCanvas', () => {
   it('registers a dedicated renderer for memory nodes and accepts memory connections', () => {
     render(<AgentCanvas agentId="agent-1" />);
 
+    const isValidConnection = mocks.lastReactFlowProps?.isValidConnection;
+
     expect(mocks.loadAgent).toHaveBeenCalledWith('agent-1');
     expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toContain('memory');
+    expect(isValidConnection).toBeDefined();
     expect(
-      mocks.lastReactFlowProps?.isValidConnection({
+      isValidConnection?.({
         source: 'memory-node',
         sourceHandle: 'memory-out-0',
         target: 'agent-main',
