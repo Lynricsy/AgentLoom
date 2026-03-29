@@ -26,6 +26,8 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
+import { LlmModule } from '../llm/llm.module';
+import { LlmService } from '../llm/llm.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { SubAgentToolsProvider } from './subagent';
@@ -61,6 +63,7 @@ const agentExecutionWorkerProvider: Provider = {
     eventBridge: EventBridgeService,
     sandboxService: SandboxService,
     agentDefinitionService: AgentDefinitionService,
+    llmService?: LlmService,
     memoryToolsService?: MemoryToolsService,
     memoryFusionService?: MemoryFusionService,
     memoryResourceProvider?: MemoryResourceProvider,
@@ -75,6 +78,7 @@ const agentExecutionWorkerProvider: Provider = {
       eventBridge,
       sandboxService,
       agentDefinitionService,
+      llmService,
       memoryToolsService,
       memoryFusionService,
       memoryResourceProvider,
@@ -89,6 +93,7 @@ const agentExecutionWorkerProvider: Provider = {
     EventBridgeService,
     SandboxService,
     AgentDefinitionService,
+    { token: LlmService, optional: true },
     { token: MemoryToolsService, optional: true },
     { token: MemoryFusionService, optional: true },
     { token: MemoryResourceProvider, optional: true },
@@ -106,6 +111,7 @@ const agentExecutionWorkerProvider: Provider = {
     ExecutionModule,
     SandboxModule,
     SkillModule,
+    LlmModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,

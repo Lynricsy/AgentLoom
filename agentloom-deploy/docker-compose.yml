@@ -29,12 +29,14 @@ x-server-app: &server-app
     APP_MINIO_USE_SSL: ${APP_MINIO_USE_SSL:-false}
     APP_MINIO_BUCKET: ${APP_MINIO_BUCKET:-agentloom-documents}
     APP_QDRANT_URL: ${APP_QDRANT_URL:-http://qdrant:6333}
+    APP_DOCKER_SANDBOX_NETWORK: ${APP_DOCKER_SANDBOX_NETWORK:-agentloom-sandbox}
     FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
   networks:
     - frontend_net
     - app_net
+    - sandbox_net
     - supabase_net
   depends_on:
     postgres:
@@ -178,6 +180,7 @@ services:
     command: ['node', 'dist/src/main.js']
     networks:
       - app_net
+      - sandbox_net
     deploy:
       resources:
         limits:
@@ -329,6 +332,8 @@ networks:
   app_net:
     name: agentloom-app
     internal: true
+  sandbox_net:
+    name: agentloom-sandbox
   data_net:
     name: agentloom-data
     internal: true

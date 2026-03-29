@@ -8,8 +8,9 @@ export type SandboxAgentEvent =
   | {
       type: 'message_update';
       assistantMessageEvent?: {
-        type: 'content';
-        content: { type: 'text'; text: string };
+        type: 'text_delta' | 'content';
+        delta?: string;
+        content?: { type: 'text'; text: string };
       };
     }
   | { type: 'message_end' }
@@ -17,17 +18,23 @@ export type SandboxAgentEvent =
       type: 'tool_execution_start';
       toolName: string;
       toolCallId: string;
-      input: unknown;
+      args?: unknown;
+      input?: unknown;
     }
   | {
       type: 'tool_execution_update';
       toolCallId: string;
+      toolName?: string;
+      args?: unknown;
+      partialResult?: unknown;
       content?: string;
     }
   | {
       type: 'tool_execution_end';
       toolCallId: string;
+      toolName?: string;
       result?: unknown;
+      isError?: boolean;
     }
   | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
   | { type: 'pty_output'; sessionId: string; data: string }
@@ -68,6 +75,8 @@ export interface McpServerConfig {
 export type McpServersConfig = Record<string, McpServerConfig>;
 
 export interface CreateSessionRequest {
+  /** 允许上层显式指定会话 ID，便于外部 runtime 与容器 session 对齐 */
+  sessionId?: string;
   cwd?: string;
   mcpServers?: McpServersConfig;
 }
@@ -78,7 +87,13 @@ export interface CreateSessionResponse {
 
 export interface PromptRequest {
   sessionId: string;
-  text: string;
+  /** 兼容旧桥接层：直接传纯文本 prompt */
+  text?: string;
+  /** 兼容 AgentLoom runtime：按 ContentBlock[] 传入，当前仅消费 text block */
+  content?: Array<{
+    type: string;
+    text?: string;
+  }>;
   /** AgentLoom 服务器权限回调 URL（工具执行前 POST 请求，30s 超时默认拒绝） */
   permissionCallbackUrl?: string;
 }

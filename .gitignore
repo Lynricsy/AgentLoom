@@ -116,3 +116,7 @@ node-compile-cache/
 .amp/
 .ace-tool/
 evidence-*.png
+
+# AI tool configs
+.agents/
+.codex/

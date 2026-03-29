@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentExecutionWorker } from '../agent-execution.worker';
+import type { LlmService } from '../../llm/llm.service';
 
 const {
   mockRuntime,
@@ -10,6 +11,7 @@ const {
   mockEventBridge,
   mockSandboxService,
   mockAgentDefinitionService,
+  mockLlmService,
   mockMemoryToolsService,
   mockMemoryFusionService,
   mockMemoryResourceProvider,
@@ -50,6 +52,9 @@ const {
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
     buildRuntimeConfigFromNodes: vi.fn(),
+  },
+  mockLlmService: {
+    findById: vi.fn(),
   },
   mockMemoryToolsService: {
     createSessionToolProvider: vi.fn(),
@@ -194,6 +199,7 @@ describe('AgentExecutionWorker', () => {
       mockEventBridge as never,
       mockSandboxService as never,
       mockAgentDefinitionService as never,
+      mockLlmService as unknown as LlmService,
       mockMemoryToolsService as never,
       mockMemoryFusionService as never,
       mockMemoryResourceProvider as never,
@@ -597,6 +603,23 @@ describe('AgentExecutionWorker', () => {
       mockSandboxRuntime.createSession.mockResolvedValue(
         makeSession({ id: 'sandbox-session-1' }),
       );
+      mockLlmService.findById.mockResolvedValue({
+        id: 'model-1',
+        orgId: 'org-1',
+        tenantId: 'tenant-1',
+        name: 'CodeHub Claude',
+        provider: 'private_cloud',
+        modelName: 'claude-opus-4-6',
+        parameters: { baseUrl: 'https://models.example.test/v1' },
+        apiKeyId: 'api-key-1',
+        endpointUrl: 'https://models.example.test/v1',
+        authMethod: 'api_key',
+        authConfig: null,
+        timeoutMs: 120000,
+        isDefault: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
       const result = await runtimeSessionWorker.prepareRuntimeSession(
         makeActiveContext({
@@ -613,6 +636,25 @@ describe('AgentExecutionWorker', () => {
       );
 
       expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sandboxNodeId: null,
+          tenantId: 'tenant-1',
+          agentConversationId: 'conversation-1',
+          piConfigInput: expect.objectContaining({
+            systemPrompt: 'system',
+            modelConfig: expect.objectContaining({
+              provider: 'private_cloud',
+              model: 'claude-opus-4-6',
+              apiBaseUrl: 'https://models.example.test/v1',
+              apiKeyId: 'api-key-1',
+              organizationId: 'org-1',
+              tenantId: 'tenant-1',
+              authMethod: 'api_key',
+            }),
+          }),
+        }),
+      );
       expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'agent-1',

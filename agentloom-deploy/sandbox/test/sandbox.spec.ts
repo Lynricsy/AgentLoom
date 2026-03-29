@@ -45,15 +45,26 @@ import {
 import { AcpAdapter, type SessionFactory } from '../src/acp-adapter.js';
 
 describe('translateEvent', () => {
-  it('should translate message_update with text content to text_delta', () => {
+  it('should translate message_update with text_delta to text_delta', () => {
+    const result = translateEvent({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'text_delta',
+        delta: 'hello',
+      },
+    });
+    expect(result).toEqual({ type: 'text_delta', text: 'hello' });
+  });
+
+  it('should keep backward compatibility for legacy text content events', () => {
     const result = translateEvent({
       type: 'message_update',
       assistantMessageEvent: {
         type: 'content',
-        content: { type: 'text', text: 'hello' },
+        content: { type: 'text', text: 'legacy hello' },
       },
     });
-    expect(result).toEqual({ type: 'text_delta', text: 'hello' });
+    expect(result).toEqual({ type: 'text_delta', text: 'legacy hello' });
   });
 
   it('should return null for message_update without text content', () => {
@@ -65,7 +76,7 @@ describe('translateEvent', () => {
       type: 'tool_execution_start',
       toolName: 'bash',
       toolCallId: 'tc-1',
-      input: { command: 'ls' },
+      args: { command: 'ls' },
     });
     expect(result).toEqual({
       type: 'tool_call_start',
@@ -214,8 +225,8 @@ describe('streamSessionEvents', () => {
     mock._emit({
       type: 'message_update',
       assistantMessageEvent: {
-        type: 'content',
-        content: { type: 'text', text: 'Hello world' },
+        type: 'text_delta',
+        delta: 'Hello world',
       },
     });
 
@@ -263,8 +274,8 @@ describe('streamSessionEvents', () => {
     mock._emit({
       type: 'message_update',
       assistantMessageEvent: {
-        type: 'content',
-        content: { type: 'text', text: 'should not appear' },
+        type: 'text_delta',
+        delta: 'should not appear',
       },
     });
 
@@ -321,6 +332,18 @@ describe('AcpAdapter', () => {
     expect(entry!.id).toBe(sessionId);
     expect(entry!.session).toBe(mockSession);
     expect(entry!.isStreaming).toBe(false);
+  });
+
+  it('should preserve caller provided sessionId', async () => {
+    const adapter = new AcpAdapter(mockFactory);
+    await adapter.init();
+
+    const result = await adapter.createNewSession({ sessionId: 'requested-session' });
+    const entry = adapter.getSession('requested-session');
+
+    expect(result.sessionId).toBe('requested-session');
+    expect(entry).toBeDefined();
+    expect(entry!.id).toBe('requested-session');
   });
 
   it('should return undefined for nonexistent session', async () => {

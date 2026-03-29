@@ -14,6 +14,7 @@ import {
   agentVersions,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
+import type { LlmModelConfig as StoredLlmModelConfig } from '../../database/schema/llm-model-configs.schema';
 import { memorySessions, type MemorySession } from '../../database/schema';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
@@ -30,9 +31,11 @@ import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
+import { LlmService } from '../llm/llm.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type {
   PiConfigInput,
+  PiModelConfig,
   SkillInput,
 } from '../sandbox/pi-config-generator.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
@@ -128,6 +131,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly eventBridge: EventBridgeService,
     private readonly sandboxService: SandboxService,
     private readonly agentDefinitionService: AgentDefinitionService,
+    private readonly llmService?: LlmService,
     private readonly memoryToolsService?: MemoryToolsService,
     private readonly memoryFusionService?: MemoryFusionService,
     private readonly memoryResourceProvider?: MemoryResourceProvider,
@@ -486,14 +490,12 @@ export class AgentExecutionWorker extends WorkerHost {
       // For sandbox path, resolve skills as structured files for pi-mono discovery
       // instead of embedding them into the system prompt string
       const skillPayloads = await this.resolveSkillPayloads(context);
-      const piConfigInput: PiConfigInput = {
+      const piConfigInput = await this.buildPiConfigInput({
+        tenantId,
+        runtimeConfig: context.runtimeConfig,
         systemPrompt: context.systemPrompt,
-        ...(skillPayloads.length > 0
-          ? {
-              skills: skillPayloads.map((skill) => this.toSkillInput(skill)),
-            }
-          : {}),
-      };
+        skillPayloads,
+      });
 
       await this.sandboxService.createSandboxSession({
         sandboxNodeId: null,
@@ -1048,14 +1050,25 @@ export class AgentExecutionWorker extends WorkerHost {
   private async resolveSkillPayloads(
     context: ConversationExecutionContext,
   ): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
+    return this.resolveSkillPayloadsForGraph({
+      tenantId: context.conversation.tenantId,
+      agentDefinitionId: context.conversation.agentDefinitionId,
+      nodes: context.canvasNodes,
+      edges: context.canvasEdges,
+    });
+  }
+
+  private async resolveSkillPayloadsForGraph(params: {
+    tenantId: string;
+    agentDefinitionId: string;
+    nodes: AgentVersionSnapshot['nodes'];
+    edges: AgentVersionSnapshot['edges'];
+  }): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
     if (!this.skillResolverService) {
       return [];
     }
 
-    const skillIds = this.extractConversationSkillIds(
-      context.canvasNodes,
-      context.canvasEdges,
-    );
+    const skillIds = this.extractConversationSkillIds(params.nodes, params.edges);
 
     if (!skillIds.length) {
       return [];
@@ -1063,15 +1076,100 @@ export class AgentExecutionWorker extends WorkerHost {
 
     try {
       return await this.skillResolverService.resolveSkillsForAgent(
-        context.conversation.tenantId,
+        params.tenantId,
         skillIds,
       );
     } catch (error) {
       this.logger.warn(
-        `Failed to resolve skill payloads for agent ${context.conversation.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to resolve skill payloads for agent ${params.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       return [];
     }
+  }
+
+  private async buildPiConfigInput(params: {
+    tenantId: string;
+    runtimeConfig: AgentRuntimeConfig;
+    systemPrompt?: string;
+    skillPayloads?: import('../skill/skill.types').SkillPromptPayload[];
+  }): Promise<PiConfigInput> {
+    const modelConfig = await this.resolvePiModelConfig(
+      params.runtimeConfig,
+      params.tenantId,
+    );
+
+    return {
+      ...(params.systemPrompt ? { systemPrompt: params.systemPrompt } : {}),
+      ...(modelConfig ? { modelConfig } : {}),
+      ...(params.skillPayloads?.length
+        ? {
+            skills: params.skillPayloads.map((skill) => this.toSkillInput(skill)),
+          }
+        : {}),
+    };
+  }
+
+  private async resolvePiModelConfig(
+    runtimeConfig: AgentRuntimeConfig,
+    tenantId: string,
+  ): Promise<PiModelConfig | undefined> {
+    const modelId = runtimeConfig.modelConfig?.modelId?.trim();
+    if (!modelId || !this.llmService) {
+      return undefined;
+    }
+
+    const modelConfig = await this.llmService.findById(modelId, tenantId);
+    return this.toPiModelConfig(modelConfig);
+  }
+
+  private toPiModelConfig(modelConfig: StoredLlmModelConfig): PiModelConfig {
+    const baseUrl = this.resolvePiModelBaseUrl(modelConfig);
+
+    return {
+      provider: modelConfig.provider,
+      model: modelConfig.modelName,
+      ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
+      apiKeyId: modelConfig.apiKeyId ?? null,
+      organizationId: modelConfig.orgId,
+      tenantId: modelConfig.tenantId,
+      ...(typeof modelConfig.authMethod === 'string' &&
+      modelConfig.authMethod.length > 0
+        ? { authMethod: modelConfig.authMethod }
+        : {}),
+    };
+  }
+
+  private resolvePiModelBaseUrl(
+    modelConfig: Pick<StoredLlmModelConfig, 'endpointUrl' | 'parameters'>,
+  ): string | undefined {
+    if (
+      typeof modelConfig.endpointUrl === 'string' &&
+      modelConfig.endpointUrl.trim().length > 0
+    ) {
+      return modelConfig.endpointUrl.trim();
+    }
+
+    const parameters =
+      modelConfig.parameters &&
+      typeof modelConfig.parameters === 'object' &&
+      !Array.isArray(modelConfig.parameters)
+        ? (modelConfig.parameters as Record<string, unknown>)
+        : {};
+
+    const candidates = [
+      parameters.baseUrl,
+      parameters.baseURL,
+      parameters.apiBaseUrl,
+      parameters.endpointUrl,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -1332,11 +1430,27 @@ export class AgentExecutionWorker extends WorkerHost {
         : this.agentRuntime;
 
       if (runtimeConfig.sandboxConfig) {
+        const skillPayloads = await this.resolveSkillPayloadsForGraph({
+          tenantId: params.parentContext.tenantId,
+          agentDefinitionId: params.agentDefinition.id,
+          nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
+          edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
+        });
+        const piConfigInput = await this.buildPiConfigInput({
+          tenantId: params.parentContext.tenantId,
+          runtimeConfig,
+          systemPrompt:
+            versionSnapshot?.systemPrompt ??
+            params.agentDefinition.systemPrompt ??
+            undefined,
+          skillPayloads,
+        });
         await this.sandboxService.createSandboxSession({
           sandboxNodeId: null,
           config: runtimeConfig.sandboxConfig,
           tenantId: params.parentContext.tenantId,
           agentConversationId: params.parentContext.conversationId,
+          piConfigInput,
         });
       }
 

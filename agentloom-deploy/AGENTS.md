@@ -202,5 +202,5 @@ docker compose down -v         # 停止并移除容器+卷（完全重置数据�
 - **端点**: `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答）、`POST /v1/abort`（取消）、`GET /health`（健康检查）
 - **配置挂载**: Server 通过 `PiConfigGeneratorService` 生成 `settings.json`、`models.json`、`system-prompt.md`，bind-mount 到容器 `/config/`
 - **LLM API Key**: 通过容器环境变量注入（ANTHROPIC_API_KEY、OPENAI_API_KEY 等）
-- **工具权限**: 容器通过 `PERMISSION_CALLBACK_URL`（`http://host.docker.internal:{APP_PORT}/api/v1/agent-conversations/{id}/tool-permission`）回调 Server 请求权限，30s 超时默认拒绝
+- **工具权限**: 仅当 `/v1/prompt` 显式传入 `permissionCallbackUrl` 时，容器才会回调 AgentLoom 请求工具权限，30s 超时默认拒绝；当前普通 Agent 对话主路径默认不启用该链路
 - **测试**: `npm test` 运行 Vitest 单元测试（mock session factory，无需真实 pi-coding-agent）

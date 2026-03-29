@@ -10,6 +10,7 @@ import {
 const { mockQueue, mockConversationService } = vi.hoisted(() => ({
   mockQueue: {
     add: vi.fn(),
+    getJob: vi.fn(),
   },
   mockConversationService: {
     sendMessage: vi.fn(),
@@ -50,6 +51,7 @@ describe('AgentExecutionService', () => {
       mockQueue as never,
       mockConversationService as never,
     );
+    mockQueue.getJob.mockResolvedValue(null);
     const serviceInternals = service as unknown as ServiceInternals;
     serviceInternals.getConversationIdentityOrThrow = vi
       .fn<() => Promise<ConversationIdentity>>()
@@ -121,6 +123,44 @@ describe('AgentExecutionService', () => {
       },
       { jobId: 'conversation-1' },
     );
+  });
+
+  it('旧 job 已完成时会先移除再重新入队', async () => {
+    mockConversationService.sendMessage.mockResolvedValue({ data: {} });
+    mockQueue.add.mockResolvedValue({ id: 'job-3' });
+    const completedJob = {
+      getState: vi.fn().mockResolvedValue('completed'),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    mockQueue.getJob.mockResolvedValue(completedJob);
+
+    await service.injectMessage('conversation-1', '再次执行');
+
+    expect(completedJob.getState).toHaveBeenCalledTimes(1);
+    expect(completedJob.remove).toHaveBeenCalledTimes(1);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      AGENT_CONVERSATION_EXECUTION_JOB,
+      {
+        conversationId: 'conversation-1',
+        tenantId: 'tenant-1',
+      },
+      { jobId: 'conversation-1' },
+    );
+  });
+
+  it('旧 job 仍处于运行态时不应重复入队', async () => {
+    mockConversationService.sendMessage.mockResolvedValue({ data: {} });
+    const activeJob = {
+      getState: vi.fn().mockResolvedValue('active'),
+      remove: vi.fn(),
+    };
+    mockQueue.getJob.mockResolvedValue(activeJob);
+
+    await service.injectMessage('conversation-1', '不要重复排队');
+
+    expect(activeJob.getState).toHaveBeenCalledTimes(1);
+    expect(activeJob.remove).not.toHaveBeenCalled();
+    expect(mockQueue.add).not.toHaveBeenCalled();
   });
 
   it('cancelExecution 会结束会话并中止活跃 loop', async () => {

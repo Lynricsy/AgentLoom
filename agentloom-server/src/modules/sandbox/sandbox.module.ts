@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
+import { ApiKeyModule } from '../api-key/api-key.module';
 import { SandboxService } from './sandbox.service';
 import { DockerService } from './docker.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
@@ -11,6 +12,7 @@ import { PiConfigGeneratorService } from './pi-config-generator.service';
 
 @Module({
   imports: [
+    ApiKeyModule,
     BullModule.registerQueue({
       name: SANDBOX_LIFECYCLE_QUEUE,
       defaultJobOptions: {

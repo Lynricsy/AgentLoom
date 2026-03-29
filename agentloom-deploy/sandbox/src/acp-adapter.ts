@@ -74,7 +74,10 @@ export class AcpAdapter {
   async createNewSession(req: CreateSessionRequest): Promise<CreateSessionResponse> {
     const cwd = req.cwd ?? '/workspace';
     const session = await this.createSession(cwd, this.config ?? {});
-    const id = randomUUID();
+    const id =
+      typeof req.sessionId === 'string' && req.sessionId.trim().length > 0
+        ? req.sessionId
+        : randomUUID();
 
     this.sessions.set(id, {
       id,

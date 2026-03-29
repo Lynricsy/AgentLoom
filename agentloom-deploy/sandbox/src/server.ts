@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import Fastify from 'fastify';
 import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
@@ -20,6 +21,47 @@ export interface SandboxServerOptions {
   getPtyManager?: () => PTYManager | null;
 }
 
+const SANDBOX_AGENT_DIR = '/config';
+const SANDBOX_MODELS_PATH = join(SANDBOX_AGENT_DIR, 'models.json');
+
+export interface PiCodingAgentBindings {
+  createAgentSession: (...args: any[]) => Promise<{ session: unknown }>;
+  DefaultResourceLoader: new (options: Record<string, unknown>) => {
+    reload: () => Promise<void>;
+  };
+  SessionManager: {
+    inMemory: (...args: any[]) => unknown;
+  };
+  SettingsManager: {
+    inMemory: (...args: any[]) => unknown;
+  };
+  AuthStorage: {
+    inMemory: (...args: any[]) => unknown;
+  };
+  ModelRegistry: new (...args: any[]) => unknown;
+}
+
+function resolvePromptText(body: PromptRequest | undefined): string | null {
+  if (typeof body?.text === 'string' && body.text.trim().length > 0) {
+    return body.text;
+  }
+
+  if (!Array.isArray(body?.content)) {
+    return null;
+  }
+
+  const text = body.content
+    .flatMap((block) =>
+      block?.type === 'text' && typeof block.text === 'string'
+        ? [block.text]
+        : [],
+    )
+    .join('\n\n')
+    .trim();
+
+  return text.length > 0 ? text : null;
+}
+
 export async function createSandboxServer(options: SandboxServerOptions) {
   const { host = '0.0.0.0', port = 8080, sessionFactory, getPtyManager } = options;
 
@@ -33,10 +75,15 @@ export async function createSandboxServer(options: SandboxServerOptions) {
   });
 
   app.post<{ Body: PromptRequest }>('/v1/prompt', async (request, reply) => {
-    const { sessionId, text, permissionCallbackUrl } = request.body;
+    const sessionId = request.body?.sessionId;
+    const text = resolvePromptText(request.body);
+    // 工具权限回调必须由上层显式开启，避免未接好的人机授权链路误伤普通对话。
+    const permissionCallbackUrl = request.body?.permissionCallbackUrl;
 
     if (!sessionId || !text) {
-      return reply.code(400).send({ error: 'sessionId and text are required' });
+      return reply
+        .code(400)
+        .send({ error: 'sessionId and text/content are required' });
     }
 
     const entry = adapter.getSession(sessionId);
@@ -69,7 +116,9 @@ export async function createSandboxServer(options: SandboxServerOptions) {
       },
     });
 
-    request.raw.on('close', () => {
+    // 对 SSE 来说，request body 很快读完，IncomingMessage 的 close 会过早触发。
+    // 必须绑定到 response/socket 生命周期，避免在真正的流式事件开始前就提前 cleanup。
+    reply.raw.on('close', () => {
       cleanup();
       adapter.markStreaming(sessionId, false);
     });
@@ -160,6 +209,60 @@ export async function createSandboxServer(options: SandboxServerOptions) {
   return app;
 }
 
+export function createPiSessionFactory(
+  piAgent: PiCodingAgentBindings,
+  setPtyManager?: (manager: PTYManager | null) => void,
+): SessionFactory {
+  return async (cwd, config) => {
+    const {
+      createAgentSession,
+      DefaultResourceLoader,
+      SessionManager,
+      SettingsManager,
+      AuthStorage,
+      ModelRegistry,
+    } = piAgent;
+
+    // PTY extension（每个 session 创建独立的 PTYManager）
+    const ptyExt = createPtyExtension({
+      onPtyEvent: () => {},
+      workdir: cwd,
+    });
+    setPtyManager?.(ptyExt.manager);
+
+    // MCP extension（根据配置连接 MCP 服务器，发现并注册工具）
+    const mcpExt = createMcpExtension({
+      mcpServers: config.mcpServers,
+    });
+
+    // 使用 /config 作为 pi 的 agentDir，确保 models/settings/skills 均参与真实运行时装配。
+    const settingsManager = SettingsManager.inMemory(config.settings ?? {});
+    const authStorage = AuthStorage.inMemory();
+    const modelRegistry = new ModelRegistry(authStorage, SANDBOX_MODELS_PATH);
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir: SANDBOX_AGENT_DIR,
+      settingsManager,
+      systemPrompt: config.systemPrompt,
+      extensionFactories: [mcpExt.register, ptyExt.register] as any,
+    });
+    await resourceLoader.reload();
+
+    const { session } = await createAgentSession({
+      cwd,
+      agentDir: SANDBOX_AGENT_DIR,
+      sessionManager: SessionManager.inMemory(cwd),
+      settingsManager,
+      authStorage,
+      modelRegistry,
+      resourceLoader,
+    });
+
+    // AgentSession 与 IAgentSession 结构兼容（subscribe 事件类型是超集）
+    return session as unknown as import('./types.js').IAgentSession;
+  };
+}
+
 async function defaultSessionFactory(): Promise<never> {
   throw new Error(
     'pi-coding-agent not available. Install @mariozechner/pi-coding-agent to use the sandbox.',
@@ -172,44 +275,9 @@ export async function startServer() {
 
   try {
     const piAgent = await import('@mariozechner/pi-coding-agent');
-
-    factory = async (cwd, config) => {
-      const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, AuthStorage } = piAgent;
-
-      // PTY extension（每个 session 创建独立的 PTYManager）
-      const ptyExt = createPtyExtension({
-        onPtyEvent: () => {},
-        workdir: cwd,
-      });
-      currentPtyManager = ptyExt.manager;
-
-      // MCP extension（根据配置连接 MCP 服务器，发现并注册工具）
-      const mcpExt = createMcpExtension({
-        mcpServers: config.mcpServers,
-      });
-
-      // 构建 DefaultResourceLoader，注入所有 extension factories
-      // 结构化类型与 pi-coding-agent 的 ExtensionFactory 运行时兼容，使用 as any 桥接
-      const resourceLoader = new DefaultResourceLoader({
-        cwd,
-        extensionFactories: [mcpExt.register, ptyExt.register] as any,
-      });
-      await resourceLoader.reload();
-
-      // 创建 agent session，传入 resourceLoader
-      // model 类型在 SandboxConfig 中是 string，pi-coding-agent 在内部解析
-      const { session } = await createAgentSession({
-        cwd,
-        sessionManager: SessionManager.inMemory(cwd),
-        settingsManager: SettingsManager.inMemory(config.settings ?? {}),
-        authStorage: AuthStorage.inMemory(),
-        model: config.model as any,
-        resourceLoader,
-      });
-
-      // AgentSession 与 IAgentSession 结构兼容（subscribe 事件类型是超集）
-      return session as unknown as import('./types.js').IAgentSession;
-    };
+    factory = createPiSessionFactory(piAgent, (manager) => {
+      currentPtyManager = manager;
+    });
   } catch {
     console.warn('pi-coding-agent not found, using stub factory');
   }

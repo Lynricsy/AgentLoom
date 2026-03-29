@@ -388,6 +388,27 @@ describe('SandboxAgentAdapter', () => {
       ).rejects.toThrow('sandbox exploded');
     });
 
+    it('应读取容器顶层 error.message，避免退化成泛化错误', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            `data: {"jsonrpc":"2.0","method":"event","params":{"type":"error","message":"Tool 'bash' permission denied","code":"PERMISSION_DENIED"}}\n\n`,
+          ]),
+        );
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+        ),
+      ).rejects.toThrow("Tool 'bash' permission denied");
+    });
+
     it('缺失 sandbox binding 时应抛出错误', async () => {
       const session = await adapter.createSession({
         ...defaultParams,

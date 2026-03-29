@@ -1,5 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 
@@ -9,6 +11,7 @@ import {
   SandboxCreationException,
   SandboxDestroyException,
 } from '../sandbox.exceptions';
+import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import type { PiConfigGeneratorService } from '../pi-config-generator.service';
 
 const mockContainer = {
@@ -22,11 +25,17 @@ const mockContainer = {
       Ports: {
         '8080/tcp': [{ HostPort: '49123' }],
       },
+      Networks: {
+        'agentloom-app': {
+          IPAddress: '172.18.2.10',
+        },
+      },
     },
   }),
   logs: vi.fn(),
   stats: vi.fn(),
   getArchive: vi.fn(),
+  putArchive: vi.fn(),
   exec: vi.fn(),
 };
 
@@ -66,6 +75,10 @@ const mockPiConfigGenerator = {
     skills: {},
   }),
 } as unknown as PiConfigGeneratorService;
+
+const mockDecryptionBoundaryService = {
+  decryptConfiguredApiKey: vi.fn(),
+} as unknown as DecryptionBoundaryService;
 
 function createDockerMultiplexedFrame(
   streamType: number,
@@ -110,9 +123,70 @@ function createExecInspectInfo(
   };
 }
 
+async function readStreamToBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  return await new Promise((resolve, reject) => {
+    stream.on('data', (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+    stream.on('error', reject);
+    stream.resume();
+  });
+}
+
+function inspectTarArchive(archiveBuffer: Buffer): {
+  entries: string[];
+  readEntry: (entry: string) => string;
+  cleanup: () => void;
+} {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docker-service-spec-'));
+  const archivePath = path.join(tmpDir, 'config.tar');
+  fs.writeFileSync(archivePath, archiveBuffer);
+
+  const listResult = spawnSync('tar', ['-tf', archivePath], {
+    encoding: 'utf-8',
+  });
+  if (listResult.status !== 0) {
+    throw new Error(listResult.stderr || 'Failed to inspect tar archive');
+  }
+
+  const entries = listResult.stdout
+    .split('\n')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.replace(/^\.\/?/, ''));
+
+  return {
+    entries,
+    readEntry(entry: string): string {
+      const entryCandidates = [`./${entry}`, entry];
+      for (const candidate of entryCandidates) {
+        const extractResult = spawnSync('tar', ['-xOf', archivePath, candidate], {
+          encoding: 'utf-8',
+        });
+        if (extractResult.status === 0) {
+          return extractResult.stdout;
+        }
+      }
+
+      throw new Error(`Failed to read ${entry} from tar archive`);
+    },
+    cleanup(): void {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    },
+  };
+}
+
 describe('DockerService', () => {
   delete process.env.ACP_TEST_FAKE_RUNTIME;
-  const service = new DockerService(mockPiConfigGenerator);
+  const service = new DockerService(
+    mockPiConfigGenerator,
+    mockDecryptionBoundaryService,
+  );
 
   describe('createContainer', () => {
     it('应使用正确的资源映射创建并启动容器', async () => {
@@ -180,6 +254,29 @@ describe('DockerService', () => {
       await expect(
         service.createContainer('session-fail', DEFAULT_CONFIG),
       ).rejects.toThrow(SandboxCreationException);
+    });
+
+    it('配置 APP_DOCKER_SANDBOX_NETWORK 时应将 sandbox 加入指定网络', async () => {
+      const previous = process.env.APP_DOCKER_SANDBOX_NETWORK;
+      process.env.APP_DOCKER_SANDBOX_NETWORK = 'agentloom-app';
+
+      try {
+        await service.createContainer('session-networked', DEFAULT_CONFIG);
+
+        expect(mockDocker.createContainer).toHaveBeenCalledWith(
+          expect.objectContaining({
+            HostConfig: expect.objectContaining({
+              NetworkMode: 'agentloom-app',
+            }),
+          }),
+        );
+      } finally {
+        if (previous === undefined) {
+          delete process.env.APP_DOCKER_SANDBOX_NETWORK;
+        } else {
+          process.env.APP_DOCKER_SANDBOX_NETWORK = previous;
+        }
+      }
     });
   });
 
@@ -501,6 +598,23 @@ describe('DockerService', () => {
 
       expect(url).toBe('http://127.0.0.1:49123/v1/prompt');
     });
+
+    it('配置 APP_DOCKER_SANDBOX_NETWORK 时应优先返回同网络容器 IP', async () => {
+      const previous = process.env.APP_DOCKER_SANDBOX_NETWORK;
+      process.env.APP_DOCKER_SANDBOX_NETWORK = 'agentloom-app';
+
+      try {
+        const url = await service.getPromptUrl('container-abc123');
+
+        expect(url).toBe('http://172.18.2.10:8080/v1/prompt');
+      } finally {
+        if (previous === undefined) {
+          delete process.env.APP_DOCKER_SANDBOX_NETWORK;
+        } else {
+          process.env.APP_DOCKER_SANDBOX_NETWORK = previous;
+        }
+      }
+    });
   });
 
   describe('getSessionUrl', () => {
@@ -508,6 +622,23 @@ describe('DockerService', () => {
       const url = await service.getSessionUrl('container-abc123');
 
       expect(url).toBe('http://127.0.0.1:49123/v1/session');
+    });
+
+    it('配置 APP_DOCKER_SANDBOX_NETWORK 时应优先返回同网络容器 IP', async () => {
+      const previous = process.env.APP_DOCKER_SANDBOX_NETWORK;
+      process.env.APP_DOCKER_SANDBOX_NETWORK = 'agentloom-app';
+
+      try {
+        const url = await service.getSessionUrl('container-abc123');
+
+        expect(url).toBe('http://172.18.2.10:8080/v1/session');
+      } finally {
+        if (previous === undefined) {
+          delete process.env.APP_DOCKER_SANDBOX_NETWORK;
+        } else {
+          process.env.APP_DOCKER_SANDBOX_NETWORK = previous;
+        }
+      }
     });
   });
 
@@ -565,6 +696,10 @@ describe('DockerService', () => {
       vi.clearAllMocks();
       mockDocker.createContainer.mockResolvedValue(mockContainer);
       mockContainer.start.mockResolvedValue(undefined);
+      mockContainer.putArchive.mockImplementation(async (stream: Readable) => {
+        await readStreamToBuffer(stream);
+      });
+      mockDecryptionBoundaryService.decryptConfiguredApiKey = vi.fn();
     });
 
     afterEach(() => {
@@ -582,13 +717,17 @@ describe('DockerService', () => {
       expect(callArgs.HostConfig.ExtraHosts).toBeUndefined();
     });
 
-    it('piConfigInput 提供时应生成配置文件并 bind-mount 到 /config', async () => {
+    it('piConfigInput 提供时应在容器启动前写入 /config', async () => {
       const piContext = {
         piConfigInput: { systemPrompt: 'You are a coding agent' },
         conversationId: 'conv-123',
       };
       process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
       process.env.APP_PORT = '4000';
+      let uploadedArchive: Buffer | undefined;
+      mockContainer.putArchive.mockImplementationOnce(async (stream: Readable) => {
+        uploadedArchive = await readStreamToBuffer(stream);
+      });
 
       await service.createContainer('session-pi', DEFAULT_CONFIG, piContext);
 
@@ -600,33 +739,45 @@ describe('DockerService', () => {
 
       expect(callArgs.Env).toContain('PI_CODING_AGENT_DIR=/config');
       expect(callArgs.Env).toContain('ANTHROPIC_API_KEY=sk-test-anthropic');
-      expect(callArgs.Env).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining(
-            'PERMISSION_CALLBACK_URL=http://host.docker.internal:4000/api/v1/agent-conversations/conv-123/tool-permission',
-          ),
-        ]),
+      expect(
+        (callArgs.Env as string[]).find((entry: string) =>
+          entry.startsWith('PERMISSION_CALLBACK_URL='),
+        ),
+      ).toBeUndefined();
+      expect(callArgs.HostConfig.Binds).toEqual([
+        'sandbox-session-pi-workspace:/workspace',
+      ]);
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
+      );
+      expect(mockContainer.putArchive.mock.invocationCallOrder[0]).toBeLessThan(
+        mockContainer.start.mock.invocationCallOrder[0],
       );
 
-      const binds: string[] = callArgs.HostConfig.Binds;
-      expect(binds).toHaveLength(2);
-      expect(binds[0]).toBe('sandbox-session-pi-workspace:/workspace');
-      expect(binds[1]).toMatch(/sandbox-pi-config-session-pi-.*:\/config:ro/);
-
-      expect(callArgs.HostConfig.ExtraHosts).toEqual([
-        'host.docker.internal:host-gateway',
-      ]);
-
-      const tmpDir = binds[1].split(':')[0];
-      expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, 'models.json'))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, 'system-prompt.md'))).toBe(true);
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      const archive = inspectTarArchive(uploadedArchive ?? Buffer.alloc(0));
+      try {
+        expect(archive.entries).toEqual(
+          expect.arrayContaining([
+            'config/settings.json',
+            'config/models.json',
+            'config/system-prompt.md',
+            'config/mcp-servers.json',
+          ]),
+        );
+        expect(archive.readEntry('config/settings.json')).toBe(
+          '{"model":"claude-sonnet-4-20250514"}',
+        );
+        expect(archive.readEntry('config/models.json')).toBe('{"models":[]}');
+        expect(archive.readEntry('config/system-prompt.md')).toBe(
+          '# System Prompt',
+        );
+      } finally {
+        archive.cleanup();
+      }
     });
 
-    it('APP_PORT 未设置时应使用默认端口 3000', async () => {
-      delete process.env.APP_PORT;
+    it('conversationId 提供时默认也不注入 PERMISSION_CALLBACK_URL', async () => {
       const piContext = {
         piConfigInput: { systemPrompt: 'test' },
         conversationId: 'conv-456',
@@ -635,15 +786,18 @@ describe('DockerService', () => {
       await service.createContainer('session-port', DEFAULT_CONFIG, piContext);
 
       const callArgs = mockDocker.createContainer.mock.calls[0][0];
-      expect(callArgs.Env).toEqual(
-        expect.arrayContaining([
-          'PERMISSION_CALLBACK_URL=http://host.docker.internal:3000/api/v1/agent-conversations/conv-456/tool-permission',
-        ]),
+      expect(
+        (callArgs.Env as string[]).find((entry: string) =>
+          entry.startsWith('PERMISSION_CALLBACK_URL='),
+        ),
+      ).toBeUndefined();
+      expect(callArgs.HostConfig).not.toMatchObject({
+        ExtraHosts: expect.anything(),
+      });
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
       );
-
-      const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1].split(':')[0];
-      fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
     it('conversationId 未提供时不应注入 PERMISSION_CALLBACK_URL', async () => {
@@ -662,10 +816,10 @@ describe('DockerService', () => {
         e.startsWith('PERMISSION_CALLBACK_URL='),
       );
       expect(permUrlEntry).toBeUndefined();
-
-      const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1].split(':')[0];
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
+      );
     });
 
     it('仅注入存在的 LLM API 密钥到容器环境', async () => {
@@ -688,15 +842,106 @@ describe('DockerService', () => {
       expect(
         env.find((e: string) => e.startsWith('GOOGLE_API_KEY=')),
       ).toBeUndefined();
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
+      );
+    });
 
-      const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1].split(':')[0];
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+    it('存在模型配置时应解密并覆盖对应 provider 的容器 API Key', async () => {
+      mockDecryptionBoundaryService.decryptConfiguredApiKey = vi
+        .fn()
+        .mockResolvedValue('sk-private-cloud');
+      process.env.PRIVATE_CLOUD_API_KEY = 'sk-inherited';
+
+      const piContext = {
+        piConfigInput: {
+          systemPrompt: 'test',
+          modelConfig: {
+            provider: 'private_cloud',
+            model: 'claude-opus-4-6',
+            apiBaseUrl: 'https://models.example.test/v1',
+            apiKeyId: 'api-key-123',
+            organizationId: 'org-123',
+            tenantId: 'tenant-123',
+            authMethod: 'api_key',
+          },
+        },
+      };
+
+      await service.createContainer(
+        'session-private-cloud',
+        DEFAULT_CONFIG,
+        piContext,
+      );
+
+      expect(
+        mockDecryptionBoundaryService.decryptConfiguredApiKey,
+      ).toHaveBeenCalledWith(
+        {
+          apiKeyId: 'api-key-123',
+          organizationId: 'org-123',
+          tenantId: 'tenant-123',
+          provider: 'private_cloud',
+        },
+        'DockerService',
+      );
+
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
+      expect(callArgs.Env).toContain(
+        'PRIVATE_CLOUD_API_KEY=sk-private-cloud',
+      );
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
+      );
+    });
+
+    it('private_cloud 非 api_key 鉴权时应移除继承的 provider API Key', async () => {
+      process.env.PRIVATE_CLOUD_API_KEY = 'sk-inherited';
+
+      const piContext = {
+        piConfigInput: {
+          systemPrompt: 'test',
+          modelConfig: {
+            provider: 'private_cloud',
+            model: 'claude-opus-4-6',
+            apiBaseUrl: 'https://models.example.test/v1',
+            organizationId: 'org-123',
+            tenantId: 'tenant-123',
+            authMethod: 'none',
+          },
+        },
+      };
+
+      await service.createContainer(
+        'session-private-cloud-no-auth',
+        DEFAULT_CONFIG,
+        piContext,
+      );
+
+      expect(
+        mockDecryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
+
+      const callArgs = mockDocker.createContainer.mock.calls[0][0];
+      expect(
+        (callArgs.Env as string[]).find((entry: string) =>
+          entry.startsWith('PRIVATE_CLOUD_API_KEY='),
+        ),
+      ).toBeUndefined();
+      expect(mockContainer.putArchive).toHaveBeenCalledWith(
+        expect.anything(),
+        { path: '/' },
+      );
     });
 
     it('ACP_TEST_FAKE_RUNTIME=1 时应跳过 pi-config 生成', async () => {
       process.env.ACP_TEST_FAKE_RUNTIME = '1';
-      const fakeService = new DockerService(mockPiConfigGenerator);
+      const fakeService = new DockerService(
+        mockPiConfigGenerator,
+        mockDecryptionBoundaryService,
+      );
 
       const piContext = {
         piConfigInput: { systemPrompt: 'test' },
@@ -717,11 +962,12 @@ describe('DockerService', () => {
         'sandbox-session-fake-workspace:/workspace',
       ]);
       expect(callArgs.HostConfig.ExtraHosts).toBeUndefined();
+      expect(mockContainer.putArchive).not.toHaveBeenCalled();
 
       delete process.env.ACP_TEST_FAKE_RUNTIME;
     });
 
-    it('piConfigInput 包含 skills 时应在 tmpdir 下创建 skill 目录和文件', async () => {
+    it('piConfigInput 包含 skills 时应一并打包 skill 目录和文件', async () => {
       mockPiConfigGenerator.generateConfigBundle = vi.fn().mockReturnValue({
         settings: '{}',
         models: '{}',
@@ -741,6 +987,10 @@ describe('DockerService', () => {
         piConfigInput: { systemPrompt: 'test' },
         conversationId: 'conv-skills',
       };
+      let uploadedArchive: Buffer | undefined;
+      mockContainer.putArchive.mockImplementationOnce(async (stream: Readable) => {
+        uploadedArchive = await readStreamToBuffer(stream);
+      });
 
       await service.createContainer(
         'session-skills',
@@ -748,38 +998,24 @@ describe('DockerService', () => {
         piContext,
       );
 
-      const callArgs = mockDocker.createContainer.mock.calls[0][0];
-      const binds: string[] = callArgs.HostConfig.Binds;
-      const tmpDir = binds[1].split(':')[0];
-
-      // Verify skill directories were created
-      expect(
-        fs.existsSync(path.join(tmpDir, 'skills', 'code-review', 'SKILL.md')),
-      ).toBe(true);
-      expect(
-        fs.existsSync(
-          path.join(tmpDir, 'skills', 'code-review', 'examples.md'),
-        ),
-      ).toBe(true);
-      expect(
-        fs.existsSync(path.join(tmpDir, 'skills', 'testing', 'SKILL.md')),
-      ).toBe(true);
-
-      // Verify file content
-      const skillMd = fs.readFileSync(
-        path.join(tmpDir, 'skills', 'code-review', 'SKILL.md'),
-        'utf-8',
-      );
-      expect(skillMd).toContain('name: code-review');
-      expect(skillMd).toContain('Review code.');
-
-      const examplesMd = fs.readFileSync(
-        path.join(tmpDir, 'skills', 'code-review', 'examples.md'),
-        'utf-8',
-      );
-      expect(examplesMd).toBe('# Examples');
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      const archive = inspectTarArchive(uploadedArchive ?? Buffer.alloc(0));
+      try {
+        expect(archive.entries).toEqual(
+          expect.arrayContaining([
+            'config/skills/code-review/SKILL.md',
+            'config/skills/code-review/examples.md',
+            'config/skills/testing/SKILL.md',
+          ]),
+        );
+        expect(
+          archive.readEntry('config/skills/code-review/SKILL.md'),
+        ).toContain('Review code.');
+        expect(archive.readEntry('config/skills/code-review/examples.md')).toBe(
+          '# Examples',
+        );
+      } finally {
+        archive.cleanup();
+      }
     });
   });
 });

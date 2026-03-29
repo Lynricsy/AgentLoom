@@ -6,6 +6,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import { SandboxService } from '../sandbox.service';
 import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import { SandboxNotFoundException } from '../sandbox.exceptions';
+import { DockerService } from '../docker.service';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
@@ -98,6 +99,7 @@ describe('SandboxService', () => {
   let service: SandboxService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let mockLifecycleProducer: Record<string, ReturnType<typeof vi.fn>>;
+  let mockDockerService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -116,6 +118,10 @@ describe('SandboxService', () => {
       addDestroyTask: vi.fn().mockResolvedValue(undefined),
     };
 
+    mockDockerService = {
+      getContainerStats: vi.fn(),
+    };
+
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
@@ -128,6 +134,10 @@ describe('SandboxService', () => {
         {
           provide: SandboxLifecycleProducer,
           useValue: mockLifecycleProducer,
+        },
+        {
+          provide: DockerService,
+          useValue: mockDockerService,
         },
       ],
     }).compile();

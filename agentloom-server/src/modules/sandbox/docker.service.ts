@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import Docker from 'dockerode';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -8,8 +8,20 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../database/schema';
-import type { PiConfigInput } from './pi-config-generator.service';
-import { PiConfigGeneratorService } from './pi-config-generator.service';
+import {
+  ApiKeyNotFoundException,
+  DefaultApiKeyNotConfiguredException,
+} from '../api-key/api-key.exceptions';
+import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
+import type {
+  PiConfigBundle,
+  PiConfigInput,
+  PiModelConfig,
+} from './pi-config-generator.service';
+import {
+  PiConfigGeneratorService,
+  resolvePiProviderApiKeyEnv,
+} from './pi-config-generator.service';
 import {
   SandboxCreationException,
   SandboxDestroyException,
@@ -42,7 +54,7 @@ export interface DockerExecExitInfo {
 export interface CreateContainerPiContext {
   /** pi-config 生成所需的输入 */
   piConfigInput?: PiConfigInput;
-  /** Agent 对话 ID，用于构建 PERMISSION_CALLBACK_URL */
+  /** 保留 Agent 对话 ID，供上层显式工具权限回调链路扩展 */
   conversationId?: string;
 }
 
@@ -51,6 +63,11 @@ interface FakeExecRecord {
   readonly outputs: Array<{ level: string; message: string }>;
   callback?: (level: string, message: string) => void;
   exitInfo: DockerExecExitInfo;
+}
+
+interface PreparedPiConfigArchive {
+  readonly archivePath: string;
+  readonly tmpDir: string;
 }
 
 const SANDBOX_IMAGE = 'agentloom/sandbox:latest';
@@ -64,6 +81,10 @@ const HEALTHCHECK_TIMEOUT_NS = 5 * 1_000_000_000;
 const HEALTHCHECK_RETRIES = 3;
 const DOCKER_STREAM_HEADER_SIZE = 8;
 const EXEC_INSPECT_POLL_INTERVAL_MS = 50;
+function getConfiguredSandboxNetwork(): string | undefined {
+  const network = process.env.APP_DOCKER_SANDBOX_NETWORK?.trim();
+  return network && network.length > 0 ? network : undefined;
+}
 
 @Injectable()
 export class DockerService {
@@ -73,7 +94,11 @@ export class DockerService {
   private readonly useFakeExecRuntime: boolean;
   private readonly logger = new Logger(DockerService.name);
 
-  constructor(private readonly piConfigGenerator: PiConfigGeneratorService) {
+  constructor(
+    private readonly piConfigGenerator: PiConfigGeneratorService,
+    @Optional()
+    private readonly decryptionBoundaryService?: DecryptionBoundaryService,
+  ) {
     this.docker = new Docker();
     this.useFakeExecRuntime = process.env.ACP_TEST_FAKE_RUNTIME === '1';
   }
@@ -83,80 +108,25 @@ export class DockerService {
     config: SandboxConfig,
     piContext?: CreateContainerPiContext,
   ): Promise<{ containerId: string }> {
-    let configTmpDir: string | undefined;
+    let preparedPiConfig: PreparedPiConfigArchive | undefined;
+    let createdContainer: Docker.Container | undefined;
+    let containerStarted = false;
 
     try {
-      const containerEnv: string[] = [];
-      const extraBinds: string[] = [];
-      const extraHosts: string[] = [];
+      const containerEnv = new Map<string, string>();
+      const sandboxNetwork = getConfiguredSandboxNetwork();
 
       if (!this.useFakeExecRuntime && piContext?.piConfigInput) {
         const bundle = this.piConfigGenerator.generateConfigBundle(
           piContext.piConfigInput,
         );
-
-        configTmpDir = fs.mkdtempSync(
-          path.join(os.tmpdir(), `sandbox-pi-config-${sessionId}-`),
+        preparedPiConfig = this.preparePiConfigArchive(sessionId, bundle);
+        containerEnv.set('PI_CODING_AGENT_DIR', '/config');
+        this.populateInheritedLlmEnv(containerEnv);
+        await this.populateConfiguredModelEnv(
+          containerEnv,
+          piContext.piConfigInput.modelConfig,
         );
-        fs.writeFileSync(
-          path.join(configTmpDir, 'settings.json'),
-          bundle.settings ?? '{}',
-        );
-        fs.writeFileSync(
-          path.join(configTmpDir, 'models.json'),
-          bundle.models ?? '{}',
-        );
-        fs.writeFileSync(
-          path.join(configTmpDir, 'system-prompt.md'),
-          bundle.systemPrompt ?? '',
-        );
-        fs.writeFileSync(
-          path.join(configTmpDir, 'mcp-servers.json'),
-          bundle.mcpServers ?? '{}',
-        );
-
-        // Write skill directories for pi-mono loadSkills() discovery
-        for (const [skillName, skillFiles] of Object.entries(
-          bundle.skills ?? {},
-        )) {
-          const skillDir = path.join(configTmpDir, 'skills', skillName);
-          fs.mkdirSync(skillDir, { recursive: true });
-          for (const [filename, content] of Object.entries(skillFiles)) {
-            fs.writeFileSync(path.join(skillDir, filename), content);
-          }
-        }
-
-        extraBinds.push(`${configTmpDir}:/config:ro`);
-        containerEnv.push('PI_CODING_AGENT_DIR=/config');
-
-        const llmKeyMap: Record<string, string> = {
-          ANTHROPIC_API_KEY: 'ANTHROPIC_API_KEY',
-          OPENAI_API_KEY: 'OPENAI_API_KEY',
-          GOOGLE_API_KEY: 'GOOGLE_API_KEY',
-          AZURE_OPENAI_API_KEY: 'AZURE_OPENAI_API_KEY',
-          XAI_API_KEY: 'XAI_API_KEY',
-          GROQ_API_KEY: 'GROQ_API_KEY',
-          OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
-          AWS_ACCESS_KEY_ID: 'AWS_ACCESS_KEY_ID',
-          AWS_SECRET_ACCESS_KEY: 'AWS_SECRET_ACCESS_KEY',
-          AWS_REGION: 'AWS_REGION',
-        };
-
-        for (const [envKey, containerKey] of Object.entries(llmKeyMap)) {
-          const val = process.env[envKey];
-          if (val) {
-            containerEnv.push(`${containerKey}=${val}`);
-          }
-        }
-
-        const appPort = process.env.APP_PORT ?? '3000';
-        if (piContext.conversationId) {
-          containerEnv.push(
-            `PERMISSION_CALLBACK_URL=http://host.docker.internal:${appPort}/api/v1/agent-conversations/${piContext.conversationId}/tool-permission`,
-          );
-        }
-
-        extraHosts.push('host.docker.internal:host-gateway');
       }
 
       const hostConfig: Docker.ContainerCreateOptions['HostConfig'] = {
@@ -165,8 +135,10 @@ export class DockerService {
         },
         NanoCpus: config.cpu * CPU_CORE_TO_NANO,
         Memory: config.memory * MB_TO_BYTES,
-        Binds: [`sandbox-${sessionId}-workspace:/workspace`, ...extraBinds],
-        ...(extraHosts.length > 0 ? { ExtraHosts: extraHosts } : {}),
+        Binds: [`sandbox-${sessionId}-workspace:/workspace`],
+        ...(sandboxNetwork
+          ? { NetworkMode: sandboxNetwork }
+          : {}),
       }
 
       const createOptions: Docker.ContainerCreateOptions = {
@@ -179,7 +151,14 @@ export class DockerService {
           Timeout: HEALTHCHECK_TIMEOUT_NS,
           Retries: HEALTHCHECK_RETRIES,
         },
-        ...(containerEnv.length > 0 ? { Env: containerEnv } : {}),
+        ...(containerEnv.size > 0
+          ? {
+              Env: Array.from(
+                containerEnv.entries(),
+                ([key, value]) => `${key}=${value}`,
+              ),
+            }
+          : {}),
         name: `sandbox-${sessionId}`,
         Labels: { 'agentloom.session': sessionId },
         HostConfig: {
@@ -205,10 +184,24 @@ export class DockerService {
         })
       }
 
+      createdContainer = container;
+      if (preparedPiConfig) {
+        await this.putArchive(
+          container.id,
+          fs.createReadStream(preparedPiConfig.archivePath),
+          '/',
+        );
+      }
+
       await container.start();
+      containerStarted = true;
 
       return { containerId: container.id };
     } catch (error) {
+      if (createdContainer && !containerStarted) {
+        await this.tryRemoveContainer(createdContainer, sessionId);
+      }
+
       this.logger.error(
         `Failed to create container for session ${sessionId}`,
         error instanceof Error ? error.stack : error,
@@ -216,7 +209,192 @@ export class DockerService {
       throw new SandboxCreationException(
         `Container creation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
+    } finally {
+      this.cleanupPreparedPiConfigArchive(preparedPiConfig);
     }
+  }
+
+  private preparePiConfigArchive(
+    sessionId: string,
+    bundle: PiConfigBundle,
+  ): PreparedPiConfigArchive {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), `sandbox-pi-config-${sessionId}-`),
+    );
+    const configDir = path.join(tmpDir, 'config');
+    const archivePath = path.join(
+      os.tmpdir(),
+      `sandbox-pi-config-${sessionId}-${randomUUID()}.tar`,
+    );
+
+    fs.mkdirSync(configDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(configDir, 'settings.json'),
+      bundle.settings ?? '{}',
+    );
+    fs.writeFileSync(path.join(configDir, 'models.json'), bundle.models ?? '{}');
+    fs.writeFileSync(
+      path.join(configDir, 'system-prompt.md'),
+      bundle.systemPrompt ?? '',
+    );
+    fs.writeFileSync(
+      path.join(configDir, 'mcp-servers.json'),
+      bundle.mcpServers ?? '{}',
+    );
+
+    // Write skill directories for pi-mono loadSkills() discovery.
+    for (const [skillName, skillFiles] of Object.entries(bundle.skills ?? {})) {
+      const skillDir = path.join(configDir, 'skills', skillName);
+      fs.mkdirSync(skillDir, { recursive: true });
+      for (const [filename, content] of Object.entries(skillFiles)) {
+        fs.writeFileSync(path.join(skillDir, filename), content);
+      }
+    }
+
+    const tarResult = spawnSync('tar', ['-cf', archivePath, 'config'], {
+      cwd: tmpDir,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+
+    if (tarResult.error) {
+      this.cleanupPreparedPiConfigArchive({ archivePath, tmpDir });
+      throw tarResult.error;
+    }
+
+    if (tarResult.status !== 0) {
+      const stderr = tarResult.stderr?.toString('utf-8').trim();
+      this.cleanupPreparedPiConfigArchive({ archivePath, tmpDir });
+      throw new Error(
+        `Failed to archive pi config bundle${stderr ? `: ${stderr}` : ''}`,
+      );
+    }
+
+    return { archivePath, tmpDir };
+  }
+
+  private cleanupPreparedPiConfigArchive(
+    prepared?: PreparedPiConfigArchive,
+  ): void {
+    if (!prepared) {
+      return;
+    }
+
+    fs.rmSync(prepared.archivePath, { force: true });
+    fs.rmSync(prepared.tmpDir, { recursive: true, force: true });
+  }
+
+  private async tryRemoveContainer(
+    container: Docker.Container,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      await container.remove({ force: true });
+    } catch (cleanupError) {
+      this.logger.warn(
+        `Failed to cleanup sandbox container for session ${sessionId}: ${
+          cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        }`,
+      );
+    }
+  }
+
+  private populateInheritedLlmEnv(containerEnv: Map<string, string>): void {
+    const llmKeyMap: Record<string, string> = {
+      ANTHROPIC_API_KEY: 'ANTHROPIC_API_KEY',
+      OPENAI_API_KEY: 'OPENAI_API_KEY',
+      GOOGLE_API_KEY: 'GOOGLE_API_KEY',
+      DEEPSEEK_API_KEY: 'DEEPSEEK_API_KEY',
+      CUSTOM_API_KEY: 'CUSTOM_API_KEY',
+      PRIVATE_CLOUD_API_KEY: 'PRIVATE_CLOUD_API_KEY',
+      AZURE_OPENAI_API_KEY: 'AZURE_OPENAI_API_KEY',
+      XAI_API_KEY: 'XAI_API_KEY',
+      GROQ_API_KEY: 'GROQ_API_KEY',
+      OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
+      AWS_ACCESS_KEY_ID: 'AWS_ACCESS_KEY_ID',
+      AWS_SECRET_ACCESS_KEY: 'AWS_SECRET_ACCESS_KEY',
+      AWS_REGION: 'AWS_REGION',
+    };
+
+    for (const [envKey, containerKey] of Object.entries(llmKeyMap)) {
+      const value = process.env[envKey];
+      if (value) {
+        containerEnv.set(containerKey, value);
+      }
+    }
+  }
+
+  private async populateConfiguredModelEnv(
+    containerEnv: Map<string, string>,
+    modelConfig?: PiModelConfig | null,
+  ): Promise<void> {
+    if (!modelConfig) {
+      return;
+    }
+
+    const apiKeyEnv = resolvePiProviderApiKeyEnv(modelConfig);
+    if (!apiKeyEnv) {
+      const inheritedEnvName = this.resolveInheritedProviderEnv(modelConfig);
+      if (inheritedEnvName) {
+        containerEnv.delete(inheritedEnvName);
+      }
+      return;
+    }
+
+    if (!this.decryptionBoundaryService) {
+      return;
+    }
+
+    const organizationId = this.normalizeString(modelConfig.organizationId);
+    const tenantId = this.normalizeString(modelConfig.tenantId);
+    if (!organizationId || !tenantId) {
+      return;
+    }
+
+    try {
+      const apiKey =
+        await this.decryptionBoundaryService.decryptConfiguredApiKey(
+          {
+            apiKeyId: modelConfig.apiKeyId ?? null,
+            organizationId,
+            tenantId,
+            provider: modelConfig.provider,
+          },
+          DockerService.name,
+        );
+      containerEnv.set(apiKeyEnv, apiKey);
+    } catch (error) {
+      if (
+        (error instanceof DefaultApiKeyNotConfiguredException ||
+          error instanceof ApiKeyNotFoundException) &&
+        containerEnv.has(apiKeyEnv)
+      ) {
+        this.logger.warn(
+          `Model ${modelConfig.provider}/${modelConfig.model} missing configured API key, falling back to inherited ${apiKeyEnv}`,
+        );
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  private resolveInheritedProviderEnv(
+    modelConfig: Pick<PiModelConfig, 'provider' | 'authMethod'>,
+  ): string | undefined {
+    return resolvePiProviderApiKeyEnv({
+      provider: modelConfig.provider,
+      authMethod: 'api_key',
+    });
+  }
+
+  private normalizeString(value?: string | null): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   async createExec(
@@ -528,6 +706,16 @@ export class DockerService {
   private async getContainerBaseUrl(containerId: string): Promise<string> {
     const container = this.docker.getContainer(containerId);
     const info = await container.inspect();
+
+    const sandboxNetwork = getConfiguredSandboxNetwork();
+    if (sandboxNetwork) {
+      const networkIp =
+        info.NetworkSettings.Networks?.[sandboxNetwork]?.IPAddress;
+      if (networkIp) {
+        return `http://${networkIp}:8080`;
+      }
+    }
+
     const hostPort =
       info.NetworkSettings.Ports?.[SANDBOX_AGENT_PORT]?.[0]?.HostPort;
 

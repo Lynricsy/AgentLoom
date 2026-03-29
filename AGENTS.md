@@ -246,7 +246,7 @@ docker compose logs -f studio                         # 跟踪日志
 - **沙箱容器运行时 (pi-coding-agent)**: `agentloom/sandbox:latest` 基于 archlinux 镜像，内嵌 `pi-coding-agent` + Fastify HTTP 适配层。容器暴露 `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答，兼容 JSON-RPC 2.0 envelope 与直接 AgentEvent 两种格式）、`POST /v1/abort`（取消）、`GET /health`（健康检查）。LLM API Key 通过环境变量注入。`PiConfigGeneratorService` 从 Agent 定义生成 pi 配置文件挂载到容器 `/config/`
 - **InProcessAgentAdapter (pi-agent-core)**: `InProcessAgentAdapter` 作为持久化包装层，将 live runtime 操作委托给 `PiAgentCoreAdapter`（基于 `pi-agent-core` 的 `Agent` 类），自身维护 workflow checkpoint、conversation durable snapshot、replay ledger。`streamFn` 适配器桥接 Vercel AI SDK `streamText()` 与 pi-agent-core 的 `StreamFn` 接口。工具 schema 通过 `tool-schema-converter.ts` 在 Zod ↔ TypeBox 之间转换
 - **ESM 动态导入**: pi-mono 包为纯 ESM，NestJS (CommonJS) 侧通过 `await import()` 动态导入。`pi-imports.ts` 提供统一的惰性导入入口（`importPiAgentCore()`、`importPiAi()`）
-- **沙箱工具权限**: `SandboxAgentAdapter` 实现 Promise gate 工具权限机制，容器通过 `POST /agent-conversations/:id/tool-permission` 回调通知权限请求，30s 超时默认拒绝
+- **沙箱工具权限**: `SandboxAgentAdapter` 保留 Promise gate 工具权限机制；仅当 `/v1/prompt` 显式提供 `permissionCallbackUrl` 时，容器才会通过 `POST /agent-conversations/:id/tool-permission` 发起权限回调，30s 超时默认拒绝。当前普通 Agent 对话主路径默认不启用该链路
 <!-- TRELLIS:START -->
 # Trellis Instructions
 

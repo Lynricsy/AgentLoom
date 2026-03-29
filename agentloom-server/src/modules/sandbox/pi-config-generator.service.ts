@@ -7,6 +7,10 @@ export interface PiModelConfig {
   model: string;
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   apiBaseUrl?: string;
+  apiKeyId?: string | null;
+  organizationId?: string;
+  tenantId?: string;
+  authMethod?: string | null;
 }
 
 export interface SkillInput {
@@ -38,6 +42,9 @@ const PROVIDER_API_MAP: Record<string, string> = {
   anthropic: 'anthropic-messages',
   openai: 'openai-completions',
   google: 'google-generative-ai',
+  deepseek: 'openai-completions',
+  custom: 'openai-completions',
+  private_cloud: 'openai-completions',
   'azure-openai': 'azure-openai-responses',
   xai: 'openai-completions',
   groq: 'openai-completions',
@@ -50,6 +57,7 @@ const PROVIDER_BASE_URL_MAP: Record<string, string> = {
   anthropic: 'https://api.anthropic.com',
   openai: 'https://api.openai.com/v1',
   google: 'https://generativelanguage.googleapis.com',
+  deepseek: 'https://api.deepseek.com/v1',
   'azure-openai': 'https://openai.azure.com',
   xai: 'https://api.x.ai/v1',
   groq: 'https://api.groq.com/openai/v1',
@@ -66,12 +74,59 @@ const PROVIDER_API_KEY_ENV_MAP: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GOOGLE_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+  custom: 'CUSTOM_API_KEY',
+  private_cloud: 'PRIVATE_CLOUD_API_KEY',
   'azure-openai': 'AZURE_OPENAI_API_KEY',
   xai: 'XAI_API_KEY',
   groq: 'GROQ_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   bedrock: 'AWS_ACCESS_KEY_ID',
 };
+
+const OPENAI_COMPAT_PROVIDERS = new Set(['deepseek', 'custom', 'private_cloud']);
+
+export function resolvePiProviderApi(provider: string): string {
+  return PROVIDER_API_MAP[provider] ?? `${provider}-completions`;
+}
+
+export function resolvePiProviderBaseUrl(
+  provider: string,
+  apiBaseUrl?: string,
+): string | undefined {
+  return apiBaseUrl ?? PROVIDER_BASE_URL_MAP[provider] ?? undefined;
+}
+
+export function resolvePiProviderApiKeyEnv(
+  modelConfig: Pick<PiModelConfig, 'provider' | 'authMethod'>,
+): string | undefined {
+  if (
+    modelConfig.provider === 'private_cloud' &&
+    modelConfig.authMethod &&
+    modelConfig.authMethod !== 'api_key'
+  ) {
+    return undefined;
+  }
+
+  return (
+    PROVIDER_API_KEY_ENV_MAP[modelConfig.provider] ??
+    `${modelConfig.provider.toUpperCase().replace(/-/g, '_')}_API_KEY`
+  );
+}
+
+function resolvePiProviderCompat(
+  modelConfig: PiModelConfig,
+): Record<string, unknown> | undefined {
+  if (!OPENAI_COMPAT_PROVIDERS.has(modelConfig.provider)) {
+    return undefined;
+  }
+
+  return {
+    supportsDeveloperRole: false,
+    supportsReasoningEffort: false,
+    maxTokensField: 'max_tokens',
+  };
+}
 
 @Injectable()
 export class PiConfigGeneratorService {
@@ -118,21 +173,19 @@ export class PiConfigGeneratorService {
       return JSON.stringify({ providers: {} }, null, 2);
     }
 
-    const api =
-      PROVIDER_API_MAP[modelCfg.provider] ?? `${modelCfg.provider}-completions`;
-    const baseUrl =
-      modelCfg.apiBaseUrl ??
-      PROVIDER_BASE_URL_MAP[modelCfg.provider] ??
-      undefined;
-
-    const apiKeyEnv =
-      PROVIDER_API_KEY_ENV_MAP[modelCfg.provider] ??
-      `${modelCfg.provider.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+    const api = resolvePiProviderApi(modelCfg.provider);
+    const baseUrl = resolvePiProviderBaseUrl(
+      modelCfg.provider,
+      modelCfg.apiBaseUrl,
+    );
+    const apiKeyEnv = resolvePiProviderApiKeyEnv(modelCfg);
+    const compat = resolvePiProviderCompat(modelCfg);
 
     const providerEntry: Record<string, unknown> = {
       api,
-      apiKey: apiKeyEnv,
-      baseUrl,
+      ...(apiKeyEnv ? { apiKey: apiKeyEnv } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(compat ? { compat } : {}),
       models: [{ id: modelCfg.model, name: modelCfg.model }],
     };
 

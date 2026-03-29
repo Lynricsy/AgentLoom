@@ -11,6 +11,13 @@ import { execSync } from 'node:child_process';
 
 vi.mock('@mariozechner/pi-coding-agent', () => ({}));
 
+vi.mock('../../agentloom-deploy/sandbox/src/pty-extension.js', () => ({
+  createPtyExtension: () => ({
+    manager: null,
+    register: () => ({}),
+  }),
+}));
+
 vi.mock('../../agentloom-deploy/sandbox/src/acp-adapter.js', async () => {
   const actual = await vi.importActual<
     typeof import('../../agentloom-deploy/sandbox/src/acp-adapter.js')
@@ -271,6 +278,93 @@ describe('Sandbox HTTP Contract (in-process)', () => {
 
       const doneEvent = events.find((e) => e.params.type === 'done');
       expect(doneEvent).toBeDefined();
+    });
+
+    it('应兼容 content[] 请求体并提取 text block 作为 prompt', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/v1/session',
+        payload: {},
+      });
+      const { sessionId } = createRes.json();
+
+      mockSession.prompt = vi.fn().mockImplementation(async () => {
+        mockSession._emit({ type: 'agent_end' });
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/prompt',
+        payload: {
+          sessionId,
+          content: [
+            { type: 'text', text: 'first line' },
+            { type: 'image', url: 'ignored' },
+            { type: 'text', text: 'second line' },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockSession.prompt).toHaveBeenCalledWith(
+        'first line\n\nsecond line',
+      );
+    });
+
+    it('显式传 permissionCallbackUrl 时应调用权限回调', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/v1/session',
+        payload: {},
+      });
+      const { sessionId } = createRes.json();
+
+      const originalFetch = globalThis.fetch;
+      const permissionFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ allowed: true }),
+      });
+
+      globalThis.fetch =
+        permissionFetch as unknown as typeof globalThis.fetch;
+
+      try {
+        mockSession.prompt = vi.fn().mockImplementation(async () => {
+          mockSession._emit({
+            type: 'tool_execution_start',
+            toolName: 'bash',
+            toolCallId: 'tc-001',
+            input: { command: 'pwd' },
+          });
+          mockSession._emit({ type: 'agent_end' });
+        });
+
+        const response = await app.inject({
+          method: 'POST',
+          url: '/v1/prompt',
+          payload: {
+            sessionId,
+            text: 'test',
+            permissionCallbackUrl: 'http://callback.local/permission',
+          },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(permissionFetch).toHaveBeenCalledWith(
+          'http://callback.local/permission',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              toolName: 'bash',
+              toolCallId: 'tc-001',
+              input: { command: 'pwd' },
+              sessionId,
+            }),
+          }),
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
 
     it('SSE 事件应遵循 JSON-RPC 2.0 信封格式', async () => {

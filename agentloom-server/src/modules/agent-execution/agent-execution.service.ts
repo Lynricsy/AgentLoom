@@ -257,6 +257,19 @@ export class AgentExecutionService {
     conversationId: string,
     tenantId: string,
   ): Promise<void> {
+    const existingJob = await this.executionQueue.getJob(conversationId);
+    if (existingJob) {
+      const state = await existingJob.getState();
+      if (state === 'completed' || state === 'failed') {
+        await existingJob.remove();
+      } else {
+        this.logger.debug(
+          `Skipped queueing agent conversation execution for ${conversationId} because job already exists in state ${state}`,
+        );
+        return;
+      }
+    }
+
     await this.executionQueue.add(
       AGENT_CONVERSATION_EXECUTION_JOB,
       {

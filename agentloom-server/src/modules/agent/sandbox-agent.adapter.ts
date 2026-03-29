@@ -637,6 +637,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       case 'error': {
         const message =
           this.readString(data?.message) ??
+          this.readString((envelope as Record<string, unknown>)['message']) ??
           this.readString(envelope.data) ??
           'Sandbox agent error';
         this.clearPendingPermissions(sessionId, 'deny');

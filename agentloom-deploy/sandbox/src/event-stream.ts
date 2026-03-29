@@ -14,9 +14,9 @@ import type {
 export function translateEvent(event: SandboxAgentEvent): SseEventParams | null {
   switch (event.type) {
     case 'message_update': {
-      const content = event.assistantMessageEvent?.content;
-      if (content?.type === 'text' && content.text) {
-        return { type: 'text_delta', text: content.text };
+      const text = readAssistantTextDelta(event);
+      if (text) {
+        return { type: 'text_delta', text };
       }
       return null;
     }
@@ -25,13 +25,13 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
         type: 'tool_call_start',
         toolName: event.toolName,
         toolCallId: event.toolCallId,
-        input: event.input,
+        input: readToolExecutionInput(event),
       };
     case 'tool_execution_update':
       return {
         type: 'tool_call_update',
         toolCallId: event.toolCallId,
-        content: event.content,
+        content: readToolExecutionUpdateContent(event),
       };
     case 'tool_execution_end':
       return {
@@ -147,7 +147,7 @@ export function streamSessionEvents(options: StreamEventOptions): () => void {
         const allowed = await requestPermission(permissionCallbackUrl, {
           toolName: event.toolName,
           toolCallId: event.toolCallId,
-          input: event.input,
+          input: readToolExecutionInput(event),
           sessionId,
         });
         if (!allowed) {
@@ -174,4 +174,55 @@ export function streamSessionEvents(options: StreamEventOptions): () => void {
     unsubscribe();
     close();
   };
+}
+
+function readAssistantTextDelta(
+  event: Extract<SandboxAgentEvent, { type: 'message_update' }>,
+): string | null {
+  const assistantEvent = event.assistantMessageEvent;
+  if (!assistantEvent) {
+    return null;
+  }
+
+  if (
+    assistantEvent.type === 'text_delta'
+    && typeof assistantEvent.delta === 'string'
+    && assistantEvent.delta.length > 0
+  ) {
+    return assistantEvent.delta;
+  }
+
+  if (
+    assistantEvent.type === 'content'
+    && assistantEvent.content?.type === 'text'
+    && assistantEvent.content.text
+  ) {
+    return assistantEvent.content.text;
+  }
+
+  return null;
+}
+
+function readToolExecutionInput(
+  event: Extract<SandboxAgentEvent, { type: 'tool_execution_start' }>,
+): unknown {
+  if ('args' in event && event.args !== undefined) {
+    return event.args;
+  }
+
+  return event.input;
+}
+
+function readToolExecutionUpdateContent(
+  event: Extract<SandboxAgentEvent, { type: 'tool_execution_update' }>,
+): string | undefined {
+  if (typeof event.content === 'string' && event.content.length > 0) {
+    return event.content;
+  }
+
+  if (typeof event.partialResult === 'string' && event.partialResult.length > 0) {
+    return event.partialResult;
+  }
+
+  return undefined;
 }
