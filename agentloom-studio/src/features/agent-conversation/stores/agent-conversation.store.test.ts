@@ -98,15 +98,23 @@ function createHistoryResponse(messages: unknown[]) {
 }
 
 function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
+  let resolve: ((value: T) => void) | null = null;
+  let reject: ((reason?: unknown) => void) | null = null;
 
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
   });
 
-  return { promise, resolve, reject };
+  if (!resolve || !reject) {
+    throw new Error("Deferred 初始化失败");
+  }
+
+  return {
+    promise,
+    resolve: (value: T) => resolve?.(value),
+    reject: (reason?: unknown) => reject?.(reason),
+  };
 }
 
 describe("agentConversationStore", () => {

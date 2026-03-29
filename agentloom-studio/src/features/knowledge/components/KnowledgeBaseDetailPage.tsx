@@ -84,6 +84,14 @@ const QUERY_ORCHESTRATION_OPTIONS: Array<{
 
 type DocumentStatusFilter = 'all' | 'uploaded' | 'processing' | 'ready' | 'failed'
 
+interface KnowledgeBaseSettingsDraft extends UpdateKnowledgeBaseSettingsInput {
+  chunkingStrategy: KnowledgeChunkingStrategy
+  retrievalStrategy: KnowledgeRetrievalStrategy
+  rerankingStrategy: KnowledgeRerankingStrategy
+  queryOrchestration: KnowledgeQueryOrchestration
+  embeddingModelConfigId: string | null
+}
+
 const DOCUMENT_STATUS_FILTER_OPTIONS: Array<{
   value: DocumentStatusFilter
   label: string
@@ -95,7 +103,7 @@ const DOCUMENT_STATUS_FILTER_OPTIONS: Array<{
   { value: 'failed', label: '失败' },
 ]
 
-function createDefaultSettings(): UpdateKnowledgeBaseSettingsInput {
+function createDefaultSettings(): KnowledgeBaseSettingsDraft {
   return {
     chunkingStrategy: {
       type: 'sentence_window',
@@ -117,7 +125,7 @@ function createDefaultSettings(): UpdateKnowledgeBaseSettingsInput {
 
 function createSettingsFromKnowledgeBase(
   knowledgeBase: KnowledgeBase,
-): UpdateKnowledgeBaseSettingsInput {
+): KnowledgeBaseSettingsDraft {
   return {
     embeddingModel: knowledgeBase.embeddingModel,
     embeddingModelConfigId: knowledgeBase.embeddingModelConfigId,
@@ -219,7 +227,7 @@ export function KnowledgeBaseDetailPage({
   const { notify } = useToast()
   const [documentPage, setDocumentPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>('all')
-  const [settings, setSettings] = useState<UpdateKnowledgeBaseSettingsInput>(
+  const [settings, setSettings] = useState<KnowledgeBaseSettingsDraft>(
     createDefaultSettings(),
   )
   const [testQuery, setTestQuery] = useState('')
@@ -415,10 +423,11 @@ export function KnowledgeBaseDetailPage({
     })
   }, [knowledgeBaseId, notify, rebuildMutation])
 
-  const chunkingStrategy = settings.chunkingStrategy ?? createDefaultSettings().chunkingStrategy!
-  const retrievalStrategy = settings.retrievalStrategy ?? createDefaultSettings().retrievalStrategy!
-  const rerankingStrategy = settings.rerankingStrategy ?? createDefaultSettings().rerankingStrategy!
-  const queryOrchestration = settings.queryOrchestration ?? createDefaultSettings().queryOrchestration!
+  const defaultSettings = createDefaultSettings()
+  const chunkingStrategy = settings.chunkingStrategy ?? defaultSettings.chunkingStrategy
+  const retrievalStrategy = settings.retrievalStrategy ?? defaultSettings.retrievalStrategy
+  const rerankingStrategy = settings.rerankingStrategy ?? defaultSettings.rerankingStrategy
+  const queryOrchestration = settings.queryOrchestration ?? defaultSettings.queryOrchestration
 
   if (kbLoading || !knowledgeBase) {
     return (
