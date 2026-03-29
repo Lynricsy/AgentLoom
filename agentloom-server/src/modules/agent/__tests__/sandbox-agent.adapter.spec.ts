@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { jsonSchema, tool } from 'ai';
 
 import { SandboxAgentAdapter } from '../sandbox-agent.adapter';
 import type { CreateSessionParams } from '../types/agent-session.types';
@@ -20,6 +21,9 @@ vi.mock('@nestjs/common', async (importOriginal) => {
 
 describe('SandboxAgentAdapter', () => {
   let adapter: SandboxAgentAdapter;
+  let mockDb: {
+    transaction: ReturnType<typeof vi.fn>;
+  };
   let mockSandboxService: {
     getSandboxSession: ReturnType<typeof vi.fn>;
     findByConversationId: ReturnType<typeof vi.fn>;
@@ -45,6 +49,13 @@ describe('SandboxAgentAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     savedFetch = globalThis.fetch;
+    mockDb = {
+      transaction: vi.fn(async (operation) =>
+        operation({
+          execute: vi.fn(),
+        }),
+      ),
+    };
     mockSandboxService = {
       getSandboxSession: vi.fn().mockResolvedValue({
         id: 'sandbox-001',
@@ -71,6 +82,7 @@ describe('SandboxAgentAdapter', () => {
       json: vi.fn().mockResolvedValue({ success: true }),
     } as unknown as Response);
     adapter = new SandboxAgentAdapter(
+      mockDb as never,
       mockSandboxService as never,
       mockDockerService as never,
     );
@@ -160,6 +172,70 @@ describe('SandboxAgentAdapter', () => {
         }),
       );
       expect(session.status).toBe('active');
+    });
+
+    it('有 MCP servers 时应使用更长的容器 session 初始化超时', async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+
+      await adapter.createSession({
+        ...defaultParams,
+        mcpServers: {
+          WebSearch: {
+            transportType: 'stdio',
+            command: 'npx',
+            args: ['-y', 'grok-search@latest'],
+          } as never,
+        },
+      });
+
+      expect(timeoutSpy).toHaveBeenCalledWith(90_000);
+      timeoutSpy.mockRestore();
+    });
+
+    it('预注册 session tool provider 时应把 remoteToolExecution 一并下发到容器', async () => {
+      const execute = vi.fn().mockResolvedValue('记忆检索完成');
+      adapter.registerSessionToolProvider('session-preallocated', () => ({
+        lookup_memory: tool({
+          description: '检索记忆内容',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+            },
+            required: ['query'],
+            additionalProperties: false,
+          }),
+          execute,
+        }),
+      }));
+
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-preallocated',
+      });
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const payload = JSON.parse(String(fetchCall?.[1]?.body)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(payload.sessionId).toBe('session-preallocated');
+      expect(payload).toHaveProperty('remoteToolExecution');
+      expect(payload.remoteToolExecution).toMatchObject({
+        sessionId: 'session-preallocated',
+        callbackUrl: expect.stringContaining(
+          '/api/v1/agent-runtime/sessions/session-preallocated/tool-executions',
+        ),
+        tools: [
+          expect.objectContaining({
+            name: 'lookup_memory',
+            description: '检索记忆内容',
+            promptSnippet: '检索记忆内容',
+          }),
+        ],
+      });
+      expect(execute).not.toHaveBeenCalled();
     });
 
     it('有 agentConversationId 和 tenantId 时也应调用 conversation sandbox 初始化', async () => {
@@ -718,6 +794,69 @@ describe('SandboxAgentAdapter', () => {
     });
   });
 
+  describe('session tool callback bridge', () => {
+    it('应在租户事务中执行 session-local tool 并返回结果', async () => {
+      const execute = vi.fn().mockResolvedValue({
+        items: ['memory-a'],
+      });
+      adapter.registerSessionToolProvider('session-tools-1', () => ({
+        lookup_memory: tool({
+          description: '检索记忆内容',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+            },
+            required: ['query'],
+            additionalProperties: false,
+          }),
+          execute,
+        }),
+      }));
+
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-tools-1',
+      });
+
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body),
+      ) as {
+        remoteToolExecution?: {
+          callbackToken?: string;
+        };
+      };
+      const callbackToken =
+        initPayload.remoteToolExecution?.callbackToken ?? '';
+
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-tools-1',
+          {
+            sessionId: 'session-tools-1',
+            toolCallId: 'tool-call-1',
+            toolName: 'lookup_memory',
+            input: { query: 'redis' },
+          },
+          callbackToken,
+        ),
+      ).resolves.toEqual({
+        result: {
+          items: ['memory-a'],
+        },
+      });
+
+      expect(mockDb.transaction).toHaveBeenCalledOnce();
+      expect(execute).toHaveBeenCalledWith(
+        { query: 'redis' },
+        expect.objectContaining({
+          toolCallId: 'tool-call-1',
+          messages: [],
+        }),
+      );
+    });
+  });
+
   describe('SSE event translation branch coverage', () => {
     async function createSessionAndPromptSse(
       sseLines: string[],
@@ -783,6 +922,24 @@ describe('SandboxAgentAdapter', () => {
       });
     });
 
+    it('text_delta with top-level params text field', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","text":"top-level-text"}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","stopReason":"end_turn"}}\n\n',
+      ]);
+
+      expect(events).toEqual([
+        {
+          type: 'message_chunk',
+          content: 'top-level-text',
+        },
+        {
+          type: 'done',
+          stopReason: 'end_turn',
+        },
+      ]);
+    });
+
     it('text_delta with empty string data yields no event', async () => {
       const events = await createSessionAndPromptSse([
         'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":""}}\n\n',
@@ -807,6 +964,29 @@ describe('SandboxAgentAdapter', () => {
           status: 'in_progress',
         }),
       });
+    });
+
+    it('tool_call_start with top-level params preserves toolName and input', async () => {
+      const events = await createSessionAndPromptSse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_start","toolCallId":"t1-top","toolName":"mcp__WebSearch__search","input":{"query":"AgentLoom"}}}\n\n',
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","stopReason":"tool_use"}}\n\n',
+      ]);
+
+      expect(events).toEqual([
+        {
+          type: 'tool_call',
+          call: expect.objectContaining({
+            id: 't1-top',
+            tool: 'mcp__WebSearch__search',
+            args: { query: 'AgentLoom' },
+            status: 'in_progress',
+          }),
+        },
+        {
+          type: 'done',
+          stopReason: 'tool_use',
+        },
+      ]);
     });
 
     it('tool_call_end with isError=true produces failed status with fallback message', async () => {

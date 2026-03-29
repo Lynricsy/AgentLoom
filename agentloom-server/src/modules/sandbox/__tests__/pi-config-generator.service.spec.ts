@@ -111,10 +111,41 @@ describe('PiConfigGeneratorService', () => {
       expect(parsed.providers['openai'].api).toBe('openai-completions');
     });
 
-    it('maps private_cloud provider to openai-completions api with private env key', () => {
+    it('private_cloud 的 gpt 模型应映射到 openai-responses 并补齐 /v1 baseUrl', () => {
       const cfg: PiModelConfig = {
         provider: 'private_cloud',
-        model: 'claude-opus-4-6',
+        model: 'gpt-4o',
+        apiBaseUrl: 'https://models.example.test',
+        authMethod: 'api_key',
+      };
+      const parsed = JSON.parse(
+        service.generateModelsJson({ modelConfig: cfg }),
+      ) as {
+        providers: Record<
+          string,
+          {
+            api: string;
+            apiKey: string;
+            baseUrl: string;
+            compat?: Record<string, unknown>;
+          }
+        >;
+      };
+
+      expect(parsed.providers['private_cloud'].api).toBe('openai-responses');
+      expect(parsed.providers['private_cloud'].apiKey).toBe(
+        'PRIVATE_CLOUD_API_KEY',
+      );
+      expect(parsed.providers['private_cloud'].baseUrl).toBe(
+        'https://models.example.test/v1',
+      );
+      expect(parsed.providers['private_cloud']).not.toHaveProperty('compat');
+    });
+
+    it('private_cloud 的 claude 模型应映射到 anthropic-messages 并去掉多余 /v1', () => {
+      const cfg: PiModelConfig = {
+        provider: 'private_cloud',
+        model: 'claude-sonnet-4.6',
         apiBaseUrl: 'https://models.example.test/v1',
         authMethod: 'api_key',
       };
@@ -127,23 +158,17 @@ describe('PiConfigGeneratorService', () => {
             api: string;
             apiKey: string;
             baseUrl: string;
-            compat: Record<string, unknown>;
           }
         >;
       };
 
-      expect(parsed.providers['private_cloud'].api).toBe('openai-completions');
+      expect(parsed.providers['private_cloud'].api).toBe('anthropic-messages');
       expect(parsed.providers['private_cloud'].apiKey).toBe(
         'PRIVATE_CLOUD_API_KEY',
       );
       expect(parsed.providers['private_cloud'].baseUrl).toBe(
-        'https://models.example.test/v1',
+        'https://models.example.test',
       );
-      expect(parsed.providers['private_cloud'].compat).toMatchObject({
-        supportsDeveloperRole: false,
-        supportsReasoningEffort: false,
-        maxTokensField: 'max_tokens',
-      });
     });
 
     it('private_cloud 非 api_key 鉴权时不应写入 apiKey 字段', () => {

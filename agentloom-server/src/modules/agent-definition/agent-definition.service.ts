@@ -814,8 +814,48 @@ export class AgentDefinitionService {
   }
 
   private extractModelConfig(data: Record<string, any>): AgentModelConfig {
+    const modelConfigId = this.readFirstString(
+      data.llmConfigId,
+      data.llm_config_id,
+      data.modelConfigId,
+      data.model_config_id,
+      data.modelId,
+      data.model_id,
+    );
+    const modelName = this.readFirstString(
+      data.modelName,
+      data.model_name,
+      data.modelId,
+      data.model_id,
+    );
+    const apiKeyId = this.readNullableString(data.apiKeyId ?? data.api_key_id);
+    const endpointUrl = this.readNullableString(
+      data.endpointUrl ?? data.endpoint_url,
+    );
+    const authMethod = this.readNullableString(
+      data.authMethod ?? data.auth_method,
+    );
+    const authConfig =
+      data.authConfig &&
+      typeof data.authConfig === 'object' &&
+      !Array.isArray(data.authConfig)
+        ? (data.authConfig as Record<string, unknown>)
+        : data.auth_config &&
+            typeof data.auth_config === 'object' &&
+            !Array.isArray(data.auth_config)
+          ? (data.auth_config as Record<string, unknown>)
+          : undefined;
+
     return {
-      modelId: data.modelId ?? data.model_id ?? '',
+      modelId: modelConfigId ?? '',
+      ...(typeof data.provider === 'string' && data.provider.length > 0
+        ? { provider: data.provider }
+        : {}),
+      ...(modelName ? { modelName } : {}),
+      ...(apiKeyId !== undefined ? { apiKeyId } : {}),
+      ...(endpointUrl !== undefined ? { endpointUrl } : {}),
+      ...(authMethod !== undefined ? { authMethod } : {}),
+      ...(authConfig ? { authConfig } : {}),
       temperature: data.temperature,
       maxTokens: data.maxTokens ?? data.max_tokens,
       topP: data.topP ?? data.top_p,
@@ -1082,6 +1122,34 @@ export class AgentDefinitionService {
       persistenceExpiryHours: data.persistenceExpiryHours,
       persistentSandboxId: data.persistentSandboxId,
     };
+  }
+
+  private readFirstString(...candidates: unknown[]): string | undefined {
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') {
+        continue;
+      }
+
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+
+    return undefined;
+  }
+
+  private readNullableString(value: unknown): string | null | undefined {
+    if (value === null) {
+      return null;
+    }
+
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 }
 

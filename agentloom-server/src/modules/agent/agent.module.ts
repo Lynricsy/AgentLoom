@@ -10,6 +10,7 @@ import {
   AGENT_RUNTIME_FACTORY,
   AgentAdapterFactory,
 } from './agent-adapter.factory';
+import { AgentRuntimeController } from './agent-runtime.controller';
 import { AutonomyResolverService } from './autonomy-resolver.service';
 import { CodeExecutionService } from './code-execution.service';
 import { InProcessAgentAdapter } from './in-process-agent.adapter';
@@ -27,6 +28,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
     McpModule,
     KnowledgeModule,
   ],
+  controllers: [AgentRuntimeController],
   providers: [
     AutonomyResolverService,
     CodeExecutionService,

@@ -23,7 +23,12 @@ async function* asyncEvents(
 }
 
 function makeStreamResult(events: TextStreamPart[]) {
-  return { fullStream: asyncEvents(events) };
+  return {
+    fullStream: asyncEvents(events),
+    content: Promise.resolve([]),
+    totalUsage: Promise.resolve({ inputTokens: 0, outputTokens: 0 }),
+    finishReason: Promise.resolve('stop'),
+  };
 }
 
 const baseContext: PiCompatContext = {
@@ -273,6 +278,98 @@ describe('createVercelStreamFn()', () => {
     expect(usage.totalTokens).toBe(300);
   });
 
+  it('recovers final text content when fullStream only emits finish', async () => {
+    mockStreamText.mockReturnValue({
+      ...makeStreamResult([
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          totalUsage: { inputTokens: 4, outputTokens: 7 },
+        },
+      ]),
+      content: Promise.resolve([{ type: 'text', text: 'Recovered answer' }]),
+      totalUsage: Promise.resolve({ inputTokens: 4, outputTokens: 7 }),
+      finishReason: Promise.resolve('stop'),
+    });
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of (await fn(baseContext)) as AsyncIterable<
+      Record<string, unknown>
+    >) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain('text_start');
+    expect(types).toContain('text_delta');
+    expect(types).toContain('text_end');
+
+    const delta = events.find((e) => e.type === 'text_delta') as Record<
+      string,
+      unknown
+    >;
+    expect(delta.delta).toBe('Recovered answer');
+
+    const done = events.find((e) => e.type === 'done') as Record<
+      string,
+      unknown
+    >;
+    const message = done.message as Record<string, unknown>;
+    expect(message.content).toEqual([{ type: 'text', text: 'Recovered answer' }]);
+  });
+
+  it('recovers final tool call content when fullStream only emits finish', async () => {
+    mockStreamText.mockReturnValue({
+      ...makeStreamResult([
+        {
+          type: 'finish',
+          finishReason: 'tool-calls',
+          totalUsage: { inputTokens: 6, outputTokens: 3 },
+        },
+      ]),
+      content: Promise.resolve([
+        {
+          type: 'tool-call',
+          toolCallId: 'recovered-tool',
+          toolName: 'search',
+          input: { q: 'agentloom' },
+        },
+      ]),
+      totalUsage: Promise.resolve({ inputTokens: 6, outputTokens: 3 }),
+      finishReason: Promise.resolve('tool-calls'),
+    });
+
+    const fn = createVercelStreamFn(makeMockModel());
+    const events: Record<string, unknown>[] = [];
+    for await (const e of (await fn(baseContext)) as AsyncIterable<
+      Record<string, unknown>
+    >) {
+      events.push(e);
+    }
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain('toolcall_start');
+    expect(types).toContain('toolcall_end');
+
+    const toolcallEnd = events.find((e) => e.type === 'toolcall_end') as Record<
+      string,
+      unknown
+    >;
+    expect(toolcallEnd.toolCall).toEqual({
+      type: 'toolCall',
+      id: 'recovered-tool',
+      name: 'search',
+      arguments: { q: 'agentloom' },
+    });
+
+    const done = events.find((e) => e.type === 'done') as Record<
+      string,
+      unknown
+    >;
+    expect(done.reason).toBe('toolUse');
+  });
+
   it('maps abort event to pi error with reason aborted', async () => {
     mockStreamText.mockReturnValue(
       makeStreamResult([{ type: 'abort', reason: 'User cancelled' }]),
@@ -390,6 +487,46 @@ describe('createVercelStreamFn()', () => {
       expect.objectContaining({
         system: 'Be helpful',
         messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    );
+  });
+
+  it('supports pi-mono StreamFn(model, context, options) signature', async () => {
+    mockStreamText.mockReturnValue(
+      makeStreamResult([
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          totalUsage: { inputTokens: 2, outputTokens: 2 },
+        },
+      ]),
+    );
+
+    const fn = createVercelStreamFn(makeMockModel('openai', 'bound-model'));
+    const runtimeModel = makeMockModel('anthropic', 'runtime-model');
+    const controller = new AbortController();
+
+    await fn(
+      runtimeModel,
+      {
+        systemPrompt: 'Use runtime context',
+        messages: [{ role: 'user', content: 'hello from runtime' }],
+      },
+      {
+        temperature: 0.3,
+        maxTokens: 128,
+        signal: controller.signal,
+      },
+    );
+
+    expect(mockStreamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: runtimeModel,
+        system: 'Use runtime context',
+        messages: [{ role: 'user', content: 'hello from runtime' }],
+        temperature: 0.3,
+        maxTokens: 128,
+        abortSignal: controller.signal,
       }),
     );
   });

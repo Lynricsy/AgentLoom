@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 import { DRIZZLE } from '../../../database/database.module';
 import { SandboxService } from '../sandbox.service';
@@ -57,12 +58,38 @@ function createSelectChainWithOrderBy(result: unknown[]) {
   };
 }
 
+function createSelectChainForList(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        orderBy: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            offset: vi.fn().mockResolvedValue(result),
+          }),
+        }),
+      }),
+    }),
+  };
+}
+
+function createSelectChainForCount(total: number) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([{ total }]),
+    }),
+  };
+}
+
 function createUpdateChainNoReturn() {
   return {
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(undefined),
     }),
   };
+}
+
+function renderSql(sql: Parameters<PgDialect['sqlToQuery']>[0]): string {
+  return new PgDialect().sqlToQuery(sql).sql;
 }
 
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -385,6 +412,50 @@ describe('SandboxService', () => {
       const result = await service.getSandboxLogs(TEST_SESSION_ID);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('listSandboxes', () => {
+    it('应返回分页结果', async () => {
+      const session = buildSession({ status: 'ready' });
+      db.select
+        .mockReturnValueOnce(createSelectChainForList([session]))
+        .mockReturnValueOnce(createSelectChainForCount(1));
+
+      const result = await service.listSandboxes(TEST_TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+      });
+
+      expect(result).toEqual({
+        data: [session],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      });
+    });
+
+    it('搜索条件应将 UUID id cast 为 text 再执行 ILIKE，避免 Postgres uuid ~~* 错误', async () => {
+      const listChain = createSelectChainForList([]);
+      db.select
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(createSelectChainForCount(0));
+
+      await service.listSandboxes(TEST_TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        search: 'sandbox keyword',
+      });
+
+      const [whereClause] = listChain.from().where.mock.calls[0] ?? [];
+      const rendered = renderSql(whereClause).toLowerCase();
+
+      expect(rendered).toContain('"sandbox_sessions"."id"::text ilike');
+      expect(rendered).not.toContain('"sandbox_sessions"."id" ilike');
+      expect(rendered).toContain('"sandbox_sessions"."config"->>\'name\' ilike');
     });
   });
 

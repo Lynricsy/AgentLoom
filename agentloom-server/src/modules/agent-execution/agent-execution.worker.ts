@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
-import { and, asc, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import type { DrizzleDB } from '../../database/database.module';
@@ -15,7 +16,11 @@ import {
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import type { LlmModelConfig as StoredLlmModelConfig } from '../../database/schema/llm-model-configs.schema';
-import { memorySessions, type MemorySession } from '../../database/schema';
+import {
+  mcpServerConfigs,
+  memorySessions,
+  type MemorySession,
+} from '../../database/schema';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import type {
@@ -32,6 +37,8 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import { LlmService } from '../llm/llm.service';
+import { McpService } from '../mcp/mcp.service';
+import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type {
   PiConfigInput,
@@ -147,6 +154,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly memoryResourceProvider?: MemoryResourceProvider,
     private readonly skillResolverService?: SkillResolverService,
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
+    private readonly mcpService?: McpService,
   ) {
     super();
   }
@@ -467,16 +475,18 @@ export class AgentExecutionWorker extends WorkerHost {
           snapshot.nodes,
           snapshot.edges,
         );
-        runtimeConfig.sandboxConfig =
-          snapshot.sandboxConfig ?? definition.sandboxConfig ?? undefined;
+        runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
+          snapshot.sandboxConfig ?? definition.sandboxConfig,
+        );
         systemPrompt =
           snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
       } else {
         runtimeConfig = await this.agentDefinitionService.compileCanvas(
           definition.id,
         );
-        runtimeConfig.sandboxConfig =
-          runtimeConfig.sandboxConfig ?? definition.sandboxConfig ?? undefined;
+        runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
+          runtimeConfig.sandboxConfig ?? definition.sandboxConfig,
+        );
       }
 
       const memoryInstanceIds = this.resolveDefaultMemoryInstanceIds(
@@ -491,7 +501,7 @@ export class AgentExecutionWorker extends WorkerHost {
         systemPrompt,
         canvasNodes: snapshot?.nodes ?? definition.nodes ?? [],
         canvasEdges: snapshot?.edges ?? definition.edges ?? [],
-        hasSandbox: Boolean(runtimeConfig.sandboxConfig),
+        hasSandbox: true,
         memoryInstanceIds,
         executionMetadata: this.readExecutionMetadata(conversation.metadata),
       };
@@ -513,25 +523,23 @@ export class AgentExecutionWorker extends WorkerHost {
       tenantId,
     );
 
-    if (context.runtimeConfig.sandboxConfig) {
-      // For sandbox path, resolve skills as structured files for pi-mono discovery
-      // instead of embedding them into the system prompt string
-      const skillPayloads = await this.resolveSkillPayloads(context);
-      const piConfigInput = await this.buildPiConfigInput({
-        tenantId,
-        runtimeConfig: context.runtimeConfig,
-        systemPrompt: context.systemPrompt,
-        skillPayloads,
-      });
+    // Standalone Agent conversations now always execute inside the sandbox
+    // runtime so pi-coding-agent remains the single agent loop / LLM entry.
+    const skillPayloads = await this.resolveSkillPayloads(context);
+    const piConfigInput = await this.buildPiConfigInput({
+      tenantId,
+      runtimeConfig: context.runtimeConfig,
+      systemPrompt: context.systemPrompt,
+      skillPayloads,
+    });
 
-      await this.sandboxService.createSandboxSession({
-        sandboxNodeId: null,
-        config: context.runtimeConfig.sandboxConfig,
-        tenantId,
-        agentConversationId: conversationId,
-        piConfigInput,
-      });
-    }
+    await this.sandboxService.createSandboxSession({
+      sandboxNodeId: null,
+      config: context.runtimeConfig.sandboxConfig!,
+      tenantId,
+      agentConversationId: conversationId,
+      piConfigInput,
+    });
 
     const sessionId = context.executionMetadata.sessionId;
     if (sessionId) {
@@ -574,26 +582,11 @@ export class AgentExecutionWorker extends WorkerHost {
       baseSystemPrompt,
     );
 
-    const session = await runtime.createSession({
-      agentId: context.conversation.agentDefinitionId,
-      mode: 'conversation',
-      tenantId,
-      llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
-      systemPrompt,
-      runtimeConfig: context.runtimeConfig,
-      serverSandbox: { agentConversationId: conversationId },
-      context: {
-        tenantId,
-        agentConversationId: conversationId,
-        serverSandbox: { agentConversationId: conversationId },
-        ...(memorySessionIds.length ? { memorySessionIds } : {}),
-      },
-    });
-
-    this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+    const nextSessionId = randomUUID();
+    this.registerMemoryToolsProvider(runtime, nextSessionId, memorySessionIds);
     this.registerSubAgentToolsProvider({
       runtime,
-      sessionId: session.id,
+      sessionId: nextSessionId,
       runtimeConfig: context.runtimeConfig,
       conversationId,
       tenantId,
@@ -602,6 +595,29 @@ export class AgentExecutionWorker extends WorkerHost {
       currentDepth: 0,
       subAgentTracker,
     });
+
+    let session: AgentSession;
+    try {
+      session = await runtime.createSession({
+        sessionId: nextSessionId,
+        agentId: context.conversation.agentDefinitionId,
+        mode: 'conversation',
+        tenantId,
+        llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
+        systemPrompt,
+        runtimeConfig: context.runtimeConfig,
+        serverSandbox: { agentConversationId: conversationId },
+        context: {
+          tenantId,
+          agentConversationId: conversationId,
+          serverSandbox: { agentConversationId: conversationId },
+          ...(memorySessionIds.length ? { memorySessionIds } : {}),
+        },
+      });
+    } catch (error) {
+      runtime.unregisterSessionToolProvider?.(nextSessionId);
+      throw error;
+    }
 
     return {
       runtime,
@@ -614,9 +630,9 @@ export class AgentExecutionWorker extends WorkerHost {
   private resolveConversationRuntime(
     context: ConversationExecutionContext,
   ): IAgentRuntime {
-    return context.runtimeConfig.sandboxConfig
-      ? this.adapterFactory.selectAdapter(true)
-      : this.agentRuntime;
+    void context;
+    void this.agentRuntime;
+    return this.adapterFactory.selectAdapter(true);
   }
 
   private async loadPendingUserMessages(
@@ -727,19 +743,23 @@ export class AgentExecutionWorker extends WorkerHost {
         });
 
         if (event.type === 'tool_call') {
-          toolCalls.set(event.call.id, event.call);
+          const nextCall = this.mergeToolCallEvent(
+            toolCalls.get(event.call.id),
+            event.call,
+          );
+          toolCalls.set(nextCall.id, nextCall);
           this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
             stepId: conversationId,
             nodeId: conversationId,
-            toolCallId: event.call.id,
-            tool: event.call.tool,
+            toolCallId: nextCall.id,
+            tool: nextCall.tool,
             executionType: 'conversation',
-            status: event.call.status,
-            args: event.call.args,
-            result: event.call.result,
-            error: event.call.error,
-            transitions: event.call.transitions
-              ? [...event.call.transitions]
+            status: nextCall.status,
+            args: nextCall.args,
+            result: nextCall.result,
+            error: nextCall.error,
+            transitions: nextCall.transitions
+              ? [...nextCall.transitions]
               : undefined,
           });
           continue;
@@ -780,6 +800,51 @@ export class AgentExecutionWorker extends WorkerHost {
       toolCalls: toolCallList,
       toolResults,
     };
+  }
+
+  private mergeToolCallEvent(
+    previous: ToolCallEvent | undefined,
+    next: ToolCallEvent,
+  ): ToolCallEvent {
+    return {
+      ...next,
+      tool:
+        this.hasConcreteToolName(next.tool) || !previous
+          ? next.tool
+          : previous.tool,
+      args:
+        this.hasConcreteToolArgs(next.args) || !previous
+          ? next.args
+          : previous.args,
+      ...(next.transitions
+        ? { transitions: next.transitions }
+        : previous?.transitions
+          ? { transitions: previous.transitions }
+          : {}),
+      ...(next.result !== undefined
+        ? { result: next.result }
+        : previous?.result !== undefined
+          ? { result: previous.result }
+          : {}),
+      ...(next.error !== undefined
+        ? { error: next.error }
+        : previous?.error !== undefined
+          ? { error: previous.error }
+          : {}),
+      ...(next.permissionRequest
+        ? { permissionRequest: next.permissionRequest }
+        : previous?.permissionRequest
+          ? { permissionRequest: previous.permissionRequest }
+          : {}),
+    };
+  }
+
+  private hasConcreteToolName(tool: string | undefined): boolean {
+    return typeof tool === 'string' && tool.length > 0 && tool !== 'unknown_tool';
+  }
+
+  private hasConcreteToolArgs(args: Record<string, unknown> | undefined): boolean {
+    return !!args && Object.keys(args).length > 0;
   }
 
   private async persistConversationTurn(
@@ -1216,6 +1281,7 @@ export class AgentExecutionWorker extends WorkerHost {
     return this.resolveSkillAugmentedPrompt({
       tenantId: context.conversation.tenantId,
       agentDefinitionId: context.conversation.agentDefinitionId,
+      skillIds: context.runtimeConfig.skillIds,
       nodes: context.canvasNodes,
       edges: context.canvasEdges,
       baseSystemPrompt: context.systemPrompt,
@@ -1232,6 +1298,7 @@ export class AgentExecutionWorker extends WorkerHost {
     return this.resolveSkillPayloadsForGraph({
       tenantId: context.conversation.tenantId,
       agentDefinitionId: context.conversation.agentDefinitionId,
+      skillIds: context.runtimeConfig.skillIds,
       nodes: context.canvasNodes,
       edges: context.canvasEdges,
     });
@@ -1240,6 +1307,7 @@ export class AgentExecutionWorker extends WorkerHost {
   private async resolveSkillPayloadsForGraph(params: {
     tenantId: string;
     agentDefinitionId: string;
+    skillIds?: string[];
     nodes: AgentVersionSnapshot['nodes'];
     edges: AgentVersionSnapshot['edges'];
   }): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
@@ -1247,7 +1315,11 @@ export class AgentExecutionWorker extends WorkerHost {
       return [];
     }
 
-    const skillIds = this.extractConversationSkillIds(params.nodes, params.edges);
+    const skillIds = this.resolveConfiguredSkillIds(
+      params.skillIds,
+      params.nodes,
+      params.edges,
+    );
 
     if (!skillIds.length) {
       return [];
@@ -1272,14 +1344,15 @@ export class AgentExecutionWorker extends WorkerHost {
     systemPrompt?: string;
     skillPayloads?: import('../skill/skill.types').SkillPromptPayload[];
   }): Promise<PiConfigInput> {
-    const modelConfig = await this.resolvePiModelConfig(
-      params.runtimeConfig,
-      params.tenantId,
-    );
+    const [modelConfig, mcpServers] = await Promise.all([
+      this.resolvePiModelConfig(params.runtimeConfig, params.tenantId),
+      this.resolvePiMcpServers(params.runtimeConfig, params.tenantId),
+    ]);
 
     return {
       ...(params.systemPrompt ? { systemPrompt: params.systemPrompt } : {}),
       ...(modelConfig ? { modelConfig } : {}),
+      ...(mcpServers ? { mcpServers } : {}),
       ...(params.skillPayloads?.length
         ? {
             skills: params.skillPayloads.map((skill) => this.toSkillInput(skill)),
@@ -1292,13 +1365,30 @@ export class AgentExecutionWorker extends WorkerHost {
     runtimeConfig: AgentRuntimeConfig,
     tenantId: string,
   ): Promise<PiModelConfig | undefined> {
-    const modelId = runtimeConfig.modelConfig?.modelId?.trim();
+    const runtimeModelConfig = runtimeConfig.modelConfig;
+    const fallbackModelConfig =
+      this.toPiModelConfigFromRuntimeModelConfig(runtimeModelConfig);
+    const modelId = this.normalizeOptionalString(runtimeModelConfig?.modelId);
+
     if (!modelId || !this.llmService) {
-      return undefined;
+      return fallbackModelConfig;
     }
 
-    const modelConfig = await this.llmService.findById(modelId, tenantId);
-    return this.toPiModelConfig(modelConfig);
+    try {
+      const modelConfig = await this.llmService.findById(modelId, tenantId);
+      return this.toPiModelConfig(modelConfig);
+    } catch (error) {
+      if (!fallbackModelConfig) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Failed to load LLM model config ${modelId} for tenant ${tenantId}, falling back to node snapshot model data: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return fallbackModelConfig;
+    }
   }
 
   private toPiModelConfig(modelConfig: StoredLlmModelConfig): PiModelConfig {
@@ -1351,6 +1441,184 @@ export class AgentExecutionWorker extends WorkerHost {
     return undefined;
   }
 
+  private toPiModelConfigFromRuntimeModelConfig(
+    modelConfig?: AgentRuntimeConfig['modelConfig'],
+  ): PiModelConfig | undefined {
+    const provider = this.normalizeOptionalString(modelConfig?.provider);
+    const model =
+      this.normalizeOptionalString(modelConfig?.modelName) ??
+      this.normalizeOptionalString(modelConfig?.modelId);
+
+    if (!provider || !model) {
+      return undefined;
+    }
+
+    const baseUrl = this.resolvePiRuntimeModelBaseUrl(modelConfig);
+    const apiKeyId = modelConfig?.apiKeyId;
+    const authMethod = this.normalizeOptionalString(modelConfig?.authMethod);
+
+    return {
+      provider,
+      model,
+      ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
+      ...(typeof apiKeyId === 'string' || apiKeyId === null ? { apiKeyId } : {}),
+      ...(authMethod ? { authMethod } : {}),
+    };
+  }
+
+  private resolvePiRuntimeModelBaseUrl(
+    modelConfig?: AgentRuntimeConfig['modelConfig'],
+  ): string | undefined {
+    const endpointUrl = this.normalizeOptionalString(modelConfig?.endpointUrl);
+    if (endpointUrl) {
+      return endpointUrl;
+    }
+
+    const parameters =
+      modelConfig?.customParameters &&
+      typeof modelConfig.customParameters === 'object' &&
+      !Array.isArray(modelConfig.customParameters)
+        ? (modelConfig.customParameters as Record<string, unknown>)
+        : {};
+
+    const candidates = [
+      parameters.baseUrl,
+      parameters.baseURL,
+      parameters.apiBaseUrl,
+      parameters.endpointUrl,
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizeOptionalString(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async resolvePiMcpServers(
+    runtimeConfig: AgentRuntimeConfig,
+    tenantId: string,
+  ): Promise<PiConfigInput['mcpServers'] | undefined> {
+    if (!this.mcpService) {
+      return undefined;
+    }
+
+    const configIds = this.extractEnabledMcpServerConfigIds(runtimeConfig.tools);
+    if (configIds.length === 0) {
+      return undefined;
+    }
+
+    const savedConfigs = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (dbClient) =>
+        dbClient
+          .select({
+            id: mcpServerConfigs.id,
+            name: mcpServerConfigs.name,
+          })
+          .from(mcpServerConfigs)
+          .where(
+            and(
+              eq(mcpServerConfigs.tenantId, tenantId),
+              inArray(mcpServerConfigs.id, configIds),
+            ),
+          ),
+    );
+    const namesById = new Map(
+      savedConfigs.map((config) => [config.id, config.name] as const),
+    );
+
+    const servers: NonNullable<PiConfigInput['mcpServers']> = {};
+    for (const configId of configIds) {
+      try {
+        const connection = await this.mcpService.resolveRuntimeConnection(
+          configId,
+          tenantId,
+        );
+        const key = this.resolvePiMcpServerKey(
+          configId,
+          namesById.get(configId),
+          servers,
+        );
+        servers[key] = connection;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve MCP server config ${configId} for conversation runtime: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return Object.keys(servers).length > 0 ? servers : undefined;
+  }
+
+  private extractEnabledMcpServerConfigIds(
+    tools: AgentRuntimeConfig['tools'],
+  ): string[] {
+    if (!tools?.length) {
+      return [];
+    }
+
+    const ids = new Set<string>();
+
+    for (const tool of tools) {
+      if (tool.enabled === false) {
+        continue;
+      }
+
+      if (!('mcpServerConfigId' in tool)) {
+        continue;
+      }
+
+      if (
+        typeof tool.mcpServerConfigId === 'string' &&
+        tool.mcpServerConfigId.trim().length > 0
+      ) {
+        ids.add(tool.mcpServerConfigId.trim());
+      }
+    }
+
+    return [...ids];
+  }
+
+  private resolvePiMcpServerKey(
+    configId: string,
+    configName: string | undefined,
+    existingServers: Record<string, unknown>,
+  ): string {
+    const base =
+      this.sanitizePiMcpServerKey(configName) ??
+      this.sanitizePiMcpServerKey(configId) ??
+      'mcp_server';
+
+    if (!(base in existingServers)) {
+      return base;
+    }
+
+    let suffix = 2;
+    while (`${base}_${suffix}` in existingServers) {
+      suffix += 1;
+    }
+
+    return `${base}_${suffix}`;
+  }
+
+  private sanitizePiMcpServerKey(value: string | undefined): string | undefined {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return undefined;
+    }
+
+    const normalized = value
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
   /**
    * Convert a SkillPromptPayload to a SkillInput for PiConfigInput.
    */
@@ -1367,6 +1635,7 @@ export class AgentExecutionWorker extends WorkerHost {
   private async resolveSkillAugmentedPrompt(params: {
     tenantId: string;
     agentDefinitionId: string;
+    skillIds?: string[];
     nodes: AgentVersionSnapshot['nodes'];
     edges: AgentVersionSnapshot['edges'];
     baseSystemPrompt?: string;
@@ -1375,7 +1644,8 @@ export class AgentExecutionWorker extends WorkerHost {
       return params.baseSystemPrompt;
     }
 
-    const skillIds = this.extractConversationSkillIds(
+    const skillIds = this.resolveConfiguredSkillIds(
+      params.skillIds,
       params.nodes,
       params.edges,
     );
@@ -1411,7 +1681,9 @@ export class AgentExecutionWorker extends WorkerHost {
     nodes: AgentVersionSnapshot['nodes'],
     edges: AgentVersionSnapshot['edges'],
   ): string[] {
-    const skillNodes = nodes.filter((node) => node.type === 'skill');
+    const skillNodes = nodes.filter(
+      (node) => this.resolveCanvasNodeType(node) === 'skill',
+    );
     if (!skillNodes.length) {
       return [];
     }
@@ -1444,26 +1716,88 @@ export class AgentExecutionWorker extends WorkerHost {
   private extractSkillId(
     node: AgentVersionSnapshot['nodes'][number],
   ): string | null {
-    const nodeData =
-      node.data && typeof node.data === 'object' && !Array.isArray(node.data)
-        ? node.data
-        : null;
-    const config =
-      nodeData?.config &&
-      typeof nodeData.config === 'object' &&
-      !Array.isArray(nodeData.config)
-        ? (nodeData.config as Record<string, unknown>)
-        : null;
-
-    if (typeof config?.skillId === 'string' && config.skillId.trim()) {
-      return config.skillId.trim();
-    }
-
-    if (typeof nodeData?.skillId === 'string' && nodeData.skillId.trim()) {
-      return nodeData.skillId.trim();
+    const skillId = this.normalizeOptionalString(
+      this.resolveCanvasNodeData(node).skillId,
+    );
+    if (skillId) {
+      return skillId;
     }
 
     return null;
+  }
+
+  private resolveConfiguredSkillIds(
+    runtimeSkillIds: string[] | undefined,
+    nodes: AgentVersionSnapshot['nodes'],
+    edges: AgentVersionSnapshot['edges'],
+  ): string[] {
+    const normalizedRuntimeSkillIds = this.normalizeRuntimeSkillIds(
+      runtimeSkillIds,
+    );
+    if (normalizedRuntimeSkillIds.length > 0) {
+      return normalizedRuntimeSkillIds;
+    }
+
+    return this.extractConversationSkillIds(nodes ?? [], edges ?? []);
+  }
+
+  private normalizeRuntimeSkillIds(skillIds: string[] | undefined): string[] {
+    if (!Array.isArray(skillIds)) {
+      return [];
+    }
+
+    return [
+      ...new Set(
+        skillIds
+          .map((skillId) => this.normalizeOptionalString(skillId))
+          .filter((skillId): skillId is string => typeof skillId === 'string'),
+      ),
+    ];
+  }
+
+  private resolveCanvasNodeType(
+    node: AgentVersionSnapshot['nodes'][number],
+  ): string {
+    const nodeData =
+      node.data && typeof node.data === 'object' && !Array.isArray(node.data)
+        ? (node.data as Record<string, unknown>)
+        : null;
+    const nodeType = nodeData?.nodeType;
+
+    if (typeof nodeType === 'string' && nodeType.length > 0) {
+      return nodeType;
+    }
+
+    return typeof node.type === 'string' ? node.type : '';
+  }
+
+  private resolveCanvasNodeData(
+    node: AgentVersionSnapshot['nodes'][number],
+  ): Record<string, unknown> {
+    const nodeData =
+      node.data && typeof node.data === 'object' && !Array.isArray(node.data)
+        ? (node.data as Record<string, unknown>)
+        : {};
+    const config =
+      nodeData.config &&
+      typeof nodeData.config === 'object' &&
+      !Array.isArray(nodeData.config)
+        ? (nodeData.config as Record<string, unknown>)
+        : {};
+
+    return {
+      ...config,
+      ...nodeData,
+    };
+  }
+
+  private normalizeOptionalString(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   private buildMemoryBootPrompt(
@@ -1591,11 +1925,11 @@ export class AgentExecutionWorker extends WorkerHost {
             params.agentDefinition.id,
           );
 
-      runtimeConfig.sandboxConfig =
+      runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
         versionSnapshot?.sandboxConfig ??
-        runtimeConfig.sandboxConfig ??
-        params.agentDefinition.sandboxConfig ??
-        undefined;
+          runtimeConfig.sandboxConfig ??
+          params.agentDefinition.sandboxConfig,
+      );
 
       const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
       const memorySessionIds = await this.ensureAttachedMemorySessions(
@@ -1604,38 +1938,36 @@ export class AgentExecutionWorker extends WorkerHost {
         params.parentContext.tenantId,
       );
 
-      runtime = runtimeConfig.sandboxConfig
-        ? this.adapterFactory.selectAdapter(true)
-        : this.agentRuntime;
+      runtime = this.adapterFactory.selectAdapter(true);
 
-      if (runtimeConfig.sandboxConfig) {
-        const skillPayloads = await this.resolveSkillPayloadsForGraph({
-          tenantId: params.parentContext.tenantId,
-          agentDefinitionId: params.agentDefinition.id,
-          nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-          edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-        });
-        const piConfigInput = await this.buildPiConfigInput({
-          tenantId: params.parentContext.tenantId,
-          runtimeConfig,
-          systemPrompt:
-            versionSnapshot?.systemPrompt ??
-            params.agentDefinition.systemPrompt ??
-            undefined,
-          skillPayloads,
-        });
-        await this.sandboxService.createSandboxSession({
-          sandboxNodeId: null,
-          config: runtimeConfig.sandboxConfig,
-          tenantId: params.parentContext.tenantId,
-          agentConversationId: params.parentContext.conversationId,
-          piConfigInput,
-        });
-      }
+      const skillPayloads = await this.resolveSkillPayloadsForGraph({
+        tenantId: params.parentContext.tenantId,
+        agentDefinitionId: params.agentDefinition.id,
+        skillIds: runtimeConfig.skillIds,
+        nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
+        edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
+      });
+      const piConfigInput = await this.buildPiConfigInput({
+        tenantId: params.parentContext.tenantId,
+        runtimeConfig,
+        systemPrompt:
+          versionSnapshot?.systemPrompt ??
+          params.agentDefinition.systemPrompt ??
+          undefined,
+        skillPayloads,
+      });
+      await this.sandboxService.createSandboxSession({
+        sandboxNodeId: null,
+        config: runtimeConfig.sandboxConfig,
+        tenantId: params.parentContext.tenantId,
+        agentConversationId: params.parentContext.conversationId,
+        piConfigInput,
+      });
 
       const baseSystemPrompt = await this.resolveSkillAugmentedPrompt({
         tenantId: params.parentContext.tenantId,
         agentDefinitionId: params.agentDefinition.id,
+        skillIds: runtimeConfig.skillIds,
         nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
         edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
         baseSystemPrompt:
@@ -1648,30 +1980,15 @@ export class AgentExecutionWorker extends WorkerHost {
         baseSystemPrompt,
       );
 
-      session = await runtime.createSession({
-        agentId: params.agentDefinition.id,
-        mode: 'conversation',
-        tenantId: params.parentContext.tenantId,
-        llmModelConfigId: runtimeConfig.modelConfig?.modelId,
-        systemPrompt,
-        runtimeConfig,
-        serverSandbox: {
-          agentConversationId: params.parentContext.conversationId,
-        },
-        context: {
-          tenantId: params.parentContext.tenantId,
-          agentConversationId: params.parentContext.conversationId,
-          serverSandbox: {
-            agentConversationId: params.parentContext.conversationId,
-          },
-          ...(memorySessionIds.length ? { memorySessionIds } : {}),
-        },
-      });
-
-      this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+      const nextSessionId = randomUUID();
+      this.registerMemoryToolsProvider(
+        runtime,
+        nextSessionId,
+        memorySessionIds,
+      );
       this.registerSubAgentToolsProvider({
         runtime,
-        sessionId: session.id,
+        sessionId: nextSessionId,
         runtimeConfig,
         conversationId: params.parentContext.conversationId,
         tenantId: params.parentContext.tenantId,
@@ -1681,6 +1998,32 @@ export class AgentExecutionWorker extends WorkerHost {
         visitedAgentIds: params.parentContext.visitedAgentIds,
         subAgentTracker,
       });
+
+      try {
+        session = await runtime.createSession({
+          sessionId: nextSessionId,
+          agentId: params.agentDefinition.id,
+          mode: 'conversation',
+          tenantId: params.parentContext.tenantId,
+          llmModelConfigId: runtimeConfig.modelConfig?.modelId,
+          systemPrompt,
+          runtimeConfig,
+          serverSandbox: {
+            agentConversationId: params.parentContext.conversationId,
+          },
+          context: {
+            tenantId: params.parentContext.tenantId,
+            agentConversationId: params.parentContext.conversationId,
+            serverSandbox: {
+              agentConversationId: params.parentContext.conversationId,
+            },
+            ...(memorySessionIds.length ? { memorySessionIds } : {}),
+          },
+        });
+      } catch (error) {
+        runtime.unregisterSessionToolProvider?.(nextSessionId);
+        throw error;
+      }
 
       const activeSession: AgentSession = session;
 

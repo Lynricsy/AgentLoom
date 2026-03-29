@@ -2,6 +2,12 @@ import type { SandboxConfig } from '../../database/schema/sandbox-sessions.schem
 
 export interface AgentModelConfig {
   modelId: string;
+  provider?: string;
+  modelName?: string;
+  apiKeyId?: string | null;
+  endpointUrl?: string | null;
+  authMethod?: string | null;
+  authConfig?: Record<string, unknown> | null;
   temperature?: number;
   maxTokens?: number;
   topP?: number;

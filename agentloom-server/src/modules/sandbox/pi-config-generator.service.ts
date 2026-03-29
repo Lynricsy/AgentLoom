@@ -44,7 +44,6 @@ const PROVIDER_API_MAP: Record<string, string> = {
   google: 'google-generative-ai',
   deepseek: 'openai-completions',
   custom: 'openai-completions',
-  private_cloud: 'openai-completions',
   'azure-openai': 'azure-openai-responses',
   xai: 'openai-completions',
   groq: 'openai-completions',
@@ -84,17 +83,72 @@ const PROVIDER_API_KEY_ENV_MAP: Record<string, string> = {
   bedrock: 'AWS_ACCESS_KEY_ID',
 };
 
-const OPENAI_COMPAT_PROVIDERS = new Set(['deepseek', 'custom', 'private_cloud']);
+const OPENAI_COMPAT_APIS = new Set(['openai-completions']);
 
-export function resolvePiProviderApi(provider: string): string {
-  return PROVIDER_API_MAP[provider] ?? `${provider}-completions`;
+function trimTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/, '');
 }
 
-export function resolvePiProviderBaseUrl(
-  provider: string,
-  apiBaseUrl?: string,
+function hasTerminalPath(baseUrl: string, suffix: string): boolean {
+  return trimTrailingSlashes(baseUrl)
+    .toLowerCase()
+    .endsWith(suffix.toLowerCase());
+}
+
+function appendTerminalPath(baseUrl: string, suffix: string): string {
+  if (hasTerminalPath(baseUrl, suffix)) {
+    return trimTrailingSlashes(baseUrl);
+  }
+
+  return `${trimTrailingSlashes(baseUrl)}${suffix}`;
+}
+
+function stripTerminalPath(baseUrl: string, suffix: string): string {
+  const trimmedBaseUrl = trimTrailingSlashes(baseUrl);
+  if (!hasTerminalPath(trimmedBaseUrl, suffix)) {
+    return trimmedBaseUrl;
+  }
+
+  const normalizedSuffix = trimTrailingSlashes(suffix);
+  return trimmedBaseUrl.slice(0, -normalizedSuffix.length) || trimmedBaseUrl;
+}
+
+function resolvePrivateCloudApi(model: string): string {
+  if (model.trim().toLowerCase().startsWith('claude')) {
+    return 'anthropic-messages';
+  }
+
+  return 'openai-responses';
+}
+
+export function resolvePiModelApi(modelConfig: Pick<PiModelConfig, 'provider' | 'model'>): string {
+  if (modelConfig.provider === 'private_cloud') {
+    return resolvePrivateCloudApi(modelConfig.model);
+  }
+
+  return PROVIDER_API_MAP[modelConfig.provider] ?? `${modelConfig.provider}-completions`;
+}
+
+export function resolvePiModelBaseUrl(
+  modelConfig: Pick<PiModelConfig, 'provider' | 'apiBaseUrl' | 'model'>,
+  api: string,
 ): string | undefined {
-  return apiBaseUrl ?? PROVIDER_BASE_URL_MAP[provider] ?? undefined;
+  const baseUrl =
+    modelConfig.apiBaseUrl ?? PROVIDER_BASE_URL_MAP[modelConfig.provider] ?? undefined;
+
+  if (!baseUrl) {
+    return undefined;
+  }
+
+  if (api === 'openai-completions' || api === 'openai-responses') {
+    return appendTerminalPath(baseUrl, '/v1');
+  }
+
+  if (api === 'anthropic-messages') {
+    return stripTerminalPath(baseUrl, '/v1');
+  }
+
+  return trimTrailingSlashes(baseUrl);
 }
 
 export function resolvePiProviderApiKeyEnv(
@@ -116,8 +170,9 @@ export function resolvePiProviderApiKeyEnv(
 
 function resolvePiProviderCompat(
   modelConfig: PiModelConfig,
+  api: string,
 ): Record<string, unknown> | undefined {
-  if (!OPENAI_COMPAT_PROVIDERS.has(modelConfig.provider)) {
+  if (!OPENAI_COMPAT_APIS.has(api)) {
     return undefined;
   }
 
@@ -173,13 +228,10 @@ export class PiConfigGeneratorService {
       return JSON.stringify({ providers: {} }, null, 2);
     }
 
-    const api = resolvePiProviderApi(modelCfg.provider);
-    const baseUrl = resolvePiProviderBaseUrl(
-      modelCfg.provider,
-      modelCfg.apiBaseUrl,
-    );
+    const api = resolvePiModelApi(modelCfg);
+    const baseUrl = resolvePiModelBaseUrl(modelCfg, api);
     const apiKeyEnv = resolvePiProviderApiKeyEnv(modelCfg);
-    const compat = resolvePiProviderCompat(modelCfg);
+    const compat = resolvePiProviderCompat(modelCfg, api);
 
     const providerEntry: Record<string, unknown> = {
       api,

@@ -1103,6 +1103,35 @@ describe('AgentDefinitionService', () => {
       );
     });
 
+    it('llm-model 节点存在 llmConfigId 时应优先编译为配置 id 并保留模型元数据', () => {
+      const nodes = [
+        {
+          id: 'model-1',
+          type: 'llm-model',
+          data: {
+            llmConfigId: 'cfg-1',
+            modelId: 'gpt-4o',
+            modelName: 'gpt-4o',
+            provider: 'private_cloud',
+            apiKeyId: 'key-1',
+            endpointUrl: 'https://vllm.example.com/v1',
+            authMethod: 'api_key',
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.modelConfig).toMatchObject({
+        modelId: 'cfg-1',
+        modelName: 'gpt-4o',
+        provider: 'private_cloud',
+        apiKeyId: 'key-1',
+        endpointUrl: 'https://vllm.example.com/v1',
+        authMethod: 'api_key',
+      });
+    });
+
     it('extractConversationSkillIds 应仅返回连接到 agent-main 的 skill', () => {
       const nodes = [
         { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },

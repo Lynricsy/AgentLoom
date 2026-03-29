@@ -1,12 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { asSchema, type FlexibleSchema, type ToolSet } from 'ai';
+import { existsSync } from 'node:fs';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import type { SandboxSession } from '../../database/schema';
 import { DockerService } from '../sandbox/docker.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
 import { SandboxService } from '../sandbox/sandbox.service';
 
-import type { IAgentRuntime } from './ports/agent-runtime.port';
+import type {
+  IAgentRuntime,
+  SessionToolProvider,
+} from './ports/agent-runtime.port';
 import type {
   AgentEvent,
   AgentSession,
@@ -28,10 +40,16 @@ import type {
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 300_000;
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
+const SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS = 90_000;
 const ABORT_REQUEST_TIMEOUT_MS = 5_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
+const SANDBOX_READY_TIMEOUT_WITH_MCP_MS = 120_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
 const TOOL_PERMISSION_TIMEOUT_MS = 30_000;
+const DEFAULT_REMOTE_TOOL_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+} satisfies Record<string, unknown>;
 const RETRYABLE_SESSION_INIT_STATUSES = new Set([
   404, 408, 425, 429, 500, 502, 503, 504,
 ]);
@@ -60,6 +78,22 @@ type PendingPermissionGate = {
 type ContainerEventEnvelope = {
   type?: unknown;
   data?: unknown;
+  [key: string]: unknown;
+};
+
+type RemoteToolDescriptor = {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet?: string;
+  parameters: Record<string, unknown>;
+};
+
+type RemoteToolExecutionCallback = {
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
 };
 
 export type SandboxToolPermissionCallback = {
@@ -75,6 +109,11 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(SandboxAgentAdapter.name);
   private readonly sessions = new Map<string, AgentSession>();
   private readonly abortControllers = new Map<string, AbortController>();
+  private readonly sessionToolProviders = new Map<
+    string,
+    SessionToolProvider[]
+  >();
+  private readonly sessionToolCallbackTokens = new Map<string, string>();
   private readonly pendingPermissionResolvers = new Map<
     string,
     Map<string, PendingPermissionGate>
@@ -82,13 +121,28 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   private readonly conversationSessionIds = new Map<string, string>();
 
   constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly sandboxService: SandboxService,
     private readonly dockerService: DockerService,
   ) {}
 
+  registerSessionToolProvider(
+    sessionId: string,
+    provider: SessionToolProvider,
+  ): void {
+    const providers = this.sessionToolProviders.get(sessionId) ?? [];
+    providers.push(provider);
+    this.sessionToolProviders.set(sessionId, providers);
+  }
+
+  unregisterSessionToolProvider(sessionId: string): void {
+    this.sessionToolProviders.delete(sessionId);
+  }
+
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
+    const sessionId = params.sessionId ?? randomUUID();
     const session: AgentSession = {
-      id: randomUUID(),
+      id: sessionId,
       agentId: params.agentId,
       mode: params.mode,
       context: {
@@ -108,6 +162,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
     this.sessions.set(session.id, session);
     this.abortControllers.set(session.id, new AbortController());
+    this.sessionToolCallbackTokens.set(session.id, randomUUID());
 
     const workflowState = params.context ?? {};
     const sandboxBinding = this.readSandboxBinding(workflowState);
@@ -136,6 +191,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           systemPrompt: params.systemPrompt,
           mcpServers: params.mcpServers,
           createCodingTools: true,
+          ...(await this.buildRemoteToolExecutionPayload(session.id)),
         });
       } catch (error) {
         session.status = 'error';
@@ -292,6 +348,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     this.clearPendingPermissions(sessionId, 'cancelled');
+    this.unregisterSessionToolProvider(sessionId);
+    this.sessionToolCallbackTokens.delete(sessionId);
+    this.abortControllers.delete(sessionId);
 
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
   }
@@ -338,6 +397,44 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   ): Promise<void> {
     const sessionId = this.resolveSessionIdForConversation(conversationId);
     await this.resolveToolPermission(sessionId, toolCallId, action);
+  }
+
+  async executeSessionToolCallback(
+    sessionId: string,
+    callback: RemoteToolExecutionCallback,
+    callbackToken?: string,
+  ): Promise<{ result: unknown }> {
+    if (callback.sessionId !== sessionId) {
+      throw new Error(
+        `Remote tool callback sessionId mismatch: expected ${sessionId}, got ${callback.sessionId}`,
+      );
+    }
+
+    this.assertValidSessionToolCallbackToken(sessionId, callbackToken);
+
+    const session = await this.loadSession(sessionId);
+    const tenantId = session.tenantId;
+    if (!tenantId) {
+      throw new Error(`Sandbox session ${sessionId} is missing tenantId`);
+    }
+
+    const tool = await this.resolveSessionTool(sessionId, callback.toolName);
+    if (!tool.execute) {
+      throw new Error(
+        `Sandbox session tool "${callback.toolName}" is not executable`,
+      );
+    }
+
+    const result = await runInTenantTransaction(this.db, tenantId, async () =>
+      tool.execute?.(callback.input, {
+        toolCallId: callback.toolCallId,
+        messages: [],
+        abortSignal: undefined,
+        experimental_context: undefined,
+      }),
+    );
+
+    return { result };
   }
 
   private async waitForSandboxReady(
@@ -450,11 +547,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     sessionUrl: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
+    const { requestTimeoutMs, totalTimeoutMs } =
+      this.resolveSessionInitTimeouts(payload);
     const startedAt = Date.now();
     let lastError: Error | null = null;
     let attempt = 0;
 
-    while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
+    while (Date.now() - startedAt < totalTimeoutMs) {
       attempt += 1;
 
       try {
@@ -462,7 +561,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(SESSION_INIT_REQUEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(requestTimeoutMs),
         });
 
         if (response.ok) {
@@ -486,7 +585,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       }
 
       this.logger.warn(
-        `Sandbox 容器会话初始化未就绪，${SANDBOX_READY_POLL_INTERVAL_MS}ms 后重试（第 ${attempt} 次）: ${lastError.message}`,
+        `Sandbox 容器会话初始化未就绪，${SANDBOX_READY_POLL_INTERVAL_MS}ms 后重试（第 ${attempt} 次，requestTimeout=${requestTimeoutMs}ms, totalTimeout=${totalTimeoutMs}ms）: ${lastError.message}`,
       );
       await this.delay(SANDBOX_READY_POLL_INTERVAL_MS);
     }
@@ -494,8 +593,36 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     throw (
       lastError ??
       new Error(
-        `Container session init did not become ready within ${SANDBOX_READY_TIMEOUT_MS}ms`,
+        `Container session init did not become ready within ${totalTimeoutMs}ms`,
       )
+    );
+  }
+
+  private resolveSessionInitTimeouts(payload: Record<string, unknown>): {
+    requestTimeoutMs: number;
+    totalTimeoutMs: number;
+  } {
+    const hasMcpServers = this.hasConfiguredMcpServers(payload);
+
+    if (!hasMcpServers) {
+      return {
+        requestTimeoutMs: SESSION_INIT_REQUEST_TIMEOUT_MS,
+        totalTimeoutMs: SANDBOX_READY_TIMEOUT_MS,
+      };
+    }
+
+    return {
+      requestTimeoutMs: SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS,
+      totalTimeoutMs: SANDBOX_READY_TIMEOUT_WITH_MCP_MS,
+    };
+  }
+
+  private hasConfiguredMcpServers(payload: Record<string, unknown>): boolean {
+    const mcpServers = payload['mcpServers'];
+    return (
+      typeof mcpServers === 'object' &&
+      mcpServers !== null &&
+      Object.keys(mcpServers).length > 0
     );
   }
 
@@ -529,6 +656,154 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       typeof cause.code === 'string' &&
       RETRYABLE_SESSION_INIT_ERROR_CODES.has(cause.code)
     );
+  }
+
+  private async buildRemoteToolExecutionPayload(
+    sessionId: string,
+  ): Promise<Record<string, unknown>> {
+    const tools = await this.serializeRemoteToolDescriptors(sessionId);
+    if (tools.length === 0) {
+      return {};
+    }
+
+    return {
+      remoteToolExecution: {
+        sessionId,
+        callbackUrl: this.buildSessionToolExecutionCallbackUrl(sessionId),
+        callbackToken: this.resolveSessionToolCallbackToken(sessionId),
+        tools,
+      },
+    };
+  }
+
+  private async serializeRemoteToolDescriptors(
+    sessionId: string,
+  ): Promise<RemoteToolDescriptor[]> {
+    const toolSet = await this.resolveSessionToolSet(sessionId);
+    return await Promise.all(
+      Object.entries(toolSet).map(async ([toolName, tool]) => ({
+        name: toolName,
+        label: toolName,
+        description:
+          this.readString(tool.description) ?? `Session tool ${toolName}`,
+        promptSnippet: this.buildRemoteToolPromptSnippet(
+          toolName,
+          this.readString(tool.description),
+        ),
+        parameters: await this.serializeToolParameters(tool.inputSchema),
+      })),
+    );
+  }
+
+  private async serializeToolParameters(
+    inputSchema: unknown,
+  ): Promise<Record<string, unknown>> {
+    if (!inputSchema) {
+      return DEFAULT_REMOTE_TOOL_SCHEMA;
+    }
+
+    const schema = await asSchema(
+      inputSchema as FlexibleSchema<Record<string, unknown>>,
+    ).jsonSchema;
+    return this.isRecord(schema) ? schema : DEFAULT_REMOTE_TOOL_SCHEMA;
+  }
+
+  private buildRemoteToolPromptSnippet(
+    toolName: string,
+    description?: string,
+  ): string {
+    const normalizedDescription = description?.trim();
+    return normalizedDescription && normalizedDescription.length > 0
+      ? normalizedDescription
+      : `Use ${toolName} when its capability is needed.`;
+  }
+
+  private resolveSessionToolCallbackToken(sessionId: string): string {
+    const callbackToken = this.sessionToolCallbackTokens.get(sessionId);
+    if (!callbackToken) {
+      throw new SandboxNotFoundException(
+        `Sandbox session tool callback token not found: ${sessionId}`,
+      );
+    }
+    return callbackToken;
+  }
+
+  private buildSessionToolExecutionCallbackUrl(sessionId: string): string {
+    const apiBaseUrl = this.resolveSessionToolCallbackApiBaseUrl();
+    return `${apiBaseUrl}/agent-runtime/sessions/${encodeURIComponent(sessionId)}/tool-executions`;
+  }
+
+  private resolveSessionToolCallbackApiBaseUrl(): string {
+    const configuredBaseUrl = this.normalizeString(
+      process.env.APP_SANDBOX_CALLBACK_BASE_URL,
+    );
+    if (configuredBaseUrl) {
+      return configuredBaseUrl.replace(/\/$/, '');
+    }
+
+    const appPort = this.normalizeString(process.env.APP_PORT) ?? '3000';
+    if (this.isRunningInContainer()) {
+      const hostname = this.normalizeString(process.env.HOSTNAME);
+      if (hostname) {
+        return `http://${hostname}:${appPort}/api/v1`;
+      }
+    }
+
+    return `http://host.docker.internal:${appPort}/api/v1`;
+  }
+
+  private isRunningInContainer(): boolean {
+    return existsSync('/.dockerenv');
+  }
+
+  private assertValidSessionToolCallbackToken(
+    sessionId: string,
+    callbackToken?: string,
+  ): void {
+    const expectedToken = this.resolveSessionToolCallbackToken(sessionId);
+    const providedToken = this.normalizeString(callbackToken);
+
+    if (!providedToken) {
+      throw new UnauthorizedException(
+        'Sandbox session tool callback token is required',
+      );
+    }
+
+    const expectedBuffer = Buffer.from(expectedToken, 'utf8');
+    const providedBuffer = Buffer.from(providedToken, 'utf8');
+    if (
+      expectedBuffer.length !== providedBuffer.length ||
+      !timingSafeEqual(expectedBuffer, providedBuffer)
+    ) {
+      throw new UnauthorizedException(
+        'Sandbox session tool callback token is invalid',
+      );
+    }
+  }
+
+  private async resolveSessionToolSet(sessionId: string): Promise<ToolSet> {
+    const providers = this.sessionToolProviders.get(sessionId) ?? [];
+    const toolSet: ToolSet = {};
+
+    for (const provider of providers) {
+      Object.assign(toolSet, await provider());
+    }
+
+    return toolSet;
+  }
+
+  private async resolveSessionTool(
+    sessionId: string,
+    toolName: string,
+  ): Promise<ToolSet[string]> {
+    const toolSet = await this.resolveSessionToolSet(sessionId);
+    const tool = toolSet[toolName];
+    if (!tool) {
+      throw new SandboxNotFoundException(
+        `Sandbox session tool "${toolName}" not found for session ${sessionId}`,
+      );
+    }
+    return tool;
   }
 
   private parseServerSentEvent(
@@ -578,11 +853,12 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     envelope: ContainerEventEnvelope,
   ): { events: AgentEvent[]; error?: Error } {
     const eventType = typeof envelope.type === 'string' ? envelope.type : null;
-    const data = this.isRecord(envelope.data) ? envelope.data : null;
+    const payload = this.readContainerEventPayload(envelope);
+    const data = this.isRecord(payload) ? payload : null;
 
     switch (eventType) {
       case 'text_delta': {
-        const content = this.readTextDelta(envelope.data);
+        const content = this.readTextDelta(payload);
         if (!content) {
           return { events: [] };
         }
@@ -638,7 +914,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         const message =
           this.readString(data?.message) ??
           this.readString((envelope as Record<string, unknown>)['message']) ??
-          this.readString(envelope.data) ??
+          this.readString(payload) ??
           'Sandbox agent error';
         this.clearPendingPermissions(sessionId, 'deny');
         return { events: [], error: new Error(message) };
@@ -706,6 +982,23 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       default:
         return { events: [] };
     }
+  }
+
+  private readContainerEventPayload(
+    envelope: ContainerEventEnvelope,
+  ): unknown {
+    if ('data' in envelope && envelope.data !== undefined) {
+      return envelope.data;
+    }
+
+    const payloadEntries = Object.entries(envelope).filter(
+      ([key]) => key !== 'type' && key !== 'data',
+    );
+    if (payloadEntries.length === 0) {
+      return null;
+    }
+
+    return Object.fromEntries(payloadEntries);
   }
 
   private buildToolCallEvent(
@@ -882,7 +1175,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     return (
-      this.readString(value.delta) ?? this.readString(value.content) ?? null
+      this.readString(value.delta) ??
+      this.readString(value.content) ??
+      this.readString(value.text) ??
+      null
     );
   }
 
@@ -1163,5 +1459,14 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private normalizeString(value?: string | null): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 }

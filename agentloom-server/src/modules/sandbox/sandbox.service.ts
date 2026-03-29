@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, ilike, notInArray, asc, or, sql } from 'drizzle-orm';
+import { and, desc, eq, notInArray, asc, or, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -361,7 +361,7 @@ export class SandboxService {
       conditions.push(
         or(
           sql`${schema.sandboxSessions.config}->>'name' ILIKE ${pattern}`,
-          ilike(schema.sandboxSessions.id, pattern),
+          sql`${schema.sandboxSessions.id}::text ILIKE ${pattern}`,
         )!,
       );
     }

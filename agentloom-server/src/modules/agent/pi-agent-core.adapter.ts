@@ -268,7 +268,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
     const session: AgentSession = {
-      id: randomUUID(),
+      id: params.sessionId ?? randomUUID(),
       agentId: params.agentId,
       mode: params.mode,
       context: this.buildSessionContext(params),

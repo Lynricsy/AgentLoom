@@ -6,6 +6,7 @@ import {
   WorkerHost,
 } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import * as schema from '../../database/schema';
 import type { TypeMismatchInfo } from '../../database/schema/execution-steps.schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -262,6 +263,7 @@ export class AgentTaskWorker extends WorkerHost {
           );
         });
 
+        const isExistingSession = Boolean(sessionId);
         if (!sessionId) {
           const upstreamSkills = this.extractUpstreamSkills(input);
           let enrichedBasePrompt =
@@ -287,19 +289,32 @@ export class AgentTaskWorker extends WorkerHost {
             memorySessionIds,
             enrichedBasePrompt,
           );
-          const session = await runtime.createSession({
-            agentId: nodeData.agentId as string,
-            mode: 'workflow',
-            tenantId,
-            llmModelConfigId:
-              typeof nodeData.llmModelConfigId === 'string'
-                ? nodeData.llmModelConfigId
-                : undefined,
-            systemPrompt,
-            autonomyMode: effectiveAutonomyMode,
-            mcpServers,
-            context: workflowContext,
-          });
+          const nextSessionId = randomUUID();
+          this.registerMemoryToolsProvider(
+            runtime,
+            nextSessionId,
+            memorySessionIds,
+          );
+          let session;
+          try {
+            session = await runtime.createSession({
+              sessionId: nextSessionId,
+              agentId: nodeData.agentId as string,
+              mode: 'workflow',
+              tenantId,
+              llmModelConfigId:
+                typeof nodeData.llmModelConfigId === 'string'
+                  ? nodeData.llmModelConfigId
+                  : undefined,
+              systemPrompt,
+              autonomyMode: effectiveAutonomyMode,
+              mcpServers,
+              context: workflowContext,
+            });
+          } catch (error) {
+            runtime.unregisterSessionToolProvider?.(nextSessionId);
+            throw error;
+          }
           sessionId = session.id;
           step.checkpointData = {
             ...this.getCheckpointData(step),
@@ -307,7 +322,9 @@ export class AgentTaskWorker extends WorkerHost {
           };
         }
 
-        this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+        if (isExistingSession) {
+          this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+        }
 
         const initialContentBlocks = this.buildContentBlocks(input);
         const loopResult = await this.executeMultiTurnLoop({

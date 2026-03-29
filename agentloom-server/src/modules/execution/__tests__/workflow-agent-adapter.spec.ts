@@ -338,14 +338,14 @@ describe('WorkflowAgentAdapter', () => {
     });
   }
 
-  it('无 sandbox 时使用 agentRuntime 而非 adapterFactory', async () => {
+  it('无显式 sandbox 时也应创建默认 sandbox 并使用 adapterFactory', async () => {
     setupNoSandboxAgent();
     mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt.mockReturnValue(
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockReturnValue(
       emit([
         { type: 'message_chunk', content: 'direct-output' },
         { type: 'done', stopReason: 'end_turn' },
@@ -369,8 +369,15 @@ describe('WorkflowAgentAdapter', () => {
       versionSnapshot: makeSnapshot('no-sandbox-node'),
     });
 
-    expect(mockRuntimeAdapterFactory.selectAdapter).not.toHaveBeenCalled();
-    expect(mockAgentRuntime.createSession).toHaveBeenCalled();
+    expect(mockRuntimeAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
+    expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+      executionId: EXECUTION_ID,
+      sandboxNodeId: 'workflow-agent-node',
+      config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      tenantId: TENANT_ID,
+    });
+    expect(mockSandboxRuntime.createSession).toHaveBeenCalled();
+    expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
     expect(result.content).toBe('direct-output');
   });
 
@@ -380,8 +387,8 @@ describe('WorkflowAgentAdapter', () => {
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt
       .mockReturnValueOnce(
         emit([
           { type: 'message_chunk', content: '准备调用工具...' },
@@ -412,7 +419,7 @@ describe('WorkflowAgentAdapter', () => {
       versionSnapshot: makeSnapshot('no-sandbox-node'),
     });
 
-    expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(2);
+    expect(mockSandboxRuntime.prompt).toHaveBeenCalledTimes(2);
     expect(result.content).toBe('准备调用工具...工具结果处理完毕');
   });
 
@@ -422,8 +429,8 @@ describe('WorkflowAgentAdapter', () => {
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt.mockImplementation(() =>
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockImplementation(() =>
       emit([{ type: 'done', stopReason: 'tool_use' }]),
     );
 
@@ -453,8 +460,8 @@ describe('WorkflowAgentAdapter', () => {
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt.mockReturnValue(
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockReturnValue(
       emit([
         { type: 'message_chunk', content: 'decided' },
         {
@@ -527,8 +534,8 @@ describe('WorkflowAgentAdapter', () => {
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt.mockReturnValue(
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockReturnValue(
       emit([
         { type: 'message_chunk', content: 'silent' },
         { type: 'done', stopReason: 'end_turn' },
@@ -563,8 +570,8 @@ describe('WorkflowAgentAdapter', () => {
       modelConfig: { modelId: 'model-1' },
       subAgents: [],
     });
-    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-1' });
-    mockAgentRuntime.prompt.mockReturnValue(
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockReturnValue(
       emit([
         { type: 'message_chunk', content: 'cancelled' },
         { type: 'done', stopReason: 'cancelled' },
@@ -616,10 +623,10 @@ describe('WorkflowAgentAdapter', () => {
       },
     );
 
-    mockAgentRuntime.createSession
+    mockSandboxRuntime.createSession
       .mockResolvedValueOnce({ id: 'child-session' })
       .mockResolvedValueOnce({ id: 'parent-session' });
-    mockAgentRuntime.prompt
+    mockSandboxRuntime.prompt
       .mockReturnValueOnce(
         emit([
           { type: 'message_chunk', content: 'child-result' },

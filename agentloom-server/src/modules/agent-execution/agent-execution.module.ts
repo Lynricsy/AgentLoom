@@ -23,11 +23,14 @@ import { ThrottleService } from '../execution/services/throttle.service';
 import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { AgentMemoryModule } from '../agent-memory/agent-memory.module';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import { LlmModule } from '../llm/llm.module';
 import { LlmService } from '../llm/llm.service';
+import { McpModule } from '../mcp/mcp.module';
+import { McpService } from '../mcp/mcp.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { SubAgentToolsProvider } from './subagent';
@@ -69,6 +72,7 @@ const agentExecutionWorkerProvider: Provider = {
     memoryResourceProvider?: MemoryResourceProvider,
     skillResolverService?: SkillResolverService,
     subAgentToolsProvider?: SubAgentToolsProvider,
+    mcpService?: McpService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -84,6 +88,7 @@ const agentExecutionWorkerProvider: Provider = {
       memoryResourceProvider,
       skillResolverService,
       subAgentToolsProvider,
+      mcpService,
     ),
   inject: [
     DRIZZLE,
@@ -99,6 +104,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: MemoryResourceProvider, optional: true },
     { token: SkillResolverService, optional: true },
     { token: SubAgentToolsProvider, optional: true },
+    { token: McpService, optional: true },
   ],
 };
 
@@ -110,6 +116,8 @@ const agentExecutionWorkerProvider: Provider = {
     AgentDefinitionModule,
     ExecutionModule,
     SandboxModule,
+    AgentMemoryModule,
+    McpModule,
     SkillModule,
     LlmModule,
     BullModule.registerQueue({

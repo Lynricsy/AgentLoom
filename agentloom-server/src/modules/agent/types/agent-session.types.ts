@@ -71,6 +71,7 @@ export interface AgentSession {
 }
 
 export interface CreateSessionParams {
+  readonly sessionId?: string;
   readonly agentId: string;
   readonly mode: SessionMode;
   readonly cwd?: string;

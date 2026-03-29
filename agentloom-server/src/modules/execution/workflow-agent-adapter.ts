@@ -28,6 +28,7 @@ import {
   MAX_SUB_AGENT_DEPTH,
 } from './node-handlers/sub-agent.handler';
 import { EventBridgeService } from './services/event-bridge.service';
+import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 
 const MAX_TOOL_ROUNDS = 10;
@@ -117,9 +118,8 @@ export class WorkflowAgentAdapter {
     });
 
     const promptBlocks = this.buildContentBlocks(params.input, subAgentResults);
-    const runtime = sandboxBinding
-      ? this.dependencies.runtimeAdapterFactory.selectAdapter(true)
-      : this.dependencies.agentRuntime;
+    void this.dependencies.agentRuntime;
+    const runtime = this.dependencies.runtimeAdapterFactory.selectAdapter(true);
 
     const session = await runtime.createSession({
       agentId: this.config.agentDefinitionId,
@@ -247,11 +247,11 @@ export class WorkflowAgentAdapter {
         snapshot.edges,
       );
 
-    runtimeConfig.sandboxConfig =
+    runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
       this.config.sandboxConfig ??
-      snapshot.sandboxConfig ??
-      definition.sandboxConfig ??
-      undefined;
+        snapshot.sandboxConfig ??
+        definition.sandboxConfig,
+    );
 
     return {
       runtimeConfig,
@@ -295,15 +295,10 @@ export class WorkflowAgentAdapter {
       return params.existingBinding;
     }
 
-    const sandboxConfig = params.runtimeConfig.sandboxConfig;
-    if (!sandboxConfig) {
-      return undefined;
-    }
-
     await this.dependencies.sandboxService.createSandboxSession({
       executionId: params.executionId,
       sandboxNodeId: params.nodeId,
-      config: sandboxConfig,
+      config: params.runtimeConfig.sandboxConfig!,
       tenantId: params.tenantId,
     });
 
