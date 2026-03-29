@@ -1,16 +1,20 @@
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { KnowledgeBaseService } from '../knowledge-base.service';
-import { KnowledgeBaseNotFoundException } from '../knowledge.exceptions';
+
+import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE } from '../../../database/database.module';
 import { LlmService } from '../../llm/llm.service';
-
-const mocks = vi.hoisted(() => ({
-  getTenantDb: vi.fn(),
-}));
+import {
+  createDefaultChunkingStrategy,
+  createDefaultQueryOrchestration,
+  createDefaultRetrievalStrategy,
+  createDefaultRerankerStrategy,
+} from '../knowledge-base-config';
+import { KnowledgeBaseNotFoundException } from '../knowledge.exceptions';
+import { KnowledgeBaseService } from '../knowledge-base.service';
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
-  getTenantDb: mocks.getTenantDb,
+  getTenantDb: vi.fn(),
 }));
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -25,7 +29,7 @@ function createInsertChain(result: unknown[]) {
   };
 }
 
-function createSelectChain(result: unknown) {
+function createPagedSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
@@ -66,6 +70,26 @@ describe('KnowledgeBaseService', () => {
     findDefaultByType: ReturnType<typeof vi.fn>;
   };
 
+  function createKnowledgeBaseRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: KB_ID,
+      tenantId: TENANT_ID,
+      name: '测试知识库',
+      description: '描述',
+      visibility: 'private' as const,
+      embeddingModel: 'text-embedding-3-small',
+      embeddingModelConfigId: null,
+      chunkingStrategy: createDefaultChunkingStrategy(),
+      retrievalStrategy: createDefaultRetrievalStrategy(),
+      rerankingStrategy: createDefaultRerankerStrategy(),
+      queryOrchestration: createDefaultQueryOrchestration(),
+      createdBy: USER_ID,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks();
 
@@ -79,7 +103,7 @@ describe('KnowledgeBaseService', () => {
       findById: vi.fn(),
       findDefaultByType: vi.fn().mockResolvedValue(null),
     };
-    mocks.getTenantDb.mockReturnValue(db);
+    vi.mocked(getTenantDb).mockReturnValue(db as never);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -92,209 +116,174 @@ describe('KnowledgeBaseService', () => {
     service = module.get<KnowledgeBaseService>(KnowledgeBaseService);
   });
 
-  describe('create', () => {
-    it('应创建知识库并返回结果', async () => {
-      const dto = {
-        name: '测试知识库',
-        description: '描述',
-        visibility: 'private' as const,
-        chunkSize: 512,
-        chunkOverlap: 64,
-        embeddingModel: 'text-embedding-3-small',
-        embeddingModelConfigId: null,
-      };
-      const expectedKB = {
-        id: KB_ID,
-        tenantId: TENANT_ID,
-        ...dto,
-        createdBy: USER_ID,
-        documentCount: 0,
-        chunkCount: 0,
-        status: 'empty' as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      db.insert.mockReturnValue(createInsertChain([expectedKB]));
-
-      const result = await service.create(dto, TENANT_ID, USER_ID);
-
-      expect(result).toEqual(expectedKB);
-      expect(db.insert).toHaveBeenCalled();
-    });
-  });
-
-  describe('delete', () => {
-    it('应按租户条件删除知识库', async () => {
-      const where = vi.fn().mockResolvedValue(undefined);
-      db.delete.mockReturnValue({ where });
-
-      await expect(service.delete(KB_ID, TENANT_ID)).resolves.toBeUndefined();
-
-      expect(db.delete).toHaveBeenCalled();
-      expect(where).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('findAllByTenant', () => {
-    it('应返回分页的知识库列表和总数', async () => {
-      const kbList = [{ id: KB_ID, name: '知识库1', tenantId: TENANT_ID }];
-      const totalResult = [{ total: 1 }];
-
-      const selectChain1 = createSelectChain(kbList);
-      const selectChain2 = {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue(totalResult),
-        }),
-      };
-
-      db.select
-        .mockReturnValueOnce(selectChain1)
-        .mockReturnValueOnce(selectChain2);
-
-      const result = await service.findAllByTenant(TENANT_ID, 1, 10);
-
-      expect(result.data).toEqual(kbList);
-      expect(result.total).toBe(1);
-      expect(db.select).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('findByIdOrThrow', () => {
-    it('应返回查找到的知识库', async () => {
-      const expectedKB = { id: KB_ID, tenantId: TENANT_ID, name: '测试' };
-      const selectChain = {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([expectedKB]),
-          }),
-        }),
-      };
-      db.select.mockReturnValue(selectChain);
-
-      const result = await service.findByIdOrThrow(KB_ID, TENANT_ID);
-
-      expect(result).toEqual(expectedKB);
-    });
-
-    it('知识库不存在时应抛出 KnowledgeBaseNotFoundException', async () => {
-      const selectChain = {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      };
-      db.select.mockReturnValue(selectChain);
-
-      await expect(service.findByIdOrThrow(KB_ID, TENANT_ID)).rejects.toThrow(
-        KnowledgeBaseNotFoundException,
-      );
-    });
-  });
-
-  describe('findSummaryByIdOrThrow', () => {
-    it('应派生文档数、分块数和 processing 状态摘要', async () => {
-      const baseKnowledgeBase = {
-        id: KB_ID,
-        tenantId: TENANT_ID,
-        name: '测试知识库',
-        description: '用于摘要测试',
-        visibility: 'private' as const,
-        chunkSize: 512,
-        chunkOverlap: 64,
-        embeddingModel: 'text-embedding-3-small',
-        embeddingModelConfigId: null,
-        createdBy: USER_ID,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      db.select
-        .mockReturnValueOnce(createSelectChain([baseKnowledgeBase]))
-        .mockReturnValueOnce(
-          createWhereResolvedChain([
-            { knowledgeBaseId: KB_ID, status: 'uploaded' },
-            { knowledgeBaseId: KB_ID, status: 'ready' },
-          ]),
-        )
-        .mockReturnValueOnce(
-          createGroupedWhereChain([{ knowledgeBaseId: KB_ID, chunkCount: 7 }]),
-        );
-
-      const result = await service.findSummaryByIdOrThrow(KB_ID, TENANT_ID);
-
-      expect(result).toMatchObject({
-        ...baseKnowledgeBase,
-        documentCount: 2,
-        chunkCount: 7,
-        status: 'processing',
-      });
-    });
-  });
-
-  describe('updateSettings', () => {
-    it('应持久化设置并返回最新摘要', async () => {
-      const originalKnowledgeBase = {
-        id: KB_ID,
-        tenantId: TENANT_ID,
-        name: '测试知识库',
-        description: '旧描述',
-        visibility: 'private' as const,
-        chunkSize: 512,
-        chunkOverlap: 64,
-        embeddingModel: 'text-embedding-3-small',
-        embeddingModelConfigId: null,
-        createdBy: USER_ID,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const updatedKnowledgeBase = {
-        ...originalKnowledgeBase,
+  it('create 应创建知识库并返回带默认统计的摘要', async () => {
+    const dto = {
+      name: '测试知识库',
+      description: '描述',
+      visibility: 'private' as const,
+      embeddingModel: 'text-embedding-3-small',
+      embeddingModelConfigId: null,
+      chunkingStrategy: {
+        type: 'sentence',
         chunkSize: 1024,
         chunkOverlap: 128,
-        embeddingModel: 'text-embedding-3-large',
-        embeddingModelConfigId: null,
-      };
+      } as const,
+      retrievalStrategy: {
+        topK: 12,
+        similarityThreshold: 0.66,
+      },
+      rerankingStrategy: {
+        type: 'none',
+      } as const,
+      queryOrchestration: {
+        type: 'none',
+      } as const,
+    };
+    const inserted = createKnowledgeBaseRow(dto);
+    db.insert.mockReturnValue(createInsertChain([inserted]));
 
-      const updateWhere = vi.fn().mockResolvedValue(undefined);
-      const set = vi.fn().mockReturnValue({ where: updateWhere });
-      db.update.mockReturnValue({ set });
+    await expect(service.create(dto, TENANT_ID, USER_ID)).resolves.toEqual({
+      ...inserted,
+      documentCount: 0,
+      nodeCount: 0,
+      chunkCount: 0,
+      status: 'empty',
+    });
+  });
 
-      db.select
-        .mockReturnValueOnce(createSelectChain([originalKnowledgeBase]))
-        .mockReturnValueOnce(createSelectChain([updatedKnowledgeBase]))
-        .mockReturnValueOnce(
-          createWhereResolvedChain([
-            { knowledgeBaseId: KB_ID, status: 'ready' },
-          ]),
-        )
-        .mockReturnValueOnce(
-          createGroupedWhereChain([{ knowledgeBaseId: KB_ID, chunkCount: 3 }]),
-        );
+  it('findAllByTenant 应返回分页结果与总数', async () => {
+    db.select
+      .mockReturnValueOnce(createPagedSelectChain([createKnowledgeBaseRow()]))
+      .mockReturnValueOnce(createWhereResolvedChain([{ total: 1 }]));
 
-      const result = await service.updateSettings(KB_ID, TENANT_ID, {
+    await expect(service.findAllByTenant(TENANT_ID, 1, 10)).resolves.toEqual({
+      data: [expect.objectContaining({ id: KB_ID })],
+      total: 1,
+    });
+  });
+
+  it('findByIdOrThrow 在知识库不存在时应抛错', async () => {
+    db.select.mockReturnValue(createPagedSelectChain([]));
+
+    await expect(service.findByIdOrThrow(KB_ID, TENANT_ID)).rejects.toThrow(
+      KnowledgeBaseNotFoundException,
+    );
+  });
+
+  it('findSummaryByIdOrThrow 应派生文档数、节点数和处理状态', async () => {
+    const knowledgeBase = createKnowledgeBaseRow();
+
+    db.select
+      .mockReturnValueOnce(createPagedSelectChain([knowledgeBase]))
+      .mockReturnValueOnce(
+        createWhereResolvedChain([
+          { knowledgeBaseId: KB_ID, status: 'uploaded' },
+          { knowledgeBaseId: KB_ID, status: 'ready' },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createGroupedWhereChain([{ knowledgeBaseId: KB_ID, nodeCount: 7 }]),
+      );
+
+    await expect(
+      service.findSummaryByIdOrThrow(KB_ID, TENANT_ID),
+    ).resolves.toMatchObject({
+      ...knowledgeBase,
+      documentCount: 2,
+      nodeCount: 7,
+      chunkCount: 7,
+      status: 'processing',
+    });
+  });
+
+  it('updateSettings 应持久化新策略并返回最新摘要', async () => {
+    const originalKnowledgeBase = createKnowledgeBaseRow();
+    const updatedKnowledgeBase = createKnowledgeBaseRow({
+      embeddingModel: 'text-embedding-3-large',
+      chunkingStrategy: {
+        type: 'sentence',
         chunkSize: 1024,
         chunkOverlap: 128,
-        embeddingModel: 'text-embedding-3-large',
-        embeddingModelConfigId: null,
-      });
-
-      expect(db.update).toHaveBeenCalled();
-      expect(set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chunkSize: 1024,
-          chunkOverlap: 128,
-          embeddingModel: 'text-embedding-3-large',
-          updatedAt: expect.any(Date),
-        }),
-      );
-      expect(result).toMatchObject({
-        ...updatedKnowledgeBase,
-        documentCount: 1,
-        chunkCount: 3,
-        status: 'ready',
-      });
+      },
+      retrievalStrategy: {
+        topK: 16,
+        similarityThreshold: 0.51,
+      },
+      rerankingStrategy: {
+        type: 'cohere',
+        model: 'rerank-v3.5',
+        topN: 6,
+        apiKeyId: null,
+        baseUrl: null,
+        timeoutMs: null,
+      },
+      queryOrchestration: {
+        type: 'hyde',
+        modelConfigId: null,
+        promptTemplate: 'query={{query}}',
+      },
     });
+
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where: updateWhere });
+    db.update.mockReturnValue({ set });
+
+    db.select
+      .mockReturnValueOnce(createPagedSelectChain([originalKnowledgeBase]))
+      .mockReturnValueOnce(createPagedSelectChain([updatedKnowledgeBase]))
+      .mockReturnValueOnce(
+        createWhereResolvedChain([{ knowledgeBaseId: KB_ID, status: 'ready' }]),
+      )
+      .mockReturnValueOnce(
+        createGroupedWhereChain([{ knowledgeBaseId: KB_ID, nodeCount: 3 }]),
+      );
+
+    const input = {
+      embeddingModel: 'text-embedding-3-large',
+      chunkingStrategy: {
+        type: 'sentence',
+        chunkSize: 1024,
+        chunkOverlap: 128,
+      } as const,
+      retrievalStrategy: {
+        topK: 16,
+        similarityThreshold: 0.51,
+      },
+      rerankingStrategy: {
+        type: 'cohere',
+        model: 'rerank-v3.5',
+        topN: 6,
+        apiKeyId: null,
+        baseUrl: null,
+        timeoutMs: null,
+      } as const,
+      queryOrchestration: {
+        type: 'hyde',
+        modelConfigId: null,
+        promptTemplate: 'query={{query}}',
+      } as const,
+      embeddingModelConfigId: null,
+    };
+
+    await expect(
+      service.updateSettings(KB_ID, TENANT_ID, input),
+    ).resolves.toMatchObject({
+      ...updatedKnowledgeBase,
+      documentCount: 1,
+      nodeCount: 3,
+      chunkCount: 3,
+      status: 'ready',
+    });
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeddingModel: 'text-embedding-3-large',
+        chunkingStrategy: input.chunkingStrategy,
+        retrievalStrategy: input.retrievalStrategy,
+        rerankingStrategy: input.rerankingStrategy,
+        queryOrchestration: input.queryOrchestration,
+        updatedAt: expect.any(Date),
+      }),
+    );
   });
 });

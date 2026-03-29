@@ -21,6 +21,7 @@ import {
 import { DRIZZLE } from '../../../database/database.module';
 import { DOCUMENT_PROCESSING_QUEUE } from '../knowledge.constants';
 import { KnowledgeGateway } from '../knowledge.gateway';
+import { KnowledgeNodeService } from '../knowledge-node.service';
 import { RagService } from '../services/rag.service';
 
 const mocks = vi.hoisted(() => ({
@@ -86,6 +87,9 @@ describe('DocumentService', () => {
     deleteByDocument: ReturnType<typeof vi.fn>;
     deleteKnowledgeBaseCollection: ReturnType<typeof vi.fn>;
   };
+  let knowledgeNodeService: {
+    deleteByKnowledgeBaseId: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -128,6 +132,9 @@ describe('DocumentService', () => {
       deleteByDocument: vi.fn().mockResolvedValue(undefined),
       deleteKnowledgeBaseCollection: vi.fn().mockResolvedValue(undefined),
     };
+    knowledgeNodeService = {
+      deleteByKnowledgeBaseId: vi.fn().mockResolvedValue(0),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -140,6 +147,7 @@ describe('DocumentService', () => {
         },
         { provide: KnowledgeGateway, useValue: knowledgeGateway },
         { provide: RagService, useValue: ragService },
+        { provide: KnowledgeNodeService, useValue: knowledgeNodeService },
       ],
     }).compile();
 

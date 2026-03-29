@@ -7,6 +7,7 @@ import { DocumentService } from '../document.service';
 import { KnowledgeBaseController } from '../knowledge-base.controller';
 import { KnowledgeBaseService } from '../knowledge-base.service';
 import { KnowledgeGateway } from '../knowledge.gateway';
+import { RagService } from '../services/rag.service';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const KB_ID = '00000000-0000-0000-0000-000000000010';
@@ -56,6 +57,10 @@ describe('KnowledgeBaseController - getDocumentContent', () => {
         {
           provide: KnowledgeGateway,
           useValue: { emitKnowledgeBaseUpdated: vi.fn() },
+        },
+        {
+          provide: RagService,
+          useValue: { search: vi.fn() },
         },
       ],
     }).compile();

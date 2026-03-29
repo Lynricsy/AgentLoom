@@ -35,11 +35,24 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '这是一个测试知识库',
     visibility: 'private' as const,
     createdBy: 'user-1',
-    chunkSize: 512,
-    chunkOverlap: 64,
     embeddingModel: 'text-embedding-3-small',
     embeddingModelConfigId: null,
+    chunkingStrategy: {
+      type: 'sentence_window',
+      windowSize: 3,
+    },
+    retrievalStrategy: {
+      topK: 8,
+      similarityThreshold: null,
+    },
+    rerankingStrategy: {
+      type: 'none',
+    },
+    queryOrchestration: {
+      type: 'none',
+    },
     documentCount: 0,
+    nodeCount: 0,
     chunkCount: 0,
     status: 'empty',
     createdAt: '2025-01-01T00:00:00Z',
@@ -131,6 +144,7 @@ describe('KnowledgeBasesPage', () => {
         name: '知识库A',
         description: '描述A',
         documentCount: 3,
+        nodeCount: 12,
         chunkCount: 12,
         status: 'ready',
       }),
@@ -140,6 +154,7 @@ describe('KnowledgeBasesPage', () => {
         description: '描述B',
         visibility: 'organization',
         documentCount: 1,
+        nodeCount: 4,
         chunkCount: 4,
         status: 'processing',
       }),
@@ -152,11 +167,12 @@ describe('KnowledgeBasesPage', () => {
     expect(screen.getByText('知识库B')).toBeInTheDocument()
     expect(screen.getByText('描述B')).toBeInTheDocument()
     expect(screen.getByText('3 个文档')).toBeInTheDocument()
-    expect(screen.getByText('12 个分块')).toBeInTheDocument()
+    expect(screen.getByText('12 个知识节点')).toBeInTheDocument()
     expect(screen.getByText('私有')).toBeInTheDocument()
     expect(screen.getByText('组织')).toBeInTheDocument()
     expect(screen.getByText('可用')).toBeInTheDocument()
     expect(screen.getByText('处理中')).toBeInTheDocument()
+    expect(screen.getAllByText('Sentence Window · 3').length).toBeGreaterThan(0)
   })
 
   it('搜索过滤知识库', async () => {

@@ -37,6 +37,7 @@ import {
 import type { DocumentProcessingJobData } from './document-processing.worker';
 import { KnowledgeGateway } from './knowledge.gateway';
 import { RagService } from './services/rag.service';
+import { KnowledgeNodeService } from './knowledge-node.service';
 
 export type DocumentResponse = Omit<
   (typeof documents)['$inferSelect'],
@@ -64,6 +65,7 @@ export class DocumentService {
     private readonly processingQueue: Queue<DocumentProcessingJobData>,
     private readonly knowledgeGateway: KnowledgeGateway,
     private readonly ragService: RagService,
+    private readonly knowledgeNodeService: KnowledgeNodeService,
   ) {}
 
   async uploadFromRequest(
@@ -298,6 +300,60 @@ export class DocumentService {
     }
 
     return document;
+  }
+
+  async rebuildKnowledgeBase(
+    knowledgeBaseId: string,
+    tenantId: string,
+  ): Promise<number> {
+    const db = getTenantDb(this.db);
+    const targetDocuments = await db
+      .select({
+        id: documents.id,
+      })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          eq(documents.tenantId, tenantId),
+        ),
+      );
+
+    await this.ragService.deleteKnowledgeBaseCollection(knowledgeBaseId);
+    await this.knowledgeNodeService.deleteByKnowledgeBaseId(
+      knowledgeBaseId,
+      tenantId,
+    );
+
+    await db
+      .update(documents)
+      .set({
+        status: 'uploaded',
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          eq(documents.tenantId, tenantId),
+        ),
+      );
+
+    for (const document of targetDocuments) {
+      await this.processingQueue.add(
+        'process',
+        { documentId: document.id },
+        {
+          attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
+          backoff: { type: 'exponential', delay: 2000 },
+          jobId: `rebuild-${document.id}-${Date.now()}`,
+        },
+      );
+      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
+    }
+
+    this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
+    return targetDocuments.length;
   }
 
   async getDocumentContentUrl(

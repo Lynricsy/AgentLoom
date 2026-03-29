@@ -389,7 +389,7 @@ describe('compiler → runtime tool injection E2E', () => {
       }),
     ]);
     expect(tools).toHaveLength(1);
-    expect(tools[0]).toMatchObject({ name: 'searchKnowledge_kb-1' });
+    expect(tools[0]).toMatchObject({ name: 'search_knowledge' });
     expect(typeof tools[0]?.execute).toBe('function');
   });
 
@@ -441,7 +441,7 @@ describe('compiler → runtime tool injection E2E', () => {
       expect.arrayContaining([
         'search_docs',
         'fetch_api',
-        'searchKnowledge_kb-1',
+        'search_knowledge',
         'call_subagent',
         'spawn_subagent',
         'wait_for_subagents',
@@ -489,7 +489,7 @@ describe('compiler → runtime tool injection E2E', () => {
       expect.objectContaining({ knowledgeBaseId: 'kb-1' }),
     ]);
     expect(runtimeConfig.subAgents).toBeUndefined();
-    expect(toolNames).toEqual(['search_docs', 'searchKnowledge_kb-1']);
+    expect(toolNames).toEqual(['search_docs', 'search_knowledge']);
     expect(toolNames).not.toContain('fetch_orphan');
     expect(toolNames).not.toContain('call_subagent');
   });

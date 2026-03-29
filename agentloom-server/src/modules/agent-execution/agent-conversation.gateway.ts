@@ -130,8 +130,6 @@ export class AgentConversationGateway
       const tenantId = parts.length >= 2 ? parts[0] : '';
       const convId = parts.length >= 2 ? parts[1] : executionId;
 
-      if (!this.hasSubscribers(convId)) return;
-
       for (const chunk of merged) {
         const envelope = this.eventBridgeService['createEnvelope'](
           ExecutionEventName.OUTPUT_CHUNK,
@@ -381,8 +379,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const envelope = this.buildEventPayload(
       conversationId,
       payload.tenantId,
@@ -417,8 +413,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const envelope = this.buildEventPayload(
       conversationId,
       payload.tenantId,
@@ -444,8 +438,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const eventType = payload.event?.type as string | undefined;
     let conversationEvent: ConversationEventName;
 
@@ -497,8 +489,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const conversationEvent =
       payload.status === 'completed' || payload.status === 'failed'
         ? ConversationEventName.AGENT_TOOL_RESULT
@@ -529,8 +519,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const envelope = this.buildEventPayload(
       conversationId,
       payload.tenantId,
@@ -556,8 +544,6 @@ export class AgentConversationGateway
     }
 
     const conversationId = payload.executionId;
-    if (!this.hasSubscribers(conversationId)) return;
-
     const envelope = this.buildEventPayload(
       conversationId,
       payload.tenantId,
@@ -578,8 +564,6 @@ export class AgentConversationGateway
     changedFiles: string[];
     timestamp: string;
   }): void {
-    if (!this.hasSubscribers(payload.conversationId)) return;
-
     for (const path of payload.changedFiles) {
       const envelope = this.buildEventPayload(
         payload.conversationId,
@@ -606,8 +590,6 @@ export class AgentConversationGateway
     event: AgentEvent;
     subagent: SubAgentEventEnvelope;
   }): void {
-    if (!this.hasSubscribers(payload.conversationId)) return;
-
     const eventType = payload.event.type;
     let conversationEvent: ConversationEventName;
 

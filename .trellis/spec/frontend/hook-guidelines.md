@@ -129,20 +129,25 @@ export async function createAgent(payload: CreateAgentPayload) {
 
 ---
 
-## Scenario: LLM Model + Knowledge Base Resource Forms
+## Scenario: LLM Model + Knowledge Base Strategy Forms
 
 ### 1. Scope / Trigger
 
-- Trigger: touching `src/features/llm/api/llmModelApi.ts`, LLM model config dialogs/panels, or knowledge-base settings forms that bind an embedding model config.
+- Trigger: touching `src/features/llm/api/llmModelApi.ts`, `src/features/knowledge/api/knowledgeBaseApi.ts`, LLM model config dialogs/panels, or knowledge-base detail forms that edit retrieval strategies.
 
 ### 2. Signatures
 
 - `createLlmModel(config: CreateLlmModelInput): Promise<LlmModelInfo>`
 - `updateLlmModel(id: string, config: UpdateLlmModelInput): Promise<LlmModelInfo>`
+- `createKnowledgeBase(input: CreateKnowledgeBaseInput): Promise<KnowledgeBase>`
+- `updateKnowledgeBaseSettings(id: string, input: UpdateKnowledgeBaseSettingsInput): Promise<KnowledgeBase>`
+- `testKnowledgeBaseSearch(id: string, input: { query: string; topK?: number }): Promise<KnowledgeTestSearchResponse>`
 - `KnowledgeBaseDetailPage` settings form fields:
-  - `chunkSize`
-  - `chunkOverlap`
   - `embeddingModelConfigId`
+  - `chunkingStrategy`
+  - `retrievalStrategy`
+  - `rerankingStrategy`
+  - `queryOrchestration`
 - `LlmModelInfo` contract fields used by the UI:
   - `modelType: 'chat' | 'embedding'`
   - `embeddingDimensions?: number | null`
@@ -150,8 +155,10 @@ export async function createAgent(payload: CreateAgentPayload) {
 ### 3. Contracts
 
 - `llmModelApi.ts` must send LLM model payloads in camelCase because the backend DTO contract uses camelCase fields such as `modelType` and `embeddingDimensions`.
-- Knowledge base settings must send `embeddingModelConfigId` in camelCase so the backend can persist `knowledge_bases.embedding_model_config_id`.
+- `knowledgeBaseApi.ts` must continue using `toSnakeBody()` for create/update/test-search payloads so nested strategy fields like `chunkingStrategy`, `retrievalStrategy.topK`, `rerankingStrategy.timeoutMs`, and `queryOrchestration.modelConfigId` survive transport to the backend aliases.
+- Knowledge base settings must submit `embeddingModelConfigId`, strategy objects, and test-search params through the API helpers instead of hand-rolling request bodies in components.
 - The knowledge-base embedding selector must only offer models where `modelType === 'embedding'`.
+- Knowledge-base detail UI must surface the per-base strategy state, unified `search_knowledge` tool hint, test-search entry, and rebuild entry from the same canonical query data.
 - LLM model management cards/dialogs must surface both the usage (`Chat` or `Embedding`) and the configured embedding dimension when present.
 
 ### 4. Validation & Error Matrix
@@ -160,26 +167,32 @@ export async function createAgent(payload: CreateAgentPayload) {
 |-----------|-------------------|--------------------|
 | LLM create/update payload uses camelCase `modelType` / `embeddingDimensions` | Request succeeds and values round-trip back in response/UI | `llmModelApi.test.ts` plus browser QA |
 | LLM create/update payload is mechanically wrapped in `toSnakeBody()` | Endpoint contract drifts; request can 422 or silently miss extended fields | Regression test on request body shape |
-| `embeddingModelConfigId` empty in KB settings form | Client-side Zod validation blocks submit | `KnowledgeBaseDetailPage` form test |
+| KB create/update payload omits `toSnakeBody()` | Nested strategy fields drift or fail alias parsing on the backend | `knowledgeBaseApi.test.ts` plus form submit test |
+| `embeddingModelConfigId` empty in KB settings form | Client-side validation still allows “provider default embedding” by submitting `null` when unbound | `KnowledgeBaseDetailPage` form test |
 | KB settings page receives mixed chat + embedding models | UI filters to embedding-only choices | `KnowledgeBaseDetailPage.test.tsx` |
+| User changes chunking/rerank/orchestration controls | Submitted payload preserves the active discriminated union shape | `KnowledgeBaseDetailPage.test.tsx` |
+| User runs test search | UI calls `testKnowledgeBaseSearch()` and renders returned hits | `KnowledgeBaseDetailPage.test.tsx` |
 | `embeddingDimensions <= 0` | Backend validation rejects the request | DTO contract in server + manual negative test if API changes |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: create a private-cloud embedding model with `modelType: 'embedding'`, `modelName: 'Qwen/Qwen3-Embedding-8B'`, and `embeddingDimensions: 4096`; the list card shows `Embedding` and `维度: 4096`, and KB settings can bind it.
-- Base: a normal chat model omits `embeddingDimensions`, stays selectable for chat use, and never appears in the KB embedding-model selector.
-- Bad: a frontend refactor blindly adds `toSnakeBody(config)` back into `llmModelApi.ts`, causing `modelType` / `embeddingDimensions` round-trip regressions.
+- Good: create a private-cloud embedding model with `modelType: 'embedding'`, `modelName: 'Qwen/Qwen3-Embedding-8B'`, and `embeddingDimensions: 4096`; then configure a knowledge base with `sentence_window` chunking, Cohere rerank, and HyDE orchestration; the detail page persists those strategies and test-search returns hits.
+- Base: a normal chat model omits `embeddingDimensions`, stays selectable for chat use, and never appears in the KB embedding-model selector; a knowledge base with default strategies still renders the unified `search_knowledge` hint.
+- Bad: a frontend refactor blindly removes `toSnakeBody()` from `knowledgeBaseApi.ts`, causing nested strategy payloads such as `queryOrchestration.modelConfigId` or `retrievalStrategy.topK` to drift.
 
 ### 6. Tests Required
 
 - `src/features/llm/api/llmModelApi.test.ts`
   - Assert create/update requests send camelCase `modelType` and `embeddingDimensions`.
+- `src/features/knowledge/api/knowledgeBaseApi.test.ts`
+  - Assert create/update/test-search requests send nested strategy fields through `toSnakeBody()`.
 - `src/features/knowledge/components/KnowledgeBaseDetailPage.test.tsx`
   - Assert the settings form only shows embedding models and submits `embeddingModelConfigId`.
+  - Assert strategy edits, test-search, rebuild, and unified `search_knowledge` hint all render from canonical knowledge-base state.
 - Browser/manual QA:
   - Search for the configured embedding model in `LLM Models`.
   - Confirm the card renders `Embedding` and the configured dimension.
-  - Open KB detail and confirm the same model is selectable/bound.
+  - Open KB detail and confirm the same model is selectable/bound, strategy controls round-trip, and test-search works.
 
 ### 7. Wrong vs Correct
 

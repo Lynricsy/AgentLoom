@@ -3,6 +3,7 @@ import { useViewport } from '@xyflow/react'
 import { BookOpen } from 'lucide-react'
 import {
   getKnowledgeBaseStatusLabel,
+  getKnowledgeNodeCountLabel,
   isKnowledgeBaseConfigured,
   type KnowledgeBaseStatus,
 } from '@/features/knowledge/types'
@@ -57,7 +58,9 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
       : String(config.knowledgeBaseId)
 
   const documentCount = readNumericValue(config.knowledgeBaseDocumentCount)
-  const chunkCount = readNumericValue(config.knowledgeBaseChunkCount)
+  const nodeCount =
+    readNumericValue(config.knowledgeBaseNodeCount)
+    ?? readNumericValue(config.knowledgeBaseChunkCount)
   const status = readKnowledgeBaseStatus(config.knowledgeBaseStatus)
   const lod = zoom >= 0.7 ? 'high' : zoom >= 0.4 ? 'medium' : 'low'
 
@@ -92,7 +95,9 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
           )}
           <div className="flex flex-wrap items-center gap-2">
             {documentCount !== null && <span>{documentCount} 个文档</span>}
-            {chunkCount !== null && <span>{chunkCount} 个分块</span>}
+            {nodeCount !== null && (
+              <span>{getKnowledgeNodeCountLabel({ nodeCount, chunkCount: nodeCount })}</span>
+            )}
           </div>
         </div>
       )}

@@ -31,7 +31,10 @@ import {
   UpdateKnowledgeBaseSettingsDto,
   ListKnowledgeBasesQueryDto,
   ListDocumentsQueryDto,
+  TestKnowledgeSearchDto,
+  RebuildKnowledgeBaseDto,
 } from './dto';
+import { RagService } from './services/rag.service';
 
 @ApiTags('Knowledge Bases')
 @ApiBearerAuth()
@@ -42,6 +45,7 @@ export class KnowledgeBaseController {
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly documentService: DocumentService,
     private readonly knowledgeGateway: KnowledgeGateway,
+    private readonly ragService: RagService,
   ) {}
 
   @Post()
@@ -211,7 +215,58 @@ export class KnowledgeBaseController {
       tenantId,
       dto,
     );
+    this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
     return { data: knowledgeBase };
+  }
+
+  @Post(':id/test-search')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '测试知识库检索效果' })
+  @ApiParam({ name: 'id', description: '知识库 ID', type: String })
+  @ApiResponse({ status: 200, description: '测试检索成功' })
+  async testSearch(
+    @Param('id') knowledgeBaseId: string,
+    @Body() dto: TestKnowledgeSearchDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
+    const results = await this.ragService.search(dto.query, tenantId, {
+      knowledgeBaseIds: [knowledgeBaseId],
+      limit: dto.topK,
+    });
+
+    return {
+      data: {
+        query: dto.query,
+        knowledgeBaseId,
+        total: results.length,
+        results,
+      },
+    };
+  }
+
+  @Post(':id/rebuild')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '按当前策略重建知识库索引与分块' })
+  @ApiParam({ name: 'id', description: '知识库 ID', type: String })
+  @ApiResponse({ status: 200, description: '知识库重建任务已提交' })
+  async rebuild(
+    @Param('id') knowledgeBaseId: string,
+    @Body() _dto: RebuildKnowledgeBaseDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    await this.knowledgeBaseService.findByIdOrThrow(knowledgeBaseId, tenantId);
+    const documentCount = await this.documentService.rebuildKnowledgeBase(
+      knowledgeBaseId,
+      tenantId,
+    );
+
+    return {
+      data: {
+        knowledgeBaseId,
+        documentCount,
+      },
+    };
   }
 
   @Delete(':id/documents/:documentId')

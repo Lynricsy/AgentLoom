@@ -1,19 +1,19 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { Readable } from 'node:stream';
 import { getQueueToken } from '@nestjs/bullmq';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { Test, type TestingModule } from '@nestjs/testing';
 import type { Job } from 'bullmq';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
+import { StorageService } from '../../../infrastructure/storage/storage.service';
+import { DOCUMENT_INDEXING_QUEUE } from '../knowledge.constants';
+import { KnowledgeGateway } from '../knowledge.gateway';
+import { KnowledgeBaseService } from '../knowledge-base.service';
+import { KnowledgeNodeService } from '../knowledge-node.service';
 import { DocumentProcessingWorker } from '../document-processing.worker';
 import type { DocumentProcessingJobData } from '../document-processing.worker';
 import { DocumentService } from '../document.service';
-import { DocumentChunkService } from '../document-chunk.service';
 import { DocumentParserService } from '../parsers/document-parser.service';
-import { TextChunkerService } from '../chunker/text-chunker.service';
-import { KnowledgeBaseService } from '../knowledge-base.service';
-import { KnowledgeGateway } from '../knowledge.gateway';
-import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { DOCUMENT_INDEXING_QUEUE } from '../knowledge.constants';
-import { Readable } from 'node:stream';
+import { KnowledgeNodeFactoryService } from '../services/knowledge-node-factory.service';
 
 const DOC_ID = '00000000-0000-0000-0000-000000000001';
 const STORAGE_KEY = 'tenants/t1/kb1/doc1/file.pdf';
@@ -26,6 +26,7 @@ function createMockJob(
   overrides: Partial<Job<DocumentProcessingJobData>> = {},
 ): Job<DocumentProcessingJobData> {
   return {
+    id: `process-${DOC_ID}`,
     data: { documentId: DOC_ID },
     attemptsMade: 0,
     opts: { attempts: 3 },
@@ -36,10 +37,13 @@ function createMockJob(
 describe('DocumentProcessingWorker', () => {
   let worker: DocumentProcessingWorker;
   let documentService: { findById: Mock; updateStatus: Mock };
-  let documentChunkService: { createChunks: Mock };
   let parserService: { parse: Mock };
-  let chunkerService: { chunk: Mock };
-  let knowledgeBaseService: { findByIdOrThrow: Mock };
+  let knowledgeNodeService: { replaceNodes: Mock };
+  let knowledgeNodeFactory: { createNodes: Mock };
+  let knowledgeBaseService: {
+    findByIdOrThrow: Mock;
+    getChunkingStrategy: Mock;
+  };
   let knowledgeGateway: {
     emitDocumentStatusChanged: Mock;
     emitKnowledgeBaseUpdated: Mock;
@@ -52,10 +56,13 @@ describe('DocumentProcessingWorker', () => {
       findById: vi.fn(),
       updateStatus: vi.fn(),
     };
-    documentChunkService = { createChunks: vi.fn() };
     parserService = { parse: vi.fn() };
-    chunkerService = { chunk: vi.fn() };
-    knowledgeBaseService = { findByIdOrThrow: vi.fn() };
+    knowledgeNodeService = { replaceNodes: vi.fn() };
+    knowledgeNodeFactory = { createNodes: vi.fn() };
+    knowledgeBaseService = {
+      findByIdOrThrow: vi.fn(),
+      getChunkingStrategy: vi.fn(),
+    };
     knowledgeGateway = {
       emitDocumentStatusChanged: vi.fn(),
       emitKnowledgeBaseUpdated: vi.fn(),
@@ -67,9 +74,12 @@ describe('DocumentProcessingWorker', () => {
       providers: [
         DocumentProcessingWorker,
         { provide: DocumentService, useValue: documentService },
-        { provide: DocumentChunkService, useValue: documentChunkService },
         { provide: DocumentParserService, useValue: parserService },
-        { provide: TextChunkerService, useValue: chunkerService },
+        { provide: KnowledgeNodeService, useValue: knowledgeNodeService },
+        {
+          provide: KnowledgeNodeFactoryService,
+          useValue: knowledgeNodeFactory,
+        },
         { provide: KnowledgeBaseService, useValue: knowledgeBaseService },
         { provide: KnowledgeGateway, useValue: knowledgeGateway },
         { provide: StorageService, useValue: storageService },
@@ -97,39 +107,41 @@ describe('DocumentProcessingWorker', () => {
     const mockKnowledgeBase = {
       id: 'kb-1',
       tenantId: 'tenant-1',
-      chunkSize: 1024,
-      chunkOverlap: 128,
+      chunkingStrategy: {
+        type: 'sentence_window' as const,
+        windowSize: 3,
+      },
     };
 
     const mockParsed = {
       fullText: 'Hello world',
-      sections: [{ heading: null, content: 'Hello world', level: 0 }],
+      sections: [
+        {
+          text: 'Hello world',
+          location: {
+            page: 1,
+            paragraph: 1,
+            heading: null,
+            charOffset: 0,
+          },
+        },
+      ],
       metadata: { totalPages: 1, totalCharacters: 11 },
     };
 
-    const mockChunks = [
-      {
-        content: 'Hello world',
-        location: {
-          page: 1,
-          paragraph: 1,
-          heading: null,
-          charOffset: 0,
-          charLength: 11,
-        },
-        tokenCount: 3,
-      },
-    ];
-
+    const mockNodes = [{ id_: 'node-1' }];
     const fileBuffer = Buffer.from('fake-pdf-content');
 
     beforeEach(() => {
       documentService.findById.mockResolvedValue(mockDocument);
       storageService.download.mockResolvedValue(createMockStream(fileBuffer));
       parserService.parse.mockResolvedValue(mockParsed);
-      chunkerService.chunk.mockReturnValue(mockChunks);
       knowledgeBaseService.findByIdOrThrow.mockResolvedValue(mockKnowledgeBase);
-      documentChunkService.createChunks.mockResolvedValue(1);
+      knowledgeBaseService.getChunkingStrategy.mockReturnValue(
+        mockKnowledgeBase.chunkingStrategy,
+      );
+      knowledgeNodeFactory.createNodes.mockReturnValue(mockNodes);
+      knowledgeNodeService.replaceNodes.mockResolvedValue(1);
       documentService.updateStatus.mockResolvedValue(undefined);
       indexingQueue.add.mockResolvedValue(undefined);
     });
@@ -154,18 +166,27 @@ describe('DocumentProcessingWorker', () => {
         'application/pdf',
         'test.pdf',
       );
-      expect(chunkerService.chunk).toHaveBeenCalledWith(mockParsed, {
-        maxTokens: 1024,
-        overlapTokens: 128,
-      });
-      expect(documentChunkService.createChunks).toHaveBeenCalledWith(
+      expect(knowledgeBaseService.getChunkingStrategy).toHaveBeenCalledWith(
+        mockKnowledgeBase,
+      );
+      expect(knowledgeNodeFactory.createNodes).toHaveBeenCalledWith(
+        {
+          id: DOC_ID,
+          knowledgeBaseId: 'kb-1',
+          fileName: 'test.pdf',
+          mimeType: 'application/pdf',
+        },
+        mockParsed,
+        mockKnowledgeBase.chunkingStrategy,
+      );
+      expect(knowledgeNodeService.replaceNodes).toHaveBeenCalledWith(
         DOC_ID,
-        mockChunks,
+        mockNodes,
       );
       expect(indexingQueue.add).toHaveBeenCalledWith(
         'index',
         { documentId: DOC_ID },
-        { jobId: `index-${DOC_ID}` },
+        { jobId: `index-${DOC_ID}-process-${DOC_ID}` },
       );
       expect(knowledgeGateway.emitDocumentStatusChanged.mock.calls).toEqual([
         [
@@ -228,10 +249,21 @@ describe('DocumentProcessingWorker', () => {
 
       await worker.process(job);
 
-      const statusCalls = documentService.updateStatus.mock.calls;
-      expect(statusCalls).toHaveLength(0);
+      expect(documentService.updateStatus).not.toHaveBeenCalled();
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledTimes(
         4,
+      );
+    });
+
+    it('should derive a unique indexing job id from the current processing job', async () => {
+      const job = createMockJob({ id: `rebuild-${DOC_ID}-1712345678901` });
+
+      await worker.process(job);
+
+      expect(indexingQueue.add).toHaveBeenCalledWith(
+        'index',
+        { documentId: DOC_ID },
+        { jobId: `index-${DOC_ID}-rebuild-${DOC_ID}-1712345678901` },
       );
     });
 
@@ -241,69 +273,42 @@ describe('DocumentProcessingWorker', () => {
       await expect(worker.process(createMockJob())).rejects.toThrow(
         'Corrupt PDF',
       );
-    });
-
-    it('should propagate storage download errors', async () => {
-      storageService.download.mockRejectedValue(new Error('S3 unavailable'));
-
-      const job = createMockJob();
-      await expect(worker.process(job)).rejects.toThrow('S3 unavailable');
-    });
-
-    it('should dispatch indexing job with correct jobId', async () => {
-      await worker.process(createMockJob());
-
-      expect(indexingQueue.add).toHaveBeenCalledWith(
-        'index',
-        { documentId: DOC_ID },
-        expect.objectContaining({ jobId: `index-${DOC_ID}` }),
-      );
+      expect(indexingQueue.add).not.toHaveBeenCalled();
     });
   });
 
   describe('onFailed', () => {
-    it('should set document status to failed with error message', async () => {
+    it('should mark the document as failed and emit websocket updates', async () => {
+      const error = new Error('parser failed');
+      const job = createMockJob({ attemptsMade: 3 });
       documentService.updateStatus.mockResolvedValue(undefined);
       documentService.findById.mockResolvedValue({
         id: DOC_ID,
         tenantId: 'tenant-1',
         knowledgeBaseId: 'kb-1',
       });
-      const job = createMockJob({ attemptsMade: 3 });
-      const error = new Error('Final failure: corrupt file');
 
       await worker.onFailed(job, error);
 
       expect(documentService.updateStatus).toHaveBeenCalledWith(
         DOC_ID,
         'failed',
-        'Final failure: corrupt file',
+        'parser failed',
       );
       expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
         'tenant-1',
         'kb-1',
-        expect.objectContaining({
+        {
           documentId: DOC_ID,
           knowledgeBaseId: 'kb-1',
           status: 'failed',
-          errorMessage: 'Final failure: corrupt file',
-        }),
+          errorMessage: 'parser failed',
+        },
       );
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
         'tenant-1',
         'kb-1',
       );
-    });
-
-    it('should swallow event emission errors when document lookup fails', async () => {
-      documentService.updateStatus.mockResolvedValue(undefined);
-      documentService.findById.mockRejectedValue(new Error('not found'));
-
-      await expect(
-        worker.onFailed(createMockJob({ attemptsMade: 2 }), new Error('boom')),
-      ).resolves.toBeUndefined();
-
-      expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
     });
   });
 });

@@ -565,7 +565,7 @@ describe('PiAgentCoreAdapter', () => {
 
       hoisted.MockPiAgent.script = async (agent) => {
         const knowledgeTool = agent.tools.find(
-          (tool) => (tool as { name?: string }).name === 'searchKnowledge_kb-1',
+          (tool) => (tool as { name?: string }).name === 'search_knowledge',
         ) as {
           execute: (
             toolCallId: string,
@@ -576,10 +576,14 @@ describe('PiAgentCoreAdapter', () => {
         };
 
         await expect(
-          knowledgeTool.execute('call-kb', { query: 'AgentLoom', topK: 2 }),
+          knowledgeTool.execute('call-kb', {
+            query: 'AgentLoom',
+            knowledgeBaseIds: ['kb-1'],
+            topK: 2,
+          }),
         ).resolves.toMatchObject({
           details: {
-            knowledgeBaseId: 'kb-1',
+            knowledgeBaseIds: ['kb-1'],
             total: 1,
             results: expect.any(Array),
           },
@@ -598,14 +602,14 @@ describe('PiAgentCoreAdapter', () => {
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenLastCalledWith(
         expect.arrayContaining([
-          expect.objectContaining({ name: 'searchKnowledge_kb-1' }),
+          expect.objectContaining({ name: 'search_knowledge' }),
         ]),
       );
       expect(mockRagService.search).toHaveBeenCalledWith(
         'AgentLoom',
         'tenant-001',
         {
-          knowledgeBaseId: 'kb-1',
+          knowledgeBaseIds: ['kb-1'],
           limit: 2,
           scoreThreshold: 0.42,
         },

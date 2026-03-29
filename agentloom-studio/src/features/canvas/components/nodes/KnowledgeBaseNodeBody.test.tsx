@@ -64,6 +64,7 @@ describe('KnowledgeBaseNodeBody', () => {
           knowledgeBaseId: 'kb-1',
           knowledgeBaseName: '产品文档库',
           knowledgeBaseDocumentCount: 8,
+          knowledgeBaseNodeCount: 42,
           knowledgeBaseChunkCount: 42,
           knowledgeBaseStatus: 'ready',
         }}
@@ -74,6 +75,6 @@ describe('KnowledgeBaseNodeBody', () => {
     expect(screen.getByText('产品文档库')).toBeInTheDocument()
     expect(screen.getByText('可用')).toBeInTheDocument()
     expect(screen.getByText('8 个文档')).toBeInTheDocument()
-    expect(screen.getByText('42 个分块')).toBeInTheDocument()
+    expect(screen.getByText('42 个知识节点')).toBeInTheDocument()
   })
 })

@@ -300,9 +300,9 @@ describe('SandboxAgentAdapter', () => {
       expect(payload.remoteToolExecution).toMatchObject({
         tools: [
           expect.objectContaining({
-            name: 'searchKnowledge_kb-qa-1',
-            description: '在知识库 kb-qa-1 中检索相关内容',
-            promptSnippet: '在知识库 kb-qa-1 中检索相关内容',
+            name: 'search_knowledge',
+            description: expect.stringContaining('knowledgeBaseIds'),
+            promptSnippet: expect.stringContaining('knowledgeBaseIds'),
           }),
         ],
       });

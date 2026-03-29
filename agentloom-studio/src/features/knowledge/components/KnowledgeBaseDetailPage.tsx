@@ -1,22 +1,27 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Controller, useForm } from 'react-hook-form'
-import { ArrowLeft, FileText, Trash2, Upload } from 'lucide-react'
-import { z } from 'zod'
+import {
+  ArrowLeft,
+  Database,
+  FileSearch,
+  Loader2,
+  RefreshCw,
+  Save,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useLlmModels } from '@/features/llm'
 import { Pagination } from '@/shared/components'
-import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Select } from '@/shared/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteDocument,
   useDocuments,
   useKnowledgeBase,
+  useRebuildKnowledgeBase,
+  useTestKnowledgeBaseSearch,
   useUpdateKnowledgeBaseSettings,
   useUploadDocument,
 } from '../hooks/useKnowledgeBases'
@@ -26,11 +31,16 @@ import {
 } from '../hooks/useKnowledgeBaseSocket'
 import {
   formatFileSize,
-  type DocumentStatus,
+  getChunkingStrategyLabel,
   getDocumentStatusLabel,
   getKnowledgeBaseStatusLabel,
-  type KnowledgeBaseDocument,
-  type KnowledgeBaseStatus,
+  type KnowledgeBase,
+  type KnowledgeChunkingStrategy,
+  type KnowledgeQueryOrchestration,
+  type KnowledgeRerankingStrategy,
+  type KnowledgeRetrievalStrategy,
+  type KnowledgeSearchResult,
+  type UpdateKnowledgeBaseSettingsInput,
 } from '../types'
 
 const DOCUMENT_PAGE_SIZE = 20
@@ -47,72 +57,104 @@ const FILE_INPUT_ACCEPT = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ].join(',')
 
-type DocumentStatusFilter =
-  | 'all'
-  | 'uploading'
-  | 'processing'
-  | 'indexing'
-  | 'ready'
-  | 'error'
+const CHUNKING_STRATEGY_OPTIONS: Array<{
+  value: KnowledgeChunkingStrategy['type']
+  label: string
+}> = [
+  { value: 'sentence_window', label: 'Sentence Window' },
+  { value: 'sentence', label: '句子分块' },
+  { value: 'markdown', label: 'Markdown 分块' },
+]
 
-const DOCUMENT_STATUS_FILTER_OPTIONS: ReadonlyArray<{
+const RERANKER_OPTIONS: Array<{
+  value: KnowledgeRerankingStrategy['type']
+  label: string
+}> = [
+  { value: 'none', label: '关闭重排' },
+  { value: 'cohere', label: 'Cohere Rerank' },
+]
+
+const QUERY_ORCHESTRATION_OPTIONS: Array<{
+  value: KnowledgeQueryOrchestration['type']
+  label: string
+}> = [
+  { value: 'none', label: '直接查询' },
+  { value: 'hyde', label: 'HyDE' },
+]
+
+type DocumentStatusFilter = 'all' | 'uploaded' | 'processing' | 'ready' | 'failed'
+
+const DOCUMENT_STATUS_FILTER_OPTIONS: Array<{
   value: DocumentStatusFilter
   label: string
 }> = [
-  { value: 'all', label: '全部' },
-  { value: 'uploading', label: '上传中' },
+  { value: 'all', label: '全部文档' },
+  { value: 'uploaded', label: '待处理' },
   { value: 'processing', label: '处理中' },
-  { value: 'indexing', label: '索引中' },
-  { value: 'ready', label: '就绪' },
-  { value: 'error', label: '错误' },
+  { value: 'ready', label: '已就绪' },
+  { value: 'failed', label: '失败' },
 ]
 
-const knowledgeBaseSettingsSchema = z.object({
-  chunkSize: z
-    .number()
-    .int('分块大小必须是整数')
-    .min(64, '分块大小不能小于 64')
-    .max(8192, '分块大小不能大于 8192')
-    .multipleOf(64, '分块大小必须是 64 的倍数'),
-  chunkOverlap: z
-    .number()
-    .int('分块重叠必须是整数')
-    .min(0, '分块重叠不能小于 0')
-    .max(4096, '分块重叠不能大于 4096')
-    .multipleOf(16, '分块重叠必须是 16 的倍数'),
-  embeddingModelConfigId: z.string().trim().min(1, '请选择 Embedding 模型'),
-})
-
-type KnowledgeBaseSettingsFormInput = z.input<typeof knowledgeBaseSettingsSchema>
-type KnowledgeBaseSettingsFormValues = z.output<typeof knowledgeBaseSettingsSchema>
-
-interface UploadFeedback {
-  id: string
-  fileName: string
-  status: 'uploading' | 'failed'
-  message?: string
-}
-
-function isDocumentStatusFilter(value: string): value is DocumentStatusFilter {
-  return DOCUMENT_STATUS_FILTER_OPTIONS.some((option) => option.value === value)
-}
-
-function mapStatusFilterToDocumentStatus(
-  filter: DocumentStatusFilter,
-): DocumentStatus | undefined {
-  switch (filter) {
-    case 'uploading':
-      return 'uploaded'
-    case 'processing':
-    case 'indexing':
-      return 'processing'
-    case 'ready':
-      return 'ready'
-    case 'error':
-      return 'failed'
-    default:
-      return undefined
+function createDefaultSettings(): UpdateKnowledgeBaseSettingsInput {
+  return {
+    chunkingStrategy: {
+      type: 'sentence_window',
+      windowSize: 3,
+    },
+    retrievalStrategy: {
+      topK: 8,
+      similarityThreshold: null,
+    },
+    rerankingStrategy: {
+      type: 'none',
+    },
+    queryOrchestration: {
+      type: 'none',
+    },
+    embeddingModelConfigId: null,
   }
+}
+
+function createSettingsFromKnowledgeBase(
+  knowledgeBase: KnowledgeBase,
+): UpdateKnowledgeBaseSettingsInput {
+  return {
+    embeddingModel: knowledgeBase.embeddingModel,
+    embeddingModelConfigId: knowledgeBase.embeddingModelConfigId,
+    chunkingStrategy: knowledgeBase.chunkingStrategy,
+    retrievalStrategy: knowledgeBase.retrievalStrategy,
+    rerankingStrategy: knowledgeBase.rerankingStrategy,
+    queryOrchestration: knowledgeBase.queryOrchestration,
+  }
+}
+
+function getStatusBadgeClass(status: string): string {
+  switch (status) {
+    case 'ready':
+      return 'bg-emerald-500/10 text-emerald-700'
+    case 'processing':
+      return 'bg-blue-500/10 text-blue-700'
+    case 'failed':
+      return 'bg-rose-500/10 text-rose-700'
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
+
+function getProgressStageLabel(stage: DocumentProgressStage): string {
+  const labels: Record<DocumentProgressStage, string> = {
+    preparing: '准备文件',
+    parsing: '解析文档',
+    chunking: '生成节点',
+    queueing: '提交索引',
+    completed: '处理完成',
+  }
+
+  return labels[stage]
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '操作失败，请稍后重试'
 }
 
 function getFileExtension(fileName: string): string {
@@ -138,60 +180,31 @@ function validateUploadFile(file: File): string | null {
   return null
 }
 
-function getStatusBadgeClass(status: string): string {
-  switch (status) {
-    case 'ready':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'processing':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'failed':
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-    default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  }
-}
-
-function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
-  switch (status) {
-    case 'ready':
-      return 'bg-emerald-500/10 text-emerald-700'
-    case 'processing':
-      return 'bg-blue-500/10 text-blue-700'
-    case 'failed':
-      return 'bg-rose-500/10 text-rose-700'
-    default:
-      return 'bg-muted text-muted-foreground'
-  }
-}
-
-function formatDocumentType(fileName: string, mimeType: string): string {
-  const extension = fileName.split('.').pop()?.trim().toUpperCase()
-  if (extension) {
-    return extension
-  }
-
-  const mimeLabel = mimeType.split('/').pop()?.replace(/[-+]/g, ' ')
-  return mimeLabel ? mimeLabel.toUpperCase() : '未知格式'
-}
-
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString()
 }
 
-function getProgressStageLabel(stage: DocumentProgressStage): string {
-  const labels: Record<DocumentProgressStage, string> = {
-    preparing: '准备处理文件',
-    parsing: '解析文档内容',
-    chunking: '生成语义分块',
-    queueing: '提交索引任务',
-    completed: '处理完成',
+function renderLocation(result: KnowledgeSearchResult): string {
+  const location = result.location
+  if (!location) {
+    return '无定位信息'
   }
 
-  return labels[stage]
-}
+  const segments: string[] = []
+  if (typeof location.page === 'number') {
+    segments.push(`页码 ${location.page}`)
+  }
+  if (typeof location.paragraph === 'number') {
+    segments.push(`段落 ${location.paragraph}`)
+  }
+  if (typeof location.heading === 'string' && location.heading.length > 0) {
+    segments.push(location.heading)
+  }
+  if (typeof location.charOffset === 'number') {
+    segments.push(`偏移 ${location.charOffset}`)
+  }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '操作失败，请稍后重试'
+  return segments.length > 0 ? segments.join(' · ') : '无定位信息'
 }
 
 interface KnowledgeBaseDetailPageProps {
@@ -203,17 +216,14 @@ export function KnowledgeBaseDetailPage({
 }: KnowledgeBaseDetailPageProps) {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const uploadFeedbackSequenceRef = useRef(0)
-  const deleteRestoreFocusRef = useRef<HTMLElement | null>(null)
   const { notify } = useToast()
-  const [isDragOver, setIsDragOver] = useState(false)
   const [documentPage, setDocumentPage] = useState(1)
-  const [statusFilter, setStatusFilter] =
-    useState<DocumentStatusFilter>('all')
-  const [deleteTarget, setDeleteTarget] =
-    useState<KnowledgeBaseDocument | null>(null)
-  const [uploadFeedbacks, setUploadFeedbacks] = useState<UploadFeedback[]>([])
-  const documentStatus = mapStatusFilterToDocumentStatus(statusFilter)
+  const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>('all')
+  const [settings, setSettings] = useState<UpdateKnowledgeBaseSettingsInput>(
+    createDefaultSettings(),
+  )
+  const [testQuery, setTestQuery] = useState('')
+  const [testTopK, setTestTopK] = useState(5)
 
   const {
     data: knowledgeBase,
@@ -224,8 +234,10 @@ export function KnowledgeBaseDetailPage({
     knowledgeBase?.tenantId,
     knowledgeBaseId,
   )
+  const { data: llmModels } = useLlmModels()
 
-  const { data: documentResponse, isLoading: docsLoading } = useDocuments(
+  const documentStatus = statusFilter === 'all' ? undefined : statusFilter
+  const { data: documentsResponse, isLoading: docsLoading } = useDocuments(
     knowledgeBaseId,
     {
       page: documentPage,
@@ -233,702 +245,826 @@ export function KnowledgeBaseDetailPage({
       status: documentStatus,
     },
   )
-  const uploadMutation = useUploadDocument()
-  const deleteMutation = useDeleteDocument()
   const updateSettingsMutation = useUpdateKnowledgeBaseSettings()
-  const documents = documentResponse?.data ?? []
+  const testSearchMutation = useTestKnowledgeBaseSearch()
+  const rebuildMutation = useRebuildKnowledgeBase()
+  const uploadMutation = useUploadDocument()
+  const deleteDocumentMutation = useDeleteDocument()
 
-  const {
-    control,
-    register,
-    reset,
-    handleSubmit,
-    formState: { errors, isDirty },
-  } = useForm<
-    KnowledgeBaseSettingsFormInput,
-    unknown,
-    KnowledgeBaseSettingsFormValues
-  >({
-    resolver: zodResolver(knowledgeBaseSettingsSchema),
-    defaultValues: {
-      chunkSize: 512,
-      chunkOverlap: 64,
-      embeddingModelConfigId: '',
-    },
-  })
-  const { data: llmModels } = useLlmModels()
+  const documents = documentsResponse?.data ?? []
   const embeddingModels = useMemo(
     () => (llmModels ?? []).filter((model) => model.modelType === 'embedding'),
+    [llmModels],
+  )
+  const chatModels = useMemo(
+    () => (llmModels ?? []).filter((model) => model.modelType === 'chat'),
     [llmModels],
   )
   const selectedEmbeddingModel = useMemo(
     () =>
       embeddingModels.find(
-        (model) => model.id === knowledgeBase?.embeddingModelConfigId,
+        (model) => model.id === settings.embeddingModelConfigId,
       ) ?? null,
-    [embeddingModels, knowledgeBase?.embeddingModelConfigId],
+    [embeddingModels, settings.embeddingModelConfigId],
   )
-  const canUploadDocuments = Boolean(knowledgeBase?.embeddingModelConfigId)
+  const canUploadDocuments = Boolean(knowledgeBase?.embeddingModel)
+  const isSettingsDirty = useMemo(() => {
+    if (!knowledgeBase) {
+      return false
+    }
+
+    return (
+      JSON.stringify(settings) !==
+      JSON.stringify(createSettingsFromKnowledgeBase(knowledgeBase))
+    )
+  }, [knowledgeBase, settings])
 
   useEffect(() => {
     if (!knowledgeBase) {
       return
     }
 
-    reset({
-      chunkSize: knowledgeBase.chunkSize,
-      chunkOverlap: knowledgeBase.chunkOverlap,
-      embeddingModelConfigId: knowledgeBase.embeddingModelConfigId ?? '',
-    })
-  }, [knowledgeBase, reset])
+    setSettings(createSettingsFromKnowledgeBase(knowledgeBase))
+  }, [knowledgeBase])
 
   useEffect(() => {
-    if (documentResponse && documentPage > documentResponse.meta.totalPages) {
-      setDocumentPage(documentResponse.meta.totalPages)
+    if (documentsResponse && documentPage > documentsResponse.meta.totalPages) {
+      setDocumentPage(documentsResponse.meta.totalPages)
     }
-  }, [documentPage, documentResponse])
-
-  const removeUploadFeedback = useCallback((feedbackId: string) => {
-    setUploadFeedbacks((current) =>
-      current.filter((item) => item.id !== feedbackId),
-    )
-  }, [])
-
-  const updateUploadFeedback = useCallback(
-    (feedbackId: string, patch: Partial<UploadFeedback>) => {
-      setUploadFeedbacks((current) =>
-        current.map((item) =>
-          item.id === feedbackId ? { ...item, ...patch } : item,
-        ),
-      )
-    },
-    [],
-  )
+  }, [documentPage, documentsResponse])
 
   const handleUpload = useCallback(
     (files: FileList | null) => {
-      if (!canUploadDocuments) {
-        notify({
-          description: '请先为知识库选择 Embedding 模型，再上传文档',
-          variant: 'error',
-        })
-        return
-      }
-
       if (!files?.length) {
         return
       }
 
       Array.from(files).forEach((file) => {
-        const feedbackId = `${file.name}-${file.lastModified}-${file.size}-${uploadFeedbackSequenceRef.current}`
-        uploadFeedbackSequenceRef.current += 1
-
         const validationError = validateUploadFile(file)
-
         if (validationError) {
-          setUploadFeedbacks((current) => [
-            ...current,
-            {
-              id: feedbackId,
-              fileName: file.name,
-              status: 'failed',
-              message: validationError,
-            },
-          ])
+          notify({
+            description: validationError,
+            variant: 'error',
+          })
           return
         }
-
-        setUploadFeedbacks((current) => [
-          ...current,
-          {
-            id: feedbackId,
-            fileName: file.name,
-            status: 'uploading',
-            message: '文件上传中...',
-          },
-        ])
 
         uploadMutation.mutate(
           { knowledgeBaseId, file },
           {
-            onSuccess: () => {
-              removeUploadFeedback(feedbackId)
-            },
             onError: (error) => {
-              updateUploadFeedback(feedbackId, {
-                status: 'failed',
-                message: getErrorMessage(error),
+              notify({
+                description: getErrorMessage(error),
+                variant: 'error',
               })
             },
           },
         )
       })
     },
-    [canUploadDocuments, knowledgeBaseId, notify, removeUploadFeedback, updateUploadFeedback, uploadMutation],
+    [knowledgeBaseId, notify, uploadMutation],
   )
 
-  const handleFileInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      handleUpload(e.target.files)
-      e.target.value = ''
+  const handleDeleteDocument = useCallback(
+    (documentId: string, fileName: string) => {
+      if (!window.confirm(`确定要删除文档“${fileName}”吗？`)) {
+        return
+      }
+
+      deleteDocumentMutation.mutate(
+        {
+          knowledgeBaseId,
+          documentId,
+        },
+        {
+          onError: (error) => {
+            notify({
+              description: getErrorMessage(error),
+              variant: 'error',
+            })
+          },
+        },
+      )
     },
-    [handleUpload],
+    [deleteDocumentMutation, knowledgeBaseId, notify],
   )
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragOver(false)
-      handleUpload(e.dataTransfer.files)
-    },
-    [handleUpload],
-  )
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragOver(true)
-  }, [])
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false)
-  }, [])
-
-  const handleDeleteDoc = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, doc: KnowledgeBaseDocument) => {
-      deleteRestoreFocusRef.current = event.currentTarget
-      setDeleteTarget(doc)
-    },
-    [],
-  )
-
-  const handleConfirmDelete = useCallback(() => {
-    if (!deleteTarget) {
-      return
-    }
-
-    deleteMutation.mutate(
+  const handleSaveSettings = useCallback(() => {
+    updateSettingsMutation.mutate(
       {
-        knowledgeBaseId,
-        documentId: deleteTarget.id,
+        id: knowledgeBaseId,
+        input: settings,
       },
       {
-        onSettled: () => setDeleteTarget(null),
+        onSuccess: () => {
+          notify({
+            description: '知识库策略已更新',
+            variant: 'success',
+          })
+        },
+        onError: (error) => {
+          notify({
+            description: getErrorMessage(error),
+            variant: 'error',
+          })
+        },
       },
     )
-  }, [deleteMutation, deleteTarget, knowledgeBaseId])
+  }, [knowledgeBaseId, notify, settings, updateSettingsMutation])
 
-  const handleStatusFilterChange = useCallback((value: string) => {
-    if (!isDocumentStatusFilter(value)) {
-      return
-    }
-
-    setStatusFilter(value)
-    setDocumentPage(1)
-  }, [])
-
-  const handleResetSettings = useCallback(() => {
-    if (!knowledgeBase) {
-      return
-    }
-
-    reset({
-      chunkSize: knowledgeBase.chunkSize,
-      chunkOverlap: knowledgeBase.chunkOverlap,
-      embeddingModelConfigId: knowledgeBase.embeddingModelConfigId ?? '',
-    })
-  }, [knowledgeBase, reset])
-
-  const handleSaveSettings = handleSubmit(async (values) => {
-    try {
-      await updateSettingsMutation.mutateAsync({
-        id: knowledgeBaseId,
-        input: values,
-      })
-      reset(values)
+  const handleTestSearch = useCallback(() => {
+    if (!testQuery.trim()) {
       notify({
-        description: '知识库设置已保存',
-        variant: 'success',
-      })
-    } catch (error) {
-      notify({
-        description: getErrorMessage(error),
+        description: '请输入测试检索查询',
         variant: 'error',
       })
+      return
     }
-  })
 
-  if (kbError) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-destructive">加载知识库失败: {kbError.message}</p>
-      </div>
+    testSearchMutation.mutate(
+      {
+        knowledgeBaseId,
+        query: testQuery.trim(),
+        topK: testTopK,
+      },
+      {
+        onError: (error) => {
+          notify({
+            description: getErrorMessage(error),
+            variant: 'error',
+          })
+        },
+      },
     )
-  }
+  }, [knowledgeBaseId, notify, testQuery, testTopK, testSearchMutation])
 
-  if (kbLoading) {
+  const handleRebuild = useCallback(() => {
+    rebuildMutation.mutate(knowledgeBaseId, {
+      onSuccess: (result) => {
+        notify({
+          description: `已提交 ${result.documentCount} 个文档的重建任务`,
+          variant: 'success',
+        })
+      },
+      onError: (error) => {
+        notify({
+          description: getErrorMessage(error),
+          variant: 'error',
+        })
+      },
+    })
+  }, [knowledgeBaseId, notify, rebuildMutation])
+
+  const chunkingStrategy = settings.chunkingStrategy ?? createDefaultSettings().chunkingStrategy!
+  const retrievalStrategy = settings.retrievalStrategy ?? createDefaultSettings().retrievalStrategy!
+  const rerankingStrategy = settings.rerankingStrategy ?? createDefaultSettings().rerankingStrategy!
+  const queryOrchestration = settings.queryOrchestration ?? createDefaultSettings().queryOrchestration!
+
+  if (kbLoading || !knowledgeBase) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">加载中...</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{kbError ? kbError.message : '加载知识库中...'}</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() =>
-            void navigate({ to: '/resources/knowledge-bases' })
-          }
-          aria-label="返回知识库列表"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-
-        <div>
-          <h1 className="text-2xl font-bold">{knowledgeBase?.name}</h1>
-          {knowledgeBase?.description && (
-            <p className="text-sm text-muted-foreground">
-              {knowledgeBase.description}
-            </p>
-          )}
-          {knowledgeBase && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{knowledgeBase.documentCount} 个文档</span>
-              <span>·</span>
-              <span>{knowledgeBase.chunkCount} 个分块</span>
-              <span>·</span>
-              <span
-                className={`rounded-full px-2 py-0.5 font-medium ${getKnowledgeBaseStatusClass(
-                  knowledgeBase.status,
-                )}`}
-              >
-                {getKnowledgeBaseStatusLabel(knowledgeBase.status)}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!canUploadDocuments) {
-            return
-          }
-          fileInputRef.current?.click()
-        }}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={cn(
-          'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors',
-          canUploadDocuments ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
-          isDragOver
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-muted-foreground',
-        )}
-        data-testid="upload-area"
-      >
-        <Upload className="h-8 w-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          {!canUploadDocuments
-            ? '请先在下方知识库设置中选择 Embedding 模型'
-            : uploadMutation.isPending
-            ? `正在并行上传 ${uploadFeedbacks.filter((item) => item.status === 'uploading').length} 个文件...`
-            : '拖拽文件到此处或点击上传（支持多文件）'}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          文档处理状态与进度会通过实时事件自动刷新，无需手动重载页面。
-        </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={FILE_INPUT_ACCEPT}
-          className="hidden"
-          disabled={!canUploadDocuments}
-          onChange={handleFileInputChange}
-          data-testid="file-input"
-        />
-      </button>
-
-      {uploadFeedbacks.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-sm font-medium">上传队列</p>
-          <div className="mt-2 flex flex-col gap-2">
-            {uploadFeedbacks.map((feedback) => (
-              <div
-                key={feedback.id}
-                className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-xs"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{feedback.fileName}</p>
-                  {feedback.message && (
-                    <p
-                      className={cn(
-                        'truncate text-muted-foreground',
-                        feedback.status === 'failed' && 'text-destructive',
-                      )}
-                    >
-                      {feedback.message}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="ml-3 text-muted-foreground hover:text-foreground"
-                  onClick={() => removeUploadFeedback(feedback.id)}
-                >
-                  关闭
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">分块大小</p>
-          <p className="mt-1 text-lg font-semibold">
-            {knowledgeBase?.chunkSize ?? 512}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            当前知识库的单块 token 上限
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">分块重叠</p>
-          <p className="mt-1 text-lg font-semibold">
-            {knowledgeBase?.chunkOverlap ?? 64}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            相邻分块共享的 token 数量
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Embedding 模型</p>
-          <p className="mt-1 text-lg font-semibold">
-            {knowledgeBase?.embeddingModel ?? '未配置'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {selectedEmbeddingModel?.embeddingDimensions
-              ? `用于文档向量化与召回的模型 · ${selectedEmbeddingModel.embeddingDimensions} 维`
-              : '用于文档向量化与召回的模型'}
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">知识库设置</h2>
-            <p className="text-sm text-muted-foreground">
-              保存后，新上传或重新处理的文档会使用新的分块与向量化配置。
-            </p>
-          </div>
+    <div className="flex h-full flex-col gap-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-2">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            onClick={handleResetSettings}
-            disabled={updateSettingsMutation.isPending || !isDirty}
-          >
-            重置修改
-          </Button>
-        </div>
-
-        <form
-          className="mt-4 grid gap-4 md:grid-cols-3"
-          onSubmit={handleSaveSettings}
-        >
-          <div className="space-y-2">
-            <label
-              htmlFor="chunk-size"
-              className="text-xs font-medium text-foreground"
-            >
-              分块大小
-            </label>
-            <Input
-              id="chunk-size"
-              type="number"
-              min={64}
-              max={8192}
-              step={64}
-              disabled={updateSettingsMutation.isPending}
-              {...register('chunkSize', { valueAsNumber: true })}
-            />
-            {errors.chunkSize && (
-              <p className="text-xs text-destructive">
-                {errors.chunkSize.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="chunk-overlap"
-              className="text-xs font-medium text-foreground"
-            >
-              分块重叠
-            </label>
-            <Input
-              id="chunk-overlap"
-              type="number"
-              min={0}
-              max={4096}
-              step={16}
-              disabled={updateSettingsMutation.isPending}
-              {...register('chunkOverlap', { valueAsNumber: true })}
-            />
-            {errors.chunkOverlap && (
-              <p className="text-xs text-destructive">
-                {errors.chunkOverlap.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="embedding-model-config"
-              className="text-xs font-medium text-foreground"
-            >
-              Embedding 模型
-            </label>
-            <Controller
-              control={control}
-              name="embeddingModelConfigId"
-              render={({ field }) => (
-                <Select
-                  id="embedding-model-config"
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  disabled={
-                    updateSettingsMutation.isPending ||
-                    embeddingModels.length === 0
-                  }
-                >
-                  <option value="">
-                    {embeddingModels.length === 0
-                      ? '请先到 LLM Models 添加 Embedding 模型'
-                      : '请选择 Embedding 模型'}
-                  </option>
-                  {embeddingModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} / {model.modelName}
-                      {model.embeddingDimensions
-                        ? ` / ${model.embeddingDimensions}维`
-                        : ''}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-            {errors.embeddingModelConfigId && (
-              <p className="text-xs text-destructive">
-                {errors.embeddingModelConfigId.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 md:col-span-3 md:flex-row md:items-center md:justify-between">
-            <p className="text-xs text-muted-foreground">
-              先在 `LLM Models` 页面添加用途为 Embedding 的模型配置，再在这里绑定到知识库。
-            </p>
-            <Button
-              type="submit"
-              disabled={updateSettingsMutation.isPending || !isDirty}
-            >
-              {updateSettingsMutation.isPending ? '保存中...' : '保存设置'}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">文档列表</h2>
-            <p className="text-xs text-muted-foreground">
-              共 {documentResponse?.meta.total ?? documents.length} 个文档
-            </p>
-          </div>
-          <Tabs
-            value={statusFilter}
-            defaultValue="all"
-            onValueChange={handleStatusFilterChange}
-            className="w-full md:w-auto"
-          >
-            <TabsList className="grid w-full grid-cols-3 gap-1 md:grid-cols-6 md:w-auto">
-              {DOCUMENT_STATUS_FILTER_OPTIONS.map((option) => (
-                <TabsTrigger
-                  key={option.value}
-                  value={option.value}
-                  className="text-xs"
-                >
-                  {option.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {docsLoading && (
-          <p className="mt-4 text-center text-muted-foreground">加载文档中...</p>
-        )}
-
-        {!docsLoading && documents.length === 0 && (
-          <div className="mt-4 flex flex-col items-center justify-center gap-2 py-8">
-            <FileText className="h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              {statusFilter === 'all'
-                ? '还没有文档，上传文件开始使用'
-                : '当前筛选条件下暂无文档'}
-            </p>
-          </div>
-        )}
-
-        {!docsLoading && documents.length > 0 && (
-          <div className="mt-4 flex flex-col gap-2">
-            <div className="divide-y divide-border rounded-lg border border-border">
-              {documents.map((doc) => {
-                const liveEvent = documentEvents[doc.id]
-                const displayStatus = liveEvent?.status ?? doc.status
-                const displayErrorMessage =
-                  liveEvent?.errorMessage ?? doc.errorMessage
-                const displayProgress =
-                  displayStatus === 'processing' ? liveEvent?.progress : undefined
-
-                return (
-                  <div key={doc.id} className="flex items-start justify-between p-3">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{doc.fileName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDocumentType(doc.fileName, doc.mimeType)} ·{' '}
-                          {formatFileSize(doc.sizeBytes)} · 上传于{' '}
-                          {formatDateTime(doc.createdAt)}
-                        </p>
-                        {displayStatus === 'failed' && (
-                          <p className="text-xs text-destructive">
-                            {displayErrorMessage ??
-                              '处理失败，请查看服务端日志后重试上传。'}
-                          </p>
-                        )}
-                        {displayProgress && (
-                          <div
-                            className="mt-2 space-y-1"
-                            data-testid={`document-progress-${doc.id}`}
-                          >
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>{getProgressStageLabel(displayProgress.stage)}</span>
-                              <span>{displayProgress.percentage}%</span>
-                            </div>
-                            <div
-                              role="progressbar"
-                              aria-label={`${doc.fileName} 处理进度`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={displayProgress.percentage}
-                              className="h-1.5 overflow-hidden rounded-full bg-muted"
-                            >
-                              <div
-                                className="h-full rounded-full bg-blue-500 transition-[width]"
-                                style={{ width: `${displayProgress.percentage}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              第 {displayProgress.currentStep}/
-                              {displayProgress.totalSteps} 步
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs',
-                          getStatusBadgeClass(displayStatus),
-                        )}
-                      >
-                        {getDocumentStatusLabel(displayStatus)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(event) => handleDeleteDoc(event, doc)}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={`删除 ${doc.fileName}`}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {documentResponse && documentResponse.meta.totalPages > 1 && (
-              <Pagination
-                page={documentResponse.meta.page}
-                totalPages={documentResponse.meta.totalPages}
-                onPageChange={setDocumentPage}
-                isLoading={docsLoading}
-              />
-            )}
-          </div>
-        )}
-      </div>
-
-      <Dialog.Root
-        open={Boolean(deleteTarget)}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setDeleteTarget(null)
-          }
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
-          <Dialog.Content
-            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
-            onCloseAutoFocus={(event) => {
-              const element = deleteRestoreFocusRef.current
-              if (element) {
-                event.preventDefault()
-                element.focus()
-              }
-              deleteRestoreFocusRef.current = null
+            className="-ml-3"
+            onClick={() => {
+              void navigate({ to: '/resources/knowledge-bases' })
             }}
           >
-            <div className="space-y-2">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                删除文档
-              </Dialog.Title>
-              <Dialog.Description className="text-sm text-muted-foreground">
-                确认删除文档「{deleteTarget?.fileName}」吗？相关分块记录会一并清理。
-              </Dialog.Description>
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            返回知识库列表
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">{knowledgeBase.name}</h1>
+            <p className="text-sm text-muted-foreground">
+              {knowledgeBase.description ?? '这个知识库还没有描述'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusBadgeClass(
+              knowledgeBase.status,
+            )}`}
+          >
+            {getKnowledgeBaseStatusLabel(knowledgeBase.status)}
+          </span>
+          <Button
+            variant="outline"
+            onClick={handleRebuild}
+            disabled={rebuildMutation.isPending}
+          >
+            {rebuildMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            重建索引/重切分
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            文档规模
+          </p>
+          <p className="mt-2 text-2xl font-semibold">{knowledgeBase.documentCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">已接入文档</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            节点规模
+          </p>
+          <p className="mt-2 text-2xl font-semibold">{knowledgeBase.nodeCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">当前索引节点数</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            分块策略
+          </p>
+          <p className="mt-2 text-base font-semibold">
+            {getChunkingStrategyLabel(knowledgeBase.chunkingStrategy)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            检索 Top K {knowledgeBase.retrievalStrategy.topK}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Embedding
+          </p>
+          <p className="mt-2 text-base font-semibold">
+            {selectedEmbeddingModel?.name ?? knowledgeBase.embeddingModel}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {selectedEmbeddingModel?.modelName ?? '使用知识库当前配置'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">检索策略</h2>
+              <p className="text-sm text-muted-foreground">
+                每个知识库独立定义分块、检索、重排与 query orchestration。
+              </p>
             </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={handleConfirmDelete}
-                disabled={deleteMutation.isPending}
+            <Button
+              onClick={handleSaveSettings}
+              disabled={updateSettingsMutation.isPending || !isSettingsDirty}
+            >
+              {updateSettingsMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              保存策略
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label className="space-y-2 text-sm">
+              <span className="font-medium">Embedding 模型</span>
+              <Select
+                value={settings.embeddingModelConfigId ?? ''}
+                onValueChange={(value) => {
+                  setSettings((current) => ({
+                    ...current,
+                    embeddingModelConfigId: value || null,
+                  }))
+                }}
               >
-                {deleteMutation.isPending ? '删除中...' : '确认删除'}
+                <option value="">使用默认 Embedding Key + 模型名</option>
+                {embeddingModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} · {model.modelName}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="font-medium">分块策略</span>
+              <Select
+                value={chunkingStrategy.type}
+                onValueChange={(value) => {
+                  const nextStrategy: KnowledgeChunkingStrategy =
+                    value === 'sentence'
+                      ? { type: 'sentence', chunkSize: 512, chunkOverlap: 64 }
+                      : value === 'markdown'
+                        ? { type: 'markdown' }
+                        : { type: 'sentence_window', windowSize: 3 }
+
+                  setSettings((current) => ({
+                    ...current,
+                    chunkingStrategy: nextStrategy,
+                  }))
+                }}
+              >
+                {CHUNKING_STRATEGY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            {chunkingStrategy.type === 'sentence' && (
+              <>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Chunk Size</span>
+                  <Input
+                    type="number"
+                    min={64}
+                    max={8192}
+                    value={chunkingStrategy.chunkSize}
+                    onChange={(event) => {
+                      const chunkSize = Number(event.target.value)
+                      setSettings((current) => ({
+                        ...current,
+                        chunkingStrategy: {
+                          type: 'sentence',
+                          chunkSize,
+                          chunkOverlap: chunkingStrategy.chunkOverlap,
+                        },
+                      }))
+                    }}
+                  />
+                </label>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Chunk Overlap</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={4096}
+                    value={chunkingStrategy.chunkOverlap}
+                    onChange={(event) => {
+                      const chunkOverlap = Number(event.target.value)
+                      setSettings((current) => ({
+                        ...current,
+                        chunkingStrategy: {
+                          type: 'sentence',
+                          chunkSize: chunkingStrategy.chunkSize,
+                          chunkOverlap,
+                        },
+                      }))
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            {chunkingStrategy.type === 'sentence_window' && (
+              <label className="space-y-2 text-sm">
+                <span className="font-medium">Window Size</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={chunkingStrategy.windowSize}
+                  onChange={(event) => {
+                    const windowSize = Number(event.target.value)
+                    setSettings((current) => ({
+                      ...current,
+                      chunkingStrategy: {
+                        type: 'sentence_window',
+                        windowSize,
+                      },
+                    }))
+                  }}
+                />
+              </label>
+            )}
+
+            <label className="space-y-2 text-sm">
+              <span className="font-medium">检索 Top K</span>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={retrievalStrategy.topK}
+                onChange={(event) => {
+                  const topK = Number(event.target.value)
+                  const nextStrategy: KnowledgeRetrievalStrategy = {
+                    ...retrievalStrategy,
+                    topK,
+                  }
+                  setSettings((current) => ({
+                    ...current,
+                    retrievalStrategy: nextStrategy,
+                  }))
+                }}
+              />
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="font-medium">相似度阈值</span>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step="0.01"
+                value={retrievalStrategy.similarityThreshold ?? ''}
+                onChange={(event) => {
+                  const rawValue = event.target.value
+                  const similarityThreshold =
+                    rawValue.trim() === '' ? null : Number(rawValue)
+                  setSettings((current) => ({
+                    ...current,
+                    retrievalStrategy: {
+                      ...retrievalStrategy,
+                      similarityThreshold,
+                    },
+                  }))
+                }}
+                placeholder="留空表示不限制"
+              />
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="font-medium">重排策略</span>
+              <Select
+                value={rerankingStrategy.type}
+                onValueChange={(value) => {
+                  const nextStrategy: KnowledgeRerankingStrategy =
+                    value === 'cohere'
+                      ? {
+                          type: 'cohere',
+                          model: 'rerank-english-v2.0',
+                          topN: 5,
+                          apiKeyId: null,
+                          baseUrl: null,
+                          timeoutMs: null,
+                        }
+                      : { type: 'none' }
+                  setSettings((current) => ({
+                    ...current,
+                    rerankingStrategy: nextStrategy,
+                  }))
+                }}
+              >
+                {RERANKER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            {rerankingStrategy.type === 'cohere' && (
+              <>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Cohere 模型</span>
+                  <Input
+                    value={rerankingStrategy.model}
+                    onChange={(event) => {
+                      setSettings((current) => ({
+                        ...current,
+                        rerankingStrategy: {
+                          ...rerankingStrategy,
+                          model: event.target.value,
+                        },
+                      }))
+                    }}
+                  />
+                </label>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">重排 Top N</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={rerankingStrategy.topN}
+                    onChange={(event) => {
+                      setSettings((current) => ({
+                        ...current,
+                        rerankingStrategy: {
+                          ...rerankingStrategy,
+                          topN: Number(event.target.value),
+                        },
+                      }))
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            <label className="space-y-2 text-sm md:col-span-2">
+              <span className="font-medium">Query Orchestration</span>
+              <Select
+                value={queryOrchestration.type}
+                onValueChange={(value) => {
+                  const nextStrategy: KnowledgeQueryOrchestration =
+                    value === 'hyde'
+                      ? {
+                          type: 'hyde',
+                          modelConfigId: null,
+                          promptTemplate: null,
+                        }
+                      : { type: 'none' }
+
+                  setSettings((current) => ({
+                    ...current,
+                    queryOrchestration: nextStrategy,
+                  }))
+                }}
+              >
+                {QUERY_ORCHESTRATION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            {queryOrchestration.type === 'hyde' && (
+              <>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">HyDE 模型</span>
+                  <Select
+                    value={queryOrchestration.modelConfigId ?? ''}
+                    onValueChange={(value) => {
+                      setSettings((current) => ({
+                        ...current,
+                        queryOrchestration: {
+                          ...queryOrchestration,
+                          modelConfigId: value || null,
+                        },
+                      }))
+                    }}
+                  >
+                    <option value="">使用默认聊天模型</option>
+                    {chatModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} · {model.modelName}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="space-y-2 text-sm md:col-span-2">
+                  <span className="font-medium">HyDE Prompt Template</span>
+                  <textarea
+                    value={queryOrchestration.promptTemplate ?? ''}
+                    onChange={(event) => {
+                      setSettings((current) => ({
+                        ...current,
+                        queryOrchestration: {
+                          ...queryOrchestration,
+                          promptTemplate: event.target.value || null,
+                        },
+                      }))
+                    }}
+                    rows={5}
+                    placeholder="支持 {{query}} 占位符；留空则使用系统默认 HyDE 提示词"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/30"
+                  />
+                </label>
+              </>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+          <div>
+            <h2 className="text-lg font-semibold">测试检索</h2>
+            <p className="text-sm text-muted-foreground">
+              用当前知识库的完整策略直接验证检索结果。
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Input
+              value={testQuery}
+              onChange={(event) => setTestQuery(event.target.value)}
+              placeholder="输入你希望验证的查询问题"
+            />
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={testTopK}
+                onChange={(event) => setTestTopK(Number(event.target.value))}
+                className="max-w-28"
+              />
+              <Button
+                onClick={handleTestSearch}
+                disabled={testSearchMutation.isPending}
+              >
+                {testSearchMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileSearch className="mr-2 h-4 w-4" />
+                )}
+                执行测试检索
               </Button>
             </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+          </div>
+
+          <div className="space-y-3">
+            {testSearchMutation.data?.results?.length ? (
+              testSearchMutation.data.results.map((result) => (
+                <div
+                  key={result.nodeId}
+                  className="rounded-xl border border-border bg-background p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium">
+                      {result.fileName ?? result.documentId}
+                    </p>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      score {result.score.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-foreground/90">
+                    {result.content}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {renderLocation(result)}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                {testSearchMutation.isPending
+                  ? '正在执行测试检索...'
+                  : '这里会展示测试检索结果。'}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">文档与构建状态</h2>
+            <p className="text-sm text-muted-foreground">
+              上传文档后会自动进入解析、切分与索引流程。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value as DocumentStatusFilter)
+                setDocumentPage(1)
+              }}
+            >
+              {DOCUMENT_STATUS_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={FILE_INPUT_ACCEPT}
+              data-testid="knowledge-file-input"
+              className="hidden"
+              onChange={(event) => {
+                handleUpload(event.target.files)
+                event.target.value = ''
+              }}
+            />
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadMutation.isPending || !canUploadDocuments}
+            >
+              {uploadMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              上传文档
+            </Button>
+          </div>
+        </div>
+
+        {!canUploadDocuments && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+            当前知识库未配置可用的 Embedding 模型，上传后的检索质量无法保证。建议先完成策略配置再上传。
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {docsLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>加载文档列表中...</span>
+            </div>
+          )}
+
+          {!docsLoading && documents.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+              当前筛选条件下没有文档。
+            </div>
+          )}
+
+          {!docsLoading &&
+            documents.map((document) => {
+              const liveEvent = documentEvents[document.id]
+              const effectiveStatus = liveEvent?.status ?? document.status
+              const progress = liveEvent?.progress
+
+              return (
+                <div
+                  key={document.id}
+                  className="rounded-xl border border-border bg-background p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-medium">
+                          {document.fileName}
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClass(
+                            effectiveStatus,
+                          )}`}
+                        >
+                          {getDocumentStatusLabel(effectiveStatus)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{formatFileSize(document.sizeBytes)}</span>
+                        <span>·</span>
+                        <span>{document.mimeType}</span>
+                        <span>·</span>
+                        <span>{formatDateTime(document.createdAt)}</span>
+                      </div>
+                      {progress && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {getProgressStageLabel(progress.stage)} ·{' '}
+                          {progress.percentage}%
+                        </p>
+                      )}
+                      {(liveEvent?.errorMessage ?? document.errorMessage) && (
+                        <p className="mt-2 text-xs text-rose-600">
+                          {liveEvent?.errorMessage ?? document.errorMessage}
+                        </p>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-rose-600 hover:text-rose-600"
+                      aria-label={`删除 ${document.fileName}`}
+                      onClick={() =>
+                        handleDeleteDocument(document.id, document.fileName)
+                      }
+                      disabled={deleteDocumentMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+
+        {documentsResponse && documentsResponse.meta.totalPages > 1 && (
+          <Pagination
+            page={documentPage}
+            totalPages={documentsResponse.meta.totalPages}
+            onPageChange={setDocumentPage}
+            isLoading={docsLoading}
+          />
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center gap-3">
+          <Database className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="text-sm font-semibold">统一工具语义</h2>
+            <p className="text-sm text-muted-foreground">
+              Agent runtime 现在只暴露一个 `search_knowledge` 工具，调用时必须显式传
+              `knowledgeBaseIds`，并且这些 ID 只能来自连接到 Agent 的知识库节点。
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

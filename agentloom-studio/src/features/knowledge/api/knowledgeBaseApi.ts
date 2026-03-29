@@ -5,6 +5,7 @@ import type {
   DocumentListParams,
   KnowledgeBase,
   KnowledgeBaseDocument,
+  KnowledgeTestSearchResponse,
   UpdateKnowledgeBaseSettingsInput,
 } from '../types';
 
@@ -68,6 +69,40 @@ export async function updateKnowledgeBaseSettings(
 
 export async function deleteKnowledgeBase(id: string): Promise<void> {
   await apiClient.delete(`${BASE_PATH}/${id}`);
+}
+
+export async function testKnowledgeBaseSearch(
+  id: string,
+  input: {
+    query: string;
+    topK?: number;
+  },
+): Promise<KnowledgeTestSearchResponse> {
+  const response = await apiClient
+    .post(`${BASE_PATH}/${id}/test-search`, {
+      json: toSnakeBody(input),
+    })
+    .json<ApiResponse<KnowledgeTestSearchResponse>>();
+  return response.data;
+}
+
+export async function rebuildKnowledgeBase(
+  id: string,
+): Promise<{
+  knowledgeBaseId: string;
+  documentCount: number;
+}> {
+  const response = await apiClient
+    .post(`${BASE_PATH}/${id}/rebuild`, {
+      json: { force: true },
+    })
+    .json<
+      ApiResponse<{
+        knowledgeBaseId: string;
+        documentCount: number;
+      }>
+    >();
+  return response.data;
 }
 
 export async function fetchDocuments(

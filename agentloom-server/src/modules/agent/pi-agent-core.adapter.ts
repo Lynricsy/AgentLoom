@@ -154,13 +154,21 @@ const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
       type: 'string',
       description: '用于知识检索的查询词',
     },
+    knowledgeBaseIds: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      minItems: 1,
+      description: '要检索的知识库 ID 列表，必须从当前 Agent 可用知识库中选择',
+    },
     topK: {
       type: 'integer',
       minimum: 1,
       description: '可选覆盖返回条数',
     },
   },
-  required: ['query'],
+  required: ['query', 'knowledgeBaseIds'],
   additionalProperties: false,
 } satisfies AiJsonSchemaInput;
 
@@ -527,12 +535,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       toolSet[codeEntry.name] = codeEntry.tool;
     }
 
-    for (const binding of runtimeConfig.knowledgeBindings ?? []) {
-      if (binding.enabled === false) {
-        continue;
-      }
-
-      const knowledgeEntry = this.buildKnowledgeToolEntry(session, binding);
+    const enabledKnowledgeBindings = (
+      runtimeConfig.knowledgeBindings ?? []
+    ).filter((binding) => binding.enabled !== false);
+    if (enabledKnowledgeBindings.length > 0) {
+      const knowledgeEntry = this.buildKnowledgeToolEntry(
+        session,
+        enabledKnowledgeBindings,
+      );
       if (knowledgeEntry) {
         toolSet[knowledgeEntry.name] = knowledgeEntry.tool;
       }
@@ -773,44 +783,73 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
   private buildKnowledgeToolEntry(
     session: AgentSession,
-    binding: AgentKnowledgeBinding,
+    bindings: AgentKnowledgeBinding[],
   ): { name: string; tool: ToolSet[string] } | null {
     if (!session.tenantId || !this.ragService) {
       return null;
     }
 
-    const name = this.sanitizeToolName(
-      `searchKnowledge_${binding.knowledgeBaseId}`,
-      `searchKnowledge_${randomUUID()}`,
+    const availableKnowledgeBaseIds = Array.from(
+      new Set(bindings.map((binding) => binding.knowledgeBaseId)),
     );
+    const name = this.sanitizeToolName('search_knowledge', 'search_knowledge');
 
     return {
       name,
       tool: tool({
-        description: `在知识库 ${binding.knowledgeBaseId} 中检索相关内容`,
+        description: `从指定知识库中检索相关内容。调用时必须显式传 knowledgeBaseIds。当前可用知识库: ${availableKnowledgeBaseIds.join(', ')}`,
         inputSchema: jsonSchema(KNOWLEDGE_TOOL_INPUT_SCHEMA),
         execute: async (input) => {
           const args = this.normalizeExecuteArgs(input);
           const query = typeof args.query === 'string' ? args.query : '';
+          const requestedKnowledgeBaseIds = Array.isArray(args.knowledgeBaseIds)
+            ? args.knowledgeBaseIds.filter(
+                (value): value is string =>
+                  typeof value === 'string' && value.length > 0,
+              )
+            : [];
+
+          if (requestedKnowledgeBaseIds.length === 0) {
+            throw new Error('search_knowledge 必须提供 knowledgeBaseIds');
+          }
+
+          const invalidKnowledgeBaseIds = requestedKnowledgeBaseIds.filter(
+            (knowledgeBaseId) =>
+              !availableKnowledgeBaseIds.includes(knowledgeBaseId),
+          );
+          if (invalidKnowledgeBaseIds.length > 0) {
+            throw new Error(
+              `search_knowledge 只能访问已连接知识库，非法 ID: ${invalidKnowledgeBaseIds.join(', ')}`,
+            );
+          }
+
+          const selectedBindings = bindings.filter((binding) =>
+            requestedKnowledgeBaseIds.includes(binding.knowledgeBaseId),
+          );
           const topK =
             typeof args.topK === 'number' && Number.isFinite(args.topK)
               ? Math.max(1, Math.trunc(args.topK))
-              : binding.topK;
+              : Math.max(
+                  8,
+                  ...selectedBindings.map((binding) => binding.topK ?? 0),
+                );
+          const scoreThreshold =
+            selectedBindings.length === 1
+              ? selectedBindings[0]?.similarityThreshold
+              : undefined;
 
           const results = await this.ragService!.search(
             query,
             session.tenantId!,
             {
-              knowledgeBaseId: binding.knowledgeBaseId,
-              ...(topK === undefined ? {} : { limit: topK }),
-              ...(binding.similarityThreshold === undefined
-                ? {}
-                : { scoreThreshold: binding.similarityThreshold }),
+              knowledgeBaseIds: requestedKnowledgeBaseIds,
+              limit: topK,
+              ...(scoreThreshold === undefined ? {} : { scoreThreshold }),
             },
           );
 
           return {
-            knowledgeBaseId: binding.knowledgeBaseId,
+            knowledgeBaseIds: requestedKnowledgeBaseIds,
             total: results.length,
             results,
           };

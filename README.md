@@ -14,7 +14,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
-- **🧠 知识库 RAG** — 文档解析 → 分块 → Qdrant 向量化，支持知识增强的 Agent 推理
+- **🧠 知识库 RAG** — 基于 LlamaIndex.TS 的文档解析、知识节点索引、重排与查询编排，支持知识增强的 Agent 推理
 - **📖 Skill 管理** — SKILL.md 格式 Agent 行为指导文件，`SkillResolverService` 将 `<available_skills>` XML 注入 Agent 对话与工作流执行系统提示，Monaco 编辑器 Web 编辑，5 个内置 Skill
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
 - **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
@@ -108,7 +108,7 @@ AgentLoom/
 | `agent` | AI Agent 六边形架构 (Ports/Adapters) |
 | `llm` | 多模型集成 + Provider 管理 |
 | `smart-routing` | 6 种智能路由策略 |
-| `knowledge` | RAG 知识库（解析 → 分块 → 向量化） |
+| `knowledge` | LlamaIndex-first 知识库（知识节点索引 → 检索 → 重排 → 查询编排） |
 | `mcp` | Model Context Protocol 工具管理 |
 | `sandbox` | 隔离执行环境（生命周期管理） |
 | `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
@@ -196,7 +196,7 @@ AgentLoom/
 | `/executions/$executionId` | 执行调试视图（实时时间线） |
 | `/templates` | 工作流模板库 |
 | `/marketplace` | 工作流/插件市场 |
-| `/settings/knowledge-bases` | 知识库管理 |
+| `/resources/knowledge-bases` | 知识库管理 |
 | `/settings/tool-library` | MCP 工具库 |
 | `/settings/skills` | Skill 管理（分类/搜索/启停/SKILL.md 编辑） |
 | `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板 |

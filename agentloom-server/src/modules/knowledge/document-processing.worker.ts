@@ -9,9 +9,7 @@ import type { Job, Queue } from 'bullmq';
 import type { Readable } from 'node:stream';
 
 import { DocumentService } from './document.service';
-import { DocumentChunkService } from './document-chunk.service';
 import { DocumentParserService } from './parsers/document-parser.service';
-import { TextChunkerService } from './chunker/text-chunker.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import {
   KnowledgeGateway,
@@ -23,6 +21,8 @@ import {
   DOCUMENT_PROCESSING_QUEUE,
   DOCUMENT_INDEXING_QUEUE,
 } from './knowledge.constants';
+import { KnowledgeNodeService } from './knowledge-node.service';
+import { KnowledgeNodeFactoryService } from './services/knowledge-node-factory.service';
 
 const DOCUMENT_PROGRESS_BY_STAGE = {
   preparing: {
@@ -87,9 +87,9 @@ export class DocumentProcessingWorker extends WorkerHost {
 
   constructor(
     private readonly documentService: DocumentService,
-    private readonly documentChunkService: DocumentChunkService,
     private readonly parserService: DocumentParserService,
-    private readonly chunkerService: TextChunkerService,
+    private readonly knowledgeNodeService: KnowledgeNodeService,
+    private readonly knowledgeNodeFactory: KnowledgeNodeFactoryService,
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly knowledgeGateway: KnowledgeGateway,
     private readonly storageService: StorageService,
@@ -115,6 +115,9 @@ export class DocumentProcessingWorker extends WorkerHost {
 
   async process(job: Job<DocumentProcessingJobData>): Promise<void> {
     const { documentId } = job.data;
+    const indexingJobId = job.id
+      ? `index-${documentId}-${job.id}`
+      : `index-${documentId}-${Date.now()}`;
 
     if (job.attemptsMade === 0) {
       await this.documentService.updateStatus(documentId, 'processing');
@@ -146,14 +149,20 @@ export class DocumentProcessingWorker extends WorkerHost {
 
     this.emitProcessingProgress(document, 'chunking');
 
-    const chunks = this.chunkerService.chunk(parsed, {
-      maxTokens: knowledgeBase.chunkSize,
-      overlapTokens: knowledgeBase.chunkOverlap,
-    });
+    const nodes = this.knowledgeNodeFactory.createNodes(
+      {
+        id: document.id,
+        knowledgeBaseId: document.knowledgeBaseId,
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+      },
+      parsed,
+      this.knowledgeBaseService.getChunkingStrategy(knowledgeBase),
+    );
 
-    const chunkCount = await this.documentChunkService.createChunks(
+    const nodeCount = await this.knowledgeNodeService.replaceNodes(
       documentId,
-      chunks,
+      nodes,
     );
 
     this.emitProcessingProgress(document, 'queueing');
@@ -161,11 +170,11 @@ export class DocumentProcessingWorker extends WorkerHost {
     await this.indexingQueue.add(
       'index',
       { documentId },
-      { jobId: `index-${documentId}` },
+      { jobId: indexingJobId },
     );
 
     this.logger.log(
-      `Document ${documentId} processed: ${chunkCount} chunks created and queued for indexing`,
+      `Document ${documentId} processed: ${nodeCount} knowledge nodes created and queued for indexing`,
     );
   }
 

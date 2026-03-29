@@ -1,31 +1,35 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { Plus, Search, Database, Trash2 } from 'lucide-react'
-import { Pagination } from '@/shared/components'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { Plus, Search, Database, Trash2 } from "lucide-react";
+import { Pagination } from "@/shared/components";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
 import {
   useKnowledgeBases,
   useAllKnowledgeBases,
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
-} from '../hooks/useKnowledgeBases'
+} from "../hooks/useKnowledgeBases";
 import {
   getKnowledgeBaseStatusLabel,
+  getKnowledgeNodeCountLabel,
+  getChunkingStrategyLabel,
   type KnowledgeBase,
   type KnowledgeBaseStatus,
-} from '../types'
+} from "../types";
+
+const EMPTY_KNOWLEDGE_BASES: KnowledgeBase[] = [];
 
 function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
   switch (status) {
-    case 'ready':
-      return 'bg-emerald-500/10 text-emerald-700'
-    case 'processing':
-      return 'bg-blue-500/10 text-blue-700'
-    case 'failed':
-      return 'bg-rose-500/10 text-rose-700'
+    case "ready":
+      return "bg-emerald-500/10 text-emerald-700";
+    case "processing":
+      return "bg-blue-500/10 text-blue-700";
+    case "failed":
+      return "bg-rose-500/10 text-rose-700";
     default:
-      return 'bg-muted text-muted-foreground'
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -35,90 +39,93 @@ function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
  * 功能: 展示知识库卡片列表、搜索过滤、创建知识库
  */
 export function KnowledgeBasesPage() {
-  const pageSize = 20
-  const [searchQuery, setSearchQuery] = useState('')
-  const [page, setPage] = useState(1)
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [newKbName, setNewKbName] = useState('')
-  const [newKbDescription, setNewKbDescription] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<KnowledgeBase | null>(null)
-  const deleteRestoreFocusRef = useRef<HTMLElement | null>(null)
+  const pageSize = 20;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newKbName, setNewKbName] = useState("");
+  const [newKbDescription, setNewKbDescription] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeBase | null>(null);
+  const deleteRestoreFocusRef = useRef<HTMLElement | null>(null);
 
-  const navigate = useNavigate()
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
-  const isSearching = normalizedSearchQuery.length > 0
+  const navigate = useNavigate();
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
   const {
     data,
     isLoading: isPageLoading,
     error: pageError,
-  } = useKnowledgeBases({ page, pageSize })
+  } = useKnowledgeBases({ page, pageSize });
   const {
     data: allKnowledgeBases,
     isLoading: isAllKnowledgeBasesLoading,
     error: allKnowledgeBasesError,
-  } = useAllKnowledgeBases({ enabled: isSearching })
-  const createMutation = useCreateKnowledgeBase()
-  const deleteMutation = useDeleteKnowledgeBase()
-  const knowledgeBases = data?.data ?? []
+  } = useAllKnowledgeBases({ enabled: isSearching });
+  const createMutation = useCreateKnowledgeBase();
+  const deleteMutation = useDeleteKnowledgeBase();
+  const knowledgeBases = data?.data ?? EMPTY_KNOWLEDGE_BASES;
 
   const filteredKnowledgeBases = useMemo(() => {
     const sourceKnowledgeBases = isSearching
-      ? allKnowledgeBases ?? []
-      : knowledgeBases
+      ? (allKnowledgeBases ?? [])
+      : knowledgeBases;
 
     if (!isSearching) {
-      return sourceKnowledgeBases
+      return sourceKnowledgeBases;
     }
 
     return sourceKnowledgeBases.filter(
       (kb) =>
         kb.name.toLowerCase().includes(normalizedSearchQuery) ||
-        (kb.description ?? '').toLowerCase().includes(normalizedSearchQuery),
-    )
-  }, [allKnowledgeBases, isSearching, knowledgeBases, normalizedSearchQuery])
+        (kb.description ?? "").toLowerCase().includes(normalizedSearchQuery),
+    );
+  }, [allKnowledgeBases, isSearching, knowledgeBases, normalizedSearchQuery]);
 
   const paginationMeta = useMemo(() => {
     if (!isSearching) {
-      return data?.meta
+      return data?.meta;
     }
 
     return {
       page,
       pageSize,
       total: filteredKnowledgeBases.length,
-      totalPages: Math.max(1, Math.ceil(filteredKnowledgeBases.length / pageSize)),
-    }
-  }, [data?.meta, filteredKnowledgeBases.length, isSearching, page])
+      totalPages: Math.max(
+        1,
+        Math.ceil(filteredKnowledgeBases.length / pageSize),
+      ),
+    };
+  }, [data?.meta, filteredKnowledgeBases.length, isSearching, page]);
 
   const visibleKnowledgeBases = useMemo(() => {
     if (!isSearching) {
-      return filteredKnowledgeBases
+      return filteredKnowledgeBases;
     }
 
-    const startIndex = (page - 1) * pageSize
-    return filteredKnowledgeBases.slice(startIndex, startIndex + pageSize)
-  }, [filteredKnowledgeBases, isSearching, page])
+    const startIndex = (page - 1) * pageSize;
+    return filteredKnowledgeBases.slice(startIndex, startIndex + pageSize);
+  }, [filteredKnowledgeBases, isSearching, page]);
 
-  const isLoading = isSearching ? isAllKnowledgeBasesLoading : isPageLoading
-  const error = isSearching ? allKnowledgeBasesError ?? pageError : pageError
+  const isLoading = isSearching ? isAllKnowledgeBasesLoading : isPageLoading;
+  const error = isSearching ? (allKnowledgeBasesError ?? pageError) : pageError;
 
   useEffect(() => {
     if (paginationMeta && page > paginationMeta.totalPages) {
-      setPage(paginationMeta.totalPages)
+      setPage(paginationMeta.totalPages);
     }
-  }, [page, paginationMeta])
+  }, [page, paginationMeta]);
 
   const restoreDeleteFocus = useCallback(() => {
-    const element = deleteRestoreFocusRef.current
-    deleteRestoreFocusRef.current = null
+    const element = deleteRestoreFocusRef.current;
+    deleteRestoreFocusRef.current = null;
 
     if (element?.isConnected) {
-      element.focus()
+      element.focus();
     }
-  }, [])
+  }, []);
 
   const handleCreate = useCallback(() => {
-    if (!newKbName.trim()) return
+    if (!newKbName.trim()) return;
     createMutation.mutate(
       {
         name: newKbName.trim(),
@@ -126,60 +133,55 @@ export function KnowledgeBasesPage() {
       },
       {
         onSuccess: (createdKnowledgeBase) => {
-          setShowCreateDialog(false)
-          setNewKbName('')
-          setNewKbDescription('')
+          setShowCreateDialog(false);
+          setNewKbName("");
+          setNewKbDescription("");
           void navigate({
-            to: '/resources/knowledge-bases/$knowledgeBaseId',
+            to: "/resources/knowledge-bases/$knowledgeBaseId",
             params: { knowledgeBaseId: createdKnowledgeBase.id },
-          })
+          });
         },
       },
-    )
-  }, [createMutation, navigate, newKbDescription, newKbName])
+    );
+  }, [createMutation, navigate, newKbDescription, newKbName]);
 
-  const handleDelete = useCallback(
-    (e: React.MouseEvent, kb: KnowledgeBase) => {
-      e.stopPropagation()
-      deleteRestoreFocusRef.current = e.currentTarget as HTMLElement
-      setDeleteTarget(kb)
-    },
-    [],
-  )
+  const handleDelete = useCallback((e: React.MouseEvent, kb: KnowledgeBase) => {
+    e.stopPropagation();
+    deleteRestoreFocusRef.current = e.currentTarget as HTMLElement;
+    setDeleteTarget(kb);
+  }, []);
 
   const handleConfirmDelete = useCallback(() => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id, {
       onSettled: () => {
-        setDeleteTarget(null)
-        restoreDeleteFocus()
+        setDeleteTarget(null);
+        restoreDeleteFocus();
       },
-    })
-  }, [deleteTarget, deleteMutation, restoreDeleteFocus])
+    });
+  }, [deleteTarget, deleteMutation, restoreDeleteFocus]);
 
   const handleCancelDelete = useCallback(() => {
-    setDeleteTarget(null)
-    restoreDeleteFocus()
-  }, [restoreDeleteFocus])
+    setDeleteTarget(null);
+    restoreDeleteFocus();
+  }, [restoreDeleteFocus]);
 
   const handleCardClick = useCallback(
     (kb: KnowledgeBase) => {
       void navigate({
-        to: '/resources/knowledge-bases/$knowledgeBaseId',
+        to: "/resources/knowledge-bases/$knowledgeBaseId",
         params: { knowledgeBaseId: kb.id },
-      })
+      });
     },
     [navigate],
-  )
+  );
 
   if (error) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-destructive">
-          加载知识库失败: {error.message}
-        </p>
+        <p className="text-destructive">加载知识库失败: {error.message}</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -200,8 +202,8 @@ export function KnowledgeBasesPage() {
           placeholder="搜索知识库..."
           value={searchQuery}
           onChange={(e) => {
-            setSearchQuery(e.target.value)
-            setPage(1)
+            setSearchQuery(e.target.value);
+            setPage(1);
           }}
           className="pl-9"
         />
@@ -220,8 +222,8 @@ export function KnowledgeBasesPage() {
           <Database className="w-12 h-12 text-muted-foreground" />
           <p className="text-muted-foreground">
             {searchQuery
-              ? '没有匹配的知识库'
-              : '还没有知识库，点击上方按钮创建'}
+              ? "没有匹配的知识库"
+              : "还没有知识库，点击上方按钮创建"}
           </p>
         </div>
       )}
@@ -260,11 +262,13 @@ export function KnowledgeBasesPage() {
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>{kb.documentCount} 个文档</span>
                     <span>·</span>
-                    <span>{kb.chunkCount} 个分块</span>
+                    <span>{getKnowledgeNodeCountLabel(kb)}</span>
                     <span>·</span>
                     <span>
-                      {kb.visibility === 'organization' ? '组织' : '私有'}
+                      {kb.visibility === "organization" ? "组织" : "私有"}
                     </span>
+                    <span>·</span>
+                    <span>{getChunkingStrategyLabel(kb.chunkingStrategy)}</span>
                     <span>·</span>
                     <span>
                       更新于 {new Date(kb.updatedAt).toLocaleDateString()}
@@ -291,11 +295,16 @@ export function KnowledgeBasesPage() {
                         删除知识库
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        确认删除知识库「{deleteTarget.name}」吗？该操作会同时删除其下文档与分块记录，且不可恢复。
+                        确认删除知识库「{deleteTarget.name}
+                        」吗？该操作会同时删除其下文档、知识节点与向量索引，且不可恢复。
                       </p>
                     </div>
                     <div className="mt-4 flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={handleCancelDelete}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCancelDelete}
+                      >
                         取消
                       </Button>
                       <Button
@@ -304,7 +313,7 @@ export function KnowledgeBasesPage() {
                         onClick={handleConfirmDelete}
                         disabled={deleteMutation.isPending}
                       >
-                        {deleteMutation.isPending ? '删除中...' : '确认删除'}
+                        {deleteMutation.isPending ? "删除中..." : "确认删除"}
                       </Button>
                     </div>
                   </div>
@@ -324,14 +333,17 @@ export function KnowledgeBasesPage() {
         </div>
       )}
 
-      {!isLoading && visibleKnowledgeBases.length === 0 && paginationMeta && paginationMeta.totalPages > 1 && (
-        <Pagination
-          page={paginationMeta.page}
-          totalPages={paginationMeta.totalPages}
-          onPageChange={setPage}
-          isLoading={isLoading}
-        />
-      )}
+      {!isLoading &&
+        visibleKnowledgeBases.length === 0 &&
+        paginationMeta &&
+        paginationMeta.totalPages > 1 && (
+          <Pagination
+            page={paginationMeta.page}
+            totalPages={paginationMeta.totalPages}
+            onPageChange={setPage}
+            isLoading={isLoading}
+          />
+        )}
 
       {/* 创建知识库对话框 */}
       {showCreateDialog && (
@@ -356,10 +368,7 @@ export function KnowledgeBasesPage() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="kb-description"
-                  className="text-sm font-medium"
-                >
+                <label htmlFor="kb-description" className="text-sm font-medium">
                   描述
                 </label>
                 <Input
@@ -380,17 +389,14 @@ export function KnowledgeBasesPage() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={
-                  !newKbName.trim() || createMutation.isPending
-                }
+                disabled={!newKbName.trim() || createMutation.isPending}
               >
-                {createMutation.isPending ? '创建中...' : '创建'}
+                {createMutation.isPending ? "创建中..." : "创建"}
               </Button>
             </div>
           </div>
         </div>
       )}
-
     </div>
-  )
+  );
 }

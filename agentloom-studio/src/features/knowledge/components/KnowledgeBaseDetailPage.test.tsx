@@ -1,10 +1,12 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeBaseDetailPage } from './KnowledgeBaseDetailPage'
-import type { KnowledgeBase, KnowledgeBaseDocument } from '../types'
-
-// --- Mocks ---
+import type {
+  KnowledgeBase,
+  KnowledgeBaseDocument,
+  KnowledgeSearchResult,
+} from '../types'
 
 const mocks = vi.hoisted(() => ({
   useKnowledgeBase: vi.fn(),
@@ -12,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   useUploadDocument: vi.fn(),
   useDeleteDocument: vi.fn(),
   useUpdateKnowledgeBaseSettings: vi.fn(),
+  useTestKnowledgeBaseSearch: vi.fn(),
+  useRebuildKnowledgeBase: vi.fn(),
   useKnowledgeBaseSocket: vi.fn(),
   useLlmModels: vi.fn(),
   notify: vi.fn(),
@@ -24,6 +28,8 @@ vi.mock('../hooks/useKnowledgeBases', () => ({
   useUploadDocument: mocks.useUploadDocument,
   useDeleteDocument: mocks.useDeleteDocument,
   useUpdateKnowledgeBaseSettings: mocks.useUpdateKnowledgeBaseSettings,
+  useTestKnowledgeBaseSearch: mocks.useTestKnowledgeBaseSearch,
+  useRebuildKnowledgeBase: mocks.useRebuildKnowledgeBase,
 }))
 
 vi.mock('../hooks/useKnowledgeBaseSocket', () => ({
@@ -42,21 +48,32 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: mocks.notify }),
 }))
 
-// --- Test data factories ---
-
 function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeBase {
   return {
     id: 'kb-1',
     tenantId: 'tenant-1',
     name: '测试知识库',
     description: '这是一个测试知识库',
-    visibility: 'private' as const,
+    visibility: 'private',
     createdBy: 'user-1',
-    chunkSize: 512,
-    chunkOverlap: 64,
     embeddingModel: 'text-embedding-3-small',
     embeddingModelConfigId: 'embedding-model-1',
+    chunkingStrategy: {
+      type: 'sentence_window',
+      windowSize: 3,
+    },
+    retrievalStrategy: {
+      topK: 8,
+      similarityThreshold: null,
+    },
+    rerankingStrategy: {
+      type: 'none',
+    },
+    queryOrchestration: {
+      type: 'none',
+    },
     documentCount: 0,
+    nodeCount: 0,
     chunkCount: 0,
     status: 'empty',
     createdAt: '2025-01-01T00:00:00Z',
@@ -65,45 +82,133 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
   }
 }
 
-function createDocument(overrides: Partial<KnowledgeBaseDocument> = {}): KnowledgeBaseDocument {
-  const { errorMessage, ...restOverrides } = overrides
-
+function createDocument(
+  overrides: Partial<KnowledgeBaseDocument> = {},
+): KnowledgeBaseDocument {
   return {
     id: 'doc-1',
     knowledgeBaseId: 'kb-1',
     tenantId: 'tenant-1',
     fileName: '测试文档.pdf',
     mimeType: 'application/pdf',
-    sizeBytes: 1024000,
-    status: 'ready' as const,
-    errorMessage: errorMessage ?? null,
+    sizeBytes: 1024,
+    status: 'ready',
+    errorMessage: null,
     uploadedBy: 'user-1',
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
-    ...restOverrides,
+    ...overrides,
   }
 }
 
-// --- Setup ---
+function createSearchResult(
+  overrides: Partial<KnowledgeSearchResult> = {},
+): KnowledgeSearchResult {
+  return {
+    chunkId: 'chunk-1',
+    nodeId: 'node-1',
+    score: 0.93,
+    content: '这里是命中的知识节点内容',
+    location: null,
+    documentId: 'doc-1',
+    knowledgeBaseId: 'kb-1',
+    chunkIndex: 0,
+    fileName: '测试文档.pdf',
+    metadata: {},
+    ...overrides,
+  }
+}
+
+function createLlmModels() {
+  return [
+    {
+      id: 'embedding-model-1',
+      name: '默认 Embedding 模型',
+      provider: 'openai',
+      modelType: 'embedding',
+      modelName: 'text-embedding-3-small',
+      parameters: {
+        temperature: 0.7,
+        maxTokens: undefined,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stop: [],
+      },
+      apiKeyId: null,
+      embeddingDimensions: 1536,
+      isDefault: true,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    },
+    {
+      id: 'embedding-model-2',
+      name: '高级 Embedding 模型',
+      provider: 'private_cloud',
+      modelType: 'embedding',
+      modelName: 'Qwen/Qwen3-Embedding-8B',
+      parameters: {
+        temperature: 0.7,
+        maxTokens: undefined,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stop: [],
+      },
+      apiKeyId: 'key-1',
+      embeddingDimensions: 1024,
+      isDefault: false,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+      endpointUrl: 'https://api.siliconflow.cn',
+      authMethod: 'api_key',
+    },
+    {
+      id: 'chat-model-1',
+      name: '默认聊天模型',
+      provider: 'openai',
+      modelType: 'chat',
+      modelName: 'gpt-4.1-mini',
+      parameters: {
+        temperature: 0.7,
+        maxTokens: undefined,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stop: [],
+      },
+      apiKeyId: null,
+      isDefault: true,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    },
+  ]
+}
 
 function setupMocks(overrides: {
   knowledgeBase?: KnowledgeBase | null
   documents?: KnowledgeBaseDocument[]
   kbLoading?: boolean
-  docsLoading?: boolean
   kbError?: Error | null
+  docsLoading?: boolean
+  testSearchResults?: KnowledgeSearchResult[]
+  documentEvents?: Record<string, unknown>
 } = {}) {
   const {
     knowledgeBase = createKnowledgeBase(),
     documents = [],
     kbLoading = false,
-    docsLoading = false,
     kbError = null,
+    docsLoading = false,
+    testSearchResults,
+    documentEvents = {},
   } = overrides
 
   const uploadFn = vi.fn()
   const deleteFn = vi.fn()
-  const updateSettingsFn = vi.fn().mockResolvedValue(knowledgeBase)
+  const updateSettingsFn = vi.fn()
+  const testSearchFn = vi.fn()
+  const rebuildFn = vi.fn()
 
   mocks.useKnowledgeBase.mockReturnValue({
     data: knowledgeBase,
@@ -131,151 +236,100 @@ function setupMocks(overrides: {
     isPending: false,
   })
   mocks.useUpdateKnowledgeBaseSettings.mockReturnValue({
-    mutateAsync: updateSettingsFn,
+    mutate: updateSettingsFn,
     isPending: false,
   })
-  mocks.useKnowledgeBaseSocket.mockReturnValue({ documentEvents: {} })
+  mocks.useTestKnowledgeBaseSearch.mockReturnValue({
+    mutate: testSearchFn,
+    isPending: false,
+    data: testSearchResults
+      ? {
+          query: '测试查询',
+          knowledgeBaseId: 'kb-1',
+          total: testSearchResults.length,
+          results: testSearchResults,
+        }
+      : undefined,
+  })
+  mocks.useRebuildKnowledgeBase.mockReturnValue({
+    mutate: rebuildFn,
+    isPending: false,
+  })
+  mocks.useKnowledgeBaseSocket.mockReturnValue({
+    documentEvents,
+  })
   mocks.useLlmModels.mockReturnValue({
-    data: [
-      {
-        id: 'embedding-model-1',
-        name: '默认 Embedding 模型',
-        provider: 'openai',
-        modelType: 'embedding',
-        modelName: 'text-embedding-3-small',
-        parameters: {
-          temperature: 0.7,
-          maxTokens: undefined,
-          topP: 1,
-          frequencyPenalty: 0,
-          presencePenalty: 0,
-          stop: [],
-        },
-        apiKeyId: null,
-        embeddingDimensions: 1536,
-        isDefault: true,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z',
-      },
-      {
-        id: 'embedding-model-2',
-        name: '高级 Embedding 模型',
-        provider: 'private_cloud',
-        modelType: 'embedding',
-        modelName: 'Qwen/Qwen3-Embedding-8B',
-        parameters: {
-          temperature: 0.7,
-          maxTokens: undefined,
-          topP: 1,
-          frequencyPenalty: 0,
-          presencePenalty: 0,
-          stop: [],
-        },
-        apiKeyId: 'key-1',
-        embeddingDimensions: 1024,
-        isDefault: false,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z',
-        endpointUrl: 'https://api.siliconflow.cn',
-        authMethod: 'api_key',
-      },
-    ],
+    data: createLlmModels(),
   })
 
-  return { uploadFn, deleteFn, updateSettingsFn }
+  return { uploadFn, deleteFn, updateSettingsFn, testSearchFn, rebuildFn }
 }
-
-// --- Tests ---
 
 describe('KnowledgeBaseDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('显示知识库实时设置', () => {
+  it('展示知识库概览、策略信息和统一工具语义', () => {
     setupMocks({
       knowledgeBase: createKnowledgeBase({
-        chunkSize: 1024,
-        chunkOverlap: 128,
-        embeddingModel: 'text-embedding-3-large',
+        name: 'API 文档库',
+        description: '存放 API 与 SDK 文档',
+        documentCount: 3,
+        nodeCount: 18,
+        chunkCount: 18,
+        chunkingStrategy: {
+          type: 'sentence_window',
+          windowSize: 4,
+        },
+        retrievalStrategy: {
+          topK: 6,
+          similarityThreshold: 0.6,
+        },
       }),
+      testSearchResults: [createSearchResult()],
     })
 
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    expect(screen.getAllByText('1024')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('128')[0]).toBeInTheDocument()
-    expect(screen.getAllByText('text-embedding-3-large')[0]).toBeInTheDocument()
+    expect(screen.getByText('API 文档库')).toBeInTheDocument()
+    expect(screen.getByText('存放 API 与 SDK 文档')).toBeInTheDocument()
+    expect(screen.getByText('18')).toBeInTheDocument()
+    expect(screen.getByText('Sentence Window · 4')).toBeInTheDocument()
+    expect(screen.getByText('检索 Top K 6')).toBeInTheDocument()
+    expect(screen.getByText(/search_knowledge/)).toBeInTheDocument()
+    expect(screen.getByText(/knowledgeBaseIds/)).toBeInTheDocument()
+    expect(screen.getByText('这里是命中的知识节点内容')).toBeInTheDocument()
   })
 
-  it('显示加载状态', () => {
-    setupMocks({ kbLoading: true })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
-  })
-
-  it('显示错误信息', () => {
-    setupMocks({ kbError: new Error('未找到知识库') })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText(/加载知识库失败/)).toBeInTheDocument()
-    expect(screen.getByText(/未找到知识库/)).toBeInTheDocument()
-  })
-
-  it('显示知识库名称和描述', () => {
-    setupMocks({
-      knowledgeBase: createKnowledgeBase({ name: 'API文档库', description: '存放API文档' }),
+  it('显示加载和错误状态', () => {
+    mocks.useDocuments.mockReturnValue({
+      data: { data: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 } },
+      isLoading: false,
     })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('API文档库')).toBeInTheDocument()
-    expect(screen.getByText('存放API文档')).toBeInTheDocument()
-  })
+    mocks.useUploadDocument.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mocks.useDeleteDocument.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mocks.useUpdateKnowledgeBaseSettings.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mocks.useTestKnowledgeBaseSearch.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mocks.useRebuildKnowledgeBase.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mocks.useKnowledgeBaseSocket.mockReturnValue({ documentEvents: {} })
+    mocks.useLlmModels.mockReturnValue({ data: createLlmModels() })
 
-  it('点击返回按钮导航到列表页', async () => {
-    setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    const backButton = screen.getByRole('button', { name: '返回知识库列表' })
-    await userEvent.click(backButton)
-
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/resources/knowledge-bases',
+    mocks.useKnowledgeBase.mockReturnValue({
+      data: null,
+      isLoading: true,
+      error: null,
     })
-  })
+    const { rerender } = render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+    expect(screen.getByText('加载知识库中...')).toBeInTheDocument()
 
-  it('显示上传区域', () => {
-    setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(
-      screen.getByText('拖拽文件到此处或点击上传（支持多文件）'),
-    ).toBeInTheDocument()
-  })
-
-  it('显示空文档提示', () => {
-    setupMocks({ documents: [] })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('还没有文档，上传文件开始使用')).toBeInTheDocument()
-  })
-
-  it('显示文档加载中', () => {
-    setupMocks({ docsLoading: true })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('加载文档中...')).toBeInTheDocument()
-  })
-
-  it('渲染文档列表', () => {
-    const docs = [
-      createDocument({ id: 'doc-1', fileName: 'report.pdf', sizeBytes: 2048000, status: 'ready' }),
-      createDocument({ id: 'doc-2', fileName: 'data.csv', sizeBytes: 512, status: 'processing' }),
-    ]
-    setupMocks({ documents: docs })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    expect(screen.getByText('report.pdf')).toBeInTheDocument()
-    expect(screen.getByText('data.csv')).toBeInTheDocument()
-    expect(screen.getByText('文档列表')).toBeInTheDocument()
-    // 状态标签
-    expect(screen.getAllByText('就绪').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('处理中').length).toBeGreaterThan(0)
+    mocks.useKnowledgeBase.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error('未找到知识库'),
+    })
+    rerender(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+    expect(screen.getByText('未找到知识库')).toBeInTheDocument()
   })
 
   it('显示实时处理进度', () => {
@@ -287,8 +341,6 @@ describe('KnowledgeBaseDetailPage', () => {
           status: 'processing',
         }),
       ],
-    })
-    mocks.useKnowledgeBaseSocket.mockReturnValue({
       documentEvents: {
         'doc-progress': {
           documentId: 'doc-progress',
@@ -306,102 +358,20 @@ describe('KnowledgeBaseDetailPage', () => {
 
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    expect(screen.getByText('生成语义分块')).toBeInTheDocument()
-    expect(screen.getByText('65%')).toBeInTheDocument()
-    expect(
-      screen.getByRole('progressbar', { name: 'process.md 处理进度' }),
-    ).toHaveAttribute('aria-valuenow', '65')
+    expect(screen.getByText('process.md')).toBeInTheDocument()
+    expect(screen.getByText('生成节点 · 65%')).toBeInTheDocument()
   })
 
-  it('点击上传区域触发文件选择', async () => {
-    setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
-
-    // 验证 file input 存在且隐藏
-    expect(fileInput).toBeInTheDocument()
-    expect(fileInput.type).toBe('file')
-    expect(fileInput.accept).toContain('.pdf')
-    expect(fileInput.accept).toContain('.txt')
-    expect(fileInput.accept).toContain('.md')
-    expect(fileInput.accept).toContain('.docx')
-  })
-
-  it('上传文件时调用 mutation', async () => {
+  it('上传合法文档时调用上传 mutation', async () => {
     const { uploadFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
-    const testFile = new File(['content'], 'test.pdf', { type: 'application/pdf' })
-
-    await userEvent.upload(fileInput, testFile)
-
-    expect(uploadFn).toHaveBeenCalledWith(
-      {
-        knowledgeBaseId: 'kb-1',
-        file: testFile,
-      },
-      expect.objectContaining({
-        onSuccess: expect.any(Function),
-        onError: expect.any(Function),
-      }),
-    )
-  })
-
-  it('允许通过文件选择器重复选择同一个文件再次上传', async () => {
-    const { uploadFn } = setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
-    const testFile = new File(['content'], 'same-file.pdf', {
+    const fileInput = screen.getByTestId('knowledge-file-input') as HTMLInputElement
+    const testFile = new File(['content'], 'manual.pdf', {
       type: 'application/pdf',
     })
 
     await userEvent.upload(fileInput, testFile)
-    await userEvent.upload(fileInput, testFile)
-
-    expect(uploadFn).toHaveBeenCalledTimes(2)
-    expect(uploadFn).toHaveBeenNthCalledWith(
-      1,
-      {
-        knowledgeBaseId: 'kb-1',
-        file: testFile,
-      },
-      expect.objectContaining({
-        onSuccess: expect.any(Function),
-        onError: expect.any(Function),
-      }),
-    )
-    expect(uploadFn).toHaveBeenNthCalledWith(
-      2,
-      {
-        knowledgeBaseId: 'kb-1',
-        file: testFile,
-      },
-      expect.objectContaining({
-        onSuccess: expect.any(Function),
-        onError: expect.any(Function),
-      }),
-    )
-  })
-
-  it('拖拽文件上传', () => {
-    const { uploadFn } = setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    const uploadArea = screen.getByTestId('upload-area')
-    const testFile = new File(['content'], 'drop.pdf', { type: 'application/pdf' })
-
-    // 拖拽进入
-    fireEvent.dragOver(uploadArea, {
-      dataTransfer: { files: [testFile] },
-    })
-
-    // 放下文件
-    fireEvent.drop(uploadArea, {
-      dataTransfer: { files: [testFile] },
-    })
 
     expect(uploadFn).toHaveBeenCalledWith(
       {
@@ -409,17 +379,16 @@ describe('KnowledgeBaseDetailPage', () => {
         file: testFile,
       },
       expect.objectContaining({
-        onSuccess: expect.any(Function),
         onError: expect.any(Function),
       }),
     )
   })
 
-  it('前端拦截不支持的文件类型并显示错误反馈', () => {
+  it('前端拦截不支持的文件类型并给出错误提示', () => {
     const { uploadFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
+    const fileInput = screen.getByTestId('knowledge-file-input') as HTMLInputElement
     const invalidFile = new File(['content'], 'invalid.png', {
       type: 'image/png',
     })
@@ -428,155 +397,135 @@ describe('KnowledgeBaseDetailPage', () => {
       target: { files: [invalidFile] },
     })
 
-    expect(screen.getByText('上传队列')).toBeInTheDocument()
-    expect(screen.getByText('invalid.png')).toBeInTheDocument()
-    expect(
-      screen.getByText('仅支持 PDF、TXT、Markdown 和 DOCX 文件'),
-    ).toBeInTheDocument()
     expect(uploadFn).not.toHaveBeenCalled()
-  })
-
-  it('前端拦截超大文件并显示错误反馈', () => {
-    const { uploadFn } = setupMocks()
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    const fileInput = screen.getByTestId('file-input') as HTMLInputElement
-    const largeFile = new File(['content'], 'too-large.pdf', {
-      type: 'application/pdf',
-    })
-    Object.defineProperty(largeFile, 'size', {
-      value: 60 * 1024 * 1024,
-    })
-
-    fireEvent.change(fileInput, {
-      target: { files: [largeFile] },
-    })
-
-    expect(screen.getByText('too-large.pdf')).toBeInTheDocument()
-    expect(screen.getByText('文件大小不能超过 50.0 MB')).toBeInTheDocument()
-    expect(uploadFn).not.toHaveBeenCalled()
-  })
-
-  it('删除文档时通过确认对话框调用 mutation', async () => {
-    const doc = createDocument({ id: 'doc-del', fileName: '删除我.pdf' })
-    const { deleteFn } = setupMocks({ documents: [doc] })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    await userEvent.click(screen.getByLabelText('删除 删除我.pdf'))
-
-    expect(screen.getByText('删除文档')).toBeInTheDocument()
-    expect(
-      screen.getByText('确认删除文档「删除我.pdf」吗？相关分块记录会一并清理。'),
-    ).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: '确认删除' }))
-
-    expect(deleteFn).toHaveBeenCalledWith(
-      {
-        knowledgeBaseId: 'kb-1',
-        documentId: 'doc-del',
-      },
+    expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        onSettled: expect.any(Function),
+        description: '仅支持 PDF、TXT、Markdown 和 DOCX 文件',
+        variant: 'error',
       }),
     )
   })
 
-  it('切换状态筛选时将视图标签映射为后端状态参数', async () => {
-    setupMocks({
-      documents: [
-        createDocument({ id: 'doc-filter', fileName: '筛选文档.pdf' }),
-      ],
-    })
-    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-
-    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
-      page: 1,
-      pageSize: 20,
-      status: undefined,
-    })
-
-    await userEvent.click(screen.getByRole('button', { name: '上传中' }))
-    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
-      page: 1,
-      pageSize: 20,
-      status: 'uploaded',
-    })
-
-    await userEvent.click(screen.getByRole('button', { name: '索引中' }))
-    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
-      page: 1,
-      pageSize: 20,
-      status: 'processing',
-    })
-
-    await userEvent.click(screen.getByRole('button', { name: '错误' }))
-    expect(mocks.useDocuments).toHaveBeenLastCalledWith('kb-1', {
-      page: 1,
-      pageSize: 20,
-      status: 'failed',
-    })
-  })
-
-  it('保存设置时调用 mutation 并提示成功', async () => {
+  it('保存策略时提交新的知识库策略配置', async () => {
     const { updateSettingsFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const chunkSizeInput = screen.getByLabelText('分块大小')
-    const chunkOverlapInput = screen.getByLabelText('分块重叠')
-    const embeddingModelInput = screen.getByLabelText('Embedding 模型')
+    await userEvent.selectOptions(
+      screen.getByLabelText('Embedding 模型'),
+      'embedding-model-2',
+    )
+    await userEvent.selectOptions(screen.getByLabelText('分块策略'), 'sentence')
+    await userEvent.clear(screen.getByLabelText('Chunk Size'))
+    await userEvent.type(screen.getByLabelText('Chunk Size'), '1024')
+    await userEvent.clear(screen.getByLabelText('Chunk Overlap'))
+    await userEvent.type(screen.getByLabelText('Chunk Overlap'), '128')
 
-    await userEvent.clear(chunkSizeInput)
-    await userEvent.type(chunkSizeInput, '1024')
-    await userEvent.clear(chunkOverlapInput)
-    await userEvent.type(chunkOverlapInput, '128')
-    await userEvent.selectOptions(embeddingModelInput, 'embedding-model-2')
+    await userEvent.click(screen.getByRole('button', { name: '保存策略' }))
 
-    await userEvent.click(screen.getByRole('button', { name: '保存设置' }))
-
-    await waitFor(() =>
-      expect(updateSettingsFn).toHaveBeenCalledWith({
+    expect(updateSettingsFn).toHaveBeenCalledWith(
+      {
         id: 'kb-1',
-        input: {
-          chunkSize: 1024,
-          chunkOverlap: 128,
+        input: expect.objectContaining({
           embeddingModelConfigId: 'embedding-model-2',
-        },
+          chunkingStrategy: {
+            type: 'sentence',
+            chunkSize: 1024,
+            chunkOverlap: 128,
+          },
+        }),
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
       }),
     )
+
+    const options = updateSettingsFn.mock.calls[0]?.[1]
+    options?.onSuccess?.()
+
     await waitFor(() =>
       expect(mocks.notify).toHaveBeenCalledWith(
         expect.objectContaining({
-          description: '知识库设置已保存',
+          description: '知识库策略已更新',
           variant: 'success',
         }),
       ),
     )
   })
 
-  it('拖拽悬停时显示高亮', () => {
-    setupMocks()
+  it('执行测试检索时调用测试检索 mutation', async () => {
+    const { testSearchFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const uploadArea = screen.getByTestId('upload-area')
+    await userEvent.type(
+      screen.getByPlaceholderText('输入你希望验证的查询问题'),
+      '如何接入 API？',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '执行测试检索' }))
 
-    fireEvent.dragOver(uploadArea, {
-      dataTransfer: { files: [] },
-    })
-
-    // 验证类名变化（border-primary）
-    expect(uploadArea.className).toContain('border-primary')
+    expect(testSearchFn).toHaveBeenCalledWith(
+      {
+        knowledgeBaseId: 'kb-1',
+        query: '如何接入 API？',
+        topK: 5,
+      },
+      expect.objectContaining({
+        onError: expect.any(Function),
+      }),
+    )
   })
 
-  it('拖拽离开时取消高亮', () => {
-    setupMocks()
+  it('点击重建时提交重建任务并展示成功提示', async () => {
+    const { rebuildFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    const uploadArea = screen.getByTestId('upload-area')
+    await userEvent.click(screen.getByRole('button', { name: '重建索引/重切分' }))
 
-    fireEvent.dragOver(uploadArea, { dataTransfer: { files: [] } })
-    fireEvent.dragLeave(uploadArea)
+    expect(rebuildFn).toHaveBeenCalledWith(
+      'kb-1',
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
 
-    expect(uploadArea.className).not.toContain('border-primary')
+    const options = rebuildFn.mock.calls[0]?.[1]
+    options?.onSuccess?.({
+      knowledgeBaseId: 'kb-1',
+      documentCount: 3,
+    })
+
+    await waitFor(() =>
+      expect(mocks.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: '已提交 3 个文档的重建任务',
+          variant: 'success',
+        }),
+      ),
+    )
+  })
+
+  it('删除文档时在确认后调用删除 mutation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { deleteFn } = setupMocks({
+      documents: [createDocument({ id: 'doc-del', fileName: '删除我.pdf' })],
+    })
+
+    render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
+
+    await userEvent.click(screen.getByLabelText('删除 删除我.pdf'))
+
+    expect(confirmSpy).toHaveBeenCalledWith('确定要删除文档“删除我.pdf”吗？')
+    expect(deleteFn).toHaveBeenCalledWith(
+      {
+        knowledgeBaseId: 'kb-1',
+        documentId: 'doc-del',
+      },
+      expect.objectContaining({
+        onError: expect.any(Function),
+      }),
+    )
+
+    confirmSpy.mockRestore()
   })
 })

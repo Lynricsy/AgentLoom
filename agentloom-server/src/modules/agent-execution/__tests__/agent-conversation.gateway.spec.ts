@@ -437,14 +437,16 @@ describe('AgentConversationGateway', () => {
         expect(toCalls.length).toBeGreaterThanOrEqual(2);
       });
 
-      it('should not broadcast when no subscribers', () => {
+      it('应在无本地订阅记录时仍广播状态事件，兼容 server/worker 分离部署', () => {
         gateway.handleExecutionStatusChanged({
           executionId: 'no-subscribers',
           status: 'running',
           tenantId: 'tenant-1',
         });
 
-        expect(server.to).not.toHaveBeenCalled();
+        expect(server.to).toHaveBeenCalledWith(
+          'conversation:tenant-1:no-subscribers',
+        );
       });
 
       it('should ignore workflow execution events', () => {
@@ -757,6 +759,37 @@ describe('AgentConversationGateway', () => {
 
       expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
       expect(mockThrottleService.tryConsume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cross-process broadcast safety', () => {
+    it('应在无本地订阅记录时仍广播 tool 结果事件，兼容 Redis Socket.IO adapter 跨进程转发', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+
+      gateway.handleToolCallStatus({
+        stepId: 'step-1',
+        nodeId: 'node-1',
+        toolCallId: 'tc-1',
+        tool: 'search_knowledge',
+        status: 'completed' as any,
+        tenantId: 'tenant-1',
+        executionId: 'conv-cross-process',
+      });
+
+      expect(server.to).toHaveBeenCalledWith(
+        'conversation:tenant-1:conv-cross-process',
+      );
+      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        .value.emit;
+      expect(emitFn).toHaveBeenCalledWith(
+        ConversationEventName.AGENT_TOOL_RESULT,
+        expect.objectContaining({
+          conversationId: 'conv-cross-process',
+          tenantId: 'tenant-1',
+          toolCallId: 'tc-1',
+          tool: 'search_knowledge',
+        }),
+      );
     });
   });
 

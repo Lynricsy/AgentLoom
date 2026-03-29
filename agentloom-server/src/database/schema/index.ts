@@ -96,10 +96,10 @@ export {
   type NewDocument,
 } from './knowledge-bases.schema';
 export {
-  documentChunks,
-  type DocumentChunkRow,
-  type NewDocumentChunk,
-} from './document-chunks.schema';
+  knowledgeNodes,
+  type KnowledgeNodeRow,
+  type NewKnowledgeNode,
+} from './knowledge-nodes.schema';
 export {
   executionStatusEnum,
   workflowExecutions,

@@ -35,11 +35,24 @@ const mockKnowledgeBase: KnowledgeBase = {
   description: 'Test knowledge base',
   visibility: 'private',
   createdBy: 'user-1',
-  chunkSize: 512,
-  chunkOverlap: 64,
   embeddingModel: 'text-embedding-3-small',
   embeddingModelConfigId: null,
+  chunkingStrategy: {
+    type: 'sentence_window',
+    windowSize: 3,
+  },
+  retrievalStrategy: {
+    topK: 8,
+    similarityThreshold: null,
+  },
+  rerankingStrategy: {
+    type: 'none',
+  },
+  queryOrchestration: {
+    type: 'none',
+  },
   documentCount: 0,
+  nodeCount: 0,
   chunkCount: 0,
   status: 'empty',
   createdAt: '2024-01-01T00:00:00Z',
@@ -147,9 +160,12 @@ describe('knowledgeBaseApi', () => {
       })
 
       const input = {
-        chunkSize: 1024,
-        chunkOverlap: 128,
         embeddingModel: 'text-embedding-3-large',
+        chunkingStrategy: {
+          type: 'sentence',
+          chunkSize: 1024,
+          chunkOverlap: 128,
+        } as const,
       }
       const result = await updateKnowledgeBaseSettings('kb-1', input)
 

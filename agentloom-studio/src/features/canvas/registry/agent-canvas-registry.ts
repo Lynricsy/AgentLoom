@@ -152,7 +152,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       category: 'knowledge',
       label: '知识库',
       icon: 'BookOpen',
-      description: '从知识库检索相关信息',
+      description: '为 Agent 暴露一个可选知识库，运行时通过统一 search_knowledge 工具显式选择',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.knowledge,
       inputPorts: [
         createPort('query-in', '查询输入', 'input', 'text', {
@@ -169,7 +169,6 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         type: 'object',
         properties: {
           knowledgeBaseId: createConfigField('string', '知识库 ID'),
-          topK: createConfigField('number', '返回条数', { default: 5 }),
         },
         required: ['knowledgeBaseId'],
       },

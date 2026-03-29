@@ -1,90 +1,73 @@
-import { Test, type TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { TextNode } from 'llamaindex';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import { EvidenceEventName } from '../../evidence/evidence.events';
-import { RagService } from '../services/rag.service';
-import { EmbeddingService } from '../services/embedding.service';
-import { DocumentChunkService } from '../document-chunk.service';
-import { VECTOR_STORE, EMBEDDING_MODEL } from '../knowledge.constants';
 import { DRIZZLE } from '../../../database/database.module';
-import type { VectorStore } from '../interfaces/vector-store.interface';
+import { EvidenceEventName } from '../../evidence/evidence.events';
+import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import { LlmService } from '../../llm/llm.service';
+import { PiAiAdapter } from '../../llm/pi-ai-adapter';
+import { KnowledgeBaseService } from '../knowledge-base.service';
+import { KnowledgeNodeService } from '../knowledge-node.service';
+import { QDRANT_CLIENT } from '../qdrant.provider';
+import { EmbeddingService } from '../services/embedding.service';
+import { QdrantVectorStoreService } from '../services/qdrant-vector-store.service';
+import { RagService } from '../services/rag.service';
 
 const TENANT_ID = 'tenant-1';
-const ORG_ID = 'org-1';
 const DOC_ID = '00000000-0000-0000-0000-000000000001';
 const KB_ID = 'kb-1';
-const COLLECTION = `knowledge_${KB_ID}`;
-
-function createMockVectorStore(): Record<keyof VectorStore, Mock> {
-  return {
-    createCollection: vi.fn(),
-    collectionExists: vi.fn(),
-    upsert: vi.fn(),
-    search: vi.fn(),
-    deleteByFilter: vi.fn(),
-    deleteCollection: vi.fn(),
-  };
-}
-
-function createMockChunk(index: number) {
-  return {
-    id: `chunk-${index}`,
-    documentId: DOC_ID,
-    knowledgeBaseId: KB_ID,
-    chunkIndex: index,
-    content: `Chunk content ${index}`,
-    metadata: { page: index },
-  };
-}
 
 describe('RagService', () => {
   let service: RagService;
-  let vectorStore: ReturnType<typeof createMockVectorStore>;
-  let embeddingService: { generateEmbeddings: Mock };
-  let documentChunkService: { findByDocumentId: Mock };
-  let llmService: { findById: Mock };
-  let mockDb: { select: Mock; from: Mock; where: Mock; limit: Mock };
+  let knowledgeNodeService: {
+    findLlamaNodesByDocumentId: Mock;
+  };
+  let knowledgeBaseService: {
+    getRetrievalStrategy: Mock;
+    getRerankingStrategy: Mock;
+    getQueryOrchestration: Mock;
+  };
+  let vectorStoreService: {
+    collectionExists: Mock;
+    deleteByFilter: Mock;
+    deleteCollection: Mock;
+    search: Mock;
+  };
+  let embeddingService: {
+    generateEmbeddings: Mock;
+  };
+  let mockDb: {
+    select: Mock;
+    from: Mock;
+    where: Mock;
+    limit: Mock;
+  };
   let eventEmitter: { emit: Mock };
 
-  function mockFallbackEmbeddingConfig(embeddingModel = EMBEDDING_MODEL) {
-    mockDb.limit.mockResolvedValueOnce([{ id: ORG_ID }]).mockResolvedValueOnce([
-      {
-        embeddingModel,
-        embeddingModelConfigId: null,
-      },
-    ]);
-  }
-
-  function mockBoundEmbeddingConfig() {
-    mockDb.limit.mockResolvedValueOnce([{ id: ORG_ID }]).mockResolvedValueOnce([
-      {
-        embeddingModel: EMBEDDING_MODEL,
-        embeddingModelConfigId: 'cfg-embedding-1',
-      },
-    ]);
-    llmService.findById.mockResolvedValue({
-      id: 'cfg-embedding-1',
-      modelType: 'embedding',
-      provider: 'private_cloud',
-      modelName: 'Qwen/Qwen3-Embedding-8B',
-      apiKeyId: 'key-1',
-      endpointUrl: 'https://api.siliconflow.cn',
-      authMethod: 'api_key',
-      embeddingDimensions: 1024,
-    });
-  }
-
-  function mockDocumentLookup(knowledgeBaseId = KB_ID) {
-    mockDb.limit.mockResolvedValueOnce([{ knowledgeBaseId }]);
-  }
-
   beforeEach(async () => {
-    vectorStore = createMockVectorStore();
-    embeddingService = { generateEmbeddings: vi.fn() };
-    documentChunkService = { findByDocumentId: vi.fn() };
-    llmService = { findById: vi.fn() };
+    vi.clearAllMocks();
+
+    knowledgeNodeService = {
+      findLlamaNodesByDocumentId: vi.fn(),
+    };
+    knowledgeBaseService = {
+      getRetrievalStrategy: vi
+        .fn()
+        .mockReturnValue({ topK: 8, similarityThreshold: null }),
+      getRerankingStrategy: vi.fn().mockReturnValue({ type: 'none' }),
+      getQueryOrchestration: vi.fn().mockReturnValue({ type: 'none' }),
+    };
+    vectorStoreService = {
+      collectionExists: vi.fn(),
+      deleteByFilter: vi.fn(),
+      deleteCollection: vi.fn(),
+      search: vi.fn(),
+    };
+    embeddingService = {
+      generateEmbeddings: vi.fn(),
+    };
     eventEmitter = { emit: vi.fn() };
 
     mockDb = {
@@ -101,10 +84,14 @@ describe('RagService', () => {
       providers: [
         RagService,
         { provide: DRIZZLE, useValue: mockDb },
-        { provide: VECTOR_STORE, useValue: vectorStore },
+        { provide: QDRANT_CLIENT, useValue: {} },
+        { provide: KnowledgeNodeService, useValue: knowledgeNodeService },
+        { provide: KnowledgeBaseService, useValue: knowledgeBaseService },
+        { provide: QdrantVectorStoreService, useValue: vectorStoreService },
         { provide: EmbeddingService, useValue: embeddingService },
-        { provide: DocumentChunkService, useValue: documentChunkService },
-        { provide: LlmService, useValue: llmService },
+        { provide: LlmService, useValue: {} },
+        { provide: PiAiAdapter, useValue: {} },
+        { provide: DecryptionBoundaryService, useValue: {} },
         { provide: EventEmitter2, useValue: eventEmitter },
       ],
     }).compile();
@@ -112,290 +99,371 @@ describe('RagService', () => {
     service = module.get(RagService);
   });
 
-  describe('indexDocument', () => {
-    it('should index document chunks as vectors with bound embedding model config', async () => {
-      const chunks = [createMockChunk(0), createMockChunk(1)];
-      mockBoundEmbeddingConfig();
-      documentChunkService.findByDocumentId.mockResolvedValue(chunks);
-      embeddingService.generateEmbeddings.mockResolvedValue([
-        [0.1, 0.2],
-        [0.3, 0.4],
-      ]);
+  it('indexDocument 在没有知识节点时应跳过索引', async () => {
+    knowledgeNodeService.findLlamaNodesByDocumentId.mockResolvedValue([]);
 
-      await service.indexDocument(DOC_ID, TENANT_ID);
+    await expect(
+      service.indexDocument(DOC_ID, TENANT_ID),
+    ).resolves.toBeUndefined();
 
-      expect(vectorStore.createCollection).toHaveBeenCalledWith(
-        COLLECTION,
-        1024,
-      );
-      expect(documentChunkService.findByDocumentId).toHaveBeenCalledWith(
-        DOC_ID,
-        TENANT_ID,
-      );
-      expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
-        ['Chunk content 0', 'Chunk content 1'],
-        {
-          organizationId: ORG_ID,
-          tenantId: TENANT_ID,
-          provider: 'private_cloud',
-          modelName: 'Qwen/Qwen3-Embedding-8B',
-          apiKeyId: 'key-1',
-          endpointUrl: 'https://api.siliconflow.cn',
-          authMethod: 'api_key',
-          dimensions: 1024,
-        },
-      );
-      expect(vectorStore.upsert).toHaveBeenCalledWith(COLLECTION, [
-        {
-          id: 'chunk-0',
-          vector: [0.1, 0.2],
-          payload: {
-            documentId: DOC_ID,
-            knowledgeBaseId: KB_ID,
-            chunkIndex: 0,
-            content: 'Chunk content 0',
-            location: { page: 0 },
-          },
-        },
-        {
-          id: 'chunk-1',
-          vector: [0.3, 0.4],
-          payload: {
-            documentId: DOC_ID,
-            knowledgeBaseId: KB_ID,
-            chunkIndex: 1,
-            content: 'Chunk content 1',
-            location: { page: 1 },
-          },
-        },
-      ]);
-    });
-
-    it('should skip indexing when no chunks found', async () => {
-      documentChunkService.findByDocumentId.mockResolvedValue([]);
-
-      await service.indexDocument(DOC_ID, TENANT_ID);
-
-      expect(vectorStore.createCollection).not.toHaveBeenCalled();
-      expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
-      expect(vectorStore.upsert).not.toHaveBeenCalled();
-    });
-
-    it('should rollback on upsert failure', async () => {
-      mockFallbackEmbeddingConfig();
-      documentChunkService.findByDocumentId.mockResolvedValue([
-        createMockChunk(0),
-      ]);
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.1, 0.2]]);
-      vectorStore.upsert.mockRejectedValue(new Error('upsert failed'));
-
-      await expect(service.indexDocument(DOC_ID, TENANT_ID)).rejects.toThrow(
-        'upsert failed',
-      );
-
-      expect(vectorStore.deleteByFilter).toHaveBeenCalledWith(COLLECTION, {
-        must: [{ key: 'documentId', match: { value: DOC_ID } }],
-      });
-    });
-
-    it('should re-throw original error even if rollback fails', async () => {
-      mockFallbackEmbeddingConfig();
-      documentChunkService.findByDocumentId.mockResolvedValue([
-        createMockChunk(0),
-      ]);
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.1]]);
-      vectorStore.upsert.mockRejectedValue(new Error('upsert failed'));
-      vectorStore.deleteByFilter.mockRejectedValue(
-        new Error('rollback failed'),
-      );
-
-      await expect(service.indexDocument(DOC_ID, TENANT_ID)).rejects.toThrow(
-        'upsert failed',
-      );
-    });
-
-    it('should throw when organization not found for tenantId', async () => {
-      documentChunkService.findByDocumentId.mockResolvedValue([
-        createMockChunk(0),
-      ]);
-      mockDb.limit.mockResolvedValueOnce([]);
-
-      await expect(service.indexDocument(DOC_ID, TENANT_ID)).rejects.toThrow(
-        `Organization not found for tenantId: ${TENANT_ID}`,
-      );
-    });
+    expect(
+      knowledgeNodeService.findLlamaNodesByDocumentId,
+    ).toHaveBeenCalledWith(DOC_ID, TENANT_ID);
+    expect(mockDb.limit).not.toHaveBeenCalled();
   });
 
-  describe('search', () => {
-    it('should return empty array when knowledgeBaseId is missing', async () => {
-      const results = await service.search('query text', TENANT_ID);
+  it('search 在缺少 knowledgeBaseIds 时应抛错', async () => {
+    await expect(service.search('query text', TENANT_ID)).rejects.toThrow(
+      'RagService.search 需要至少一个 knowledgeBaseId',
+    );
+  });
 
-      expect(results).toEqual([]);
-      expect(vectorStore.collectionExists).not.toHaveBeenCalled();
-      expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
-    });
-
-    it('should return empty array when collection does not exist', async () => {
-      vectorStore.collectionExists.mockResolvedValue(false);
-
-      const results = await service.search('query text', TENANT_ID, {
-        knowledgeBaseId: KB_ID,
-      });
-
-      expect(results).toEqual([]);
-      expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
-    });
-
-    it('should search with query embedding', async () => {
-      vectorStore.collectionExists.mockResolvedValue(true);
-      mockFallbackEmbeddingConfig();
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
-      vectorStore.search.mockResolvedValue([
+  it('search 应合并多个知识库结果、按分数排序并写 evidence 事件', async () => {
+    const kbRecords = [{ id: 'kb-1' }, { id: 'kb-2' }];
+    vi.spyOn(
+      service as unknown as {
+        resolveKnowledgeBasesForSearch: (
+          ids: string[],
+          tenantId: string,
+        ) => Promise<unknown>;
+      },
+      'resolveKnowledgeBasesForSearch',
+    ).mockResolvedValue(kbRecords);
+    vi.spyOn(
+      service as unknown as {
+        searchSingleKnowledgeBase: () => Promise<unknown>;
+      },
+      'searchSingleKnowledgeBase',
+    )
+      .mockResolvedValueOnce([
         {
-          id: 'chunk-0',
-          score: 0.95,
-          payload: {
-            content: 'Chunk content 0',
-            location: { page: 0 },
-            documentId: DOC_ID,
-            knowledgeBaseId: KB_ID,
-            chunkIndex: 0,
-          },
-        },
-      ]);
-
-      const results = await service.search('query text', TENANT_ID, {
-        knowledgeBaseId: KB_ID,
-      });
-
-      expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
-        ['query text'],
-        {
-          organizationId: ORG_ID,
-          tenantId: TENANT_ID,
-          provider: 'openai',
-          modelName: EMBEDDING_MODEL,
-          apiKeyId: null,
-          dimensions: null,
-        },
-      );
-      expect(vectorStore.search).toHaveBeenCalledWith({
-        collectionName: COLLECTION,
-        vector: [0.5, 0.6],
-        limit: 10,
-        scoreThreshold: undefined,
-      });
-      expect(results).toEqual([
-        {
-          chunkId: 'chunk-0',
-          score: 0.95,
-          content: 'Chunk content 0',
-          location: { page: 0 },
-          documentId: DOC_ID,
-          knowledgeBaseId: KB_ID,
+          nodeId: 'node-a',
+          chunkId: 'node-a',
+          score: 0.61,
+          content: 'A',
+          location: null,
+          documentId: 'doc-a',
+          knowledgeBaseId: 'kb-1',
           chunkIndex: 0,
+          fileName: 'a.md',
+          metadata: {},
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          nodeId: 'node-b',
+          chunkId: 'node-b',
+          score: 0.92,
+          content: 'B',
+          location: null,
+          documentId: 'doc-b',
+          knowledgeBaseId: 'kb-2',
+          chunkIndex: 0,
+          fileName: 'b.md',
+          metadata: {},
         },
       ]);
+
+    const result = await service.search('query text', TENANT_ID, {
+      knowledgeBaseIds: ['kb-1', 'kb-2', 'kb-1'],
+      limit: 2,
+      evidenceContext: {
+        executionId: 'exec-1',
+        stepId: 'step-1',
+        parentEvidenceId: 'evidence-parent',
+      },
     });
 
-    it('should honor custom limit and score threshold for a specific knowledge base', async () => {
-      vectorStore.collectionExists.mockResolvedValue(true);
-      mockFallbackEmbeddingConfig();
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.5]]);
-      vectorStore.search.mockResolvedValue([]);
+    expect(result).toEqual([
+      expect.objectContaining({ nodeId: 'node-b', score: 0.92 }),
+      expect.objectContaining({ nodeId: 'node-a', score: 0.61 }),
+    ]);
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      EvidenceEventName.RAG_RETRIEVED,
+      {
+        tenantId: TENANT_ID,
+        executionId: 'exec-1',
+        stepId: 'step-1',
+        parentEvidenceId: 'evidence-parent',
+        results: result,
+      },
+    );
+  });
 
-      await service.search('query', TENANT_ID, {
-        knowledgeBaseId: KB_ID,
-        limit: 5,
-        scoreThreshold: 0.8,
-      });
+  it('deleteByDocument 在集合存在时应删除对应向量', async () => {
+    mockDb.limit.mockResolvedValueOnce([{ knowledgeBaseId: KB_ID }]);
+    vectorStoreService.collectionExists.mockResolvedValue(true);
 
-      expect(vectorStore.search).toHaveBeenCalledWith({
-        collectionName: COLLECTION,
-        vector: [0.5],
-        limit: 5,
-        scoreThreshold: 0.8,
-      });
+    await expect(
+      service.deleteByDocument(DOC_ID, TENANT_ID),
+    ).resolves.toBeUndefined();
+
+    expect(vectorStoreService.deleteByFilter).toHaveBeenCalledWith(
+      `knowledge_${KB_ID}`,
+      {
+        must: [{ key: 'documentId', match: { value: DOC_ID } }],
+      },
+    );
+  });
+
+  it('deleteKnowledgeBaseCollection 应委托给 vector store service', async () => {
+    await expect(
+      service.deleteKnowledgeBaseCollection(KB_ID),
+    ).resolves.toBeUndefined();
+
+    expect(vectorStoreService.deleteCollection).toHaveBeenCalledWith(
+      `knowledge_${KB_ID}`,
+    );
+  });
+
+  it('searchSingleKnowledgeBase 应解析 llamaindex payload 并执行纯向量检索', async () => {
+    const firstNode = new TextNode({
+      id_: 'node-1',
+      text: 'search_knowledge',
+      metadata: {
+        documentId: 'doc-1',
+        fileName: 'prd.md',
+        sourceSectionIndex: 0,
+        window: 'search_knowledge',
+      },
+    });
+    const secondNode = new TextNode({
+      id_: 'node-2',
+      text: 'knowledgeBaseIds',
+      metadata: {
+        documentId: 'doc-1',
+        fileName: 'prd.md',
+        sourceSectionIndex: 1,
+      },
     });
 
-    it('should emit RAG evidence event when evidenceContext is provided', async () => {
-      vectorStore.collectionExists.mockResolvedValue(true);
-      mockFallbackEmbeddingConfig();
-      embeddingService.generateEmbeddings.mockResolvedValue([[0.5, 0.6]]);
-      vectorStore.search.mockResolvedValue([
+    vectorStoreService.collectionExists.mockResolvedValue(true);
+    vectorStoreService.search
+      .mockResolvedValueOnce([
         {
-          id: 'chunk-0',
-          score: 0.95,
+          id: 'node-1',
+          score: 0.83,
           payload: {
-            content: 'Chunk content 0',
-            location: { page: 0 },
-            documentId: DOC_ID,
-            knowledgeBaseId: KB_ID,
-            chunkIndex: 0,
+            _node_content: JSON.stringify(firstNode.toJSON()),
+            _node_type: 'TextNode',
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'node-2',
+          score: 0.74,
+          payload: {
+            _node_content: JSON.stringify(secondNode.toJSON()),
+            _node_type: 'TextNode',
           },
         },
       ]);
+    embeddingService.generateEmbeddings.mockResolvedValue([
+      [0.1, 0.2],
+      [0.3, 0.4],
+    ]);
+    vi.spyOn(
+      service as unknown as {
+        resolveEmbeddingConfig: (
+          tenantId: string,
+          knowledgeBaseId: string,
+        ) => Promise<unknown>;
+      },
+      'resolveEmbeddingConfig',
+    ).mockResolvedValue({
+      provider: 'openai',
+      modelName: 'text-embedding-3-small',
+      tenantId: TENANT_ID,
+      organizationId: 'org-1',
+    });
+    vi.spyOn(
+      service as unknown as {
+        buildQueryVariants: (
+          query: string,
+          tenantId: string,
+          orchestration: unknown,
+        ) => Promise<string[]>;
+      },
+      'buildQueryVariants',
+    ).mockResolvedValue([
+      '统一给 Agent 暴露的知识库工具叫什么？',
+      '系统统一暴露 search_knowledge 工具，并显式传 knowledgeBaseIds。',
+    ]);
 
-      const results = await service.search('query text', TENANT_ID, {
-        knowledgeBaseId: KB_ID,
-        evidenceContext: {
-          executionId: 'exec-1',
-          stepId: 'step-1',
-          parentEvidenceId: 'parent-evidence-1',
-        },
-      });
+    const result = await (
+      service as unknown as {
+        searchSingleKnowledgeBase: (
+          query: string,
+          tenantId: string,
+          knowledgeBase: {
+            id: string;
+            tenantId: string;
+            embeddingModel: string;
+            embeddingModelConfigId: string | null;
+            chunkingStrategy: { type: 'sentence_window'; windowSize: number };
+            retrievalStrategy: {
+              topK: number;
+              similarityThreshold: number | null;
+            };
+            rerankingStrategy: { type: 'none' };
+            queryOrchestration: { type: 'none' };
+          },
+          limit: number,
+          scoreThreshold?: number,
+        ) => Promise<unknown>;
+      }
+    ).searchSingleKnowledgeBase(
+      '统一给 Agent 暴露的知识库工具叫什么？',
+      TENANT_ID,
+      {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
+        chunkingStrategy: { type: 'sentence_window', windowSize: 3 },
+        retrievalStrategy: { topK: 8, similarityThreshold: null },
+        rerankingStrategy: { type: 'none' },
+        queryOrchestration: { type: 'none' },
+      },
+      5,
+    );
 
-      expect(results).toEqual([
-        {
-          chunkId: 'chunk-0',
-          score: 0.95,
-          content: 'Chunk content 0',
-          location: { page: 0 },
-          documentId: DOC_ID,
+    expect(embeddingService.generateEmbeddings).toHaveBeenCalledWith(
+      [
+        '统一给 Agent 暴露的知识库工具叫什么？',
+        '系统统一暴露 search_knowledge 工具，并显式传 knowledgeBaseIds。',
+      ],
+      expect.objectContaining({
+        provider: 'openai',
+        modelName: 'text-embedding-3-small',
+      }),
+    );
+    expect(vectorStoreService.search).toHaveBeenNthCalledWith(1, {
+      collectionName: `knowledge_${KB_ID}`,
+      vector: [0.1, 0.2],
+      limit: 15,
+      scoreThreshold: undefined,
+    });
+    expect(vectorStoreService.search).toHaveBeenNthCalledWith(2, {
+      collectionName: `knowledge_${KB_ID}`,
+      vector: [0.3, 0.4],
+      limit: 15,
+      scoreThreshold: undefined,
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        nodeId: 'node-1',
+        content: 'search_knowledge',
+      }),
+      expect.objectContaining({
+        nodeId: 'node-2',
+        content: 'knowledgeBaseIds',
+      }),
+    ]);
+  });
+
+  it('searchSingleKnowledgeBase 应兼容旧版 qdrant payload 结构', async () => {
+    vectorStoreService.collectionExists.mockResolvedValue(true);
+    vectorStoreService.search.mockResolvedValue([
+      {
+        id: 'legacy-node-1',
+        score: 0.71,
+        payload: {
+          documentId: 'doc-legacy',
           knowledgeBaseId: KB_ID,
-          chunkIndex: 0,
+          chunkIndex: 3,
+          fileName: 'qa.txt',
+          content: 'KB-ALPHA-20260329-FOX',
+          location: {
+            page: 2,
+            paragraph: 5,
+            heading: 'Validation',
+            charOffset: 120,
+            charLength: 20,
+          },
         },
-      ]);
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        EvidenceEventName.RAG_RETRIEVED,
-        {
-          tenantId: TENANT_ID,
-          executionId: 'exec-1',
-          stepId: 'step-1',
-          parentEvidenceId: 'parent-evidence-1',
-          results,
+      },
+    ]);
+    embeddingService.generateEmbeddings.mockResolvedValue([[0.9, 0.1]]);
+    vi.spyOn(
+      service as unknown as {
+        resolveEmbeddingConfig: (
+          tenantId: string,
+          knowledgeBaseId: string,
+        ) => Promise<unknown>;
+      },
+      'resolveEmbeddingConfig',
+    ).mockResolvedValue({
+      provider: 'openai',
+      modelName: 'text-embedding-3-small',
+      tenantId: TENANT_ID,
+      organizationId: 'org-1',
+    });
+    vi.spyOn(
+      service as unknown as {
+        buildQueryVariants: (
+          query: string,
+          tenantId: string,
+          orchestration: unknown,
+        ) => Promise<string[]>;
+      },
+      'buildQueryVariants',
+    ).mockResolvedValue(['唯一校验码是什么？']);
+
+    const result = await (
+      service as unknown as {
+        searchSingleKnowledgeBase: (
+          query: string,
+          tenantId: string,
+          knowledgeBase: {
+            id: string;
+            tenantId: string;
+            embeddingModel: string;
+            embeddingModelConfigId: string | null;
+            chunkingStrategy: { type: 'sentence_window'; windowSize: number };
+            retrievalStrategy: {
+              topK: number;
+              similarityThreshold: number | null;
+            };
+            rerankingStrategy: { type: 'none' };
+            queryOrchestration: { type: 'none' };
+          },
+          limit: number,
+          scoreThreshold?: number,
+        ) => Promise<unknown>;
+      }
+    ).searchSingleKnowledgeBase(
+      '唯一校验码是什么？',
+      TENANT_ID,
+      {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
+        chunkingStrategy: { type: 'sentence_window', windowSize: 3 },
+        retrievalStrategy: { topK: 8, similarityThreshold: null },
+        rerankingStrategy: { type: 'none' },
+        queryOrchestration: { type: 'none' },
+      },
+      5,
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        nodeId: 'legacy-node-1',
+        content: 'KB-ALPHA-20260329-FOX',
+        documentId: 'doc-legacy',
+        chunkIndex: 3,
+        fileName: 'qa.txt',
+        location: {
+          page: 2,
+          paragraph: 5,
+          heading: 'Validation',
+          charOffset: 120,
+          charLength: 20,
         },
-      );
-    });
-  });
-
-  describe('deleteByDocument', () => {
-    it('should skip when collection does not exist', async () => {
-      mockDocumentLookup();
-      vectorStore.collectionExists.mockResolvedValue(false);
-
-      await service.deleteByDocument(DOC_ID, TENANT_ID);
-
-      expect(vectorStore.deleteByFilter).not.toHaveBeenCalled();
-    });
-
-    it('should delete vectors by documentId filter', async () => {
-      mockDocumentLookup();
-      vectorStore.collectionExists.mockResolvedValue(true);
-
-      await service.deleteByDocument(DOC_ID, TENANT_ID);
-
-      expect(vectorStore.deleteByFilter).toHaveBeenCalledWith(COLLECTION, {
-        must: [{ key: 'documentId', match: { value: DOC_ID } }],
-      });
-    });
-  });
-
-  describe('deleteCollection', () => {
-    it('should delegate to vectorStore.deleteCollection', async () => {
-      await service.deleteKnowledgeBaseCollection(KB_ID);
-
-      expect(vectorStore.deleteCollection).toHaveBeenCalledWith(COLLECTION);
-    });
+      }),
+    ]);
   });
 });

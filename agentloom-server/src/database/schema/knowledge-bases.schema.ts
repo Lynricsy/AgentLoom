@@ -7,10 +7,23 @@ import {
   integer,
   index,
   pgEnum,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createDirectTenantPolicies } from './rls-policies';
 import { llmModelConfigs } from './llm-model-configs.schema';
+import type {
+  KnowledgeChunkingStrategy,
+  KnowledgeQueryOrchestrationStrategy,
+  KnowledgeRerankerStrategy,
+  KnowledgeRetrievalStrategy,
+} from '../../modules/knowledge/knowledge-base-config';
+import {
+  createDefaultChunkingStrategy,
+  createDefaultQueryOrchestration,
+  createDefaultRerankerStrategy,
+  createDefaultRetrievalStrategy,
+} from '../../modules/knowledge/knowledge-base-config';
 
 export const knowledgeBaseVisibilityEnum = pgEnum('knowledge_base_visibility', [
   'private',
@@ -36,8 +49,22 @@ export const knowledgeBases = pgTable(
     visibility: knowledgeBaseVisibilityEnum('visibility')
       .notNull()
       .default('private'),
-    chunkSize: integer('chunk_size').notNull().default(512),
-    chunkOverlap: integer('chunk_overlap').notNull().default(64),
+    chunkingStrategy: jsonb('chunking_strategy')
+      .$type<KnowledgeChunkingStrategy>()
+      .notNull()
+      .default(createDefaultChunkingStrategy()),
+    retrievalStrategy: jsonb('retrieval_strategy')
+      .$type<KnowledgeRetrievalStrategy>()
+      .notNull()
+      .default(createDefaultRetrievalStrategy()),
+    rerankingStrategy: jsonb('reranking_strategy')
+      .$type<KnowledgeRerankerStrategy>()
+      .notNull()
+      .default(createDefaultRerankerStrategy()),
+    queryOrchestration: jsonb('query_orchestration')
+      .$type<KnowledgeQueryOrchestrationStrategy>()
+      .notNull()
+      .default(createDefaultQueryOrchestration()),
     embeddingModel: varchar('embedding_model', { length: 255 })
       .notNull()
       .default('text-embedding-3-small'),

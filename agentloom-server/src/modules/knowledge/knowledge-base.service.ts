@@ -8,11 +8,21 @@ import {
   type KnowledgeBase,
   documents,
 } from '../../database/schema/knowledge-bases.schema';
-import { documentChunks } from '../../database/schema/document-chunks.schema';
+import { knowledgeNodes } from '../../database/schema/knowledge-nodes.schema';
 import { LlmService } from '../llm/llm.service';
 import { EMBEDDING_MODEL } from './knowledge.constants';
 import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
 import { KnowledgeBaseNotFoundException } from './knowledge.exceptions';
+import {
+  createDefaultChunkingStrategy,
+  createDefaultQueryOrchestration,
+  createDefaultRetrievalStrategy,
+  createDefaultRerankerStrategy,
+  type KnowledgeChunkingStrategy,
+  type KnowledgeQueryOrchestrationStrategy,
+  type KnowledgeRetrievalStrategy,
+  type KnowledgeRerankerStrategy,
+} from './knowledge-base-config';
 
 type DocumentStatus = (typeof documents)['$inferSelect']['status'];
 
@@ -28,6 +38,7 @@ export type KnowledgeBaseStatus = 'empty' | 'processing' | 'ready' | 'failed';
 
 export interface KnowledgeBaseSummary extends KnowledgeBase {
   documentCount: number;
+  nodeCount: number;
   chunkCount: number;
   status: KnowledgeBaseStatus;
 }
@@ -65,8 +76,14 @@ export class KnowledgeBaseService {
         name: dto.name,
         description: dto.description,
         visibility: dto.visibility,
-        chunkSize: dto.chunkSize,
-        chunkOverlap: dto.chunkOverlap,
+        chunkingStrategy:
+          dto.chunkingStrategy ?? createDefaultChunkingStrategy(),
+        retrievalStrategy:
+          dto.retrievalStrategy ?? createDefaultRetrievalStrategy(),
+        rerankingStrategy:
+          dto.rerankingStrategy ?? createDefaultRerankerStrategy(),
+        queryOrchestration:
+          dto.queryOrchestration ?? createDefaultQueryOrchestration(),
         embeddingModel: embeddingSelection.modelName,
         embeddingModelConfigId: embeddingSelection.modelConfigId,
         createdBy: userId,
@@ -75,6 +92,7 @@ export class KnowledgeBaseService {
     return {
       ...knowledgeBase,
       documentCount: 0,
+      nodeCount: 0,
       chunkCount: 0,
       status: 'empty',
     };
@@ -170,9 +188,18 @@ export class KnowledgeBaseService {
 
     const db = getTenantDb(this.db);
     const updateData: Record<string, unknown> = {};
-    if (dto.chunkSize !== undefined) updateData.chunkSize = dto.chunkSize;
-    if (dto.chunkOverlap !== undefined)
-      updateData.chunkOverlap = dto.chunkOverlap;
+    if (dto.chunkingStrategy !== undefined) {
+      updateData.chunkingStrategy = dto.chunkingStrategy;
+    }
+    if (dto.retrievalStrategy !== undefined) {
+      updateData.retrievalStrategy = dto.retrievalStrategy;
+    }
+    if (dto.rerankingStrategy !== undefined) {
+      updateData.rerankingStrategy = dto.rerankingStrategy;
+    }
+    if (dto.queryOrchestration !== undefined) {
+      updateData.queryOrchestration = dto.queryOrchestration;
+    }
     if (
       dto.embeddingModel !== undefined ||
       dto.embeddingModelConfigId !== undefined
@@ -224,17 +251,17 @@ export class KnowledgeBaseService {
         ),
       db
         .select({
-          knowledgeBaseId: documentChunks.knowledgeBaseId,
-          chunkCount: sql<number>`count(*)::int`,
+          knowledgeBaseId: knowledgeNodes.knowledgeBaseId,
+          nodeCount: sql<number>`count(*)::int`,
         })
-        .from(documentChunks)
+        .from(knowledgeNodes)
         .where(
           and(
-            eq(documentChunks.tenantId, tenantId),
-            inArray(documentChunks.knowledgeBaseId, knowledgeBaseIds),
+            eq(knowledgeNodes.tenantId, tenantId),
+            inArray(knowledgeNodes.knowledgeBaseId, knowledgeBaseIds),
           ),
         )
-        .groupBy(documentChunks.knowledgeBaseId),
+        .groupBy(knowledgeNodes.knowledgeBaseId),
     ]);
 
     const statusMap = new Map<string, KnowledgeBaseStatusCounters>();
@@ -248,15 +275,17 @@ export class KnowledgeBaseService {
     }
 
     const chunkCountMap = new Map(
-      chunkRows.map((row) => [row.knowledgeBaseId, row.chunkCount]),
+      chunkRows.map((row) => [row.knowledgeBaseId, row.nodeCount]),
     );
 
     return items.map((item) => {
       const counters = statusMap.get(item.id) ?? EMPTY_COUNTERS;
+      const nodeCount = chunkCountMap.get(item.id) ?? 0;
       return {
         ...item,
         documentCount: counters.documentCount,
-        chunkCount: chunkCountMap.get(item.id) ?? 0,
+        nodeCount,
+        chunkCount: nodeCount,
         status: this.getKnowledgeBaseStatus(counters),
       };
     });
@@ -334,5 +363,31 @@ export class KnowledgeBaseService {
       modelName: requestedModelName ?? EMBEDDING_MODEL,
       modelConfigId: null,
     };
+  }
+
+  getChunkingStrategy(
+    knowledgeBase: Pick<KnowledgeBase, 'chunkingStrategy'>,
+  ): KnowledgeChunkingStrategy {
+    return knowledgeBase.chunkingStrategy ?? createDefaultChunkingStrategy();
+  }
+
+  getRetrievalStrategy(
+    knowledgeBase: Pick<KnowledgeBase, 'retrievalStrategy'>,
+  ): KnowledgeRetrievalStrategy {
+    return knowledgeBase.retrievalStrategy ?? createDefaultRetrievalStrategy();
+  }
+
+  getRerankingStrategy(
+    knowledgeBase: Pick<KnowledgeBase, 'rerankingStrategy'>,
+  ): KnowledgeRerankerStrategy {
+    return knowledgeBase.rerankingStrategy ?? createDefaultRerankerStrategy();
+  }
+
+  getQueryOrchestration(
+    knowledgeBase: Pick<KnowledgeBase, 'queryOrchestration'>,
+  ): KnowledgeQueryOrchestrationStrategy {
+    return (
+      knowledgeBase.queryOrchestration ?? createDefaultQueryOrchestration()
+    );
   }
 }

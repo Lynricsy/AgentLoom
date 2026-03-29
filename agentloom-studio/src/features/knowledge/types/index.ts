@@ -18,6 +18,66 @@ export const KNOWLEDGE_BASE_STATUSES = [
 ] as const;
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
 
+export const KNOWLEDGE_CHUNKING_STRATEGY_TYPES = [
+  'sentence',
+  'sentence_window',
+  'markdown',
+] as const;
+export type KnowledgeChunkingStrategyType =
+  (typeof KNOWLEDGE_CHUNKING_STRATEGY_TYPES)[number];
+
+export const KNOWLEDGE_RERANKER_TYPES = ['none', 'cohere'] as const;
+export type KnowledgeRerankerType = (typeof KNOWLEDGE_RERANKER_TYPES)[number];
+
+export const KNOWLEDGE_QUERY_ORCHESTRATION_TYPES = [
+  'none',
+  'hyde',
+] as const;
+export type KnowledgeQueryOrchestrationType =
+  (typeof KNOWLEDGE_QUERY_ORCHESTRATION_TYPES)[number];
+
+export type KnowledgeChunkingStrategy =
+  | {
+      type: 'sentence';
+      chunkSize: number;
+      chunkOverlap: number;
+    }
+  | {
+      type: 'sentence_window';
+      windowSize: number;
+    }
+  | {
+      type: 'markdown';
+    };
+
+export interface KnowledgeRetrievalStrategy {
+  topK: number;
+  similarityThreshold: number | null;
+}
+
+export type KnowledgeRerankingStrategy =
+  | {
+      type: 'none';
+    }
+  | {
+      type: 'cohere';
+      model: string;
+      topN: number;
+      apiKeyId: string | null;
+      baseUrl: string | null;
+      timeoutMs: number | null;
+    };
+
+export type KnowledgeQueryOrchestration =
+  | {
+      type: 'none';
+    }
+  | {
+      type: 'hyde';
+      modelConfigId: string | null;
+      promptTemplate: string | null;
+    };
+
 export interface KnowledgeBase {
   id: string;
   tenantId: string;
@@ -25,16 +85,21 @@ export interface KnowledgeBase {
   description: string | null;
   visibility: KnowledgeBaseVisibility;
   createdBy: string;
-  chunkSize: number;
-  chunkOverlap: number;
   embeddingModel: string;
   embeddingModelConfigId: string | null;
+  chunkingStrategy: KnowledgeChunkingStrategy;
+  retrievalStrategy: KnowledgeRetrievalStrategy;
+  rerankingStrategy: KnowledgeRerankingStrategy;
+  queryOrchestration: KnowledgeQueryOrchestration;
   documentCount: number;
+  nodeCount: number;
   chunkCount: number;
   status: KnowledgeBaseStatus;
   createdAt: string;
   updatedAt: string;
 }
+
+type KnowledgeBaseCountSource = Pick<KnowledgeBase, 'nodeCount' | 'chunkCount'>;
 
 export interface KnowledgeBaseDocument {
   id: string;
@@ -54,25 +119,50 @@ export interface CreateKnowledgeBaseInput {
   name: string;
   description?: string;
   visibility?: KnowledgeBaseVisibility;
-  chunkSize?: number;
-  chunkOverlap?: number;
   embeddingModel?: string;
   embeddingModelConfigId?: string | null;
+  chunkingStrategy?: KnowledgeChunkingStrategy;
+  retrievalStrategy?: KnowledgeRetrievalStrategy;
+  rerankingStrategy?: KnowledgeRerankingStrategy;
+  queryOrchestration?: KnowledgeQueryOrchestration;
 }
 
 export interface UpdateKnowledgeBaseSettingsInput {
-  chunkSize?: number;
-  chunkOverlap?: number;
   embeddingModel?: string;
   embeddingModelConfigId?: string | null;
+  chunkingStrategy?: KnowledgeChunkingStrategy;
+  retrievalStrategy?: KnowledgeRetrievalStrategy;
+  rerankingStrategy?: KnowledgeRerankingStrategy;
+  queryOrchestration?: KnowledgeQueryOrchestration;
 }
 
 export interface KnowledgeBaseNodeConfig extends Record<string, unknown> {
   knowledgeBaseId: string;
   knowledgeBaseName?: string;
   knowledgeBaseDocumentCount?: number;
+  knowledgeBaseNodeCount?: number;
   knowledgeBaseChunkCount?: number;
   knowledgeBaseStatus?: KnowledgeBaseStatus;
+}
+
+export interface KnowledgeSearchResult {
+  chunkId: string;
+  nodeId: string;
+  score: number;
+  content: string;
+  location: Record<string, unknown> | null;
+  documentId: string;
+  knowledgeBaseId: string;
+  chunkIndex: number;
+  fileName: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeTestSearchResponse {
+  query: string;
+  knowledgeBaseId: string;
+  total: number;
+  results: KnowledgeSearchResult[];
 }
 
 export interface DocumentListParams {
@@ -131,7 +221,7 @@ export function buildKnowledgeBaseNodeConfig(
     | string
     | Pick<
         KnowledgeBase,
-        'id' | 'name' | 'documentCount' | 'chunkCount' | 'status'
+        'id' | 'name' | 'documentCount' | 'nodeCount' | 'chunkCount' | 'status'
       >,
 ): KnowledgeBaseNodeConfig {
   if (typeof knowledgeBase === 'string') {
@@ -142,6 +232,7 @@ export function buildKnowledgeBaseNodeConfig(
     knowledgeBaseId: knowledgeBase.id,
     knowledgeBaseName: knowledgeBase.name,
     knowledgeBaseDocumentCount: knowledgeBase.documentCount,
+    knowledgeBaseNodeCount: knowledgeBase.nodeCount,
     knowledgeBaseChunkCount: knowledgeBase.chunkCount,
     knowledgeBaseStatus: knowledgeBase.status,
   };
@@ -154,4 +245,29 @@ export function isKnowledgeBaseConfigured(
     typeof config.knowledgeBaseId === 'string' &&
     config.knowledgeBaseId.length > 0
   );
+}
+
+export function getKnowledgeNodeCount(
+  knowledgeBase: KnowledgeBaseCountSource,
+): number {
+  return knowledgeBase.nodeCount > 0 ? knowledgeBase.nodeCount : knowledgeBase.chunkCount;
+}
+
+export function getKnowledgeNodeCountLabel(
+  knowledgeBase: KnowledgeBaseCountSource,
+): string {
+  return `${getKnowledgeNodeCount(knowledgeBase)} 个知识节点`;
+}
+
+export function getChunkingStrategyLabel(
+  strategy: KnowledgeChunkingStrategy,
+): string {
+  switch (strategy.type) {
+    case 'sentence':
+      return `句子分块 · ${strategy.chunkSize}/${strategy.chunkOverlap}`;
+    case 'sentence_window':
+      return `Sentence Window · ${strategy.windowSize}`;
+    case 'markdown':
+      return 'Markdown 分块';
+  }
 }

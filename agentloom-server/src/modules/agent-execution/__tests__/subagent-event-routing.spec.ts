@@ -314,7 +314,7 @@ describe('SubAgent Event Routing', () => {
       expect(emittedData.subagent).toEqual(envelope);
     });
 
-    it('should not broadcast when no subscribers', () => {
+    it('应在无本地订阅记录时仍广播子代理事件，兼容 server/worker 分离部署', () => {
       gateway.handleSubAgentEvent({
         conversationId: 'no-subscribers',
         tenantId: 'tenant-1',
@@ -322,7 +322,9 @@ describe('SubAgent Event Routing', () => {
         subagent: makeEnvelope(),
       });
 
-      expect(server.to).not.toHaveBeenCalled();
+      expect(server.to).toHaveBeenCalledWith(
+        'conversation:tenant-1:no-subscribers',
+      );
     });
 
     it('should include event data in emitted payload', () => {

@@ -20,11 +20,24 @@ function createKnowledgeBase(overrides: Partial<KnowledgeBase> = {}): KnowledgeB
     description: '产品文档',
     visibility: 'private',
     createdBy: 'user-1',
-    chunkSize: 512,
-    chunkOverlap: 64,
     embeddingModel: 'text-embedding-3-small',
     embeddingModelConfigId: null,
+    chunkingStrategy: {
+      type: 'sentence_window',
+      windowSize: 3,
+    },
+    retrievalStrategy: {
+      topK: 8,
+      similarityThreshold: null,
+    },
+    rerankingStrategy: {
+      type: 'none',
+    },
+    queryOrchestration: {
+      type: 'none',
+    },
     documentCount: 12,
+    nodeCount: 80,
     chunkCount: 80,
     status: 'ready',
     createdAt: '2024-01-01T00:00:00Z',
@@ -56,6 +69,7 @@ describe('KnowledgeBaseConfigPanel', () => {
       id: 'kb-2',
       name: '研发规范库',
       documentCount: 24,
+      nodeCount: 128,
       chunkCount: 128,
       status: 'processing',
     })
@@ -83,6 +97,7 @@ describe('KnowledgeBaseConfigPanel', () => {
       id: 'kb-120',
       name: '归档知识库',
       documentCount: 120,
+      nodeCount: 640,
       chunkCount: 640,
     })
     mocks.useAllKnowledgeBases.mockReturnValue({
@@ -99,7 +114,7 @@ describe('KnowledgeBaseConfigPanel', () => {
 
     expect(screen.getByText('归档知识库')).toBeInTheDocument()
     expect(screen.getByText('120 个文档')).toBeInTheDocument()
-    expect(screen.getByText('640 个分块')).toBeInTheDocument()
+    expect(screen.getByText('640 个知识节点')).toBeInTheDocument()
     expect(screen.getByText('可用')).toBeInTheDocument()
     expect(screen.getByText('ID: kb-120')).toBeInTheDocument()
   })

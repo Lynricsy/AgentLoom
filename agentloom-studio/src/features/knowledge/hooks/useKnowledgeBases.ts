@@ -8,6 +8,8 @@ import {
   fetchDocuments,
   fetchKnowledgeBase,
   fetchKnowledgeBases,
+  rebuildKnowledgeBase,
+  testKnowledgeBaseSearch,
   updateKnowledgeBaseSettings,
   uploadDocument,
 } from '../api/knowledgeBaseApi';
@@ -159,6 +161,43 @@ export function useDeleteDocument() {
       });
       void queryClient.invalidateQueries({
         queryKey: knowledgeBaseKeys.detail(variables.knowledgeBaseId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.lists(),
+      });
+    },
+  });
+}
+
+export function useTestKnowledgeBaseSearch() {
+  return useMutation({
+    mutationKey: ['test-knowledge-base-search'],
+    mutationFn: ({
+      knowledgeBaseId,
+      query,
+      topK,
+    }: {
+      knowledgeBaseId: string;
+      query: string;
+      topK?: number;
+    }) => testKnowledgeBaseSearch(knowledgeBaseId, { query, topK }),
+    gcTime: 0,
+  });
+}
+
+export function useRebuildKnowledgeBase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['rebuild-knowledge-base'],
+    mutationFn: (knowledgeBaseId: string) => rebuildKnowledgeBase(knowledgeBaseId),
+    gcTime: 0,
+    onSuccess: (_data, knowledgeBaseId) => {
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.detail(knowledgeBaseId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: knowledgeBaseKeys.documents(knowledgeBaseId),
       });
       void queryClient.invalidateQueries({
         queryKey: knowledgeBaseKeys.lists(),

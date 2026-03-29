@@ -10,9 +10,9 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
-  documentChunks,
   evidenceRecords,
   executionSteps,
+  knowledgeNodes,
   organizations,
   type NewEvidenceRecord,
 } from '../../database/schema';
@@ -315,9 +315,9 @@ export class EvidenceService {
 
     const uniqueChunkIds = [...new Set(chunkIds)];
     const chunks = await tenantDb
-      .select({ id: documentChunks.id, content: documentChunks.content })
-      .from(documentChunks)
-      .where(inArray(documentChunks.id, uniqueChunkIds));
+      .select({ id: knowledgeNodes.id, content: knowledgeNodes.content })
+      .from(knowledgeNodes)
+      .where(inArray(knowledgeNodes.id, uniqueChunkIds));
 
     const chunkMap = new Map(chunks.map((c) => [c.id, c.content]));
 
@@ -1509,9 +1509,9 @@ export class EvidenceService {
     const tenantDb = getTenantDb(this.db);
     const chunkIds = Array.from(chunkLookups.keys());
     const chunks = await tenantDb
-      .select({ id: documentChunks.id, content: documentChunks.content })
-      .from(documentChunks)
-      .where(inArray(documentChunks.id, chunkIds));
+      .select({ id: knowledgeNodes.id, content: knowledgeNodes.content })
+      .from(knowledgeNodes)
+      .where(inArray(knowledgeNodes.id, chunkIds));
 
     const chunkContentMap = new Map<string, string>();
     for (const chunk of chunks) {
