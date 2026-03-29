@@ -1,6 +1,6 @@
 # 架构与兼容性规则
 
-本文档详解类型引擎的内部架构、兼容性判定算法和 9×9 端口兼容矩阵。
+本文档详解类型引擎的内部架构、兼容性判定算法和 10×10 端口兼容矩阵。
 
 ## 整体架构
 
@@ -48,32 +48,33 @@ EXACT > TRANSFORM > PARTIAL > INCOMPATIBLE
 
 ## 端口数据类型（PortDataType）
 
-9 种规范端口数据类型在 Rust 中定义为枚举：
+10 种规范端口数据类型在 Rust 中定义为枚举：
 
 ```rust
 // 简化示意，非完整源码
 enum PortDataType {
-    Model, Text, Json, Image, Audio, Tool, Sandbox, Knowledge, Skill
+    Model, Text, Json, Image, Audio, Tool, Sandbox, Knowledge, Skill, Agent
 }
 ```
 
-序列化时统一使用小写标识：`model`、`text`、`json`、`image`、`audio`、`tool`、`sandbox`、`knowledge`、`skill`。
+序列化时统一使用小写标识：`model`、`text`、`json`、`image`、`audio`、`tool`、`sandbox`、`knowledge`、`skill`、`agent`。
 
-## 9×9 兼容矩阵
+## 10×10 兼容矩阵
 
 下表展示了所有端口数据类型对之间的 **基础兼容性**（不考虑 Schema 级比较）：
 
-| 源 ↓ \ 目标 → |  model   |     text     |     json     |  image   |  audio   |   tool   | sandbox  | knowledge |  skill   |
-| :-----------: | :------: | :----------: | :----------: | :------: | :------: | :------: | :------: | :-------: | :------: |
-|   **model**   | ✅ EXACT |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |
-|   **text**    |    ❌    |   ✅ EXACT   | 🔄 TRANSFORM |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |
-|   **json**    |    ❌    | 🔄 TRANSFORM |   ✅ EXACT   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |
-|   **image**   |    ❌    |      ❌      |      ❌      | ✅ EXACT |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |
-|   **audio**   |    ❌    |      ❌      |      ❌      |    ❌    | ✅ EXACT |    ❌    |    ❌    |    ❌     |    ❌    |
-|   **tool**    |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    | ✅ EXACT |    ❌    |    ❌     |    ❌    |
-|  **sandbox**  |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    | ✅ EXACT |    ❌     |    ❌    |
-| **knowledge** |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    | ✅ EXACT  |    ❌    |
-|   **skill**   |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     | ✅ EXACT |
+| 源 ↓ \ 目标 → |  model   |     text     |     json     |  image   |  audio   |   tool   | sandbox  | knowledge |  skill   |  agent   |
+| :-----------: | :------: | :----------: | :----------: | :------: | :------: | :------: | :------: | :-------: | :------: | :------: |
+|   **model**   | ✅ EXACT |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
+|   **text**    |    ❌    |   ✅ EXACT   | 🔄 TRANSFORM |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
+|   **json**    |    ❌    | 🔄 TRANSFORM |   ✅ EXACT   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
+|   **image**   |    ❌    |      ❌      |      ❌      | ✅ EXACT |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
+|   **audio**   |    ❌    |      ❌      |      ❌      |    ❌    | ✅ EXACT |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
+|   **tool**    |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    | ✅ EXACT |    ❌    |    ❌     |    ❌    |    ❌    |
+|  **sandbox**  |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    | ✅ EXACT |    ❌     |    ❌    |    ❌    |
+| **knowledge** |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    | ✅ EXACT  |    ❌    |    ❌    |
+|   **skill**   |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     | ✅ EXACT |    ❌    |
+|   **agent**   |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    | ✅ EXACT |
 
 **图例：**
 
@@ -102,7 +103,7 @@ enum PortDataType {
 
 ```typescript
 interface ScalarTypeSchema {
-  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill";
+  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill" | "agent";
   format?: string;
   examples?: string[];
   title?: string;

@@ -50,7 +50,8 @@ interface PortDefinition {
     | "tool"
     | "sandbox"
     | "knowledge"
-    | "skill";
+    | "skill"
+    | "agent";
   description?: string;
   required?: boolean;
   multiple?: boolean;
@@ -156,7 +157,7 @@ function checkSchemaCompatibility(
 type TypeSchema = ScalarTypeSchema | ObjectTypeSchema | ArrayTypeSchema;
 
 interface ScalarTypeSchema {
-  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill";
+  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill" | "agent";
   format?: string;
   examples?: string[];
   title?: string;

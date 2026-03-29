@@ -62,9 +62,9 @@ Studio 在初始化时尝试加载 WASM 模块。若加载失败（环境不支�
 
 详见 → [WASM API](./api)
 
-## 9 种端口数据类型
+## 10 种端口数据类型
 
-AgentLoom 工作流定义了 **9 种规范端口数据类型**（PortDataType）：
+AgentLoom 工作流定义了 **10 种规范端口数据类型**（PortDataType）：
 
 | 类型          | 标识        | 说明             |
 | ------------- | ----------- | ---------------- |
@@ -77,11 +77,12 @@ AgentLoom 工作流定义了 **9 种规范端口数据类型**（PortDataType）
 | **Sandbox**   | `sandbox`   | 沙箱环境引用     |
 | **Knowledge** | `knowledge` | 知识库引用       |
 | **Skill**     | `skill`     | Skill 注入       |
+| **Agent**     | `agent`     | Agent 引用       |
 
-这 9 种类型在 Rust 引擎、Studio 前端和 Server 后端之间保持统一。Studio 的 `mcpToolMapping` 对 legacy `number` / `boolean` 类型提供 `→ json` 回退兼容。
+这 10 种类型在 Rust 引擎、Studio 前端和 Server 后端之间保持统一。Studio 的 `mcpToolMapping` 对 legacy `number` / `boolean` 类型提供 `→ json` 回退兼容。
 
 ## 下一步
 
-- [架构与兼容性规则](./architecture) — 了解 4 级兼容性判定逻辑和 9×9 兼容矩阵
+- [架构与兼容性规则](./architecture) — 了解 4 级兼容性判定逻辑和 10×10 兼容矩阵
 - [WASM API 参考](./api) — 查看 3 个导出函数的 TypeScript 签名和调用示例
 - [构建指南](./build) — 了解如何构建、测试和发布 WASM 产物

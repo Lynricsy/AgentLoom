@@ -35,7 +35,7 @@ Studio 采用 [Feature-Slice Design](https://feature-sliced.design/) 组织代�
 src/
 ├── app/              # 应用入口、Provider、路由定义
 │   └── routes/       # TanStack Router 路由文件
-├── features/         # 功能切片（31 个 feature）
+├── features/         # 功能切片（35 个 feature）
 │   ├── canvas/       # 画布编辑器
 │   ├── execution/    # 执行引擎
 │   ├── workflow/     # 工作流管理
@@ -47,13 +47,13 @@ src/
     └── types/        # 全局类型
 ```
 
-### 31 个功能切片
+### 35 个功能切片
 
-Studio 包含 31 个 feature 目录，按领域分为 7 大类别：
+Studio 包含 35 个 feature 目录，按领域分为 7 大类别：
 
 | 类别           | Feature                        | 说明                            |
 | -------------- | ------------------------------ | ------------------------------- |
-| **核心画布**   | `canvas`                       | DAG 画布编辑器，支持 21 种节点  |
+| **核心画布**   | `canvas`                       | DAG 画布编辑器，支持 23 种节点  |
 |                | `workflow`                     | 工作流 CRUD、版本管理、发布     |
 |                | `workflow-input-schema`        | 工作流输入参数 schema 定义      |
 |                | `block-library`                | 可复用节点块库                  |
@@ -70,6 +70,7 @@ Studio 包含 31 个 feature 目录，按领域分为 7 大类别：
 |                | `agent-canvas`                 | Agent 配置编辑器画布            |
 |                | `agent-conversation`           | Agent 三列对话 UI               |
 |                | `agent-memory`                 | Agent 记忆图谱可视化            |
+|                | `memory-instance`              | 记忆浏览器                      |
 | **触发与介入** | `trigger`                      | Cron / Webhook / API 事件触发器 |
 |                | `intervention-policy`          | 人机介入策略配置                |
 |                | `organization-autonomy-policy` | 组织级自主性策略                |
@@ -82,8 +83,11 @@ Studio 包含 31 个 feature 目录，按领域分为 7 大类别：
 |                | `resource-governance`          | 资源配额与治理                  |
 |                | `audit-log`                    | 审计日志查询                    |
 |                | `notification`                 | 通知管理                        |
+|                | `sandbox`                      | 沙箱管理                        |
+|                | `workspace`                    | 工作区管理                      |
 | **开发者**     | `developer-console`            | 开发者控制台                    |
 |                | `auth`                         | Supabase Auth PKCE 认证         |
+|                | `onboarding`                   | 新手引导                        |
 
 ::: tip 关于 auth
 `auth` feature 集成 Supabase Auth（PKCE 流程），`auth.store.ts`（Zustand）管理会话/用户/loading 状态，`useAuth` hook 提供 signIn/signUp/signOut/OAuth 操作，`useAuthToken` hook 保持后向兼容。ky HTTP 客户端注入 `Bearer` token、401 时自动刷新重试。支持 TOTP MFA 注册与验证。
@@ -115,6 +119,9 @@ Studio 使用 TanStack Router 管理路由，包含 27 个路由页面：
 | `/settings/security`                 | SecuritySettingsPage | 密码修改/MFA 管理/会话列表 |
 | `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | 组织自治策略设置（owner-only） |
 | `/settings/skills`                   | SkillBrowsePage | Skill 管理页 |
+| `/resources/knowledge-bases`         | KnowledgeBasesPage | 知识库列表   |
+| `/resources/knowledge-bases/$id`     | KnowledgeBaseDetailPage | 知识库详情 |
+| `/resources/memory-instances/$instanceId/browse` | MemoryBrowserPage | 记忆浏览器 |
 | `/settings/...`                      | 设置页组     | 组织级管理        |
 
 ## 共享 UI 层
@@ -132,5 +139,5 @@ Studio 使用 TanStack Router 管理路由，包含 27 个路由页面：
 
 - [画布编辑器](./canvas) — 节点、连线、LOD 与交互
 - [状态���理](./state) — Zustand 状态、TanStack Query、表单
-- [功能模块](./features) — 31 个 feature 详解
+- [功能模块](./features) — 35 个 feature 详解
 - [WASM 集成](./wasm) — 类型引擎 Web Worker 架构

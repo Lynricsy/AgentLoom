@@ -1,10 +1,10 @@
 # 画布编辑器
 
-画布编辑器是 Studio 的核心，用户在此构建 DAG 工作流。基于 `@xyflow/react` v12 实现，支持 21 种节点类型、9 种端口数据类型、3 级 LOD 缩放和实时兼容性检查。
+画布编辑器是 Studio 的核心，用户在此构建 DAG 工作流。基于 `@xyflow/react` v12 实现，支持 23 种节点类型、12 种端口数据类型、3 级 LOD 缩放和实时兼容性检查。
 
 ## 节点类型体系
 
-画布定义了 **8 大类别、21 种节点类型**：
+画布定义了 **8 大类别、23 种节点类型**：
 
 ```mermaid
 graph TD
@@ -18,19 +18,23 @@ graph TD
     Root --> Plugin[🧩 Plugin 插件]
     Root --> Memory[🧠 Memory 记忆]
 
-    Agent --> llm-agent[llm-agent<br/>LLM 智能体]
     Agent --> chat-agent[chat-agent<br/>对话智能体]
     Agent --> llm-model[llm-model<br/>模型节点]
     Agent --> agent-node[agent<br/>Agent 节点]
+    Agent --> smart-routing-node[smart-routing<br/>智能路由]
+    Agent --> skill-node[skill<br/>Skill 节点]
 
     Tool --> http-tool[http-tool<br/>HTTP 工具]
     Tool --> code-tool[code-tool<br/>代码工具]
     Tool --> mcp-tool[mcp-tool<br/>MCP 工具]
     Tool --> sandbox[sandbox<br/>沙箱]
     Tool --> input-preprocessor[input-preprocessor<br/>输入预处理]
+    Tool --> workspace-node[workspace<br/>工作区]
 
     Trigger --> manual-trigger[manual-trigger<br/>手动触发]
     Trigger --> schedule-trigger[schedule-trigger<br/>定时触发]
+    Trigger --> webhook-trigger[webhook-trigger<br/>Webhook 触发]
+    Trigger --> api-event-trigger[api-event-trigger<br/>API 事件触发]
 
     Knowledge --> knowledge-base[knowledge-base<br/>知识库]
 
@@ -42,7 +46,6 @@ graph TD
     Control --> reusable-block[reusable-block<br/>可复用块]
 
     Plugin --> plugin-node[plugin<br/>插件节点]
-    Plugin --> skill-node[skill<br/>Skill 节点]
 
     Memory --> memory-node[memory<br/>Agent 记忆]
 ```
@@ -51,17 +54,21 @@ graph TD
 
 | 类别          | 节点               | 输入端口                     | 输出端口      | 说明                               |
 | ------------- | ------------------ | ---------------------------- | ------------- | ---------------------------------- |
-| **Agent**     | `llm-agent`        | text, model, tool, knowledge | text, json    | 核心 LLM Agent，支持工具调用与 RAG |
-|               | `chat-agent`       | text, model                  | text          | 对话式 Agent，支持多轮交互         |
+| **Agent**     | `chat-agent`       | text, model, tool, knowledge | text, json    | 对话式 Agent，支持工具调用与 RAG   |
 |               | `llm-model`        | —                            | model         | 模型配置节点，输出 model 端口      |
 |               | `agent`            | text, model, tool, knowledge, sandbox | text, json | 独立 Agent 定义节点                |
+|               | `smart-routing`    | model (多个)                 | model         | 智能路由，6 种策略选择最优模型     |
+|               | `skill`            | skill                        | skill         | Skill 行为注入节点                 |
 | **Tool**      | `http-tool`        | json                         | json          | HTTP API 调用                      |
 |               | `code-tool`        | json                         | json          | 沙箱代码执行                       |
 |               | `mcp-tool`         | json                         | json, tool    | MCP 协议工具集成                   |
 |               | `sandbox`          | text                         | sandbox       | ACP 沙箱终端                       |
 |               | `input-preprocessor` | json                       | json          | 输入数据预处理与格式化             |
+|               | `workspace`        | exec                         | volume        | 工作区存储卷管理                   |
 | **Trigger**   | `manual-trigger`   | —                            | text          | 手动触发入口                       |
 |               | `schedule-trigger` | —                            | text          | Cron 定时触发                      |
+|               | `webhook-trigger`  | —                            | json          | Webhook 回调触发                   |
+|               | `api-event-trigger`| —                            | json          | API 事件触发                       |
 | **Knowledge** | `knowledge-base`   | text                         | knowledge     | 向量知识库检索                     |
 | **Output**    | `text-output`      | text                         | —             | 文本结果输出                       |
 |               | `json-output`      | json                         | —             | 结构化数据输出                     |
@@ -69,24 +76,26 @@ graph TD
 |               | `loop`             | json                         | json          | 循环执行                           |
 |               | `reusable-block`   | (动态)                       | (动态)        | 子工作流引用                       |
 | **Plugin**    | `plugin`           | (动态)                       | (动态)        | 第三方插件节点                     |
-|               | `skill`            | skill                        | skill         | Skill 注入节点                     |
 | **Memory**    | `memory`           | text                         | json          | Agent 记忆图谱节点                 |
 
 ## 端口数据类型
 
-画布使用 **9 种 canonical 端口数据类型**，与 Server 和 [Type Engine](/zh/type-engine/) 三端统一：
+画布使用 **12 种端口数据类型**，其中 10 种为 canonical 类型（与 Server 和 [Type Engine](/zh/type-engine/) 三端统一），3 种为 Studio 扩展类型：
 
 | 类型        | 说明         | 典型场景               |
 | ----------- | ------------ | ---------------------- |
-| `model`     | LLM 模型配置 | llm-model → llm-agent  |
+| `model`     | LLM 模型配置 | llm-model → chat-agent |
 | `text`      | 纯文本       | 触发器 → Agent → 输出  |
 | `json`      | 结构化 JSON  | 工具输入/输出          |
 | `image`     | 图像数据     | 多模态 Agent 输入      |
 | `audio`     | 音频数据     | 语音相关处理           |
-| `tool`      | 工具引用     | mcp-tool → llm-agent   |
+| `tool`      | 工具引用     | mcp-tool → chat-agent  |
 | `sandbox`   | 沙箱会话     | sandbox → Agent        |
 | `knowledge` | 知识库引用   | knowledge-base → Agent |
-| `skill`     | Skill 行为注入 | skill → llm-agent      |
+| `skill`     | Skill 行为注入 | skill → chat-agent     |
+| `agent`     | Agent 引用   | agent → 工作流节点     |
+| `exec`      | 执行控制流   | 节点执行依赖控制       |
+| `volume`    | 工作区存储卷 | workspace → sandbox    |
 
 ### 兼容性检查
 
@@ -136,7 +145,7 @@ graph TB
     CN --> Shell[CanvasNodeShell<br/>外壳容器]
     CN --> Card[CanvasNodeCard<br/>卡片内容]
     CN --> Port[TypedPort<br/>类型化端口]
-    CN --> Body[节点 Body<br/>21 种实现]
+    CN --> Body[节点 Body<br/>23 种实现]
 
     WC --> Overlay1[CompatibilityPreviewOverlay<br/>兼容性预览]
     WC --> Overlay2[ConnectionStateOverlay<br/>连接状态]

@@ -1,6 +1,6 @@
 # 功能模块
 
-Studio 包含 31 个 Feature Slice，按领域划分为 8 大类别。本页详细介绍各功能模块的职责与关键实现。
+Studio 包含 35 个 Feature Slice，按领域划分为 8 大类别。本页详细介绍各功能模块的职责与关键实现。
 
 ## 核心画布
 
@@ -76,6 +76,14 @@ Agent 记忆系统管理（35 files），位于 Agent 详情页内：
 - 记忆检索 / 创建 / 编辑
 - Socket.IO `/memory` namespace 实时反馈
 - 审计日志集成
+
+### memory-instance — 记忆浏览器
+
+记忆实例浏览与管理功能，位于 `/resources/memory-instances/$instanceId/browse`：
+
+- **MemoryBrowser 组件**：浏览、搜索、编辑记忆节点
+- browse / domains / glossary API 对接
+- 支持记忆节点的结构化展示与操作
 
 ### skill — Skill 管理
 
