@@ -77,7 +77,7 @@ export interface McpToolPortDefinitions {
 }
 
 export function buildMcpToolPorts(): McpToolPortDefinitions {
-  const toolOutput = createPort('tool-output', 'Tool', 'output', 'tool', {
+  const toolOutput = createPort('tool-out', '工具', 'output', 'tool', {
     description: '连接到 Agent 的工具端口',
   })
   return { inputPorts: [], outputPorts: [toolOutput] }

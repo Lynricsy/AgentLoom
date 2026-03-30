@@ -669,11 +669,11 @@ export class WorkflowAgentAdapter {
   ): Record<string, unknown> {
     const sanitizedEntries = Object.entries(input)
       .map(([key, value]) => {
-        if (key === 'skills' || key === 'tools-in' || key === 'sub-agents-in') {
+        if (key === 'skills-in' || key === 'skills' || key === 'tools-in' || key === 'sub-agents-in') {
           return null;
         }
 
-        if (key === 'context') {
+        if (key === 'context-in' || key === 'context') {
           const sanitizedContext = this.stripExtensionValues(value);
           return sanitizedContext === undefined
             ? null

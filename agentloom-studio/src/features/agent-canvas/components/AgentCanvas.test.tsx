@@ -137,7 +137,7 @@ describe('AgentCanvas', () => {
     expect(
       isValidConnection?.({
         source: 'memory-node',
-        sourceHandle: 'memory-out-0',
+        sourceHandle: 'memory-out',
         target: 'agent-main',
         targetHandle: 'memory-in',
       }),

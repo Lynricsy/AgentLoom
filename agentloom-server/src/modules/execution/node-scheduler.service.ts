@@ -1144,13 +1144,13 @@ export class NodeSchedulerService {
           ? {
               text: output,
               'text-out': output,
-              exec_out: { triggered: true },
+              'exec-out': { triggered: true },
             }
           : {
               ...output,
               json: output,
               'json-out': output,
-              exec_out: { triggered: true },
+              'exec-out': { triggered: true },
             };
 
       if (outputFormat) {
@@ -1233,7 +1233,7 @@ export class NodeSchedulerService {
         statusText: response.statusText,
         url: response.url,
         response,
-        exec_out: {
+        'exec-out': {
           triggered: true,
           success: response.ok,
           status: response.status,
@@ -1325,7 +1325,7 @@ export class NodeSchedulerService {
         stdout: executionResult.stdout,
         stderr: executionResult.stderr,
         executionTimeMs: executionResult.executionTimeMs,
-        exec_out: {
+        'exec-out': {
           triggered: true,
           success: executionResult.success,
         },
@@ -1641,6 +1641,8 @@ export class NodeSchedulerService {
       const result = expression
         ? {
             branch,
+            'matched-out': matchedPayload,
+            'unmatched-out': unmatchedPayload,
             matched: matchedPayload,
             unmatched: unmatchedPayload,
             true: matchedPayload,
@@ -1650,6 +1652,8 @@ export class NodeSchedulerService {
           }
         : {
             branch,
+            'matched-out': matchedPayload,
+            'unmatched-out': unmatchedPayload,
             matched: matchedPayload,
             unmatched: unmatchedPayload,
             true: matchedPayload,
@@ -2795,7 +2799,7 @@ export class NodeSchedulerService {
           result: {
             sessionId: session.id,
             status: session.status,
-            'sandbox-output': {
+            'sandbox-out': {
               sessionId: session.id,
               status: session.status,
             },
@@ -2868,7 +2872,7 @@ export class NodeSchedulerService {
           result: {
             workspaceId,
             ...(workspaceName ? { workspaceName } : {}),
-            'volume-output': {
+            'volume-out': {
               workspaceId,
               ...(workspaceName ? { workspaceName } : {}),
             },
@@ -2940,7 +2944,7 @@ export class NodeSchedulerService {
         {
           result: {
             ...result,
-            'memory-out-0': result,
+            'memory-out': result,
           },
         },
       );
@@ -2999,7 +3003,7 @@ export class NodeSchedulerService {
       const result = {
         triggerType: execution?.triggerType ?? step.nodeType,
         payload,
-        exec_out: {
+        'exec-out': {
           triggerType: execution?.triggerType ?? step.nodeType,
           triggered: true,
         },
@@ -3458,10 +3462,13 @@ export class NodeSchedulerService {
     input: Record<string, unknown>,
   ): Record<string, unknown> {
     const requestValue =
-      Object.prototype.hasOwnProperty.call(input, 'request') &&
-      input.request !== undefined
-        ? input.request
-        : this.stripExecOnlyInputs(input);
+      Object.prototype.hasOwnProperty.call(input, 'request-in') &&
+      input['request-in'] !== undefined
+        ? input['request-in']
+        : Object.prototype.hasOwnProperty.call(input, 'request') &&
+            input.request !== undefined
+          ? input.request
+          : this.stripExecOnlyInputs(input);
 
     if (requestValue === undefined) {
       return {};
@@ -3477,7 +3484,7 @@ export class NodeSchedulerService {
   private stripExecOnlyInputs(
     input: Record<string, unknown>,
   ): Record<string, unknown> | undefined {
-    const entries = Object.entries(input).filter(([key]) => key !== 'exec_in');
+    const entries = Object.entries(input).filter(([key]) => key !== 'exec-in' && key !== 'exec_in');
     if (entries.length === 0) {
       return undefined;
     }
@@ -3626,6 +3633,10 @@ export class NodeSchedulerService {
   }
 
   private extractCodeToolInputPayload(input: Record<string, unknown>): unknown {
+    if (Object.prototype.hasOwnProperty.call(input, 'input-in')) {
+      return input['input-in'];
+    }
+
     if (Object.prototype.hasOwnProperty.call(input, 'input')) {
       return input.input;
     }
@@ -3926,10 +3937,12 @@ export class NodeSchedulerService {
 
   private normalizeLoopItemsInput(input: Record<string, unknown>): unknown[] {
     const directCandidates = [
+      input['items-in'],
       input.items,
       input.json,
       input.value,
       input.content,
+      this.flattenInput(input)['items-in'],
       this.flattenInput(input).items,
       this.flattenInput(input).json,
       this.flattenInput(input).value,
@@ -3944,7 +3957,7 @@ export class NodeSchedulerService {
     }
 
     const fallbackEntries = Object.entries(input).filter(
-      ([key]) => key !== 'exec_in',
+      ([key]) => key !== 'exec-in' && key !== 'exec_in',
     );
 
     if (fallbackEntries.length === 1) {
@@ -4000,6 +4013,10 @@ export class NodeSchedulerService {
   }
 
   private extractOutputValue(input: Record<string, unknown>): unknown {
+    if (Object.prototype.hasOwnProperty.call(input, 'content-in')) {
+      return input['content-in'];
+    }
+
     if (Object.prototype.hasOwnProperty.call(input, 'content')) {
       return input.content;
     }
@@ -4087,10 +4104,11 @@ export class NodeSchedulerService {
     switch (sourceStep.nodeType) {
       case 'agent':
       case 'chat-agent':
-        if (sourceHandle === 'reply' || sourceHandle === 'agent-output') {
+        if (sourceHandle === 'reply-out' || sourceHandle === 'agent-out' || sourceHandle === 'reply' || sourceHandle === 'agent-output') {
           return sourceStep.result.content;
         }
         if (
+          sourceHandle === 'structured-out' ||
           sourceHandle === 'structured' ||
           sourceHandle === 'structured-output'
         ) {
@@ -4101,31 +4119,31 @@ export class NodeSchedulerService {
       case 'schedule-trigger':
       case 'webhook-trigger':
       case 'api-event-trigger':
-        if (sourceHandle === 'payload') {
+        if (sourceHandle === 'payload-out' || sourceHandle === 'payload') {
           return sourceStep.result.payload;
         }
-        if (sourceHandle === 'exec_out') {
-          return sourceStep.result.exec_out;
+        if (sourceHandle === 'exec-out' || sourceHandle === 'exec_out') {
+          return sourceStep.result['exec-out'] ?? sourceStep.result.exec_out;
         }
         return undefined;
       case 'llm-model':
-        return sourceHandle === 'model-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'model-out' || sourceHandle === 'model-output' ? sourceStep.result : undefined;
       case 'smart-routing':
         return sourceHandle === 'model-out' ? sourceStep.result : undefined;
       case 'mcp-tool':
-        return sourceHandle === 'tool-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'tool-out' || sourceHandle === 'tool-output' ? sourceStep.result : undefined;
       case 'skill':
         return sourceHandle === 'skill-out' ? sourceStep.result : undefined;
       case 'knowledge-base':
-        return sourceHandle === 'knowledge' ? sourceStep.result : undefined;
+        return sourceHandle === 'knowledge-out' || sourceHandle === 'knowledge' ? sourceStep.result : undefined;
       case 'sandbox':
-        return sourceHandle === 'sandbox-output'
+        return sourceHandle === 'sandbox-out' || sourceHandle === 'sandbox-output'
           ? sourceStep.result
           : undefined;
       case 'workspace':
-        return sourceHandle === 'volume-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'volume-out' || sourceHandle === 'volume-output' ? sourceStep.result : undefined;
       case 'memory':
-        return sourceHandle === 'memory-out-0' ? sourceStep.result : undefined;
+        return sourceHandle === 'memory-out' || sourceHandle === 'memory-out-0' ? sourceStep.result : undefined;
       default:
         return undefined;
     }
@@ -4140,6 +4158,8 @@ export class NodeSchedulerService {
     value: unknown,
   ): unknown {
     if (
+      sourceHandle !== 'matched-out' &&
+      sourceHandle !== 'unmatched-out' &&
       sourceHandle !== 'matched' &&
       sourceHandle !== 'unmatched' &&
       sourceHandle !== 'true' &&
@@ -4153,8 +4173,8 @@ export class NodeSchedulerService {
     }
 
     const keys = Object.keys(value);
-    if (keys.length === 1 && keys[0] === 'input') {
-      return value.input;
+    if (keys.length === 1 && (keys[0] === 'input-in' || keys[0] === 'input')) {
+      return value[keys[0]];
     }
 
     return value;
@@ -4171,11 +4191,11 @@ export class NodeSchedulerService {
       return undefined;
     }
 
-    if (sourceHandle === 'true' || sourceHandle === 'matched') {
+    if (sourceHandle === 'matched-out' || sourceHandle === 'true' || sourceHandle === 'matched') {
       return 'matched';
     }
 
-    if (sourceHandle === 'false' || sourceHandle === 'unmatched') {
+    if (sourceHandle === 'unmatched-out' || sourceHandle === 'false' || sourceHandle === 'unmatched') {
       return 'unmatched';
     }
 

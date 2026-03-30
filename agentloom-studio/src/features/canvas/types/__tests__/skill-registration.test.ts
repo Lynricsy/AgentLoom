@@ -95,9 +95,9 @@ describe('skill 注册验证', () => {
       expect(NODE_TYPE_REGISTRY).toHaveProperty('agent');
     });
 
-    it('agent 节点有 skills 输入端口', () => {
+    it('agent 节点有 skills-in 输入端口', () => {
       const skillsPort = NODE_TYPE_REGISTRY['agent'].inputPorts.find(
-        (p) => p.id === 'skills',
+        (p) => p.id === 'skills-in',
       );
       expect(skillsPort).toBeDefined();
       expect(skillsPort?.dataType).toBe('skill');

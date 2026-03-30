@@ -71,14 +71,9 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       icon: 'Brain',
       description: '配置 LLM provider 和模型参数，为 Agent 提供模型能力',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
-      inputPorts: [
-        createPort('model-in', '模型输入', 'input', 'model', {
-          required: true,
-          description: '接入模型配置',
-        }),
-      ],
+      inputPorts: [],
       outputPorts: [
-        createPort('model-output', '模型输出', 'output', 'model', {
+        createPort('model-out', '模型', 'output', 'model', {
           description: '模型配置输出，连接到 Agent Main',
         }),
       ],
@@ -132,13 +127,9 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       icon: 'Plug',
       description: '通过 MCP 协议调用外部工具',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
-      inputPorts: [
-        createPort('config-in', '工具配置', 'input', 'json', {
-          description: '工具调用参数',
-        }),
-      ],
+      inputPorts: [],
       outputPorts: [
-        createPort('tool-output', '工具输出', 'output', 'tool', {
+        createPort('tool-out', '工具', 'output', 'tool', {
           description: 'MCP 工具执行结果',
         }),
       ],
@@ -154,14 +145,9 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       icon: 'BookOpen',
       description: '为 Agent 暴露一个可选知识库，运行时通过统一 search_knowledge 工具显式选择',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.knowledge,
-      inputPorts: [
-        createPort('query-in', '查询输入', 'input', 'text', {
-          required: true,
-          description: '检索查询文本',
-        }),
-      ],
+      inputPorts: [],
       outputPorts: [
-        createPort('knowledge-output', '知识输出', 'output', 'knowledge', {
+        createPort('knowledge-out', '知识库', 'output', 'knowledge', {
           description: '检索到的知识条目',
         }),
       ],
@@ -185,7 +171,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.memory,
       inputPorts: [],
       outputPorts: [
-        createPort('memory-out-0', 'Memory', 'output', 'memory', {
+        createPort('memory-out', '记忆', 'output', 'memory', {
           description: '记忆会话引用',
         }),
       ],
@@ -216,15 +202,15 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       description: '调用另一个 Agent 执行特定子任务',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
       inputPorts: [
-        createPort('text-input', '文本输入', 'input', 'text', {
+        createPort('text-in', '文本', 'input', 'text', {
           description: '文本格式任务输入',
         }),
-        createPort('json-input', 'JSON 输入', 'input', 'json', {
+        createPort('json-in', 'JSON', 'input', 'json', {
           description: 'JSON 格式任务输入',
         }),
       ],
       outputPorts: [
-        createPort('agent-output', 'Agent 输出', 'output', 'agent', {
+        createPort('agent-out', 'Agent', 'output', 'agent', {
           description: '子 Agent 引用输出',
         }),
       ],
@@ -252,15 +238,15 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
       inputPorts: [
-        createPort('text-input', '文本', 'input', 'text', {
+        createPort('text-in', '文本', 'input', 'text', {
           description: '文本格式输入数据',
         }),
-        createPort('json-input', 'JSON', 'input', 'json', {
+        createPort('json-in', 'JSON', 'input', 'json', {
           description: 'JSON 格式输入数据',
         }),
       ],
       outputPorts: [
-        createPort('json-output', 'JSON', 'output', 'json', {
+        createPort('json-out', 'JSON', 'output', 'json', {
           description: '预处理转换结果',
         }),
       ],
@@ -344,7 +330,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       maxInstances: 1,
       inputPorts: [],
       outputPorts: [
-        createPort('volume-output', '工作区卷', 'output', 'volume', {
+        createPort('volume-out', '工作区', 'output', 'volume', {
           description: '挂载到沙箱的工作区存储',
         }),
       ],

@@ -138,12 +138,14 @@ function collectSandboxSessionIds(steps: schema.ExecutionStep[]): string[] {
 
   for (const step of steps) {
     if (isRecord(step.input)) {
-      const inputSandboxId = readSandboxSessionId(step.input.sandbox);
+      const inputSandboxId = readSandboxSessionId(step.input['sandbox-in']) ?? readSandboxSessionId(step.input.sandbox);
       if (inputSandboxId) {
         sessionIds.add(inputSandboxId);
       }
 
       const inputSandboxOutputId = readSandboxSessionId(
+        step.input['sandbox-out'],
+      ) ?? readSandboxSessionId(
         step.input['sandbox-output'],
       );
       if (inputSandboxOutputId) {
@@ -161,6 +163,8 @@ function collectSandboxSessionIds(steps: schema.ExecutionStep[]): string[] {
     }
 
     const resultSandboxOutputId = readSandboxSessionId(
+      step.result['sandbox-out'],
+    ) ?? readSandboxSessionId(
       step.result['sandbox-output'],
     );
     if (resultSandboxOutputId) {
@@ -180,23 +184,26 @@ function patchExecutionStepSandboxStatuses(
 
   if (isRecord(step.input)) {
     const nextSandbox = patchSandboxReferenceStatus(
-      step.input.sandbox,
+      step.input['sandbox-in'] ?? step.input.sandbox,
       statusBySessionId,
     );
     const nextSandboxOutput = patchSandboxReferenceStatus(
-      step.input['sandbox-output'],
+      step.input['sandbox-out'] ?? step.input['sandbox-output'],
       statusBySessionId,
     );
 
+    const origSandbox = step.input['sandbox-in'] ?? step.input.sandbox;
+    const origSandboxOutput = step.input['sandbox-out'] ?? step.input['sandbox-output'];
+
     if (
-      nextSandbox !== step.input.sandbox ||
-      nextSandboxOutput !== step.input['sandbox-output']
+      nextSandbox !== origSandbox ||
+      nextSandboxOutput !== origSandboxOutput
     ) {
       nextInput = {
         ...step.input,
-        ...(nextSandbox !== step.input.sandbox ? { sandbox: nextSandbox } : {}),
-        ...(nextSandboxOutput !== step.input['sandbox-output']
-          ? { 'sandbox-output': nextSandboxOutput }
+        ...(nextSandbox !== origSandbox ? { 'sandbox-in': nextSandbox } : {}),
+        ...(nextSandboxOutput !== origSandboxOutput
+          ? { 'sandbox-out': nextSandboxOutput }
           : {}),
       };
     }
@@ -208,18 +215,20 @@ function patchExecutionStepSandboxStatuses(
       statusBySessionId,
     );
     const nextSandboxOutput = patchSandboxReferenceStatus(
-      step.result['sandbox-output'],
+      step.result['sandbox-out'] ?? step.result['sandbox-output'],
       statusBySessionId,
     );
 
+    const origSandboxOutput = step.result['sandbox-out'] ?? step.result['sandbox-output'];
+
     if (
       nextRootResult !== step.result ||
-      nextSandboxOutput !== step.result['sandbox-output']
+      nextSandboxOutput !== origSandboxOutput
     ) {
       nextResult = {
         ...(isRecord(nextRootResult) ? nextRootResult : step.result),
-        ...(nextSandboxOutput !== step.result['sandbox-output']
-          ? { 'sandbox-output': nextSandboxOutput }
+        ...(nextSandboxOutput !== origSandboxOutput
+          ? { 'sandbox-out': nextSandboxOutput }
           : {}),
       };
     }

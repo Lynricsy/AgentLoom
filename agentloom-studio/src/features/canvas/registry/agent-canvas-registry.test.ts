@@ -17,7 +17,7 @@ describe('agent-canvas-registry', () => {
     })
     expect(memoryNode?.outputPorts).toHaveLength(1)
     expect(memoryNode?.outputPorts[0]).toMatchObject({
-      id: 'memory-out-0',
+      id: 'memory-out',
       dataType: 'memory',
       direction: 'output',
     })

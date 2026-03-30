@@ -94,16 +94,16 @@ describe('chat-agent 端口定义', () => {
   })
 
   describe('输入端口', () => {
-    it('messages 端口: json 类型, 单连接', () => {
-      const port = findPort(agentType.inputPorts, 'messages')
+    it('messages-in 端口: json 类型, 单连接', () => {
+      const port = findPort(agentType.inputPorts, 'messages-in')
       expect(port.dataType).toBe('json')
       expect(port.multiple).toBe(false)
       expect(port.maxConnections).toBe(1)
       expect(port.required).toBe(false)
     })
 
-    it('model 端口: model 类型, 单连接', () => {
-      const port = findPort(agentType.inputPorts, 'model')
+    it('model-in 端口: model 类型, 单连接', () => {
+      const port = findPort(agentType.inputPorts, 'model-in')
       expect(port.dataType).toBe('model')
       expect(port.multiple).toBe(false)
       expect(port.maxConnections).toBe(1)
@@ -112,15 +112,15 @@ describe('chat-agent 端口定义', () => {
   })
 
   describe('输出端口', () => {
-    it('reply 端口: text 类型, 单连接', () => {
-      const port = findPort(agentType.outputPorts, 'reply')
+    it('reply-out 端口: text 类型, 单连接', () => {
+      const port = findPort(agentType.outputPorts, 'reply-out')
       expect(port.dataType).toBe('text')
       expect(port.multiple).toBe(false)
       expect(port.maxConnections).toBe(1)
     })
 
-    it('structured 端口: json 类型, 单连接', () => {
-      const port = findPort(agentType.outputPorts, 'structured')
+    it('structured-out 端口: json 类型, 单连接', () => {
+      const port = findPort(agentType.outputPorts, 'structured-out')
       expect(port.dataType).toBe('json')
       expect(port.multiple).toBe(false)
       expect(port.maxConnections).toBe(1)

@@ -43,7 +43,7 @@ export function buildAgentPromptContentBlocks(params: {
 function extractPrimaryTextInput(
   input: Record<string, unknown>,
 ): string | undefined {
-  const directText = input['text-input'];
+  const directText = input['text-in'] ?? input['text-input'];
   if (typeof directText === 'string' && directText.trim().length > 0) {
     return directText;
   }
@@ -60,6 +60,7 @@ function omitPrimaryTextInput(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
   const normalizedInput = { ...input };
+  delete normalizedInput['text-in'];
   delete normalizedInput['text-input'];
   delete normalizedInput.textInput;
   return normalizedInput;
@@ -71,11 +72,11 @@ function sanitizePromptInput(
   const sanitized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(input)) {
-    if (key === 'sandbox') {
+    if (key === 'sandbox-in' || key === 'sandbox') {
       continue;
     }
 
-    if (key === 'context' && isRuntimeResourceReference(value)) {
+    if ((key === 'context-in' || key === 'context') && isRuntimeResourceReference(value)) {
       continue;
     }
 

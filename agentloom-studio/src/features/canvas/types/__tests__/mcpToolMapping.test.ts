@@ -83,7 +83,7 @@ describe('mcpToolMapping', () => {
 
       expect(inputPorts).toHaveLength(0)
       expect(outputPorts).toHaveLength(1)
-      expect(outputPorts[0]).toMatchObject({ id: 'tool-output', dataType: 'tool', direction: 'output' })
+      expect(outputPorts[0]).toMatchObject({ id: 'tool-out', dataType: 'tool', direction: 'output' })
     })
   })
 })

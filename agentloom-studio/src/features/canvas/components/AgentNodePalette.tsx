@@ -89,7 +89,7 @@ const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
     label: '环境',
     icon: NODE_CATEGORIES.tool.icon,
     color: NODE_CATEGORIES.tool.color,
-    items: resolveNodes(['sandbox']),
+    items: resolveNodes(['sandbox', 'workspace']),
   },
 ]
 

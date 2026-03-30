@@ -132,7 +132,7 @@ const mixedTargetNodes: CanvasNode[] = [
       config: {},
       inputPorts: [
         {
-          id: 'model-input',
+          id: 'model-in',
           label: 'Model',
           direction: 'input',
           dataType: 'model',
@@ -511,8 +511,8 @@ describe('WorkflowCanvas', () => {
           type: 'smart',
           source: 'a',
           target: 'b',
-          sourceHandle: 'structured-output',
-          targetHandle: 'context',
+          sourceHandle: 'structured-out',
+          targetHandle: 'context-in',
           data: createDefaultEdgeData(),
         },
       ],
@@ -533,8 +533,8 @@ describe('WorkflowCanvas', () => {
       await onConnect({
         source: 'b',
         target: 'a',
-        sourceHandle: 'structured-output',
-        targetHandle: 'context',
+        sourceHandle: 'structured-out',
+        targetHandle: 'context-in',
       })
     })
 
@@ -561,8 +561,8 @@ describe('WorkflowCanvas', () => {
         type: 'smart',
         source: 'hub',
         target: target.id,
-        sourceHandle: 'agent-output',
-        targetHandle: 'content',
+        sourceHandle: 'agent-out',
+        targetHandle: 'content-in',
         data: createDefaultEdgeData(),
       })),
     }))
@@ -582,8 +582,8 @@ describe('WorkflowCanvas', () => {
       await onConnect({
         source: 'hub',
         target: 'target-10',
-        sourceHandle: 'agent-output',
-        targetHandle: 'content',
+        sourceHandle: 'agent-out',
+        targetHandle: 'content-in',
       })
     })
 

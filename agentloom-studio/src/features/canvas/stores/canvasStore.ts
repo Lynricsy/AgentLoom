@@ -98,6 +98,7 @@ interface CanvasActions {
     commitViewport: (viewport: Viewport) => void
     applyServerSnapshot: (snapshot: CanvasSnapshot & { workflowId: string; version: number }) => void
     markSaved: (version: number) => void
+    advanceVersion: (version: number) => void
     setIsSaving: (saving: boolean) => void
     reset: () => void
     toggleSearch: () => void
@@ -260,7 +261,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                       agentData.knowledgeBindings = (agentData.knowledgeBindings ?? []).filter(
                         (id) => id !== edge.source,
                       )
-                    } else if (handle === 'model') {
+                    } else if (handle === 'model-in') {
                       agentData.modelConfig = {
                         ...agentData.modelConfig,
                         connectedModelNodeId: null,
@@ -324,7 +325,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   agentData.toolBindings = [...(agentData.toolBindings ?? []), connection.source]
                 } else if (handle === 'knowledge') {
                   agentData.knowledgeBindings = [...(agentData.knowledgeBindings ?? []), connection.source]
-                } else if (handle === 'model') {
+                } else if (handle === 'model-in') {
                   agentData.modelConfig = {
                     ...agentData.modelConfig,
                     connectedModelNodeId: connection.source,
@@ -667,6 +668,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.lastSavedAt = new Date()
               state.isSaving = false
               state.version = version
+            }),
+
+          advanceVersion: (version) =>
+            set((state) => {
+              state.version = version
+              state.isSaving = false
             }),
 
           setIsSaving: (saving) =>

@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { buildAgentPromptContentBlocks } from '../agent-prompt-content.builder';
 
 describe('buildAgentPromptContentBlocks', () => {
-  it('text-input 应作为主提示文本，并忽略 sandbox 等运行时句柄', () => {
+  it('text-in 应作为主提示文本，并忽略 sandbox-in 等运行时句柄', () => {
     const blocks = buildAgentPromptContentBlocks({
       input: {
-        'text-input': '请总结这个主题',
-        sandbox: { status: 'creating', sessionId: 'sandbox-001' },
+        'text-in': '请总结这个主题',
+        'sandbox-in': { status: 'creating', sessionId: 'sandbox-001' },
       },
     });
 
@@ -19,11 +19,11 @@ describe('buildAgentPromptContentBlocks', () => {
     ]);
   });
 
-  it('context 为 memory session 引用时不应进入文本摘要', () => {
+  it('context-in 为 memory session 引用时不应进入文本摘要', () => {
     const blocks = buildAgentPromptContentBlocks({
       input: {
-        'text-input': '继续处理上一步',
-        context: {
+        'text-in': '继续处理上一步',
+        'context-in': {
           sessionId: 'memory-session-001',
           instanceId: 'memory-instance-001',
           role: 'primary',

@@ -44,7 +44,7 @@ const VALID_DEFINITION = {
       label: '结果',
       dataType: 'json' as const,
       sourceNodeId: 'node-1',
-      sourcePortId: 'result',
+      sourcePortId: 'result-out',
     },
   ],
   viewport: { x: 0, y: 0, zoom: 1 },

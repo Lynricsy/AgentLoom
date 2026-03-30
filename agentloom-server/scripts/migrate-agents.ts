@@ -484,10 +484,10 @@ function mapIncomingTargetHandle(
     typeof edge.targetHandle === 'string' &&
     CONTEXT_INPUT_HANDLES.has(edge.targetHandle)
   ) {
-    return 'context';
+    return 'context-in';
   }
 
-  return isLikelyJsonSource(edge, sourceNode) ? 'context' : 'text-input';
+  return isLikelyJsonSource(edge, sourceNode) ? 'context-in' : 'text-in';
 }
 
 function mapOutgoingSourceHandle(
@@ -498,17 +498,18 @@ function mapOutgoingSourceHandle(
 
   if (
     sourceHandle === 'structured-output' ||
+    sourceHandle === 'structured-out' ||
     sourceHandle === 'telemetry' ||
     sourceHandle === 'evidence-requests'
   ) {
-    return 'structured-output';
+    return 'structured-out';
   }
 
   if (targetNode?.type === 'json-output') {
-    return 'structured-output';
+    return 'structured-out';
   }
 
-  return 'agent-output';
+  return 'agent-out';
 }
 
 function applyWorkflowMigration(

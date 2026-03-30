@@ -208,8 +208,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'MessageSquare',
     description: '对话型 Agent 节点',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [createPort('messages', 'messages', 'input', 'json'), createPort('model', 'model', 'input', 'model')],
-    outputPorts: [createPort('reply', 'reply', 'output', 'text'), createPort('structured', 'structured', 'output', 'json')],
+    inputPorts: [createPort('messages-in', 'messages', 'input', 'json'), createPort('model-in', '模型', 'input', 'model')],
+    outputPorts: [createPort('reply-out', 'reply', 'output', 'text'), createPort('structured-out', 'structured', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -226,7 +226,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '配置 LLM provider 和模型参数，通过连线为 Agent 提供模型能力',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [],
-    outputPorts: [createPort('model-output', '模型输出', 'output', 'model', {
+    outputPorts: [createPort('model-out', '模型', 'output', 'model', {
       multiple: true,
       maxConnections: 5,
     })],
@@ -239,8 +239,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Globe',
     description: 'HTTP 请求工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('request', 'JSON', 'input', 'json')],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('response', 'JSON', 'output', 'json')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('request-in', 'JSON', 'input', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('response-out', 'JSON', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -269,8 +269,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Code',
     description: '代码执行工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('input', 'input', 'input', 'json')],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('result', 'result', 'output', 'json'), createPort('stdout', 'stdout', 'output', 'text')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('input-in', 'input', 'input', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('result-out', 'result', 'output', 'json'), createPort('stdout-out', 'stdout', 'output', 'text')],
     configSchema: {
       type: 'object',
       properties: {
@@ -292,7 +292,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'MCP 工具节点',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [],
-    outputPorts: [createPort('tool-output', 'Tool', 'output', 'tool', {
+    outputPorts: [createPort('tool-out', '工具', 'output', 'tool', {
       description: '连接到 Agent 的工具端口',
     })],
     configSchema: EMPTY_CONFIG_SCHEMA,
@@ -308,7 +308,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort('volume-in', '工作区', 'input', 'volume', { required: false }),
     ],
     outputPorts: [
-      createPort('sandbox-output', 'Sandbox 环境', 'output', 'sandbox', {
+      createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
         multiple: true,
         maxConnections: null,
         description: 'Agent 可用的沙箱环境',
@@ -334,7 +334,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '手动触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'schedule-trigger': {
@@ -345,7 +345,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '定时触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -363,7 +363,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'Webhook 触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -384,7 +384,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'API 事件触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec_out', '', 'output', 'exec'), createPort('payload', 'payload', 'output', 'json')],
+    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -403,7 +403,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '知识库检索节点',
     colorToken: CATEGORY_COLOR_TOKENS.knowledge,
     inputPorts: [],
-    outputPorts: [createPort('knowledge', 'knowledge', 'output', 'knowledge')],
+    outputPorts: [createPort('knowledge-out', '知识库', 'output', 'knowledge')],
     configSchema: {
       type: 'object',
       properties: {
@@ -419,7 +419,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'FileText',
     description: '文本输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('content', 'content', 'input', 'text')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('content-in', 'content', 'input', 'text')],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -430,7 +430,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Braces',
     description: 'JSON 输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('content', 'content', 'input', 'json')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('content-in', 'content', 'input', 'json')],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -441,8 +441,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'GitBranch',
     description: '条件分支节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('input', 'input', 'input', 'json')],
-    outputPorts: [createPort('matched', 'matched', 'output', 'json'), createPort('unmatched', 'unmatched', 'output', 'json')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('input-in', 'input', 'input', 'json')],
+    outputPorts: [createPort('matched-out', 'matched', 'output', 'json'), createPort('unmatched-out', 'unmatched', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -464,8 +464,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Repeat',
     description: '循环控制节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('exec_in', '', 'input', 'exec'), createPort('items', 'items', 'input', 'json')],
-    outputPorts: [createPort('item', 'item', 'output', 'json'), createPort('done', 'done', 'output', 'json')],
+    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('items-in', 'items', 'input', 'json')],
+    outputPorts: [createPort('item-out', 'item', 'output', 'json'), createPort('done-out', 'done', 'output', 'json')],
     configSchema: {
       type: 'object',
       properties: {
@@ -545,7 +545,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
-      createPort('exec_in', '', 'input', 'exec'),
+      createPort('exec-in', '', 'input', 'exec'),
       createPort('text-in', '文本', 'input', 'text', {
         description: '文本格式输入数据',
       }),
@@ -554,7 +554,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
-      createPort('exec_out', '', 'output', 'exec'),
+      createPort('exec-out', '', 'output', 'exec'),
       createPort('text-out', '文本', 'output', 'text', {
         description: '文本格式转换结果',
         multiple: true,
@@ -588,7 +588,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     colorToken: CATEGORY_COLOR_TOKENS.memory,
     inputPorts: [],
     outputPorts: [
-      createPort('memory-out-0', 'Memory', 'output', 'memory', {
+      createPort('memory-out', '记忆', 'output', 'memory', {
         description: '记忆会话引用',
       }),
     ],
@@ -616,18 +616,18 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '调用已发布的 Agent Definition 执行任务',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
-      createPort('text-input', '文本输入', 'input', 'text', {
+      createPort('text-in', '文本', 'input', 'text', {
         required: true,
         description: 'Agent 的文本输入',
       }),
-      createPort('sandbox', 'Sandbox', 'input', 'sandbox', {
+      createPort('sandbox-in', '沙箱', 'input', 'sandbox', {
         maxConnections: 1,
         description: '外部沙箱（覆盖 Agent 内置沙箱配置）',
       }),
-      createPort('context', '上下文', 'input', 'json', {
+      createPort('context-in', '上下文', 'input', 'json', {
         description: '附加上下文数据',
       }),
-      createPort('skills', 'Skills', 'input', 'skill', {
+      createPort('skills-in', 'Skills', 'input', 'skill', {
         multiple: true,
         maxConnections: null,
         description: 'Agent 可加载的技能指令',
@@ -648,12 +648,12 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
-      createPort('agent-output', 'Agent 输出', 'output', 'text', {
+      createPort('agent-out', 'Agent 文本', 'output', 'text', {
         multiple: true,
         maxConnections: null,
         description: 'Agent 执行的文本输出',
       }),
-      createPort('structured-output', '结构化输出', 'output', 'json', {
+      createPort('structured-out', '结构化', 'output', 'json', {
         multiple: true,
         maxConnections: null,
         description: 'Agent 执行的结构化输出',
@@ -695,7 +695,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [],
     outputPorts: [
-      createPort('volume-output', '工作区卷', 'output', 'volume', {
+      createPort('volume-out', '工作区', 'output', 'volume', {
         description: '挂载到沙箱的工作区存储',
       }),
     ],

@@ -114,8 +114,8 @@ describe('nodeTypeRegistry', () => {
     expect(llmModelNode.outputPorts).toHaveLength(1)
 
     expect(outputPort).toMatchObject({
-      id: 'model-output',
-      label: '模型输出',
+      id: 'model-out',
+      label: '模型',
       direction: 'output',
       dataType: 'model',
       required: false,
@@ -131,8 +131,8 @@ describe('nodeTypeRegistry', () => {
     expect(knowledgeBaseNode.inputPorts).toEqual([])
     expect(knowledgeBaseNode.outputPorts).toHaveLength(1)
     expect(outputPort).toMatchObject({
-      id: 'knowledge',
-      label: 'knowledge',
+      id: 'knowledge-out',
+      label: '知识库',
       direction: 'output',
       dataType: 'knowledge',
       required: false,
@@ -183,6 +183,7 @@ describe('nodeTypeRegistry', () => {
       'skill',
       'http-tool',
       'code-tool',
+      'mcp-tool',
       'sandbox',
       'input-preprocessor',
       'workspace',

@@ -117,8 +117,8 @@ describe('ReadonlyCanvas', () => {
               id: 'edge-1',
               source: 'node-1',
               target: 'node-2',
-              sourceHandle: 'agent-output',
-              targetHandle: 'content',
+              sourceHandle: 'agent-out',
+              targetHandle: 'content-in',
             },
           ],
         }}

@@ -12,7 +12,7 @@ function createSandboxNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasN
     inputPorts: [],
     outputPorts: [
       {
-        id: 'sandbox-output',
+        id: 'sandbox-out',
         label: 'Sandbox',
         direction: 'output' as const,
         dataType: 'sandbox' as const,

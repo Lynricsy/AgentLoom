@@ -438,8 +438,8 @@ describe('NodeSchedulerService', () => {
           id: 'node-trigger->node-condition',
           source: 'node-trigger',
           target: 'node-condition',
-          source_handle: 'payload',
-          target_handle: 'input',
+          source_handle: 'payload-out',
+          target_handle: 'input-in',
         } as ReactFlowEdge,
       ];
       const steps = [
@@ -452,13 +452,13 @@ describe('NodeSchedulerService', () => {
       ];
 
       expect(service.resolveNodeInput('node-condition', edges, steps)).toEqual({
-        input: { route: 'skip', topic: '验证 skip 分支' },
+        'input-in': { route: 'skip', topic: '验证 skip 分支' },
       });
     });
 
     it('condition 分支输出应为下游解包单一 input payload', () => {
       const edges = [
-        makeEdge('node-condition', 'node-preprocessor', 'matched', 'json-in'),
+        makeEdge('node-condition', 'node-preprocessor', 'matched-out', 'json-in'),
       ];
       const steps = [
         makeStep({
@@ -466,6 +466,9 @@ describe('NodeSchedulerService', () => {
           nodeType: 'condition',
           status: 'completed',
           result: {
+            'matched-out': {
+              input: { route: 'match', topic: '多 Agent 协作' },
+            },
             matched: {
               input: { route: 'match', topic: '多 Agent 协作' },
             },
@@ -482,8 +485,8 @@ describe('NodeSchedulerService', () => {
 
     it('同一 targetHandle 多个输入时应聚合为数组而不是后者覆盖前者', () => {
       const edges = [
-        makeEdge('skill-1', 'agent-1', 'skill-out', 'skills'),
-        makeEdge('skill-2', 'agent-1', 'skill-out', 'skills'),
+        makeEdge('skill-1', 'agent-1', 'skill-out', 'skills-in'),
+        makeEdge('skill-2', 'agent-1', 'skill-out', 'skills-in'),
       ];
       const steps = [
         makeStep({
@@ -505,7 +508,7 @@ describe('NodeSchedulerService', () => {
       ];
 
       expect(service.resolveNodeInput('agent-1', edges, steps)).toEqual({
-        skills: [
+        'skills-in': [
           { skills: [{ id: 'skill-a', name: '技能 A', content: 'A' }] },
           { skills: [{ id: 'skill-b', name: '技能 B', content: 'B' }] },
         ],
@@ -529,9 +532,9 @@ describe('NodeSchedulerService', () => {
   describe('getSchedulingDecision', () => {
     it('当已连接的必填输入端口全部来自 skipped 前驱时应返回 skip', () => {
       const edges = [
-        makeEdge('preprocessor', 'agent-a', 'text-out', 'text-input'),
-        makeEdge('sandbox', 'agent-a', 'sandbox-output', 'sandbox'),
-        makeEdge('memory', 'agent-a', 'memory-out-0', 'context'),
+        makeEdge('preprocessor', 'agent-a', 'text-out', 'text-in'),
+        makeEdge('sandbox', 'agent-a', 'sandbox-out', 'sandbox-in'),
+        makeEdge('memory', 'agent-a', 'memory-out', 'context-in'),
       ];
       const steps = [
         makeStep({
@@ -555,9 +558,9 @@ describe('NodeSchedulerService', () => {
           nodeType: 'agent',
           nodeData: {
             input_ports: [
-              { id: 'text-input', required: true },
-              { id: 'sandbox', required: false },
-              { id: 'context', required: false },
+              { id: 'text-in', required: true },
+              { id: 'sandbox-in', required: false },
+              { id: 'context-in', required: false },
             ],
           },
         }),
@@ -784,7 +787,7 @@ describe('NodeSchedulerService', () => {
     it('chat-agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
       const snapshot = makeSnapshot(
         [makeNode('M', 'llm-model'), makeNode('C', 'chat-agent')],
-        [makeEdge('M', 'C', 'model-output', 'model')],
+        [makeEdge('M', 'C', 'model-out', 'model')],
       );
       const steps = [
         makeStep({
@@ -951,7 +954,7 @@ describe('NodeSchedulerService', () => {
           result: expect.objectContaining({
             sessionId: '019577a0-0000-7000-8000-sandbox00001',
             status: 'creating',
-            'sandbox-output': expect.objectContaining({
+            'sandbox-out': expect.objectContaining({
               sessionId: '019577a0-0000-7000-8000-sandbox00001',
               status: 'creating',
             }),
@@ -1030,7 +1033,7 @@ describe('NodeSchedulerService', () => {
             instanceId: '019577a0-0000-7000-8000-memoryinst001',
             role: 'readonly',
             status: 'active',
-            'memory-out-0': expect.objectContaining({
+            'memory-out': expect.objectContaining({
               sessionId: '019577a0-0000-7000-8000-memory000001',
               instanceId: '019577a0-0000-7000-8000-memoryinst001',
               role: 'readonly',
@@ -1335,7 +1338,7 @@ describe('NodeSchedulerService', () => {
           result: expect.objectContaining({
             workspaceId: '019577a0-0000-7000-8000-workspace0001',
             workspaceName: 'QA Workspace',
-            'volume-output': expect.objectContaining({
+            'volume-out': expect.objectContaining({
               workspaceId: '019577a0-0000-7000-8000-workspace0001',
               workspaceName: 'QA Workspace',
             }),
@@ -1407,7 +1410,7 @@ describe('NodeSchedulerService', () => {
             },
           }),
         ],
-        [makeEdge('A', 'P', 'payload', 'json-in')],
+        [makeEdge('A', 'P', 'payload-out', 'json-in')],
       );
       const steps = [
         makeStep({
@@ -1451,7 +1454,7 @@ describe('NodeSchedulerService', () => {
           result: {
             text: '主题：多 Agent 协作\\n请保留 route=match。',
             'text-out': '主题：多 Agent 协作\\n请保留 route=match。',
-            exec_out: { triggered: true },
+            'exec-out': { triggered: true },
             _outputFormat: 'text',
           },
         }),
@@ -1468,7 +1471,7 @@ describe('NodeSchedulerService', () => {
             },
           }),
         ],
-        [makeEdge('T', 'L', 'payload', 'items')],
+        [makeEdge('T', 'L', 'payload-out', 'items')],
       );
       const steps = [
         makeStep({
@@ -1539,7 +1542,7 @@ describe('NodeSchedulerService', () => {
             },
           }),
         ],
-        [makeEdge('T', 'L', 'payload', 'items')],
+        [makeEdge('T', 'L', 'payload-out', 'items')],
       );
       const steps = [
         makeStep({
@@ -1620,7 +1623,7 @@ describe('NodeSchedulerService', () => {
             config: { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
           }),
         ],
-        [makeEdge('W', 'S', 'volume-output', 'volume-in')],
+        [makeEdge('W', 'S', 'volume-out', 'volume-in')],
       );
       const steps = [
         makeStep({
@@ -2460,7 +2463,7 @@ describe('NodeSchedulerService', () => {
     it('http-tool 节点应同步执行 HTTP 请求并直接完成', async () => {
       const snapshot = makeSnapshot(
         [makeNode('P'), makeNode('H', 'http-tool')],
-        [makeEdge('P', 'H', undefined, 'request')],
+        [makeEdge('P', 'H', undefined, 'request-in')],
       );
       const steps = [
         makeStep({
@@ -2558,7 +2561,7 @@ describe('NodeSchedulerService', () => {
               },
               body: { answer: 'ok' },
             },
-            exec_out: {
+            'exec-out': {
               triggered: true,
               success: true,
               status: 200,
@@ -2598,7 +2601,7 @@ describe('NodeSchedulerService', () => {
       ];
       const codeSnapshot = makeSnapshot(
         [makeNode('input-source'), makeNode('C', 'code-tool')],
-        [makeEdge('input-source', 'C', undefined, 'input')],
+        [makeEdge('input-source', 'C', undefined, 'input-in')],
       );
 
       mockCodeExecutionService.execute.mockResolvedValue({
@@ -2640,7 +2643,7 @@ describe('NodeSchedulerService', () => {
             stdout: 'done',
             stderr: '',
             executionTimeMs: 12,
-            exec_out: {
+            'exec-out': {
               triggered: true,
               success: true,
             },
@@ -2944,6 +2947,8 @@ describe('NodeSchedulerService', () => {
         {
           result: {
             branch: 'matched',
+            'matched-out': { A: { score: 92 } },
+            'unmatched-out': null,
             matched: { A: { score: 92 } },
             unmatched: null,
             true: { A: { score: 92 } },
@@ -2999,6 +3004,10 @@ describe('NodeSchedulerService', () => {
         {
           result: {
             branch: 'unmatched',
+            'matched-out': null,
+            'unmatched-out': {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
             matched: null,
             unmatched: {
               input: { route: 'skip', topic: '验证 skip 分支' },

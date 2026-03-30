@@ -1449,7 +1449,7 @@ describe('ExecutionService', () => {
           result: {
             sessionId: sandboxSessionId,
             status: 'creating',
-            'sandbox-output': {
+            'sandbox-out': {
               sessionId: sandboxSessionId,
               status: 'creating',
             },
@@ -1463,11 +1463,11 @@ describe('ExecutionService', () => {
           stepOrder: 1,
           status: 'completed',
           input: {
-            sandbox: {
+            'sandbox-in': {
               sessionId: sandboxSessionId,
               status: 'creating',
             },
-            context: {
+            'context-in': {
               sessionId: 'memory-session-id',
               status: 'active',
             },
@@ -1491,7 +1491,7 @@ describe('ExecutionService', () => {
           result: {
             sessionId: sandboxSessionId,
             status: 'stopped',
-            'sandbox-output': {
+            'sandbox-out': {
               sessionId: sandboxSessionId,
               status: 'stopped',
             },
@@ -1500,11 +1500,11 @@ describe('ExecutionService', () => {
         {
           ...mockSteps[1],
           input: {
-            sandbox: {
+            'sandbox-in': {
               sessionId: sandboxSessionId,
               status: 'stopped',
             },
-            context: {
+            'context-in': {
               sessionId: 'memory-session-id',
               status: 'active',
             },

@@ -11,7 +11,7 @@ export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const changeRevisionRef = useRef(0)
   const { mutate: updateWorkflow } = useUpdateWorkflow(workflowId)
-  const { markSaved, setIsSaving } = useCanvasStore((state) => state.actions)
+  const { markSaved, setIsSaving, advanceVersion } = useCanvasStore((state) => state.actions)
   const { notify } = useToast()
   const isReadOnly = workflowStatus === 'archived'
 
@@ -31,7 +31,6 @@ export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus)
         edges: state.edges,
         viewport: state.viewport,
         isDirty: state.isDirty,
-        version: state.version,
       }),
       (current, prev) => {
         if (!current.isDirty) return
@@ -40,8 +39,7 @@ export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus)
           current.nodes === prev.nodes &&
           current.edges === prev.edges &&
           current.viewport === prev.viewport &&
-          current.isDirty === prev.isDirty &&
-          current.version === prev.version
+          current.isDirty === prev.isDirty
         ) {
           return
         }
@@ -67,6 +65,8 @@ export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus)
           updateWorkflow(payload, {
             onSuccess: (data) => {
               if (scheduledRevision !== changeRevisionRef.current) {
+                // 保存成功但期间有新编辑，仍需同步 version 以避免后续 OCC 409 冲突
+                advanceVersion(data.version)
                 return
               }
 
@@ -96,5 +96,5 @@ export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus)
         clearTimeout(timerRef.current)
         }
       }
-    }, [workflowId, updateWorkflow, markSaved, notify, setIsSaving, isReadOnly])
+    }, [workflowId, updateWorkflow, markSaved, advanceVersion, notify, setIsSaving, isReadOnly])
 }

@@ -50,7 +50,7 @@ describe('sandbox node registry', () => {
   it('has a sandbox output port with correct config', () => {
     expect(sandboxConfig.outputPorts).toHaveLength(1)
     const output = sandboxConfig.outputPorts[0]!
-    expect(output.id).toBe('sandbox-output')
+    expect(output.id).toBe('sandbox-out')
     expect(output.dataType).toBe('sandbox')
     expect(output.direction).toBe('output')
     expect(output.multiple).toBe(true)

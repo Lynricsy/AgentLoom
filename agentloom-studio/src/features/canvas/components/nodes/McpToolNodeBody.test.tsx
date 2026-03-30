@@ -17,7 +17,7 @@ function createMcpNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeD
     inputPorts: [],
     outputPorts: [
       {
-        id: 'tool-output',
+        id: 'tool-out',
         label: 'Tool',
         direction: 'output' as const,
         dataType: 'tool' as const,

@@ -195,7 +195,7 @@ describe('CanvasNodeShell', () => {
         inputPorts: [],
         outputPorts: [
           {
-            id: 'tool-output',
+            id: 'tool-out',
             label: 'Tool',
             direction: 'output',
             dataType: 'tool',
@@ -460,10 +460,10 @@ describe('CanvasNodeShell', () => {
     expect(node.querySelector('[data-slot="outputs"]')).toBeNull()
     expect(node.querySelector('[data-slot="body"]')).toBeNull()
     expect(node.querySelectorAll('.port-row')).toHaveLength(0)
-    expect(screen.getByTestId('port-node-minimal-messages-input')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-model-input')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-reply-output')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-structured-output')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-messages-in-input')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-model-in-input')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-reply-out-output')).toBeInTheDocument()
+    expect(screen.getByTestId('port-node-minimal-structured-out-output')).toBeInTheDocument()
   })
 
   it('shows a single validation warning badge outside minimal mode', () => {

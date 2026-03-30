@@ -140,7 +140,7 @@ describe('useAutoSave', () => {
     })
 
     expect(useCanvasStore.getState().isDirty).toBe(true)
-    expect(useCanvasStore.getState().version).toBe(1)
+    expect(useCanvasStore.getState().version).toBe(2)
 
     act(() => {
       secondRequest.onSuccess?.({ version: 3 })

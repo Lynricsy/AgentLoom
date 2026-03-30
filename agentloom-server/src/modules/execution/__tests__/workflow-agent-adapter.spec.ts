@@ -343,7 +343,7 @@ describe('WorkflowAgentAdapter', () => {
     expect(result).toMatchObject({ content: 'sandbox-output' });
   });
 
-  it('text-input 应作为主提示文本注入，并从摘要 JSON 中剔除', async () => {
+  it('text-in 应作为主提示文本注入，并从摘要 JSON 中剔除', async () => {
     mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
       modelConfig: { modelId: 'model-parent' },
       sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
@@ -375,8 +375,8 @@ describe('WorkflowAgentAdapter', () => {
       executionId: EXECUTION_ID,
       step: makeStep(),
       input: {
-        'text-input': '请总结这个主题',
-        sandbox: { status: 'creating', sessionId: 'sandbox-001' },
+        'text-in': '请总结这个主题',
+        'sandbox-in': { status: 'creating', sessionId: 'sandbox-001' },
       },
       tenantId: TENANT_ID,
       versionSnapshot: parentSnapshot,
@@ -448,8 +448,8 @@ describe('WorkflowAgentAdapter', () => {
       executionId: EXECUTION_ID,
       step: makeStep(),
       input: {
-        'text-input': '请结合能力回答',
-        skills: [
+        'text-in': '请结合能力回答',
+        'skills-in': [
           {
             skills: [
               {
@@ -545,7 +545,7 @@ describe('WorkflowAgentAdapter', () => {
         }),
         context: expect.objectContaining({
           input: {
-            'text-input': '请结合能力回答',
+            'text-in': '请结合能力回答',
             context: [{ userNote: '保留的上下文' }],
           },
         }),
