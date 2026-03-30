@@ -776,3 +776,61 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Agent 对话页面 MCP 解析 / Markdown 渲染 / 布局修复
+
+**Date**: 2026-03-30
+**Task**: Agent 对话页面 MCP 解析 / Markdown 渲染 / 布局修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 本次会话完成内容
+
+| 变更 | 描述 |
+|------|------|
+| MCP 结果解析 | store 层 `unwrapMcpResult()` 统一解包 MCP 标准信封 `{content:[{type,text}]}`，覆盖实时事件和历史记录两条路径 |
+| Markdown 渲染增强 | 安装 `@tailwindcss/typography`（之前 prose 类完全无效），重写 MarkdownRenderer：代码块语言标签+复制按钮，`prose-agent` CSS 主题定制 |
+| 滚动修复 | flex 子项缺少 `min-h-0` 导致 MessageList 无法滚动，MessageList 根元素改 `h-full` |
+| 宽度溢出修复 | 左侧消息面板添加 `shrink-0` 防止被右侧电脑面板挤压 |
+| ThinkingBlock 增强 | 卡片式样式、中文"思考过程"标签、折叠时显示内容预览 |
+
+## 关键变更文件
+
+- `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts` — unwrapMcpResult
+- `agentloom-studio/src/shared/components/markdown/MarkdownRenderer.tsx` — 重写
+- `agentloom-studio/src/index.css` — typography 插件 + prose-agent CSS
+- `agentloom-studio/src/features/agent-conversation/components/MessageList.tsx` — 滚动+ThinkingBlock
+- `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx` — 布局修复
+
+## 技术决策
+
+- **MCP 结果在 store 层统一解包**而非在每个 renderer 里单独处理，因为 MCP SDK 的输出信封格式是协议标准，所有工具一致
+- **选择 @tailwindcss/typography** 而非手写 prose CSS，因为项目已用 Tailwind v4，typography 插件提供完整的排版基线
+- **`prose-agent` CSS 自定义类**通过 CSS 变量覆盖 typography 默认值，匹配项目暗色/亮色主题
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `164b21e` | (see git log) |
+| `1ed4718` | (see git log) |
+| `8dc70d0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
