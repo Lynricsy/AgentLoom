@@ -719,3 +719,60 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 统一端口 ID 命名规范与优化端口标签
+
+**Date**: 2026-03-30
+**Task**: 统一端口 ID 命名规范与优化端口标签
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 变更概要
+
+全面审计并优化 AgentLoom 两套画布注册表（22 个工作流节点 + 11 个 Agent 配置节点）的端口定义，统一命名规范。
+
+## 关键变更
+
+| 维度 | 内容 |
+|------|------|
+| 端口 ID 规范 | 全部统一为 `{name}-in` / `{name}-out`，`_` 分隔符改为 `-` |
+| 无效端口清理 | 删除 3 个无意义输入端口（llm-model/knowledge-base/mcp-tool 源节点） |
+| 标签优化 | "模型输出"→"模型"、"Sandbox 环境"→"沙箱" 等简洁中文名词 |
+| 后端兼容 | 执行引擎输入读取保留旧 ID 回退，结果构造仅写新 ID |
+
+## 影响范围
+
+- **34 个文件**（+237/-309 行）
+- 前端：nodeTypeRegistry.ts、agent-canvas-registry.ts、canvasStore.ts、mcpToolMapping.ts + 22 测试文件
+- 后端：node-scheduler.service.ts、execution.service.ts、agent-prompt-content.builder.ts、workflow-agent-adapter.ts、mcp.service.ts、migrate-agents.ts + 8 测试文件
+
+## 测试结果
+
+- Studio：214 文件 / 1710 测试全部通过
+- Server：277/278 文件通过（1 个预存 workflow-version 失败，与本次无关）
+- Typecheck：Server + Studio 均通过
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc728b2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
