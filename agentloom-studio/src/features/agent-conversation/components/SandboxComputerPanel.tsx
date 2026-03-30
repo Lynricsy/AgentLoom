@@ -10,8 +10,13 @@ import {
   FilePlus,
   FileX,
   FilePenLine,
+  Wrench,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { getToolRenderer } from '@/shared/components/tool-renderers/registry';
+import { defaultRendererDefinition } from '@/shared/components/tool-renderers/DefaultRenderer';
+import { deriveRenderState } from '@/shared/components/tool-renderers/ToolCallCard';
+import type { ToolCallData } from '@/shared/components/tool-renderers/types';
 import type { TerminalEntry, FileChange, SandboxStatus } from '../types';
 
 interface SandboxComputerPanelProps {
@@ -19,6 +24,8 @@ interface SandboxComputerPanelProps {
   terminalEntries: TerminalEntry[];
   fileChanges: FileChange[];
   sandboxStatus: SandboxStatus;
+  /** 当前活跃的工具调用（正在执行的），传入后自动切到工具详情 tab */
+  activeToolCall?: ToolCallData;
 }
 
 function StatusDot({ status }: { status: SandboxStatus }) {
@@ -226,15 +233,58 @@ function FileChangesView({ changes }: { changes: FileChange[] }) {
   );
 }
 
-type PanelTab = 'terminal' | 'changes';
+/** 活跃工具调用详情面板 */
+function ActiveToolView({ toolCall }: { toolCall: ToolCallData }) {
+  const renderer = getToolRenderer(toolCall.tool) ?? defaultRendererDefinition;
+  const state = deriveRenderState(toolCall.status);
+  const Icon = renderer.icon;
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2">
+        <Icon className="size-3.5 text-muted-foreground" />
+        <span className="text-xs font-mono font-medium text-foreground truncate">
+          {toolCall.tool}
+        </span>
+        <span
+          className={cn(
+            'ml-auto text-[10px] px-1.5 py-0.5 rounded',
+            state === 'completed' && 'bg-success/15 text-success',
+            state === 'failed' && 'bg-error/15 text-error',
+            (state === 'pending' || state === 'streaming') && 'bg-info/15 text-info',
+          )}
+        >
+          {state === 'completed' ? '完成' : state === 'failed' ? '失败' : '执行中'}
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        <renderer.Detail toolCall={toolCall} state={state} />
+      </div>
+    </div>
+  );
+}
+
+type PanelTab = 'terminal' | 'changes' | 'tool';
 
 export function SandboxComputerPanel({
   agentName,
   terminalEntries,
   fileChanges,
   sandboxStatus,
+  activeToolCall,
 }: SandboxComputerPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('terminal');
+  const prevToolRef = useRef<string | undefined>(undefined);
+
+  // 当有新的活跃工具调用时自动切到 tool tab
+  useEffect(() => {
+    if (activeToolCall && activeToolCall.id !== prevToolRef.current) {
+      prevToolRef.current = activeToolCall.id;
+      setActiveTab('tool');
+    } else if (!activeToolCall && activeTab === 'tool') {
+      setActiveTab('terminal');
+    }
+  }, [activeToolCall, activeTab]);
 
   return (
     <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
@@ -296,9 +346,26 @@ export function SandboxComputerPanel({
             </span>
           )}
         </button>
+        {activeToolCall && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('tool')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
+              activeTab === 'tool'
+                ? 'text-foreground border-b-2 border-info'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Wrench className="h-3 w-3" />
+            工具
+          </button>
+        )}
       </div>
 
-      {activeTab === 'terminal' ? (
+      {activeTab === 'tool' && activeToolCall ? (
+        <ActiveToolView toolCall={activeToolCall} />
+      ) : activeTab === 'terminal' ? (
         <TerminalView entries={terminalEntries} />
       ) : (
         <FileChangesView changes={fileChanges} />

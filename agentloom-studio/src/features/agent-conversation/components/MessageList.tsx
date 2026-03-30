@@ -6,49 +6,28 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import ReactMarkdown from 'react-markdown';
 import {
   Bot,
   ChevronDown,
   ChevronRight,
-  Loader2,
   User,
-  Wrench,
   Brain,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer';
+import { ToolCallCard } from '@/shared/components/tool-renderers';
+import type { ToolCallData } from '@/shared/components/tool-renderers';
 import type {
   ConversationMessage,
   SubAgentHandle,
   SubAgentRunStatus,
   ToolCall,
-  ToolCallStatus,
 } from '../types';
 import {
   useConversationActions,
-  useConversationId,
   useSubAgentStreams,
 } from '../stores/agent-conversation.store';
-import {
-  SubAgentStreamView,
-  SubAgentCompletionNotice,
-} from './SubAgentStreamView';
-
-function ToolStatusIcon({ status }: { status: ToolCallStatus }) {
-  switch (status) {
-    case 'pending':
-    case 'awaiting_permission':
-    case 'in_progress':
-      return <Loader2 className="size-3.5 animate-spin text-info" />;
-    case 'completed':
-      return <CheckCircle2 className="size-3.5 text-success" />;
-    case 'denied':
-    case 'failed':
-      return <XCircle className="size-3.5 text-error" />;
-  }
-}
+import { SubAgentCompletionNotice } from './SubAgentStreamView';
 
 function CollapsibleSection({
   title,
@@ -85,158 +64,18 @@ function CollapsibleSection({
   );
 }
 
-const SUB_AGENT_TOOL_NAMES = new Set(['call_subagent', 'spawn_subagent']);
-
-function isSubAgentToolCall(toolCall: ToolCall): boolean {
-  return SUB_AGENT_TOOL_NAMES.has(toolCall.tool);
-}
-
-function extractSubAgentHandle(toolCall: ToolCall): string | null {
-  if (!toolCall.args) return null;
-  if (typeof toolCall.args === 'string') {
-    try {
-      const parsed = JSON.parse(toolCall.args) as Record<string, unknown>;
-      return (parsed.handle ?? parsed.subagentHandle ?? null) as string | null;
-    } catch {
-      return null;
-    }
-  }
-
-  if (typeof toolCall.args === 'object') {
-    const parsed = toolCall.args as Record<string, unknown>;
-    return (parsed.handle ?? parsed.subagentHandle ?? null) as string | null;
-  }
-
-  return null;
-}
-
-const ToolCallItem = memo(function ToolCallItem({
-  toolCall,
-}: {
-  toolCall: ToolCall;
-}) {
-  const conversationId = useConversationId();
-  const { resolveToolPermission } = useConversationActions();
-  const [submittingAction, setSubmittingAction] = useState<
-    'approve' | 'deny' | null
-  >(null);
-  const isAwaitingPermission = toolCall.status === 'awaiting_permission';
-
-  const handlePermission = useCallback(
-    async (action: 'approve' | 'deny') => {
-      if (!conversationId || submittingAction) {
-        return;
-      }
-
-      setSubmittingAction(action);
-      try {
-        await resolveToolPermission(toolCall.id, action);
-      } finally {
-        setSubmittingAction(null);
-      }
-    },
-    [conversationId, resolveToolPermission, submittingAction, toolCall.id],
-  );
-
-  return (
-    <div className="flex items-start gap-2 py-1.5 text-xs">
-      <ToolStatusIcon status={toolCall.status} />
-      <div className="min-w-0 flex-1">
-        <span className="font-mono font-medium text-foreground">
-          {toolCall.tool}
-        </span>
-        {toolCall.args !== undefined && (
-          <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground">
-            {formatToolValue(toolCall.args)}
-          </pre>
-        )}
-        {toolCall.result !== undefined && (
-          <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground max-h-40 overflow-y-auto">
-            {formatToolValue(toolCall.result)}
-          </pre>
-        )}
-        {toolCall.error && (
-          <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-[11px] leading-relaxed text-error max-h-40 overflow-y-auto">
-            {toolCall.error}
-          </pre>
-        )}
-        {isAwaitingPermission && toolCall.permissionRequest && (
-          <div className="mt-2 rounded border border-warning/30 bg-warning/5 p-2 text-[11px] leading-relaxed text-muted-foreground">
-            {toolCall.permissionRequest.description && (
-              <p>{toolCall.permissionRequest.description}</p>
-            )}
-            {toolCall.permissionRequest.resourcePaths &&
-              toolCall.permissionRequest.resourcePaths.length > 0 && (
-                <pre className="mt-1 overflow-x-auto rounded bg-background p-2 text-[11px] text-muted-foreground">
-                  {toolCall.permissionRequest.resourcePaths.join('\n')}
-                </pre>
-              )}
-          </div>
-        )}
-        {isAwaitingPermission && conversationId && (
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              className="rounded border border-success/40 px-2 py-1 text-[11px] text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={() => void handlePermission('approve')}
-              disabled={submittingAction !== null}
-            >
-              {submittingAction === 'approve' ? '批准中…' : '批准'}
-            </button>
-            <button
-              type="button"
-              className="rounded border border-error/40 px-2 py-1 text-[11px] text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={() => void handlePermission('deny')}
-              disabled={submittingAction !== null}
-            >
-              {submittingAction === 'deny' ? '拒绝中…' : '拒绝'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-const SubAgentToolCallItem = memo(function SubAgentToolCallItem({
-  toolCall,
-  subAgentStreams,
-}: {
-  toolCall: ToolCall;
-  subAgentStreams: Record<string, import('../types').SubAgentStream>;
-}) {
-  const handle = extractSubAgentHandle(toolCall);
-  const stream = handle ? subAgentStreams[handle] : undefined;
-
-  if (!stream) {
-    return <ToolCallItem toolCall={toolCall} />;
-  }
-
-  return <SubAgentStreamView stream={stream} />;
-});
-
-function formatToolValue(value: unknown): string {
-  if (typeof value === 'string') {
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      return value;
-    }
-  }
-
-  if (value == null) {
-    return 'null';
-  }
-
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value);
-    }
-  }
-
-  return String(value);
+/** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
+function toToolCallData(tc: ToolCall): ToolCallData {
+  return {
+    id: tc.id,
+    tool: tc.tool,
+    args: tc.args,
+    result: tc.result,
+    error: tc.error,
+    status: tc.status,
+    permissionDescription: tc.permissionRequest?.description,
+    permissionResourcePaths: tc.permissionRequest?.resourcePaths,
+  };
 }
 
 function TypingIndicator() {
@@ -251,10 +90,8 @@ function TypingIndicator() {
 
 const MessageBubble = memo(function MessageBubble({
   message,
-  subAgentStreams,
 }: {
   message: ConversationMessage;
-  subAgentStreams: Record<string, import('../types').SubAgentStream>;
 }) {
   const isUser = message.role === 'user';
   const hasThinking = !!message.thinking;
@@ -264,37 +101,28 @@ const MessageBubble = memo(function MessageBubble({
     !message.isStreaming &&
     message.metadata?.emptyTurn === true;
 
-  const { regularTools, subAgentTools, runningCount, completedCount } =
-    useMemo(() => {
-      const regular: ToolCall[] = [];
-      const subAgent: ToolCall[] = [];
-      let running = 0;
-      let completed = 0;
+  const { resolveToolPermission } = useConversationActions();
 
-      for (const tc of message.toolCalls) {
-        if (isSubAgentToolCall(tc)) {
-          subAgent.push(tc);
-        } else {
-          regular.push(tc);
-        }
-        if (
-          tc.status === 'pending' ||
-          tc.status === 'awaiting_permission' ||
-          tc.status === 'in_progress'
-        ) {
-          running++;
-        } else {
-          completed++;
-        }
+  const handleResolvePermission = useCallback(
+    async (toolCallId: string, action: 'approve' | 'deny') => {
+      await resolveToolPermission(toolCallId, action);
+    },
+    [resolveToolPermission],
+  );
+
+  const { runningCount } = useMemo(() => {
+    let running = 0;
+    for (const tc of message.toolCalls) {
+      if (
+        tc.status === 'pending' ||
+        tc.status === 'awaiting_permission' ||
+        tc.status === 'in_progress'
+      ) {
+        running++;
       }
-
-      return {
-        regularTools: regular,
-        subAgentTools: subAgent,
-        runningCount: running,
-        completedCount: completed,
-      };
-    }, [message.toolCalls]);
+    }
+    return { runningCount: running };
+  }, [message.toolCalls]);
 
   return (
     <div
@@ -331,9 +159,7 @@ const MessageBubble = memo(function MessageBubble({
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
-            <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-background [&_pre]:rounded [&_pre]:p-3 [&_code]:text-info [&_a]:text-info">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
-            </div>
+            <MarkdownRenderer content={message.content} />
           ) : message.isStreaming ? (
             <TypingIndicator />
           ) : showEmptyTurnPlaceholder ? (
@@ -349,27 +175,19 @@ const MessageBubble = memo(function MessageBubble({
           </CollapsibleSection>
         )}
 
-        {!isUser && regularTools.length > 0 && (
-          <CollapsibleSection
-            title={`Tool calls (${completedCount}/${message.toolCalls.length})`}
-            icon={<Wrench className="size-3" />}
-            defaultOpen={runningCount > 0}
-          >
-            <div className="space-y-1">
-              {regularTools.map((tc) => (
-                <ToolCallItem key={tc.id} toolCall={tc} />
-              ))}
-            </div>
-          </CollapsibleSection>
-        )}
-
-        {!isUser && subAgentTools.length > 0 && (
-          <div className="mt-2 w-full space-y-2">
-            {subAgentTools.map((tc) => (
-              <SubAgentToolCallItem
+        {!isUser && message.toolCalls.length > 0 && (
+          <div className="mt-2 w-full space-y-1.5">
+            {message.toolCalls.map((tc) => (
+              <ToolCallCard
                 key={tc.id}
-                toolCall={tc}
-                subAgentStreams={subAgentStreams}
+                toolCall={toToolCallData(tc)}
+                defaultExpanded={
+                  runningCount > 0 &&
+                  (tc.status === 'pending' ||
+                    tc.status === 'awaiting_permission' ||
+                    tc.status === 'in_progress')
+                }
+                onResolvePermission={handleResolvePermission}
               />
             ))}
           </div>
@@ -405,7 +223,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const prevMessageCount = useRef(messages.length);
-  const subAgentStreams = useSubAgentStreams();
+  useSubAgentStreams(); // 保持订阅
 
   if (messages.length !== prevMessageCount.current) {
     prevMessageCount.current = messages.length;
@@ -434,7 +252,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
           <div className="text-center">
             <Bot className="mx-auto size-12 text-muted-foreground/30" />
             <p className="mt-3 text-sm text-muted-foreground">
-              Start a conversation with the agent
+              与 Agent 开始对话吧
             </p>
           </div>
         </div>
@@ -457,7 +275,6 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
               <MessageBubble
                 key={msg.id}
                 message={msg}
-                subAgentStreams={subAgentStreams}
               />
             ),
           )}

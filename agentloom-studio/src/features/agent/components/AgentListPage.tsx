@@ -362,7 +362,10 @@ export function AgentListPage() {
 
   const handleAgentClick = useCallback(
     (agent: AgentDefinition) => {
-      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+      navigate({
+        to: '/agents/$agentId/conversations/new',
+        params: { agentId: agent.id },
+      })
     },
     [navigate],
   )

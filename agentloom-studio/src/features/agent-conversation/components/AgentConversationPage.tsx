@@ -3,6 +3,7 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useMemo,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -18,9 +19,13 @@ import {
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { useAuthToken } from '@/features/auth/hooks/useAuthToken';
+import { SubAgentNavContext } from '@/shared/components/tool-renderers/renderers/SubAgentRenderer';
 import { MessageList } from './MessageList';
 import { SandboxComputerPanel } from './SandboxComputerPanel';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
+import { AgentViewBreadcrumb } from './AgentViewBreadcrumb';
+import type { ConversationMessage, SubAgentStream, ToolCall } from '../types';
+import type { ToolCallData } from '@/shared/components/tool-renderers/types';
 import {
   useConversationMessages,
   useConversationStatus,
@@ -31,6 +36,8 @@ import {
   useSandboxStatus,
   useSelectedFilePath,
   useAgentName,
+  useAgentViewStack,
+  useSubAgentStreams,
 } from '../stores/agent-conversation.store';
 
 interface AgentConversationPageProps {
@@ -42,6 +49,108 @@ interface AgentConversationPageProps {
 const MIN_LEFT_WIDTH = 360;
 const MIN_RIGHT_WIDTH = 280;
 const DEFAULT_LEFT_RATIO = 0.6;
+
+function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
+  const messages: ConversationMessage[] = [];
+  let assistantIdx = -1;
+
+  function ensureAssistant(): ConversationMessage {
+    if (assistantIdx >= 0) return messages[assistantIdx]!;
+    const msg: ConversationMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      toolCalls: [],
+      isStreaming: true,
+      createdAt: Date.now(),
+    };
+    messages.push(msg);
+    assistantIdx = messages.length - 1;
+    return msg;
+  }
+
+  for (const event of stream.events) {
+    switch (event.type) {
+      case 'message_chunk': {
+        const msg = ensureAssistant();
+        const payload = event.payload as { chunk?: string };
+        msg.content += payload.chunk ?? '';
+        break;
+      }
+      case 'thinking': {
+        const msg = ensureAssistant();
+        const payload = event.payload as { content?: string };
+        msg.thinking = (msg.thinking ?? '') + (payload.content ?? '');
+        break;
+      }
+      case 'tool_call': {
+        const msg = ensureAssistant();
+        const p = event.payload as {
+          toolCallId?: string;
+          tool?: string;
+          toolName?: string;
+          name?: string;
+          args?: unknown;
+          status?: string;
+        };
+        const toolCallId = p.toolCallId ?? event.id;
+        if (!msg.toolCalls.some((tc) => tc.id === toolCallId)) {
+          msg.toolCalls.push({
+            id: toolCallId,
+            tool: p.tool ?? p.toolName ?? p.name ?? 'unknown',
+            args: p.args,
+            status: (p.status as ToolCall['status']) ?? 'pending',
+            startedAt: event.timestamp,
+            updatedAt: event.timestamp,
+          });
+        }
+        break;
+      }
+      case 'tool_result': {
+        const msg = ensureAssistant();
+        const p = event.payload as {
+          toolCallId?: string;
+          tool?: string;
+          toolName?: string;
+          name?: string;
+          args?: unknown;
+          result?: unknown;
+          error?: string;
+          status?: string;
+        };
+        const toolCallId = p.toolCallId ?? event.id;
+        const existing = msg.toolCalls.find((tc) => tc.id === toolCallId);
+        if (existing) {
+          if (p.result !== undefined) existing.result = p.result;
+          if (p.error) existing.error = p.error;
+          existing.status = (p.status as ToolCall['status']) ?? 'completed';
+          existing.updatedAt = event.timestamp;
+        } else {
+          msg.toolCalls.push({
+            id: toolCallId,
+            tool: p.tool ?? p.toolName ?? p.name ?? 'unknown',
+            args: p.args,
+            result: p.result,
+            error: p.error,
+            status: (p.status as ToolCall['status']) ?? 'completed',
+            startedAt: event.timestamp,
+            updatedAt: event.timestamp,
+          });
+        }
+        break;
+      }
+      case 'done': {
+        if (assistantIdx >= 0) {
+          messages[assistantIdx]!.isStreaming = false;
+          assistantIdx = -1;
+        }
+        break;
+      }
+    }
+  }
+
+  return messages;
+}
 
 function ResizableDivider({
   onResize,
@@ -233,6 +342,8 @@ export function AgentConversationPage({
   const selectedFilePath = useSelectedFilePath();
   const agentName = useAgentName();
   const authToken = useAuthToken();
+  const agentViewStack = useAgentViewStack();
+  const subAgentStreams = useSubAgentStreams();
   const connectionError = useConversationStatus() === 'error'
     ? '连接失败，请刷新重试'
     : null;
@@ -297,7 +408,64 @@ export function AgentConversationPage({
   const isExecuting = status === 'executing';
   const currentLeftWidth = leftWidth ?? initLeftWidth();
 
+  const isSubAgentView = agentViewStack.length > 0;
+  const currentHandle = isSubAgentView
+    ? agentViewStack[agentViewStack.length - 1]
+    : null;
+  const currentStream = currentHandle
+    ? subAgentStreams[currentHandle]
+    : null;
+  const displayMessages = useMemo(
+    () => (currentStream ? buildSubAgentMessages(currentStream) : messages),
+    [currentStream, messages],
+  );
+
+  const subAgentNavValue = useMemo(
+    () => ({ onDrillIn: actions.pushAgentView }),
+    [actions.pushAgentView],
+  );
+
+  // 从最新的 assistant 消息中提取当前活跃的工具调用（用于 Computer 面板联动）
+  const activeToolCall = useMemo<ToolCallData | undefined>(() => {
+    if (!isExecuting) return undefined;
+    for (let i = displayMessages.length - 1; i >= 0; i--) {
+      const msg = displayMessages[i]!;
+      if (msg.role !== 'assistant') continue;
+      for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
+        const tc = msg.toolCalls[j]!;
+        if (
+          tc.status === 'pending' ||
+          tc.status === 'in_progress' ||
+          tc.status === 'awaiting_permission'
+        ) {
+          return {
+            id: tc.id,
+            tool: tc.tool,
+            args: tc.args,
+            result: tc.result,
+            error: tc.error,
+            status: tc.status,
+          };
+        }
+      }
+      // 没有活跃工具但有最近完成的，也展示
+      if (msg.toolCalls.length > 0) {
+        const tc = msg.toolCalls[msg.toolCalls.length - 1]!;
+        return {
+          id: tc.id,
+          tool: tc.tool,
+          args: tc.args,
+          result: tc.result,
+          error: tc.error,
+          status: tc.status,
+        };
+      }
+    }
+    return undefined;
+  }, [displayMessages, isExecuting]);
+
   return (
+    <SubAgentNavContext.Provider value={subAgentNavValue}>
     <div className="flex flex-col h-full bg-background">
       <header className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
         {onBack && (
@@ -334,6 +502,15 @@ export function AgentConversationPage({
         )}
       </header>
 
+      {isSubAgentView && (
+        <AgentViewBreadcrumb
+          agentName={agentName || 'Agent'}
+          viewStack={agentViewStack}
+          subAgentStreams={subAgentStreams}
+          onNavigate={actions.navigateToAgentView}
+        />
+      )}
+
       {connectionError && <ConnectionError error={connectionError} />}
 
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
@@ -342,13 +519,15 @@ export function AgentConversationPage({
           style={{ width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }}
         >
           <div className="flex-1 overflow-hidden">
-            <MessageList messages={messages} isExecuting={isExecuting} />
+            <MessageList messages={displayMessages} isExecuting={isExecuting && !isSubAgentView} />
           </div>
-          <MessageInput
-            onSend={actions.sendMessage}
-            isExecuting={isExecuting}
-            onCancel={actions.cancelExecution}
-          />
+          {!isSubAgentView && (
+            <MessageInput
+              onSend={actions.sendMessage}
+              isExecuting={isExecuting}
+              onCancel={actions.cancelExecution}
+            />
+          )}
         </div>
 
         <ResizableDivider
@@ -374,6 +553,7 @@ export function AgentConversationPage({
               terminalEntries={terminalEntries}
               fileChanges={fileChanges}
               sandboxStatus={sandboxStatus}
+              activeToolCall={activeToolCall}
             />
           </div>
 
@@ -392,5 +572,6 @@ export function AgentConversationPage({
         </div>
       </div>
     </div>
+    </SubAgentNavContext.Provider>
   );
 }

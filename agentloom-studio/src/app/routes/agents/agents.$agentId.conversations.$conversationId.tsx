@@ -8,8 +8,8 @@ function ConversationPageWrapper() {
   const navigate = useNavigate();
 
   const handleBack = useCallback(() => {
-    navigate({ to: '/agents/$agentId', params: { agentId } });
-  }, [navigate, agentId]);
+    navigate({ to: '/agents' });
+  }, [navigate]);
 
   return (
     <AgentConversationPage

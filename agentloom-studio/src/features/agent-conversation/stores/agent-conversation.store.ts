@@ -72,6 +72,7 @@ interface AgentConversationState {
   fileChanges: FileChange[];
   selectedFilePath: string | null;
   subAgentStreams: Record<string, SubAgentStream>;
+  agentViewStack: string[];
 
   connectionError: string | null;
   lastEventId: number;
@@ -94,6 +95,9 @@ interface AgentConversationActions {
     ) => Promise<void>;
     selectFile: (path: string | null) => void;
     loadHistory: (conversationId: string) => Promise<void>;
+    pushAgentView: (handle: string) => void;
+    popAgentView: () => void;
+    navigateToAgentView: (index: number) => void;
     reset: () => void;
   };
 }
@@ -111,6 +115,7 @@ function createInitialState(): AgentConversationState {
     fileChanges: [],
     selectedFilePath: null,
     subAgentStreams: {},
+    agentViewStack: [],
     connectionError: null,
     lastEventId: 0,
   };
@@ -1204,6 +1209,24 @@ export const useAgentConversationStore = create<
             });
           },
 
+          pushAgentView: (handle) => {
+            set((s) => {
+              s.agentViewStack.push(handle);
+            });
+          },
+
+          popAgentView: () => {
+            set((s) => {
+              s.agentViewStack.pop();
+            });
+          },
+
+          navigateToAgentView: (index) => {
+            set((s) => {
+              s.agentViewStack = s.agentViewStack.slice(0, index);
+            });
+          },
+
           loadHistory: async (conversationId) => {
             try {
               const response = await apiClient
@@ -1323,3 +1346,6 @@ export const useAgentName = () => useAgentConversationStore((s) => s.agentName);
 
 export const useSubAgentStreams = () =>
   useAgentConversationStore((s) => s.subAgentStreams);
+
+export const useAgentViewStack = () =>
+  useAgentConversationStore((s) => s.agentViewStack);

@@ -6,7 +6,11 @@ import { queryClient } from '@/shared/api/queryClient'
 import { ThemeProvider } from '@/shared/providers/theme-provider'
 import { ToastProvider } from '@/shared/ui/toast'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { registerAllToolRenderers } from '@/shared/components/tool-renderers'
 import { router } from './router'
+
+// 注册所有工具渲染器（仅执行一次）
+registerAllToolRenderers()
 
 export function AppProviders() {
   useEffect(() => {
