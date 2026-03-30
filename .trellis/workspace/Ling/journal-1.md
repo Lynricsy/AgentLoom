@@ -606,3 +606,49 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 修复 studio 多页面滚动失效
+
+**Date**: 2026-03-30
+**Task**: 修复 studio 多页面滚动失效
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+studio 前端大量页面无法滚轮滚动、没有滚动条。
+
+## 根因
+`__root.tsx` 根布局中双层 `overflow-hidden`，导致未自行管理滚动的页面内容被裁剪。
+
+## 修复
+| 文件 | 改动 |
+|------|------|
+| `__root.tsx:100` | `overflow-hidden` → `overflow-y-auto` |
+| `AgentConversationPage.tsx:301` | `h-screen` → `h-full` |
+
+**受影响页面**: MarketplaceBrowsePage, TemplateBrowsePage, MemoryInstancesPage, SkillBrowsePage, McpServerManagementPage, AgentConversationPage
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46f66c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

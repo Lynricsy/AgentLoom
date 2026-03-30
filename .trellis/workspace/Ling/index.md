@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-03-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~608 | Active |
+| `journal-1.md` | ~654 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-03-30 | 修复 studio 多页面滚动失效 | `46f66c7` | `main` |
 | 11 | 2026-03-30 | 工作流编排手工 QA 收口与质量记录 | `b99194d`, `eab001d`, `c7fff1e`, `79b1980` | `main` |
 | 10 | 2026-03-30 | 知识库迁移收尾与浏览器对话链路验收 | `ef1752a`, `ad225bc` | `main` |
 | 9 | 2026-03-29 | 知识库 E2E 修复与后端 warning 收口 | `fbc4e54`, `27c05f4`, `99f27eb` | `main` |
