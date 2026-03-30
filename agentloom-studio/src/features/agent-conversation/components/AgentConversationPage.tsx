@@ -298,7 +298,7 @@ export function AgentConversationPage({
   const currentLeftWidth = leftWidth ?? initLeftWidth();
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-full bg-background">
       <header className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
         {onBack && (
           <button

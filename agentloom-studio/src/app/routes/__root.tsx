@@ -97,7 +97,7 @@ export function RootLayout() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
       {isSettingsRoute ? <SettingsLayout /> : <AppSidebar />}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <Outlet />
       </div>
       <TanStackRouterDevtools />
