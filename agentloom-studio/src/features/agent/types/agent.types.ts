@@ -108,6 +108,7 @@ export interface AgentDefinition {
   name: string
   slug: string
   description: string | null
+  icon: string | null
   systemPrompt: string | null
   nodes: CanvasNode[]
   edges: CanvasEdge[]

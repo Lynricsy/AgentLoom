@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     name: 'Review Agent',
     slug: 'review-agent',
     description: '负责代码审查',
+    icon: null,
     systemPrompt: null,
     nodes: [],
     edges: [],

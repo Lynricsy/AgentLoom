@@ -12,6 +12,7 @@ export interface AgentDefinitionResponseDto {
   name: string;
   slug: string;
   description: string | null;
+  icon: string | null;
   status: 'draft' | 'published' | 'archived';
   version: number;
   publishedVersionId: string | null;
@@ -39,6 +40,7 @@ type ListField =
   | 'name'
   | 'slug'
   | 'description'
+  | 'icon'
   | 'status'
   | 'version'
   | 'publishedVersionId'
@@ -113,6 +115,7 @@ export function serializeAgentDefinition(
     name: row.name,
     slug: row.slug,
     description: row.description ?? null,
+    icon: row.icon ?? null,
     status: row.status,
     version: row.version,
     publishedVersionId: row.publishedVersionId ?? null,

@@ -39,6 +39,7 @@ export const agentDefinitions = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull(),
     description: text('description'),
+    icon: varchar('icon', { length: 255 }),
 
     systemPrompt: text('system_prompt'),
 

@@ -54,6 +54,7 @@ const workflow: WorkflowDefinition = {
   name: 'Workflow One',
   slug: 'workflow-one',
   description: null,
+  icon: null,
   nodes: [
     {
       id: 'node-agent-1',

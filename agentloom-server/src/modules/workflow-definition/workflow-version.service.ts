@@ -136,6 +136,7 @@ export class WorkflowVersionService {
       name: schema.workflowDefinitions.name,
       slug: schema.workflowDefinitions.slug,
       description: schema.workflowDefinitions.description,
+      icon: schema.workflowDefinitions.icon,
       status: schema.workflowDefinitions.status,
       version: schema.workflowDefinitions.version,
       metadata: schema.workflowDefinitions.metadata,
@@ -442,6 +443,7 @@ export class WorkflowVersionService {
             name: dto.name,
             slug,
             description: dto.description ?? null,
+            icon: dto.icon ?? null,
             nodes,
             edges,
             viewport,
@@ -615,6 +617,7 @@ export class WorkflowVersionService {
         if (dto.name !== undefined) setClause.name = dto.name;
         if (dto.description !== undefined)
           setClause.description = dto.description;
+        if (dto.icon !== undefined) setClause.icon = dto.icon;
         if (dto.nodes !== undefined) setClause.nodes = dto.nodes;
         if (dto.edges !== undefined) setClause.edges = dto.edges;
         if (dto.viewport !== undefined) setClause.viewport = dto.viewport;

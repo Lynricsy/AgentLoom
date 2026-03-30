@@ -407,6 +407,13 @@
       "when": 1774796562436,
       "tag": "0057_grant_knowledge_nodes_authenticated",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1774850752311,
+      "tag": "0058_add-icon-to-workflow-and-agent",
+      "breakpoints": true
     }
   ]
 }

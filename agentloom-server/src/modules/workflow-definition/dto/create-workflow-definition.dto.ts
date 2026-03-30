@@ -11,6 +11,10 @@ export const CreateWorkflowDefinitionSchema = z
       .string()
       .max(2000, { message: '工作流描述不能超过 2000 个字符' })
       .optional(),
+    icon: z
+      .string()
+      .max(255, { message: '图标标识不能超过 255 个字符' })
+      .optional(),
     template_slug: z
       .string()
       .max(128, { message: '模板 slug 不能超过 128 个字符' })

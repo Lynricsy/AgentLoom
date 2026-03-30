@@ -100,6 +100,7 @@ function createWorkflowDefinition(nodes: ReactFlowNode[]): WorkflowDefinition {
     name: '优化工作流',
     slug: 'optimized-workflow',
     description: '用于测试的工作流',
+    icon: null,
     nodes,
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },

@@ -15,6 +15,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react'
+import { EntityIcon } from '@/shared/components/entity-icon'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -164,7 +165,7 @@ const WorkflowCard = memo(function WorkflowCard({
       >
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Workflow className="h-5 w-5" />
+            <EntityIcon icon={workflow.icon} fallback={Workflow} size={20} />
           </div>
           <span
             className={cn(
@@ -244,7 +245,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
         onClick={() => onClick(workflow)}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Workflow className="h-4 w-4" />
+          <EntityIcon icon={workflow.icon} fallback={Workflow} size={16} />
         </div>
 
         <div className="min-w-0 flex-1">

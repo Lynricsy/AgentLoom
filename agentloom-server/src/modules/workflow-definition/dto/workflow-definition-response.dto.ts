@@ -14,6 +14,7 @@ export interface WorkflowDefinitionResponseDto {
   name: string;
   slug: string;
   description: string | null;
+  icon: string | null;
   status: string;
   version: number;
   metadata: Record<string, unknown> | null;
@@ -56,6 +57,7 @@ export function serializeWorkflowDefinition(
     | 'name'
     | 'slug'
     | 'description'
+    | 'icon'
     | 'status'
     | 'version'
     | 'metadata'
@@ -70,6 +72,7 @@ export function serializeWorkflowDefinition(
     name: row.name,
     slug: row.slug,
     description: row.description,
+    icon: row.icon ?? null,
     status: row.status,
     version: row.version,
     metadata:

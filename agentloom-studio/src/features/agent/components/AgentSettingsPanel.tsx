@@ -12,6 +12,8 @@ import {
   Upload,
   X,
 } from 'lucide-react'
+import { EntityIcon } from '@/shared/components/entity-icon'
+import { EmojiIconPicker } from '@/shared/components/emoji-icon-picker'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -55,20 +57,22 @@ function StatusBadge({ status }: { status: AgentStatus }) {
 
 interface BasicInfoTabProps {
   agent: AgentDefinition
-  onSave: (data: { name: string; description: string }) => void
+  onSave: (data: { name: string; description: string; icon?: string | null }) => void
   isSaving: boolean
 }
 
 function BasicInfoTab({ agent, onSave, isSaving }: BasicInfoTabProps) {
   const [name, setName] = useState(agent.name)
   const [description, setDescription] = useState(agent.description ?? '')
+  const [icon, setIcon] = useState<string | null>(agent.icon)
 
   useEffect(() => {
     setName(agent.name)
     setDescription(agent.description ?? '')
-  }, [agent.name, agent.description])
+    setIcon(agent.icon)
+  }, [agent.name, agent.description, agent.icon])
 
-  const isDirty = name !== agent.name || description !== (agent.description ?? '')
+  const isDirty = name !== agent.name || description !== (agent.description ?? '') || icon !== agent.icon
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -76,12 +80,16 @@ function BasicInfoTab({ agent, onSave, isSaving }: BasicInfoTabProps) {
         <label htmlFor="agent-name" className="text-xs font-medium text-muted-foreground">
           名称
         </label>
-        <Input
-          id="agent-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Agent 名称"
-        />
+        <div className="flex items-center gap-2">
+          <EmojiIconPicker value={icon} onChange={setIcon} fallbackIcon={Bot} />
+          <Input
+            id="agent-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Agent 名称"
+            className="flex-1"
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -117,7 +125,7 @@ function BasicInfoTab({ agent, onSave, isSaving }: BasicInfoTabProps) {
       {isDirty && (
         <Button
           size="sm"
-          onClick={() => onSave({ name, description })}
+          onClick={() => onSave({ name, description, icon })}
           disabled={isSaving || !name.trim()}
         >
           {isSaving ? (
@@ -364,7 +372,7 @@ export function AgentSettingsPanel({ agentId, open, onClose }: AgentSettingsPane
   const publishMutation = usePublishAgent(agentId)
 
   const handleSaveBasicInfo = useCallback(
-    async (data: { name: string; description: string }) => {
+    async (data: { name: string; description: string; icon?: string | null }) => {
       if (!agent) return
 
       const trimmedName = data.name.trim()
@@ -375,6 +383,7 @@ export function AgentSettingsPanel({ agentId, open, onClose }: AgentSettingsPane
           version: agent.version,
           name: trimmedName,
           description: trimmedDescription || null,
+          icon: data.icon,
         })
         notify({ title: '保存成功', description: 'Agent 信息已更新', variant: 'success' })
       } catch {
@@ -434,7 +443,7 @@ export function AgentSettingsPanel({ agentId, open, onClose }: AgentSettingsPane
       {agent && (
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Bot className="h-4 w-4" />
+            <EntityIcon icon={agent.icon} fallback={Bot} size={16} />
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-foreground">{agent.name}</p>

@@ -52,6 +52,7 @@ const LIST_COLUMNS = {
   name: schema.agentDefinitions.name,
   slug: schema.agentDefinitions.slug,
   description: schema.agentDefinitions.description,
+  icon: schema.agentDefinitions.icon,
   status: schema.agentDefinitions.status,
   version: schema.agentDefinitions.version,
   publishedVersionId: schema.agentDefinitions.publishedVersionId,
@@ -123,6 +124,7 @@ export class AgentDefinitionService {
             name: dto.name,
             slug,
             description: dto.description ?? null,
+            icon: dto.icon ?? null,
             sandboxConfig: (dto.globalSandboxConfig as any) ?? null,
             createdBy: userId,
             updatedBy: userId,
@@ -257,6 +259,7 @@ export class AgentDefinitionService {
       if (dto.name !== undefined) setClause.name = dto.name;
       if (dto.description !== undefined)
         setClause.description = dto.description;
+      if (dto.icon !== undefined) setClause.icon = dto.icon;
       if (dto.globalSandboxConfig !== undefined)
         setClause.sandboxConfig = dto.globalSandboxConfig;
 

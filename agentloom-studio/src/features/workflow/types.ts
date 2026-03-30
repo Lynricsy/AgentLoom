@@ -51,6 +51,7 @@ export interface WorkflowDefinition {
   name: string
   slug: string
   description: string | null
+  icon: string | null
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport: Viewport | null
@@ -66,6 +67,9 @@ export interface WorkflowDefinition {
 
 export interface UpdateWorkflowPayload {
   version: number
+  name?: string
+  description?: string | null
+  icon?: string | null
   nodes?: CanvasNode[]
   edges?: CanvasEdge[]
   viewport?: Viewport | null
@@ -124,6 +128,7 @@ export interface PublishWarning {
 export interface CreateWorkflowPayload {
   name: string
   description?: string
+  icon?: string | null
   templateSlug?: string
   shareToken?: string
 }

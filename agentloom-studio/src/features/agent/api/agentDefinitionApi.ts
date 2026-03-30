@@ -5,12 +5,14 @@ import type { AgentDefinition, AgentVersion } from '../types'
 export interface CreateAgentPayload {
   name: string
   description?: string
+  icon?: string | null
 }
 
 export interface UpdateAgentPayload {
   version: number
   name?: string
   description?: string | null
+  icon?: string | null
   systemPrompt?: string | null
 }
 

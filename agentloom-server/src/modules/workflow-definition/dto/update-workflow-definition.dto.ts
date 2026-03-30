@@ -15,6 +15,11 @@ export const UpdateWorkflowDefinitionSchema = z
       .max(2000, { message: '工作流描述不能超过 2000 个字符' })
       .nullable()
       .optional(),
+    icon: z
+      .string()
+      .max(255, { message: '图标标识不能超过 255 个字符' })
+      .nullable()
+      .optional(),
     nodes: z.array(z.record(z.string(), z.unknown())).optional(),
     edges: z.array(z.record(z.string(), z.unknown())).optional(),
     viewport: z

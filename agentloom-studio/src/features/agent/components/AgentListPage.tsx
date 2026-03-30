@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { EntityIcon } from '@/shared/components/entity-icon'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -159,7 +160,7 @@ const AgentCard = memo(function AgentCard({
       >
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Bot className="h-5 w-5" />
+            <EntityIcon icon={agent.icon} fallback={Bot} size={20} />
           </div>
           <span
             className={cn(
@@ -237,7 +238,7 @@ const AgentListItem = memo(function AgentListItem({
         onClick={() => onClick(agent)}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Bot className="h-4 w-4" />
+          <EntityIcon icon={agent.icon} fallback={Bot} size={16} />
         </div>
 
         <div className="min-w-0 flex-1">

@@ -1,10 +1,11 @@
 import { memo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate } from '@tanstack/react-router'
-import { Loader2, X } from 'lucide-react'
+import { Loader2, Workflow, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { EmojiIconPicker } from '@/shared/components/emoji-icon-picker'
 import { useCreateWorkflow } from '../api/workflowMutations'
 
 interface CreateWorkflowDialogProps {
@@ -20,11 +21,13 @@ export const CreateWorkflowDialog = memo(function CreateWorkflowDialog({
   const createWorkflow = useCreateWorkflow()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [icon, setIcon] = useState<string | null>(null)
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setName('')
       setDescription('')
+      setIcon(null)
     }
     onOpenChange(nextOpen)
   }
@@ -37,6 +40,7 @@ export const CreateWorkflowDialog = memo(function CreateWorkflowDialog({
       const workflow = await createWorkflow.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
+        icon: icon ?? undefined,
       })
       handleOpenChange(false)
       navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
@@ -82,13 +86,17 @@ export const CreateWorkflowDialog = memo(function CreateWorkflowDialog({
               <label htmlFor="wf-name" className="text-sm font-medium text-foreground">
                 名称 <span className="text-red-400">*</span>
               </label>
-              <Input
-                id="wf-name"
-                placeholder="输入工作流名称"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
+              <div className="flex items-center gap-2">
+                <EmojiIconPicker value={icon} onChange={setIcon} fallbackIcon={Workflow} />
+                <Input
+                  id="wf-name"
+                  placeholder="输入工作流名称"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoFocus
+                  className="flex-1"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">

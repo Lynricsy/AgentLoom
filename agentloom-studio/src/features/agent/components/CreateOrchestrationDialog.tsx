@@ -1,10 +1,11 @@
 import { memo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate } from '@tanstack/react-router'
-import { Loader2, X } from 'lucide-react'
+import { Bot, Loader2, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { EmojiIconPicker } from '@/shared/components/emoji-icon-picker'
 import { useCreateAgent } from '../api/agentMutations'
 
 interface CreateOrchestrationDialogProps {
@@ -20,11 +21,13 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
   const createAgent = useCreateAgent()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [icon, setIcon] = useState<string | null>(null)
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setName('')
       setDescription('')
+      setIcon(null)
     }
     onOpenChange(nextOpen)
   }
@@ -38,6 +41,7 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
       const agent = await createAgent.mutateAsync({
         name: agentName,
         description: description.trim() || undefined,
+        icon: icon ?? undefined,
       })
       handleOpenChange(false)
       navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
@@ -83,13 +87,17 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
               <label htmlFor="agent-name" className="text-sm font-medium text-foreground">
                 名称
               </label>
-              <Input
-                id="agent-name"
-                placeholder="未命名智能体"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
+              <div className="flex items-center gap-2">
+                <EmojiIconPicker value={icon} onChange={setIcon} fallbackIcon={Bot} />
+                <Input
+                  id="agent-name"
+                  placeholder="未命名智能体"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoFocus
+                  className="flex-1"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
