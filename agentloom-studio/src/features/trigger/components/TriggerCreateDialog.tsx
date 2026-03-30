@@ -221,36 +221,43 @@ function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
   return nextValues
 }
 
-function buildCreatePayload(values: TriggerDialogFormValues): CreateTriggerData {
+function buildCreatePayload(
+  values: TriggerDialogFormValues,
+  type: TriggerType,
+): CreateTriggerData {
   return {
-    type: values.type,
+    type,
     name: values.name.trim(),
     description: values.description.trim() || undefined,
     isEnabled: values.isEnabled,
-    config: buildConfigByType(values),
+    config: buildConfigByType(values, type),
   }
 }
 
-function buildUpdatePayload(values: TriggerDialogFormValues): UpdateTriggerData {
+function buildUpdatePayload(
+  values: TriggerDialogFormValues,
+  type: TriggerType,
+): UpdateTriggerData {
   return {
     name: values.name.trim(),
     description: values.description.trim() || null,
     isEnabled: values.isEnabled,
-    config: buildConfigByType(values),
+    config: buildConfigByType(values, type),
   }
 }
 
 function buildConfigByType(
   values: TriggerDialogFormValues,
+  type: TriggerType,
 ): CronTriggerConfig | WebhookTriggerConfigInput | ApiEventTriggerConfig {
-  if (values.type === 'cron') {
+  if (type === 'cron') {
     return {
       expression: values.cron.expression.trim(),
       timezone: values.cron.timezone.trim(),
     }
   }
 
-  if (values.type === 'webhook') {
+  if (type === 'webhook') {
     return {
       ipWhitelist: parseIpWhitelist(values.webhook.ipWhitelist),
     }
@@ -344,10 +351,12 @@ export function TriggerCreateDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     try {
+      const activeType = selectedType ?? trigger?.type ?? values.type
+
       if (isEditing && trigger) {
         const updatedTrigger = await updateMutation.mutateAsync({
           triggerId: trigger.id,
-          data: buildUpdatePayload(values),
+          data: buildUpdatePayload(values, activeType),
         })
 
         notify({
@@ -359,7 +368,9 @@ export function TriggerCreateDialog({
         return
       }
 
-      const createdTrigger = await createMutation.mutateAsync(buildCreatePayload(values))
+      const createdTrigger = await createMutation.mutateAsync(
+        buildCreatePayload(values, activeType),
+      )
 
       notify({
         title: '触发器已创建',

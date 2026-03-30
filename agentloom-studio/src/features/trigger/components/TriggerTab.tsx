@@ -92,7 +92,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
           </p>
           <h2 className="text-lg font-semibold text-foreground">触发器管理</h2>
           <p className="text-sm text-muted-foreground">
-            当前共 {total} 个触发器；Cron 与 Webhook 已可用，API Event 仅提供预览配置。
+            当前共 {total} 个触发器；已支持 Cron、Webhook、API Event 三种自动触发入口。
           </p>
         </div>
 

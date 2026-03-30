@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -44,6 +45,7 @@ import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import { SharedResourceRegistry } from '../../shared-resources/shared-resource-registry';
 import { McpService } from '../../mcp/mcp.service';
+import { CodeExecutionService } from '../../agent/code-execution.service';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -210,12 +212,16 @@ describe('NodeSchedulerService', () => {
   let mockPluginService: {
     findActiveByPluginId: ReturnType<typeof vi.fn>;
   };
+  let mockCodeExecutionService: {
+    execute: ReturnType<typeof vi.fn>;
+  };
   let mockWorkflowAgentAdapterFactory: {
     createFromAgentDefinition: ReturnType<typeof vi.fn>;
   };
   let mockSharedResourceRegistry: {
     createResource: ReturnType<typeof vi.fn>;
   };
+  let savedFetch: typeof globalThis.fetch;
 
   beforeAll(() => {
     vi.useFakeTimers();
@@ -230,7 +236,12 @@ describe('NodeSchedulerService', () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
   beforeEach(async () => {
+    savedFetch = globalThis.fetch;
     db = {
       select: vi.fn(),
       insert: vi.fn(),
@@ -315,6 +326,9 @@ describe('NodeSchedulerService', () => {
         status: 'active',
       }),
     };
+    mockCodeExecutionService = {
+      execute: vi.fn(),
+    };
     mockWorkflowAgentAdapterFactory = {
       createFromAgentDefinition: vi.fn(),
     };
@@ -360,6 +374,7 @@ describe('NodeSchedulerService', () => {
         },
         { provide: RbacCacheService, useValue: mockRbacCacheService },
         { provide: PluginService, useValue: mockPluginService },
+        { provide: CodeExecutionService, useValue: mockCodeExecutionService },
         {
           provide: AgentAdapterFactory,
           useValue: mockWorkflowAgentAdapterFactory,
@@ -464,6 +479,38 @@ describe('NodeSchedulerService', () => {
         service.resolveNodeInput('node-preprocessor', edges, steps),
       ).toEqual({
         'json-in': { route: 'match', topic: '多 Agent 协作' },
+      });
+    });
+
+    it('同一 targetHandle 多个输入时应聚合为数组而不是后者覆盖前者', () => {
+      const edges = [
+        makeEdge('skill-1', 'agent-1', 'skill-out', 'skills'),
+        makeEdge('skill-2', 'agent-1', 'skill-out', 'skills'),
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'skill-1',
+          nodeType: 'skill',
+          status: 'completed',
+          result: {
+            skills: [{ id: 'skill-a', name: '技能 A', content: 'A' }],
+          },
+        }),
+        makeStep({
+          nodeId: 'skill-2',
+          nodeType: 'skill',
+          status: 'completed',
+          result: {
+            skills: [{ id: 'skill-b', name: '技能 B', content: 'B' }],
+          },
+        }),
+      ];
+
+      expect(service.resolveNodeInput('agent-1', edges, steps)).toEqual({
+        skills: [
+          { skills: [{ id: 'skill-a', name: '技能 A', content: 'A' }] },
+          { skills: [{ id: 'skill-b', name: '技能 B', content: 'B' }] },
+        ],
       });
     });
 
@@ -2279,6 +2326,12 @@ describe('NodeSchedulerService', () => {
             mcpServerConfigId: 'mcp-server-001',
             toolName: 'get_weather',
             portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+            tools: [
+              {
+                toolName: 'get_weather',
+                portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+              },
+            ],
           },
         },
       );
@@ -2323,6 +2376,282 @@ describe('NodeSchedulerService', () => {
       expect(onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
         'step-m',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('mcp-tool 节点应兼容 enabledToolIds + tools[] 的 Studio 配置结构', async () => {
+      const snapshot = makeSnapshot([makeNode('M', 'mcp-tool')], []);
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'mcp-tool',
+          nodeData: {
+            config: {
+              mcpServerConfigId: 'mcp-server-001',
+              enabledToolIds: ['tool-fast'],
+              tools: [
+                {
+                  id: 'tool-fast',
+                  name: 'fast_search',
+                  inputSchema: { type: 'object' },
+                  portMappingMetadata: {
+                    inputs: [{ name: 'query', dataType: 'text' }],
+                    outputs: [{ name: 'result', dataType: 'json' }],
+                  },
+                },
+                {
+                  id: 'tool-deep',
+                  name: 'deep_search',
+                  inputSchema: { type: 'object' },
+                },
+              ],
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-m',
+        'completed',
+        {
+          result: {
+            type: 'mcp-tool',
+            mcpServerConfigId: 'mcp-server-001',
+            toolName: 'fast_search',
+            enabledToolIds: ['tool-fast'],
+            mcpToolDefinitionId: 'tool-fast',
+            inputSchema: { type: 'object' },
+            portMapping: {
+              inputs: [{ name: 'query', dataType: 'text' }],
+              outputs: [{ name: 'result', dataType: 'json' }],
+            },
+            tools: [
+              {
+                toolName: 'fast_search',
+                mcpToolDefinitionId: 'tool-fast',
+                inputSchema: { type: 'object' },
+                portMapping: {
+                  inputs: [{ name: 'query', dataType: 'text' }],
+                  outputs: [{ name: 'result', dataType: 'json' }],
+                },
+              },
+            ],
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-m',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('http-tool 节点应同步执行 HTTP 请求并直接完成', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('P'), makeNode('H', 'http-tool')],
+        [makeEdge('P', 'H', undefined, 'request')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-p',
+          nodeId: 'P',
+          status: 'completed',
+          result: {
+            query: { q: 'workflow' },
+            headers: { 'X-Dynamic': 'dynamic-header' },
+            body: { dynamic: true },
+          },
+        }),
+        makeStep({
+          id: 'step-h',
+          nodeId: 'H',
+          status: 'pending',
+          nodeType: 'http-tool',
+          nodeData: {
+            config: {
+              url: 'https://example.com/search',
+              method: 'POST',
+              headers: [{ key: 'X-Static', value: 'static-header' }],
+              queryParams: [{ key: 'lang', value: 'zh-CN' }],
+              body: '{"static":true}',
+              authType: 'api-key',
+              authConfig: {
+                keyName: 'X-API-Key',
+                keyValue: 'secret-token',
+                location: 'header',
+              },
+              timeout: 15,
+            },
+          },
+        }),
+      ];
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/search?lang=zh-CN&q=workflow',
+        headers: {
+          entries: () =>
+            Object.entries({
+              'content-type': 'application/json',
+            })[Symbol.iterator](),
+          get: (key: string) =>
+            key === 'content-type' ? 'application/json' : null,
+        },
+        json: vi.fn().mockResolvedValue({ answer: 'ok' }),
+      } as unknown as Response);
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'H', TENANT_ID, snapshot, [
+        ...steps,
+      ]);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://example.com/search?lang=zh-CN&q=workflow'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'X-Static': 'static-header',
+            'X-API-Key': 'secret-token',
+            'X-Dynamic': 'dynamic-header',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            dynamic: true,
+          }),
+          signal: expect.any(AbortSignal),
+        }),
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'completed',
+        {
+          result: {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            url: 'https://example.com/search?lang=zh-CN&q=workflow',
+            response: {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              url: 'https://example.com/search?lang=zh-CN&q=workflow',
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: { answer: 'ok' },
+            },
+            exec_out: {
+              triggered: true,
+              success: true,
+              status: 200,
+            },
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('code-tool 节点应同步执行代码并直接完成', async () => {
+      const steps = [
+        makeStep({
+          id: 'step-input',
+          nodeId: 'input-source',
+          status: 'completed',
+          result: { payload: { value: 7 } },
+        }),
+        makeStep({
+          id: 'step-c',
+          nodeId: 'C',
+          status: 'pending',
+          nodeType: 'code-tool',
+          nodeData: {
+            config: {
+              language: 'python',
+              code: 'output = {"ok": True}',
+              timeout: 20,
+            },
+          },
+        }),
+      ];
+      const codeSnapshot = makeSnapshot(
+        [makeNode('input-source'), makeNode('C', 'code-tool')],
+        [makeEdge('input-source', 'C', undefined, 'input')],
+      );
+
+      mockCodeExecutionService.execute.mockResolvedValue({
+        success: true,
+        output: { ok: true },
+        stdout: 'done',
+        stderr: '',
+        executionTimeMs: 12,
+      });
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'C',
+        TENANT_ID,
+        codeSnapshot,
+        steps,
+      );
+
+      expect(mockCodeExecutionService.execute).toHaveBeenCalledWith({
+        language: 'python',
+        code: 'output = {"ok": True}',
+        input: { payload: { value: 7 } },
+        timeout: 20,
+      });
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-c',
+        'completed',
+        {
+          result: {
+            success: true,
+            result: { ok: true },
+            output: { ok: true },
+            stdout: 'done',
+            stderr: '',
+            executionTimeMs: 12,
+            exec_out: {
+              triggered: true,
+              success: true,
+            },
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-c',
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
@@ -3520,6 +3849,10 @@ describe('NodeSchedulerService', () => {
           {
             provide: PluginService,
             useValue: { findActiveByPluginId: vi.fn() },
+          },
+          {
+            provide: CodeExecutionService,
+            useValue: { execute: vi.fn() },
           },
           {
             provide: AgentAdapterFactory,

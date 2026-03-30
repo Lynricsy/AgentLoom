@@ -38,6 +38,8 @@ import {
   isPortTypeCompatible,
 } from './execution.exceptions';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
+import { CodeExecutionService } from '../agent/code-execution.service';
+import { executeHttpToolRequest } from '../agent/http-tool-request.util';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
@@ -103,6 +105,7 @@ export class NodeSchedulerService {
     private readonly healthMonitorService: HealthMonitorService,
     private readonly embeddingService: EmbeddingIntegrationService,
     private readonly pluginService: PluginService,
+    private readonly codeExecutionService: CodeExecutionService,
     private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
     private readonly sharedResourceRegistry: SharedResourceRegistry,
     @InjectQueue(AGENT_TASK_QUEUE)
@@ -372,6 +375,14 @@ export class NodeSchedulerService {
 
       case 'input-preprocessor':
         await this.executeInputPreprocessor(step, input, tenantId, executionId);
+        break;
+
+      case 'http-tool':
+        await this.executeHttpToolNode(step, input, tenantId, executionId);
+        break;
+
+      case 'code-tool':
+        await this.executeCodeToolNode(step, input, tenantId, executionId);
         break;
 
       case 'condition':
@@ -1186,6 +1197,181 @@ export class NodeSchedulerService {
     }
   }
 
+  async executeHttpToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const url = this.readFirstString(nodeData.url);
+      if (!url) {
+        throw new Error('HTTP Tool 节点缺少 URL 配置');
+      }
+
+      const method = this.readHttpMethod(nodeData.method);
+      const timeout = this.readOptionalNumber(
+        nodeData.timeout,
+        nodeData.timeoutSeconds,
+        nodeData.timeout_seconds,
+      );
+      const request = this.buildHttpToolRequestInput(nodeData, input);
+      const response = await executeHttpToolRequest(
+        {
+          url,
+          method,
+          ...(timeout !== undefined ? { timeout } : {}),
+        },
+        request,
+      );
+      const result = {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+        response,
+        exec_out: {
+          triggered: true,
+          success: response.ok,
+          status: response.status,
+        },
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeCodeToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const language = this.readFirstString(nodeData.language);
+      const rawCode = typeof nodeData.code === 'string' ? nodeData.code : '';
+      const timeout = this.readOptionalNumber(
+        nodeData.timeout,
+        nodeData.timeoutSeconds,
+        nodeData.timeout_seconds,
+      );
+
+      if (
+        language !== 'typescript' &&
+        language !== 'javascript' &&
+        language !== 'python' &&
+        language !== 'bash'
+      ) {
+        throw new Error('Code Tool 节点缺少受支持的 language 配置');
+      }
+
+      if (!rawCode.trim()) {
+        throw new Error('Code Tool 节点缺少 code 配置');
+      }
+
+      const executionResult = await this.codeExecutionService.execute({
+        language,
+        code: rawCode,
+        input: this.extractCodeToolInputPayload(input),
+        ...(timeout !== undefined ? { timeout } : {}),
+      });
+
+      const result = {
+        success: executionResult.success,
+        result: executionResult.output,
+        output: executionResult.output,
+        stdout: executionResult.stdout,
+        stderr: executionResult.stderr,
+        executionTimeMs: executionResult.executionTimeMs,
+        exec_out: {
+          triggered: true,
+          success: executionResult.success,
+        },
+        ...(executionResult.error ? { error: executionResult.error } : {}),
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
   async executeSkillNode(
     step: ExecutionStep,
     input: Record<string, unknown>,
@@ -1320,35 +1506,22 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
-      const config = this.isRecord(nodeData.config)
-        ? nodeData.config
-        : nodeData;
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const mcpServerConfigId = this.readFirstString(
+        nodeData.mcpServerConfigId,
+        nodeData.mcp_server_config_id,
+      );
+      const enabledToolIds = this.readStringArray(
+        nodeData.enabledToolIds,
+        nodeData.enabled_tool_ids,
+      );
+      const tools = this.extractConfiguredMcpTools(
+        nodeData,
+        enabledToolIds,
+      );
+      const selectedTool = tools[0];
 
-      const mcpServerConfigId =
-        typeof config.mcpServerConfigId === 'string' &&
-        config.mcpServerConfigId.trim().length > 0
-          ? config.mcpServerConfigId.trim()
-          : typeof nodeData.mcpServerConfigId === 'string' &&
-              nodeData.mcpServerConfigId.trim().length > 0
-            ? nodeData.mcpServerConfigId.trim()
-            : undefined;
-
-      const toolName =
-        typeof config.toolName === 'string' && config.toolName.trim().length > 0
-          ? config.toolName.trim()
-          : typeof nodeData.toolName === 'string' &&
-              nodeData.toolName.trim().length > 0
-            ? nodeData.toolName.trim()
-            : undefined;
-
-      const portMapping = this.isRecord(config.portMapping)
-        ? config.portMapping
-        : this.isRecord(nodeData.portMapping)
-          ? nodeData.portMapping
-          : undefined;
-
-      if (!mcpServerConfigId || !toolName) {
+      if (!mcpServerConfigId || !selectedTool) {
         this.logger.warn(
           `MCP tool node ${step.nodeId} missing mcpServerConfigId or toolName`,
         );
@@ -1370,8 +1543,18 @@ export class NodeSchedulerService {
       const descriptor: Record<string, unknown> = {
         type: 'mcp-tool',
         mcpServerConfigId,
-        toolName,
-        ...(portMapping !== undefined ? { portMapping } : {}),
+        toolName: selectedTool.toolName,
+        tools,
+        ...(enabledToolIds.length > 0 ? { enabledToolIds } : {}),
+        ...(selectedTool.mcpToolDefinitionId
+          ? { mcpToolDefinitionId: selectedTool.mcpToolDefinitionId }
+          : {}),
+        ...(selectedTool.inputSchema
+          ? { inputSchema: selectedTool.inputSchema }
+          : {}),
+        ...(selectedTool.portMapping
+          ? { portMapping: selectedTool.portMapping }
+          : {}),
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -1911,26 +2094,31 @@ export class NodeSchedulerService {
   private extractMcpServerConfigIds(input: Record<string, unknown>): string[] {
     const ids = new Set<string>();
 
-    for (const value of Object.values(input)) {
-      const record = this.isRecord(value) ? value : null;
-      if (!record) continue;
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          visit(item);
+        }
+        return;
+      }
 
-      if (
-        record.type === 'mcp-tool' &&
-        typeof record.mcpServerConfigId === 'string'
-      ) {
-        ids.add(record.mcpServerConfigId);
-        continue;
+      if (!this.isRecord(value)) {
+        return;
       }
 
       if (
-        this.isRecord(record.result) &&
-        record.result.type === 'mcp-tool' &&
-        typeof record.result.mcpServerConfigId === 'string'
+        value.type === 'mcp-tool' &&
+        typeof value.mcpServerConfigId === 'string'
       ) {
-        ids.add(record.result.mcpServerConfigId);
+        ids.add(value.mcpServerConfigId);
       }
-    }
+
+      for (const nestedValue of Object.values(value)) {
+        visit(nestedValue);
+      }
+    };
+
+    visit(input);
 
     return [...ids];
   }
@@ -2349,6 +2537,32 @@ export class NodeSchedulerService {
     }
 
     return undefined;
+  }
+
+  private readStringArray(...values: unknown[]): string[] {
+    for (const value of values) {
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      return value.filter(
+        (item): item is string =>
+          typeof item === 'string' && item.trim().length > 0,
+      );
+    }
+
+    return [];
+  }
+
+  private readHttpMethod(
+    value: unknown,
+  ): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' {
+    return value === 'POST' ||
+      value === 'PUT' ||
+      value === 'PATCH' ||
+      value === 'DELETE'
+      ? value
+      : 'GET';
   }
 
   private getRuntimeNodeData(
@@ -2920,6 +3134,15 @@ export class NodeSchedulerService {
         nodeData.knowledgeBaseId,
         nodeData.knowledge_base_id,
       );
+      const knowledgeBaseName = this.readFirstString(
+        nodeData.knowledgeBaseName,
+        nodeData.knowledge_base_name,
+      );
+      const topK = this.readOptionalNumber(nodeData.topK, nodeData.top_k);
+      const similarityThreshold = this.readOptionalNumber(
+        nodeData.similarityThreshold,
+        nodeData.similarity_threshold,
+      );
 
       if (!knowledgeBaseId) {
         throw new Error('Knowledge Base node requires knowledgeBaseId');
@@ -2928,6 +3151,9 @@ export class NodeSchedulerService {
       const result = {
         type: 'knowledge-base',
         knowledgeBaseId,
+        ...(knowledgeBaseName ? { knowledgeBaseName } : {}),
+        ...(topK !== undefined ? { topK } : {}),
+        ...(similarityThreshold !== undefined ? { similarityThreshold } : {}),
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -3165,6 +3391,329 @@ export class NodeSchedulerService {
     }
 
     return undefined;
+  }
+
+  private buildHttpToolRequestInput(
+    nodeData: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const dynamicRequest = this.extractHttpToolDynamicRequest(input);
+    const headers = {
+      ...this.keyValuePairsToRecord(nodeData.headers),
+      ...this.buildHttpToolAuthHeaders(nodeData),
+      ...this.extractHttpToolHeaders(dynamicRequest.headers),
+    };
+    const query = {
+      ...this.keyValuePairsToRecord(nodeData.queryParams, true),
+      ...this.buildHttpToolAuthQuery(nodeData),
+      ...this.extractHttpToolQuery(dynamicRequest.query),
+    };
+    const request: Record<string, unknown> = {};
+
+    if (Object.keys(headers).length > 0) {
+      request.headers = headers;
+    }
+
+    if (Object.keys(query).length > 0) {
+      request.query = query;
+    }
+
+    const requestBody = this.resolveHttpToolRequestBody(nodeData, dynamicRequest);
+    if (requestBody !== undefined) {
+      request.body = requestBody;
+    }
+
+    return request;
+  }
+
+  private resolveHttpToolRequestBody(
+    nodeData: Record<string, unknown>,
+    dynamicRequest: Record<string, unknown>,
+  ): unknown {
+    if (Object.prototype.hasOwnProperty.call(dynamicRequest, 'body')) {
+      return dynamicRequest.body;
+    }
+
+    if (
+      Object.keys(dynamicRequest).length > 0 &&
+      !Object.prototype.hasOwnProperty.call(dynamicRequest, 'query') &&
+      !Object.prototype.hasOwnProperty.call(dynamicRequest, 'headers')
+    ) {
+      return dynamicRequest;
+    }
+
+    if (typeof nodeData.body !== 'string' || nodeData.body.trim().length === 0) {
+      return undefined;
+    }
+
+    return this.parseJsonLikeValue(nodeData.body);
+  }
+
+  private extractHttpToolDynamicRequest(
+    input: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const requestValue =
+      Object.prototype.hasOwnProperty.call(input, 'request') &&
+      input.request !== undefined
+        ? input.request
+        : this.stripExecOnlyInputs(input);
+
+    if (requestValue === undefined) {
+      return {};
+    }
+
+    if (this.isRecord(requestValue)) {
+      return requestValue;
+    }
+
+    return { body: requestValue };
+  }
+
+  private stripExecOnlyInputs(
+    input: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    const entries = Object.entries(input).filter(([key]) => key !== 'exec_in');
+    if (entries.length === 0) {
+      return undefined;
+    }
+
+    return Object.fromEntries(entries);
+  }
+
+  private extractHttpToolHeaders(value: unknown): Record<string, string> {
+    if (!this.isRecord(value)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+  }
+
+  private extractHttpToolQuery(value: unknown): Record<string, unknown> {
+    return this.isRecord(value) ? value : {};
+  }
+
+  private buildHttpToolAuthHeaders(
+    nodeData: Record<string, unknown>,
+  ): Record<string, string> {
+    const authType = this.readFirstString(nodeData.authType, nodeData.auth_type);
+    const authConfig = this.isRecord(nodeData.authConfig)
+      ? nodeData.authConfig
+      : this.isRecord(nodeData.auth_config)
+        ? nodeData.auth_config
+        : undefined;
+    if (!authType || !authConfig) {
+      return {};
+    }
+
+    if (authType === 'bearer') {
+      const token = this.readFirstString(authConfig.token);
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    if (authType === 'basic') {
+      const username = this.readFirstString(authConfig.username);
+      const password = this.readFirstString(authConfig.password);
+      return username !== undefined && password !== undefined
+        ? {
+            Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+          }
+        : {};
+    }
+
+    if (
+      authType === 'api-key' &&
+      this.readFirstString(authConfig.location) !== 'query'
+    ) {
+      const keyName = this.readFirstString(
+        authConfig.keyName,
+        authConfig.key_name,
+      );
+      const keyValue = this.readFirstString(
+        authConfig.keyValue,
+        authConfig.key_value,
+      );
+      return keyName && keyValue ? { [keyName]: keyValue } : {};
+    }
+
+    return {};
+  }
+
+  private buildHttpToolAuthQuery(
+    nodeData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const authType = this.readFirstString(nodeData.authType, nodeData.auth_type);
+    const authConfig = this.isRecord(nodeData.authConfig)
+      ? nodeData.authConfig
+      : this.isRecord(nodeData.auth_config)
+        ? nodeData.auth_config
+        : undefined;
+
+    if (authType !== 'api-key' || !authConfig) {
+      return {};
+    }
+
+    const location = this.readFirstString(authConfig.location) ?? 'header';
+    if (location !== 'query') {
+      return {};
+    }
+
+    const keyName = this.readFirstString(
+      authConfig.keyName,
+      authConfig.key_name,
+    );
+    const keyValue = this.readFirstString(
+      authConfig.keyValue,
+      authConfig.key_value,
+    );
+
+    return keyName && keyValue ? { [keyName]: keyValue } : {};
+  }
+
+  private keyValuePairsToRecord(
+    value: unknown,
+    parseJsonValue = false,
+  ): Record<string, unknown> {
+    if (!Array.isArray(value)) {
+      return {};
+    }
+
+    const result: Record<string, unknown> = {};
+
+    for (const entry of value) {
+      if (!this.isRecord(entry)) {
+        continue;
+      }
+
+      const key = this.readFirstString(entry.key);
+      if (!key || typeof entry.value !== 'string') {
+        continue;
+      }
+
+      result[key] = parseJsonValue
+        ? this.parseJsonLikeValue(entry.value)
+        : entry.value;
+    }
+
+    return result;
+  }
+
+  private parseJsonLikeValue(value: string): unknown {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+
+  private extractCodeToolInputPayload(
+    input: Record<string, unknown>,
+  ): unknown {
+    if (Object.prototype.hasOwnProperty.call(input, 'input')) {
+      return input.input;
+    }
+
+    const stripped = this.stripExecOnlyInputs(input);
+    if (!stripped) {
+      return {};
+    }
+
+    const values = Object.values(stripped);
+    return values.length === 1 ? values[0] : stripped;
+  }
+
+  private extractConfiguredMcpTools(
+    nodeData: Record<string, unknown>,
+    enabledToolIds: string[],
+  ): Array<{
+    toolName: string;
+    mcpToolDefinitionId?: string;
+    inputSchema?: Record<string, unknown>;
+    portMapping?: Record<string, unknown>;
+  }> {
+    const tools = Array.isArray(nodeData.tools) ? nodeData.tools : [];
+    const selectedTools = tools
+      .filter((tool) => this.isRecord(tool))
+      .filter((tool) => {
+        if (enabledToolIds.length === 0) {
+          return true;
+        }
+
+        return typeof tool.id === 'string' && enabledToolIds.includes(tool.id);
+      })
+      .map((tool) => {
+        const toolRecord = tool as Record<string, unknown>;
+        const toolName = this.readFirstString(
+          toolRecord.toolName,
+          toolRecord.name,
+          toolRecord.title,
+        );
+        if (!toolName) {
+          return null;
+        }
+
+        return {
+          toolName,
+          ...(typeof toolRecord.id === 'string'
+            ? { mcpToolDefinitionId: toolRecord.id }
+            : {}),
+          ...(this.isRecord(toolRecord.inputSchema)
+            ? { inputSchema: toolRecord.inputSchema }
+            : {}),
+          ...(this.isRecord(toolRecord.portMapping)
+            ? { portMapping: toolRecord.portMapping }
+            : this.isRecord(toolRecord.portMappingMetadata)
+              ? { portMapping: toolRecord.portMappingMetadata }
+              : {}),
+        };
+      })
+      .filter(
+        (
+          tool,
+        ): tool is {
+          toolName: string;
+          mcpToolDefinitionId?: string;
+          inputSchema?: Record<string, unknown>;
+          portMapping?: Record<string, unknown>;
+        } => tool !== null,
+      );
+
+    if (selectedTools.length > 0) {
+      return selectedTools;
+    }
+
+    const fallbackToolName = this.readFirstString(
+      nodeData.toolName,
+      nodeData.tool_name,
+    );
+    if (!fallbackToolName) {
+      return [];
+    }
+
+    return [
+      {
+        toolName: fallbackToolName,
+        ...(typeof nodeData.mcpToolDefinitionId === 'string'
+          ? { mcpToolDefinitionId: nodeData.mcpToolDefinitionId }
+          : {}),
+        ...(this.isRecord(nodeData.inputSchema)
+          ? { inputSchema: nodeData.inputSchema }
+          : {}),
+        ...(this.isRecord(nodeData.portMapping)
+          ? { portMapping: nodeData.portMapping }
+          : this.isRecord(nodeData.portMappingMetadata)
+            ? { portMapping: nodeData.portMappingMetadata }
+            : {}),
+      },
+    ];
   }
 
   private getUpstreamMemorySessionIds(
@@ -3813,7 +4362,19 @@ export class NodeSchedulerService {
       const isLeaf = index === segments.length - 1;
 
       if (isLeaf) {
-        cursor[segment] = value;
+        const existingValue = cursor[segment];
+        if (existingValue === undefined) {
+          cursor[segment] = value;
+          return;
+        }
+
+        if (Array.isArray(existingValue)) {
+          existingValue.push(value);
+          cursor[segment] = existingValue;
+          return;
+        }
+
+        cursor[segment] = [existingValue, value];
         return;
       }
 

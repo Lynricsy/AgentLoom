@@ -26,7 +26,7 @@ export function TriggerList({
       >
         <h3 className="text-base font-medium text-foreground">No triggers configured</h3>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          当前工作流还没有配置自动触发器。发布后可新增 Cron、Webhook；API Event 当前仅提供预览说明，不可创建或启用。
+          当前工作流还没有配置自动触发器。发布后可新增 Cron、Webhook、API Event 三种自动触发入口。
         </p>
       </div>
     )

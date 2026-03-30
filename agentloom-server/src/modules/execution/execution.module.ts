@@ -18,6 +18,7 @@ import { OrganizationModule } from '../organization/organization.module';
 import { ResourceGovernanceModule } from '../resource-governance/resource-governance.module';
 import { SharedResourcesModule } from '../shared-resources/shared-resources.module';
 import { SkillModule } from '../skill/skill.module';
+import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpModule } from '../mcp/mcp.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
@@ -89,6 +90,7 @@ import {
         agentDefinitionService,
         sandboxService,
         eventBridge,
+        skillResolverService,
       ) =>
         new AgentAdapterFactory(
           db,
@@ -97,6 +99,7 @@ import {
           agentDefinitionService,
           sandboxService,
           eventBridge,
+          skillResolverService,
         ),
       inject: [
         DRIZZLE,
@@ -105,6 +108,7 @@ import {
         AgentDefinitionService,
         SandboxService,
         EventBridgeService,
+        SkillResolverService,
       ],
     },
     RbacCacheService,

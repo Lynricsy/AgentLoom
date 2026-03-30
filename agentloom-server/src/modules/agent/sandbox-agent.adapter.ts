@@ -46,6 +46,7 @@ import {
 } from '../sandbox/pi-config-generator.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeExecutionService } from './code-execution.service';
+import { executeHttpToolRequest } from './http-tool-request.util';
 import { typeBoxToZod } from './tool-schema-converter';
 
 import type {
@@ -1590,72 +1591,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     binding: AgentHttpToolBinding,
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const method = binding.method ?? 'GET';
-    const url = new URL(binding.url);
-    const query = this.asRecord(input.query);
-    if (query) {
-      for (const [key, value] of Object.entries(query)) {
-        if (value === undefined || value === null) {
-          continue;
-        }
-
-        url.searchParams.set(
-          key,
-          typeof value === 'string' ? value : JSON.stringify(value),
-        );
-      }
-    }
-
-    const headers = this.extractStringHeaders(input.headers);
-    let body: BodyInit | undefined;
-    if (method !== 'GET' && 'body' in input) {
-      const rawBody = input.body;
-      if (typeof rawBody === 'string') {
-        body = rawBody;
-      } else if (rawBody !== undefined) {
-        headers['content-type'] ??= 'application/json';
-        body = JSON.stringify(rawBody);
-      }
-    }
-
-    const response = await fetch(url, {
-      method,
-      headers,
-      ...(body === undefined ? {} : { body }),
-    });
-
-    const responseBody = await this.parseHttpResponseBody(response);
-    return {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      url: response.url,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: responseBody,
-    };
-  }
-
-  private async parseHttpResponseBody(response: Response): Promise<unknown> {
-    const contentType =
-      response.headers.get('content-type')?.toLowerCase() ?? '';
-    if (contentType.includes('application/json')) {
-      return await response.json();
-    }
-
-    return await response.text();
-  }
-
-  private extractStringHeaders(input: unknown): Record<string, string> {
-    const headers = this.asRecord(input);
-    if (!headers) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(headers).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
-      ),
-    );
+    return executeHttpToolRequest(binding, input);
   }
 
   private sanitizeToolName(

@@ -1,4 +1,4 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client'
+import { apiClient } from '@/shared/api/client'
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import type {
   CreateTriggerData,
@@ -115,7 +115,8 @@ export async function createTrigger(
 ): Promise<Trigger> {
   const response = await apiClient
     .post(`workflow-definitions/${workflowId}/triggers`, {
-      json: toSnakeBody(data),
+      // Trigger config fields are validated as camelCase by the current server contract.
+      json: data,
     })
     .json<TriggerDetailResponse>()
 
@@ -129,7 +130,8 @@ export async function updateTrigger(
 ): Promise<Trigger> {
   const response = await apiClient
     .patch(`workflow-definitions/${workflowId}/triggers/${triggerId}`, {
-      json: toSnakeBody(data),
+      // Trigger config fields are validated as camelCase by the current server contract.
+      json: data,
     })
     .json<TriggerDetailResponse>()
 

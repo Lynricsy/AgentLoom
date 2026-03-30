@@ -76,15 +76,20 @@ function createAdapter(
   deps: Record<string, unknown>,
   config: Record<string, unknown> = { agentDefinitionId: 'parent-agent' },
 ) {
+  const adapterDeps: Record<string, unknown> = {
+    db: deps.db ?? ({} as never),
+    agentRuntime: deps.agentRuntime ?? ({} as never),
+    runtimeAdapterFactory: deps.runtimeAdapterFactory ?? ({} as never),
+    agentDefinitionService: deps.agentDefinitionService ?? ({} as never),
+    sandboxService: deps.sandboxService ?? ({} as never),
+    eventBridge: deps.eventBridge ?? ({} as never),
+  };
+  if (deps.skillResolverService) {
+    adapterDeps.skillResolverService = deps.skillResolverService;
+  }
+
   return new WorkflowAgentAdapter(
-    {
-      db: deps.db ?? ({} as never),
-      agentRuntime: deps.agentRuntime ?? ({} as never),
-      runtimeAdapterFactory: deps.runtimeAdapterFactory ?? ({} as never),
-      agentDefinitionService: deps.agentDefinitionService ?? ({} as never),
-      sandboxService: deps.sandboxService ?? ({} as never),
-      eventBridge: deps.eventBridge ?? ({} as never),
-    } as never,
+    adapterDeps as never,
     config as never,
   );
 }
@@ -132,6 +137,10 @@ describe('WorkflowAgentAdapter', () => {
     emitOutputChunk: vi.fn(),
     emitStepAgentEvent: vi.fn(),
   };
+  const mockSkillResolverService = {
+    resolveSkillsForAgent: vi.fn(),
+    buildSkillAugmentedPrompt: vi.fn(),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -171,6 +180,11 @@ describe('WorkflowAgentAdapter', () => {
       agentDefinition: { id: 'child-agent' },
       versionSnapshot: { snapshot: childSnapshot },
     });
+    mockSkillResolverService.resolveSkillsForAgent.mockResolvedValue([]);
+    mockSkillResolverService.buildSkillAugmentedPrompt.mockImplementation(
+      (baseSystemPrompt: string, skills: Array<{ name: string }>) =>
+        `${baseSystemPrompt}\n\n${skills.map((skill) => skill.name).join(',')}`,
+    );
   });
 
   it('工作流已有 sandbox 绑定时不会新建沙箱，且子 Agent 共享父级绑定', async () => {
@@ -372,6 +386,175 @@ describe('WorkflowAgentAdapter', () => {
     });
 
     expect(result).toMatchObject({ content: 'handled-text-input' });
+  });
+
+  it('工作流上游的 skill/MCP/knowledge 节点会扩展 runtime，并从 prompt 输入中剥离配置载荷', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      tools: [
+        {
+          toolType: 'mcp',
+          toolId: 'base-tool',
+          name: 'base_search',
+          enabled: true,
+          mcpServerConfigId: 'mcp-base',
+          toolName: 'base_search',
+        },
+      ],
+      knowledgeBindings: [{ knowledgeBaseId: 'kb-base', enabled: true }],
+      skillIds: ['skill-base'],
+      subAgents: [],
+    });
+    mockSkillResolverService.resolveSkillsForAgent.mockResolvedValue([
+      {
+        id: 'skill-base',
+        name: '内置技能',
+        description: '内置技能描述',
+        content: 'BUILTIN_SKILL_CONTENT',
+      },
+    ]);
+    mockSkillResolverService.buildSkillAugmentedPrompt.mockReturnValue(
+      'augmented-system-prompt',
+    );
+    mockSandboxRuntime.createSession.mockResolvedValue({
+      id: 'capability-session',
+    });
+    mockSandboxRuntime.prompt.mockImplementation(
+      (_sessionId: string, content: ContentBlock[]) => {
+        const promptText = (content[0] as { text: string }).text;
+
+        expect(promptText).toContain('请结合能力回答');
+        expect(promptText).toContain('保留的上下文');
+        expect(promptText).not.toContain('skill-upstream-1');
+        expect(promptText).not.toContain('mcp-upstream');
+        expect(promptText).not.toContain('knowledge-base');
+
+        return emit([
+          { type: 'message_chunk', content: 'capability-output' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]);
+      },
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+      skillResolverService: mockSkillResolverService,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        'text-input': '请结合能力回答',
+        skills: [
+          {
+            skills: [
+              {
+                id: 'skill-upstream-1',
+                name: '上游技能一',
+                description: '第一个上游技能',
+                content: 'UPSTREAM_SKILL_ONE',
+              },
+            ],
+          },
+          {
+            skills: [
+              {
+                id: 'skill-upstream-2',
+                name: '上游技能二',
+                description: '第二个上游技能',
+                content: 'UPSTREAM_SKILL_TWO',
+              },
+            ],
+          },
+        ],
+        'tools-in': [
+          {
+            type: 'mcp-tool',
+            mcpServerConfigId: 'mcp-upstream',
+            enabledToolIds: ['tool-fast', 'tool-deep'],
+            tools: [
+              {
+                id: 'tool-fast',
+                name: 'fast_search',
+                inputSchema: { type: 'object' },
+              },
+              {
+                id: 'tool-deep',
+                name: 'deep_search',
+                inputSchema: { type: 'object' },
+              },
+            ],
+          },
+        ],
+        context: [
+          {
+            type: 'knowledge-base',
+            knowledgeBaseId: 'kb-upstream',
+          },
+          {
+            userNote: '保留的上下文',
+          },
+        ],
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(mockSkillResolverService.resolveSkillsForAgent).toHaveBeenCalledWith(
+      TENANT_ID,
+      ['skill-base'],
+    );
+    expect(
+      mockSkillResolverService.buildSkillAugmentedPrompt,
+    ).toHaveBeenCalledWith(
+      '',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'skill-base', name: '内置技能' }),
+        expect.objectContaining({ id: 'skill-upstream-1', name: '上游技能一' }),
+        expect.objectContaining({ id: 'skill-upstream-2', name: '上游技能二' }),
+      ]),
+    );
+    expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: 'augmented-system-prompt',
+        runtimeConfig: expect.objectContaining({
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              toolId: 'base-tool',
+              toolName: 'base_search',
+            }),
+            expect.objectContaining({
+              toolType: 'mcp',
+              mcpServerConfigId: 'mcp-upstream',
+              toolName: 'fast_search',
+            }),
+            expect.objectContaining({
+              toolType: 'mcp',
+              mcpServerConfigId: 'mcp-upstream',
+              toolName: 'deep_search',
+            }),
+          ]),
+          knowledgeBindings: expect.arrayContaining([
+            expect.objectContaining({ knowledgeBaseId: 'kb-base' }),
+            expect.objectContaining({ knowledgeBaseId: 'kb-upstream' }),
+          ]),
+        }),
+        context: expect.objectContaining({
+          input: {
+            'text-input': '请结合能力回答',
+            context: [{ userNote: '保留的上下文' }],
+          },
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ content: 'capability-output' });
   });
 
   function setupNoSandboxAgent() {
