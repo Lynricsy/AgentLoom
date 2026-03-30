@@ -34,7 +34,18 @@ const mockExecutionResponse = {
     id: 'exec-001',
     tenantId: 'tenant-1',
     workflowDefinitionId: 'wf-001',
+    workflowVersionId: 'ver-001',
     status: 'pending',
+    inputParams: null,
+    result: null,
+    startedAt: null,
+    completedAt: null,
+    errorMessage: null,
+    definitionSnapshot: {
+      nodes: [],
+      edges: [],
+    },
+    steps: [],
     createdAt: '2026-03-10T00:00:00Z',
     updatedAt: '2026-03-10T00:00:00Z',
   },
@@ -46,7 +57,7 @@ describe('executionMutations', () => {
   })
 
   describe('useRunWorkflow', () => {
-    it('调用 runWorkflow 并缓存结果', async () => {
+    it('调用 runWorkflow 并缓存原始执行详情结果', async () => {
       mockRunWorkflow.mockResolvedValue(mockExecutionResponse)
       const { queryClient, wrapper } = createWrapper()
       const { result } = renderHook(() => useRunWorkflow(), { wrapper })
@@ -67,7 +78,7 @@ describe('executionMutations', () => {
       })
 
       const cached = queryClient.getQueryData(executionKeys.detail('exec-001'))
-      expect(cached).toEqual(mockExecutionResponse)
+      expect(cached).toEqual(mockExecutionResponse.data)
     })
 
     it('mutation 失败时设置 error', async () => {
@@ -87,7 +98,7 @@ describe('executionMutations', () => {
   })
 
   describe('useCancelExecution', () => {
-    it('调用 cancelExecution 并缓存结果', async () => {
+    it('调用 cancelExecution 并缓存原始执行详情结果', async () => {
       mockCancelExecution.mockResolvedValue(mockExecutionResponse)
       const { queryClient, wrapper } = createWrapper()
       const { result } = renderHook(() => useCancelExecution(), { wrapper })
@@ -99,7 +110,7 @@ describe('executionMutations', () => {
       expect(mockCancelExecution).toHaveBeenCalledWith('exec-001')
 
       const cached = queryClient.getQueryData(executionKeys.detail('exec-001'))
-      expect(cached).toEqual(mockExecutionResponse)
+      expect(cached).toEqual(mockExecutionResponse.data)
     })
   })
 })

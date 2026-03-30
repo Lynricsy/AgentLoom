@@ -8,6 +8,7 @@ export type SandboxLifecycleJobType = 'create' | 'destroy' | 'timeout_check';
 export interface SandboxLifecycleBinding {
   executionId?: string;
   agentConversationId?: string;
+  sandboxNodeId?: string;
 }
 
 export interface SandboxLifecycleJobData extends SandboxLifecycleBinding {

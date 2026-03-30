@@ -30,10 +30,20 @@ import type {
   AgentRuntimeConfig,
   AgentToolBinding,
 } from '../agent-definition/agent-runtime-config.interface';
+import {
+  ApiKeyNotFoundException,
+  DefaultApiKeyNotConfiguredException,
+} from '../api-key/api-key.exceptions';
+import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { RagService } from '../knowledge/services/rag.service';
 import { McpService } from '../mcp/mcp.service';
 import { DockerService } from '../sandbox/docker.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
+import {
+  PiConfigGeneratorService,
+  resolvePiProviderApiKeyEnv,
+  type PiModelConfig,
+} from '../sandbox/pi-config-generator.service';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeExecutionService } from './code-execution.service';
 import { typeBoxToZod } from './tool-schema-converter';
@@ -47,7 +57,9 @@ import type {
   AgentSession,
   ContentBlock,
   CreateSessionParams,
+  McpServerConfig,
   PtySessionInfo,
+  ServerSandboxBinding,
 } from './types';
 import type {
   StopReason,
@@ -61,7 +73,7 @@ import type {
 } from './types/tool-call-event.types';
 
 const CONTAINER_WORKSPACE = '/workspace/';
-const REQUEST_TIMEOUT_MS = 300_000;
+const REQUEST_TIMEOUT_MS = 900_000;
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
 const SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS = 90_000;
 const ABORT_REQUEST_TIMEOUT_MS = 5_000;
@@ -86,16 +98,18 @@ const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
-export type SandboxBinding = {
-  executionId?: string;
-  agentConversationId?: string;
-};
+export type SandboxBinding = ServerSandboxBinding;
 
 type PendingPermissionAction = 'approve' | 'deny' | 'cancelled';
 
 type PendingPermissionGate = {
   resolve: (action: PendingPermissionAction) => void;
   timer: ReturnType<typeof setTimeout>;
+};
+
+type ResolvedPiModelConfig = {
+  modelConfig: PiModelConfig;
+  sourceModelConfig?: schema.LlmModelConfig;
 };
 
 type ContainerEventEnvelope = {
@@ -214,6 +228,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
     @Optional() private readonly codeExecutionService?: CodeExecutionService,
+    @Optional()
+    private readonly decryptionBoundaryService?: DecryptionBoundaryService,
+    @Optional()
+    private readonly piConfigGenerator?: PiConfigGeneratorService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -286,13 +304,17 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         const sessionUrl = await this.dockerService.getSessionUrl(
           sandboxSession.containerId,
         );
+        const sessionInitPayload = await this.buildContainerSessionPayload({
+          session,
+          runtimeConfig: params.runtimeConfig,
+          mcpServers: params.mcpServers,
+        });
 
         await this.initializeContainerSession(sessionUrl, {
           sessionId: session.id,
           cwd: CONTAINER_WORKSPACE,
-          systemPrompt: params.systemPrompt,
-          mcpServers: params.mcpServers,
           createCodingTools: true,
+          ...sessionInitPayload,
           ...(await this.buildRemoteToolExecutionPayload(session.id)),
         });
       } catch (error) {
@@ -551,6 +573,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         ? await this.sandboxService.getSandboxSession(
             sandboxBinding.executionId,
             tenantId,
+            sandboxBinding.sandboxNodeId,
           )
         : sandboxBinding.agentConversationId
           ? await this.sandboxService.findByConversationId(
@@ -611,6 +634,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       typeof serverSandbox.agentConversationId === 'string'
         ? serverSandbox.agentConversationId
         : null;
+    const sandboxNodeId =
+      typeof workflowState['sandboxNodeId'] === 'string'
+        ? workflowState['sandboxNodeId']
+        : this.isRecord(serverSandbox) &&
+            typeof serverSandbox.sandboxNodeId === 'string'
+          ? serverSandbox.sandboxNodeId
+          : null;
 
     return {
       ...((executionId ?? nestedExecutionId)
@@ -622,6 +652,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
               agentConversationId ?? nestedConversationId ?? undefined,
           }
         : {}),
+      ...(sandboxNodeId ? { sandboxNodeId } : {}),
     };
   }
 
@@ -631,11 +662,11 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   private describeSandboxBinding(binding: SandboxBinding): string {
     if (binding.executionId && binding.agentConversationId) {
-      return `execution ${binding.executionId} / conversation ${binding.agentConversationId}`;
+      return `execution ${binding.executionId}${binding.sandboxNodeId ? ` / sandbox ${binding.sandboxNodeId}` : ''} / conversation ${binding.agentConversationId}`;
     }
 
     if (binding.executionId) {
-      return `execution ${binding.executionId}`;
+      return `execution ${binding.executionId}${binding.sandboxNodeId ? ` / sandbox ${binding.sandboxNodeId}` : ''}`;
     }
 
     if (binding.agentConversationId) {
@@ -643,6 +674,392 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     return 'sandbox binding';
+  }
+
+  private async buildContainerSessionPayload(params: {
+    session: AgentSession;
+    runtimeConfig?: AgentRuntimeConfig;
+    mcpServers?: Readonly<Record<string, McpServerConfig>>;
+  }): Promise<Record<string, unknown>> {
+    const payload: Record<string, unknown> = {};
+    const systemPrompt = this.normalizeOptionalString(
+      params.session.systemPrompt,
+    );
+
+    if (systemPrompt) {
+      payload['systemPrompt'] = systemPrompt;
+    }
+
+    if (params.mcpServers && Object.keys(params.mcpServers).length > 0) {
+      payload['mcpServers'] = params.mcpServers;
+    }
+
+    const piConfig = await this.resolveSessionPiConfig(
+      params.session,
+      params.runtimeConfig,
+    );
+    if (piConfig) {
+      Object.assign(payload, piConfig);
+    }
+
+    return payload;
+  }
+
+  private async resolveSessionPiConfig(
+    session: AgentSession,
+    runtimeConfig?: AgentRuntimeConfig,
+  ): Promise<Record<string, unknown> | null> {
+    if (!this.piConfigGenerator) {
+      return null;
+    }
+
+    const resolvedModelConfig = await this.resolvePiModelConfig(
+      session,
+      runtimeConfig,
+    );
+
+    if (!resolvedModelConfig) {
+      return null;
+    }
+
+    const settings = this.parseJsonObject(
+      this.piConfigGenerator.generateSettings({
+        modelConfig: resolvedModelConfig.modelConfig,
+      }),
+      'pi settings',
+    );
+    const models = this.parseJsonObject(
+      this.piConfigGenerator.generateModelsJson({
+        modelConfig: resolvedModelConfig.modelConfig,
+      }),
+      'pi models',
+    );
+    const runtimeApiKeys = await this.resolveRuntimeApiKeys(
+      resolvedModelConfig,
+    );
+
+    this.ensureDynamicProviderApiKey(
+      models,
+      resolvedModelConfig.modelConfig,
+      runtimeApiKeys,
+    );
+
+    return {
+      settings,
+      models,
+      ...(runtimeApiKeys ? { runtimeApiKeys } : {}),
+    };
+  }
+
+  private async resolvePiModelConfig(
+    session: AgentSession,
+    runtimeConfig?: AgentRuntimeConfig,
+  ): Promise<ResolvedPiModelConfig | null> {
+    const fallbackModelConfig = this.toPiModelConfigFromRuntimeModelConfig(
+      runtimeConfig?.modelConfig,
+    );
+
+    if (!session.tenantId) {
+      return fallbackModelConfig ? { modelConfig: fallbackModelConfig } : null;
+    }
+
+    try {
+      return await this.resolveStoredPiModelConfig(session);
+    } catch (error) {
+      if (!fallbackModelConfig) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `无法读取会话 ${session.id} 的租户模型配置，回退到 runtimeConfig 模型快照: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { modelConfig: fallbackModelConfig };
+    }
+  }
+
+  private async resolveStoredPiModelConfig(
+    session: AgentSession,
+  ): Promise<ResolvedPiModelConfig> {
+    if (!session.tenantId) {
+      throw new Error(`Session ${session.id} 缺少 tenantId`);
+    }
+
+    const tenantId = session.tenantId;
+    const llmModelConfigId = session.llmModelConfigId;
+
+    return runInTenantTransaction(this.db, tenantId, async () => {
+      if (llmModelConfigId) {
+        const [modelConfig] = await this.tenantDb
+          .select()
+          .from(schema.llmModelConfigs)
+          .where(
+            and(
+              eq(schema.llmModelConfigs.id, llmModelConfigId),
+              eq(schema.llmModelConfigs.tenantId, tenantId),
+            ),
+          );
+
+        if (!modelConfig) {
+          throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
+        }
+
+        return {
+          modelConfig: this.toPiModelConfig(modelConfig),
+          sourceModelConfig: modelConfig,
+        };
+      }
+
+      const [defaultModelConfig] = await this.tenantDb
+        .select()
+        .from(schema.llmModelConfigs)
+        .where(
+          and(
+            eq(schema.llmModelConfigs.tenantId, tenantId),
+            eq(schema.llmModelConfigs.isDefault, true),
+          ),
+        );
+
+      if (!defaultModelConfig) {
+        throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
+      }
+
+      session.llmModelConfigId = defaultModelConfig.id;
+
+      return {
+        modelConfig: this.toPiModelConfig(defaultModelConfig),
+        sourceModelConfig: defaultModelConfig,
+      };
+    });
+  }
+
+  private async resolveRuntimeApiKeys(
+    resolvedModelConfig: ResolvedPiModelConfig,
+  ): Promise<Record<string, string> | undefined> {
+    if (!this.decryptionBoundaryService) {
+      return undefined;
+    }
+
+    const apiKey = await this.resolveRuntimeApiKey(resolvedModelConfig);
+    if (!apiKey) {
+      return undefined;
+    }
+
+    return {
+      [resolvedModelConfig.modelConfig.provider]: apiKey,
+    };
+  }
+
+  private async resolveRuntimeApiKey(
+    resolvedModelConfig: ResolvedPiModelConfig,
+  ): Promise<string | undefined> {
+    if (!this.decryptionBoundaryService) {
+      return undefined;
+    }
+
+    const { modelConfig, sourceModelConfig } = resolvedModelConfig;
+    const providerApiKeyEnv = resolvePiProviderApiKeyEnv(modelConfig);
+
+    if (!providerApiKeyEnv) {
+      return undefined;
+    }
+
+    const tenantId = this.normalizeOptionalString(
+      sourceModelConfig?.tenantId ?? modelConfig.tenantId,
+    );
+    const organizationId = this.normalizeOptionalString(
+      sourceModelConfig?.orgId ?? modelConfig.organizationId,
+    );
+    const apiKeyId = this.normalizeOptionalString(
+      sourceModelConfig?.apiKeyId ?? modelConfig.apiKeyId,
+    );
+
+    if (!tenantId) {
+      return undefined;
+    }
+
+    try {
+      if (apiKeyId) {
+        return await this.decryptionBoundaryService.decryptApiKey(
+          apiKeyId,
+          tenantId,
+          SandboxAgentAdapter.name,
+        );
+      }
+
+      if (!organizationId) {
+        return undefined;
+      }
+
+      return await this.decryptionBoundaryService.decryptConfiguredApiKey(
+        {
+          apiKeyId: null,
+          organizationId,
+          tenantId,
+          provider: modelConfig.provider,
+        },
+        SandboxAgentAdapter.name,
+      );
+    } catch (error) {
+      if (
+        (error instanceof DefaultApiKeyNotConfiguredException ||
+          error instanceof ApiKeyNotFoundException) &&
+        process.env[providerApiKeyEnv]
+      ) {
+        this.logger.warn(
+          `共享 sandbox 会话 ${modelConfig.provider}/${modelConfig.model} 未找到受管 API Key，回退到容器继承环境变量 ${providerApiKeyEnv}`,
+        );
+        return undefined;
+      }
+
+      throw error;
+    }
+  }
+
+  private ensureDynamicProviderApiKey(
+    models: Record<string, unknown>,
+    modelConfig: PiModelConfig,
+    runtimeApiKeys?: Record<string, string>,
+  ): void {
+    const providers = this.asRecord(models['providers']);
+    if (!providers) {
+      return;
+    }
+
+    const providerConfig = this.asRecord(providers[modelConfig.provider]);
+    if (!providerConfig) {
+      return;
+    }
+
+    const configuredModels = providerConfig['models'];
+    if (!Array.isArray(configuredModels) || configuredModels.length === 0) {
+      return;
+    }
+
+    const providerApiKey = this.normalizeOptionalString(providerConfig['apiKey']);
+    if (providerApiKey) {
+      return;
+    }
+
+    if (runtimeApiKeys?.[modelConfig.provider]) {
+      providerConfig['apiKey'] = '__runtime__';
+    }
+  }
+
+  private toPiModelConfig(modelConfig: schema.LlmModelConfig): PiModelConfig {
+    const baseUrl = this.resolvePiModelBaseUrl(modelConfig);
+
+    return {
+      provider: modelConfig.provider,
+      model: modelConfig.modelName,
+      ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
+      apiKeyId: modelConfig.apiKeyId ?? null,
+      organizationId: modelConfig.orgId,
+      tenantId: modelConfig.tenantId,
+      ...(this.normalizeOptionalString(modelConfig.authMethod)
+        ? { authMethod: this.normalizeOptionalString(modelConfig.authMethod) }
+        : {}),
+    };
+  }
+
+  private resolvePiModelBaseUrl(
+    modelConfig: Pick<schema.LlmModelConfig, 'endpointUrl' | 'parameters'>,
+  ): string | undefined {
+    const endpointUrl = this.normalizeOptionalString(modelConfig.endpointUrl);
+    if (endpointUrl) {
+      return endpointUrl;
+    }
+
+    const parameters =
+      modelConfig.parameters &&
+      typeof modelConfig.parameters === 'object' &&
+      !Array.isArray(modelConfig.parameters)
+        ? (modelConfig.parameters as Record<string, unknown>)
+        : {};
+
+    for (const candidate of [
+      parameters.baseUrl,
+      parameters.baseURL,
+      parameters.apiBaseUrl,
+      parameters.endpointUrl,
+    ]) {
+      const normalized = this.normalizeOptionalString(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return undefined;
+  }
+
+  private toPiModelConfigFromRuntimeModelConfig(
+    modelConfig?: AgentRuntimeConfig['modelConfig'],
+  ): PiModelConfig | undefined {
+    const provider = this.normalizeOptionalString(modelConfig?.provider);
+    const model =
+      this.normalizeOptionalString(modelConfig?.modelName) ??
+      this.normalizeOptionalString(modelConfig?.modelId);
+
+    if (!provider || !model) {
+      return undefined;
+    }
+
+    const apiBaseUrl = this.resolvePiRuntimeModelBaseUrl(modelConfig);
+    const authMethod = this.normalizeOptionalString(modelConfig?.authMethod);
+
+    return {
+      provider,
+      model,
+      ...(apiBaseUrl ? { apiBaseUrl } : {}),
+      ...(typeof modelConfig?.apiKeyId === 'string' || modelConfig?.apiKeyId === null
+        ? { apiKeyId: modelConfig.apiKeyId }
+        : {}),
+      ...(authMethod ? { authMethod } : {}),
+    };
+  }
+
+  private resolvePiRuntimeModelBaseUrl(
+    modelConfig?: AgentRuntimeConfig['modelConfig'],
+  ): string | undefined {
+    const endpointUrl = this.normalizeOptionalString(modelConfig?.endpointUrl);
+    if (endpointUrl) {
+      return endpointUrl;
+    }
+
+    const parameters =
+      modelConfig?.customParameters &&
+      typeof modelConfig.customParameters === 'object' &&
+      !Array.isArray(modelConfig.customParameters)
+        ? (modelConfig.customParameters as Record<string, unknown>)
+        : {};
+
+    for (const candidate of [
+      parameters.baseUrl,
+      parameters.baseURL,
+      parameters.apiBaseUrl,
+      parameters.endpointUrl,
+    ]) {
+      const normalized = this.normalizeOptionalString(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return undefined;
+  }
+
+  private parseJsonObject(
+    rawJson: string,
+    label: string,
+  ): Record<string, unknown> {
+    const parsed = JSON.parse(rawJson) as unknown;
+
+    if (!this.isRecord(parsed)) {
+      throw new Error(`${label} 必须是 JSON object`);
+    }
+
+    return parsed;
   }
 
   private async initializeContainerSession(
@@ -2057,6 +2474,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private normalizeOptionalString(value: unknown): string | undefined {
+    return typeof value === 'string' ? this.normalizeString(value) : undefined;
   }
 
   private normalizeString(value?: string | null): string | undefined {

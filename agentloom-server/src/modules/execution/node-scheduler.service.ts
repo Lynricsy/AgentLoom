@@ -174,7 +174,7 @@ export class NodeSchedulerService {
 
     // 条件节点需要分支处理
     if (
-      completedStep.nodeType === 'conditional' &&
+      completedStep.nodeType === 'condition' &&
       completedStep.status === 'completed' &&
       completedStep.result
     ) {
@@ -211,6 +211,13 @@ export class NodeSchedulerService {
     }
 
     await this.stepStateMachine.updateExecutionStatus(executionId, tenantId);
+    await this.cleanupConnectedSandboxIfIdle(
+      completedStep,
+      executionId,
+      tenantId,
+      snapshot,
+      steps,
+    );
     await this.cleanupSandboxIfTerminal(executionId, tenantId);
     await this.checkpointService.saveCheckpoint(tenantId, executionId, stepId);
   }
@@ -221,16 +228,29 @@ export class NodeSchedulerService {
     snapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
     steps: ExecutionStep[],
   ): Promise<void> {
-    const step = steps.find((s) => s.nodeId === nodeId);
+    const latestState = await this.loadLatestSchedulingState(executionId);
+    if (
+      latestState &&
+      (latestState.execution.status === 'failed' ||
+        latestState.execution.status === 'cancelled' ||
+        latestState.execution.status === 'completed')
+    ) {
+      return;
+    }
+
+    const resolvedSnapshot = latestState?.snapshot ?? snapshot;
+    const resolvedSteps = latestState?.steps ?? steps;
+    const step = resolvedSteps.find((s) => s.nodeId === nodeId);
     if (!step) return;
+    if (step.status !== 'pending') return;
 
     let input: Record<string, unknown>;
     try {
       input = this.resolveNodeInput(
         nodeId,
-        snapshot.edges,
-        steps,
-        snapshot.nodes,
+        resolvedSnapshot.edges,
+        resolvedSteps,
+        resolvedSnapshot.nodes,
       );
     } catch (error) {
       if (
@@ -267,16 +287,29 @@ export class NodeSchedulerService {
       .set({ input })
       .where(eq(schema.executionSteps.id, step.id));
 
+    const sandboxBinding = this.getExecutionSandboxBinding(
+      nodeId,
+      executionId,
+      resolvedSnapshot.edges,
+      resolvedSteps,
+    );
+    const memorySessionIds = this.getUpstreamMemorySessionIds(
+      nodeId,
+      resolvedSnapshot.edges,
+      resolvedSteps,
+    );
+
     switch (step.nodeType) {
       case 'agent':
+      case 'chat-agent':
         if (this.getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
           await this.executeWorkflowAgentNode(
             step,
             input,
             tenantId,
             executionId,
-            snapshot.edges,
-            steps,
+            resolvedSnapshot.edges,
+            resolvedSteps,
           );
           break;
         }
@@ -292,26 +325,67 @@ export class NodeSchedulerService {
             tenantId,
             step,
             input,
-            hasSandbox: this.hasSandboxUpstream(nodeId, snapshot.edges, steps),
+            sandboxBinding,
+            memorySessionIds,
           });
           await this.agentTaskQueue.add('agent-task', data, options);
         }
         break;
 
+      case 'manual-trigger':
+      case 'schedule-trigger':
+      case 'webhook-trigger':
+      case 'api-event-trigger':
+        await this.executeTriggerNode(step, tenantId, executionId);
+        break;
+
+      case 'llm-model':
+        await this.executeLlmModelNode(step, tenantId, executionId);
+        break;
+
       case 'sandbox':
-        await this.executeSandboxNode(step, input, tenantId, executionId);
+        await this.executeSandboxNode(
+          step,
+          input,
+          tenantId,
+          executionId,
+          resolvedSnapshot.edges,
+          resolvedSteps,
+        );
+        break;
+
+      case 'workspace':
+        await this.executeWorkspaceNode(step, tenantId, executionId);
         break;
 
       case 'memory':
         await this.executeMemoryNode(step, tenantId, executionId);
         break;
 
+      case 'knowledge-base':
+        await this.executeKnowledgeNode(step, tenantId, executionId);
+        break;
+
       case 'data_transform':
         await this.executeDataTransform(step, input, tenantId, executionId);
         break;
 
+      case 'input-preprocessor':
+        await this.executeInputPreprocessor(step, input, tenantId, executionId);
+        break;
+
+      case 'condition':
       case 'conditional':
         await this.executeConditional(step, input, tenantId, executionId);
+        break;
+
+      case 'loop':
+        await this.executeLoopNode(step, input, tenantId, executionId);
+        break;
+
+      case 'text-output':
+      case 'json-output':
+        await this.executeOutputNode(step, input, tenantId, executionId);
         break;
 
       case 'smart-routing':
@@ -320,10 +394,6 @@ export class NodeSchedulerService {
 
       case 'plugin':
         await this.executePlugin(step, input, tenantId, executionId);
-        break;
-
-      case 'input-preprocessor':
-        await this.executeInputPreprocessor(step, input, tenantId, executionId);
         break;
 
       case 'skill':
@@ -346,6 +416,8 @@ export class NodeSchedulerService {
             tenantId,
             step,
             input,
+            sandboxBinding,
+            memorySessionIds,
           });
           await this.agentTaskQueue.add('agent-task', data, options);
         }
@@ -364,6 +436,8 @@ export class NodeSchedulerService {
             tenantId,
             step,
             input,
+            sandboxBinding,
+            memorySessionIds,
           });
           await this.agentTaskQueue.add('agent-task', data, options);
         }
@@ -439,15 +513,15 @@ export class NodeSchedulerService {
 
       this.checkEdgePortTypeCompatibility(edge, nodes);
 
-      const sourceHandle = edge.sourceHandle ?? undefined;
-      const targetHandle = edge.targetHandle ?? undefined;
+      const sourceHandle = this.readEdgeHandle(edge, 'source');
+      const targetHandle = this.readEdgeHandle(edge, 'target');
 
       if (targetHandle) {
         this.setValueAtPath(
           input,
           targetHandle,
           sourceHandle
-            ? this.resolveJsonPath(sourceStep.result, sourceHandle)
+            ? this.resolveSourceHandleValue(sourceStep, sourceHandle)
             : sourceStep.result,
         );
         continue;
@@ -457,7 +531,7 @@ export class NodeSchedulerService {
         this.setValueAtPath(
           input,
           sourceHandle,
-          this.resolveJsonPath(sourceStep.result, sourceHandle),
+          this.resolveSourceHandleValue(sourceStep, sourceHandle),
         );
         continue;
       }
@@ -472,7 +546,9 @@ export class NodeSchedulerService {
     edge: ReactFlowEdge,
     nodes: schema.ReactFlowNode[],
   ): void {
-    if (!edge.sourceHandle || !edge.targetHandle) return;
+    const sourceHandle = this.readEdgeHandle(edge, 'source');
+    const targetHandle = this.readEdgeHandle(edge, 'target');
+    if (!sourceHandle || !targetHandle) return;
 
     const sourceNode = nodes.find((n) => n.id === edge.source);
     const targetNode = nodes.find((n) => n.id === edge.target);
@@ -486,10 +562,10 @@ export class NodeSchedulerService {
       | undefined;
 
     const sourcePort = sourcePortMeta?.outputs?.find(
-      (p) => p.name === edge.sourceHandle,
+      (p) => p.name === sourceHandle,
     );
     const targetPort = targetPortMeta?.inputs?.find(
-      (p) => p.name === edge.targetHandle,
+      (p) => p.name === targetHandle,
     );
     if (!sourcePort?.dataType || !targetPort?.dataType) return;
 
@@ -497,8 +573,8 @@ export class NodeSchedulerService {
       throw new NodeTypeMismatchException({
         sourceNodeId: edge.source,
         targetNodeId: edge.target,
-        sourcePortId: edge.sourceHandle,
-        targetPortId: edge.targetHandle,
+        sourcePortId: sourceHandle,
+        targetPortId: targetHandle,
         sourceType: sourcePort.dataType,
         targetType: targetPort.dataType,
         edgeId: edge.id,
@@ -1025,17 +1101,27 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const transformType = this.readFirstString(
+        nodeData.transformType,
+        nodeData.transform_type,
+      );
+      const configuredOutputFormat = this.readFirstString(
+        nodeData.outputFormat,
+        nodeData.output_format,
+      );
 
       const config: InputPreprocessorConfig = {
         transformType:
-          typeof nodeData.transformType === 'string'
-            ? (nodeData.transformType as InputPreprocessorConfig['transformType'])
+          transformType === 'jsonata' ||
+          transformType === 'template' ||
+          transformType === 'script'
+            ? transformType
             : 'jmespath',
         expression:
           typeof nodeData.expression === 'string' ? nodeData.expression : '',
-        ...(typeof nodeData.outputFormat === 'string'
-          ? { outputFormat: nodeData.outputFormat }
+        ...(configuredOutputFormat
+          ? { outputFormat: configuredOutputFormat }
           : {}),
       };
 
@@ -1043,7 +1129,18 @@ export class NodeSchedulerService {
       const { output, outputFormat } = await handler.execute(input, config);
 
       const result: Record<string, unknown> =
-        typeof output === 'string' ? { text: output } : output;
+        typeof output === 'string'
+          ? {
+              text: output,
+              'text-out': output,
+              exec_out: { triggered: true },
+            }
+          : {
+              ...output,
+              json: output,
+              'json-out': output,
+              exec_out: { triggered: true },
+            };
 
       if (outputFormat) {
         result._outputFormat = outputFormat;
@@ -1330,30 +1427,55 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = step.nodeData ?? {};
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
       const expression =
         typeof nodeData.expression === 'string'
           ? nodeData.expression.trim()
           : '';
-      const conditionField = nodeData.conditionField as string;
-      const expectedValue = nodeData.expectedValue;
+      const conditionField = this.readFirstString(
+        nodeData.conditionField,
+        nodeData.condition_field,
+      );
+      const expectedValue = this.readFirstDefined(
+        nodeData.expectedValue,
+        nodeData.expected_value,
+      );
+
+      if (!expression && !conditionField) {
+        throw new AgentExecutionException(
+          `条件节点 ${step.nodeId} 缺少 conditionField 配置`,
+        );
+      }
 
       const flatInput = this.flattenInput(input);
+      const actualValue = conditionField
+        ? this.resolveJsonPath(flatInput, conditionField)
+        : undefined;
       const evaluation = expression
         ? this.evaluateExpression(expression, input)
-        : flatInput[conditionField] === expectedValue;
-      const branch = evaluation ? 'true' : 'false';
+        : actualValue === expectedValue;
+      const branch = evaluation ? 'matched' : 'unmatched';
+      const matchedPayload = evaluation ? input : null;
+      const unmatchedPayload = evaluation ? null : input;
 
       const result = expression
         ? {
             branch,
+            matched: matchedPayload,
+            unmatched: unmatchedPayload,
+            'true': matchedPayload,
+            'false': unmatchedPayload,
             expression,
             evaluatedValue: evaluation,
           }
         : {
             branch,
+            matched: matchedPayload,
+            unmatched: unmatchedPayload,
+            'true': matchedPayload,
+            'false': unmatchedPayload,
             evaluatedField: conditionField,
-            actualValue: flatInput[conditionField],
+            actualValue,
             expectedValue,
           };
 
@@ -1362,6 +1484,88 @@ export class NodeSchedulerService {
         step.id,
         'completed',
         { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeLoopNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const configuredMaxIterations = this.readOptionalNumber(
+        nodeData.maxIterations,
+        nodeData.max_iterations,
+      );
+      const maxIterations =
+        configuredMaxIterations && configuredMaxIterations > 0
+          ? Math.floor(configuredMaxIterations)
+          : 10;
+      const items = this.normalizeLoopItemsInput(input);
+      const iteratedItems = items.slice(0, maxIterations);
+      const truncated = items.length > iteratedItems.length;
+      const itemOutput =
+        iteratedItems.length === 1 ? iteratedItems[0] : iteratedItems;
+      const done = {
+        items: iteratedItems,
+        totalItems: items.length,
+        processedCount: iteratedItems.length,
+        remainingCount: Math.max(items.length - iteratedItems.length, 0),
+        maxIterations,
+        truncated,
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            item: itemOutput,
+            items: iteratedItems,
+            done,
+            totalItems: items.length,
+            processedCount: iteratedItems.length,
+            maxIterations,
+            truncated,
+          },
+        },
       );
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1406,7 +1610,7 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
       const rawStrategy = this.resolveSmartRoutingStrategyValue(nodeData);
       const strategyName = this.normalizeSmartRoutingStrategyName(rawStrategy);
       const strategyConfig = this.resolveSmartRoutingStrategyConfig(nodeData);
@@ -1497,6 +1701,10 @@ export class NodeSchedulerService {
       const result = {
         selectedModelId: decision.selectedModelId,
         llmModelConfigId: decision.selectedModelId,
+        'model-out': {
+          selectedModelId: decision.selectedModelId,
+          llmModelConfigId: decision.selectedModelId,
+        },
         strategy: rawStrategy,
         reasoning: decision.reasoning,
         evaluatedModels,
@@ -1597,20 +1805,62 @@ export class NodeSchedulerService {
     tenantId: string;
     step: ExecutionStep;
     input: Record<string, unknown>;
-    hasSandbox?: boolean;
+    sandboxBinding?: { executionId: string; sandboxNodeId: string };
+    memorySessionIds?: string[];
   }): Promise<{
     data: AgentTaskJobData;
     options?: { attempts: number };
   }> {
-    const { executionId, tenantId, step, input, hasSandbox } = params;
+    const {
+      executionId,
+      tenantId,
+      step,
+      input,
+      sandboxBinding,
+      memorySessionIds,
+    } = params;
     const smartRouting = this.extractSmartRoutingContext(input);
-    const nodeData = { ...(step.nodeData ?? {}) };
+    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
 
     if (smartRouting) {
       nodeData.llmModelConfigId = smartRouting.selectedModelId;
     }
 
+    if (
+      typeof nodeData.llmModelConfigId !== 'string' ||
+      nodeData.llmModelConfigId.length === 0
+    ) {
+      const fallbackModelId = Object.values(input)
+        .flatMap((value) =>
+          this.extractStructuredModelConfigIds(value),
+        )
+        .at(0);
+      if (fallbackModelId) {
+        nodeData.llmModelConfigId = fallbackModelId;
+      }
+    }
+
+    if (
+      typeof nodeData.agentId !== 'string' ||
+      nodeData.agentId.trim().length === 0
+    ) {
+      nodeData.agentId = step.nodeId;
+    }
+
     const mcpServers = await this.resolveMcpServersFromInput(input, tenantId);
+    const workflowContext: Record<string, unknown> = {};
+
+    if (mcpServers) {
+      workflowContext.mcpServers = mcpServers;
+    }
+
+    if (sandboxBinding) {
+      workflowContext.serverSandbox = sandboxBinding;
+    }
+
+    if (memorySessionIds && memorySessionIds.length > 0) {
+      workflowContext.memorySessionIds = memorySessionIds;
+    }
 
     return {
       data: {
@@ -1620,8 +1870,10 @@ export class NodeSchedulerService {
         input,
         nodeData,
         ...(smartRouting ? { smartRouting } : {}),
-        ...(hasSandbox ? { hasSandbox } : {}),
-        ...(mcpServers ? { workflowContext: { mcpServers } } : {}),
+        ...(sandboxBinding ? { hasSandbox: true } : {}),
+        ...(Object.keys(workflowContext).length > 0
+          ? { workflowContext }
+          : {}),
       },
       ...(this.isFallbackChainStrategy(smartRouting?.strategy)
         ? { options: { attempts: 1 } }
@@ -2062,20 +2314,75 @@ export class NodeSchedulerService {
     return fallback;
   }
 
+  private readOptionalNumber(...values: unknown[]): number | undefined {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private readFirstString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+
+    return undefined;
+  }
+
+  private readFirstDefined<T>(...values: T[]): T | undefined {
+    for (const value of values) {
+      if (value !== undefined) {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
+  private getRuntimeNodeData(
+    nodeData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const config = this.isRecord(nodeData.config) ? nodeData.config : {};
+    return { ...config, ...nodeData };
+  }
+
+  private readEdgeHandle(
+    edge: ReactFlowEdge,
+    handleKind: 'source' | 'target',
+  ): string | undefined {
+    const rawEdge = edge as unknown as Record<string, unknown>;
+
+    return this.readFirstString(
+      handleKind === 'source' ? edge.sourceHandle : edge.targetHandle,
+      rawEdge[`${handleKind}_handle`],
+    );
+  }
+
   // ── 私有辅助 ───────────────────────────────────────────────
 
   private getWorkflowAgentDefinitionId(
     nodeData: Record<string, unknown>,
   ): string | undefined {
-    if (typeof nodeData.agentDefinitionId === 'string') {
-      return nodeData.agentDefinitionId;
-    }
+    const runtimeNodeData = this.getRuntimeNodeData(nodeData);
 
-    if (typeof nodeData.agent_definition_id === 'string') {
-      return nodeData.agent_definition_id;
-    }
-
-    return undefined;
+    return this.readFirstString(
+      runtimeNodeData.agentDefinitionId,
+      runtimeNodeData.agent_definition_id,
+      runtimeNodeData.selectedAgentId,
+      runtimeNodeData.selected_agent_id,
+    );
   }
 
   private async executeWorkflowAgentNode(
@@ -2098,6 +2405,12 @@ export class NodeSchedulerService {
         );
       }
 
+      const workflowSandboxBinding = this.getExecutionSandboxBinding(
+        step.nodeId,
+        executionId,
+        edges,
+        steps,
+      );
       const workflowSandboxConfig = this.getWorkflowSandboxOverride(
         step.nodeId,
         edges,
@@ -2114,7 +2427,9 @@ export class NodeSchedulerService {
         step,
         input,
         tenantId,
-        ...(workflowSandboxConfig ? { sandboxBinding: { executionId } } : {}),
+        ...(workflowSandboxBinding
+          ? { sandboxBinding: workflowSandboxBinding }
+          : {}),
         ...(typeof nodeData.agentVersionId === 'string'
           ? { agentVersionId: nodeData.agentVersionId }
           : typeof nodeData.agent_version_id === 'string'
@@ -2167,17 +2482,9 @@ export class NodeSchedulerService {
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
   ): SandboxConfig | undefined {
-    const incomingEdges = edges.filter((edge) => edge.target === nodeId);
-
-    for (const edge of incomingEdges) {
-      const sourceStep = steps.find(
-        (candidate) => candidate.nodeId === edge.source,
-      );
-      if (sourceStep?.nodeType !== 'sandbox') {
-        continue;
-      }
-
-      return this.resolveSandboxConfig(sourceStep.nodeData ?? {});
+    const sourceStep = this.getSandboxSourceStep(nodeId, edges, steps);
+    if (sourceStep) {
+      return this.resolveSandboxConfigForStep(sourceStep, edges, steps);
     }
 
     return undefined;
@@ -2185,30 +2492,72 @@ export class NodeSchedulerService {
 
   private resolveSandboxConfig(
     nodeData: Record<string, unknown>,
+    overrides: {
+      restoreWorkspaceId?: string;
+    } = {},
   ): SandboxConfig {
     const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
+    const lifecycleModeValue = this.readFirstString(
+      sandboxConfigSource.lifecycleMode,
+      sandboxConfigSource.lifecycle_mode,
+    );
+    const lifecycleMode =
+      lifecycleModeValue === 'persistent'
+        ? 'persistent'
+        : lifecycleModeValue === 'session'
+          ? 'session'
+          : undefined;
+    const restoreWorkspaceId = this.readFirstString(
+      overrides.restoreWorkspaceId,
+      sandboxConfigSource.restoreWorkspaceId,
+      sandboxConfigSource.restore_workspace_id,
+    );
+    const persistencePath = this.readFirstString(
+      sandboxConfigSource.persistencePath,
+      sandboxConfigSource.persistence_path,
+    );
+    const persistenceExpiryHours = this.readOptionalNumber(
+      sandboxConfigSource.persistenceExpiryHours,
+      sandboxConfigSource.persistence_expiry_hours,
+    );
+    const name = this.readFirstString(
+      sandboxConfigSource.name,
+      sandboxConfigSource.persistentSandboxName,
+      sandboxConfigSource.persistent_sandbox_name,
+    );
+    const persistentSandboxId = this.readFirstString(
+      sandboxConfigSource.persistentSandboxId,
+      sandboxConfigSource.persistent_sandbox_id,
+    );
 
     return {
-      cpu:
-        typeof sandboxConfigSource.cpu === 'number'
-          ? sandboxConfigSource.cpu
-          : 1,
-      memory:
-        typeof sandboxConfigSource.memory === 'number'
-          ? sandboxConfigSource.memory
-          : 512,
-      disk:
-        typeof sandboxConfigSource.disk === 'number'
-          ? sandboxConfigSource.disk
-          : 2,
-      timeout:
-        typeof sandboxConfigSource.timeout === 'number'
-          ? sandboxConfigSource.timeout
-          : 2,
-      ...(typeof sandboxConfigSource.persistencePath === 'string'
-        ? { persistencePath: sandboxConfigSource.persistencePath }
+      cpu: this.readNumber(sandboxConfigSource.cpu, 1),
+      memory: this.readNumber(sandboxConfigSource.memory, 512),
+      disk: this.readNumber(sandboxConfigSource.disk, 2),
+      timeout: this.readNumber(sandboxConfigSource.timeout, 2),
+      ...(persistencePath ? { persistencePath } : {}),
+      ...(restoreWorkspaceId ? { restoreWorkspaceId } : {}),
+      ...(lifecycleMode ? { lifecycleMode } : {}),
+      ...(persistenceExpiryHours !== undefined
+        ? { persistenceExpiryHours }
         : {}),
+      ...(name ? { name } : {}),
+      ...(persistentSandboxId ? { persistentSandboxId } : {}),
     };
+  }
+
+  private resolveSandboxConfigForStep(
+    step: ExecutionStep,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): SandboxConfig {
+    return this.resolveSandboxConfig(step.nodeData ?? {}, {
+      restoreWorkspaceId: this.getSandboxRestoreWorkspaceId(
+        step.nodeId,
+        edges,
+        steps,
+      ),
+    });
   }
 
   async executeSandboxNode(
@@ -2216,11 +2565,13 @@ export class NodeSchedulerService {
     _input: Record<string, unknown>,
     tenantId: string,
     executionId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
   ): Promise<void> {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const config = this.resolveSandboxConfig(step.nodeData ?? {});
+      const config = this.resolveSandboxConfigForStep(step, edges, steps);
 
       const session = await this.sandboxService.createSandboxSession({
         executionId,
@@ -2237,6 +2588,83 @@ export class NodeSchedulerService {
           result: {
             sessionId: session.id,
             status: session.status,
+            'sandbox-output': {
+              sessionId: session.id,
+              status: session.status,
+            },
+          },
+        },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeWorkspaceNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const workspaceId = this.readFirstString(
+        nodeData.workspaceId,
+        nodeData.workspace_id,
+      );
+
+      if (!workspaceId) {
+        throw new Error('Workspace node requires workspaceId');
+      }
+
+      const workspaceName = this.readFirstString(
+        nodeData.workspaceName,
+        nodeData.workspace_name,
+        nodeData.label,
+      );
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            workspaceId,
+            ...(workspaceName ? { workspaceName } : {}),
+            'volume-output': {
+              workspaceId,
+              ...(workspaceName ? { workspaceName } : {}),
+            },
           },
         },
       );
@@ -2291,6 +2719,12 @@ export class NodeSchedulerService {
         MemoryResourceConfig,
         MemoryResourceInstance
       >('memory', config);
+      const result = {
+        sessionId: instance.sessionId,
+        instanceId: config.memoryInstanceId,
+        role: config.role,
+        status: instance.session.status,
+      };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -2298,12 +2732,268 @@ export class NodeSchedulerService {
         'completed',
         {
           result: {
-            sessionId: instance.sessionId,
-            instanceId: config.memoryInstanceId,
-            role: config.role,
-            status: instance.session.status,
+            ...result,
+            'memory-out-0': result,
           },
         },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeTriggerNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const [execution] = await this.tenantDb
+        .select({
+          inputParams: schema.workflowExecutions.inputParams,
+          triggerType: schema.workflowExecutions.triggerType,
+        })
+        .from(schema.workflowExecutions)
+        .where(eq(schema.workflowExecutions.id, executionId))
+        .limit(1);
+
+      const payload = this.extractExecutionInputPayload(execution?.inputParams);
+      const result = {
+        triggerType: execution?.triggerType ?? step.nodeType,
+        payload,
+        exec_out: {
+          triggerType: execution?.triggerType ?? step.nodeType,
+          triggered: true,
+        },
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeLlmModelNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const llmModelConfigId = this.readFirstString(
+        nodeData.llmModelConfigId,
+        nodeData.llm_config_id,
+        nodeData.modelConfigId,
+        nodeData.model_config_id,
+      );
+
+      if (!llmModelConfigId) {
+        throw new Error('LLM 模型节点缺少 llmModelConfigId');
+      }
+
+      const result = {
+        llmModelConfigId,
+        modelConfigId: llmModelConfigId,
+        modelId: llmModelConfigId,
+        ...(this.readFirstString(nodeData.provider) ? { provider: nodeData.provider } : {}),
+        ...(this.readFirstString(nodeData.name) ? { name: nodeData.name } : {}),
+        ...(this.readFirstString(nodeData.modelName) ? { modelName: nodeData.modelName } : {}),
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeKnowledgeNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const knowledgeBaseId = this.readFirstString(
+        nodeData.knowledgeBaseId,
+        nodeData.knowledge_base_id,
+      );
+
+      if (!knowledgeBaseId) {
+        throw new Error('Knowledge Base node requires knowledgeBaseId');
+      }
+
+      const result = {
+        type: 'knowledge-base',
+        knowledgeBaseId,
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeOutputNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const rawOutput = this.extractOutputValue(input);
+      const content =
+        step.nodeType === 'text-output'
+          ? this.stringifyOutputValue(rawOutput)
+          : this.normalizeJsonOutputValue(rawOutput);
+      const result =
+        step.nodeType === 'text-output'
+          ? { content }
+          : { json: content };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
       );
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -2373,27 +3063,36 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): MemoryResourceConfig {
-    const memoryConfigSource = this.isRecord(nodeData.config)
-      ? nodeData.config
-      : nodeData;
-    const memoryInstanceId = memoryConfigSource.memoryInstanceId;
+    const memoryConfigSource = this.getRuntimeNodeData(nodeData);
+    const memoryInstanceId = this.readFirstString(
+      memoryConfigSource.memoryInstanceId,
+      memoryConfigSource.memory_instance_id,
+    );
 
-    if (typeof memoryInstanceId !== 'string' || memoryInstanceId.length === 0) {
+    if (!memoryInstanceId) {
       throw new Error('Memory node requires memoryInstanceId');
     }
+
+    const bootUris =
+      Array.isArray(memoryConfigSource.bootUris) &&
+      memoryConfigSource.bootUris.every((uri) => typeof uri === 'string')
+        ? memoryConfigSource.bootUris
+        : Array.isArray(memoryConfigSource.boot_uris) &&
+            memoryConfigSource.boot_uris.every(
+              (uri) => typeof uri === 'string',
+            )
+          ? memoryConfigSource.boot_uris
+          : [];
+    const fusionPriority = this.readOptionalNumber(
+      memoryConfigSource.fusionPriority,
+      memoryConfigSource.fusion_priority,
+    );
 
     return {
       memoryInstanceId,
       role: memoryConfigSource.role === 'readonly' ? 'readonly' : 'primary',
-      bootUris: Array.isArray(memoryConfigSource.bootUris)
-        ? memoryConfigSource.bootUris.filter(
-            (uri): uri is string => typeof uri === 'string',
-          )
-        : [],
-      fusionPriority:
-        typeof memoryConfigSource.fusionPriority === 'number'
-          ? memoryConfigSource.fusionPriority
-          : 0,
+      bootUris,
+      fusionPriority: fusionPriority ?? 0,
       tenantId,
       executionId,
     };
@@ -2403,16 +3102,140 @@ export class NodeSchedulerService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  private hasSandboxUpstream(
+  private getSandboxSourceStep(
     nodeId: string,
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
-  ): boolean {
+  ): ExecutionStep | undefined {
     const incomingEdges = edges.filter((e) => e.target === nodeId);
-    return incomingEdges.some((edge) => {
+    for (const edge of incomingEdges) {
       const sourceStep = steps.find((s) => s.nodeId === edge.source);
-      return sourceStep?.nodeType === 'sandbox';
-    });
+      if (sourceStep?.nodeType === 'sandbox') {
+        return sourceStep;
+      }
+    }
+
+    return undefined;
+  }
+
+  private getExecutionSandboxBinding(
+    nodeId: string,
+    executionId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): { executionId: string; sandboxNodeId: string } | undefined {
+    const sourceStep = this.getSandboxSourceStep(nodeId, edges, steps);
+    if (!sourceStep) {
+      return undefined;
+    }
+
+    return {
+      executionId,
+      sandboxNodeId: sourceStep.nodeId,
+    };
+  }
+
+  private getSandboxRestoreWorkspaceId(
+    sandboxNodeId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): string | undefined {
+    const incomingEdges = edges.filter((edge) => edge.target === sandboxNodeId);
+
+    for (const edge of incomingEdges) {
+      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
+      if (sourceStep?.nodeType !== 'workspace') {
+        continue;
+      }
+
+      const nodeData = this.isRecord(sourceStep.nodeData) ? sourceStep.nodeData : {};
+      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+      const workspaceId =
+        typeof config.workspaceId === 'string' && config.workspaceId.trim()
+          ? config.workspaceId.trim()
+          : this.isRecord(sourceStep.result) &&
+              typeof sourceStep.result.workspaceId === 'string' &&
+              sourceStep.result.workspaceId.trim()
+            ? sourceStep.result.workspaceId.trim()
+            : undefined;
+
+      if (workspaceId) {
+        return workspaceId;
+      }
+    }
+
+    return undefined;
+  }
+
+  private getUpstreamMemorySessionIds(
+    nodeId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): string[] {
+    const sessionIds = new Set<string>();
+    const incomingEdges = edges.filter((edge) => edge.target === nodeId);
+
+    for (const edge of incomingEdges) {
+      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
+      if (sourceStep?.nodeType !== 'memory' || !this.isRecord(sourceStep.result)) {
+        continue;
+      }
+
+      const { sessionId } = sourceStep.result;
+      if (typeof sessionId === 'string' && sessionId.trim()) {
+        sessionIds.add(sessionId.trim());
+      }
+    }
+
+    return [...sessionIds];
+  }
+
+  private async cleanupConnectedSandboxIfIdle(
+    completedStep: ExecutionStep,
+    executionId: string,
+    tenantId: string,
+    snapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
+    steps: ExecutionStep[],
+  ): Promise<void> {
+    const sandboxSource = this.getSandboxSourceStep(
+      completedStep.nodeId,
+      snapshot.edges,
+      steps,
+    );
+
+    if (!sandboxSource) {
+      return;
+    }
+
+    const downstreamStepIds = new Set(
+      snapshot.edges
+        .filter((edge) => edge.source === sandboxSource.nodeId)
+        .map((edge) => edge.target),
+    );
+
+    if (downstreamStepIds.size === 0) {
+      return;
+    }
+
+    const allConsumersSettled = steps
+      .filter((step) => downstreamStepIds.has(step.nodeId))
+      .every((step) => COMPLETED_STEP_STATUSES.has(step.status));
+
+    if (!allConsumersSettled) {
+      return;
+    }
+
+    try {
+      await this.sandboxService.releaseExecutionSandbox(
+        executionId,
+        sandboxSource.nodeId,
+        tenantId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `沙箱节点 ${sandboxSource.nodeId} 释放失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async cleanupSandboxIfTerminal(
@@ -2463,6 +3286,42 @@ export class NodeSchedulerService {
     return { execution, snapshot, steps };
   }
 
+  private async loadLatestSchedulingState(executionId: string): Promise<
+    | {
+        execution: schema.WorkflowExecution;
+        snapshot: {
+          nodes: schema.ReactFlowNode[];
+          edges: ReactFlowEdge[];
+        };
+        steps: ExecutionStep[];
+      }
+    | undefined
+  > {
+    const [execution] = await this.tenantDb
+      .select()
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId))
+      .limit(1);
+
+    if (!execution) {
+      return undefined;
+    }
+
+    const steps = await this.tenantDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.executionId, executionId));
+
+    return {
+      execution,
+      snapshot: execution.definitionSnapshot as {
+        nodes: schema.ReactFlowNode[];
+        edges: ReactFlowEdge[];
+      },
+      steps,
+    };
+  }
+
   private evaluateExpression(
     expression: string,
     input: Record<string, unknown>,
@@ -2490,6 +3349,284 @@ export class NodeSchedulerService {
     return { value: result };
   }
 
+  private extractExecutionInputPayload(
+    inputParams: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    if (!this.isRecord(inputParams)) {
+      return {};
+    }
+
+    const payload = { ...inputParams };
+    delete payload._meta;
+    return payload;
+  }
+
+  private normalizeLoopItemsInput(input: Record<string, unknown>): unknown[] {
+    const directCandidates = [
+      input.items,
+      input.json,
+      input.value,
+      input.content,
+      this.flattenInput(input).items,
+      this.flattenInput(input).json,
+      this.flattenInput(input).value,
+      this.flattenInput(input).content,
+    ];
+
+    for (const candidate of directCandidates) {
+      const normalized = this.extractLoopItemsCandidate(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    const fallbackEntries = Object.entries(input).filter(
+      ([key]) => key !== 'exec_in',
+    );
+
+    if (fallbackEntries.length === 1) {
+      return this.coerceLoopItems(fallbackEntries[0][1]);
+    }
+
+    for (const [, value] of fallbackEntries) {
+      const normalized = this.extractLoopItemsCandidate(value);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return [];
+  }
+
+  private extractLoopItemsCandidate(value: unknown): unknown[] | undefined {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (!this.isRecord(value)) {
+      return value === undefined || value === null ? undefined : [value];
+    }
+
+    const nestedCandidates = [
+      value.items,
+      value.json,
+      value.value,
+      value.content,
+      value.payload,
+    ];
+
+    for (const candidate of nestedCandidates) {
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private coerceLoopItems(value: unknown): unknown[] {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (value === undefined || value === null) {
+      return [];
+    }
+
+    return [value];
+  }
+
+  private extractOutputValue(input: Record<string, unknown>): unknown {
+    if (Object.prototype.hasOwnProperty.call(input, 'content')) {
+      return input.content;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(input, 'json')) {
+      return input.json;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(input, 'value')) {
+      return input.value;
+    }
+
+    const values = Object.values(input);
+    if (values.length === 1) {
+      return values[0];
+    }
+
+    return input;
+  }
+
+  private extractStructuredModelConfigIds(value: unknown): string[] {
+    if (!this.isRecord(value)) {
+      return [];
+    }
+
+    if (Array.isArray(value.candidateModelIds)) {
+      return value.candidateModelIds.filter(
+        (modelId): modelId is string =>
+          typeof modelId === 'string' && modelId.length > 0,
+      );
+    }
+
+    const directId = this.readFirstString(
+      value.selectedModelId,
+      value.llmModelConfigId,
+      value.modelConfigId,
+    );
+
+    if (directId) {
+      return [directId];
+    }
+
+    return Object.values(value).flatMap((item) =>
+      this.extractStructuredModelConfigIds(item),
+    );
+  }
+
+  private stringifyOutputValue(value: unknown): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (value === undefined) {
+      return '';
+    }
+
+    return JSON.stringify(value ?? null);
+  }
+
+  private normalizeJsonOutputValue(value: unknown): Record<string, unknown> {
+    if (this.isRecord(value)) {
+      return value;
+    }
+
+    return { value };
+  }
+
+  private resolveSourceHandleValue(
+    sourceStep: ExecutionStep,
+    sourceHandle: string,
+  ): unknown {
+    if (!this.isRecord(sourceStep.result)) {
+      return undefined;
+    }
+
+    const resolved = this.resolveJsonPath(sourceStep.result, sourceHandle);
+    if (resolved !== undefined) {
+      if (this.isConditionNode(sourceStep.nodeType)) {
+        return this.unwrapConditionBranchPayload(sourceHandle, resolved);
+      }
+
+      return resolved;
+    }
+
+    switch (sourceStep.nodeType) {
+      case 'agent':
+      case 'chat-agent':
+        if (sourceHandle === 'reply' || sourceHandle === 'agent-output') {
+          return sourceStep.result.content;
+        }
+        if (
+          sourceHandle === 'structured' ||
+          sourceHandle === 'structured-output'
+        ) {
+          return sourceStep.result.decision;
+        }
+        return undefined;
+      case 'manual-trigger':
+      case 'schedule-trigger':
+      case 'webhook-trigger':
+      case 'api-event-trigger':
+        if (sourceHandle === 'payload') {
+          return sourceStep.result.payload;
+        }
+        if (sourceHandle === 'exec_out') {
+          return sourceStep.result.exec_out;
+        }
+        return undefined;
+      case 'llm-model':
+        return sourceHandle === 'model-output' ? sourceStep.result : undefined;
+      case 'smart-routing':
+        return sourceHandle === 'model-out' ? sourceStep.result : undefined;
+      case 'mcp-tool':
+        return sourceHandle === 'tool-output' ? sourceStep.result : undefined;
+      case 'skill':
+        return sourceHandle === 'skill-out' ? sourceStep.result : undefined;
+      case 'knowledge-base':
+        return sourceHandle === 'knowledge' ? sourceStep.result : undefined;
+      case 'sandbox':
+        return sourceHandle === 'sandbox-output'
+          ? sourceStep.result
+          : undefined;
+      case 'workspace':
+        return sourceHandle === 'volume-output'
+          ? sourceStep.result
+          : undefined;
+      case 'memory':
+        return sourceHandle === 'memory-out-0'
+          ? sourceStep.result
+          : undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  private isConditionNode(nodeType: string | null | undefined): boolean {
+    return nodeType === 'condition' || nodeType === 'conditional';
+  }
+
+  private unwrapConditionBranchPayload(
+    sourceHandle: string,
+    value: unknown,
+  ): unknown {
+    if (
+      sourceHandle !== 'matched' &&
+      sourceHandle !== 'unmatched' &&
+      sourceHandle !== 'true' &&
+      sourceHandle !== 'false'
+    ) {
+      return value;
+    }
+
+    if (!this.isRecord(value)) {
+      return value;
+    }
+
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === 'input') {
+      return value.input;
+    }
+
+    return value;
+  }
+
+  private normalizeConditionBranch(
+    branch: string,
+  ): 'matched' | 'unmatched' {
+    return branch === 'true' || branch === 'matched'
+      ? 'matched'
+      : 'unmatched';
+  }
+
+  private normalizeConditionSourceHandle(
+    sourceHandle?: string,
+  ): 'matched' | 'unmatched' | undefined {
+    if (!sourceHandle) {
+      return undefined;
+    }
+
+    if (sourceHandle === 'true' || sourceHandle === 'matched') {
+      return 'matched';
+    }
+
+    if (sourceHandle === 'false' || sourceHandle === 'unmatched') {
+      return 'unmatched';
+    }
+
+    return undefined;
+  }
+
   /**
    * 条件节点分支处理：匹配分支正常调度，不匹配分支跳过。
    */
@@ -2501,12 +3638,17 @@ export class NodeSchedulerService {
     steps: ExecutionStep[],
     tenantId: string,
   ): Promise<void> {
+    const normalizedBranch = this.normalizeConditionBranch(branch);
     const outgoingEdges = snapshot.edges.filter(
       (e) => e.source === conditionalNodeId,
     );
 
     for (const edge of outgoingEdges) {
-      if (edge.sourceHandle === branch) {
+      const normalizedHandle = this.normalizeConditionSourceHandle(
+        this.readEdgeHandle(edge, 'source'),
+      );
+
+      if (!normalizedHandle || normalizedHandle === normalizedBranch) {
         // 匹配分支：检查前驱后调度
         const decision = this.getSchedulingDecision(
           edge.target,
@@ -2538,7 +3680,17 @@ export class NodeSchedulerService {
     steps: ExecutionStep[],
     tenantId: string,
   ): Promise<void> {
-    const step = steps.find((s) => s.nodeId === nodeId);
+    const latestState = await this.loadLatestSchedulingState(executionId);
+    if (
+      latestState &&
+      (latestState.execution.status === 'failed' ||
+        latestState.execution.status === 'cancelled' ||
+        latestState.execution.status === 'completed')
+    ) {
+      return;
+    }
+
+    const step = (latestState?.steps ?? steps).find((s) => s.nodeId === nodeId);
     if (!step || step.status !== 'pending') return;
 
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'skipped');
@@ -2560,6 +3712,10 @@ export class NodeSchedulerService {
     const incomingEdges = edges.filter((e) => e.target === nodeId);
     if (incomingEdges.length === 0) return 'schedule';
 
+    const incomingDependencies: Array<{
+      edge: ReactFlowEdge;
+      sourceStep: ExecutionStep;
+    }> = [];
     let allSkipped = true;
 
     for (const edge of incomingEdges) {
@@ -2567,12 +3723,62 @@ export class NodeSchedulerService {
       if (!sourceStep || !COMPLETED_STEP_STATUSES.has(sourceStep.status)) {
         return 'wait';
       }
+
+      incomingDependencies.push({ edge, sourceStep });
       if (sourceStep.status !== 'skipped') {
         allSkipped = false;
       }
     }
 
+    const requiredTargetHandles = this.getRequiredInputHandles(nodeId, steps);
+    for (const requiredTargetHandle of requiredTargetHandles) {
+      const connectedRequiredEdges = incomingDependencies.filter(
+        ({ edge }) => this.readEdgeHandle(edge, 'target') === requiredTargetHandle,
+      );
+
+      if (connectedRequiredEdges.length === 0) {
+        continue;
+      }
+
+      if (
+        connectedRequiredEdges.every(
+          ({ sourceStep }) => sourceStep.status === 'skipped',
+        )
+      ) {
+        return 'skip';
+      }
+    }
+
     return allSkipped ? 'skip' : 'schedule';
+  }
+
+  private getRequiredInputHandles(
+    nodeId: string,
+    steps: ExecutionStep[],
+  ): Set<string> {
+    const targetStep = steps.find((step) => step.nodeId === nodeId);
+    if (!targetStep || !this.isRecord(targetStep.nodeData)) {
+      return new Set();
+    }
+
+    const nodeData = targetStep.nodeData;
+    const inputPorts = Array.isArray(nodeData.input_ports)
+      ? nodeData.input_ports
+      : Array.isArray(nodeData.inputPorts)
+        ? nodeData.inputPorts
+        : [];
+
+    return new Set(
+      inputPorts.flatMap((port) => {
+        if (!this.isRecord(port) || port.required !== true) {
+          return [];
+        }
+
+        return typeof port.id === 'string' && port.id.length > 0
+          ? [port.id]
+          : [];
+      }),
+    );
   }
 
   /**

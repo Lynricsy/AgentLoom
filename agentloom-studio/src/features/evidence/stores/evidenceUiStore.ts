@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { PhysicalLocation } from '../types';
 
@@ -222,10 +223,12 @@ export const useEvidenceUiNodeId = () => useEvidenceUiStore((s) => s.panelNodeId
 export const useEvidenceUiNodeName = () =>
   useEvidenceUiStore((s) => s.panelNodeName);
 export const useEvidenceUiHighlightState = () =>
-  useEvidenceUiStore((s) => ({
-    highlightedEvidenceId: s.highlightedEvidenceId,
-    highlightUntil: s.highlightUntil,
-  }));
+  useEvidenceUiStore(
+    useShallow((s) => ({
+      highlightedEvidenceId: s.highlightedEvidenceId,
+      highlightUntil: s.highlightUntil,
+    })),
+  );
 export const useEvidenceUiDocumentViewer = () =>
   useEvidenceUiStore((s) => s.documentViewer);
 export const useEvidenceUiActions = () =>

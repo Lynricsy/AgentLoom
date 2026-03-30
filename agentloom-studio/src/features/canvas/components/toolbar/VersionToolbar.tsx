@@ -1,45 +1,63 @@
-import { memo, useCallback, useState } from 'react'
-import { Save, History, Upload, Archive, Play, Loader2, Clock3, ShieldAlert, SlidersHorizontal, Store, Download, FolderInput, Share2 } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
-import type { WorkflowStatus } from '@/features/workflow'
-import { CreateVersionDialog } from '@/features/workflow/components/CreateVersionDialog'
-import { ArchiveDialog } from '@/features/workflow/components/ArchiveDialog'
+import { memo, useCallback, useState } from "react";
+import {
+  Save,
+  History,
+  Upload,
+  Archive,
+  Play,
+  Loader2,
+  Clock3,
+  ShieldAlert,
+  SlidersHorizontal,
+  Store,
+  Download,
+  FolderInput,
+  Share2,
+} from "lucide-react";
+import { cn } from "@/shared/lib/utils";
+import type { WorkflowStatus } from "@/features/workflow";
+import { CreateVersionDialog } from "@/features/workflow/components/CreateVersionDialog";
+import { ArchiveDialog } from "@/features/workflow/components/ArchiveDialog";
 
 interface VersionToolbarProps {
-  workflowId: string
-  workflowStatus: WorkflowStatus
-  onOpenVersionHistory: () => void
-  onOpenPublish: (versionId?: string) => void
-  onToggleInterventionPolicies?: () => void
-  onToggleInputSchema?: () => void
-  onToggleTriggers?: () => void
-  onPublishToMarketplace?: () => void
-  onRun?: () => void
-  onExport?: () => void
-  onImport?: () => void
-  onShare?: () => void
-  isInterventionPoliciesOpen?: boolean
-  isInputSchemaOpen?: boolean
-  isTriggersOpen?: boolean
-  isRunning?: boolean
-  isExporting?: boolean
-  hasNodes?: boolean
+  workflowId: string;
+  workflowStatus: WorkflowStatus;
+  onOpenVersionHistory: () => void;
+  onOpenPublish: (versionId?: string) => void;
+  onToggleInterventionPolicies?: () => void;
+  onToggleInputSchema?: () => void;
+  onToggleTriggers?: () => void;
+  onPublishToMarketplace?: () => void;
+  onRun?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
+  onShare?: () => void;
+  isInterventionPoliciesOpen?: boolean;
+  isInputSchemaOpen?: boolean;
+  isTriggersOpen?: boolean;
+  isRunning?: boolean;
+  isExporting?: boolean;
+  hasNodes?: boolean;
+  className?: string;
 }
 
-const statusConfig: Record<WorkflowStatus, { label: string; className: string }> = {
+const statusConfig: Record<
+  WorkflowStatus,
+  { label: string; className: string }
+> = {
   draft: {
-    label: '草稿',
-    className: 'border-sky-200 bg-sky-50 text-sky-700',
+    label: "草稿",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
   },
   published: {
-    label: '已发布',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    label: "已发布",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
   },
   archived: {
-    label: '已归档',
-    className: 'border-gray-200 bg-gray-100 text-gray-500',
+    label: "已归档",
+    className: "border-gray-200 bg-gray-100 text-gray-500",
   },
-}
+};
 
 export const VersionToolbar = memo(function VersionToolbar({
   workflowId,
@@ -60,29 +78,33 @@ export const VersionToolbar = memo(function VersionToolbar({
   isRunning = false,
   isExporting = false,
   hasNodes = false,
+  className,
 }: VersionToolbarProps) {
-  const [createOpen, setCreateOpen] = useState(false)
-  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
-  const isArchived = workflowStatus === 'archived'
-  const isPublished = workflowStatus === 'published'
-  const canPublish = workflowStatus === 'draft'
-  const canArchive = !isArchived
+  const isArchived = workflowStatus === "archived";
+  const isPublished = workflowStatus === "published";
+  const canPublish = workflowStatus === "draft";
+  const canArchive = !isArchived;
 
-  const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
-  const handleOpenArchive = useCallback(() => setArchiveOpen(true), [])
+  const handleOpenCreate = useCallback(() => setCreateOpen(true), []);
+  const handleOpenArchive = useCallback(() => setArchiveOpen(true), []);
 
-  const config = statusConfig[workflowStatus]
+  const config = statusConfig[workflowStatus];
 
   return (
     <>
       <div
-        className="absolute right-3 top-3 z-30 flex items-center gap-1.5"
+        className={cn(
+          "flex flex-wrap items-center justify-end gap-1.5",
+          className,
+        )}
         data-testid="version-toolbar"
       >
         <span
           className={cn(
-            'rounded-full border px-2.5 py-0.5 text-xs font-medium',
+            "rounded-full border px-2.5 py-0.5 text-xs font-medium",
             config.className,
           )}
           data-testid="workflow-status-badge"
@@ -118,16 +140,16 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
               isInterventionPoliciesOpen
-                ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15'
-                : 'border-border bg-surface text-foreground hover:bg-muted',
+                ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15"
+                : "border-border bg-surface text-foreground hover:bg-muted",
             )}
             onClick={onToggleInterventionPolicies}
             data-testid="btn-intervention-policies"
           >
             <ShieldAlert className="h-3.5 w-3.5" />
-            {isInterventionPoliciesOpen ? '隐藏介入策略' : '介入策略'}
+            {isInterventionPoliciesOpen ? "隐藏介入策略" : "介入策略"}
           </button>
         )}
 
@@ -135,16 +157,16 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
               isInputSchemaOpen
-                ? 'border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15'
-                : 'border-border bg-surface text-foreground hover:bg-muted',
+                ? "border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15"
+                : "border-border bg-surface text-foreground hover:bg-muted",
             )}
             onClick={onToggleInputSchema}
             data-testid="btn-input-schema"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            {isInputSchemaOpen ? '隐藏输入参数' : '输入参数'}
+            {isInputSchemaOpen ? "隐藏输入参数" : "输入参数"}
           </button>
         )}
 
@@ -152,16 +174,16 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors',
+              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
               isTriggersOpen
-                ? 'border-violet-400/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/15'
-                : 'border-border bg-surface text-foreground hover:bg-muted',
+                ? "border-violet-400/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/15"
+                : "border-border bg-surface text-foreground hover:bg-muted",
             )}
             onClick={onToggleTriggers}
             data-testid="btn-triggers"
           >
             <Clock3 className="h-3.5 w-3.5" />
-            {isTriggersOpen ? '隐藏触发器' : '触发器'}
+            {isTriggersOpen ? "隐藏触发器" : "触发器"}
           </button>
         )}
 
@@ -234,10 +256,10 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm',
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm",
               isRunning
-                ? 'border border-amber-300 bg-amber-50 text-amber-700'
-                : 'bg-sky-600 text-white hover:bg-sky-700',
+                ? "border border-amber-300 bg-amber-50 text-amber-700"
+                : "bg-sky-600 text-white hover:bg-sky-700",
             )}
             onClick={onRun}
             disabled={isRunning}
@@ -261,10 +283,10 @@ export const VersionToolbar = memo(function VersionToolbar({
           <button
             type="button"
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm',
+              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm",
               isPublished
-                ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
-                : 'border-border text-muted-foreground hover:bg-muted',
+                ? "border-amber-300 text-amber-700 hover:bg-amber-50"
+                : "border-border text-muted-foreground hover:bg-muted",
             )}
             onClick={handleOpenArchive}
             data-testid="btn-archive"
@@ -286,5 +308,5 @@ export const VersionToolbar = memo(function VersionToolbar({
         onOpenChange={setArchiveOpen}
       />
     </>
-  )
-})
+  );
+});

@@ -3,6 +3,8 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  Handle,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
@@ -25,6 +27,7 @@ interface ExecutionCanvasNodeData extends Record<string, unknown> {
   label: string
   nodeType: string
   status: ExecutionStepStatus
+  isSelected: boolean
 }
 
 type ExecutionCanvasNode = Node<ExecutionCanvasNodeData, 'execution-node'>
@@ -41,7 +44,7 @@ function isPosition(value: unknown): value is { x: number; y: number } {
   return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number'
 }
 
-function ReadonlyCanvasNodeCard({ data, selected }: NodeProps<ExecutionCanvasNode>) {
+function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
   const statusMeta = stepStatusMeta[data.status]
 
   return (
@@ -50,7 +53,8 @@ function ReadonlyCanvasNodeCard({ data, selected }: NodeProps<ExecutionCanvasNod
         'min-w-[180px] rounded-2xl border px-3 py-2 text-left shadow-md transition',
         statusMeta.nodeClassName,
         data.status === 'running' && 'animate-pulse',
-        selected && 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background',
+        data.isSelected &&
+          'ring-2 ring-primary/50 ring-offset-2 ring-offset-background',
       )}
     >
       <div className="flex items-center justify-between gap-3">
@@ -70,6 +74,19 @@ function ReadonlyCanvasNodeCard({ data, selected }: NodeProps<ExecutionCanvasNod
           {statusMeta.label}
         </span>
       </div>
+
+      <Handle
+        type="target"
+        position={Position.Top}
+        isConnectable={false}
+        className="!opacity-0"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        isConnectable={false}
+        className="!opacity-0"
+      />
     </article>
   )
 }
@@ -117,8 +134,8 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
           label,
           nodeType,
           status: stepStatusByNodeId.get(rawNode.id) ?? 'pending',
+          isSelected: rawNode.id === selectedNodeId,
         },
-        selected: rawNode.id === selectedNodeId,
         draggable: false,
       }]
     })
@@ -143,10 +160,8 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         id: rawEdge.id,
         source: rawEdge.source,
         target: rawEdge.target,
-        sourceHandle:
-          typeof rawEdge.sourceHandle === 'string' ? rawEdge.sourceHandle : undefined,
-        targetHandle:
-          typeof rawEdge.targetHandle === 'string' ? rawEdge.targetHandle : undefined,
+        // 执行调试画布使用只读卡片节点，不暴露编排画布里的 handle。
+        // 保留 handle id 会让 React Flow 判定边无法挂接，从而持续刷 warning。
         animated: stepStatusByNodeId.get(rawEdge.target) === 'running',
       }]
     })

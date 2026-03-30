@@ -1435,6 +1435,85 @@ describe('ExecutionService', () => {
       expect(db.select).toHaveBeenCalledTimes(2);
     });
 
+    it('应使用真实 sandbox session 状态回填 sandbox 节点输出与 agent 输入', async () => {
+      const sandboxSessionId = '019391d4-f100-7000-0000-000000000008';
+      const mockSteps = [
+        {
+          id: 'step-sandbox',
+          executionId: EXECUTION_ID,
+          nodeId: 'sandbox-1',
+          nodeType: 'sandbox',
+          stepOrder: 0,
+          status: 'completed',
+          input: null,
+          result: {
+            sessionId: sandboxSessionId,
+            status: 'creating',
+            'sandbox-output': {
+              sessionId: sandboxSessionId,
+              status: 'creating',
+            },
+          },
+        },
+        {
+          id: 'step-agent',
+          executionId: EXECUTION_ID,
+          nodeId: 'agent-a',
+          nodeType: 'agent',
+          stepOrder: 1,
+          status: 'completed',
+          input: {
+            sandbox: {
+              sessionId: sandboxSessionId,
+              status: 'creating',
+            },
+            context: {
+              sessionId: 'memory-session-id',
+              status: 'active',
+            },
+          },
+          result: null,
+        },
+      ];
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockExecution]))
+        .mockReturnValueOnce(createSelectChainWithOrderBy(mockSteps))
+        .mockReturnValueOnce(
+          createSelectChain([{ id: sandboxSessionId, status: 'stopped' }]),
+        );
+
+      const result = await service.getExecution(EXECUTION_ID);
+
+      expect(result.steps).toEqual([
+        {
+          ...mockSteps[0],
+          result: {
+            sessionId: sandboxSessionId,
+            status: 'stopped',
+            'sandbox-output': {
+              sessionId: sandboxSessionId,
+              status: 'stopped',
+            },
+          },
+        },
+        {
+          ...mockSteps[1],
+          input: {
+            sandbox: {
+              sessionId: sandboxSessionId,
+              status: 'stopped',
+            },
+            context: {
+              sessionId: 'memory-session-id',
+              status: 'active',
+            },
+          },
+        },
+      ]);
+      expect(db.select).toHaveBeenCalledTimes(3);
+    });
+
     it('应在执行不存在时抛出 ExecutionNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
@@ -1659,6 +1738,55 @@ describe('ExecutionService', () => {
       expect(txDb.update).toHaveBeenCalledTimes(1);
       expect(txDb.insert).toHaveBeenCalledTimes(1);
       expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+    });
+
+    it('应优先使用节点 data.nodeType/node_type 作为 execution step.nodeType', async () => {
+      const workflowWithCanvasNodeTypes = {
+        ...mockExecution,
+        definitionSnapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'node-trigger',
+              type: 'trigger',
+              data: { label: 'Manual Trigger', node_type: 'manual-trigger' },
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'node-condition',
+              type: 'control',
+              data: { label: 'Condition', nodeType: 'condition' },
+              position: { x: 100, y: 0 },
+            },
+          ],
+          edges: [],
+        },
+      };
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([workflowWithCanvasNodeTypes]),
+      );
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([workflowWithCanvasNodeTypes]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ status: 'running' }]),
+      );
+      const insertChain = createInsertChainVoid();
+      txDb.insert.mockReturnValueOnce(insertChain);
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(insertChain.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          nodeId: 'node-trigger',
+          nodeType: 'manual-trigger',
+        }),
+        expect.objectContaining({
+          nodeId: 'node-condition',
+          nodeType: 'condition',
+        }),
+      ]);
     });
 
     it('应在没有节点时跳过步骤插入并直接完成 execution', async () => {

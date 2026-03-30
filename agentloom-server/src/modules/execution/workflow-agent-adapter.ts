@@ -10,14 +10,12 @@ import type { DrizzleDB } from '../../database/database.module';
 import type { ExecutionStep, SandboxConfig } from '../../database/schema';
 import type { IAgentAdapterFactory as RuntimeAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
+import type { ServerSandboxBinding } from '../agent/types/agent-session.types';
 import type {
   DecisionEvent,
   StopReason,
 } from '../agent/types/agent-event.types';
-import {
-  ContentBlockSchema,
-  type ContentBlock,
-} from '../agent/types/content-block.types';
+import type { ContentBlock } from '../agent/types/content-block.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type {
   AgentRuntimeConfig,
@@ -27,6 +25,7 @@ import {
   resolveSubAgent,
   MAX_SUB_AGENT_DEPTH,
 } from './node-handlers/sub-agent.handler';
+import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import { EventBridgeService } from './services/event-bridge.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -56,7 +55,7 @@ export interface WorkflowAgentExecutionParams {
   readonly versionSnapshot?: AgentVersionSnapshot;
   readonly currentDepth?: number;
   readonly visitedIds?: Set<string>;
-  readonly sandboxBinding?: { executionId: string };
+  readonly sandboxBinding?: ServerSandboxBinding;
   readonly emitEvents?: boolean;
 }
 
@@ -288,9 +287,9 @@ export class WorkflowAgentAdapter {
     executionId: string;
     nodeId: string;
     tenantId: string;
-    existingBinding?: { executionId: string };
+    existingBinding?: ServerSandboxBinding;
     runtimeConfig: AgentRuntimeConfig;
-  }): Promise<{ executionId: string } | undefined> {
+  }): Promise<ServerSandboxBinding | undefined> {
     if (params.existingBinding?.executionId) {
       return params.existingBinding;
     }
@@ -302,7 +301,10 @@ export class WorkflowAgentAdapter {
       tenantId: params.tenantId,
     });
 
-    return { executionId: params.executionId };
+    return {
+      executionId: params.executionId,
+      sandboxNodeId: params.nodeId,
+    };
   }
 
   private async executeSubAgents(params: {
@@ -313,7 +315,7 @@ export class WorkflowAgentAdapter {
     runtimeConfig: AgentRuntimeConfig;
     currentDepth: number;
     visitedIds: Set<string>;
-    sandboxBinding?: { executionId: string };
+    sandboxBinding?: ServerSandboxBinding;
   }): Promise<Record<string, WorkflowAgentExecutionResult>> {
     const subAgents = params.runtimeConfig.subAgents ?? [];
     if (subAgents.length === 0) {
@@ -395,72 +397,12 @@ export class WorkflowAgentAdapter {
     input: Record<string, unknown>,
     subAgentResults: Record<string, WorkflowAgentExecutionResult>,
   ): ContentBlock[] {
-    const payload =
-      Object.keys(subAgentResults).length > 0
-        ? { input, subAgents: subAgentResults }
-        : input;
-    const summarizedPayload = this.summarizeForText(payload);
-    const modalBlocks = this.collectModalBlocks(input);
-
-    return [
-      {
-        type: 'text',
-        text: JSON.stringify(summarizedPayload),
-      },
-      ...modalBlocks,
-    ];
-  }
-
-  private collectModalBlocks(value: unknown): ContentBlock[] {
-    const parsed = ContentBlockSchema.safeParse(value);
-    if (parsed.success) {
-      return parsed.data.type === 'text' ? [] : [parsed.data];
-    }
-
-    if (Array.isArray(value)) {
-      return value.flatMap((item) => this.collectModalBlocks(item));
-    }
-
-    if (this.isRecord(value)) {
-      return Object.values(value).flatMap((item) =>
-        this.collectModalBlocks(item),
-      );
-    }
-
-    return [];
-  }
-
-  private summarizeForText(value: unknown): unknown {
-    const parsed = ContentBlockSchema.safeParse(value);
-    if (parsed.success) {
-      switch (parsed.data.type) {
-        case 'text':
-          return parsed.data.text;
-        case 'image':
-          return `[image:${parsed.data.mimeType}]`;
-        case 'audio':
-          return `[audio:${parsed.data.mimeType}]`;
-        case 'resource':
-          return parsed.data.text ?? `[resource:${parsed.data.uri}]`;
-        case 'resource_link':
-          return parsed.data.title ?? `[resource_link:${parsed.data.uri}]`;
-      }
-    }
-
-    if (Array.isArray(value)) {
-      return value.map((item) => this.summarizeForText(item));
-    }
-
-    if (this.isRecord(value)) {
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [
-          key,
-          this.summarizeForText(item),
-        ]),
-      );
-    }
-
-    return value;
+    return buildAgentPromptContentBlocks({
+      input,
+      ...(Object.keys(subAgentResults).length > 0
+        ? { subAgentResults }
+        : {}),
+    });
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

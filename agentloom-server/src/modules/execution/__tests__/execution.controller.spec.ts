@@ -475,20 +475,24 @@ describe('ExecutionController', () => {
       }
     });
 
-    it('沙箱会话未找到时应抛出 404', async () => {
+    it('沙箱会话未找到时应返回空列表', async () => {
       mockSandboxAgentAdapter.listPtySessions.mockRejectedValue(
         new Error('sandbox session not found'),
       );
 
-      try {
-        await controller.listPtySessions(EXECUTION_ID, TENANT_ID);
-      } catch (e) {
-        expect((e as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
-        expect((e as HttpException).getResponse()).toEqual({
-          error: 'SANDBOX_NOT_FOUND',
-          message: 'sandbox session not found',
-        });
-      }
+      await expect(
+        controller.listPtySessions(EXECUTION_ID, TENANT_ID),
+      ).resolves.toEqual({ data: [] });
+    });
+
+    it('沙箱已停止时也应返回空列表', async () => {
+      mockSandboxAgentAdapter.listPtySessions.mockRejectedValue(
+        new Error('Sandbox session sandbox-001 is stopped'),
+      );
+
+      await expect(
+        controller.listPtySessions(EXECUTION_ID, TENANT_ID),
+      ).resolves.toEqual({ data: [] });
     });
   });
 

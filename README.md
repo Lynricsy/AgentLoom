@@ -8,7 +8,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 
 ## ✨ 核心特性
 
-- **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，17 种节点类型，实时端口类型兼容性检查（Rust WASM）
+- **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，21 种 workflow 节点类型，实时端口类型兼容性检查（Rust WASM）
 - **🤖 多模型智能路由** — 6 种路由策略（Token 优化 / 成本优化 / 质量优先 / 延迟优先 / 历史最优 / 容错链），支持自动 Fallback
 - **⚡ DAG 调度引擎** — 状态机驱动的工作流执行，BullMQ 分布式任务队列，支持断点续跑与人工介入
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
@@ -208,9 +208,9 @@ AgentLoom/
 </details>
 
 <details>
-<summary>🎨 画布节点类型（17 种）</summary>
+<summary>🎨 画布节点类型（21 种）</summary>
 
-`agent` · `llm` · `input` · `output` · `conditional` · `loop` · `parallel` · `merge` · `transform` · `api-call` · `code-executor` · `knowledge-retrieval` · `mcp-tool` · `smart-routing` · `sandbox` · `plugin` (自定义插件节点) · `skill`
+`chat-agent` · `llm-model` · `smart-routing` · `agent` · `skill` · `http-tool` · `code-tool` · `mcp-tool` · `sandbox` · `input-preprocessor` · `workspace` · `manual-trigger` · `schedule-trigger` · `webhook-trigger` · `api-event-trigger` · `knowledge-base` · `memory` · `text-output` · `json-output` · `condition` · `loop`
 
 </details>
 

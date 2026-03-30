@@ -61,7 +61,7 @@ function PersistentSandboxSelector({
   selectedId: string
   onSelect: (session: SandboxSession | null) => void
 }) {
-  const { data: sandboxes, isLoading } = usePersistentSandboxes()
+  const { data: sandboxes, isLoading, isError } = usePersistentSandboxes()
 
   const available = (sandboxes ?? []).filter(
     (s) => SELECTABLE_STATUSES.has(s.status),
@@ -73,6 +73,14 @@ function PersistentSandboxSelector({
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         加载持久沙箱...
       </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <p className="py-2 text-xs text-destructive">
+        持久沙箱列表加载失败，请稍后重试。
+      </p>
     )
   }
 

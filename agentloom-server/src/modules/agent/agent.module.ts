@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../../database/database.module';
+import { ApiKeyModule } from '../api-key/api-key.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { LlmModule } from '../llm/llm.module';
 import { McpModule } from '../mcp/mcp.module';
@@ -23,6 +24,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
 @Module({
   imports: [
     DatabaseModule,
+    ApiKeyModule,
     LlmModule,
     SandboxModule,
     McpModule,

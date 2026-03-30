@@ -24,6 +24,15 @@ export interface SandboxServerOptions {
 
 const SANDBOX_AGENT_DIR = '/config';
 const SANDBOX_MODELS_PATH = join(SANDBOX_AGENT_DIR, 'models.json');
+const DEFAULT_SESSION_MODEL_COST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+} as const;
+const DEFAULT_SESSION_MODEL_INPUT = ['text'] as const;
+const DEFAULT_SESSION_MODEL_CONTEXT_WINDOW = 128_000;
+const DEFAULT_SESSION_MODEL_MAX_TOKENS = 16_384;
 
 export interface PiCodingAgentBindings {
   createAgentSession: (...args: any[]) => Promise<{ session: unknown }>;
@@ -37,9 +46,202 @@ export interface PiCodingAgentBindings {
     inMemory: (...args: any[]) => unknown;
   };
   AuthStorage: {
-    inMemory: (...args: any[]) => unknown;
+    inMemory: (...args: any[]) => {
+      setRuntimeApiKey?: (provider: string, apiKey: string) => void;
+    };
   };
-  ModelRegistry: new (...args: any[]) => unknown;
+  ModelRegistry: new (...args: any[]) => {
+    registerProvider?: (providerName: string, config: Record<string, unknown>) => void;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => {
+      if (Array.isArray(entry)) {
+        return [
+          key,
+          entry.map((item) =>
+            isRecord(item) ? cloneRecord(item) : item,
+          ),
+        ];
+      }
+
+      return [key, isRecord(entry) ? cloneRecord(entry) : entry];
+    }),
+  );
+}
+
+function mergeRecords(
+  base?: Record<string, unknown>,
+  override?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  const merged = cloneRecord(base ?? {});
+  if (!override) {
+    return merged;
+  }
+
+  for (const [key, value] of Object.entries(override)) {
+    const current = merged[key];
+    if (isRecord(current) && isRecord(value)) {
+      merged[key] = mergeRecords(current, value) ?? {};
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      merged[key] = value.map((item) =>
+        isRecord(item) ? cloneRecord(item) : item,
+      );
+      continue;
+    }
+
+    merged[key] = isRecord(value) ? cloneRecord(value) : value;
+  }
+
+  return merged;
+}
+
+function normalizeDynamicModelDefinition(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = normalizeString(value.id);
+  if (!id) {
+    return null;
+  }
+
+  const name = normalizeString(value.name) ?? id;
+  const reasoning =
+    typeof value.reasoning === 'boolean' ? value.reasoning : false;
+  const input = Array.isArray(value.input)
+    ? value.input.filter((entry): entry is string => typeof entry === 'string')
+    : [...DEFAULT_SESSION_MODEL_INPUT];
+  const cost = isRecord(value.cost)
+    ? {
+        input:
+          typeof value.cost.input === 'number'
+            ? value.cost.input
+            : DEFAULT_SESSION_MODEL_COST.input,
+        output:
+          typeof value.cost.output === 'number'
+            ? value.cost.output
+            : DEFAULT_SESSION_MODEL_COST.output,
+        cacheRead:
+          typeof value.cost.cacheRead === 'number'
+            ? value.cost.cacheRead
+            : DEFAULT_SESSION_MODEL_COST.cacheRead,
+        cacheWrite:
+          typeof value.cost.cacheWrite === 'number'
+            ? value.cost.cacheWrite
+            : DEFAULT_SESSION_MODEL_COST.cacheWrite,
+      }
+    : { ...DEFAULT_SESSION_MODEL_COST };
+  const contextWindow =
+    typeof value.contextWindow === 'number' && value.contextWindow > 0
+      ? value.contextWindow
+      : DEFAULT_SESSION_MODEL_CONTEXT_WINDOW;
+  const maxTokens =
+    typeof value.maxTokens === 'number' && value.maxTokens > 0
+      ? value.maxTokens
+      : DEFAULT_SESSION_MODEL_MAX_TOKENS;
+
+  return {
+    ...cloneRecord(value),
+    id,
+    name,
+    reasoning,
+    input: input.length > 0 ? input : [...DEFAULT_SESSION_MODEL_INPUT],
+    cost,
+    contextWindow,
+    maxTokens,
+  };
+}
+
+function normalizeDynamicProviderConfig(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const providerConfig = cloneRecord(value);
+  if (!Array.isArray(value.models)) {
+    return providerConfig;
+  }
+
+  providerConfig.models = value.models
+    .map((entry) => normalizeDynamicModelDefinition(entry))
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+  return providerConfig;
+}
+
+function applyRuntimeApiKeys(
+  authStorage: {
+    setRuntimeApiKey?: (provider: string, apiKey: string) => void;
+  },
+  runtimeApiKeys?: Record<string, string>,
+): void {
+  if (!runtimeApiKeys || !authStorage.setRuntimeApiKey) {
+    return;
+  }
+
+  for (const [provider, apiKey] of Object.entries(runtimeApiKeys)) {
+    if (!normalizeString(provider) || !normalizeString(apiKey)) {
+      continue;
+    }
+
+    authStorage.setRuntimeApiKey(provider, apiKey);
+  }
+}
+
+function applyDynamicProviders(
+  modelRegistry: {
+    registerProvider?: (providerName: string, config: Record<string, unknown>) => void;
+  },
+  models?: CreateSessionRequest['models'],
+): void {
+  if (!models?.providers || !modelRegistry.registerProvider) {
+    return;
+  }
+
+  for (const [providerName, providerConfig] of Object.entries(models.providers)) {
+    const normalizedProviderName = normalizeString(providerName);
+    const normalizedConfig = normalizeDynamicProviderConfig(providerConfig);
+
+    if (!normalizedProviderName || !normalizedConfig) {
+      continue;
+    }
+
+    modelRegistry.registerProvider(normalizedProviderName, normalizedConfig);
+  }
+}
+
+function resolveSessionSystemPrompt(
+  config: { systemPrompt?: string },
+  request: CreateSessionRequest,
+): string | undefined {
+  return normalizeString(request.systemPrompt) ?? config.systemPrompt;
 }
 
 function resolvePromptText(body: PromptRequest | undefined): string | null {
@@ -231,20 +433,25 @@ export function createPiSessionFactory(
     });
     setPtyManager?.(ptyExt.manager);
 
+    const sessionMcpServers = request.mcpServers ?? config.mcpServers;
     // MCP extension（根据配置连接 MCP 服务器，发现并注册工具）
     const mcpExt = createMcpExtension({
-      mcpServers: config.mcpServers,
+      mcpServers: sessionMcpServers,
     });
 
     // 使用 /config 作为 pi 的 agentDir，确保 models/settings/skills 均参与真实运行时装配。
-    const settingsManager = SettingsManager.inMemory(config.settings ?? {});
+    const mergedSettings =
+      mergeRecords(config.settings, request.settings) ?? {};
+    const settingsManager = SettingsManager.inMemory(mergedSettings);
     const authStorage = AuthStorage.inMemory();
+    applyRuntimeApiKeys(authStorage, request.runtimeApiKeys);
     const modelRegistry = new ModelRegistry(authStorage, SANDBOX_MODELS_PATH);
+    applyDynamicProviders(modelRegistry, request.models);
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir: SANDBOX_AGENT_DIR,
       settingsManager,
-      systemPrompt: config.systemPrompt,
+      systemPrompt: resolveSessionSystemPrompt(config, request),
       extensionFactories: [mcpExt.register, ptyExt.register] as any,
     });
     await resourceLoader.reload();

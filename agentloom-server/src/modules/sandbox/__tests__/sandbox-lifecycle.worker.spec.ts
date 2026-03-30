@@ -16,6 +16,7 @@ const mockDockerService = {
 const mockSandboxService = {
   getSandboxSession: vi.fn(),
   findByConversationId: vi.fn(),
+  getSessionById: vi.fn(),
 };
 
 const mockLifecycleProducer = {
@@ -28,7 +29,8 @@ const mockStorageService = {
 
 const mockUpdate = vi.fn().mockReturnThis();
 const mockSet = vi.fn().mockReturnThis();
-const mockWhere = vi.fn().mockResolvedValue(undefined);
+const mockWhere = vi.fn().mockReturnThis();
+const mockReturning = vi.fn().mockResolvedValue([{ id: 'sandbox-session-row' }]);
 const mockInsert = vi.fn().mockReturnThis();
 const mockValues = vi.fn().mockResolvedValue(undefined);
 
@@ -38,16 +40,14 @@ const mockTenantDb = {
 };
 mockUpdate.mockReturnValue({ set: mockSet });
 mockSet.mockReturnValue({ where: mockWhere });
+mockWhere.mockReturnValue({ returning: mockReturning });
 mockInsert.mockReturnValue({ values: mockValues });
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
-    (_db: any, _tenantId: string, op: () => Promise<any>) => op(),
+    (_db: any, _tenantId: string, op: (dbClient: any) => Promise<any>) =>
+      op(mockTenantDb),
   ),
-}));
-
-vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
-  getTenantDb: vi.fn(() => mockTenantDb),
 }));
 
 vi.mock('@nestjs/bullmq', () => ({
@@ -94,7 +94,9 @@ describe('SandboxLifecycleWorker', () => {
     vi.clearAllMocks();
     mockUpdate.mockReturnValue({ set: mockSet });
     mockSet.mockReturnValue({ where: mockWhere });
+    mockWhere.mockReturnValue({ returning: mockReturning });
     mockInsert.mockReturnValue({ values: mockValues });
+    mockReturning.mockResolvedValue([{ id: 'sandbox-session-row' }]);
 
     worker = new SandboxLifecycleWorker(
       {} as any,
@@ -161,6 +163,26 @@ describe('SandboxLifecycleWorker', () => {
         tenantId: 't1',
         delayMs: 4 * 60 * 60 * 1000,
       });
+    });
+
+    it('session 已离开 creating 状态时应回收新建容器且不覆盖为 ready', async () => {
+      mockReturning.mockResolvedValueOnce([]);
+
+      await worker.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          config: DEFAULT_CONFIG,
+        }),
+      );
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addTimeoutCheckTask).not.toHaveBeenCalled();
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('容器创建失败时应回写 session failed 并记录系统日志', async () => {
@@ -412,8 +434,9 @@ describe('SandboxLifecycleWorker', () => {
 
   describe('timeout_check job', () => {
     it('会话仍活跃时应强制停止并标记为 failed', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
+        executionId: 'e1',
         status: 'ready',
         containerId: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
@@ -430,10 +453,7 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
-        'e1',
-        't1',
-      );
+      expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
@@ -461,7 +481,7 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('会话已停止时应跳过处理', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
         status: 'stopped',
         containerId: 'c-123',
@@ -480,7 +500,7 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('会话不存在时应跳过处理', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce(null);
+      mockSandboxService.getSessionById.mockResolvedValueOnce(null);
 
       await worker.process(
         createJob({
@@ -495,8 +515,9 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('conversation timeout 应只停止 sandbox 且不级联失败 workflow', async () => {
-      mockSandboxService.findByConversationId.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's-conv',
+        agentConversationId: 'conv-1',
         status: 'ready',
         containerId: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
@@ -513,11 +534,7 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).resolves.toBeUndefined();
 
-      expect(mockSandboxService.findByConversationId).toHaveBeenCalledWith(
-        'conv-1',
-        't1',
-      );
-      expect(mockSandboxService.getSandboxSession).not.toHaveBeenCalled();
+      expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s-conv');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
@@ -542,8 +559,9 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('timeout 时有 persistencePath 应先归档 workspace 再销毁', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
+        executionId: 'e1',
         status: 'ready',
         containerId: 'c-123',
         config: {
@@ -581,8 +599,9 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('timeout 归档失败时应警告但仍然销毁沙箱', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
+        executionId: 'e1',
         status: 'ready',
         containerId: 'c-123',
         config: {
@@ -619,8 +638,9 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('timeout 时无 persistencePath 不应尝试归档', async () => {
-      mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
+        executionId: 'e1',
         status: 'ready',
         containerId: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
@@ -643,8 +663,9 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('conversation timeout 时有 persistencePath 应归档 workspace', async () => {
-      mockSandboxService.findByConversationId.mockResolvedValueOnce({
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's-conv',
+        agentConversationId: 'conv-1',
         status: 'ready',
         containerId: 'c-123',
         config: {

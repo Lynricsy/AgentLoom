@@ -5,7 +5,6 @@ import { Job } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 
@@ -82,9 +81,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
       containerId = container.containerId;
 
-      await runInTenantTransaction(this.db, tenantId, async () => {
-        const tenantDb = getTenantDb(this.db);
-        await tenantDb
+      const [activatedSession] = await runInTenantTransaction(
+        this.db,
+        tenantId,
+        async (tenantDb) => {
+          return await tenantDb
           .update(schema.sandboxSessions)
           .set({
             containerId,
@@ -92,8 +93,38 @@ export class SandboxLifecycleWorker extends WorkerHost {
             startedAt: new Date(),
             workspacePath: CONTAINER_WORKSPACE,
           })
-          .where(eq(schema.sandboxSessions.id, sessionId));
-      });
+          .where(
+            and(
+              eq(schema.sandboxSessions.id, sessionId),
+              eq(schema.sandboxSessions.status, 'creating'),
+            ),
+          )
+          .returning({ id: schema.sandboxSessions.id });
+        },
+      );
+
+      if (!activatedSession) {
+        await this.dockerService.stopContainer(containerId).catch((error) => {
+          this.logger.warn(
+            `Failed to stop sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+        await this.dockerService.removeContainer(containerId).catch((error) => {
+          this.logger.warn(
+            `Failed to cleanup sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+        await this.insertLog(
+          sessionId,
+          'system',
+          `Sandbox container ${containerId} discarded because session left creating state`,
+          tenantId,
+        );
+        this.logger.warn(
+          `Sandbox ${sessionId} left creating state before container ${containerId} could be activated`,
+        );
+        return;
+      }
 
       if (config.restoreWorkspaceId && containerId) {
         try {
@@ -154,8 +185,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           });
       }
 
-      await runInTenantTransaction(this.db, tenantId, async () => {
-        const tenantDb = getTenantDb(this.db);
+      await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
         await tenantDb
           .update(schema.sandboxSessions)
           .set({
@@ -214,8 +244,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.dockerService.removeContainer(containerId);
     }
 
-    await runInTenantTransaction(this.db, tenantId, async () => {
-      const tenantDb = getTenantDb(this.db);
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
       await tenantDb
         .update(schema.sandboxSessions)
         .set({
@@ -234,17 +263,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
     data: SandboxLifecycleJobData,
   ): Promise<void> {
     const { sessionId, tenantId } = data;
-    const binding = this.resolveBinding(data);
-
-    let session: schema.SandboxSession | null;
-    if (binding.executionId || binding.agentConversationId) {
-      session = await this.findActiveSessionForBinding(binding, tenantId);
-    } else {
-      // Standalone persistent sandbox — look up directly by sessionId
-      session = await this.sandboxService
-        .getSessionById(sessionId)
-        .catch(() => null);
-    }
+    const session = await this.sandboxService
+      .getSessionById(sessionId)
+      .catch(() => null);
 
     if (
       !session ||
@@ -254,6 +275,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
     ) {
       return;
     }
+
+    const binding = {
+      executionId: session.executionId ?? undefined,
+      agentConversationId: session.agentConversationId ?? undefined,
+      sandboxNodeId: session.sandboxNodeId ?? undefined,
+    };
 
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
@@ -290,8 +317,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.dockerService.removeContainer(session.containerId);
     }
 
-    await runInTenantTransaction(this.db, tenantId, async () => {
-      const tenantDb = getTenantDb(this.db);
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
       await tenantDb
         .update(schema.sandboxSessions)
         .set({
@@ -349,8 +375,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     message: string,
     tenantId: string,
   ): Promise<void> {
-    await runInTenantTransaction(this.db, tenantId, async () => {
-      const tenantDb = getTenantDb(this.db);
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
       await tenantDb.insert(schema.sandboxLogs).values({
         sessionId,
         level,
@@ -385,21 +410,26 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private resolveBinding(data: SandboxLifecycleJobData): {
     executionId?: string;
     agentConversationId?: string;
+    sandboxNodeId?: string;
   } {
     return {
       ...(data.executionId ? { executionId: data.executionId } : {}),
       ...(data.agentConversationId
         ? { agentConversationId: data.agentConversationId }
         : {}),
+      ...(data.sandboxNodeId ? { sandboxNodeId: data.sandboxNodeId } : {}),
     };
   }
 
   private getBindingId(binding: {
     executionId?: string;
     agentConversationId?: string;
+    sandboxNodeId?: string;
   }): string {
     if (binding.executionId) {
-      return binding.executionId;
+      return binding.sandboxNodeId
+        ? `${binding.executionId}/${binding.sandboxNodeId}`
+        : binding.executionId;
     }
 
     if (binding.agentConversationId) {
@@ -407,28 +437,6 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
 
     return 'standalone';
-  }
-
-  private findActiveSessionForBinding(
-    binding: { executionId?: string; agentConversationId?: string },
-    tenantId: string,
-  ) {
-    if (binding.executionId) {
-      return this.sandboxService.getSandboxSession(
-        binding.executionId,
-        tenantId,
-      );
-    }
-
-    if (binding.agentConversationId) {
-      return this.sandboxService.findByConversationId(
-        binding.agentConversationId,
-        tenantId,
-      );
-    }
-
-    // Standalone persistent sandbox — no binding, return null
-    return Promise.resolve(null);
   }
 
   @OnWorkerEvent('failed')

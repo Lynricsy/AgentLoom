@@ -14,5 +14,6 @@ export function usePtySessions(options: UsePtySessionsOptions) {
     queryKey: ptyKeys.sessions(executionId),
     queryFn: () => fetchPtySessions(executionId),
     enabled: enabled && !!executionId,
+    retry: false,
   })
 }

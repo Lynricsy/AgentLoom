@@ -323,10 +323,55 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'parent-agent',
-        serverSandbox: { executionId: EXECUTION_ID },
+        serverSandbox: {
+          executionId: EXECUTION_ID,
+          sandboxNodeId: 'workflow-agent-node',
+        },
       }),
     );
     expect(result).toMatchObject({ content: 'sandbox-output' });
+  });
+
+  it('text-input 应作为主提示文本注入，并从摘要 JSON 中剔除', async () => {
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'solo-session' });
+    mockSandboxRuntime.prompt.mockImplementation(
+      (_sessionId: string, content: ContentBlock[]) => {
+        expect(content[0]).toMatchObject({ type: 'text' });
+        expect((content[0] as { text: string }).text).toBe('请总结这个主题');
+
+        return emit([
+          { type: 'message_chunk', content: 'handled-text-input' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]);
+      },
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        'text-input': '请总结这个主题',
+        sandbox: { status: 'creating', sessionId: 'sandbox-001' },
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: parentSnapshot,
+    });
+
+    expect(result).toMatchObject({ content: 'handled-text-input' });
   });
 
   function setupNoSandboxAgent() {

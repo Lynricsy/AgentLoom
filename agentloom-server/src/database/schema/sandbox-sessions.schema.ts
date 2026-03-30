@@ -23,6 +23,12 @@ export const sandboxSessionStatusEnum = pgEnum('sandbox_session_status_enum', [
   'failed',
 ]);
 
+export interface SandboxBindingRef {
+  executionId?: string;
+  agentConversationId?: string;
+  sandboxNodeId?: string;
+}
+
 export interface SandboxConfig {
   /** CPU 核数 (0.5-4) */
   cpu: number;
@@ -44,6 +50,8 @@ export interface SandboxConfig {
   name?: string;
   /** 持久沙箱 session ID（persistent 模式下选择已有沙箱） */
   persistentSandboxId?: string;
+  /** 服务端维护的活动绑定，用于追踪同一持久沙箱被多个工作流节点复用时的生命周期 */
+  activeBindings?: SandboxBindingRef[];
 }
 
 export const sandboxSessions = pgTable(

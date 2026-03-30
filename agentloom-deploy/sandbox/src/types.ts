@@ -96,11 +96,21 @@ export interface RemoteToolExecutionConfig {
   tools: RemoteToolDescriptor[];
 }
 
+export type SessionSettingsConfig = Record<string, unknown>;
+
+export interface SessionModelsConfig {
+  providers: Record<string, Record<string, unknown>>;
+}
+
 export interface CreateSessionRequest {
   /** 允许上层显式指定会话 ID，便于外部 runtime 与容器 session 对齐 */
   sessionId?: string;
   cwd?: string;
+  systemPrompt?: string;
+  settings?: SessionSettingsConfig;
+  models?: SessionModelsConfig;
   mcpServers?: McpServersConfig;
+  runtimeApiKeys?: Record<string, string>;
   remoteToolExecution?: RemoteToolExecutionConfig;
 }
 

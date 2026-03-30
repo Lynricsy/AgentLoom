@@ -12,6 +12,7 @@ interface ApiEnvelope<T> {
 }
 
 const BASE_PATH = 'sandboxes'
+const PERSISTENT_SANDBOX_PAGE_SIZE = 100
 
 export async function fetchSandboxes(
   params?: SandboxListParams,
@@ -30,7 +31,12 @@ export async function fetchSandboxes(
 
 export async function fetchPersistentSandboxes(): Promise<SandboxSession[]> {
   const response = await apiClient
-    .get(BASE_PATH, { searchParams: { lifecycleMode: 'persistent', pageSize: 200 } })
+    .get(BASE_PATH, {
+      searchParams: {
+        lifecycleMode: 'persistent',
+        pageSize: PERSISTENT_SANDBOX_PAGE_SIZE,
+      },
+    })
     .json<SandboxListResponse>()
   return response.data
 }

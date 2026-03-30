@@ -26,6 +26,7 @@ export class SandboxLifecycleProducer {
     sessionId: string;
     executionId?: string;
     agentConversationId?: string;
+    sandboxNodeId?: string;
     config: SandboxConfig;
     tenantId: string;
     piConfigInput?: PiConfigInput;
@@ -44,6 +45,7 @@ export class SandboxLifecycleProducer {
     sessionId: string;
     executionId?: string;
     agentConversationId?: string;
+    sandboxNodeId?: string;
     containerId?: string;
     persistencePath?: string;
     tenantId: string;
@@ -64,6 +66,7 @@ export class SandboxLifecycleProducer {
     sessionId: string;
     executionId?: string;
     agentConversationId?: string;
+    sandboxNodeId?: string;
     tenantId: string;
     delayMs: number;
   }): Promise<Job<SandboxLifecycleJobData>> {
@@ -92,6 +95,9 @@ export class SandboxLifecycleProducer {
         : {}),
       ...(typeof params.agentConversationId === 'string'
         ? { agentConversationId: params.agentConversationId }
+        : {}),
+      ...(typeof params.sandboxNodeId === 'string'
+        ? { sandboxNodeId: params.sandboxNodeId }
         : {}),
     };
   }

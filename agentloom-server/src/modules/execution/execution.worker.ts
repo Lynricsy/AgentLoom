@@ -2,7 +2,6 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { ExecutionService, type ExecutionJobData } from './execution.service';
 import { NodeSchedulerService } from './node-scheduler.service';
 import { EXECUTION_QUEUE } from './execution.constants';
@@ -26,16 +25,15 @@ export class ExecutionWorker extends WorkerHost {
     );
 
     if (job.name === 'resume-execution') {
-      await runInTenantTransaction(this.db, tenantId, async () => {
-        await this.nodeScheduler.resumeScheduling(executionId, tenantId);
-      });
+      await this.nodeScheduler.resumeScheduling(executionId, tenantId);
       return;
     }
 
-    await runInTenantTransaction(this.db, tenantId, async () => {
-      await this.executionService.initializeSteps(executionId);
-      await this.nodeScheduler.startExecution(executionId, tenantId);
-    });
+    // initializeSteps 自己会在短事务里创建 step 并把 execution 标记为 running。
+    // 后续 DAG 调度包含外部 I/O（Agent prompt、sandbox、memory 等），
+    // 不能再包在同一个长事务里，否则管理端会一直读到 pending / 0 steps。
+    await this.executionService.initializeSteps(executionId);
+    await this.nodeScheduler.startExecution(executionId, tenantId);
   }
 
   @OnWorkerEvent('failed')

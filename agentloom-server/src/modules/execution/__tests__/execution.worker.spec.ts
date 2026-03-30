@@ -2,20 +2,9 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Job } from 'bullmq';
 import { DRIZZLE } from '../../../database/database.module';
-import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { ExecutionWorker } from '../execution.worker';
 import { ExecutionService, type ExecutionJobData } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
-
-vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
-  runInTenantTransaction: vi.fn(
-    async (
-      db: unknown,
-      _tenantId: string,
-      operation: (tenantDb: unknown) => Promise<unknown>,
-    ) => operation(db),
-  ),
-}));
 
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const TENANT_ID = '019391d4-d000-7000-0000-000000000099';
@@ -66,7 +55,7 @@ describe('ExecutionWorker', () => {
   });
 
   describe('process', () => {
-    it('应调用 nodeScheduler.startExecution 启动 DAG 调度', async () => {
+    it('应先初始化步骤，再启动 DAG 调度', async () => {
       mockExecutionService.initializeSteps.mockResolvedValue(undefined);
       mockNodeScheduler.startExecution.mockResolvedValue(undefined);
 
@@ -79,11 +68,6 @@ describe('ExecutionWorker', () => {
       expect(mockNodeScheduler.startExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
-      );
-      expect(runInTenantTransaction).toHaveBeenCalledWith(
-        mockDb,
-        TENANT_ID,
-        expect.any(Function),
       );
       expect(
         mockExecutionService.initializeSteps.mock.invocationCallOrder[0],
@@ -112,11 +96,6 @@ describe('ExecutionWorker', () => {
       expect(mockNodeScheduler.resumeScheduling).toHaveBeenCalledWith(
         EXECUTION_ID,
         TENANT_ID,
-      );
-      expect(runInTenantTransaction).toHaveBeenCalledWith(
-        mockDb,
-        TENANT_ID,
-        expect.any(Function),
       );
       expect(mockExecutionService.initializeSteps).not.toHaveBeenCalled();
       expect(mockNodeScheduler.startExecution).not.toHaveBeenCalled();

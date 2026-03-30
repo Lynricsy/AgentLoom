@@ -1,0 +1,59 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { fetchPersistentSandboxes } from './sandboxApi'
+
+const mocks = vi.hoisted(() => {
+  const jsonMock = vi.fn()
+  const getMock = vi.fn(() => ({ json: jsonMock }))
+
+  return {
+    getMock,
+    jsonMock,
+  }
+})
+
+vi.mock('@/shared/api/client', () => ({
+  apiClient: {
+    get: mocks.getMock,
+  },
+}))
+
+describe('fetchPersistentSandboxes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('应使用后端允许的 pageSize 拉取持久沙箱列表', async () => {
+    const sandbox = {
+      id: 'sandbox-1',
+      status: 'ready',
+      config: {
+        name: 'Persistent Sandbox',
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 2,
+        lifecycleMode: 'persistent',
+      },
+      executionId: null,
+      agentConversationId: null,
+      sandboxNodeId: null,
+      containerId: 'ctr-1',
+      workspacePath: null,
+      startedAt: null,
+      stoppedAt: null,
+      createdAt: '2026-03-30T00:00:00.000Z',
+    }
+
+    mocks.jsonMock.mockResolvedValue({
+      data: [sandbox],
+      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    })
+
+    await expect(fetchPersistentSandboxes()).resolves.toEqual([sandbox])
+
+    expect(mocks.getMock).toHaveBeenCalledWith('sandboxes', {
+      searchParams: { lifecycleMode: 'persistent', pageSize: 100 },
+    })
+  })
+})

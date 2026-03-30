@@ -6,6 +6,7 @@ import { CodeExecutionService } from '../code-execution.service';
 import type { CreateSessionParams } from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
 import { RagService } from '../../knowledge/services/rag.service';
+import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
 
 vi.mock('@nestjs/common', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nestjs/common')>();
@@ -46,6 +47,31 @@ describe('SandboxAgentAdapter', () => {
   let mockCodeExecutionService: {
     execute: ReturnType<typeof vi.fn>;
   };
+  let mockDecryptionBoundaryService: {
+    decryptApiKey: ReturnType<typeof vi.fn>;
+    decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
+  };
+  let piConfigGenerator: PiConfigGeneratorService;
+
+  const storedModelConfig = {
+    id: 'model-config-001',
+    orgId: 'org-001',
+    tenantId: 'tenant-001',
+    name: 'Claude Opus 4.6',
+    provider: 'anthropic',
+    modelName: 'claude-opus-4-6',
+    parameters: {},
+    apiKeyId: 'api-key-001',
+    endpointUrl: 'https://api.anthropic.com',
+    authMethod: 'api_key',
+    authConfig: null,
+    timeoutMs: 30_000,
+    modelType: 'chat',
+    embeddingDimensions: null,
+    isDefault: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
   const defaultParams: CreateSessionParams = {
     agentId: 'agent-001',
@@ -66,9 +92,14 @@ describe('SandboxAgentAdapter', () => {
       transaction: vi.fn(async (operation) =>
         operation({
           execute: vi.fn(),
+          select: mockDb.select,
         }),
       ),
-      select: vi.fn(),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([storedModelConfig]),
+        })),
+      })),
     };
     mockSandboxService = {
       getSandboxSession: vi.fn().mockResolvedValue({
@@ -99,6 +130,11 @@ describe('SandboxAgentAdapter', () => {
     mockCodeExecutionService = {
       execute: vi.fn(),
     };
+    mockDecryptionBoundaryService = {
+      decryptApiKey: vi.fn().mockResolvedValue('sk-ant-test'),
+      decryptConfiguredApiKey: vi.fn(),
+    };
+    piConfigGenerator = new PiConfigGeneratorService();
     // createSession 的容器初始化 POST 默认返回成功
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -112,6 +148,8 @@ describe('SandboxAgentAdapter', () => {
       mockMcpService as never,
       mockRagService as never,
       mockCodeExecutionService as never,
+      mockDecryptionBoundaryService as never,
+      piConfigGenerator,
     );
   });
 
@@ -193,6 +231,7 @@ describe('SandboxAgentAdapter', () => {
       expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
         'exec-001',
         'tenant-001',
+        undefined,
       );
       expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
@@ -209,6 +248,41 @@ describe('SandboxAgentAdapter', () => {
         }),
       );
       expect(session.status).toBe('active');
+    });
+
+    it('共享 sandbox 会话初始化时应下发 session 级模型配置与运行时 API key', async () => {
+      await adapter.createSession(defaultParams);
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const payload = JSON.parse(String(fetchCall?.[1]?.body)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(payload).toMatchObject({
+        systemPrompt: 'You are a sandbox agent.',
+        settings: {
+          defaultProvider: 'anthropic',
+          defaultModel: 'claude-opus-4-6',
+        },
+        runtimeApiKeys: {
+          anthropic: 'sk-ant-test',
+        },
+      });
+      expect(payload).toHaveProperty('models.providers.anthropic');
+      expect(payload).toHaveProperty(
+        'models.providers.anthropic.models.0.id',
+        'claude-opus-4-6',
+      );
+      expect(payload).toHaveProperty(
+        'models.providers.anthropic.apiKey',
+        'ANTHROPIC_API_KEY',
+      );
+      expect(mockDecryptionBoundaryService.decryptApiKey).toHaveBeenCalledWith(
+        'api-key-001',
+        'tenant-001',
+        'SandboxAgentAdapter',
+      );
     });
 
     it('有 MCP servers 时应使用更长的容器 session 初始化超时', async () => {
@@ -442,6 +516,7 @@ describe('SandboxAgentAdapter', () => {
       expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
         'exec-001',
         'tenant-001',
+        undefined,
       );
       expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
@@ -461,6 +536,36 @@ describe('SandboxAgentAdapter', () => {
         }),
       );
 
+      globalThis.fetch = originalFetch;
+    });
+
+    it('prompt 请求应使用 15 分钟默认超时，避免长响应被 5 分钟硬截断', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-001',
+        status: 'ready',
+        containerId: 'abc123def456',
+      });
+      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        createSseResponse([
+          'data: {"type":"done","stopReason":"end_turn"}\n\n',
+        ]),
+      );
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
+
+      expect(timeoutSpy).toHaveBeenCalledWith(900_000);
+
+      timeoutSpy.mockRestore();
       globalThis.fetch = originalFetch;
     });
 
@@ -899,6 +1004,8 @@ describe('SandboxAgentAdapter', () => {
       };
       const callbackToken =
         initPayload.remoteToolExecution?.callbackToken ?? '';
+      const transactionCallCountBeforeCallback =
+        mockDb.transaction.mock.calls.length;
 
       await expect(
         adapter.executeSessionToolCallback(
@@ -917,7 +1024,9 @@ describe('SandboxAgentAdapter', () => {
         },
       });
 
-      expect(mockDb.transaction).toHaveBeenCalledOnce();
+      expect(mockDb.transaction.mock.calls.length).toBe(
+        transactionCallCountBeforeCallback + 1,
+      );
       expect(execute).toHaveBeenCalledWith(
         { query: 'redis' },
         expect.objectContaining({
@@ -1781,6 +1890,7 @@ describe('SandboxAgentAdapter', () => {
       expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
         'nested-exec-001',
         'tenant-001',
+        undefined,
       );
     });
 
@@ -1812,6 +1922,7 @@ describe('SandboxAgentAdapter', () => {
       expect(mockSandboxService.getSandboxSession).toHaveBeenCalledWith(
         'top-exec',
         'tenant-001',
+        undefined,
       );
     });
   });

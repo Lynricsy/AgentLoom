@@ -18,7 +18,6 @@ import { MarketplaceListingNotFoundException } from '../../marketplace/marketpla
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
-  InvalidStatusTransitionException,
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
   WorkflowNotFoundException,
@@ -1122,15 +1121,28 @@ describe('WorkflowVersionService', () => {
       ).rejects.toBeInstanceOf(WorkflowArchivedException);
     });
 
-    it('非 draft 状态时应当抛出 InvalidStatusTransitionException', async () => {
+    it('已发布工作流应当允许再次发布当前快照', async () => {
       const selectWf = createSelectChain([
         createDraftWorkflow({ status: 'published' }),
       ]);
-      db.select.mockReturnValueOnce(selectWf);
+      const selectMax = createSelectChain([{ maxVersion: 2 }]);
+      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
 
-      await expect(
-        service.publish(WORKFLOW_ID, {}, USER_ID),
-      ).rejects.toBeInstanceOf(InvalidStatusTransitionException);
+      const publishedVersion = createMockVersion({
+        versionNumber: 3,
+        publishedAt: NOW,
+      });
+      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      expect(result.data.versionNumber).toBe(3);
+      expect(result.data.publishedAt).toBe(NOW.toISOString());
+      expect(result.warnings).toEqual([]);
     });
 
     it('工作流无节点时应当抛出 WorkflowPublishValidationException', async () => {
@@ -1537,15 +1549,31 @@ describe('WorkflowVersionService', () => {
     });
 
     describe('published →', () => {
-      it('published → published（再次发布）：应当拒绝', async () => {
+      it('published → published（再次发布）：应当允许', async () => {
         const selectWf = createSelectChain([
           createDraftWorkflow({ status: 'published' }),
         ]);
-        db.select.mockReturnValueOnce(selectWf);
+        const selectMax = createSelectChain([{ maxVersion: 4 }]);
+        db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+
+        const publishedVersion = createMockVersion({
+          versionNumber: 5,
+          publishedAt: NOW,
+        });
+        db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+        db.update
+          .mockReturnValueOnce(createUpdateChainVoid())
+          .mockReturnValueOnce(createUpdateChainVoid());
+        redis.del.mockResolvedValueOnce(undefined);
 
         await expect(
           service.publish(WORKFLOW_ID, {}, USER_ID),
-        ).rejects.toBeInstanceOf(InvalidStatusTransitionException);
+        ).resolves.toMatchObject({
+          data: {
+            versionNumber: 5,
+            publishedAt: NOW.toISOString(),
+          },
+        });
       });
 
       it('published → archived：应当允许', async () => {

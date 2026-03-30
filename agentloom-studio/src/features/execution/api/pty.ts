@@ -1,3 +1,4 @@
+import { HTTPError } from 'ky'
 import type { ApiResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type {
@@ -18,10 +19,18 @@ export const ptyKeys = {
 export async function fetchPtySessions(
   executionId: string,
 ): Promise<PtySessionInfo[]> {
-  const res = await apiClient
-    .get(`executions/${executionId}/pty/sessions`)
-    .json<ApiResponse<PtySessionInfo[]>>()
-  return res.data
+  try {
+    const res = await apiClient
+      .get(`executions/${executionId}/pty/sessions`)
+      .json<ApiResponse<PtySessionInfo[]>>()
+    return res.data
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.status === 404) {
+      return []
+    }
+
+    throw error
+  }
 }
 
 export async function fetchPtyBufferDump(

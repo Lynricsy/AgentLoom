@@ -1,184 +1,221 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from '@tanstack/react-router'
-import { useAuthToken } from '@/features/execution/hooks/useAuthToken'
-import { CelebrationEffect } from '@/features/execution/components/CelebrationEffect'
-import { useExecutionMonitor } from '@/features/execution/hooks/useExecutionMonitor'
-import { useStartExecution } from '@/features/execution/hooks/useStartExecution'
-import { ExecutionHistoryPanel } from '@/features/execution/components/ExecutionHistoryPanel'
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "@tanstack/react-router";
+import { useAuthToken } from "@/features/execution/hooks/useAuthToken";
+import { CelebrationEffect } from "@/features/execution/components/CelebrationEffect";
+import { useExecutionMonitor } from "@/features/execution/hooks/useExecutionMonitor";
+import { useStartExecution } from "@/features/execution/hooks/useStartExecution";
+import { ExecutionHistoryPanel } from "@/features/execution/components/ExecutionHistoryPanel";
 import {
   canManageInterventionPolicies,
   getInterventionPolicyRoleFromToken,
-} from '@/features/intervention-policy'
+} from "@/features/intervention-policy";
 import {
   useExecutionId,
   useIsExecutionActive,
   useExecutionStatus,
-} from '@/features/execution/stores/executionStore'
-import { useWorkflow } from '@/features/workflow'
-import { useExportWorkflow } from '@/features/workflow/api/workflowMutations'
-import { downloadWorkflowExport } from '@/features/workflow/lib/workflowExportImport'
-import { PublishSheet } from '@/features/workflow/components/PublishSheet'
-import { VersionHistoryPanel } from '@/features/workflow/components/VersionHistoryPanel'
-import { WorkflowImportDialog } from '@/features/workflow/components/WorkflowImportDialog'
-import { ExecutionLaunchDialog } from '@/features/workflow-input-schema/components/ExecutionLaunchDialog'
-import { MarketplacePublishDialog } from '@/features/marketplace'
-import { ShareManagementDialog } from '@/features/share/components/ShareManagementDialog'
-import { NodePalette } from './NodePalette'
-import { WorkflowCanvas } from './WorkflowCanvas'
-import { WorkflowStatusBar } from './status/WorkflowStatusBar'
-import { FieldMappingPanel } from './panels/FieldMappingPanel'
-import { NodeConfigPanel } from './panels/NodeConfigPanel'
+} from "@/features/execution/stores/executionStore";
+import { useWorkflow } from "@/features/workflow";
+import { useExportWorkflow } from "@/features/workflow/api/workflowMutations";
+import { downloadWorkflowExport } from "@/features/workflow/lib/workflowExportImport";
+import { PublishSheet } from "@/features/workflow/components/PublishSheet";
+import { VersionHistoryPanel } from "@/features/workflow/components/VersionHistoryPanel";
+import { WorkflowImportDialog } from "@/features/workflow/components/WorkflowImportDialog";
+import { ExecutionLaunchDialog } from "@/features/workflow-input-schema/components/ExecutionLaunchDialog";
+import { MarketplacePublishDialog } from "@/features/marketplace";
+import { ShareManagementDialog } from "@/features/share/components/ShareManagementDialog";
+import { NodePalette } from "./NodePalette";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { WorkflowStatusBar } from "./status/WorkflowStatusBar";
+import { FieldMappingPanel } from "./panels/FieldMappingPanel";
+import { NodeConfigPanel } from "./panels/NodeConfigPanel";
 import {
   WorkflowSettingsPanel,
   type WorkflowSettingsTab,
-} from './panels/WorkflowSettingsPanel'
-import { VersionToolbar } from './toolbar/VersionToolbar'
-import { useAutoSave } from '../hooks/useAutoSave'
+} from "./panels/WorkflowSettingsPanel";
+import { VersionToolbar } from "./toolbar/VersionToolbar";
+import { useAutoSave } from "../hooks/useAutoSave";
 import {
   useCanvasActions,
   useCanvasStore,
   useMappingPanelEdgeId,
-} from '../stores/canvasStore'
-import { useToast } from '@/shared/ui/toast'
+} from "../stores/canvasStore";
+import { useToast } from "@/shared/ui/toast";
 
 export function WorkflowCanvasPage() {
-  const { workflowId } = useParams({ from: '/workflows/$workflowId' })
-  const currentWorkflowId = useCanvasStore((state) => state.workflowId)
-  const currentCanvasVersion = useCanvasStore((state) => state.version)
-  const isCanvasDirty = useCanvasStore((state) => state.isDirty)
-  const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } = useCanvasActions()
-  const { notify } = useToast()
-  const mappingPanelEdgeId = useMappingPanelEdgeId()
-  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
-  const skippedSnapshotRef = useRef<string | null>(null)
+  const { workflowId } = useParams({ from: "/workflows/$workflowId" });
+  const currentWorkflowId = useCanvasStore((state) => state.workflowId);
+  const currentCanvasVersion = useCanvasStore((state) => state.version);
+  const isCanvasDirty = useCanvasStore((state) => state.isDirty);
+  const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } =
+    useCanvasActions();
+  const { notify } = useToast();
+  const mappingPanelEdgeId = useMappingPanelEdgeId();
+  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
+  const skippedSnapshotRef = useRef<string | null>(null);
 
-  const { data: workflow, isLoading, error } = useWorkflow(workflowId)
-  const isWorkflowArchived = workflow?.status === 'archived'
+  const { data: workflow, isLoading, error } = useWorkflow(workflowId);
+  const isWorkflowArchived = workflow?.status === "archived";
 
-  const activeExecutionId = useExecutionId() ?? undefined
-  const isExecutionActive = useIsExecutionActive()
-  const executionStatus = useExecutionStatus()
-  const authToken = useAuthToken()
-  const currentUserRole = getInterventionPolicyRoleFromToken(authToken)
-  const canManageWorkflowSettings = canManageInterventionPolicies(currentUserRole)
-  const isInterventionPolicyReadOnly = !canManageWorkflowSettings
-  const isInputSchemaReadOnly = !canManageWorkflowSettings
-  const { startExecution, isStarting } = useStartExecution()
-  useExecutionMonitor({ executionId: activeExecutionId, tenantId: workflow?.tenantId, authToken })
+  const activeExecutionId = useExecutionId() ?? undefined;
+  const isExecutionActive = useIsExecutionActive();
+  const executionStatus = useExecutionStatus();
+  const authToken = useAuthToken();
+  const currentUserRole = getInterventionPolicyRoleFromToken(authToken);
+  const canManageWorkflowSettings =
+    canManageInterventionPolicies(currentUserRole);
+  const isInterventionPolicyReadOnly = !canManageWorkflowSettings;
+  const isInputSchemaReadOnly = !canManageWorkflowSettings;
+  const { startExecution, isStarting } = useStartExecution();
+  useExecutionMonitor({
+    executionId: activeExecutionId,
+    tenantId: workflow?.tenantId,
+    authToken,
+  });
   const canPublishToMarketplace =
     !!workflow &&
-    workflow.status === 'published' &&
+    workflow.status === "published" &&
     workflow.publishedVersionId !== null &&
-    canManageWorkflowSettings
+    canManageWorkflowSettings;
 
   const handleRunWorkflow = useCallback(() => {
-    if (!workflowId || isStarting || isExecutionActive) return
-    setIsExecutionLaunchDialogOpen(true)
-  }, [workflowId, isStarting, isExecutionActive])
+    if (!workflowId || isStarting || isExecutionActive) return;
+    setIsExecutionLaunchDialogOpen(true);
+  }, [workflowId, isStarting, isExecutionActive]);
 
-  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
-  const [isExecutionHistoryOpen, setIsExecutionHistoryOpen] = useState(false)
-  const [isExecutionLaunchDialogOpen, setIsExecutionLaunchDialogOpen] = useState(false)
-  const [activeSettingsTab, setActiveSettingsTab] = useState<WorkflowSettingsTab | null>(null)
-  const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false)
-  const [publishVersionId, setPublishVersionId] = useState<string | null>(null)
-  const [isMarketplacePublishOpen, setIsMarketplacePublishOpen] = useState(false)
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isExecutionHistoryOpen, setIsExecutionHistoryOpen] = useState(false);
+  const [isExecutionLaunchDialogOpen, setIsExecutionLaunchDialogOpen] =
+    useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] =
+    useState<WorkflowSettingsTab | null>(null);
+  const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false);
+  const [publishVersionId, setPublishVersionId] = useState<string | null>(null);
+  const [isMarketplacePublishOpen, setIsMarketplacePublishOpen] =
+    useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
 
-  const exportMutation = useExportWorkflow()
-  const handleOpenVersionHistory = useCallback(() => setIsVersionHistoryOpen(true), [])
-  const handleCloseVersionHistory = useCallback(() => setIsVersionHistoryOpen(false), [])
+  const exportMutation = useExportWorkflow();
+  const handleOpenVersionHistory = useCallback(
+    () => setIsVersionHistoryOpen(true),
+    [],
+  );
+  const handleCloseVersionHistory = useCallback(
+    () => setIsVersionHistoryOpen(false),
+    [],
+  );
   const handleToggleExecutionHistory = useCallback(() => {
-    setIsExecutionHistoryOpen((current) => !current)
-  }, [])
-  const handleToggleWorkflowSettingsTab = useCallback((tab: WorkflowSettingsTab) => {
-    setActiveSettingsTab((current) => (current === tab ? null : tab))
-  }, [])
+    setIsExecutionHistoryOpen((current) => !current);
+  }, []);
+  const handleToggleWorkflowSettingsTab = useCallback(
+    (tab: WorkflowSettingsTab) => {
+      setActiveSettingsTab((current) => (current === tab ? null : tab));
+    },
+    [],
+  );
   const handleToggleInterventionPolicyPanel = useCallback(() => {
-    handleToggleWorkflowSettingsTab('intervention-policies')
-  }, [handleToggleWorkflowSettingsTab])
+    handleToggleWorkflowSettingsTab("intervention-policies");
+  }, [handleToggleWorkflowSettingsTab]);
   const handleToggleInputSchemaPanel = useCallback(() => {
-    handleToggleWorkflowSettingsTab('input-schema')
-  }, [handleToggleWorkflowSettingsTab])
+    handleToggleWorkflowSettingsTab("input-schema");
+  }, [handleToggleWorkflowSettingsTab]);
   const handleToggleTriggerPanel = useCallback(() => {
-    handleToggleWorkflowSettingsTab('triggers')
-  }, [handleToggleWorkflowSettingsTab])
+    handleToggleWorkflowSettingsTab("triggers");
+  }, [handleToggleWorkflowSettingsTab]);
   const handleCloseWorkflowSettingsPanel = useCallback(() => {
-    setActiveSettingsTab(null)
-  }, [])
-  const handleWorkflowSettingsTabChange = useCallback((tab: WorkflowSettingsTab) => {
-    setActiveSettingsTab(tab)
-  }, [])
+    setActiveSettingsTab(null);
+  }, []);
+  const handleWorkflowSettingsTabChange = useCallback(
+    (tab: WorkflowSettingsTab) => {
+      setActiveSettingsTab(tab);
+    },
+    [],
+  );
   const handleCloseExecutionHistory = useCallback(() => {
-    setIsExecutionHistoryOpen(false)
-  }, [])
+    setIsExecutionHistoryOpen(false);
+  }, []);
   const handleOpenPublishSheet = useCallback((versionId?: string) => {
-    setPublishVersionId(versionId ?? null)
-    setIsPublishSheetOpen(true)
-  }, [])
+    setPublishVersionId(versionId ?? null);
+    setIsPublishSheetOpen(true);
+  }, []);
   const handlePublishSheetOpenChange = useCallback((open: boolean) => {
-    setIsPublishSheetOpen(open)
+    setIsPublishSheetOpen(open);
     if (!open) {
-      setPublishVersionId(null)
+      setPublishVersionId(null);
     }
-  }, [])
-  const handleOpenMarketplacePublish = useCallback(() => setIsMarketplacePublishOpen(true), [])
+  }, []);
+  const handleOpenMarketplacePublish = useCallback(
+    () => setIsMarketplacePublishOpen(true),
+    [],
+  );
 
   const handleExportWorkflow = useCallback(() => {
-    if (!workflow) return
+    if (!workflow) return;
     exportMutation.mutate(workflowId, {
       onSuccess: (data) => {
-        downloadWorkflowExport(data, workflow.slug)
+        downloadWorkflowExport(data, workflow.slug);
       },
-    })
-  }, [workflow, workflowId, exportMutation])
+    });
+  }, [workflow, workflowId, exportMutation]);
 
-  const handleOpenImportDialog = useCallback(() => setIsImportDialogOpen(true), [])
-  const handleOpenShareDialog = useCallback(() => setIsShareDialogOpen(true), [])
+  const handleOpenImportDialog = useCallback(
+    () => setIsImportDialogOpen(true),
+    [],
+  );
+  const handleOpenShareDialog = useCallback(
+    () => setIsShareDialogOpen(true),
+    [],
+  );
 
   const mappingPanelEdge = useCanvasStore((s) =>
-    mappingPanelEdgeId ? s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null : null
-  )
+    mappingPanelEdgeId
+      ? (s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null)
+      : null,
+  );
   const mappingSourceNode = useCanvasStore((s) =>
-    mappingPanelEdge ? s.nodes.find((n) => n.id === mappingPanelEdge.source) ?? null : null
-  )
+    mappingPanelEdge
+      ? (s.nodes.find((n) => n.id === mappingPanelEdge.source) ?? null)
+      : null,
+  );
   const mappingTargetNode = useCanvasStore((s) =>
-    mappingPanelEdge ? s.nodes.find((n) => n.id === mappingPanelEdge.target) ?? null : null
-  )
+    mappingPanelEdge
+      ? (s.nodes.find((n) => n.id === mappingPanelEdge.target) ?? null)
+      : null,
+  );
 
-  useAutoSave(workflowId, workflow?.status)
+  useAutoSave(workflowId, workflow?.status);
 
   useEffect(() => {
     if (!workflow) {
-      return
+      return;
     }
 
     const shouldApplySnapshot =
-      workflow.id !== currentWorkflowId || workflow.version !== currentCanvasVersion
+      workflow.id !== currentWorkflowId ||
+      workflow.version !== currentCanvasVersion;
 
     if (!shouldApplySnapshot) {
-      skippedSnapshotRef.current = null
-      return
+      skippedSnapshotRef.current = null;
+      return;
     }
 
-    const nextSnapshotKey = `${workflow.id}:${workflow.version}`
-    const isSameWorkflowVersionRefresh = workflow.id === currentWorkflowId
+    const nextSnapshotKey = `${workflow.id}:${workflow.version}`;
+    const isSameWorkflowVersionRefresh = workflow.id === currentWorkflowId;
 
     if (isSameWorkflowVersionRefresh && isCanvasDirty) {
       if (skippedSnapshotRef.current !== nextSnapshotKey) {
-        skippedSnapshotRef.current = nextSnapshotKey
+        skippedSnapshotRef.current = nextSnapshotKey;
         notify({
-          title: '已保留本地未保存修改',
+          title: "已保留本地未保存修改",
           description:
-            '服务端工作流已更新，但当前画布已有新的未保存编辑，本次不会自动覆盖本地状态。',
-          variant: 'warning',
-        })
+            "服务端工作流已更新，但当前画布已有新的未保存编辑，本次不会自动覆盖本地状态。",
+          variant: "warning",
+        });
       }
-      return
+      return;
     }
 
-    skippedSnapshotRef.current = null
+    skippedSnapshotRef.current = null;
 
     applyServerSnapshot({
       nodes: workflow.nodes ?? [],
@@ -186,33 +223,40 @@ export function WorkflowCanvasPage() {
       viewport: workflow.viewport ?? undefined,
       workflowId: workflow.id,
       version: workflow.version,
-    })
-  }, [workflow, currentWorkflowId, currentCanvasVersion, applyServerSnapshot, isCanvasDirty, notify])
+    });
+  }, [
+    workflow,
+    currentWorkflowId,
+    currentCanvasVersion,
+    applyServerSnapshot,
+    isCanvasDirty,
+    notify,
+  ]);
 
   useEffect(() => {
     return () => {
-      reset()
-    }
-  }, [reset])
+      reset();
+    };
+  }, [reset]);
 
   useEffect(() => {
     if (isWorkflowArchived) {
-      closeFieldMapping()
+      closeFieldMapping();
     }
-  }, [closeFieldMapping, isWorkflowArchived])
+  }, [closeFieldMapping, isWorkflowArchived]);
 
   useEffect(() => {
     if (!canPublishToMarketplace) {
-      setIsMarketplacePublishOpen(false)
+      setIsMarketplacePublishOpen(false);
     }
-  }, [canPublishToMarketplace])
+  }, [canPublishToMarketplace]);
 
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <p className="text-muted">加载工作流中...</p>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -220,7 +264,7 @@ export function WorkflowCanvasPage() {
       <div className="flex h-full w-full items-center justify-center">
         <p className="text-error">加载失败: {error.message}</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -244,29 +288,6 @@ export function WorkflowCanvasPage() {
         )}
         <WorkflowStatusBar />
 
-        {workflow && (
-          <VersionToolbar
-            workflowId={workflowId}
-            workflowStatus={workflow.status}
-            onOpenVersionHistory={handleOpenVersionHistory}
-            onOpenPublish={handleOpenPublishSheet}
-            onToggleInterventionPolicies={handleToggleInterventionPolicyPanel}
-            onToggleInputSchema={handleToggleInputSchemaPanel}
-            onToggleTriggers={handleToggleTriggerPanel}
-            onPublishToMarketplace={canPublishToMarketplace ? handleOpenMarketplacePublish : undefined}
-            onRun={workflow.status === 'published' ? handleRunWorkflow : undefined}
-            onExport={handleExportWorkflow}
-            onImport={handleOpenImportDialog}
-            onShare={workflow.status === 'published' ? handleOpenShareDialog : undefined}
-            isInterventionPoliciesOpen={activeSettingsTab === 'intervention-policies'}
-            isInputSchemaOpen={activeSettingsTab === 'input-schema'}
-            isTriggersOpen={activeSettingsTab === 'triggers'}
-            isRunning={isStarting || isExecutionActive}
-            isExporting={exportMutation.isPending}
-            hasNodes={(workflow.nodes ?? []).length > 0}
-          />
-        )}
-
         {workflow ? (
           <ExecutionLaunchDialog
             open={isExecutionLaunchDialogOpen}
@@ -281,43 +302,95 @@ export function WorkflowCanvasPage() {
         ) : null}
 
         {workflow && (
-          <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3">
-            <button
-              type="button"
-              className="pointer-events-auto inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
-              onClick={handleToggleExecutionHistory}
-              data-testid="toggle-execution-history"
+          <div
+            className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between"
+            data-testid="workflow-top-overlay"
+          >
+            <div className="order-1 flex justify-end xl:order-2">
+              <div
+                className="pointer-events-auto w-full rounded-2xl border border-border/70 bg-background/85 p-2 shadow-lg backdrop-blur-md xl:w-auto"
+                data-testid="workflow-toolbar-shell"
+              >
+                <VersionToolbar
+                  workflowId={workflowId}
+                  workflowStatus={workflow.status}
+                  onOpenVersionHistory={handleOpenVersionHistory}
+                  onOpenPublish={handleOpenPublishSheet}
+                  onToggleInterventionPolicies={
+                    handleToggleInterventionPolicyPanel
+                  }
+                  onToggleInputSchema={handleToggleInputSchemaPanel}
+                  onToggleTriggers={handleToggleTriggerPanel}
+                  onPublishToMarketplace={
+                    canPublishToMarketplace
+                      ? handleOpenMarketplacePublish
+                      : undefined
+                  }
+                  onRun={
+                    workflow.status === "published"
+                      ? handleRunWorkflow
+                      : undefined
+                  }
+                  onExport={handleExportWorkflow}
+                  onImport={handleOpenImportDialog}
+                  onShare={
+                    workflow.status === "published"
+                      ? handleOpenShareDialog
+                      : undefined
+                  }
+                  isInterventionPoliciesOpen={
+                    activeSettingsTab === "intervention-policies"
+                  }
+                  isInputSchemaOpen={activeSettingsTab === "input-schema"}
+                  isTriggersOpen={activeSettingsTab === "triggers"}
+                  isRunning={isStarting || isExecutionActive}
+                  isExporting={exportMutation.isPending}
+                  hasNodes={(workflow.nodes ?? []).length > 0}
+                />
+              </div>
+            </div>
+
+            <div
+              className="order-2 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3 xl:order-1"
+              data-testid="workflow-side-overlay"
             >
-              {isExecutionHistoryOpen ? '隐藏执行记录' : '查看执行记录'}
-            </button>
+              <button
+                type="button"
+                className="pointer-events-auto inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
+                onClick={handleToggleExecutionHistory}
+                data-testid="toggle-execution-history"
+              >
+                {isExecutionHistoryOpen ? "隐藏执行记录" : "查看执行记录"}
+              </button>
 
-            {isExecutionHistoryOpen ? (
-              <div className="pointer-events-auto h-[min(68vh,640px)] w-[min(420px,calc(100vw-3rem))]">
-                <ExecutionHistoryPanel
-                  key={workflow.id}
-                  workflowDefinitionId={workflow.id}
-                  onClose={handleCloseExecutionHistory}
-                />
-              </div>
-            ) : null}
+              {isExecutionHistoryOpen ? (
+                <div className="pointer-events-auto h-[min(68vh,640px)] w-[min(420px,calc(100vw-3rem))]">
+                  <ExecutionHistoryPanel
+                    key={workflow.id}
+                    workflowDefinitionId={workflow.id}
+                    onClose={handleCloseExecutionHistory}
+                  />
+                </div>
+              ) : null}
 
-            {activeSettingsTab ? (
-              <div className="pointer-events-auto w-[min(480px,calc(100vw-3rem))]">
-                <WorkflowSettingsPanel
-                  activeTab={activeSettingsTab}
-                  onTabChange={handleWorkflowSettingsTabChange}
-                  onClose={handleCloseWorkflowSettingsPanel}
-                  workflowId={workflow.id}
-                  workflowName={workflow.name}
-                  workflowVersion={workflow.version}
-                  nodes={workflow.nodes ?? []}
-                  inputSchema={workflow.inputSchema}
-                  isInputSchemaReadOnly={isInputSchemaReadOnly}
-                  isPublished={workflow.status === 'published'}
-                  isInterventionPolicyReadOnly={isInterventionPolicyReadOnly}
-                />
-              </div>
-            ) : null}
+              {activeSettingsTab ? (
+                <div className="pointer-events-auto w-[min(480px,calc(100vw-3rem))]">
+                  <WorkflowSettingsPanel
+                    activeTab={activeSettingsTab}
+                    onTabChange={handleWorkflowSettingsTabChange}
+                    onClose={handleCloseWorkflowSettingsPanel}
+                    workflowId={workflow.id}
+                    workflowName={workflow.name}
+                    workflowVersion={workflow.version}
+                    nodes={workflow.nodes ?? []}
+                    inputSchema={workflow.inputSchema}
+                    isInputSchemaReadOnly={isInputSchemaReadOnly}
+                    isPublished={workflow.status === "published"}
+                    isInterventionPolicyReadOnly={isInterventionPolicyReadOnly}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
@@ -378,5 +451,5 @@ export function WorkflowCanvasPage() {
         />
       )}
     </div>
-  )
+  );
 }

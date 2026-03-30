@@ -179,6 +179,7 @@ describe('NodeSchedulerService', () => {
     createSandboxSession: ReturnType<typeof vi.fn>;
     getSandboxSession: ReturnType<typeof vi.fn>;
     destroySandbox: ReturnType<typeof vi.fn>;
+    releaseExecutionSandbox: ReturnType<typeof vi.fn>;
   };
   let mockCheckpointService: {
     saveCheckpoint: ReturnType<typeof vi.fn>;
@@ -237,6 +238,7 @@ describe('NodeSchedulerService', () => {
       delete: vi.fn(),
       execute: vi.fn(),
     };
+    db.select.mockReturnValue(createSelectChain([]));
 
     mockDagResolver = { resolveDag: vi.fn() };
     mockStateMachine = {
@@ -260,6 +262,7 @@ describe('NodeSchedulerService', () => {
       }),
       getSandboxSession: vi.fn().mockResolvedValue(null),
       destroySandbox: vi.fn().mockResolvedValue(undefined),
+      releaseExecutionSandbox: vi.fn().mockResolvedValue(undefined),
     };
     mockCheckpointService = {
       saveCheckpoint: vi.fn().mockResolvedValue(undefined),
@@ -414,6 +417,56 @@ describe('NodeSchedulerService', () => {
       });
     });
 
+    it('兼容 snake_case 的 source_handle/target_handle 端口映射', () => {
+      const edges = [
+        {
+          id: 'node-trigger->node-condition',
+          source: 'node-trigger',
+          target: 'node-condition',
+          source_handle: 'payload',
+          target_handle: 'input',
+        } as ReactFlowEdge,
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'node-trigger',
+          nodeType: 'manual-trigger',
+          status: 'completed',
+          result: { payload: { route: 'skip', topic: '验证 skip 分支' } },
+        }),
+      ];
+
+      expect(
+        service.resolveNodeInput('node-condition', edges, steps),
+      ).toEqual({
+        input: { route: 'skip', topic: '验证 skip 分支' },
+      });
+    });
+
+    it('condition 分支输出应为下游解包单一 input payload', () => {
+      const edges = [
+        makeEdge('node-condition', 'node-preprocessor', 'matched', 'json-in'),
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'node-condition',
+          nodeType: 'condition',
+          status: 'completed',
+          result: {
+            matched: {
+              input: { route: 'match', topic: '多 Agent 协作' },
+            },
+          },
+        }),
+      ];
+
+      expect(
+        service.resolveNodeInput('node-preprocessor', edges, steps),
+      ).toEqual({
+        'json-in': { route: 'match', topic: '多 Agent 协作' },
+      });
+    });
+
     it('缺少源节点或结果时会抛出 NodeInputResolutionException', () => {
       const edges = [makeEdge('node-a', 'node-c')];
 
@@ -425,6 +478,49 @@ describe('NodeSchedulerService', () => {
           makeStep({ nodeId: 'node-a', status: 'completed', result: null }),
         ]),
       ).toThrow(NodeInputResolutionException);
+    });
+  });
+
+  describe('getSchedulingDecision', () => {
+    it('当已连接的必填输入端口全部来自 skipped 前驱时应返回 skip', () => {
+      const edges = [
+        makeEdge('preprocessor', 'agent-a', 'text-out', 'text-input'),
+        makeEdge('sandbox', 'agent-a', 'sandbox-output', 'sandbox'),
+        makeEdge('memory', 'agent-a', 'memory-out-0', 'context'),
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'preprocessor',
+          status: 'skipped',
+          nodeType: 'input-preprocessor',
+        }),
+        makeStep({
+          nodeId: 'sandbox',
+          status: 'completed',
+          nodeType: 'sandbox',
+        }),
+        makeStep({
+          nodeId: 'memory',
+          status: 'completed',
+          nodeType: 'memory',
+        }),
+        makeStep({
+          nodeId: 'agent-a',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {
+            input_ports: [
+              { id: 'text-input', required: true },
+              { id: 'sandbox', required: false },
+              { id: 'context', required: false },
+            ],
+          },
+        }),
+      ];
+
+      expect(
+        service['getSchedulingDecision']('agent-a', edges, steps),
+      ).toBe('skip');
     });
   });
 
@@ -567,6 +663,142 @@ describe('NodeSchedulerService', () => {
       );
     });
 
+    it('最新步骤状态已非 pending 时不应重复调度', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A'), makeNode('B')],
+        [makeEdge('A', 'B')],
+      );
+      const staleSteps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { answer: 'hello' },
+        }),
+        makeStep({
+          id: 'step-b',
+          nodeId: 'B',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: { agentId: 'agent-b' },
+        }),
+      ];
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            makeStep({
+              id: 'step-b',
+              nodeId: 'B',
+              status: 'cancelled',
+              nodeType: 'agent',
+              nodeData: { agentId: 'agent-b' },
+            }),
+          ]),
+        );
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'B',
+        TENANT_ID,
+        snapshot,
+        staleSteps,
+      );
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('manual-trigger 节点会内联执行，不进入 agent-task 队列', async () => {
+      const snapshot = makeSnapshot([makeNode('T', 'manual-trigger')], []);
+      const executeTriggerNode = vi
+        .spyOn(service, 'executeTriggerNode')
+        .mockResolvedValue(undefined);
+      const steps = [
+        makeStep({
+          id: 'step-t',
+          nodeId: 'T',
+          status: 'pending',
+          nodeType: 'manual-trigger',
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'T', TENANT_ID, snapshot, steps);
+
+      expect(executeTriggerNode).toHaveBeenCalledWith(
+        steps[0],
+        TENANT_ID,
+        EXECUTION_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('chat-agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('M', 'llm-model'), makeNode('C', 'chat-agent')],
+        [makeEdge('M', 'C', 'model-output', 'model')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'completed',
+          nodeType: 'llm-model',
+          result: {
+            llmModelConfigId: 'model-cfg-1',
+            modelConfigId: 'model-cfg-1',
+          },
+        }),
+        makeStep({
+          id: 'step-c',
+          nodeId: 'C',
+          status: 'pending',
+          nodeType: 'chat-agent',
+          nodeData: {
+            config: {
+              systemPrompt: '你是一个测试助手',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(EXECUTION_ID, 'C', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-c',
+        'queued',
+      );
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        {
+          executionId: EXECUTION_ID,
+          stepId: 'step-c',
+          tenantId: TENANT_ID,
+          input: {
+            model: {
+              llmModelConfigId: 'model-cfg-1',
+              modelConfigId: 'model-cfg-1',
+            },
+          },
+          nodeData: expect.objectContaining({
+            agentId: 'C',
+            llmModelConfigId: 'model-cfg-1',
+            systemPrompt: '你是一个测试助手',
+            config: {
+              systemPrompt: '你是一个测试助手',
+            },
+          }),
+        },
+        undefined,
+      );
+    });
+
     it('data_transform 节点会直接内联执行，不进入 queued', async () => {
       const snapshot = makeSnapshot(
         [makeNode('A'), makeNode('B', 'data_transform')],
@@ -670,12 +902,16 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
         'step-s',
         'completed',
-        {
-          result: {
+        expect.objectContaining({
+          result: expect.objectContaining({
             sessionId: '019577a0-0000-7000-8000-sandbox00001',
             status: 'creating',
-          },
-        },
+            'sandbox-output': expect.objectContaining({
+              sessionId: '019577a0-0000-7000-8000-sandbox00001',
+              status: 'creating',
+            }),
+          }),
+        }),
       );
       expect(onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -743,14 +979,20 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
         'step-m',
         'completed',
-        {
-          result: {
+        expect.objectContaining({
+          result: expect.objectContaining({
             sessionId: '019577a0-0000-7000-8000-memory000001',
             instanceId: '019577a0-0000-7000-8000-memoryinst001',
             role: 'readonly',
             status: 'active',
-          },
-        },
+            'memory-out-0': expect.objectContaining({
+              sessionId: '019577a0-0000-7000-8000-memory000001',
+              instanceId: '019577a0-0000-7000-8000-memoryinst001',
+              role: 'readonly',
+              status: 'active',
+            }),
+          }),
+        }),
       );
       expect(onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -758,6 +1000,55 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('memory 节点应兼容 snake_case 配置字段', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('M', 'memory', {
+            config: {
+              memory_instance_id: '019577a0-0000-7000-8000-memoryinst002',
+              role: 'readonly',
+              boot_uris: ['system://boot'],
+              fusion_priority: 5,
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-m',
+          nodeId: 'M',
+          status: 'pending',
+          nodeType: 'memory',
+          nodeData: {
+            config: {
+              memory_instance_id: '019577a0-0000-7000-8000-memoryinst002',
+              role: 'readonly',
+              boot_uris: ['system://boot'],
+              fusion_priority: 5,
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'M', TENANT_ID, snapshot, steps);
+
+      expect(mockSharedResourceRegistry.createResource).toHaveBeenCalledWith(
+        'memory',
+        {
+          memoryInstanceId: '019577a0-0000-7000-8000-memoryinst002',
+          role: 'readonly',
+          bootUris: ['system://boot'],
+          fusionPriority: 5,
+          tenantId: TENANT_ID,
+          executionId: EXECUTION_ID,
+        },
+      );
     });
 
     it('memory 节点创建 session 失败时应标记 failed 并触发 onNodeFailed', async () => {
@@ -891,6 +1182,448 @@ describe('NodeSchedulerService', () => {
       });
     });
 
+    it('sandbox 节点应兼容 snake_case 生命周期配置', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('S', 'sandbox', {
+            config: {
+              cpu: 2,
+              memory: 1024,
+              disk: 5,
+              timeout: 4,
+              lifecycle_mode: 'persistent',
+              persistent_sandbox_id: 'persistent-sandbox-001',
+              persistent_sandbox_name: 'QA Persistent Sandbox',
+              persistence_expiry_hours: 72,
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'pending',
+          nodeType: 'sandbox',
+          nodeData: {
+            config: {
+              cpu: 2,
+              memory: 1024,
+              disk: 5,
+              timeout: 4,
+              lifecycle_mode: 'persistent',
+              persistent_sandbox_id: 'persistent-sandbox-001',
+              persistent_sandbox_name: 'QA Persistent Sandbox',
+              persistence_expiry_hours: 72,
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
+
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        sandboxNodeId: 'S',
+        config: {
+          cpu: 2,
+          memory: 1024,
+          disk: 5,
+          timeout: 4,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: 'persistent-sandbox-001',
+          name: 'QA Persistent Sandbox',
+          persistenceExpiryHours: 72,
+        },
+        tenantId: TENANT_ID,
+      });
+    });
+
+    it('workspace 节点会同步完成并产出 workspace 引用', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('W', 'workspace', {
+            config: {
+              workspaceId: '019577a0-0000-7000-8000-workspace0001',
+              workspaceName: 'QA Workspace',
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-w',
+          nodeId: 'W',
+          status: 'pending',
+          nodeType: 'workspace',
+          nodeData: {
+            config: {
+              workspaceId: '019577a0-0000-7000-8000-workspace0001',
+              workspaceName: 'QA Workspace',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'W', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-w',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-w',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            workspaceId: '019577a0-0000-7000-8000-workspace0001',
+            workspaceName: 'QA Workspace',
+            'volume-output': expect.objectContaining({
+              workspaceId: '019577a0-0000-7000-8000-workspace0001',
+              workspaceName: 'QA Workspace',
+            }),
+          }),
+        }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-w',
+        TENANT_ID,
+      );
+    });
+
+    it('workspace 节点应兼容 snake_case 配置字段', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('W', 'workspace', {
+            config: {
+              workspace_id: '019577a0-0000-7000-8000-workspace0003',
+              workspace_name: 'QA Workspace Snake',
+            },
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-w',
+          nodeId: 'W',
+          status: 'pending',
+          nodeType: 'workspace',
+          nodeData: {
+            config: {
+              workspace_id: '019577a0-0000-7000-8000-workspace0003',
+              workspace_name: 'QA Workspace Snake',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'W', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-w',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            workspaceId: '019577a0-0000-7000-8000-workspace0003',
+            workspaceName: 'QA Workspace Snake',
+          }),
+        }),
+      );
+    });
+
+    it('input-preprocessor 节点应兼容 snake_case 模板配置', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('A', 'manual-trigger'),
+          makeNode('P', 'input-preprocessor', {
+            config: {
+              transform_type: 'template',
+              expression:
+                '主题：{{json-in.topic}}\\n请保留 route={{json-in.route}}。',
+              output_format: 'text',
+            },
+          }),
+        ],
+        [makeEdge('A', 'P', 'payload', 'json-in')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          nodeType: 'manual-trigger',
+          result: {
+            payload: {
+              topic: '多 Agent 协作',
+              route: 'match',
+            },
+          },
+        }),
+        makeStep({
+          id: 'step-p',
+          nodeId: 'P',
+          status: 'pending',
+          nodeType: 'input-preprocessor',
+          nodeData: {
+            config: {
+              transform_type: 'template',
+              expression:
+                '主题：{{json-in.topic}}\\n请保留 route={{json-in.route}}。',
+              output_format: 'text',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'P', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-p',
+        'completed',
+        expect.objectContaining({
+          result: {
+            text: '主题：多 Agent 协作\\n请保留 route=match。',
+            'text-out': '主题：多 Agent 协作\\n请保留 route=match。',
+            exec_out: { triggered: true },
+            _outputFormat: 'text',
+          },
+        }),
+      );
+    });
+
+    it('loop 节点会同步完成并按 maxIterations 截断 items', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('T', 'manual-trigger'),
+          makeNode('L', 'loop', {
+            config: {
+              maxIterations: 2,
+            },
+          }),
+        ],
+        [makeEdge('T', 'L', 'payload', 'items')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-t',
+          nodeId: 'T',
+          status: 'completed',
+          nodeType: 'manual-trigger',
+          result: {
+            payload: ['spec', 'qa', 'release'],
+          },
+        }),
+        makeStep({
+          id: 'step-l',
+          nodeId: 'L',
+          status: 'pending',
+          nodeType: 'loop',
+          nodeData: {
+            config: {
+              maxIterations: 2,
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'L', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-l',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-l',
+        'completed',
+        expect.objectContaining({
+          result: {
+            item: ['spec', 'qa'],
+            items: ['spec', 'qa'],
+            done: {
+              items: ['spec', 'qa'],
+              totalItems: 3,
+              processedCount: 2,
+              remainingCount: 1,
+              maxIterations: 2,
+              truncated: true,
+            },
+            totalItems: 3,
+            processedCount: 2,
+            maxIterations: 2,
+            truncated: true,
+          },
+        }),
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('loop 节点应兼容 snake_case max_iterations 配置并支持单对象输入', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('T', 'manual-trigger'),
+          makeNode('L', 'loop', {
+            config: {
+              max_iterations: 1,
+            },
+          }),
+        ],
+        [makeEdge('T', 'L', 'payload', 'items')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-t',
+          nodeId: 'T',
+          status: 'completed',
+          nodeType: 'manual-trigger',
+          result: {
+            payload: {
+              topic: 'workflow orchestration',
+            },
+          },
+        }),
+        makeStep({
+          id: 'step-l',
+          nodeId: 'L',
+          status: 'pending',
+          nodeType: 'loop',
+          nodeData: {
+            config: {
+              max_iterations: 1,
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'L', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-l',
+        'completed',
+        expect.objectContaining({
+          result: {
+            item: {
+              topic: 'workflow orchestration',
+            },
+            items: [
+              {
+                topic: 'workflow orchestration',
+              },
+            ],
+            done: {
+              items: [
+                {
+                  topic: 'workflow orchestration',
+                },
+              ],
+              totalItems: 1,
+              processedCount: 1,
+              remainingCount: 0,
+              maxIterations: 1,
+              truncated: false,
+            },
+            totalItems: 1,
+            processedCount: 1,
+            maxIterations: 1,
+            truncated: false,
+          },
+        }),
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('sandbox 节点会从上游 workspace 节点透传 restoreWorkspaceId', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('W', 'workspace', {
+            config: {
+              workspaceId: '019577a0-0000-7000-8000-workspace0002',
+              workspaceName: 'Seed Workspace',
+            },
+          }),
+          makeNode('S', 'sandbox', {
+            config: { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+          }),
+        ],
+        [makeEdge('W', 'S', 'volume-output', 'volume-in')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-w',
+          nodeId: 'W',
+          status: 'completed',
+          nodeType: 'workspace',
+          nodeData: {
+            config: {
+              workspaceId: '019577a0-0000-7000-8000-workspace0002',
+              workspaceName: 'Seed Workspace',
+            },
+          },
+          result: {
+            workspaceId: '019577a0-0000-7000-8000-workspace0002',
+            workspaceName: 'Seed Workspace',
+          },
+        }),
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'pending',
+          nodeType: 'sandbox',
+          nodeData: {
+            config: { cpu: 2, memory: 1024, disk: 5, timeout: 4 },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
+
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        sandboxNodeId: 'S',
+        config: {
+          cpu: 2,
+          memory: 1024,
+          disk: 5,
+          timeout: 4,
+          restoreWorkspaceId: '019577a0-0000-7000-8000-workspace0002',
+        },
+        tenantId: TENANT_ID,
+      });
+    });
+
     it('agent 节点上游有 sandbox 时 job 数据应包含 hasSandbox: true', async () => {
       const snapshot = makeSnapshot(
         [makeNode('S', 'sandbox'), makeNode('A', 'agent')],
@@ -919,14 +1652,20 @@ describe('NodeSchedulerService', () => {
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'agent-task',
-        {
+        expect.objectContaining({
           executionId: EXECUTION_ID,
           stepId: 'step-a',
           tenantId: TENANT_ID,
           input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
-          nodeData: { agentId: 'agent-1' },
+          nodeData: expect.objectContaining({ agentId: 'agent-1' }),
           hasSandbox: true,
-        },
+          workflowContext: {
+            serverSandbox: {
+              executionId: EXECUTION_ID,
+              sandboxNodeId: 'S',
+            },
+          },
+        }),
         undefined,
       );
     });
@@ -1001,13 +1740,13 @@ describe('NodeSchedulerService', () => {
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'agent-task',
-        {
+        expect.objectContaining({
           executionId: EXECUTION_ID,
           stepId: 'step-b',
           tenantId: TENANT_ID,
           input: { A: { answer: 'hello' } },
-          nodeData: { agentId: 'agent-b' },
-        },
+          nodeData: expect.objectContaining({ agentId: 'agent-b' }),
+        }),
         undefined,
       );
     });
@@ -1076,7 +1815,10 @@ describe('NodeSchedulerService', () => {
         step: steps[1],
         input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
         tenantId: TENANT_ID,
-        sandboxBinding: { executionId: EXECUTION_ID },
+        sandboxBinding: {
+          executionId: EXECUTION_ID,
+          sandboxNodeId: 'S',
+        },
         agentVersionId: 'agent-version-1',
       });
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
@@ -1162,6 +1904,8 @@ describe('NodeSchedulerService', () => {
         route,
       });
       db.select
+        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
+        .mockReturnValueOnce(createSelectChain(steps))
         .mockReturnValueOnce(
           createSelectChain([
             {
@@ -1315,6 +2059,8 @@ describe('NodeSchedulerService', () => {
         route,
       });
       db.select
+        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
+        .mockReturnValueOnce(createSelectChain(steps))
         .mockReturnValueOnce(
           createSelectChain([
             {
@@ -1613,6 +2359,68 @@ describe('NodeSchedulerService', () => {
       expect(mockStateMachine.updateExecutionStatus).not.toHaveBeenCalled();
       expect(mockDagResolver.resolveDag).not.toHaveBeenCalled();
     });
+
+    it('sandbox 节点的最后一个下游 agent 完成后应释放该节点绑定的 sandbox', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('S', 'sandbox'), makeNode('A', 'agent'), makeNode('B', 'agent')],
+        [makeEdge('S', 'A'), makeEdge('S', 'B')],
+      );
+      const completedStep = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'completed',
+        nodeType: 'agent',
+        result: { ok: true },
+      });
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'completed',
+          nodeType: 'sandbox',
+          result: { sessionId: 'sandbox-session-001', status: 'ready' },
+        }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          nodeType: 'agent',
+          result: { ok: true },
+        }),
+        completedStep,
+      ];
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([completedStep]))
+        .mockReturnValueOnce(
+          createSelectChain([makeExecution(snapshot, 'running')]),
+        )
+        .mockReturnValueOnce(createSelectChain(steps))
+        .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['S'], ['A', 'B']],
+          new Map([
+            ['S', ['A', 'B']],
+            ['A', []],
+            ['B', []],
+          ]),
+          new Map([
+            ['S', 0],
+            ['A', 1],
+            ['B', 1],
+          ]),
+        ),
+      );
+
+      await service.onNodeCompleted(EXECUTION_ID, 'step-b', TENANT_ID);
+
+      expect(mockSandboxService.releaseExecutionSandbox).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'S',
+        TENANT_ID,
+      );
+    });
   });
 
   describe('resumeScheduling', () => {
@@ -1804,9 +2612,73 @@ describe('NodeSchedulerService', () => {
         'completed',
         {
           result: {
-            branch: 'true',
+            branch: 'matched',
+            matched: { A: { score: 92 } },
+            unmatched: null,
+            true: { A: { score: 92 } },
+            false: null,
             expression: 'input.A.score >= 80',
             evaluatedValue: true,
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-conditional',
+        TENANT_ID,
+      );
+    });
+
+    it('兼容 snake_case 条件字段配置并正确走 unmatched 分支', async () => {
+      const step = makeStep({
+        id: 'step-conditional',
+        nodeId: 'C',
+        nodeType: 'condition',
+        nodeData: {
+          config: {
+            condition_field: 'route',
+            expected_value: 'match',
+          },
+          condition_field: 'route',
+          expected_value: 'match',
+        },
+      });
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.executeConditional(
+        step,
+        { input: { route: 'skip', topic: '验证 skip 分支' } },
+        TENANT_ID,
+        EXECUTION_ID,
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        1,
+        TENANT_ID,
+        'step-conditional',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        'step-conditional',
+        'completed',
+        {
+          result: {
+            branch: 'unmatched',
+            matched: null,
+            unmatched: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+            true: null,
+            false: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+            evaluatedField: 'route',
+            actualValue: 'skip',
+            expectedValue: 'match',
           },
         },
       );
@@ -2582,6 +3454,7 @@ describe('NodeSchedulerService', () => {
         delete: vi.fn(),
         execute: vi.fn(),
       };
+      mcpDb.select.mockReturnValue(createSelectChain([]));
       mcpMockQueue = {
         add: vi.fn().mockResolvedValue(undefined),
         getJob: vi.fn().mockResolvedValue(null),

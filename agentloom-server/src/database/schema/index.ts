@@ -118,6 +118,7 @@ export { getTenantId } from './rls-helpers';
 export {
   sandboxSessionStatusEnum,
   sandboxSessions,
+  type SandboxBindingRef,
   type SandboxConfig,
   type SandboxSession,
   type NewSandboxSession,

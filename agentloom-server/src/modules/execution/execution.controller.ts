@@ -283,6 +283,9 @@ export class ExecutionController {
       );
       return { data };
     } catch (error) {
+      if (this.shouldReturnEmptyPtySessions(error)) {
+        return { data: [] };
+      }
       throw this.mapPtyError(error);
     }
   }
@@ -353,6 +356,17 @@ export class ExecutionController {
     return new HttpException(
       { error: 'SANDBOX_UNAVAILABLE', message },
       HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
+
+  private shouldReturnEmptyPtySessions(error: unknown): boolean {
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error);
+
+    return (
+      message.includes('sandbox session not found') ||
+      /sandbox session .* is stopped/.test(message) ||
+      /sandbox session .* is failed/.test(message)
     );
   }
 

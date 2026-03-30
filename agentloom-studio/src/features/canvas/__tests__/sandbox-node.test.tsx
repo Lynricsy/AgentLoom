@@ -26,6 +26,7 @@ describe('sandbox node registry', () => {
     mockUsePersistentSandboxes.mockReturnValue({
       data: [],
       isLoading: false,
+      isError: false,
     })
   })
 
@@ -165,5 +166,23 @@ describe('SandboxConfigPanel', () => {
     expect(within(summary).getByText('Shared Sandbox')).toBeInTheDocument()
     expect(within(summary).getByText('持久')).toBeInTheDocument()
     expect(screen.queryByText('Preset Selector')).not.toBeInTheDocument()
+  })
+
+  it('持久沙箱列表加载失败时展示明确错误', () => {
+    mockUsePersistentSandboxes.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: true,
+    })
+
+    render(
+      <SandboxConfigPanel
+        config={{ lifecycleMode: 'persistent' }}
+        onApply={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('持久沙箱列表加载失败，请稍后重试。')).toBeInTheDocument()
+    expect(screen.queryByText('暂无可用的持久沙箱。请先在沙箱管理页面创建。')).not.toBeInTheDocument()
   })
 })

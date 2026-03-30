@@ -70,6 +70,7 @@ import { MemoryFusionService } from '../agent-memory/services/memory-fusion.serv
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
+import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -892,7 +893,7 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
-    return [{ type: 'text', text: JSON.stringify(input) }];
+    return buildAgentPromptContentBlocks({ input });
   }
 
   private extractUpstreamSkills(

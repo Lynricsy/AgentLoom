@@ -36,7 +36,7 @@ export function useRunWorkflow() {
     onSuccess: (data) => {
       queryClient.setQueryData(
         executionKeys.detail(data.data.id),
-        data,
+        data.data,
       )
     },
     gcTime: 0,
@@ -56,7 +56,7 @@ export function useCancelExecution() {
     onSuccess: (data) => {
       queryClient.setQueryData(
         executionKeys.detail(data.data.id),
-        data,
+        data.data,
       )
     },
     gcTime: 0,

@@ -10,10 +10,18 @@ import { SandboxNotFoundException } from '../sandbox.exceptions';
 import { DockerService } from '../docker.service';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 
-vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+const tenantTransactionMocks = vi.hoisted(() => ({
   runInTenantTransaction: vi.fn(
     (_db: any, _tenantId: string, op: () => Promise<any>) => op(),
   ),
+  hasActiveTenantTransaction: vi.fn(() => false),
+  registerAfterCommitHook: vi.fn(),
+}));
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: tenantTransactionMocks.runInTenantTransaction,
+  hasActiveTenantTransaction: tenantTransactionMocks.hasActiveTenantTransaction,
+  registerAfterCommitHook: tenantTransactionMocks.registerAfterCommitHook,
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -26,6 +34,14 @@ function createSelectChainWithLimit(result: unknown[]) {
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockResolvedValue(result),
       }),
+    }),
+  };
+}
+
+function createSelectChain(result: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(result),
     }),
   };
 }
@@ -92,6 +108,10 @@ function renderSql(sql: Parameters<PgDialect['sqlToQuery']>[0]): string {
   return new PgDialect().sqlToQuery(sql).sql;
 }
 
+function renderSqlWithParams(sql: Parameters<PgDialect['sqlToQuery']>[0]) {
+  return new PgDialect().sqlToQuery(sql);
+}
+
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_EXECUTION_ID = '00000000-0000-0000-0000-000000000002';
 const TEST_SESSION_ID = '00000000-0000-0000-0000-000000000003';
@@ -130,6 +150,8 @@ describe('SandboxService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(false);
+    tenantTransactionMocks.registerAfterCommitHook.mockImplementation(() => {});
 
     db = {
       select: vi.fn(),
@@ -176,7 +198,9 @@ describe('SandboxService', () => {
     it('既存アクティブセッション無しの場合、新規セッションを作成してキューに投入', async () => {
       const newSession = buildSession();
 
-      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
       db.insert.mockReturnValueOnce(createInsertChainReturning([newSession]));
 
       const result = await service.createSandboxSession({
@@ -191,6 +215,7 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
         sessionId: TEST_SESSION_ID,
         executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
         config: TEST_CONFIG,
       });
@@ -238,6 +263,121 @@ describe('SandboxService', () => {
         config: TEST_CONFIG,
       });
     });
+
+    it('事务内创建新会话时应通过隔离事务先落库，再立即入队 create task', async () => {
+      const newSession = buildSession();
+      const tx = {
+        execute: vi.fn().mockResolvedValue(undefined),
+        insert: vi.fn().mockReturnValue(createInsertChainReturning([newSession])),
+      };
+
+      tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+      db.transaction.mockImplementationOnce(
+        async (callback: (client: typeof tx) => Promise<SandboxSession>) =>
+          callback(tx),
+      );
+
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        config: TEST_CONFIG,
+        tenantId: TEST_TENANT_ID,
+      });
+
+      expect(result).toEqual(newSession);
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(tx.execute).toHaveBeenCalledTimes(2);
+      expect(tx.insert).toHaveBeenCalledTimes(1);
+      expect(
+        tenantTransactionMocks.registerAfterCommitHook,
+      ).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        tenantId: TEST_TENANT_ID,
+        config: TEST_CONFIG,
+      });
+    });
+
+    it('同一 execution 下引用同一持久沙箱资源的第二个节点应追加独立绑定而不是冲突失败', async () => {
+      const persistentSession = buildSession({
+        status: 'ready',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+          ],
+        },
+      });
+      const attachedSession = buildSession({
+        status: 'ready',
+        sandboxNodeId: null,
+        config: {
+          ...persistentSession.config,
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-2',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: TEST_SESSION_ID,
+        },
+        tenantId: TEST_TENANT_ID,
+      });
+
+      expect(result).toEqual(attachedSession);
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
+
+      const [setPayload] = updateChain.set.mock.calls[0] ?? [];
+      expect(setPayload).toMatchObject({
+        executionId: TEST_EXECUTION_ID,
+        agentConversationId: null,
+        sandboxNodeId: null,
+        config: expect.objectContaining({
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        }),
+      });
+    });
   });
 
   describe('getSandboxSession', () => {
@@ -273,6 +413,22 @@ describe('SandboxService', () => {
       expect(result).toBeNull();
     });
 
+    it('应将 stopping 视为非活跃会话，避免复用或重复释放', async () => {
+      const selectChain = createSelectChainWithLimit([]);
+      db.select.mockReturnValueOnce(selectChain);
+
+      await service.getSandboxSession(TEST_EXECUTION_ID, TEST_TENANT_ID);
+
+      const [whereClause] =
+        selectChain.from().where.mock.calls[0] ?? [];
+      const rendered = renderSqlWithParams(whereClause);
+
+      expect(rendered.sql.toLowerCase()).toContain('not in');
+      expect(rendered.params).toContain('stopping');
+      expect(rendered.params).toContain('stopped');
+      expect(rendered.params).toContain('failed');
+    });
+
     it('findByConversationId 命中时返回会话', async () => {
       const session = buildSession({
         executionId: null,
@@ -287,6 +443,41 @@ describe('SandboxService', () => {
       );
 
       expect(result).toEqual(session);
+    });
+
+    it('当持久沙箱记录同时绑定多个 workflow 节点时，应按 activeBindings 回退命中对应节点', async () => {
+      const sharedPersistentSession = buildSession({
+        status: 'ready',
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([sharedPersistentSession]),
+        );
+
+      const result = await service.getSandboxSession(
+        TEST_EXECUTION_ID,
+        TEST_TENANT_ID,
+        'sandbox-2',
+      );
+
+      expect(result).toEqual(sharedPersistentSession);
     });
   });
 
@@ -326,7 +517,9 @@ describe('SandboxService', () => {
         },
       });
 
-      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.select
+        .mockReturnValueOnce(createSelectChain([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
       db.update.mockReturnValueOnce(
         createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
       );
@@ -337,6 +530,7 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
         sessionId: TEST_SESSION_ID,
         executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
         containerId: 'container-abc',
         persistencePath: 'tenants/t1/sandboxes/e1',
@@ -344,7 +538,7 @@ describe('SandboxService', () => {
     });
 
     it('アクティブセッション未発見時にスキップ（warn ログ出力）', async () => {
-      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
 
       await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
 
@@ -374,9 +568,106 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
         sessionId: TEST_SESSION_ID,
         agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
         containerId: 'container-conv',
       });
+    });
+
+    it('事务内销毁执行级沙箱时应在提交后再入队 destroy task', async () => {
+      const session = buildSession({
+        status: 'ready',
+        containerId: 'container-abc',
+      });
+      let afterCommitHook: (() => Promise<void>) | undefined;
+
+      tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
+      tenantTransactionMocks.registerAfterCommitHook.mockImplementation(
+        (hook: () => Promise<void>) => {
+          afterCommitHook = hook;
+        },
+      );
+      db.select
+        .mockReturnValueOnce(createSelectChain([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+      expect(
+        tenantTransactionMocks.registerAfterCommitHook,
+      ).toHaveBeenCalledTimes(1);
+      expect(afterCommitHook).toBeTypeOf('function');
+
+      await afterCommitHook?.();
+
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        tenantId: TEST_TENANT_ID,
+        containerId: 'container-abc',
+      });
+    });
+
+    it('并发重复销毁时若会话已被其他请求切到 stopping，应跳过重复 destroy 入队', async () => {
+      const session = buildSession({
+        status: 'ready',
+        containerId: 'container-abc',
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+      expect(Logger.prototype.debug).toHaveBeenCalled();
+    });
+
+    it('persistent sandbox 在 execution 终态清理时应移除该 execution 的全部节点绑定', async () => {
+      const sharedPersistentSession = buildSession({
+        status: 'ready',
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select.mockReturnValueOnce(createSelectChain([sharedPersistentSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+
+      const [setPayload] = updateChain.set.mock.calls[0] ?? [];
+      expect(setPayload).toMatchObject({
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+      });
+      expect(setPayload?.config).toMatchObject({
+        lifecycleMode: 'persistent',
+      });
+      expect(setPayload?.config?.activeBindings).toBeUndefined();
     });
   });
 
@@ -412,6 +703,58 @@ describe('SandboxService', () => {
       const result = await service.getSandboxLogs(TEST_SESSION_ID);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('releaseExecutionSandbox', () => {
+    it('共享同一持久沙箱资源的多个节点中，一个节点结束时只应移除自己的绑定', async () => {
+      const sharedPersistentSession = buildSession({
+        status: 'ready',
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([sharedPersistentSession]),
+        );
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.releaseExecutionSandbox(
+        TEST_EXECUTION_ID,
+        'sandbox-1',
+        TEST_TENANT_ID,
+      );
+
+      const [setPayload] = updateChain.set.mock.calls[0] ?? [];
+      expect(setPayload).toMatchObject({
+        executionId: TEST_EXECUTION_ID,
+        agentConversationId: null,
+        sandboxNodeId: 'sandbox-2',
+        config: expect.objectContaining({
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        }),
+      });
     });
   });
 

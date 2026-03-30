@@ -1,6 +1,10 @@
+import { renderHook } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { useEvidenceUiStore } from '../stores/evidenceUiStore';
+import {
+  useEvidenceUiHighlightState,
+  useEvidenceUiStore,
+} from '../stores/evidenceUiStore';
 
 const { getState } = useEvidenceUiStore;
 
@@ -175,6 +179,18 @@ describe('evidenceUiStore', () => {
       expect(state.selectedEvidenceId).toBeNull();
       expect(state.panelExecutionId).toBeNull();
       expect(state.documentViewer).toBeNull();
+    });
+  });
+
+  describe('selectors', () => {
+    it('高亮状态 selector 在状态未变化时应保持引用稳定', () => {
+      const { result, rerender } = renderHook(() => useEvidenceUiHighlightState());
+
+      const firstSnapshot = result.current;
+
+      rerender();
+
+      expect(result.current).toBe(firstSnapshot);
     });
   });
 });

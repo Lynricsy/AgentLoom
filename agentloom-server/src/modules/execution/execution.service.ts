@@ -49,6 +49,16 @@ const TERMINAL_EXECUTION_STATUSES = new Set([
   'completed',
   'failed',
 ]);
+const WORKFLOW_NODE_CATEGORY_TYPES = new Set([
+  'agent',
+  'tool',
+  'trigger',
+  'knowledge',
+  'memory',
+  'output',
+  'control',
+  'plugin',
+]);
 
 function isRemovableJobState(state: string): state is JobType {
   return REMOVABLE_JOB_STATES.includes(state as JobType);
@@ -56,6 +66,174 @@ function isRemovableJobState(state: string): state is JobType {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeWorkflowExecutionNodeType(nodeType: string): string {
+  switch (nodeType) {
+    case 'conditional':
+      return 'condition';
+    case 'data_transform':
+      return 'input-preprocessor';
+    default:
+      return nodeType;
+  }
+}
+
+function resolveWorkflowExecutionNodeType(
+  node: Pick<schema.ReactFlowNode, 'type' | 'data'>,
+): string | null {
+  const nodeData = isRecord(node.data) ? node.data : {};
+  const dataNodeType =
+    typeof nodeData.nodeType === 'string' && nodeData.nodeType.length > 0
+      ? nodeData.nodeType
+      : typeof nodeData.node_type === 'string' && nodeData.node_type.length > 0
+        ? nodeData.node_type
+        : null;
+
+  if (dataNodeType) {
+    return normalizeWorkflowExecutionNodeType(dataNodeType);
+  }
+
+  if (typeof node.type !== 'string' || node.type.length === 0) {
+    return null;
+  }
+
+  return WORKFLOW_NODE_CATEGORY_TYPES.has(node.type)
+    ? node.type
+    : normalizeWorkflowExecutionNodeType(node.type);
+}
+
+type SandboxSessionStatus = schema.SandboxSession['status'];
+
+function readSandboxSessionId(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return typeof value.sessionId === 'string' ? value.sessionId : null;
+}
+
+function patchSandboxReferenceStatus<T>(
+  value: T,
+  statusBySessionId: Map<string, SandboxSessionStatus>,
+): T {
+  if (!isRecord(value) || typeof value.sessionId !== 'string') {
+    return value;
+  }
+
+  const currentStatus = statusBySessionId.get(value.sessionId);
+
+  if (!currentStatus || value.status === currentStatus) {
+    return value;
+  }
+
+  return {
+    ...value,
+    status: currentStatus,
+  } as T;
+}
+
+function collectSandboxSessionIds(steps: schema.ExecutionStep[]): string[] {
+  const sessionIds = new Set<string>();
+
+  for (const step of steps) {
+    if (isRecord(step.input)) {
+      const inputSandboxId = readSandboxSessionId(step.input.sandbox);
+      if (inputSandboxId) {
+        sessionIds.add(inputSandboxId);
+      }
+
+      const inputSandboxOutputId = readSandboxSessionId(
+        step.input['sandbox-output'],
+      );
+      if (inputSandboxOutputId) {
+        sessionIds.add(inputSandboxOutputId);
+      }
+    }
+
+    if (step.nodeType !== 'sandbox' || !isRecord(step.result)) {
+      continue;
+    }
+
+    const resultSandboxId = readSandboxSessionId(step.result);
+    if (resultSandboxId) {
+      sessionIds.add(resultSandboxId);
+    }
+
+    const resultSandboxOutputId = readSandboxSessionId(
+      step.result['sandbox-output'],
+    );
+    if (resultSandboxOutputId) {
+      sessionIds.add(resultSandboxOutputId);
+    }
+  }
+
+  return Array.from(sessionIds);
+}
+
+function patchExecutionStepSandboxStatuses(
+  step: schema.ExecutionStep,
+  statusBySessionId: Map<string, SandboxSessionStatus>,
+): schema.ExecutionStep {
+  let nextInput = step.input;
+  let nextResult = step.result;
+
+  if (isRecord(step.input)) {
+    const nextSandbox = patchSandboxReferenceStatus(
+      step.input.sandbox,
+      statusBySessionId,
+    );
+    const nextSandboxOutput = patchSandboxReferenceStatus(
+      step.input['sandbox-output'],
+      statusBySessionId,
+    );
+
+    if (
+      nextSandbox !== step.input.sandbox ||
+      nextSandboxOutput !== step.input['sandbox-output']
+    ) {
+      nextInput = {
+        ...step.input,
+        ...(nextSandbox !== step.input.sandbox ? { sandbox: nextSandbox } : {}),
+        ...(nextSandboxOutput !== step.input['sandbox-output']
+          ? { 'sandbox-output': nextSandboxOutput }
+          : {}),
+      };
+    }
+  }
+
+  if (step.nodeType === 'sandbox' && isRecord(step.result)) {
+    const nextRootResult = patchSandboxReferenceStatus(
+      step.result,
+      statusBySessionId,
+    );
+    const nextSandboxOutput = patchSandboxReferenceStatus(
+      step.result['sandbox-output'],
+      statusBySessionId,
+    );
+
+    if (
+      nextRootResult !== step.result ||
+      nextSandboxOutput !== step.result['sandbox-output']
+    ) {
+      nextResult = {
+        ...(isRecord(nextRootResult) ? nextRootResult : step.result),
+        ...(nextSandboxOutput !== step.result['sandbox-output']
+          ? { 'sandbox-output': nextSandboxOutput }
+          : {}),
+      };
+    }
+  }
+
+  if (nextInput === step.input && nextResult === step.result) {
+    return step;
+  }
+
+  return {
+    ...step,
+    input: nextInput,
+    result: nextResult,
+  };
 }
 
 interface ExecutionLaunchConfig {
@@ -403,6 +581,36 @@ export class ExecutionService {
     return getTenantDb(this.db);
   }
 
+  private async hydrateSandboxStatusesInSteps(
+    steps: schema.ExecutionStep[],
+  ): Promise<schema.ExecutionStep[]> {
+    const sessionIds = collectSandboxSessionIds(steps);
+
+    if (sessionIds.length === 0) {
+      return steps;
+    }
+
+    const sandboxSessions = await this.tenantDb
+      .select({
+        id: schema.sandboxSessions.id,
+        status: schema.sandboxSessions.status,
+      })
+      .from(schema.sandboxSessions)
+      .where(inArray(schema.sandboxSessions.id, sessionIds));
+
+    if (sandboxSessions.length === 0) {
+      return steps;
+    }
+
+    const statusBySessionId = new Map(
+      sandboxSessions.map((session) => [session.id, session.status]),
+    );
+
+    return steps.map((step) =>
+      patchExecutionStepSandboxStatuses(step, statusBySessionId),
+    );
+  }
+
   async runWorkflow(
     workflowId: string,
     runRequest: InternalRunWorkflowRequest | undefined,
@@ -564,7 +772,9 @@ export class ExecutionService {
       .where(eq(schema.executionSteps.executionId, executionId))
       .orderBy(schema.executionSteps.stepOrder);
 
-    return { ...execution, steps };
+    const hydratedSteps = await this.hydrateSandboxStatusesInSteps(steps);
+
+    return { ...execution, steps: hydratedSteps };
   }
 
   async listExecutions(
@@ -721,7 +931,7 @@ export class ExecutionService {
           nodeId: node.id,
           stepOrder: index,
           status: 'pending' as const,
-          nodeType: node.type ?? null,
+          nodeType: resolveWorkflowExecutionNodeType(node),
           nodeData: node.data ?? null,
         }));
 

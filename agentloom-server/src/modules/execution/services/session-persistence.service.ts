@@ -81,6 +81,7 @@ const ServerSandboxBindingSchema = z
   .object({
     executionId: z.string().min(1).optional(),
     agentConversationId: z.string().min(1).optional(),
+    sandboxNodeId: z.string().min(1).optional(),
   })
   .passthrough()
   .refine(

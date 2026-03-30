@@ -48,6 +48,7 @@ export {
 export {
   type McpServerConfig,
   type McpTransportType,
+  type ServerSandboxBinding,
   type SessionMode,
   type SessionStatus,
   type SessionContext,

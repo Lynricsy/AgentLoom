@@ -45,7 +45,6 @@ import {
   type WorkflowDefinitionListResponseDto,
 } from './dto/workflow-definition-response.dto';
 import {
-  InvalidStatusTransitionException,
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
   WorkflowNotFoundException,
@@ -813,13 +812,6 @@ export class WorkflowVersionService {
 
         if (workflow.status === 'archived') {
           throw new WorkflowArchivedException(workflowId);
-        }
-
-        if (workflow.status !== 'draft') {
-          throw new InvalidStatusTransitionException(
-            workflow.status,
-            'published',
-          );
         }
 
         const nodes: schema.ReactFlowNode[] = Array.isArray(workflow.nodes)
