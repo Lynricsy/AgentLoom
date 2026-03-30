@@ -44,18 +44,23 @@ function toToolCallData(tc: ToolCall): ToolCallData {
 function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="opacity-70">
+    <div className="rounded-lg border border-border/50 bg-surface-elevated/30 px-3 py-2">
       <button
         type="button"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer w-full"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        <Brain className="size-3" />
-        <span>Thinking</span>
+        <Brain className="size-3 text-primary/60" />
+        <span className="font-medium">思考过程</span>
+        {!open && content.length > 0 && (
+          <span className="ml-auto text-[10px] text-muted-foreground/50 truncate max-w-[200px]">
+            {content.slice(0, 60)}...
+          </span>
+        )}
       </button>
       {open && (
-        <div className="mt-1.5 pl-5">
+        <div className="mt-2 pl-5 border-l-2 border-primary/20">
           <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
             {content}
           </p>
@@ -235,7 +240,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto"
+      className="h-full overflow-y-auto"
       onScroll={handleScroll}
     >
       {messages.length === 0 ? (
