@@ -393,7 +393,7 @@ function normalizeHistoryToolCalls(value: unknown): ToolCall[] {
           readString(item.name) ??
           "unknown_tool",
         ...(item.args !== undefined ? { args: item.args } : {}),
-        ...(item.result !== undefined ? { result: item.result } : {}),
+        ...(item.result !== undefined ? { result: unwrapMcpResult(item.result) } : {}),
         ...(readString(item.error) ? { error: readString(item.error)! } : {}),
         status: normalizeToolCallStatus(item.status),
         ...(normalizeToolCallTransitions(item.transitions)
@@ -732,7 +732,7 @@ function upsertToolCall(
   if (existing) {
     existing.tool = nextTool;
     if (payload.args !== undefined) existing.args = payload.args;
-    if (payload.result !== undefined) existing.result = payload.result;
+    if (payload.result !== undefined) existing.result = unwrapMcpResult(payload.result);
     if (payload.error !== undefined) existing.error = payload.error;
     existing.status = payload.status;
     if (payload.transitions) existing.transitions = payload.transitions;
@@ -746,7 +746,7 @@ function upsertToolCall(
     id: payload.toolCallId,
     tool: nextTool,
     ...(payload.args !== undefined ? { args: payload.args } : {}),
-    ...(payload.result !== undefined ? { result: payload.result } : {}),
+    ...(payload.result !== undefined ? { result: unwrapMcpResult(payload.result) } : {}),
     ...(payload.error !== undefined ? { error: payload.error } : {}),
     status: payload.status,
     ...(payload.transitions ? { transitions: payload.transitions } : {}),
@@ -760,6 +760,48 @@ function upsertToolCall(
 
 function isConcreteToolName(tool: string): boolean {
   return tool.length > 0 && tool !== "unknown_tool";
+}
+
+/**
+ * 解包 MCP 工具结果信封。
+ * MCP 协议返回 `{ content: [{ type: "text", text: "..." }, ...] }`，
+ * 前端渲染器需要的是里面的纯文本内容。
+ */
+function unwrapMcpResult(value: unknown): unknown {
+  let parsed = value;
+
+  // 字符串可能是 JSON 序列化的 MCP 信封
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  if (!isRecord(parsed)) return value;
+
+  const content = parsed.content;
+  if (!Array.isArray(content) || content.length === 0) return value;
+
+  // 校验是否为 MCP 格式（至少一个条目有 type + text 字段）
+  const isMcpFormat = content.some(
+    (item) => isRecord(item) && typeof item.type === "string" && "text" in item,
+  );
+  if (!isMcpFormat) return value;
+
+  const textParts: string[] = [];
+  for (const item of content) {
+    if (
+      isRecord(item) &&
+      item.type === "text" &&
+      typeof item.text === "string"
+    ) {
+      textParts.push(item.text);
+    }
+  }
+
+  return textParts.length > 0 ? textParts.join("") : value;
 }
 
 function finishStreamingAssistantMessage(
