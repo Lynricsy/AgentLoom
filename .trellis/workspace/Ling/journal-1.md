@@ -543,3 +543,66 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 工作流编排手工 QA 收口与质量记录
+
+**Date**: 2026-03-30
+**Task**: 工作流编排手工 QA 收口与质量记录
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 记录 |
+|------|------|
+| Workflow QA | 基于 `https://agentloom.ling.plus/` 完成工作流编排 browser manual QA，覆盖流程控制、sandbox/memory 一连多语义、多 agent workflow、workflow 管理链路以及能力扩展节点与 trigger 外部触发链路。 |
+| 缺陷修复 | 修复了 workflow execution detail/debug view 阻断、persistent sandbox 多节点绑定生命周期、`/v1/prompt` 超时、trigger UI 对 `webhook/api_event` 的 camelCase 请求体序列化错误。 |
+| 能力节点 | 验证 `code-tool`、`http-tool`、`skill`、`mcp-tool`、`knowledge-base` 对 agent 的“扩展”语义，以及 sandbox 对 agent 的“覆盖”语义；完成 webhook、api_event、cron 三类 trigger 真实触发回归。 |
+| 质量收尾 | 在 `$finish-work` 阶段定位并修复 `WorkflowStatusBar.test.tsx` fake timers 泄漏导致的 studio 全量测试超时；同步修复 `triggerApi.test.ts` lint 阻断。 |
+| 验证结果 | `agentloom-studio`：`pnpm lint` / `pnpm typecheck` / `pnpm test` 全通过（215/215 文件，1720/1720 用例）；`agentloom-server`：`pnpm lint` / `pnpm test` 全通过（278/278 文件，3422/3422 用例）。 |
+
+**关键执行与结果**
+- 共享持久 sandbox 多 agent 成功 execution：`019d3c04-571f-7efe-bd21-7431fcab42cf`
+- 双 session 持久 sandbox 成功 execution：`019d3c22-cc4b-78ee-a46f-e8ab3399f91d`
+- 能力扩展 workflow：`019d3c7e-d3f2-7414-a847-878010f8ed3a`
+- webhook 触发 execution：`019d3c97-4ac8-7eee-922a-4481b5b28445`
+- api_event 触发 execution：`019d3c97-a101-7c66-8fb1-d62778b86338`
+- cron 触发 execution：`019d3c99-1ae3-728b-a92e-989346478dbe`
+- http-tool manual execution：`019d3c9e-de1d-707f-b0f4-b4e3bd380392`
+
+**提交链路**
+- `b99194d` `fix(workflow): 🐛 修复编排 QA 阻断并收口共享沙箱链路`
+- `eab001d` `fix(workflow): 🐛 修复能力节点扩展与 trigger 外部触发链路`
+- `c7fff1e` `test(studio): 🧪 修复 finish-work 校验阻断`
+- `79b1980` `style(server): 🎨 对齐 sandbox 与 workflow-agent 链路格式`
+
+**收尾状态**
+- 任务 `03-30-workflow-orchestration-manual-qa` 已归档。
+- 当前分支 `main` 已推送至远端。
+- 工作区保持干净，可继续进入下一轮任务。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b99194d` | (see git log) |
+| `eab001d` | (see git log) |
+| `c7fff1e` | (see git log) |
+| `79b1980` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
