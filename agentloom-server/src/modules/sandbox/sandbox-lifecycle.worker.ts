@@ -86,20 +86,20 @@ export class SandboxLifecycleWorker extends WorkerHost {
         tenantId,
         async (tenantDb) => {
           return await tenantDb
-          .update(schema.sandboxSessions)
-          .set({
-            containerId,
-            status: 'ready',
-            startedAt: new Date(),
-            workspacePath: CONTAINER_WORKSPACE,
-          })
-          .where(
-            and(
-              eq(schema.sandboxSessions.id, sessionId),
-              eq(schema.sandboxSessions.status, 'creating'),
-            ),
-          )
-          .returning({ id: schema.sandboxSessions.id });
+            .update(schema.sandboxSessions)
+            .set({
+              containerId,
+              status: 'ready',
+              startedAt: new Date(),
+              workspacePath: CONTAINER_WORKSPACE,
+            })
+            .where(
+              and(
+                eq(schema.sandboxSessions.id, sessionId),
+                eq(schema.sandboxSessions.status, 'creating'),
+              ),
+            )
+            .returning({ id: schema.sandboxSessions.id });
         },
       );
 

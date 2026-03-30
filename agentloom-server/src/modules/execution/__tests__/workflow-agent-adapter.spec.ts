@@ -88,10 +88,7 @@ function createAdapter(
     adapterDeps.skillResolverService = deps.skillResolverService;
   }
 
-  return new WorkflowAgentAdapter(
-    adapterDeps as never,
-    config as never,
-  );
+  return new WorkflowAgentAdapter(adapterDeps as never, config as never);
 }
 
 describe('WorkflowAgentAdapter', () => {

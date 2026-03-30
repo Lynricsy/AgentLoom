@@ -268,7 +268,9 @@ describe('SandboxService', () => {
       const newSession = buildSession();
       const tx = {
         execute: vi.fn().mockResolvedValue(undefined),
-        insert: vi.fn().mockReturnValue(createInsertChainReturning([newSession])),
+        insert: vi
+          .fn()
+          .mockReturnValue(createInsertChainReturning([newSession])),
       };
 
       tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
@@ -419,8 +421,7 @@ describe('SandboxService', () => {
 
       await service.getSandboxSession(TEST_EXECUTION_ID, TEST_TENANT_ID);
 
-      const [whereClause] =
-        selectChain.from().where.mock.calls[0] ?? [];
+      const [whereClause] = selectChain.from().where.mock.calls[0] ?? [];
       const rendered = renderSqlWithParams(whereClause);
 
       expect(rendered.sql.toLowerCase()).toContain('not in');
@@ -651,7 +652,9 @@ describe('SandboxService', () => {
       });
       const updateChain = createUpdateChainNoReturn();
 
-      db.select.mockReturnValueOnce(createSelectChain([sharedPersistentSession]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([sharedPersistentSession]),
+      );
       db.update.mockReturnValueOnce(updateChain);
 
       await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);

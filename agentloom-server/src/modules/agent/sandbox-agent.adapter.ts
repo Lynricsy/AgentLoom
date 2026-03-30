@@ -735,9 +735,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       }),
       'pi models',
     );
-    const runtimeApiKeys = await this.resolveRuntimeApiKeys(
-      resolvedModelConfig,
-    );
+    const runtimeApiKeys =
+      await this.resolveRuntimeApiKeys(resolvedModelConfig);
 
     this.ensureDynamicProviderApiKey(
       models,
@@ -938,7 +937,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return;
     }
 
-    const providerApiKey = this.normalizeOptionalString(providerConfig['apiKey']);
+    const providerApiKey = this.normalizeOptionalString(
+      providerConfig['apiKey'],
+    );
     if (providerApiKey) {
       return;
     }
@@ -1013,7 +1014,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       provider,
       model,
       ...(apiBaseUrl ? { apiBaseUrl } : {}),
-      ...(typeof modelConfig?.apiKeyId === 'string' || modelConfig?.apiKeyId === null
+      ...(typeof modelConfig?.apiKeyId === 'string' ||
+      modelConfig?.apiKeyId === null
         ? { apiKeyId: modelConfig.apiKeyId }
         : {}),
       ...(authMethod ? { authMethod } : {}),

@@ -30,7 +30,9 @@ const mockStorageService = {
 const mockUpdate = vi.fn().mockReturnThis();
 const mockSet = vi.fn().mockReturnThis();
 const mockWhere = vi.fn().mockReturnThis();
-const mockReturning = vi.fn().mockResolvedValue([{ id: 'sandbox-session-row' }]);
+const mockReturning = vi
+  .fn()
+  .mockResolvedValue([{ id: 'sandbox-session-row' }]);
 const mockInsert = vi.fn().mockReturnThis();
 const mockValues = vi.fn().mockResolvedValue(undefined);
 

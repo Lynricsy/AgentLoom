@@ -604,8 +604,7 @@ export class SandboxService {
   ): boolean {
     return (
       (left.executionId ?? null) === (right.executionId ?? null) &&
-      (left.agentConversationId ?? null) ===
-        (right.agentConversationId ?? null)
+      (left.agentConversationId ?? null) === (right.agentConversationId ?? null)
     );
   }
 
@@ -774,9 +773,8 @@ export class SandboxService {
       (candidateBinding) =>
         !this.shouldDetachPersistentBinding(candidateBinding, targetBinding),
     );
-    const projectedBinding = this.projectPersistentBindingState(
-      remainingBindings,
-    );
+    const projectedBinding =
+      this.projectPersistentBindingState(remainingBindings);
     const nextConfig = this.buildPersistentConfig(
       session.config,
       remainingBindings,
@@ -842,7 +840,10 @@ export class SandboxService {
     if (!isAlreadyBoundToTarget) {
       const nextBindings = [...existingBindings, targetBinding];
       const projectedBinding = this.projectPersistentBindingState(nextBindings);
-      const nextConfig = this.buildPersistentConfig(session.config, nextBindings);
+      const nextConfig = this.buildPersistentConfig(
+        session.config,
+        nextBindings,
+      );
 
       await runInTenantTransaction(this.db, params.tenantId, async () => {
         const tenantDb = getTenantDb(this.db);

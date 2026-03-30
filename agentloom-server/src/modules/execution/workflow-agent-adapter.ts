@@ -130,7 +130,10 @@ export class WorkflowAgentAdapter {
       sandboxBinding,
     });
 
-    const promptBlocks = this.buildContentBlocks(sanitizedInput, subAgentResults);
+    const promptBlocks = this.buildContentBlocks(
+      sanitizedInput,
+      subAgentResults,
+    );
     void this.dependencies.agentRuntime;
     const runtime = this.dependencies.runtimeAdapterFactory.selectAdapter(true);
 
@@ -278,7 +281,9 @@ export class WorkflowAgentAdapter {
     compiledDefinition: CompiledWorkflowAgentDefinition;
     input: Record<string, unknown>;
   }): Promise<
-    CompiledWorkflowAgentDefinition & { sanitizedInput: Record<string, unknown> }
+    CompiledWorkflowAgentDefinition & {
+      sanitizedInput: Record<string, unknown>;
+    }
   > {
     const runtimeConfig = this.mergeRuntimeConfigExtensions(
       params.compiledDefinition.runtimeConfig,
@@ -308,14 +313,18 @@ export class WorkflowAgentAdapter {
       ...(runtimeConfig.knowledgeBindings
         ? { knowledgeBindings: [...runtimeConfig.knowledgeBindings] }
         : {}),
-      ...(runtimeConfig.subAgents ? { subAgents: [...runtimeConfig.subAgents] } : {}),
+      ...(runtimeConfig.subAgents
+        ? { subAgents: [...runtimeConfig.subAgents] }
+        : {}),
       ...(runtimeConfig.inputPreprocessors
         ? { inputPreprocessors: [...runtimeConfig.inputPreprocessors] }
         : {}),
       ...(runtimeConfig.memoryInstanceIds
         ? { memoryInstanceIds: [...runtimeConfig.memoryInstanceIds] }
         : {}),
-      ...(runtimeConfig.skillIds ? { skillIds: [...runtimeConfig.skillIds] } : {}),
+      ...(runtimeConfig.skillIds
+        ? { skillIds: [...runtimeConfig.skillIds] }
+        : {}),
     };
 
     const upstreamTools = this.extractUpstreamMcpToolBindings(input);
@@ -339,7 +348,9 @@ export class WorkflowAgentAdapter {
     incoming: AgentToolBinding[],
   ): AgentToolBinding[] {
     const bindings = [...current];
-    const seen = new Set(current.map((binding) => this.getToolBindingKey(binding)));
+    const seen = new Set(
+      current.map((binding) => this.getToolBindingKey(binding)),
+    );
 
     for (const binding of incoming) {
       const key = this.getToolBindingKey(binding);
@@ -579,7 +590,7 @@ export class WorkflowAgentAdapter {
             ? toolRecord.name
             : typeof toolRecord.title === 'string'
               ? toolRecord.title
-            : undefined;
+              : undefined;
 
       if (!mcpServerConfigId || !toolName) {
         continue;
@@ -588,9 +599,7 @@ export class WorkflowAgentAdapter {
       descriptors.push({
         mcpServerConfigId,
         toolName,
-        ...(toolId
-          ? { mcpToolDefinitionId: toolId }
-          : {}),
+        ...(toolId ? { mcpToolDefinitionId: toolId } : {}),
         ...(this.isRecord(toolRecord.inputSchema)
           ? { inputSchema: toolRecord.inputSchema }
           : topLevelInputSchema
@@ -660,24 +669,20 @@ export class WorkflowAgentAdapter {
   ): Record<string, unknown> {
     const sanitizedEntries = Object.entries(input)
       .map(([key, value]) => {
-        if (
-          key === 'skills' ||
-          key === 'tools-in' ||
-          key === 'sub-agents-in'
-        ) {
+        if (key === 'skills' || key === 'tools-in' || key === 'sub-agents-in') {
           return null;
         }
 
         if (key === 'context') {
           const sanitizedContext = this.stripExtensionValues(value);
-          return sanitizedContext === undefined ? null : ([key, sanitizedContext] as const);
+          return sanitizedContext === undefined
+            ? null
+            : ([key, sanitizedContext] as const);
         }
 
         return [key, value] as const;
       })
-      .filter(
-        (entry): entry is readonly [string, unknown] => entry !== null,
-      );
+      .filter((entry): entry is readonly [string, unknown] => entry !== null);
 
     return Object.fromEntries(sanitizedEntries);
   }
@@ -922,9 +927,7 @@ export class WorkflowAgentAdapter {
   ): ContentBlock[] {
     return buildAgentPromptContentBlocks({
       input,
-      ...(Object.keys(subAgentResults).length > 0
-        ? { subAgentResults }
-        : {}),
+      ...(Object.keys(subAgentResults).length > 0 ? { subAgentResults } : {}),
     });
   }
 

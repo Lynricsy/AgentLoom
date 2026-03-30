@@ -553,11 +553,13 @@ describe('SandboxAgentAdapter', () => {
 
       const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        createSseResponse([
-          'data: {"type":"done","stopReason":"end_turn"}\n\n',
-        ]),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"type":"done","stopReason":"end_turn"}\n\n',
+          ]),
+        );
 
       await collectEvents(
         adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),

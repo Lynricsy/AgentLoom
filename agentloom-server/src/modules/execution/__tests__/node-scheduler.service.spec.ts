@@ -451,9 +451,7 @@ describe('NodeSchedulerService', () => {
         }),
       ];
 
-      expect(
-        service.resolveNodeInput('node-condition', edges, steps),
-      ).toEqual({
+      expect(service.resolveNodeInput('node-condition', edges, steps)).toEqual({
         input: { route: 'skip', topic: '验证 skip 分支' },
       });
     });
@@ -565,9 +563,9 @@ describe('NodeSchedulerService', () => {
         }),
       ];
 
-      expect(
-        service['getSchedulingDecision']('agent-a', edges, steps),
-      ).toBe('skip');
+      expect(service['getSchedulingDecision']('agent-a', edges, steps)).toBe(
+        'skip',
+      );
     });
   });
 
@@ -2691,7 +2689,11 @@ describe('NodeSchedulerService', () => {
 
     it('sandbox 节点的最后一个下游 agent 完成后应释放该节点绑定的 sandbox', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('S', 'sandbox'), makeNode('A', 'agent'), makeNode('B', 'agent')],
+        [
+          makeNode('S', 'sandbox'),
+          makeNode('A', 'agent'),
+          makeNode('B', 'agent'),
+        ],
         [makeEdge('S', 'A'), makeEdge('S', 'B')],
       );
       const completedStep = makeStep({

@@ -1515,10 +1515,7 @@ export class NodeSchedulerService {
         nodeData.enabledToolIds,
         nodeData.enabled_tool_ids,
       );
-      const tools = this.extractConfiguredMcpTools(
-        nodeData,
-        enabledToolIds,
-      );
+      const tools = this.extractConfiguredMcpTools(nodeData, enabledToolIds);
       const selectedTool = tools[0];
 
       if (!mcpServerConfigId || !selectedTool) {
@@ -1646,8 +1643,8 @@ export class NodeSchedulerService {
             branch,
             matched: matchedPayload,
             unmatched: unmatchedPayload,
-            'true': matchedPayload,
-            'false': unmatchedPayload,
+            true: matchedPayload,
+            false: unmatchedPayload,
             expression,
             evaluatedValue: evaluation,
           }
@@ -1655,8 +1652,8 @@ export class NodeSchedulerService {
             branch,
             matched: matchedPayload,
             unmatched: unmatchedPayload,
-            'true': matchedPayload,
-            'false': unmatchedPayload,
+            true: matchedPayload,
+            false: unmatchedPayload,
             evaluatedField: conditionField,
             actualValue,
             expectedValue,
@@ -2014,9 +2011,7 @@ export class NodeSchedulerService {
       nodeData.llmModelConfigId.length === 0
     ) {
       const fallbackModelId = Object.values(input)
-        .flatMap((value) =>
-          this.extractStructuredModelConfigIds(value),
-        )
+        .flatMap((value) => this.extractStructuredModelConfigIds(value))
         .at(0);
       if (fallbackModelId) {
         nodeData.llmModelConfigId = fallbackModelId;
@@ -2054,9 +2049,7 @@ export class NodeSchedulerService {
         nodeData,
         ...(smartRouting ? { smartRouting } : {}),
         ...(sandboxBinding ? { hasSandbox: true } : {}),
-        ...(Object.keys(workflowContext).length > 0
-          ? { workflowContext }
-          : {}),
+        ...(Object.keys(workflowContext).length > 0 ? { workflowContext } : {}),
       },
       ...(this.isFallbackChainStrategy(smartRouting?.strategy)
         ? { options: { attempts: 1 } }
@@ -3076,9 +3069,13 @@ export class NodeSchedulerService {
         llmModelConfigId,
         modelConfigId: llmModelConfigId,
         modelId: llmModelConfigId,
-        ...(this.readFirstString(nodeData.provider) ? { provider: nodeData.provider } : {}),
+        ...(this.readFirstString(nodeData.provider)
+          ? { provider: nodeData.provider }
+          : {}),
         ...(this.readFirstString(nodeData.name) ? { name: nodeData.name } : {}),
-        ...(this.readFirstString(nodeData.modelName) ? { modelName: nodeData.modelName } : {}),
+        ...(this.readFirstString(nodeData.modelName)
+          ? { modelName: nodeData.modelName }
+          : {}),
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -3211,9 +3208,7 @@ export class NodeSchedulerService {
           ? this.stringifyOutputValue(rawOutput)
           : this.normalizeJsonOutputValue(rawOutput);
       const result =
-        step.nodeType === 'text-output'
-          ? { content }
-          : { json: content };
+        step.nodeType === 'text-output' ? { content } : { json: content };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -3304,9 +3299,7 @@ export class NodeSchedulerService {
       memoryConfigSource.bootUris.every((uri) => typeof uri === 'string')
         ? memoryConfigSource.bootUris
         : Array.isArray(memoryConfigSource.boot_uris) &&
-            memoryConfigSource.boot_uris.every(
-              (uri) => typeof uri === 'string',
-            )
+            memoryConfigSource.boot_uris.every((uri) => typeof uri === 'string')
           ? memoryConfigSource.boot_uris
           : [];
     const fusionPriority = this.readOptionalNumber(
@@ -3369,13 +3362,19 @@ export class NodeSchedulerService {
     const incomingEdges = edges.filter((edge) => edge.target === sandboxNodeId);
 
     for (const edge of incomingEdges) {
-      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
+      const sourceStep = steps.find(
+        (candidate) => candidate.nodeId === edge.source,
+      );
       if (sourceStep?.nodeType !== 'workspace') {
         continue;
       }
 
-      const nodeData = this.isRecord(sourceStep.nodeData) ? sourceStep.nodeData : {};
-      const config = this.isRecord(nodeData.config) ? nodeData.config : nodeData;
+      const nodeData = this.isRecord(sourceStep.nodeData)
+        ? sourceStep.nodeData
+        : {};
+      const config = this.isRecord(nodeData.config)
+        ? nodeData.config
+        : nodeData;
       const workspaceId =
         typeof config.workspaceId === 'string' && config.workspaceId.trim()
           ? config.workspaceId.trim()
@@ -3418,7 +3417,10 @@ export class NodeSchedulerService {
       request.query = query;
     }
 
-    const requestBody = this.resolveHttpToolRequestBody(nodeData, dynamicRequest);
+    const requestBody = this.resolveHttpToolRequestBody(
+      nodeData,
+      dynamicRequest,
+    );
     if (requestBody !== undefined) {
       request.body = requestBody;
     }
@@ -3442,7 +3444,10 @@ export class NodeSchedulerService {
       return dynamicRequest;
     }
 
-    if (typeof nodeData.body !== 'string' || nodeData.body.trim().length === 0) {
+    if (
+      typeof nodeData.body !== 'string' ||
+      nodeData.body.trim().length === 0
+    ) {
       return undefined;
     }
 
@@ -3499,7 +3504,10 @@ export class NodeSchedulerService {
   private buildHttpToolAuthHeaders(
     nodeData: Record<string, unknown>,
   ): Record<string, string> {
-    const authType = this.readFirstString(nodeData.authType, nodeData.auth_type);
+    const authType = this.readFirstString(
+      nodeData.authType,
+      nodeData.auth_type,
+    );
     const authConfig = this.isRecord(nodeData.authConfig)
       ? nodeData.authConfig
       : this.isRecord(nodeData.auth_config)
@@ -3545,7 +3553,10 @@ export class NodeSchedulerService {
   private buildHttpToolAuthQuery(
     nodeData: Record<string, unknown>,
   ): Record<string, unknown> {
-    const authType = this.readFirstString(nodeData.authType, nodeData.auth_type);
+    const authType = this.readFirstString(
+      nodeData.authType,
+      nodeData.auth_type,
+    );
     const authConfig = this.isRecord(nodeData.authConfig)
       ? nodeData.authConfig
       : this.isRecord(nodeData.auth_config)
@@ -3614,9 +3625,7 @@ export class NodeSchedulerService {
     }
   }
 
-  private extractCodeToolInputPayload(
-    input: Record<string, unknown>,
-  ): unknown {
+  private extractCodeToolInputPayload(input: Record<string, unknown>): unknown {
     if (Object.prototype.hasOwnProperty.call(input, 'input')) {
       return input.input;
     }
@@ -3725,8 +3734,13 @@ export class NodeSchedulerService {
     const incomingEdges = edges.filter((edge) => edge.target === nodeId);
 
     for (const edge of incomingEdges) {
-      const sourceStep = steps.find((candidate) => candidate.nodeId === edge.source);
-      if (sourceStep?.nodeType !== 'memory' || !this.isRecord(sourceStep.result)) {
+      const sourceStep = steps.find(
+        (candidate) => candidate.nodeId === edge.source,
+      );
+      if (
+        sourceStep?.nodeType !== 'memory' ||
+        !this.isRecord(sourceStep.result)
+      ) {
         continue;
       }
 
@@ -4109,13 +4123,9 @@ export class NodeSchedulerService {
           ? sourceStep.result
           : undefined;
       case 'workspace':
-        return sourceHandle === 'volume-output'
-          ? sourceStep.result
-          : undefined;
+        return sourceHandle === 'volume-output' ? sourceStep.result : undefined;
       case 'memory':
-        return sourceHandle === 'memory-out-0'
-          ? sourceStep.result
-          : undefined;
+        return sourceHandle === 'memory-out-0' ? sourceStep.result : undefined;
       default:
         return undefined;
     }
@@ -4150,12 +4160,8 @@ export class NodeSchedulerService {
     return value;
   }
 
-  private normalizeConditionBranch(
-    branch: string,
-  ): 'matched' | 'unmatched' {
-    return branch === 'true' || branch === 'matched'
-      ? 'matched'
-      : 'unmatched';
+  private normalizeConditionBranch(branch: string): 'matched' | 'unmatched' {
+    return branch === 'true' || branch === 'matched' ? 'matched' : 'unmatched';
   }
 
   private normalizeConditionSourceHandle(
@@ -4282,7 +4288,8 @@ export class NodeSchedulerService {
     const requiredTargetHandles = this.getRequiredInputHandles(nodeId, steps);
     for (const requiredTargetHandle of requiredTargetHandles) {
       const connectedRequiredEdges = incomingDependencies.filter(
-        ({ edge }) => this.readEdgeHandle(edge, 'target') === requiredTargetHandle,
+        ({ edge }) =>
+          this.readEdgeHandle(edge, 'target') === requiredTargetHandle,
       );
 
       if (connectedRequiredEdges.length === 0) {
