@@ -1,5 +1,4 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
@@ -100,7 +99,6 @@ export function RootLayout() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <Outlet />
       </div>
-      <TanStackRouterDevtools />
     </div>
   );
 }

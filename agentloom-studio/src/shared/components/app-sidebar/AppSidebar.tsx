@@ -52,12 +52,6 @@ const NAV_ITEMS: NavItem[] = [
     matchPrefix: '/agents',
   },
   {
-    label: '知识库',
-    icon: BookOpen,
-    to: '/memory',
-    matchPrefix: '/memory',
-  },
-  {
     label: '发现',
     icon: Compass,
     to: '/templates',
