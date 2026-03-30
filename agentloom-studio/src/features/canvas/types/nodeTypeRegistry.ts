@@ -108,6 +108,7 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
   knowledge: { label: 'Knowledge', colorToken: 'var(--color-type-knowledge)', shape: 'book' },
   skill: { label: 'Skill', colorToken: 'var(--color-type-skill)', shape: 'diamond' },
   agent: { label: 'Agent', colorToken: '#F97316', shape: 'circle' },
+  memory: { label: 'Memory', colorToken: 'var(--color-type-knowledge)', shape: 'book' },
   exec: { label: 'Exec', colorToken: 'var(--color-type-exec)', shape: 'arrow' },
   volume: { label: 'Volume', colorToken: 'var(--color-type-volume)', shape: 'square' },
 }
@@ -587,9 +588,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     colorToken: CATEGORY_COLOR_TOKENS.memory,
     inputPorts: [],
     outputPorts: [
-      createPort('memory-out-0', 'Memory', 'output', 'json', {
+      createPort('memory-out-0', 'Memory', 'output', 'memory', {
         description: '记忆会话引用',
-        schema: createJsonSchema('Memory', '记忆会话引用'),
       }),
     ],
     configSchema: {
@@ -764,6 +764,7 @@ function cloneTypeSchema(schema: TypeSchema): TypeSchema {
     case 'knowledge':
     case 'skill':
     case 'agent':
+    case 'memory':
     case 'exec':
     case 'volume':
       return {

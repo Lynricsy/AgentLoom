@@ -27,7 +27,8 @@ export interface BlockPort {
     | 'tool'
     | 'sandbox'
     | 'knowledge'
-    | 'skill';
+    | 'skill'
+    | 'memory';
   sourceNodeId?: string;
   sourcePortId?: string;
 }

@@ -320,6 +320,11 @@ export function arePortDataTypesCompatible(
     return sourceType === 'volume' && targetType === 'volume'
   }
 
+  // memory 端口只能连接 memory 端口（语义专有类型）
+  if (sourceType === 'memory' || targetType === 'memory') {
+    return sourceType === 'memory' && targetType === 'memory'
+  }
+
   if (sourceType === targetType) {
     return true
   }

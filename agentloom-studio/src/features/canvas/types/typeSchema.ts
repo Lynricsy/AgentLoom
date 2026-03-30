@@ -9,6 +9,7 @@ export const PORT_DATA_TYPES = [
   'knowledge',
   'skill',
   'agent',
+  'memory',
   'exec',
   'volume',
 ] as const

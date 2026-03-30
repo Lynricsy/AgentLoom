@@ -174,6 +174,6 @@ describe('agentCanvasStore', () => {
     expect(state.globalSandboxConfig.lifecycleMode).toBe('persistent');
     expect(
       state.nodes[0]?.data.inputPorts.find((port) => port.id === 'memory-in')?.dataType,
-    ).toBe('json');
+    ).toBe('memory');
   });
 });

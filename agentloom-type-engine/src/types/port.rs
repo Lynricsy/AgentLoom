@@ -15,6 +15,7 @@ pub enum PortDataType {
     Knowledge,
     Skill,
     Agent,
+    Memory,
 }
 
 impl fmt::Display for PortDataType {
@@ -30,6 +31,7 @@ impl fmt::Display for PortDataType {
             Self::Knowledge => "knowledge",
             Self::Skill => "skill",
             Self::Agent => "agent",
+            Self::Memory => "memory",
         };
         formatter.write_str(value)
     }

@@ -185,7 +185,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.memory,
       inputPorts: [],
       outputPorts: [
-        createPort('memory-out-0', 'Memory', 'output', 'json', {
+        createPort('memory-out-0', 'Memory', 'output', 'memory', {
           description: '记忆会话引用',
         }),
       ],
@@ -391,7 +391,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           maxConnections: null,
           description: '来自 Skill 节点的技能指令',
         }),
-        createPort('memory-in', '记忆', 'input', 'json', {
+        createPort('memory-in', '记忆', 'input', 'memory', {
           multiple: true,
           maxConnections: null,
           description: '来自 Memory 节点的记忆会话配置',

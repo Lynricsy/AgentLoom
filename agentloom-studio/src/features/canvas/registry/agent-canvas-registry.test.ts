@@ -18,7 +18,7 @@ describe('agent-canvas-registry', () => {
     expect(memoryNode?.outputPorts).toHaveLength(1)
     expect(memoryNode?.outputPorts[0]).toMatchObject({
       id: 'memory-out-0',
-      dataType: 'json',
+      dataType: 'memory',
       direction: 'output',
     })
     expect(memoryNode?.configSchema.required).toContain('memoryInstanceId')
@@ -29,10 +29,10 @@ describe('agent-canvas-registry', () => {
     const agentMainNode = getAgentNodeTypeConfig('agent-main')
     const memoryInput = agentMainNode?.inputPorts.find((port) => port.id === 'memory-in')
 
-    expect(memoryNode?.outputPorts[0]?.dataType).toBe('json')
+    expect(memoryNode?.outputPorts[0]?.dataType).toBe('memory')
     expect(memoryInput).toMatchObject({
       id: 'memory-in',
-      dataType: 'json',
+      dataType: 'memory',
       multiple: true,
       maxConnections: null,
     })

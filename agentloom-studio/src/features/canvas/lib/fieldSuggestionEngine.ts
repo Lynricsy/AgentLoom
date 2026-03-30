@@ -24,6 +24,7 @@ const SCHEMA_TYPE_LABELS: Record<Exclude<PortDataType, 'json'>, string> = {
   knowledge: '知识',
   skill: '技能',
   agent: 'Agent',
+  memory: '记忆',
   exec: '执行',
   volume: '卷',
 }
