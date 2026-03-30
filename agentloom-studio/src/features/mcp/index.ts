@@ -11,6 +11,7 @@ export {
   useUpdateMcpServerConfig,
 } from "./api/mcpMutations";
 export { McpImportDialog } from "./components/McpImportDialog";
+export { McpServerDetailPage } from "./components/McpServerDetailPage";
 export { McpServerEditDialog } from "./components/McpServerEditDialog";
 export { McpServerManagementPage } from "./components/McpServerManagementPage";
 export { ToolLibraryPage } from "./components/ToolLibraryPage";

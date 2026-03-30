@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, type MouseEvent } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Search,
   Plus,
@@ -177,6 +178,7 @@ function ServerCardActions({
 
 export function McpServerManagementPage() {
   const { notify } = useToast();
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -316,6 +318,16 @@ export function McpServerManagementPage() {
     });
   }, [confirmDelete, deleteMutation, notify]);
 
+  const handleCardClick = useCallback(
+    (server: McpServerConfigSummary) => {
+      void navigate({
+        to: '/resources/mcp-servers/$serverId',
+        params: { serverId: server.id },
+      });
+    },
+    [navigate],
+  );
+
   const hasFilters =
     search.trim() !== "" ||
     statusFilter !== "all" ||
@@ -406,7 +418,9 @@ export function McpServerManagementPage() {
             {servers.map((server) => (
               <article
                 key={server.id}
-                className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-colors hover:border-border/80"
+                className="cursor-pointer rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-colors hover:border-border/80"
+                onClick={() => handleCardClick(server)}
+                role="link"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -424,7 +438,7 @@ export function McpServerManagementPage() {
                       {server.description || "暂无描述"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="outline"
                       size="sm"

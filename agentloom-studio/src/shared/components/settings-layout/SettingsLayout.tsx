@@ -2,6 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import {
   ArrowLeft,
   FileText,
+  LayoutDashboard,
   Lock,
   MonitorCog,
   Shield,
@@ -9,7 +10,6 @@ import {
   Activity,
   Server,
   Gauge,
-  Wrench,
 } from 'lucide-react'
 
 interface SettingsNavGroup {
@@ -21,7 +21,7 @@ const SETTINGS_GROUPS: SettingsNavGroup[] = [
   {
     label: '通用',
     items: [
-      { label: '工具库', to: '/settings/tool-library', icon: Wrench, matchPrefix: '/settings/tool-library' },
+      { label: '概览', to: '/settings', icon: LayoutDashboard, matchPrefix: '/settings' },
     ],
   },
   {
@@ -56,6 +56,10 @@ export function SettingsLayout() {
     // 精确匹配 /settings/security 但不匹配 /settings/security/autonomy-policy
     if (prefix === '/settings/security') {
       return pathname === '/settings/security'
+    }
+    // 概览仅在精确匹配 /settings 或 /settings/ 时高亮
+    if (prefix === '/settings') {
+      return pathname === '/settings' || pathname === '/settings/'
     }
     return pathname.startsWith(prefix)
   }

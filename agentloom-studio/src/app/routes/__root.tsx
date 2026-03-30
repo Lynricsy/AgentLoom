@@ -9,7 +9,8 @@ import { indexRoute } from "./index";
 import { workflowCanvasRoute } from "./workflows/$workflowId";
 import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
 import { executionDebugRoute } from "./executions/$executionId";
-import { toolLibraryRoute } from "./settings/tool-library";
+import { settingsIndexRoute } from './settings/index'
+import { mcpServerDetailRoute } from './resources/mcp-servers.$serverId'
 import { auditLogsRoute } from './settings/audit-logs'
 import { templatesRoute } from "./templates";
 import { marketplaceRoute } from "./marketplace";
@@ -112,7 +113,7 @@ export const routeTree = rootRoute.addChildren([
   workflowsIndexRoute,
   workflowCanvasRoute,
   executionDebugRoute,
-  toolLibraryRoute,
+  settingsIndexRoute,
   auditLogsRoute,
   templatesRoute,
   marketplaceRoute,
@@ -140,6 +141,7 @@ export const routeTree = rootRoute.addChildren([
   memoryAuditRoute,
   skillsRoute,
   mcpServersRoute,
+  mcpServerDetailRoute,
   llmModelsRoute,
   resourceSkillsRoute,
   resourceKnowledgeBasesRoute,

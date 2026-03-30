@@ -311,7 +311,7 @@ export function AppSidebar() {
       <div className="flex flex-col gap-1 border-t border-border px-2 py-2">
         {/* Settings */}
         <Link
-          to="/settings/tool-library"
+          to="/settings"
           className={`flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
             isActive('/settings')
               ? 'bg-primary/10 text-primary'
