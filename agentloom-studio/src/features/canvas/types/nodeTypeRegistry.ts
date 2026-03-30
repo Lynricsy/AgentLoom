@@ -34,7 +34,7 @@ export const NODE_TYPES = [
   'workspace',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['mcp-tool', 'reusable-block', 'plugin'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 

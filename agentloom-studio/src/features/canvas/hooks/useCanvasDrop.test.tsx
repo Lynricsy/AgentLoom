@@ -16,42 +16,10 @@ const mockPaletteNode: PaletteNodeItem = {
 
 const mockMcpPaletteNode: PaletteNodeItem = {
   type: 'mcp-tool',
-  label: 'Test MCP Tool',
+  label: 'MCP Tool',
   category: 'tool',
   icon: 'Plug',
-  description: 'A test MCP tool',
-  mcpToolDefinitionId: 'mcp-tool-def-456',
-  inputPorts: [
-    {
-      id: 'mcp-in',
-      label: 'Query',
-      direction: 'input' as const,
-      dataType: 'text' as const,
-      required: false,
-      multiple: false,
-      maxConnections: 1,
-      schema: { kind: 'text' as const, title: 'Query' },
-    },
-  ],
-  outputPorts: [
-    {
-      id: 'mcp-out',
-      label: 'Response',
-      direction: 'output' as const,
-      dataType: 'json' as const,
-      required: false,
-      multiple: false,
-      maxConnections: 1,
-      schema: {
-        kind: 'json' as const,
-        shape: 'object' as const,
-        title: 'Response',
-        properties: {},
-        additionalProperties: true,
-      },
-    },
-  ],
-  inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+  description: 'MCP 工具节点',
 }
 
 describe('useCanvasDrop', () => {
@@ -59,7 +27,7 @@ describe('useCanvasDrop', () => {
     useCanvasStore.getState().actions.reset()
   })
 
-  it('应该使用节点分类作为 React Flow type 创建节点', () => {
+  it('応该使用节点分类作为 React Flow type 创建节点', () => {
     const reactFlowInstance = {
       screenToFlowPosition: vi.fn(() => ({ x: 240, y: 180 })),
     } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
@@ -93,7 +61,7 @@ describe('useCanvasDrop', () => {
     expect(state.isDirty).toBe(true)
   })
 
-  it('MCP ツール drop には動的 inputPorts が含まれる', () => {
+  it('MCP Tool drop 使用注册表默认端口', () => {
     const reactFlowInstance = {
       screenToFlowPosition: vi.fn(() => ({ x: 100, y: 100 })),
     } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
@@ -114,57 +82,8 @@ describe('useCanvasDrop', () => {
 
     const state = useCanvasStore.getState()
     expect(state.nodes).toHaveLength(1)
-    expect(state.nodes[0]?.data.inputPorts).toHaveLength(1)
-    expect(state.nodes[0]?.data.inputPorts[0]?.id).toBe('mcp-in')
-    expect(state.nodes[0]?.data.outputPorts).toHaveLength(1)
-    expect(state.nodes[0]?.data.outputPorts[0]?.id).toBe('mcp-out')
-  })
-
-  it('MCP ツール drop には mcpToolDefinitionId が含まれる', () => {
-    const reactFlowInstance = {
-      screenToFlowPosition: vi.fn(() => ({ x: 100, y: 100 })),
-    } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
-
-    const { result } = renderHook(() => useCanvasDrop(reactFlowInstance))
-
-    act(() => {
-      result.current.onDrop({
-        preventDefault: vi.fn(),
-        clientX: 400,
-        clientY: 200,
-        dataTransfer: {
-          getData: (type: string) =>
-            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockMcpPaletteNode) : '',
-        },
-      } as unknown as React.DragEvent)
-    })
-
-    const state = useCanvasStore.getState()
-    expect(state.nodes[0]?.data.mcpToolDefinitionId).toBe('mcp-tool-def-456')
-  })
-
-  it('MCP ツール drop には config.inputSchema が含まれる', () => {
-    const reactFlowInstance = {
-      screenToFlowPosition: vi.fn(() => ({ x: 100, y: 100 })),
-    } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
-
-    const { result } = renderHook(() => useCanvasDrop(reactFlowInstance))
-
-    act(() => {
-      result.current.onDrop({
-        preventDefault: vi.fn(),
-        clientX: 400,
-        clientY: 200,
-        dataTransfer: {
-          getData: (type: string) =>
-            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockMcpPaletteNode) : '',
-        },
-      } as unknown as React.DragEvent)
-    })
-
-    const state = useCanvasStore.getState()
-    expect(state.nodes[0]?.data.config).toEqual({
-      inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
-    })
+    expect(state.nodes[0]?.data.nodeType).toBe('mcp-tool')
+    expect(state.nodes[0]?.data.outputPorts.length).toBeGreaterThan(0)
+    expect(state.nodes[0]?.data.outputPorts[0]?.dataType).toBe('tool')
   })
 })

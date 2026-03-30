@@ -5,8 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
 import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
-import { useMcpTools } from '../api/mcpToolQueries'
-import { buildMcpToolPorts } from '../types/mcpToolMapping'
 
 export const DRAG_TRANSFER_TYPE = 'application/agentloom-node'
 
@@ -22,34 +20,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
   const [activeTab, setActiveTab] = useState('nodes')
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const { data: mcpTools = [] } = useMcpTools('mcp')
   const { data: pluginsResponse } = useActivePlugins()
-
-  const mcpGroup = useMemo<PaletteGroup | null>(() => {
-    const activeTools = mcpTools.filter((t) => t.isActive)
-    if (activeTools.length === 0) return null
-    return {
-      category: 'tool' as const,
-      label: 'Imported Tools',
-      icon: NODE_CATEGORIES.tool.icon,
-      color: NODE_CATEGORIES.tool.color,
-      items: activeTools.map((tool): PaletteNodeItem => {
-        const ports = buildMcpToolPorts()
-        return {
-          type: 'mcp-tool',
-          label: tool.title ?? tool.name,
-          category: 'tool',
-          icon: 'Plug',
-          description: tool.description ?? '',
-          searchText: [tool.title, tool.name, tool.description].filter(Boolean).join(' '),
-          mcpToolDefinitionId: tool.id,
-          inputPorts: ports.inputPorts,
-          outputPorts: ports.outputPorts,
-          inputSchema: tool.inputSchema ?? undefined,
-        }
-      }),
-    }
-  }, [mcpTools])
 
   const pluginGroup = useMemo<PaletteGroup | null>(() => {
     const plugins = pluginsResponse?.data ?? []
@@ -80,10 +51,10 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
   }, [pluginsResponse])
 
   const allGroups = useMemo(() => {
-    const groups = mcpGroup ? [...PALETTE_GROUPS, mcpGroup] : [...PALETTE_GROUPS]
+    const groups = [...PALETTE_GROUPS]
     if (pluginGroup) groups.push(pluginGroup)
     return groups
-  }, [mcpGroup, pluginGroup])
+  }, [pluginGroup])
 
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
@@ -211,7 +182,7 @@ const PaletteGroupSection = memo(function PaletteGroupSection({
           {group.items.map((item) => (
             <button
               type="button"
-              key={item.pluginId ?? item.mcpToolDefinitionId ?? item.type}
+              key={item.pluginId ?? item.type}
               draggable
               onDragStart={(e) => onDragStart(e, item)}
               className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"
