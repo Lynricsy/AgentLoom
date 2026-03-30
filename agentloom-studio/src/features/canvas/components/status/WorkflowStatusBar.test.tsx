@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasEdge, CanvasNode } from '../../types'
 import { WorkflowStatusBar } from './WorkflowStatusBar'
@@ -56,6 +56,10 @@ describe('WorkflowStatusBar', () => {
     mockExecutionStatus = null
     mockExecutionProgress = { completedSteps: 0, totalSteps: 0 }
     mockIsExecutionActive = false
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('显示节点数、连接数、缩放百分比和保存时间', () => {

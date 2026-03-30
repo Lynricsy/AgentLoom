@@ -82,7 +82,7 @@ describe('triggerApi', () => {
         config: {
           eventSource: 'order-service',
           eventType: 'order.completed',
-          filterExpression: 'payload.region == \"cn\"',
+          filterExpression: 'payload.region == "cn"',
         },
         isEnabled: true,
         lastTriggeredAt: null,
@@ -98,7 +98,7 @@ describe('triggerApi', () => {
       config: {
         eventSource: 'order-service',
         eventType: 'order.completed',
-        filterExpression: 'payload.region == \"cn\"',
+        filterExpression: 'payload.region == "cn"',
       },
     })
 
@@ -109,7 +109,7 @@ describe('triggerApi', () => {
           config: {
             eventSource: 'order-service',
             eventType: 'order.completed',
-            filterExpression: 'payload.region == \"cn\"',
+            filterExpression: 'payload.region == "cn"',
           },
         },
       },
