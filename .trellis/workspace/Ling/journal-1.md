@@ -652,3 +652,70 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: feat: Workflow/Agent 自定义 Emoji/Icon 选择器
+
+**Date**: 2026-03-30
+**Task**: feat: Workflow/Agent 自定义 Emoji/Icon 选择器
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 概述
+
+为 Workflow 和 Agent 实体添加自定义 Emoji/Icon 支持，使用 Fluent Emoji 3D CDN 图片渲染，替代原有固定图标。
+
+## 技术决策
+
+| 决策 | 选择 | 原因 |
+|------|------|------|
+| Emoji 渲染 | CDN Fluent Emoji 3D | 视觉效果最佳，跨平台一致 |
+| 数据层 | @emoji-mart/data | 全量 emoji 元数据，仅增加一个依赖 |
+| 选择器 | 自建 Picker | @lobehub/ui 依赖 antd 不兼容，emoji-mart v5 不支持自定义渲染 |
+| 存储格式 | emoji: codepoint / lucide: "lucide:Name" / null: 默认 | 简洁通用 |
+
+## 改动范围
+
+### 后端 (agentloom-server)
+- Schema: `workflow_definitions` + `agent_definitions` 新增 `icon varchar(255)` nullable 列
+- DTOs: create/update/response 全部接入 icon 字段
+- Services: LIST_COLUMNS、create insert、update setClause 均接入
+- Migration: `0058_add-icon-to-workflow-and-agent.sql`
+
+### 前端新组件 (agentloom-studio)
+- `EntityIcon` — 通用渲染组件（Fluent CDN / lucide / fallback）
+- `EmojiIconPicker` — Radix Popover 选择器，Emoji + Lucide 双 Tab，虚拟滚动
+
+### 前端集成
+- `WorkflowListPage` / `AgentListPage` — 列表图标动态化
+- `CreateWorkflowDialog` / `CreateOrchestrationDialog` — 创建时选 icon
+- `AgentSettingsPanel` — 编辑时修改 icon
+
+## 验证
+- 前后端 TypeScript + ESLint 通过
+- 215 test files / 1720 tests 全部通过
+- Docker 镜像重建部署 + DB migration 完成
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e0beed4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

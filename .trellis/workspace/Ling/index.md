@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-03-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~654 | Active |
+| `journal-1.md` | ~721 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-03-30 | feat: Workflow/Agent 自定义 Emoji/Icon 选择器 | `e0beed4` | `main` |
 | 12 | 2026-03-30 | 修复 studio 多页面滚动失效 | `46f66c7` | `main` |
 | 11 | 2026-03-30 | 工作流编排手工 QA 收口与质量记录 | `b99194d`, `eab001d`, `c7fff1e`, `79b1980` | `main` |
 | 10 | 2026-03-30 | 知识库迁移收尾与浏览器对话链路验收 | `ef1752a`, `ad225bc` | `main` |
