@@ -1,10 +1,8 @@
 import {
   memo,
   useCallback,
-  useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react';
 import {
   Bot,
@@ -13,12 +11,12 @@ import {
   User,
   Brain,
 } from 'lucide-react';
-import { cn } from '@/shared/lib/utils';
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer';
 import { ToolCallCard } from '@/shared/components/tool-renderers';
 import type { ToolCallData } from '@/shared/components/tool-renderers';
 import type {
   ConversationMessage,
+  MessageSegment,
   SubAgentHandle,
   SubAgentRunStatus,
   ToolCall,
@@ -28,41 +26,6 @@ import {
   useSubAgentStreams,
 } from '../stores/agent-conversation.store';
 import { SubAgentCompletionNotice } from './SubAgentStreamView';
-
-function CollapsibleSection({
-  title,
-  icon,
-  defaultOpen = false,
-  muted = false,
-  children,
-}: {
-  title: string;
-  icon?: ReactNode;
-  defaultOpen?: boolean;
-  muted?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <div className={cn('mt-2', muted && 'opacity-70')}>
-      <button
-        type="button"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-        {icon}
-        <span>{title}</span>
-      </button>
-      {open && <div className="mt-1.5 pl-5">{children}</div>}
-    </div>
-  );
-}
 
 /** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
 function toToolCallData(tc: ToolCall): ToolCallData {
@@ -78,9 +41,33 @@ function toToolCallData(tc: ToolCall): ToolCallData {
   };
 }
 
+function ThinkingBlock({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="opacity-70">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <Brain className="size-3" />
+        <span>Thinking</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 pl-5">
+          <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+            {content}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TypingIndicator() {
   return (
-    <div className="flex items-center gap-1 px-3 py-2">
+    <div className="flex items-center gap-1 px-1 py-2">
       <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
       <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
       <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
@@ -88,19 +75,35 @@ function TypingIndicator() {
   );
 }
 
-const MessageBubble = memo(function MessageBubble({
+/** 用户消息气泡（保持原有气泡风格） */
+const UserBubble = memo(function UserBubble({
   message,
 }: {
   message: ConversationMessage;
 }) {
-  const isUser = message.role === 'user';
-  const hasThinking = !!message.thinking;
-  const showEmptyTurnPlaceholder =
-    !isUser &&
-    !message.content &&
-    !message.isStreaming &&
-    message.metadata?.emptyTurn === true;
+  return (
+    <div className="flex gap-3 px-4 py-3 flex-row-reverse">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
+        <User className="size-4" />
+      </div>
+      <div className="flex max-w-[80%] flex-col gap-1 items-end">
+        <div className="rounded-2xl rounded-br-md bg-foreground/10 text-foreground px-4 py-2.5 text-sm leading-relaxed">
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        </div>
+        <span className="px-1 text-[10px] text-muted-foreground/60">
+          {formatTime(message.createdAt)}
+        </span>
+      </div>
+    </div>
+  );
+});
 
+/** 助手消息 - 按 segments 瀑布流渲染 */
+const AssistantMessage = memo(function AssistantMessage({
+  message,
+}: {
+  message: ConversationMessage;
+}) {
   const { resolveToolPermission } = useConversationActions();
 
   const handleResolvePermission = useCallback(
@@ -110,96 +113,84 @@ const MessageBubble = memo(function MessageBubble({
     [resolveToolPermission],
   );
 
-  const { runningCount } = useMemo(() => {
-    let running = 0;
-    for (const tc of message.toolCalls) {
-      if (
-        tc.status === 'pending' ||
-        tc.status === 'awaiting_permission' ||
-        tc.status === 'in_progress'
-      ) {
-        running++;
-      }
-    }
-    return { runningCount: running };
-  }, [message.toolCalls]);
+  const segments = message.segments;
+  const showEmptyTurnPlaceholder =
+    !message.content &&
+    !message.isStreaming &&
+    message.metadata?.emptyTurn === true;
 
   return (
-    <div
-      className={cn(
-        'flex gap-3 px-4 py-3',
-        isUser ? 'flex-row-reverse' : 'flex-row',
-      )}
-    >
-      <div
-        className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-full',
-          isUser
-            ? 'bg-foreground/10 text-foreground'
-            : 'bg-info/15 text-info',
-        )}
-      >
-        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+    <div className="flex gap-3 px-4 py-3">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info mt-0.5">
+        <Bot className="size-4" />
       </div>
 
-      <div
-        className={cn(
-          'flex max-w-[80%] flex-col gap-1',
-          isUser ? 'items-end' : 'items-start',
-        )}
-      >
-        <div
-          className={cn(
-            'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
-            isUser
-              ? 'rounded-br-md bg-foreground/10 text-foreground'
-              : 'rounded-bl-md bg-surface text-foreground',
-          )}
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : message.content ? (
-            <MarkdownRenderer content={message.content} />
-          ) : message.isStreaming ? (
-            <TypingIndicator />
-          ) : showEmptyTurnPlaceholder ? (
-            <p className="italic text-muted-foreground">本轮未返回可展示内容</p>
-          ) : null}
-        </div>
+      <div className="flex-1 min-w-0 space-y-2">
+        {segments.length > 0 ? (
+          segments.map((seg, i) => (
+            <SegmentRenderer
+              key={segmentKey(seg, i)}
+              segment={seg}
+              message={message}
+              onResolvePermission={handleResolvePermission}
+            />
+          ))
+        ) : message.isStreaming ? (
+          <TypingIndicator />
+        ) : showEmptyTurnPlaceholder ? (
+          <p className="italic text-muted-foreground text-sm">本轮未返回可展示内容</p>
+        ) : null}
 
-        {!isUser && hasThinking && (
-          <CollapsibleSection title="Thinking" icon={<Brain className="size-3" />} muted>
-            <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
-              {message.thinking}
-            </p>
-          </CollapsibleSection>
+        {/* 流式输出时最后一个 segment 后的光标 */}
+        {message.isStreaming && segments.length > 0 && (
+          <TypingIndicator />
         )}
 
-        {!isUser && message.toolCalls.length > 0 && (
-          <div className="mt-2 w-full space-y-1.5">
-            {message.toolCalls.map((tc) => (
-              <ToolCallCard
-                key={tc.id}
-                toolCall={toToolCallData(tc)}
-                defaultExpanded={
-                  runningCount > 0 &&
-                  (tc.status === 'pending' ||
-                    tc.status === 'awaiting_permission' ||
-                    tc.status === 'in_progress')
-                }
-                onResolvePermission={handleResolvePermission}
-              />
-            ))}
-          </div>
-        )}
-
-        <span className="px-1 text-[10px] text-muted-foreground/60">
+        <span className="block px-1 text-[10px] text-muted-foreground/60">
           {formatTime(message.createdAt)}
         </span>
       </div>
     </div>
   );
 });
+
+/** 单个 segment 渲染 */
+const SegmentRenderer = memo(function SegmentRenderer({
+  segment,
+  message,
+  onResolvePermission,
+}: {
+  segment: MessageSegment;
+  message: ConversationMessage;
+  onResolvePermission: (toolCallId: string, action: 'approve' | 'deny') => Promise<void>;
+}) {
+  switch (segment.type) {
+    case 'text':
+      return <MarkdownRenderer content={segment.content} />;
+    case 'thinking':
+      return <ThinkingBlock content={segment.content} />;
+    case 'tool_call': {
+      const tc = message.toolCalls.find((t) => t.id === segment.toolCallId);
+      if (!tc) return null;
+      const isActive =
+        tc.status === 'pending' ||
+        tc.status === 'in_progress' ||
+        tc.status === 'awaiting_permission';
+      return (
+        <ToolCallCard
+          toolCall={toToolCallData(tc)}
+          defaultExpanded={isActive}
+          onResolvePermission={onResolvePermission}
+        />
+      );
+    }
+  }
+});
+
+function segmentKey(seg: MessageSegment, index: number): string {
+  if (seg.type === 'tool_call') return `tc-${seg.toolCallId}`;
+  return `${seg.type}-${index}`;
+}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -271,11 +262,10 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
                 }
                 error={(msg.metadata?.error ?? msg.metadata?.subagentError) as string | undefined}
               />
+            ) : msg.role === 'user' ? (
+              <UserBubble key={msg.id} message={msg} />
             ) : (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-              />
+              <AssistantMessage key={msg.id} message={msg} />
             ),
           )}
           {isExecuting &&
@@ -286,7 +276,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info">
                   <Bot className="size-4" />
                 </div>
-                <div className="rounded-2xl rounded-bl-md bg-surface px-4 py-2.5">
+                <div className="py-2.5">
                   <TypingIndicator />
                 </div>
               </div>

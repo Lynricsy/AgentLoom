@@ -25,6 +25,7 @@ import type {
   SubAgentEventEnvelope,
   SubAgentRunStatus,
   SubAgentEvent,
+  MessageSegment,
   ToolCall,
   ToolCallPermissionRequest,
   ToolCallStatus,
@@ -343,13 +344,25 @@ function normalizeConversationHistoryMessage(
 ): ConversationMessage {
   const record = isRecord(raw) ? raw : {};
   const metadata = normalizeMessageMetadata(record.metadata);
+  const content = readString(record.content) ?? "";
+  const thinking = extractThinkingContent(record.metadata);
+  const toolCalls = normalizeHistoryToolCalls(record.toolCalls);
+
+  // 从历史数据重建 segments（无法还原原始交错顺序，按 thinking→text→toolCalls 排列）
+  const segments: MessageSegment[] = [];
+  if (thinking) segments.push({ type: "thinking", content: thinking });
+  if (content) segments.push({ type: "text", content });
+  for (const tc of toolCalls) {
+    segments.push({ type: "tool_call", toolCallId: tc.id });
+  }
 
   return {
     id: readString(record.id) ?? crypto.randomUUID(),
     role: normalizeMessageRole(record.role),
-    content: readString(record.content) ?? "",
-    thinking: extractThinkingContent(record.metadata),
-    toolCalls: normalizeHistoryToolCalls(record.toolCalls),
+    content,
+    thinking,
+    toolCalls,
+    segments,
     isStreaming: false,
     createdAt: readTimestamp(record.createdAt),
     ...(metadata ? { metadata } : {}),
@@ -685,16 +698,17 @@ function ensureAssistantMessage(
   messages: ConversationMessage[],
   messageId: string,
 ): ConversationMessage {
-  let message = messages.find((item) => item.id === messageId);
-  if (message) {
-    return message;
+  const existing = messages.find((item) => item.id === messageId);
+  if (existing) {
+    return existing;
   }
 
-  message = {
+  const message: ConversationMessage = {
     id: messageId,
     role: "assistant",
     content: "",
     toolCalls: [],
+    segments: [],
     isStreaming: true,
     createdAt: Date.now(),
   };
@@ -875,6 +889,17 @@ export const useAgentConversationStore = create<
                   );
                   message.content += normalized.chunk;
                   message.isStreaming = true;
+
+                  // 维护 segments 瀑布流顺序
+                  const lastSeg = message.segments[message.segments.length - 1];
+                  if (lastSeg && lastSeg.type === "text") {
+                    lastSeg.content += normalized.chunk;
+                  } else {
+                    message.segments.push({
+                      type: "text",
+                      content: normalized.chunk,
+                    });
+                  }
                 });
               },
             );
@@ -902,6 +927,18 @@ export const useAgentConversationStore = create<
                 );
                 message.thinking =
                   (message.thinking ?? "") + normalized.content;
+
+                // 维护 segments 瀑布流顺序
+                const lastSeg =
+                  message.segments[message.segments.length - 1];
+                if (lastSeg && lastSeg.type === "thinking") {
+                  lastSeg.content += normalized.content;
+                } else {
+                  message.segments.push({
+                    type: "thinking",
+                    content: normalized.content,
+                  });
+                }
               });
             });
 
@@ -927,6 +964,20 @@ export const useAgentConversationStore = create<
                   normalized.messageId,
                 );
                 upsertToolCall(message, normalized);
+
+                // 仅首次出现时追加 segment
+                if (
+                  !message.segments.some(
+                    (seg) =>
+                      seg.type === "tool_call" &&
+                      seg.toolCallId === normalized.toolCallId,
+                  )
+                ) {
+                  message.segments.push({
+                    type: "tool_call",
+                    toolCallId: normalized.toolCallId,
+                  });
+                }
               });
             });
 
@@ -952,6 +1003,20 @@ export const useAgentConversationStore = create<
                   normalized.messageId,
                 );
                 upsertToolCall(message, normalized);
+
+                // 仅首次出现时追加 segment
+                if (
+                  !message.segments.some(
+                    (seg) =>
+                      seg.type === "tool_call" &&
+                      seg.toolCallId === normalized.toolCallId,
+                  )
+                ) {
+                  message.segments.push({
+                    type: "tool_call",
+                    toolCallId: normalized.toolCallId,
+                  });
+                }
               });
             });
 
@@ -1144,6 +1209,7 @@ export const useAgentConversationStore = create<
                 role: "user",
                 content,
                 toolCalls: [],
+                segments: [{ type: "text", content }],
                 isStreaming: false,
                 createdAt: Date.now(),
               });

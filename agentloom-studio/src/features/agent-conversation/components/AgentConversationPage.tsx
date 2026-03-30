@@ -61,6 +61,7 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
       role: 'assistant',
       content: '',
       toolCalls: [],
+      segments: [],
       isStreaming: true,
       createdAt: Date.now(),
     };
@@ -74,13 +75,28 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
       case 'message_chunk': {
         const msg = ensureAssistant();
         const payload = event.payload as { chunk?: string };
-        msg.content += payload.chunk ?? '';
+        const chunk = payload.chunk ?? '';
+        msg.content += chunk;
+        // 维护 segments
+        const lastSeg = msg.segments[msg.segments.length - 1];
+        if (lastSeg && lastSeg.type === 'text') {
+          lastSeg.content += chunk;
+        } else {
+          msg.segments.push({ type: 'text', content: chunk });
+        }
         break;
       }
       case 'thinking': {
         const msg = ensureAssistant();
         const payload = event.payload as { content?: string };
-        msg.thinking = (msg.thinking ?? '') + (payload.content ?? '');
+        const content = payload.content ?? '';
+        msg.thinking = (msg.thinking ?? '') + content;
+        const lastSeg = msg.segments[msg.segments.length - 1];
+        if (lastSeg && lastSeg.type === 'thinking') {
+          lastSeg.content += content;
+        } else {
+          msg.segments.push({ type: 'thinking', content });
+        }
         break;
       }
       case 'tool_call': {
@@ -103,6 +119,7 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
             startedAt: event.timestamp,
             updatedAt: event.timestamp,
           });
+          msg.segments.push({ type: 'tool_call', toolCallId });
         }
         break;
       }
@@ -136,6 +153,7 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
             startedAt: event.timestamp,
             updatedAt: event.timestamp,
           });
+          msg.segments.push({ type: 'tool_call', toolCallId });
         }
         break;
       }

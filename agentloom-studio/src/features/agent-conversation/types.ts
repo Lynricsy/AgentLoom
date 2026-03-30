@@ -33,12 +33,20 @@ export interface ToolCall {
   updatedAt: number
 }
 
+/** 消息段，保留文本与工具调用的时间交错顺序 */
+export type MessageSegment =
+  | { type: 'text'; content: string }
+  | { type: 'tool_call'; toolCallId: string }
+  | { type: 'thinking'; content: string }
+
 export interface ConversationMessage {
   id: string
   role: MessageRole
   content: string
   thinking?: string
   toolCalls: ToolCall[]
+  /** 按时间顺序保留的消息段（瀑布流渲染用） */
+  segments: MessageSegment[]
   isStreaming: boolean
   createdAt: number
   metadata?: ConversationMessageMetadata
