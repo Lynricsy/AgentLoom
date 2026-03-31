@@ -145,6 +145,32 @@ describe('VersionHistoryPanel', () => {
     expect(screen.getByTestId('version-created-by-2')).toHaveTextContent('owner-002');
   });
 
+  it('关闭后重新打开时会重新同步缓存中的第一页版本', async () => {
+    versionPages = {
+      1: makePage(
+        [
+          makeVersion({ id: 'ver-002', versionNumber: 2, label: 'bark' }),
+          makeVersion({ id: 'ver-001', versionNumber: 1, publishedAt: '2024-01-01T00:00:00Z' }),
+        ],
+        1,
+        2,
+      ),
+    };
+
+    const { rerender } = render(<VersionHistoryPanel {...defaultProps} open={false} />);
+
+    expect(screen.queryByTestId('version-item-2')).not.toBeInTheDocument();
+
+    rerender(<VersionHistoryPanel {...defaultProps} open={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('version-item-2')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('version-item-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('version-list-empty')).not.toBeInTheDocument();
+  });
+
   it('已发布版本显示发布标签', () => {
     versionPages = {
       1: makePage(

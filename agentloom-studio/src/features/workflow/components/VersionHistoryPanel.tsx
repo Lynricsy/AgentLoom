@@ -191,7 +191,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   }, [open])
 
   useEffect(() => {
-    if (!data || data.meta.page !== page) {
+    if (!open || !data || data.meta.page !== page) {
       return
     }
 
@@ -203,7 +203,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
       const existingIds = new Set(current.map((version) => version.id))
       return [...current, ...data.data.filter((version) => !existingIds.has(version.id))]
     })
-  }, [data, page])
+  }, [data, open, page])
 
   const meta = data?.meta
   const total = meta?.total ?? versions.length
