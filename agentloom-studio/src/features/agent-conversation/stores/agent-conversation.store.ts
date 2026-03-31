@@ -89,6 +89,9 @@ interface AgentConversationState {
 
   connectionError: string | null;
   lastEventId: number;
+
+  /** Incremented when a title update event is received. Sidebar watches this to refetch. */
+  titleUpdateCounter: number;
 }
 
 interface AgentConversationActions {
@@ -136,6 +139,7 @@ function createInitialState(): AgentConversationState {
     preparationFailedPhase: null,
     connectionError: null,
     lastEventId: 0,
+    titleUpdateCounter: 0,
   };
 }
 
@@ -1291,6 +1295,15 @@ export const useAgentConversationStore = create<
                 });
               },
             );
+
+            socket.on(
+              "conversation.title.updated",
+              (_payload: { title: string }) => {
+                set((s) => {
+                  s.titleUpdateCounter += 1;
+                });
+              },
+            );
           },
 
           disconnect: () => {
@@ -1549,3 +1562,6 @@ export const usePreparationError = () =>
 
 export const usePreparationFailedPhase = () =>
   useAgentConversationStore((s) => s.preparationFailedPhase);
+
+export const useTitleUpdateCounter = () =>
+  useAgentConversationStore((s) => s.titleUpdateCounter);
