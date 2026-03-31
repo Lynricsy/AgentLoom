@@ -69,79 +69,69 @@ class MemoryNodeScreen extends ConsumerWidget {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Node Content',
+                                  'Node Info',
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ),
-                            if (node.disclosureLevel != null) ...[
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Text(
-                                    'Disclosure: ',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  Text(
-                                    node.disclosureLevel!,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            if (node.triggerKeywords.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 4,
-                                runSpacing: 4,
-                                children: node.triggerKeywords
-                                    .map(
-                                      (kw) => Chip(
-                                        label: Text(kw),
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        labelPadding: EdgeInsets.zero,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                        ),
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
+                            const SizedBox(height: 12),
+                            _InfoRow(
+                              label: 'Type',
+                              value: node.contentType,
+                            ),
+                            const SizedBox(height: 4),
+                            _InfoRow(
+                              label: 'Disclosure',
+                              value: '${node.disclosureLevel}',
+                            ),
+                            const SizedBox(height: 4),
+                            _InfoRow(
+                              label: 'Created',
+                              value: _formatDate(node.createdAt),
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
 
-                  // 节点内容（可滚动文本）
+                  // 最新版本内容
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: theme.colorScheme.outlineVariant,
+                      child: versionsAsync.when(
+                        loading: () => const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(),
                           ),
                         ),
-                        child: SelectableText(
-                          node.content,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            height: 1.6,
-                          ),
-                        ),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (versions) {
+                          if (versions.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          final latest = versions.first;
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: SelectableText(
+                              latest.content,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                height: 1.6,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -217,6 +207,41 @@ class MemoryNodeScreen extends ConsumerWidget {
                 ],
               ),
             ),
+    );
+  }
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+      ],
     );
   }
 }

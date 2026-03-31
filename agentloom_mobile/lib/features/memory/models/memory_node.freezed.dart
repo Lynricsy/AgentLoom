@@ -15,11 +15,10 @@ T _$identity<T>(T value) => value;
 mixin _$MemoryNodeDto {
   String get id;
   String get instanceId;
-  String get content;
-  String? get disclosureLevel;
-  List<String> get triggerKeywords;
+  String get contentType;
+  Map<String, dynamic>? get metadata;
+  int get disclosureLevel;
   String get createdAt;
-  String get updatedAt;
 
   /// Create a copy of MemoryNodeDto
   /// with the given fields replaced by the non-null parameter values.
@@ -42,17 +41,13 @@ mixin _$MemoryNodeDto {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.instanceId, instanceId) ||
                 other.instanceId == instanceId) &&
-            (identical(other.content, content) || other.content == content) &&
+            (identical(other.contentType, contentType) ||
+                other.contentType == contentType) &&
+            const DeepCollectionEquality().equals(other.metadata, metadata) &&
             (identical(other.disclosureLevel, disclosureLevel) ||
                 other.disclosureLevel == disclosureLevel) &&
-            const DeepCollectionEquality().equals(
-              other.triggerKeywords,
-              triggerKeywords,
-            ) &&
             (identical(other.createdAt, createdAt) ||
-                other.createdAt == createdAt) &&
-            (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.createdAt == createdAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -61,16 +56,15 @@ mixin _$MemoryNodeDto {
     runtimeType,
     id,
     instanceId,
-    content,
+    contentType,
+    const DeepCollectionEquality().hash(metadata),
     disclosureLevel,
-    const DeepCollectionEquality().hash(triggerKeywords),
     createdAt,
-    updatedAt,
   );
 
   @override
   String toString() {
-    return 'MemoryNodeDto(id: $id, instanceId: $instanceId, content: $content, disclosureLevel: $disclosureLevel, triggerKeywords: $triggerKeywords, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'MemoryNodeDto(id: $id, instanceId: $instanceId, contentType: $contentType, metadata: $metadata, disclosureLevel: $disclosureLevel, createdAt: $createdAt)';
   }
 }
 
@@ -84,11 +78,10 @@ abstract mixin class $MemoryNodeDtoCopyWith<$Res> {
   $Res call({
     String id,
     String instanceId,
-    String content,
-    String? disclosureLevel,
-    List<String> triggerKeywords,
+    String contentType,
+    Map<String, dynamic>? metadata,
+    int disclosureLevel,
     String createdAt,
-    String updatedAt,
   });
 }
 
@@ -107,11 +100,10 @@ class _$MemoryNodeDtoCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? instanceId = null,
-    Object? content = null,
-    Object? disclosureLevel = freezed,
-    Object? triggerKeywords = null,
+    Object? contentType = null,
+    Object? metadata = freezed,
+    Object? disclosureLevel = null,
     Object? createdAt = null,
-    Object? updatedAt = null,
   }) {
     return _then(
       _self.copyWith(
@@ -123,25 +115,21 @@ class _$MemoryNodeDtoCopyWithImpl<$Res>
             ? _self.instanceId
             : instanceId // ignore: cast_nullable_to_non_nullable
                   as String,
-        content: null == content
-            ? _self.content
-            : content // ignore: cast_nullable_to_non_nullable
+        contentType: null == contentType
+            ? _self.contentType
+            : contentType // ignore: cast_nullable_to_non_nullable
                   as String,
-        disclosureLevel: freezed == disclosureLevel
+        metadata: freezed == metadata
+            ? _self.metadata
+            : metadata // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        disclosureLevel: null == disclosureLevel
             ? _self.disclosureLevel
             : disclosureLevel // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        triggerKeywords: null == triggerKeywords
-            ? _self.triggerKeywords
-            : triggerKeywords // ignore: cast_nullable_to_non_nullable
-                  as List<String>,
+                  as int,
         createdAt: null == createdAt
             ? _self.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        updatedAt: null == updatedAt
-            ? _self.updatedAt
-            : updatedAt // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );
@@ -244,11 +232,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
     TResult Function(
       String id,
       String instanceId,
-      String content,
-      String? disclosureLevel,
-      List<String> triggerKeywords,
+      String contentType,
+      Map<String, dynamic>? metadata,
+      int disclosureLevel,
       String createdAt,
-      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -259,11 +246,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
         return $default(
           _that.id,
           _that.instanceId,
-          _that.content,
+          _that.contentType,
+          _that.metadata,
           _that.disclosureLevel,
-          _that.triggerKeywords,
           _that.createdAt,
-          _that.updatedAt,
         );
       case _:
         return orElse();
@@ -288,11 +274,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
     TResult Function(
       String id,
       String instanceId,
-      String content,
-      String? disclosureLevel,
-      List<String> triggerKeywords,
+      String contentType,
+      Map<String, dynamic>? metadata,
+      int disclosureLevel,
       String createdAt,
-      String updatedAt,
     )
     $default,
   ) {
@@ -302,11 +287,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
         return $default(
           _that.id,
           _that.instanceId,
-          _that.content,
+          _that.contentType,
+          _that.metadata,
           _that.disclosureLevel,
-          _that.triggerKeywords,
           _that.createdAt,
-          _that.updatedAt,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -330,11 +314,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
     TResult? Function(
       String id,
       String instanceId,
-      String content,
-      String? disclosureLevel,
-      List<String> triggerKeywords,
+      String contentType,
+      Map<String, dynamic>? metadata,
+      int disclosureLevel,
       String createdAt,
-      String updatedAt,
     )?
     $default,
   ) {
@@ -344,11 +327,10 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
         return $default(
           _that.id,
           _that.instanceId,
-          _that.content,
+          _that.contentType,
+          _that.metadata,
           _that.disclosureLevel,
-          _that.triggerKeywords,
           _that.createdAt,
-          _that.updatedAt,
         );
       case _:
         return null;
@@ -362,12 +344,11 @@ class _MemoryNodeDto implements MemoryNodeDto {
   const _MemoryNodeDto({
     required this.id,
     required this.instanceId,
-    required this.content,
-    this.disclosureLevel,
-    final List<String> triggerKeywords = const [],
+    required this.contentType,
+    final Map<String, dynamic>? metadata,
+    this.disclosureLevel = 0,
     required this.createdAt,
-    required this.updatedAt,
-  }) : _triggerKeywords = triggerKeywords;
+  }) : _metadata = metadata;
   factory _MemoryNodeDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryNodeDtoFromJson(json);
 
@@ -376,22 +357,22 @@ class _MemoryNodeDto implements MemoryNodeDto {
   @override
   final String instanceId;
   @override
-  final String content;
+  final String contentType;
+  final Map<String, dynamic>? _metadata;
   @override
-  final String? disclosureLevel;
-  final List<String> _triggerKeywords;
-  @override
-  @JsonKey()
-  List<String> get triggerKeywords {
-    if (_triggerKeywords is EqualUnmodifiableListView) return _triggerKeywords;
+  Map<String, dynamic>? get metadata {
+    final value = _metadata;
+    if (value == null) return null;
+    if (_metadata is EqualUnmodifiableMapView) return _metadata;
     // ignore: implicit_dynamic_type
-    return EqualUnmodifiableListView(_triggerKeywords);
+    return EqualUnmodifiableMapView(value);
   }
 
   @override
-  final String createdAt;
+  @JsonKey()
+  final int disclosureLevel;
   @override
-  final String updatedAt;
+  final String createdAt;
 
   /// Create a copy of MemoryNodeDto
   /// with the given fields replaced by the non-null parameter values.
@@ -414,17 +395,13 @@ class _MemoryNodeDto implements MemoryNodeDto {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.instanceId, instanceId) ||
                 other.instanceId == instanceId) &&
-            (identical(other.content, content) || other.content == content) &&
+            (identical(other.contentType, contentType) ||
+                other.contentType == contentType) &&
+            const DeepCollectionEquality().equals(other._metadata, _metadata) &&
             (identical(other.disclosureLevel, disclosureLevel) ||
                 other.disclosureLevel == disclosureLevel) &&
-            const DeepCollectionEquality().equals(
-              other._triggerKeywords,
-              _triggerKeywords,
-            ) &&
             (identical(other.createdAt, createdAt) ||
-                other.createdAt == createdAt) &&
-            (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.createdAt == createdAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -433,16 +410,15 @@ class _MemoryNodeDto implements MemoryNodeDto {
     runtimeType,
     id,
     instanceId,
-    content,
+    contentType,
+    const DeepCollectionEquality().hash(_metadata),
     disclosureLevel,
-    const DeepCollectionEquality().hash(_triggerKeywords),
     createdAt,
-    updatedAt,
   );
 
   @override
   String toString() {
-    return 'MemoryNodeDto(id: $id, instanceId: $instanceId, content: $content, disclosureLevel: $disclosureLevel, triggerKeywords: $triggerKeywords, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'MemoryNodeDto(id: $id, instanceId: $instanceId, contentType: $contentType, metadata: $metadata, disclosureLevel: $disclosureLevel, createdAt: $createdAt)';
   }
 }
 
@@ -458,11 +434,10 @@ abstract mixin class _$MemoryNodeDtoCopyWith<$Res>
   $Res call({
     String id,
     String instanceId,
-    String content,
-    String? disclosureLevel,
-    List<String> triggerKeywords,
+    String contentType,
+    Map<String, dynamic>? metadata,
+    int disclosureLevel,
     String createdAt,
-    String updatedAt,
   });
 }
 
@@ -481,11 +456,10 @@ class __$MemoryNodeDtoCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? instanceId = null,
-    Object? content = null,
-    Object? disclosureLevel = freezed,
-    Object? triggerKeywords = null,
+    Object? contentType = null,
+    Object? metadata = freezed,
+    Object? disclosureLevel = null,
     Object? createdAt = null,
-    Object? updatedAt = null,
   }) {
     return _then(
       _MemoryNodeDto(
@@ -497,25 +471,21 @@ class __$MemoryNodeDtoCopyWithImpl<$Res>
             ? _self.instanceId
             : instanceId // ignore: cast_nullable_to_non_nullable
                   as String,
-        content: null == content
-            ? _self.content
-            : content // ignore: cast_nullable_to_non_nullable
+        contentType: null == contentType
+            ? _self.contentType
+            : contentType // ignore: cast_nullable_to_non_nullable
                   as String,
-        disclosureLevel: freezed == disclosureLevel
+        metadata: freezed == metadata
+            ? _self._metadata
+            : metadata // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        disclosureLevel: null == disclosureLevel
             ? _self.disclosureLevel
             : disclosureLevel // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        triggerKeywords: null == triggerKeywords
-            ? _self._triggerKeywords
-            : triggerKeywords // ignore: cast_nullable_to_non_nullable
-                  as List<String>,
+                  as int,
         createdAt: null == createdAt
             ? _self.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        updatedAt: null == updatedAt
-            ? _self.updatedAt
-            : updatedAt // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );

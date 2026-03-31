@@ -213,38 +213,14 @@ class MemoryDetailScreen extends ConsumerWidget {
                           return ListTile(
                             leading: const Icon(Icons.article_outlined),
                             title: Text(
-                              node.content.length > 60
-                                  ? '${node.content.substring(0, 60)}...'
-                                  : node.content,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              node.contentType,
+                              style: theme.textTheme.titleSmall,
                             ),
-                            subtitle: Row(
-                              children: [
-                                if (node.disclosureLevel != null) ...[
-                                  Text(
-                                    node.disclosureLevel!,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                if (node.triggerKeywords.isNotEmpty)
-                                  Expanded(
-                                    child: Text(
-                                      node.triggerKeywords.take(3).join(', '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.labelSmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ),
-                              ],
+                            subtitle: Text(
+                              'Disclosure: ${node.disclosureLevel}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () => context.pushNamed(

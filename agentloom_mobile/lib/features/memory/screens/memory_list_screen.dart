@@ -99,7 +99,6 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
                     name: instance.name,
                     description: instance.description,
                     status: instance.status,
-                    nodeCount: instance.nodeCount,
                     onTap: () => context.pushNamed(
                       RouteNames.memoryDetail,
                       pathParameters: {'id': instance.id},
@@ -119,14 +118,12 @@ class _MemoryInstanceCard extends StatelessWidget {
   final String name;
   final String? description;
   final String status;
-  final int nodeCount;
   final VoidCallback onTap;
 
   const _MemoryInstanceCard({
     required this.name,
     this.description,
     required this.status,
-    required this.nodeCount,
     required this.onTap,
   });
 
@@ -169,19 +166,6 @@ class _MemoryInstanceCard extends StatelessWidget {
             Row(
               children: [
                 _StatusChip(status: status),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.account_tree_outlined,
-                  size: 14,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  '$nodeCount nodes',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
               ],
             ),
           ],
