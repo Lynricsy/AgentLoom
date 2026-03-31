@@ -20,7 +20,7 @@ import {
   ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -169,7 +169,7 @@ export class AgentMemoryController {
           total: count(),
         })
         .from(memoryNodes)
-        .where(sql`${memoryNodes.instanceId} IN ${instanceIds}`)
+        .where(inArray(memoryNodes.instanceId, instanceIds))
         .groupBy(memoryNodes.instanceId);
       nodeCountMap = Object.fromEntries(
         nodeCounts.map((r) => [r.instanceId, r.total]),
