@@ -5,6 +5,7 @@ import {
   Calendar,
   GitFork,
   Loader2,
+  Network,
   Plus,
   Search,
   Trash2,
@@ -190,6 +191,10 @@ export function MemoryInstancesPage() {
                   )}
 
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Network className="h-3 w-3" />
+                      {instance.nodeCount ?? 0} 节点
+                    </span>
                     <span className="flex items-center gap-1">
                       <GitFork className="h-3 w-3" />
                       {instance.validDomains?.length ?? 0} 域

@@ -39,6 +39,7 @@ export interface MemoryInstance {
   systemPromptOverride: string | null;
   config: Record<string, unknown> | null;
   status: MemoryInstanceStatus;
+  nodeCount?: number;
   createdAt: string;
   updatedAt: string;
 }

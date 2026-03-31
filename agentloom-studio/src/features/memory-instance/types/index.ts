@@ -7,6 +7,7 @@ export interface MemoryInstance {
   coreMemoryUris: string[]
   systemPromptOverride: string | null
   status: 'active' | 'archived' | 'deleted'
+  nodeCount?: number
   createdAt: string
   updatedAt: string
 }
