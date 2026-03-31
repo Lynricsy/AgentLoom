@@ -24,8 +24,14 @@ import type {
 import {
   useConversationActions,
   useSubAgentStreams,
+  usePreparationPhase,
+  usePreparationStartTime,
+  useSandboxReused,
+  usePreparationError,
+  usePreparationFailedPhase,
 } from '../stores/agent-conversation.store';
 import { SubAgentCompletionNotice } from './SubAgentStreamView';
+import { PreparationCard } from './PreparationCard';
 
 /** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
 function toToolCallData(tc: ToolCall): ToolCallData {
@@ -221,6 +227,16 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
   const prevMessageCount = useRef(messages.length);
   useSubAgentStreams(); // 保持订阅
 
+  const preparationPhase = usePreparationPhase();
+  const preparationStartTime = usePreparationStartTime();
+  const sandboxReused = useSandboxReused();
+  const preparationError = usePreparationError();
+  const preparationFailedPhase = usePreparationFailedPhase();
+
+  // Show the preparation card when actively preparing or just collapsed (phase went null but startTime exists)
+  const showPreparationCard =
+    preparationPhase !== null || preparationStartTime !== null;
+
   if (messages.length !== prevMessageCount.current) {
     prevMessageCount.current = messages.length;
     if (autoScroll) {
@@ -243,7 +259,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
       className="h-full overflow-y-auto"
       onScroll={handleScroll}
     >
-      {messages.length === 0 ? (
+      {messages.length === 0 && !showPreparationCard ? (
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
             <Bot className="mx-auto size-12 text-muted-foreground/30" />
@@ -273,7 +289,28 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
               <AssistantMessage key={msg.id} message={msg} />
             ),
           )}
+
+          {/* Preparation card in the agent message position */}
+          {showPreparationCard && (
+            <div className="flex gap-3 px-4 py-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info mt-0.5">
+                <Bot className="size-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <PreparationCard
+                  phase={preparationPhase}
+                  startTime={preparationStartTime}
+                  sandboxReused={sandboxReused}
+                  error={preparationError}
+                  failedPhase={preparationFailedPhase}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Generic executing indicator (only when no preparation card and no streaming message) */}
           {isExecuting &&
+            !showPreparationCard &&
             !messages.some(
               (m) => m.role === 'assistant' && m.isStreaming,
             ) && (

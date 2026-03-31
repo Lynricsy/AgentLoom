@@ -7,6 +7,7 @@ import '../models/conversation_message_dto.dart';
 import '../providers/agent_conversation_provider.dart';
 import '../widgets/conversation_context_panel.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/preparation_card.dart';
 
 class AgentConversationScreen extends ConsumerStatefulWidget {
   const AgentConversationScreen({
@@ -253,7 +254,77 @@ class _AgentConversationScreenState
       state.terminalEntries.length,
       state.fileChanges.length,
       state.status.name,
+      state.preparationPhase?.name ?? 'none',
     ].join(':');
+  }
+}
+
+/// 是否应该展示准备卡片
+///
+/// 展示条件：
+/// - 有活跃的准备阶段（正在准备中）
+/// - 准备阶段刚清除但有 preparationStartTime（刚完成，展示收缩摘要）
+/// - 有失败的准备阶段
+/// 不展示条件：
+/// - 历史加载时（没有活跃准备信息）
+bool _showPreparationCard(ConversationState state) {
+  if (state.preparationPhase != null) {
+    return true;
+  }
+  if (state.preparationFailedPhase != null) {
+    return true;
+  }
+  // 刚完成收缩：phase 已清除但 startTime 仍在，且正在执行中
+  if (state.preparationStartTime != null &&
+      state.status == ConversationStatus.executing) {
+    return true;
+  }
+  return false;
+}
+
+/// 消息列表 + 底部准备卡片
+class _MessageListView extends StatelessWidget {
+  const _MessageListView({
+    required this.state,
+    required this.scrollController,
+    required this.onResolvePermission,
+  });
+
+  final ConversationState state;
+  final ScrollController scrollController;
+  final Future<void> Function(String toolCallId, String action)
+      onResolvePermission;
+
+  @override
+  Widget build(BuildContext context) {
+    final showCard = _showPreparationCard(state);
+    final itemCount = state.messages.length + (showCard ? 1 : 0);
+
+    return ListView.builder(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        if (index < state.messages.length) {
+          return MessageBubble(
+            message: state.messages[index],
+            onResolvePermission: onResolvePermission,
+          );
+        }
+
+        // 最后一项：准备卡片
+        final isCollapsed = state.preparationPhase == null &&
+            state.preparationFailedPhase == null;
+        return PreparationCard(
+          phase: state.preparationPhase,
+          sandboxReused: state.sandboxReused,
+          failedPhase: state.preparationFailedPhase,
+          error: state.preparationError,
+          preparationStartTime: state.preparationStartTime,
+          collapsed: isCollapsed,
+        );
+      },
+    );
   }
 }
 
@@ -299,18 +370,12 @@ class _ConversationPane extends StatelessWidget {
             foregroundColor: theme.colorScheme.onSecondaryContainer,
           ),
         Expanded(
-          child: state.messages.isEmpty
+          child: state.messages.isEmpty && !_showPreparationCard(state)
               ? const _EmptyConversationState()
-              : ListView.builder(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
-                  itemCount: state.messages.length,
-                  itemBuilder: (context, index) {
-                    return MessageBubble(
-                      message: state.messages[index],
-                      onResolvePermission: onResolvePermission,
-                    );
-                  },
+              : _MessageListView(
+                  state: state,
+                  scrollController: scrollController,
+                  onResolvePermission: onResolvePermission,
                 ),
         ),
         if (onOpenContext != null && _shouldShowDock(state))

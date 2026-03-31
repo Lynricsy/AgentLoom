@@ -184,6 +184,36 @@ enum ConversationStatus {
   error,
 }
 
+/// 沙箱启动准备阶段
+enum PreparationPhase {
+  queued,
+  preparing,
+  sandboxCreating,
+  agentInitializing,
+  running,
+}
+
+/// 将服务端 snake_case 字符串映射为 PreparationPhase 枚举
+PreparationPhase? parsePreparationPhase(String? value) {
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  switch (value) {
+    case 'queued':
+      return PreparationPhase.queued;
+    case 'preparing':
+      return PreparationPhase.preparing;
+    case 'sandbox_creating':
+      return PreparationPhase.sandboxCreating;
+    case 'agent_initializing':
+      return PreparationPhase.agentInitializing;
+    case 'running':
+      return PreparationPhase.running;
+    default:
+      return null;
+  }
+}
+
 enum MessageSegmentKind {
   text,
   thinking,
@@ -437,6 +467,11 @@ class ConversationState {
     this.selectedFileContent,
     this.isLoadingWorkspace = false,
     this.error,
+    this.preparationPhase,
+    this.preparationStartTime,
+    this.sandboxReused = false,
+    this.preparationError,
+    this.preparationFailedPhase,
   });
 
   final List<ConversationMessageDto> messages;
@@ -449,6 +484,21 @@ class ConversationState {
   final WorkspaceFileContent? selectedFileContent;
   final bool isLoadingWorkspace;
   final String? error;
+
+  /// 当前沙箱启动准备阶段（null 表示未在准备中或已完成）
+  final PreparationPhase? preparationPhase;
+
+  /// 准备开始时间，用于计算总耗时
+  final DateTime? preparationStartTime;
+
+  /// 是否复用了已有沙箱
+  final bool sandboxReused;
+
+  /// 准备过程中的错误信息
+  final String? preparationError;
+
+  /// 失败时标记哪一步出了问题
+  final PreparationPhase? preparationFailedPhase;
 
   bool get isBusy =>
       status == ConversationStatus.connecting ||
@@ -491,6 +541,15 @@ class ConversationState {
     bool? isLoadingWorkspace,
     String? error,
     bool clearError = false,
+    PreparationPhase? preparationPhase,
+    bool clearPreparationPhase = false,
+    DateTime? preparationStartTime,
+    bool clearPreparationStartTime = false,
+    bool? sandboxReused,
+    String? preparationError,
+    bool clearPreparationError = false,
+    PreparationPhase? preparationFailedPhase,
+    bool clearPreparationFailedPhase = false,
   }) {
     return ConversationState(
       messages: messages ?? this.messages,
@@ -507,6 +566,19 @@ class ConversationState {
           : selectedFileContent ?? this.selectedFileContent,
       isLoadingWorkspace: isLoadingWorkspace ?? this.isLoadingWorkspace,
       error: clearError ? null : error ?? this.error,
+      preparationPhase: clearPreparationPhase
+          ? null
+          : preparationPhase ?? this.preparationPhase,
+      preparationStartTime: clearPreparationStartTime
+          ? null
+          : preparationStartTime ?? this.preparationStartTime,
+      sandboxReused: sandboxReused ?? this.sandboxReused,
+      preparationError: clearPreparationError
+          ? null
+          : preparationError ?? this.preparationError,
+      preparationFailedPhase: clearPreparationFailedPhase
+          ? null
+          : preparationFailedPhase ?? this.preparationFailedPhase,
     );
   }
 }

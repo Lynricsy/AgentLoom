@@ -19,6 +19,17 @@ export type ExecutionEventName =
 
 export type ExecutionResourceType = 'workflow' | 'conversation';
 
+/**
+ * Preparation phases for agent conversation sandbox startup.
+ * Clients that do not recognise the `phase` field can safely ignore it.
+ */
+export type PreparationPhase =
+  | 'queued'
+  | 'preparing'
+  | 'sandbox_creating'
+  | 'agent_initializing'
+  | 'running';
+
 export interface ExecutionStatusChangedPayload {
   readonly executionId: string;
   readonly status: string;
@@ -26,6 +37,15 @@ export interface ExecutionStatusChangedPayload {
   readonly completedSteps?: number;
   readonly totalSteps?: number;
   readonly errorMessage?: string;
+
+  /** Current preparation phase during agent conversation startup. */
+  readonly phase?: PreparationPhase;
+  /** When a failure occurs, identifies which phase failed. */
+  readonly failedPhase?: PreparationPhase;
+  /** Human-readable error summary (used alongside failedPhase). */
+  readonly error?: string;
+  /** True when an existing sandbox session was reused instead of created. */
+  readonly sandboxReused?: boolean;
 }
 
 export interface StructuredErrorDetail {

@@ -135,9 +135,25 @@ export interface FileChangePayload {
   content?: string
 }
 
+/** Preparation phases during agent conversation sandbox startup. */
+export type PreparationPhase =
+  | 'queued'
+  | 'preparing'
+  | 'sandbox_creating'
+  | 'agent_initializing'
+  | 'running'
+
 export interface StatusChangedPayload {
   conversationId: string
-  status: 'running' | 'executing' | 'completed' | 'cancelled' | 'failed' | 'idle' | 'error'
+  status: 'running' | 'executing' | 'completed' | 'cancelled' | 'failed' | 'idle' | 'error' | 'preparing'
+  /** Current preparation phase during agent conversation startup. */
+  phase?: PreparationPhase
+  /** When a failure occurs, identifies which phase failed. */
+  failedPhase?: PreparationPhase
+  /** Human-readable error summary (used alongside failedPhase). */
+  error?: string
+  /** True when an existing sandbox session was reused instead of created. */
+  sandboxReused?: boolean
 }
 
 /** 子代理句柄，格式 sa_xxx */

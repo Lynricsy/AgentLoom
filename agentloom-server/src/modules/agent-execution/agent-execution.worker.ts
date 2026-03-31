@@ -36,6 +36,7 @@ import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
+import type { PreparationPhase } from '../execution/types/execution-event.types';
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
@@ -115,6 +116,9 @@ type RuntimeSessionContext = {
   session: AgentSession;
   memorySessionIds: string[];
   restoredExistingSession: boolean;
+  sandboxReused: boolean;
+  /** The last preparation phase reached before this context was returned. */
+  lastPhase: PreparationPhase;
 };
 
 type SubAgentExecutionTracker = {
@@ -206,11 +210,19 @@ export class AgentExecutionWorker extends WorkerHost {
     let terminalStatus: 'completed' | 'cancelled' | 'failed' = 'completed';
     let conversationStatus: 'active' | 'paused' | 'ended' | 'failed' = 'active';
     let memorySessionIds: string[] = [];
+    let currentPhase: PreparationPhase = 'queued';
     const subAgentTracker: SubAgentExecutionTracker = {
       abortControllers: new Map(),
     };
 
     try {
+      // Phase 1: queued — worker has picked up the job
+      this.emitPreparationPhase(tenantId, conversationId, 'queued');
+
+      // Phase 2: preparing — loading conversation execution context
+      currentPhase = 'preparing';
+      this.emitPreparationPhase(tenantId, conversationId, 'preparing');
+
       const context = await this.loadConversationExecutionContext(
         conversationId,
         tenantId,
@@ -234,6 +246,8 @@ export class AgentExecutionWorker extends WorkerHost {
         return;
       }
 
+      // Phases 3-4 are emitted inside prepareRuntimeSession
+      currentPhase = 'sandbox_creating';
       const runtimeSessionContext = await this.prepareRuntimeSession(
         context,
         conversationId,
@@ -242,6 +256,7 @@ export class AgentExecutionWorker extends WorkerHost {
         subAgentTracker,
         context.conversation.agentDefinitionId,
       );
+      currentPhase = runtimeSessionContext.lastPhase;
       runtime = runtimeSessionContext.runtime;
       session = runtimeSessionContext.session;
       memorySessionIds = runtimeSessionContext.memorySessionIds ?? [];
@@ -291,10 +306,10 @@ export class AgentExecutionWorker extends WorkerHost {
         executionMetadata,
       );
 
-      this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
-        executionId: conversationId,
-        status: 'running',
-        executionType: 'conversation',
+      // Phase 5: running — agent loop is starting
+      currentPhase = 'running';
+      this.emitPreparationPhase(tenantId, conversationId, 'running', {
+        sandboxReused: runtimeSessionContext.sandboxReused,
       });
 
       while (!abort.signal.aborted) {
@@ -375,14 +390,20 @@ export class AgentExecutionWorker extends WorkerHost {
         );
       }
 
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Agent conversation execution failed';
+
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
         executionId: conversationId,
         status: terminalStatus,
         executionType: 'conversation',
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : 'Agent conversation execution failed',
+        errorMessage,
+        // Attach the phase where failure occurred so clients can show which step failed
+        ...(terminalStatus === 'failed' && currentPhase !== 'running'
+          ? { failedPhase: currentPhase, error: errorMessage }
+          : {}),
       });
 
       if (!abort.signal.aborted) {
@@ -533,12 +554,31 @@ export class AgentExecutionWorker extends WorkerHost {
       skillPayloads,
     });
 
+    // Check for existing sandbox session to detect reuse *before* calling
+    // sandboxService.createSandboxSession, so we can decide whether to emit
+    // the sandbox_creating phase.
+    const existingSession = await this.sandboxService.findByConversationId(
+      conversationId,
+      tenantId,
+    );
+    const sandboxReused = existingSession != null;
+
+    if (!sandboxReused) {
+      // Phase 3: sandbox_creating — no existing session, a new container will be spun up
+      this.emitPreparationPhase(tenantId, conversationId, 'sandbox_creating');
+    }
+
     await this.sandboxService.createSandboxSession({
       sandboxNodeId: null,
       config: context.runtimeConfig.sandboxConfig!,
       tenantId,
       agentConversationId: conversationId,
       piConfigInput,
+    });
+
+    // Phase 4: agent_initializing — sandbox ready, creating agent runtime session
+    this.emitPreparationPhase(tenantId, conversationId, 'agent_initializing', {
+      sandboxReused,
     });
 
     const sessionId = context.executionMetadata.sessionId;
@@ -562,6 +602,8 @@ export class AgentExecutionWorker extends WorkerHost {
           session,
           memorySessionIds,
           restoredExistingSession: true,
+          sandboxReused,
+          lastPhase: 'agent_initializing',
         };
       } catch (error) {
         this.logger.debug(
@@ -624,6 +666,8 @@ export class AgentExecutionWorker extends WorkerHost {
       session,
       memorySessionIds,
       restoredExistingSession: false,
+      sandboxReused,
+      lastPhase: 'agent_initializing',
     };
   }
 
@@ -2320,6 +2364,34 @@ export class AgentExecutionWorker extends WorkerHost {
       memoryInstanceId: session.memoryInstanceId,
       tenantId,
     };
+  }
+
+  /**
+   * Emit a preparation phase event for agent conversation startup.
+   * Uses the existing `conversation.status.changed` channel with optional
+   * `phase` / `sandboxReused` fields so old clients can safely ignore them.
+   */
+  private emitPreparationPhase(
+    tenantId: string,
+    conversationId: string,
+    phase: PreparationPhase,
+    extra?: {
+      sandboxReused?: boolean;
+      failedPhase?: PreparationPhase;
+      error?: string;
+    },
+  ): void {
+    this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
+      executionId: conversationId,
+      status: phase === 'running' ? 'running' : 'preparing',
+      executionType: 'conversation',
+      phase,
+      ...(extra?.sandboxReused != null
+        ? { sandboxReused: extra.sandboxReused }
+        : {}),
+      ...(extra?.failedPhase ? { failedPhase: extra.failedPhase } : {}),
+      ...(extra?.error ? { error: extra.error } : {}),
+    });
   }
 
   private writeExecutionMetadata(

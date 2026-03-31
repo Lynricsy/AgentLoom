@@ -48,7 +48,14 @@ typedef _FileChangePayload =
       String? content,
     });
 typedef _DonePayload = ({String conversationId, String? messageId});
-typedef _StatusPayload = ({String conversationId, String status});
+typedef _StatusPayload = ({
+  String conversationId,
+  String status,
+  String? phase,
+  String? failedPhase,
+  String? error,
+  bool? sandboxReused,
+});
 
 String _resolveConversationSocketUrl(String apiBaseUrl) {
   final resolvedApiUrl = Uri.parse(apiBaseUrl);
@@ -74,6 +81,13 @@ Map<String, dynamic> _asMap(Object? value) {
 
 String? _readString(Object? value) {
   if (value is String && value.trim().isNotEmpty) {
+    return value;
+  }
+  return null;
+}
+
+bool? _readBool(Object? value) {
+  if (value is bool) {
     return value;
   }
   return null;
@@ -564,6 +578,18 @@ _StatusPayload? _normalizeStatusPayload(Object? raw) {
         _readString(payload.data['conversationId']) ??
         'unknown-conversation',
     status: status,
+    phase:
+        _readString(payload.root['phase']) ??
+        _readString(payload.data['phase']),
+    failedPhase:
+        _readString(payload.root['failedPhase']) ??
+        _readString(payload.data['failedPhase']),
+    error:
+        _readString(payload.root['error']) ??
+        _readString(payload.data['error']),
+    sandboxReused:
+        _readBool(payload.root['sandboxReused']) ??
+        _readBool(payload.data['sandboxReused']),
   );
 }
 
@@ -888,6 +914,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           ),
         ),
         status: ConversationStatus.executing,
+        // 收到第一个 message_chunk 时清除准备阶段，触发卡片收缩
+        clearPreparationPhase: current.preparationPhase != null,
         clearError: true,
       ),
     );
@@ -1018,6 +1046,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         status: current.isConnected
             ? ConversationStatus.connected
             : ConversationStatus.idle,
+        clearPreparationPhase: true,
+        clearPreparationStartTime: true,
+        clearPreparationError: true,
+        clearPreparationFailedPhase: true,
         clearError: true,
       ),
     );
@@ -1032,12 +1064,59 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       return;
     }
 
-    _updateState(
-      (current) => current.copyWith(
+    final phase = parsePreparationPhase(payload.phase);
+    final failedPhase = parsePreparationPhase(payload.failedPhase);
+
+    _updateState((current) {
+      // 记录沙箱复用标志
+      final nextSandboxReused = payload.sandboxReused ?? current.sandboxReused;
+
+      // 准备阶段事件（status == 'preparing'）
+      if (payload.status == 'preparing' && phase != null) {
+        return current.copyWith(
+          status: ConversationStatus.executing,
+          preparationPhase: phase,
+          preparationStartTime:
+              current.preparationStartTime ?? DateTime.now(),
+          sandboxReused: nextSandboxReused,
+          clearError: true,
+        );
+      }
+
+      // 失败事件，附带 failedPhase
+      if (payload.status == 'failed' && failedPhase != null) {
+        return current.copyWith(
+          status: ConversationStatus.error,
+          preparationFailedPhase: failedPhase,
+          preparationError: payload.error,
+          sandboxReused: nextSandboxReused,
+        );
+      }
+
+      // running 阶段 — 准备完成，Agent 循环即将开始
+      if (phase == PreparationPhase.running) {
+        return current.copyWith(
+          status: _normalizeConversationStatus(payload.status),
+          preparationPhase: PreparationPhase.running,
+          sandboxReused: nextSandboxReused,
+          clearError: true,
+        );
+      }
+
+      // 其他常规状态变更（completed / cancelled / 无 phase 的 running 等）
+      // 终态（completed/cancelled）需要清除准备状态
+      final isTerminal = payload.status == 'completed' ||
+          payload.status == 'cancelled';
+      return current.copyWith(
         status: _normalizeConversationStatus(payload.status),
+        sandboxReused: nextSandboxReused,
+        clearPreparationPhase: isTerminal,
+        clearPreparationStartTime: isTerminal,
+        clearPreparationError: isTerminal,
+        clearPreparationFailedPhase: isTerminal,
         clearError: true,
-      ),
-    );
+      );
+    });
   }
 
   Future<void> sendMessage(String content) async {
@@ -1049,6 +1128,12 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     _updateState(
       (current) => current.copyWith(
         status: ConversationStatus.executing,
+        // 重置上一轮的准备状态，为新一轮准备做好准备
+        clearPreparationPhase: true,
+        clearPreparationStartTime: true,
+        clearPreparationError: true,
+        clearPreparationFailedPhase: true,
+        sandboxReused: false,
         clearError: true,
       ),
     );

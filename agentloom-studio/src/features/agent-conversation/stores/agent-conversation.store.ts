@@ -30,6 +30,7 @@ import type {
   ToolCallPermissionRequest,
   ToolCallStatus,
   ToolCallTransition,
+  PreparationPhase,
 } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(
@@ -75,6 +76,17 @@ interface AgentConversationState {
   subAgentStreams: Record<string, SubAgentStream>;
   agentViewStack: string[];
 
+  /** Current preparation phase during sandbox startup (null when not preparing). */
+  preparationPhase: PreparationPhase | null;
+  /** Timestamp when preparation started (for elapsed time display). */
+  preparationStartTime: number | null;
+  /** Whether an existing sandbox session was reused. */
+  sandboxReused: boolean;
+  /** Error message if preparation failed. */
+  preparationError: string | null;
+  /** Which phase failed during preparation. */
+  preparationFailedPhase: PreparationPhase | null;
+
   connectionError: string | null;
   lastEventId: number;
 }
@@ -117,6 +129,11 @@ function createInitialState(): AgentConversationState {
     selectedFilePath: null,
     subAgentStreams: {},
     agentViewStack: [],
+    preparationPhase: null,
+    preparationStartTime: null,
+    sandboxReused: false,
+    preparationError: null,
+    preparationFailedPhase: null,
     connectionError: null,
     lastEventId: 0,
   };
@@ -684,6 +701,11 @@ function normalizeStatusChangedPayload(
     return null;
   }
 
+  const phase = readString(root.phase) ?? readString(data.phase);
+  const failedPhase = readString(root.failedPhase) ?? readString(data.failedPhase);
+  const error = readString(root.error) ?? readString(data.error);
+  const sandboxReused = root.sandboxReused ?? data.sandboxReused;
+
   return {
     conversationId:
       readString(root.conversationId) ??
@@ -691,6 +713,10 @@ function normalizeStatusChangedPayload(
       readString(data.conversationId) ??
       "unknown-conversation",
     status: status as StatusChangedPayload["status"],
+    ...(phase ? { phase: phase as StatusChangedPayload["phase"] } : {}),
+    ...(failedPhase ? { failedPhase: failedPhase as StatusChangedPayload["failedPhase"] } : {}),
+    ...(error ? { error } : {}),
+    ...(typeof sandboxReused === "boolean" ? { sandboxReused } : {}),
   };
 }
 
@@ -925,6 +951,11 @@ export const useAgentConversationStore = create<
                     return;
                   }
 
+                  // First message chunk from primary agent clears preparation state
+                  if (s.preparationPhase !== null) {
+                    s.preparationPhase = null;
+                  }
+
                   const message = ensureAssistantMessage(
                     s.messages,
                     normalized.messageId,
@@ -1082,6 +1113,12 @@ export const useAgentConversationStore = create<
                 );
                 s.status = "connected";
                 s.sandboxStatus = "idle";
+                // Clear all preparation state on conversation done
+                s.preparationPhase = null;
+                s.preparationStartTime = null;
+                s.sandboxReused = false;
+                s.preparationError = null;
+                s.preparationFailedPhase = null;
               });
 
               void get().actions.loadHistory(normalized.conversationId);
@@ -1156,12 +1193,35 @@ export const useAgentConversationStore = create<
                   return;
                 }
 
+                // Handle preparation phases
+                if (normalized.status === "preparing" && normalized.phase) {
+                  s.status = "executing";
+                  s.preparationPhase = normalized.phase;
+                  if (s.preparationStartTime === null) {
+                    s.preparationStartTime = Date.now();
+                  }
+                  if (normalized.sandboxReused != null) {
+                    s.sandboxReused = normalized.sandboxReused;
+                  }
+                  return;
+                }
+
                 if (
                   normalized.status === "running" ||
                   normalized.status === "executing"
                 ) {
                   s.status = "executing";
                   s.sandboxStatus = "running";
+                  // Mark preparation as reaching 'running' phase
+                  if (s.preparationPhase && s.preparationPhase !== "running") {
+                    s.preparationPhase = "running";
+                  }
+                  if (normalized.phase === "running") {
+                    s.preparationPhase = "running";
+                  }
+                  if (normalized.sandboxReused != null) {
+                    s.sandboxReused = normalized.sandboxReused;
+                  }
                   return;
                 }
 
@@ -1171,11 +1231,22 @@ export const useAgentConversationStore = create<
                 ) {
                   s.status = "error";
                   s.sandboxStatus = "error";
+                  // Track which phase failed
+                  if (normalized.failedPhase) {
+                    s.preparationFailedPhase = normalized.failedPhase;
+                    s.preparationError = normalized.error ?? null;
+                  }
                   return;
                 }
 
                 s.status = "connected";
                 s.sandboxStatus = "idle";
+                // Clear preparation state for terminal statuses (completed/cancelled)
+                s.preparationPhase = null;
+                s.preparationStartTime = null;
+                s.sandboxReused = false;
+                s.preparationError = null;
+                s.preparationFailedPhase = null;
               });
             });
 
@@ -1256,6 +1327,12 @@ export const useAgentConversationStore = create<
                 createdAt: Date.now(),
               });
               s.status = "executing";
+              // Reset preparation state for new message cycle
+              s.preparationPhase = null;
+              s.preparationStartTime = null;
+              s.sandboxReused = false;
+              s.preparationError = null;
+              s.preparationFailedPhase = null;
             });
 
             socketInstance.emit("conversation:message", {
@@ -1457,3 +1534,18 @@ export const useSubAgentStreams = () =>
 
 export const useAgentViewStack = () =>
   useAgentConversationStore((s) => s.agentViewStack);
+
+export const usePreparationPhase = () =>
+  useAgentConversationStore((s) => s.preparationPhase);
+
+export const usePreparationStartTime = () =>
+  useAgentConversationStore((s) => s.preparationStartTime);
+
+export const useSandboxReused = () =>
+  useAgentConversationStore((s) => s.sandboxReused);
+
+export const usePreparationError = () =>
+  useAgentConversationStore((s) => s.preparationError);
+
+export const usePreparationFailedPhase = () =>
+  useAgentConversationStore((s) => s.preparationFailedPhase);
