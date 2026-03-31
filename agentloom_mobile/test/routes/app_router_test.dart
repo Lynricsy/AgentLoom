@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const testEnvConfig = EnvConfig(
-    apiBaseUrl: 'http://localhost:3000/api/v1',
+    studioBaseUrl: 'http://localhost:3000',
     appName: 'AgentLoom Test',
     environment: AppEnvironment.dev,
   );
@@ -20,7 +20,7 @@ void main() {
   ProviderContainer createTestContainer() {
     return ProviderContainer(
       overrides: [
-        envProvider.overrideWithValue(testEnvConfig),
+        baseEnvProvider.overrideWithValue(testEnvConfig),
         tokenStorageProvider.overrideWithValue(_TestTokenStorage()),
       ],
     );
@@ -36,7 +36,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
-        envProvider.overrideWithValue(testEnvConfig),
+        baseEnvProvider.overrideWithValue(testEnvConfig),
         tokenStorageProvider.overrideWithValue(_TestTokenStorage()),
       ],
       child: const AgentLoomApp(),
@@ -64,7 +64,7 @@ void main() {
       await tester.pumpWidget(createTestApp());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Workflows'));
+      await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
@@ -74,7 +74,7 @@ void main() {
       await tester.pumpWidget(createTestApp());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Settings'));
+      await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
@@ -87,12 +87,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Go to workflows
-      await tester.tap(find.text('Workflows'));
+      await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
 
       // Go back to dashboard
-      await tester.tap(find.text('Dashboard'));
+      await tester.tap(find.text('总览'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
     });
@@ -106,7 +106,7 @@ void main() {
       expect(navBar.selectedIndex, 0);
 
       // 点击 Workflows tab
-      await tester.tap(find.text('Workflows'));
+      await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
 
       // 验证选中索引同步为 1
@@ -114,12 +114,12 @@ void main() {
       expect(navBar.selectedIndex, 1);
 
       // 点击 Settings tab
-      await tester.tap(find.text('Settings'));
+      await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();
 
-      // 验证选中索引同步为 3 (Dashboard=0, Workflows=1, Agents=2, Settings=3)
+      // 验证选中索引同步为 4 (总览=0, 工作流=1, Agent=2, 资源=3, 设置=4)
       navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(navBar.selectedIndex, 3);
+      expect(navBar.selectedIndex, 4);
     });
 
     testWidgets('bottom nav highlight syncs after programmatic navigation', (
@@ -153,16 +153,16 @@ void main() {
       final router = container.read(goRouterProvider);
 
       // 先导航到 Workflows
-      await tester.tap(find.text('Workflows'));
+      await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
 
-      // 再次点击 Workflows（重复点击）— 使用 NavBar 内的 Workflows 避免与 AppBar 冲突
+      // 再次点击工作流（重复点击）— 使用 NavBar 内的标签避免与 AppBar 冲突
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Workflows'),
+          matching: find.text('工作流'),
         ),
       );
       await tester.pumpAndSettle();

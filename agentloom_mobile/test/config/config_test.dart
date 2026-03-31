@@ -32,6 +32,7 @@ void main() {
       final config = EnvConfig.fromDotEnv(environment: AppEnvironment.dev);
 
       expect(config.apiBaseUrl, 'https://api-dev.agentloom.com/api/v1');
+      expect(config.studioBaseUrl, 'https://api-dev.agentloom.com');
       expect(config.appName, 'AgentLoom Dev');
       expect(config.environment, AppEnvironment.dev);
     });
@@ -42,8 +43,27 @@ void main() {
       final config = EnvConfig.fromDotEnv(environment: AppEnvironment.staging);
 
       expect(config.apiBaseUrl, 'http://localhost:3000/api/v1');
+      expect(config.studioBaseUrl, 'http://localhost:3000');
       expect(config.appName, 'AgentLoom');
       expect(config.environment, AppEnvironment.staging);
+    });
+
+    test('normalizeStudioBaseUrl accepts bare host and strips api suffix', () {
+      expect(
+        EnvConfig.normalizeStudioBaseUrl('agentloom.ling.plus/api/v1'),
+        'https://agentloom.ling.plus',
+      );
+      expect(
+        EnvConfig.normalizeStudioBaseUrl('localhost:8080/api'),
+        'http://localhost:8080',
+      );
+    });
+
+    test('deriveApiBaseUrl keeps sub path deployments', () {
+      expect(
+        EnvConfig.deriveApiBaseUrl('https://example.com/agentloom'),
+        'https://example.com/agentloom/api/v1',
+      );
     });
   });
 
@@ -53,7 +73,8 @@ void main() {
 
       expect(theme.useMaterial3, isTrue);
       expect(theme.brightness, Brightness.light);
-      expect(theme.appBarTheme.centerTitle, isTrue);
+      expect(theme.appBarTheme.centerTitle, isFalse);
+      expect(theme.colorScheme.primary, const Color(0xFF0B6BFF));
     });
 
     test('dark theme uses Material 3 dark brightness', () {
@@ -75,7 +96,9 @@ void main() {
     test('exposes route names', () {
       expect(RouteNames.dashboard, 'dashboard');
       expect(RouteNames.workflows, 'workflows');
+      expect(RouteNames.resources, 'resources');
       expect(RouteNames.settings, 'settings');
+      expect(RouteNames.serverConfig, 'serverConfig');
     });
   });
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:agentloom_mobile/features/skills/api/skill_api.dart';
 import 'package:agentloom_mobile/features/skills/models/skill_dto.dart';
-import 'package:agentloom_mobile/features/skills/providers/skill_provider.dart';
 import 'package:agentloom_mobile/features/skills/screens/skill_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

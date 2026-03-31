@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/shell_scaffold.dart';
+import '../features/agents/screens/agent_conversation_screen.dart';
+import '../features/agents/screens/agent_detail_screen.dart';
+import '../features/agents/screens/agent_list_screen.dart';
 import '../features/auth/models/auth_state.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/screens/auth_callback_screen.dart';
@@ -11,16 +14,6 @@ import '../features/auth/screens/mfa_enroll_screen.dart';
 import '../features/auth/screens/mfa_verify_screen.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
-import '../features/settings/screens/change_password_screen.dart';
-import '../features/settings/screens/mfa_manage_screen.dart';
-import '../features/settings/screens/session_list_screen.dart';
-import '../features/settings/screens/settings_screen.dart';
-import '../features/agents/screens/agent_list_screen.dart';
-import '../features/agents/screens/agent_detail_screen.dart';
-import '../features/agents/screens/agent_conversation_screen.dart';
-import '../features/skills/screens/skill_list_screen.dart';
-import '../features/skills/screens/skill_detail_screen.dart';
-import '../features/skills/screens/skill_edit_screen.dart';
 import '../features/memory/models/memory_audit_entry.dart';
 import '../features/memory/providers/memory_providers.dart';
 import '../features/memory/screens/memory_audit_detail_screen.dart';
@@ -28,8 +21,21 @@ import '../features/memory/screens/memory_audit_screen.dart';
 import '../features/memory/screens/memory_detail_screen.dart';
 import '../features/memory/screens/memory_list_screen.dart';
 import '../features/memory/screens/memory_node_screen.dart';
-import '../features/workflows/screens/workflow_detail_screen.dart';
+import '../features/resources/screens/knowledge_bases_screen.dart';
+import '../features/resources/screens/resource_placeholder_screen.dart';
+import '../features/resources/screens/resources_hub_screen.dart';
+import '../features/resources/screens/sandboxes_screen.dart';
+import '../features/resources/screens/workspaces_screen.dart';
+import '../features/settings/screens/change_password_screen.dart';
+import '../features/settings/screens/mfa_manage_screen.dart';
+import '../features/settings/screens/server_config_screen.dart';
+import '../features/settings/screens/session_list_screen.dart';
+import '../features/settings/screens/settings_screen.dart';
+import '../features/skills/screens/skill_detail_screen.dart';
+import '../features/skills/screens/skill_edit_screen.dart';
+import '../features/skills/screens/skill_list_screen.dart';
 import '../features/workflows/screens/parameter_input_screen.dart';
+import '../features/workflows/screens/workflow_detail_screen.dart';
 import '../features/workflows/screens/workflows_screen.dart';
 import 'route_names.dart';
 
@@ -62,18 +68,24 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final authState = await ref.read(authProvider.future);
       final isAuthenticated = authState is AuthStateAuthenticated;
-      final isLoginRoute = state.uri.path == '/login';
-      final isAuthCallbackRoute = state.uri.path == '/auth/callback';
-      final isMfaRoute =
-          state.uri.path == '/mfa-verify' || state.uri.path == '/mfa-enroll';
+      final path = state.uri.path;
+      final isLoginRoute = path == '/login';
+      final isAuthCallbackRoute = path == '/auth/callback';
+      final isServerConfigRoute = path == '/server-config';
+      final isMfaRoute = path == '/mfa-verify' || path == '/mfa-enroll';
 
       if (!isAuthenticated &&
           !isLoginRoute &&
           !isAuthCallbackRoute &&
+          !isServerConfigRoute &&
           !isMfaRoute) {
         return '/login';
       }
-      if (isAuthenticated && isLoginRoute) return '/dashboard';
+
+      if (isAuthenticated && isLoginRoute) {
+        return '/dashboard';
+      }
+
       return null;
     },
     routes: [
@@ -81,6 +93,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/login',
         name: RouteNames.login,
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/server-config',
+        name: RouteNames.serverConfig,
+        builder: (context, state) => const ServerConfigScreen(),
       ),
       GoRoute(
         path: '/executions/:executionId',
@@ -129,61 +146,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/mfa-enroll',
         name: RouteNames.mfaEnroll,
         builder: (context, state) => const MfaEnrollScreen(),
-      ),
-      GoRoute(
-        path: '/memory',
-        name: RouteNames.memoryList,
-        builder: (context, state) => const MemoryListScreen(),
-        routes: [
-          GoRoute(
-            path: ':id',
-            name: RouteNames.memoryDetail,
-            builder: (context, state) {
-              final id = state.pathParameters['id']!;
-              return MemoryDetailScreen(instanceId: id);
-            },
-            routes: [
-              GoRoute(
-                path: 'nodes/:nodeId',
-                name: RouteNames.memoryNode,
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  final nodeId = state.pathParameters['nodeId']!;
-                  return MemoryNodeScreen(instanceId: id, nodeId: nodeId);
-                },
-              ),
-              GoRoute(
-                path: 'audit',
-                name: RouteNames.memoryAudit,
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return ProviderScope(
-                    overrides: [
-                      memoryAuditInstanceIdProvider.overrideWithValue(id),
-                    ],
-                    child: MemoryAuditScreen(instanceId: id),
-                  );
-                },
-                routes: [
-                  GoRoute(
-                    path: ':entryId',
-                    name: RouteNames.memoryAuditDetail,
-                    builder: (context, state) {
-                      final id = state.pathParameters['id']!;
-                      final entryId = state.pathParameters['entryId']!;
-                      final entry = state.extra as MemoryAuditEntryDto?;
-                      return MemoryAuditDetailScreen(
-                        instanceId: id,
-                        entryId: entryId,
-                        entry: entry,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -256,27 +218,141 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/skills',
-                name: RouteNames.skills,
-                builder: (context, state) => const SkillListScreen(),
+                path: '/resources',
+                name: RouteNames.resources,
+                builder: (context, state) => const ResourcesHubScreen(),
                 routes: [
                   GoRoute(
-                    path: ':skillId',
-                    name: RouteNames.skillDetail,
-                    builder: (context, state) {
-                      final skillId = state.pathParameters['skillId']!;
-                      return SkillDetailScreen(skillId: skillId);
-                    },
+                    path: 'skills',
+                    name: RouteNames.skills,
+                    builder: (context, state) => const SkillListScreen(),
                     routes: [
                       GoRoute(
-                        path: 'edit',
-                        name: RouteNames.skillEdit,
+                        path: ':skillId',
+                        name: RouteNames.skillDetail,
                         builder: (context, state) {
                           final skillId = state.pathParameters['skillId']!;
-                          return SkillEditScreen(skillId: skillId);
+                          return SkillDetailScreen(skillId: skillId);
                         },
+                        routes: [
+                          GoRoute(
+                            path: 'edit',
+                            name: RouteNames.skillEdit,
+                            builder: (context, state) {
+                              final skillId = state.pathParameters['skillId']!;
+                              return SkillEditScreen(skillId: skillId);
+                            },
+                          ),
+                        ],
                       ),
                     ],
+                  ),
+                  GoRoute(
+                    path: 'memory',
+                    name: RouteNames.memoryList,
+                    builder: (context, state) => const MemoryListScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':id',
+                        name: RouteNames.memoryDetail,
+                        builder: (context, state) {
+                          final id = state.pathParameters['id']!;
+                          return MemoryDetailScreen(instanceId: id);
+                        },
+                        routes: [
+                          GoRoute(
+                            path: 'nodes/:nodeId',
+                            name: RouteNames.memoryNode,
+                            builder: (context, state) {
+                              final id = state.pathParameters['id']!;
+                              final nodeId = state.pathParameters['nodeId']!;
+                              return MemoryNodeScreen(
+                                instanceId: id,
+                                nodeId: nodeId,
+                              );
+                            },
+                          ),
+                          GoRoute(
+                            path: 'audit',
+                            name: RouteNames.memoryAudit,
+                            builder: (context, state) {
+                              final id = state.pathParameters['id']!;
+                              return ProviderScope(
+                                overrides: [
+                                  memoryAuditInstanceIdProvider.overrideWithValue(
+                                    id,
+                                  ),
+                                ],
+                                child: MemoryAuditScreen(instanceId: id),
+                              );
+                            },
+                            routes: [
+                              GoRoute(
+                                path: ':entryId',
+                                name: RouteNames.memoryAuditDetail,
+                                builder: (context, state) {
+                                  final id = state.pathParameters['id']!;
+                                  final entryId =
+                                      state.pathParameters['entryId']!;
+                                  final entry =
+                                      state.extra as MemoryAuditEntryDto?;
+                                  return MemoryAuditDetailScreen(
+                                    instanceId: id,
+                                    entryId: entryId,
+                                    entry: entry,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'workspaces',
+                    name: RouteNames.workspaces,
+                    builder: (context, state) => const WorkspacesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'sandboxes',
+                    name: RouteNames.sandboxes,
+                    builder: (context, state) => const SandboxesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'knowledge-bases',
+                    name: RouteNames.knowledgeBases,
+                    builder: (context, state) => const KnowledgeBasesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'mcp-servers',
+                    name: RouteNames.mcpServers,
+                    builder: (context, state) {
+                      return const ResourcePlaceholderScreen(
+                        title: 'MCP Servers',
+                        description: 'MCP 连接、测试、工具发现与导入流会在后续批次接入。',
+                        nextSteps: [
+                          '接入服务器配置列表与详情',
+                          '补齐连接测试与工具发现',
+                          '补齐导入/重导入工具的完整流程',
+                        ],
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'llm-models',
+                    name: RouteNames.llmModels,
+                    builder: (context, state) {
+                      return const ResourcePlaceholderScreen(
+                        title: 'LLM Models',
+                        description: '模型配置和连接测试会迁入资源域，统一支撑资源选择器和运行时使用。',
+                        nextSteps: [
+                          '接入模型列表与 provider 类型',
+                          '补齐创建、编辑与连接测试',
+                          '补齐 chat / embedding 用途标识',
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),

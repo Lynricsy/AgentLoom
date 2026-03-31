@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:agentloom_mobile/features/skills/api/skill_api.dart';
 import 'package:agentloom_mobile/features/skills/models/skill_dto.dart';
-import 'package:agentloom_mobile/features/skills/providers/skill_provider.dart';
 import 'package:agentloom_mobile/features/skills/screens/skill_list_screen.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:flutter/material.dart';
@@ -114,9 +113,9 @@ void main() {
           search: any(named: 'search'),
         ),
       ).thenAnswer(
-        (_) async => PaginatedResponse<SkillDto>(
-          data: const [],
-          meta: const PaginationMeta(
+        (_) async => const PaginatedResponse<SkillDto>(
+          data: [],
+          meta: PaginationMeta(
             total: 0,
             page: 1,
             pageSize: 20,
@@ -159,9 +158,9 @@ void main() {
           search: any(named: 'search'),
         ),
       ).thenAnswer(
-        (_) async => PaginatedResponse<SkillDto>(
-          data: const [],
-          meta: const PaginationMeta(
+        (_) async => const PaginatedResponse<SkillDto>(
+          data: [],
+          meta: PaginationMeta(
             total: 0,
             page: 1,
             pageSize: 20,

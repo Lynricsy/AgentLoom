@@ -67,7 +67,7 @@ class _AuthenticatedTokenStorage extends TokenStorage {
 
 void main() {
   const testEnvConfig = EnvConfig(
-    apiBaseUrl: 'http://localhost:3000/api/v1',
+    studioBaseUrl: 'http://localhost:3000',
     appName: 'AgentLoom Test',
     environment: AppEnvironment.dev,
   );
@@ -102,7 +102,7 @@ void main() {
 
     container = ProviderContainer(
       overrides: [
-        envProvider.overrideWithValue(testEnvConfig),
+        baseEnvProvider.overrideWithValue(testEnvConfig),
         tokenStorageProvider.overrideWithValue(_AuthenticatedTokenStorage()),
         workflowApiProvider.overrideWithValue(workflowApi),
         notificationServiceProvider.overrideWithValue(notificationService),

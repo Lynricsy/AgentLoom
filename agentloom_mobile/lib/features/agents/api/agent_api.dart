@@ -7,6 +7,37 @@ import '../models/agent_conversation_dto.dart';
 import '../models/agent_definition_dto.dart';
 import '../models/conversation_message_dto.dart';
 
+Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
+  final body = response.data as Map<String, dynamic>;
+  final data = body['data'];
+
+  if (data is Map<String, dynamic>) {
+    return data;
+  }
+
+  if (data is Map<Object?, Object?>) {
+    return data.map((key, value) => MapEntry('$key', value));
+  }
+
+  return body;
+}
+
+List<WorkspaceFileNode> _workspaceNodesFromResponse(Response<dynamic> response) {
+  final body = response.data;
+  if (body is! List) {
+    return const <WorkspaceFileNode>[];
+  }
+
+  return body
+      .whereType<Map<Object?, Object?>>()
+      .map(
+        (node) => WorkspaceFileNode.fromJson(
+          node.map((key, value) => MapEntry('$key', value)),
+        ),
+      )
+      .toList(growable: false);
+}
+
 /// Agent API 客户端
 class AgentApi {
   final Dio _dio;
@@ -38,8 +69,7 @@ class AgentApi {
   /// 获取单个 Agent 详情
   Future<AgentDefinitionDto> getAgent(String agentId) async {
     final response = await _dio.get('/api/v1/agent-definitions/$agentId');
-    final data = response.data as Map<String, dynamic>;
-    return AgentDefinitionDto.fromJson(data);
+    return AgentDefinitionDto.fromJson(_unwrapDataEnvelope(response));
   }
 
   /// 获取 Agent 对话列表
@@ -47,10 +77,15 @@ class AgentApi {
     String agentId, {
     int page = 1,
     int pageSize = 20,
+    String? status,
   }) async {
     final response = await _dio.get(
       '/api/v1/agent-definitions/$agentId/conversations',
-      queryParameters: {'page': page, 'page_size': pageSize},
+      queryParameters: {
+        'page': page,
+        'limit': pageSize,
+        if (status != null && status.isNotEmpty) 'status': status,
+      },
     );
     final data = response.data as Map<String, dynamic>;
     final paginated = PaginatedResponse.fromJson(
@@ -61,12 +96,24 @@ class AgentApi {
   }
 
   /// 创建 Agent 对话
-  Future<AgentConversationDto> createConversation(String agentId) async {
+  Future<AgentConversationDto> createConversation(
+    String agentId, {
+    String? title,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final body = <String, dynamic>{};
+    if (title != null && title.isNotEmpty) {
+      body['title'] = title;
+    }
+    if (metadata != null && metadata.isNotEmpty) {
+      body['metadata'] = metadata;
+    }
+
     final response = await _dio.post(
       '/api/v1/agent-definitions/$agentId/conversations',
+      data: body.isEmpty ? null : body,
     );
-    final data = response.data as Map<String, dynamic>;
-    return AgentConversationDto.fromJson(data);
+    return AgentConversationDto.fromJson(_unwrapDataEnvelope(response));
   }
 
   /// 获取对话消息列表
@@ -77,7 +124,7 @@ class AgentApi {
   }) async {
     final response = await _dio.get(
       '/api/v1/agent-conversations/$conversationId/messages',
-      queryParameters: {'page': page, 'page_size': pageSize},
+      queryParameters: {'page': page, 'limit': pageSize},
     );
     final data = response.data as Map<String, dynamic>;
     return PaginatedResponse.fromJson(
@@ -90,18 +137,60 @@ class AgentApi {
   Future<ConversationMessageDto> sendMessage(
     String conversationId, {
     required String content,
-    List<String>? attachments,
+    String role = 'user',
+    String contentType = 'text',
+    Map<String, dynamic>? metadata,
   }) async {
-    final body = <String, dynamic>{'content': content};
-    if (attachments != null && attachments.isNotEmpty) {
-      body['attachments'] = attachments;
+    final body = <String, dynamic>{
+      'content': content,
+      'role': role,
+      'contentType': contentType,
+    };
+    if (metadata != null && metadata.isNotEmpty) {
+      body['metadata'] = metadata;
     }
     final response = await _dio.post(
       '/api/v1/agent-conversations/$conversationId/messages',
       data: body,
     );
-    final data = response.data as Map<String, dynamic>;
-    return ConversationMessageDto.fromJson(data);
+    return ConversationMessageDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<void> cancelConversation(String conversationId) async {
+    await _dio.post('/api/v1/agent-conversations/$conversationId/cancel');
+  }
+
+  Future<void> resolveToolPermission(
+    String conversationId,
+    String toolCallId, {
+    required String action,
+  }) async {
+    await _dio.post(
+      '/api/v1/agent-conversations/$conversationId/tool-permissions/$toolCallId/resolve',
+      data: {'action': action},
+    );
+  }
+
+  Future<List<WorkspaceFileNode>> getWorkspaceTree(String conversationId) async {
+    final response = await _dio.get(
+      '/api/v1/agent-conversations/$conversationId/workspace/tree',
+    );
+    return _workspaceNodesFromResponse(response);
+  }
+
+  Future<WorkspaceFileContent> getWorkspaceFile(
+    String conversationId,
+    String filePath,
+  ) async {
+    final encodedPath = Uri.encodeComponent(filePath)
+        .replaceAll('%2F', '/')
+        .replaceAll('%5C', '/');
+    final response = await _dio.get(
+      '/api/v1/agent-conversations/$conversationId/workspace/files/$encodedPath',
+    );
+
+    final body = response.data as Map<String, dynamic>;
+    return WorkspaceFileContent.fromJson(body);
   }
 }
 

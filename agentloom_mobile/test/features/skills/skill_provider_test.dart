@@ -34,9 +34,9 @@ void main() {
     meta: const PaginationMeta(total: 1, page: 1, pageSize: 20, totalPages: 1),
   );
 
-  final emptyPaginatedResponse = PaginatedResponse<SkillDto>(
-    data: const [],
-    meta: const PaginationMeta(total: 0, page: 1, pageSize: 20, totalPages: 0),
+  const emptyPaginatedResponse = PaginatedResponse<SkillDto>(
+    data: [],
+    meta: PaginationMeta(total: 0, page: 1, pageSize: 20, totalPages: 0),
   );
 
   setUp(() {

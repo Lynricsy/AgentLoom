@@ -7,8 +7,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'app/app.dart';
 import 'config/env.dart';
-import 'features/auth/providers/token_storage_provider.dart';
 import 'shared/providers/env_provider.dart';
+import 'shared/providers/secure_storage_provider.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -29,7 +29,13 @@ void main() async {
   // 先校验环境名称，未知值回退为 dev，再加载对应 dotenv 文件
   final environment = AppEnvironment.fromString(envName);
   await dotenv.load(fileName: '.env.${environment.name}');
-  final envConfig = EnvConfig.fromDotEnv(environment: environment);
+  const secureStorage = FlutterSecureStorage();
+  final bootstrapEnvConfig = EnvConfig.fromDotEnv(environment: environment);
+  final runtimeEnvStorage = RuntimeEnvStorage(secureStorage);
+  final savedStudioBaseUrl = await runtimeEnvStorage.readStudioBaseUrl();
+  final resolvedEnvConfig = savedStudioBaseUrl == null
+      ? bootstrapEnvConfig
+      : bootstrapEnvConfig.copyWith(studioBaseUrl: savedStudioBaseUrl);
 
   try {
     await Firebase.initializeApp();
@@ -41,9 +47,8 @@ void main() async {
   runApp(
     ProviderScope(
       overrides: [
-        envProvider.overrideWithValue(envConfig),
-        // 显式提供 FlutterSecureStorage 实例，确保测试中可 mock
-        secureStorageProvider.overrideWithValue(const FlutterSecureStorage()),
+        baseEnvProvider.overrideWithValue(resolvedEnvConfig),
+        secureStorageProvider.overrideWithValue(secureStorage),
       ],
       child: const AgentLoomApp(),
     ),

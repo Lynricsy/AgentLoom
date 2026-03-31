@@ -14,28 +14,38 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$AgentDefinitionDto {
   String get id;
-  @JsonKey(name: 'organization_id')
-  String get organizationId;
   String get name;
+  String get slug;
   String? get description;
+  String? get icon;
   String get status;
-  @JsonKey(name: 'system_prompt')
-  String? get systemPrompt;
-  @JsonKey(name: 'model_id')
-  String? get modelId;
-  @JsonKey(name: 'autonomy_mode')
-  String? get autonomyMode;
-  @JsonKey(name: 'max_iterations')
-  int? get maxIterations;
-  @JsonKey(name: 'timeout_seconds')
-  int? get timeoutSeconds;
   int? get version;
-  @JsonKey(name: 'created_at')
-  String get createdAt;
-  @JsonKey(name: 'updated_at')
-  String get updatedAt;
-  @JsonKey(name: 'created_by')
+  String? get publishedVersionId;
+  String? get tenantId;
   String? get createdBy;
+  String? get updatedBy;
+  String get createdAt;
+  String get updatedAt;
+  String? get systemPrompt;
+  @JsonKey(fromJson: _mapListFromJson)
+  List<Map<String, dynamic>> get nodes;
+  @JsonKey(fromJson: _mapListFromJson)
+  List<Map<String, dynamic>> get edges;
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get viewport;
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get sandboxConfig;
+  String? get workspaceSnapshotId;
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get inputSchema;
+  @JsonKey(fromJson: _nullableStringListFromJson)
+  List<String>? get memoryInstanceIds;
+  String? get sandboxLifecycle;
+  String? get organizationId;
+  String? get modelId;
+  String? get autonomyMode;
+  int? get maxIterations;
+  int? get timeoutSeconds;
 
   /// Create a copy of AgentDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -56,53 +66,93 @@ mixin _$AgentDefinitionDto {
         (other.runtimeType == runtimeType &&
             other is AgentDefinitionDto &&
             (identical(other.id, id) || other.id == id) &&
-            (identical(other.organizationId, organizationId) ||
-                other.organizationId == organizationId) &&
             (identical(other.name, name) || other.name == name) &&
+            (identical(other.slug, slug) || other.slug == slug) &&
             (identical(other.description, description) ||
                 other.description == description) &&
+            (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.version, version) || other.version == version) &&
+            (identical(other.publishedVersionId, publishedVersionId) ||
+                other.publishedVersionId == publishedVersionId) &&
+            (identical(other.tenantId, tenantId) ||
+                other.tenantId == tenantId) &&
+            (identical(other.createdBy, createdBy) ||
+                other.createdBy == createdBy) &&
+            (identical(other.updatedBy, updatedBy) ||
+                other.updatedBy == updatedBy) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.updatedAt, updatedAt) ||
+                other.updatedAt == updatedAt) &&
             (identical(other.systemPrompt, systemPrompt) ||
                 other.systemPrompt == systemPrompt) &&
+            const DeepCollectionEquality().equals(other.nodes, nodes) &&
+            const DeepCollectionEquality().equals(other.edges, edges) &&
+            const DeepCollectionEquality().equals(other.viewport, viewport) &&
+            const DeepCollectionEquality().equals(
+              other.sandboxConfig,
+              sandboxConfig,
+            ) &&
+            (identical(other.workspaceSnapshotId, workspaceSnapshotId) ||
+                other.workspaceSnapshotId == workspaceSnapshotId) &&
+            const DeepCollectionEquality().equals(
+              other.inputSchema,
+              inputSchema,
+            ) &&
+            const DeepCollectionEquality().equals(
+              other.memoryInstanceIds,
+              memoryInstanceIds,
+            ) &&
+            (identical(other.sandboxLifecycle, sandboxLifecycle) ||
+                other.sandboxLifecycle == sandboxLifecycle) &&
+            (identical(other.organizationId, organizationId) ||
+                other.organizationId == organizationId) &&
             (identical(other.modelId, modelId) || other.modelId == modelId) &&
             (identical(other.autonomyMode, autonomyMode) ||
                 other.autonomyMode == autonomyMode) &&
             (identical(other.maxIterations, maxIterations) ||
                 other.maxIterations == maxIterations) &&
             (identical(other.timeoutSeconds, timeoutSeconds) ||
-                other.timeoutSeconds == timeoutSeconds) &&
-            (identical(other.version, version) || other.version == version) &&
-            (identical(other.createdAt, createdAt) ||
-                other.createdAt == createdAt) &&
-            (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt) &&
-            (identical(other.createdBy, createdBy) ||
-                other.createdBy == createdBy));
+                other.timeoutSeconds == timeoutSeconds));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     id,
-    organizationId,
     name,
+    slug,
     description,
+    icon,
     status,
+    version,
+    publishedVersionId,
+    tenantId,
+    createdBy,
+    updatedBy,
+    createdAt,
+    updatedAt,
     systemPrompt,
+    const DeepCollectionEquality().hash(nodes),
+    const DeepCollectionEquality().hash(edges),
+    const DeepCollectionEquality().hash(viewport),
+    const DeepCollectionEquality().hash(sandboxConfig),
+    workspaceSnapshotId,
+    const DeepCollectionEquality().hash(inputSchema),
+    const DeepCollectionEquality().hash(memoryInstanceIds),
+    sandboxLifecycle,
+    organizationId,
     modelId,
     autonomyMode,
     maxIterations,
     timeoutSeconds,
-    version,
-    createdAt,
-    updatedAt,
-    createdBy,
-  );
+  ]);
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, organizationId: $organizationId, name: $name, description: $description, status: $status, systemPrompt: $systemPrompt, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds, version: $version, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
   }
 }
 
@@ -115,19 +165,34 @@ abstract mixin class $AgentDefinitionDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'organization_id') String organizationId,
     String name,
+    String slug,
     String? description,
+    String? icon,
     String status,
-    @JsonKey(name: 'system_prompt') String? systemPrompt,
-    @JsonKey(name: 'model_id') String? modelId,
-    @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-    @JsonKey(name: 'max_iterations') int? maxIterations,
-    @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
     int? version,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
-    @JsonKey(name: 'created_by') String? createdBy,
+    String? publishedVersionId,
+    String? tenantId,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
+    String? systemPrompt,
+    @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> nodes,
+    @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> edges,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? sandboxConfig,
+    String? workspaceSnapshotId,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? inputSchema,
+    @JsonKey(fromJson: _nullableStringListFromJson)
+    List<String>? memoryInstanceIds,
+    String? sandboxLifecycle,
+    String? organizationId,
+    String? modelId,
+    String? autonomyMode,
+    int? maxIterations,
+    int? timeoutSeconds,
   });
 }
 
@@ -145,19 +210,32 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
   @override
   $Res call({
     Object? id = null,
-    Object? organizationId = null,
     Object? name = null,
+    Object? slug = null,
     Object? description = freezed,
+    Object? icon = freezed,
     Object? status = null,
+    Object? version = freezed,
+    Object? publishedVersionId = freezed,
+    Object? tenantId = freezed,
+    Object? createdBy = freezed,
+    Object? updatedBy = freezed,
+    Object? createdAt = null,
+    Object? updatedAt = null,
     Object? systemPrompt = freezed,
+    Object? nodes = null,
+    Object? edges = null,
+    Object? viewport = freezed,
+    Object? sandboxConfig = freezed,
+    Object? workspaceSnapshotId = freezed,
+    Object? inputSchema = freezed,
+    Object? memoryInstanceIds = freezed,
+    Object? sandboxLifecycle = freezed,
+    Object? organizationId = freezed,
     Object? modelId = freezed,
     Object? autonomyMode = freezed,
     Object? maxIterations = freezed,
     Object? timeoutSeconds = freezed,
-    Object? version = freezed,
-    Object? createdAt = null,
-    Object? updatedAt = null,
-    Object? createdBy = freezed,
   }) {
     return _then(
       _self.copyWith(
@@ -165,25 +243,93 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.id
             : id // ignore: cast_nullable_to_non_nullable
                   as String,
-        organizationId: null == organizationId
-            ? _self.organizationId
-            : organizationId // ignore: cast_nullable_to_non_nullable
-                  as String,
         name: null == name
             ? _self.name
             : name // ignore: cast_nullable_to_non_nullable
+                  as String,
+        slug: null == slug
+            ? _self.slug
+            : slug // ignore: cast_nullable_to_non_nullable
                   as String,
         description: freezed == description
             ? _self.description
             : description // ignore: cast_nullable_to_non_nullable
                   as String?,
+        icon: freezed == icon
+            ? _self.icon
+            : icon // ignore: cast_nullable_to_non_nullable
+                  as String?,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
                   as String,
+        version: freezed == version
+            ? _self.version
+            : version // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        publishedVersionId: freezed == publishedVersionId
+            ? _self.publishedVersionId
+            : publishedVersionId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        tenantId: freezed == tenantId
+            ? _self.tenantId
+            : tenantId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        createdBy: freezed == createdBy
+            ? _self.createdBy
+            : createdBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        updatedBy: freezed == updatedBy
+            ? _self.updatedBy
+            : updatedBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        createdAt: null == createdAt
+            ? _self.createdAt
+            : createdAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        updatedAt: null == updatedAt
+            ? _self.updatedAt
+            : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
         systemPrompt: freezed == systemPrompt
             ? _self.systemPrompt
             : systemPrompt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodes: null == nodes
+            ? _self.nodes
+            : nodes // ignore: cast_nullable_to_non_nullable
+                  as List<Map<String, dynamic>>,
+        edges: null == edges
+            ? _self.edges
+            : edges // ignore: cast_nullable_to_non_nullable
+                  as List<Map<String, dynamic>>,
+        viewport: freezed == viewport
+            ? _self.viewport
+            : viewport // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        sandboxConfig: freezed == sandboxConfig
+            ? _self.sandboxConfig
+            : sandboxConfig // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        workspaceSnapshotId: freezed == workspaceSnapshotId
+            ? _self.workspaceSnapshotId
+            : workspaceSnapshotId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        inputSchema: freezed == inputSchema
+            ? _self.inputSchema
+            : inputSchema // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        memoryInstanceIds: freezed == memoryInstanceIds
+            ? _self.memoryInstanceIds
+            : memoryInstanceIds // ignore: cast_nullable_to_non_nullable
+                  as List<String>?,
+        sandboxLifecycle: freezed == sandboxLifecycle
+            ? _self.sandboxLifecycle
+            : sandboxLifecycle // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        organizationId: freezed == organizationId
+            ? _self.organizationId
+            : organizationId // ignore: cast_nullable_to_non_nullable
                   as String?,
         modelId: freezed == modelId
             ? _self.modelId
@@ -201,22 +347,6 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.timeoutSeconds
             : timeoutSeconds // ignore: cast_nullable_to_non_nullable
                   as int?,
-        version: freezed == version
-            ? _self.version
-            : version // ignore: cast_nullable_to_non_nullable
-                  as int?,
-        createdAt: null == createdAt
-            ? _self.createdAt
-            : createdAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        updatedAt: null == updatedAt
-            ? _self.updatedAt
-            : updatedAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        createdBy: freezed == createdBy
-            ? _self.createdBy
-            : createdBy // ignore: cast_nullable_to_non_nullable
-                  as String?,
       ),
     );
   }
@@ -317,19 +447,35 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'organization_id') String organizationId,
       String name,
+      String slug,
       String? description,
+      String? icon,
       String status,
-      @JsonKey(name: 'system_prompt') String? systemPrompt,
-      @JsonKey(name: 'model_id') String? modelId,
-      @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-      @JsonKey(name: 'max_iterations') int? maxIterations,
-      @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
       int? version,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      String? publishedVersionId,
+      String? tenantId,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
+      String? systemPrompt,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> nodes,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> edges,
+      @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? sandboxConfig,
+      String? workspaceSnapshotId,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? inputSchema,
+      @JsonKey(fromJson: _nullableStringListFromJson)
+      List<String>? memoryInstanceIds,
+      String? sandboxLifecycle,
+      String? organizationId,
+      String? modelId,
+      String? autonomyMode,
+      int? maxIterations,
+      int? timeoutSeconds,
     )?
     $default, {
     required TResult orElse(),
@@ -339,19 +485,32 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       case _AgentDefinitionDto() when $default != null:
         return $default(
           _that.id,
-          _that.organizationId,
           _that.name,
+          _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
+          _that.version,
+          _that.publishedVersionId,
+          _that.tenantId,
+          _that.createdBy,
+          _that.updatedBy,
+          _that.createdAt,
+          _that.updatedAt,
           _that.systemPrompt,
+          _that.nodes,
+          _that.edges,
+          _that.viewport,
+          _that.sandboxConfig,
+          _that.workspaceSnapshotId,
+          _that.inputSchema,
+          _that.memoryInstanceIds,
+          _that.sandboxLifecycle,
+          _that.organizationId,
           _that.modelId,
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
-          _that.version,
-          _that.createdAt,
-          _that.updatedAt,
-          _that.createdBy,
         );
       case _:
         return orElse();
@@ -375,19 +534,35 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'organization_id') String organizationId,
       String name,
+      String slug,
       String? description,
+      String? icon,
       String status,
-      @JsonKey(name: 'system_prompt') String? systemPrompt,
-      @JsonKey(name: 'model_id') String? modelId,
-      @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-      @JsonKey(name: 'max_iterations') int? maxIterations,
-      @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
       int? version,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      String? publishedVersionId,
+      String? tenantId,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
+      String? systemPrompt,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> nodes,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> edges,
+      @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? sandboxConfig,
+      String? workspaceSnapshotId,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? inputSchema,
+      @JsonKey(fromJson: _nullableStringListFromJson)
+      List<String>? memoryInstanceIds,
+      String? sandboxLifecycle,
+      String? organizationId,
+      String? modelId,
+      String? autonomyMode,
+      int? maxIterations,
+      int? timeoutSeconds,
     )
     $default,
   ) {
@@ -396,19 +571,32 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       case _AgentDefinitionDto():
         return $default(
           _that.id,
-          _that.organizationId,
           _that.name,
+          _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
+          _that.version,
+          _that.publishedVersionId,
+          _that.tenantId,
+          _that.createdBy,
+          _that.updatedBy,
+          _that.createdAt,
+          _that.updatedAt,
           _that.systemPrompt,
+          _that.nodes,
+          _that.edges,
+          _that.viewport,
+          _that.sandboxConfig,
+          _that.workspaceSnapshotId,
+          _that.inputSchema,
+          _that.memoryInstanceIds,
+          _that.sandboxLifecycle,
+          _that.organizationId,
           _that.modelId,
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
-          _that.version,
-          _that.createdAt,
-          _that.updatedAt,
-          _that.createdBy,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -431,19 +619,35 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'organization_id') String organizationId,
       String name,
+      String slug,
       String? description,
+      String? icon,
       String status,
-      @JsonKey(name: 'system_prompt') String? systemPrompt,
-      @JsonKey(name: 'model_id') String? modelId,
-      @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-      @JsonKey(name: 'max_iterations') int? maxIterations,
-      @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
       int? version,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      String? publishedVersionId,
+      String? tenantId,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
+      String? systemPrompt,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> nodes,
+      @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> edges,
+      @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? sandboxConfig,
+      String? workspaceSnapshotId,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? inputSchema,
+      @JsonKey(fromJson: _nullableStringListFromJson)
+      List<String>? memoryInstanceIds,
+      String? sandboxLifecycle,
+      String? organizationId,
+      String? modelId,
+      String? autonomyMode,
+      int? maxIterations,
+      int? timeoutSeconds,
     )?
     $default,
   ) {
@@ -452,19 +656,32 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       case _AgentDefinitionDto() when $default != null:
         return $default(
           _that.id,
-          _that.organizationId,
           _that.name,
+          _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
+          _that.version,
+          _that.publishedVersionId,
+          _that.tenantId,
+          _that.createdBy,
+          _that.updatedBy,
+          _that.createdAt,
+          _that.updatedAt,
           _that.systemPrompt,
+          _that.nodes,
+          _that.edges,
+          _that.viewport,
+          _that.sandboxConfig,
+          _that.workspaceSnapshotId,
+          _that.inputSchema,
+          _that.memoryInstanceIds,
+          _that.sandboxLifecycle,
+          _that.organizationId,
           _that.modelId,
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
-          _that.version,
-          _that.createdAt,
-          _that.updatedAt,
-          _that.createdBy,
         );
       case _:
         return null;
@@ -477,60 +694,152 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
 class _AgentDefinitionDto implements AgentDefinitionDto {
   const _AgentDefinitionDto({
     required this.id,
-    @JsonKey(name: 'organization_id') required this.organizationId,
     required this.name,
+    required this.slug,
     this.description,
+    this.icon,
     required this.status,
-    @JsonKey(name: 'system_prompt') this.systemPrompt,
-    @JsonKey(name: 'model_id') this.modelId,
-    @JsonKey(name: 'autonomy_mode') this.autonomyMode,
-    @JsonKey(name: 'max_iterations') this.maxIterations,
-    @JsonKey(name: 'timeout_seconds') this.timeoutSeconds,
     this.version,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
-    @JsonKey(name: 'created_by') this.createdBy,
-  });
+    this.publishedVersionId,
+    this.tenantId,
+    this.createdBy,
+    this.updatedBy,
+    required this.createdAt,
+    required this.updatedAt,
+    this.systemPrompt,
+    @JsonKey(fromJson: _mapListFromJson)
+    final List<Map<String, dynamic>> nodes = const <Map<String, dynamic>>[],
+    @JsonKey(fromJson: _mapListFromJson)
+    final List<Map<String, dynamic>> edges = const <Map<String, dynamic>>[],
+    @JsonKey(fromJson: _nullableMapFromJson)
+    final Map<String, dynamic>? viewport,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    final Map<String, dynamic>? sandboxConfig,
+    this.workspaceSnapshotId,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    final Map<String, dynamic>? inputSchema,
+    @JsonKey(fromJson: _nullableStringListFromJson)
+    final List<String>? memoryInstanceIds,
+    this.sandboxLifecycle,
+    this.organizationId,
+    this.modelId,
+    this.autonomyMode,
+    this.maxIterations,
+    this.timeoutSeconds,
+  }) : _nodes = nodes,
+       _edges = edges,
+       _viewport = viewport,
+       _sandboxConfig = sandboxConfig,
+       _inputSchema = inputSchema,
+       _memoryInstanceIds = memoryInstanceIds;
   factory _AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$AgentDefinitionDtoFromJson(json);
 
   @override
   final String id;
   @override
-  @JsonKey(name: 'organization_id')
-  final String organizationId;
-  @override
   final String name;
+  @override
+  final String slug;
   @override
   final String? description;
   @override
+  final String? icon;
+  @override
   final String status;
-  @override
-  @JsonKey(name: 'system_prompt')
-  final String? systemPrompt;
-  @override
-  @JsonKey(name: 'model_id')
-  final String? modelId;
-  @override
-  @JsonKey(name: 'autonomy_mode')
-  final String? autonomyMode;
-  @override
-  @JsonKey(name: 'max_iterations')
-  final int? maxIterations;
-  @override
-  @JsonKey(name: 'timeout_seconds')
-  final int? timeoutSeconds;
   @override
   final int? version;
   @override
-  @JsonKey(name: 'created_at')
+  final String? publishedVersionId;
+  @override
+  final String? tenantId;
+  @override
+  final String? createdBy;
+  @override
+  final String? updatedBy;
+  @override
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
   @override
-  @JsonKey(name: 'created_by')
-  final String? createdBy;
+  final String? systemPrompt;
+  final List<Map<String, dynamic>> _nodes;
+  @override
+  @JsonKey(fromJson: _mapListFromJson)
+  List<Map<String, dynamic>> get nodes {
+    if (_nodes is EqualUnmodifiableListView) return _nodes;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_nodes);
+  }
+
+  final List<Map<String, dynamic>> _edges;
+  @override
+  @JsonKey(fromJson: _mapListFromJson)
+  List<Map<String, dynamic>> get edges {
+    if (_edges is EqualUnmodifiableListView) return _edges;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_edges);
+  }
+
+  final Map<String, dynamic>? _viewport;
+  @override
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get viewport {
+    final value = _viewport;
+    if (value == null) return null;
+    if (_viewport is EqualUnmodifiableMapView) return _viewport;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  final Map<String, dynamic>? _sandboxConfig;
+  @override
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get sandboxConfig {
+    final value = _sandboxConfig;
+    if (value == null) return null;
+    if (_sandboxConfig is EqualUnmodifiableMapView) return _sandboxConfig;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  @override
+  final String? workspaceSnapshotId;
+  final Map<String, dynamic>? _inputSchema;
+  @override
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get inputSchema {
+    final value = _inputSchema;
+    if (value == null) return null;
+    if (_inputSchema is EqualUnmodifiableMapView) return _inputSchema;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  final List<String>? _memoryInstanceIds;
+  @override
+  @JsonKey(fromJson: _nullableStringListFromJson)
+  List<String>? get memoryInstanceIds {
+    final value = _memoryInstanceIds;
+    if (value == null) return null;
+    if (_memoryInstanceIds is EqualUnmodifiableListView)
+      return _memoryInstanceIds;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(value);
+  }
+
+  @override
+  final String? sandboxLifecycle;
+  @override
+  final String? organizationId;
+  @override
+  final String? modelId;
+  @override
+  final String? autonomyMode;
+  @override
+  final int? maxIterations;
+  @override
+  final int? timeoutSeconds;
 
   /// Create a copy of AgentDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -551,53 +860,93 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
         (other.runtimeType == runtimeType &&
             other is _AgentDefinitionDto &&
             (identical(other.id, id) || other.id == id) &&
-            (identical(other.organizationId, organizationId) ||
-                other.organizationId == organizationId) &&
             (identical(other.name, name) || other.name == name) &&
+            (identical(other.slug, slug) || other.slug == slug) &&
             (identical(other.description, description) ||
                 other.description == description) &&
+            (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.version, version) || other.version == version) &&
+            (identical(other.publishedVersionId, publishedVersionId) ||
+                other.publishedVersionId == publishedVersionId) &&
+            (identical(other.tenantId, tenantId) ||
+                other.tenantId == tenantId) &&
+            (identical(other.createdBy, createdBy) ||
+                other.createdBy == createdBy) &&
+            (identical(other.updatedBy, updatedBy) ||
+                other.updatedBy == updatedBy) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.updatedAt, updatedAt) ||
+                other.updatedAt == updatedAt) &&
             (identical(other.systemPrompt, systemPrompt) ||
                 other.systemPrompt == systemPrompt) &&
+            const DeepCollectionEquality().equals(other._nodes, _nodes) &&
+            const DeepCollectionEquality().equals(other._edges, _edges) &&
+            const DeepCollectionEquality().equals(other._viewport, _viewport) &&
+            const DeepCollectionEquality().equals(
+              other._sandboxConfig,
+              _sandboxConfig,
+            ) &&
+            (identical(other.workspaceSnapshotId, workspaceSnapshotId) ||
+                other.workspaceSnapshotId == workspaceSnapshotId) &&
+            const DeepCollectionEquality().equals(
+              other._inputSchema,
+              _inputSchema,
+            ) &&
+            const DeepCollectionEquality().equals(
+              other._memoryInstanceIds,
+              _memoryInstanceIds,
+            ) &&
+            (identical(other.sandboxLifecycle, sandboxLifecycle) ||
+                other.sandboxLifecycle == sandboxLifecycle) &&
+            (identical(other.organizationId, organizationId) ||
+                other.organizationId == organizationId) &&
             (identical(other.modelId, modelId) || other.modelId == modelId) &&
             (identical(other.autonomyMode, autonomyMode) ||
                 other.autonomyMode == autonomyMode) &&
             (identical(other.maxIterations, maxIterations) ||
                 other.maxIterations == maxIterations) &&
             (identical(other.timeoutSeconds, timeoutSeconds) ||
-                other.timeoutSeconds == timeoutSeconds) &&
-            (identical(other.version, version) || other.version == version) &&
-            (identical(other.createdAt, createdAt) ||
-                other.createdAt == createdAt) &&
-            (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt) &&
-            (identical(other.createdBy, createdBy) ||
-                other.createdBy == createdBy));
+                other.timeoutSeconds == timeoutSeconds));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     id,
-    organizationId,
     name,
+    slug,
     description,
+    icon,
     status,
+    version,
+    publishedVersionId,
+    tenantId,
+    createdBy,
+    updatedBy,
+    createdAt,
+    updatedAt,
     systemPrompt,
+    const DeepCollectionEquality().hash(_nodes),
+    const DeepCollectionEquality().hash(_edges),
+    const DeepCollectionEquality().hash(_viewport),
+    const DeepCollectionEquality().hash(_sandboxConfig),
+    workspaceSnapshotId,
+    const DeepCollectionEquality().hash(_inputSchema),
+    const DeepCollectionEquality().hash(_memoryInstanceIds),
+    sandboxLifecycle,
+    organizationId,
     modelId,
     autonomyMode,
     maxIterations,
     timeoutSeconds,
-    version,
-    createdAt,
-    updatedAt,
-    createdBy,
-  );
+  ]);
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, organizationId: $organizationId, name: $name, description: $description, status: $status, systemPrompt: $systemPrompt, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds, version: $version, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
   }
 }
 
@@ -612,19 +961,34 @@ abstract mixin class _$AgentDefinitionDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'organization_id') String organizationId,
     String name,
+    String slug,
     String? description,
+    String? icon,
     String status,
-    @JsonKey(name: 'system_prompt') String? systemPrompt,
-    @JsonKey(name: 'model_id') String? modelId,
-    @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-    @JsonKey(name: 'max_iterations') int? maxIterations,
-    @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
     int? version,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
-    @JsonKey(name: 'created_by') String? createdBy,
+    String? publishedVersionId,
+    String? tenantId,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
+    String? systemPrompt,
+    @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> nodes,
+    @JsonKey(fromJson: _mapListFromJson) List<Map<String, dynamic>> edges,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? sandboxConfig,
+    String? workspaceSnapshotId,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? inputSchema,
+    @JsonKey(fromJson: _nullableStringListFromJson)
+    List<String>? memoryInstanceIds,
+    String? sandboxLifecycle,
+    String? organizationId,
+    String? modelId,
+    String? autonomyMode,
+    int? maxIterations,
+    int? timeoutSeconds,
   });
 }
 
@@ -642,19 +1006,32 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
   @pragma('vm:prefer-inline')
   $Res call({
     Object? id = null,
-    Object? organizationId = null,
     Object? name = null,
+    Object? slug = null,
     Object? description = freezed,
+    Object? icon = freezed,
     Object? status = null,
+    Object? version = freezed,
+    Object? publishedVersionId = freezed,
+    Object? tenantId = freezed,
+    Object? createdBy = freezed,
+    Object? updatedBy = freezed,
+    Object? createdAt = null,
+    Object? updatedAt = null,
     Object? systemPrompt = freezed,
+    Object? nodes = null,
+    Object? edges = null,
+    Object? viewport = freezed,
+    Object? sandboxConfig = freezed,
+    Object? workspaceSnapshotId = freezed,
+    Object? inputSchema = freezed,
+    Object? memoryInstanceIds = freezed,
+    Object? sandboxLifecycle = freezed,
+    Object? organizationId = freezed,
     Object? modelId = freezed,
     Object? autonomyMode = freezed,
     Object? maxIterations = freezed,
     Object? timeoutSeconds = freezed,
-    Object? version = freezed,
-    Object? createdAt = null,
-    Object? updatedAt = null,
-    Object? createdBy = freezed,
   }) {
     return _then(
       _AgentDefinitionDto(
@@ -662,25 +1039,93 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.id
             : id // ignore: cast_nullable_to_non_nullable
                   as String,
-        organizationId: null == organizationId
-            ? _self.organizationId
-            : organizationId // ignore: cast_nullable_to_non_nullable
-                  as String,
         name: null == name
             ? _self.name
             : name // ignore: cast_nullable_to_non_nullable
+                  as String,
+        slug: null == slug
+            ? _self.slug
+            : slug // ignore: cast_nullable_to_non_nullable
                   as String,
         description: freezed == description
             ? _self.description
             : description // ignore: cast_nullable_to_non_nullable
                   as String?,
+        icon: freezed == icon
+            ? _self.icon
+            : icon // ignore: cast_nullable_to_non_nullable
+                  as String?,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
                   as String,
+        version: freezed == version
+            ? _self.version
+            : version // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        publishedVersionId: freezed == publishedVersionId
+            ? _self.publishedVersionId
+            : publishedVersionId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        tenantId: freezed == tenantId
+            ? _self.tenantId
+            : tenantId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        createdBy: freezed == createdBy
+            ? _self.createdBy
+            : createdBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        updatedBy: freezed == updatedBy
+            ? _self.updatedBy
+            : updatedBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        createdAt: null == createdAt
+            ? _self.createdAt
+            : createdAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        updatedAt: null == updatedAt
+            ? _self.updatedAt
+            : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
         systemPrompt: freezed == systemPrompt
             ? _self.systemPrompt
             : systemPrompt // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nodes: null == nodes
+            ? _self._nodes
+            : nodes // ignore: cast_nullable_to_non_nullable
+                  as List<Map<String, dynamic>>,
+        edges: null == edges
+            ? _self._edges
+            : edges // ignore: cast_nullable_to_non_nullable
+                  as List<Map<String, dynamic>>,
+        viewport: freezed == viewport
+            ? _self._viewport
+            : viewport // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        sandboxConfig: freezed == sandboxConfig
+            ? _self._sandboxConfig
+            : sandboxConfig // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        workspaceSnapshotId: freezed == workspaceSnapshotId
+            ? _self.workspaceSnapshotId
+            : workspaceSnapshotId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        inputSchema: freezed == inputSchema
+            ? _self._inputSchema
+            : inputSchema // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        memoryInstanceIds: freezed == memoryInstanceIds
+            ? _self._memoryInstanceIds
+            : memoryInstanceIds // ignore: cast_nullable_to_non_nullable
+                  as List<String>?,
+        sandboxLifecycle: freezed == sandboxLifecycle
+            ? _self.sandboxLifecycle
+            : sandboxLifecycle // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        organizationId: freezed == organizationId
+            ? _self.organizationId
+            : organizationId // ignore: cast_nullable_to_non_nullable
                   as String?,
         modelId: freezed == modelId
             ? _self.modelId
@@ -698,22 +1143,6 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.timeoutSeconds
             : timeoutSeconds // ignore: cast_nullable_to_non_nullable
                   as int?,
-        version: freezed == version
-            ? _self.version
-            : version // ignore: cast_nullable_to_non_nullable
-                  as int?,
-        createdAt: null == createdAt
-            ? _self.createdAt
-            : createdAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        updatedAt: null == updatedAt
-            ? _self.updatedAt
-            : updatedAt // ignore: cast_nullable_to_non_nullable
-                  as String,
-        createdBy: freezed == createdBy
-            ? _self.createdBy
-            : createdBy // ignore: cast_nullable_to_non_nullable
-                  as String?,
       ),
     );
   }

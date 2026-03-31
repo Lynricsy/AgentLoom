@@ -1,88 +1,112 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../models/conversation_message_dto.dart';
+import 'tool_call_card.dart';
 
-/// 消息气泡组件
 class MessageBubble extends StatelessWidget {
-  final ConversationMessageDto message;
-  final bool isStreaming;
-
   const MessageBubble({
     super.key,
     required this.message,
-    this.isStreaming = false,
+    this.onResolvePermission,
   });
+
+  final ConversationMessageDto message;
+  final Future<void> Function(String toolCallId, String action)?
+  onResolvePermission;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isUser = message.role == MessageRole.user;
-    final isThinking = message.type == MessageType.thinking;
-    final isToolCall = message.type == MessageType.toolCall;
-    final isToolResult = message.type == MessageType.toolResult;
+    final theme = Theme.of(context);
+    final segments = _resolvedSegments(message);
 
-    if (isThinking) {
-      return _ThinkingBubble(content: message.content, theme: theme);
+    if (isUser) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.82,
+          ),
+          margin: const EdgeInsets.fromLTRB(56, 6, 16, 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(6),
+            ),
+          ),
+          child: _MessageMarkdown(
+            content: message.content,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ),
+      );
     }
 
-    if (isToolCall) {
-      return _ToolCallBubble(message: message, theme: theme);
-    }
-
-    if (isToolResult) {
-      return _ToolResultBubble(message: message, theme: theme);
-    }
+    final surfaceColor = switch (message.role) {
+      MessageRole.system => theme.colorScheme.secondaryContainer,
+      MessageRole.tool => theme.colorScheme.tertiaryContainer,
+      _ => theme.colorScheme.surfaceContainerLow,
+    };
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
+          maxWidth: MediaQuery.of(context).size.width * 0.9,
         ),
-        margin: EdgeInsets.only(
-          left: isUser ? 48 : 16,
-          right: isUser ? 16 : 48,
-          top: 4,
-          bottom: 4,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.fromLTRB(16, 6, 40, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isUser
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isUser
-                ? const Radius.circular(16)
-                : const Radius.circular(4),
-            bottomRight: isUser
-                ? const Radius.circular(4)
-                : const Radius.circular(16),
+          color: surfaceColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(6),
+            bottomRight: Radius.circular(20),
           ),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              message.content,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: isUser
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
+            _MessageHeader(role: message.role),
+            const SizedBox(height: 10),
+            for (var index = 0; index < segments.length; index++) ...[
+              _MessageSegmentView(
+                message: message,
+                segment: segments[index],
+                onResolvePermission: onResolvePermission,
               ),
-            ),
-            if (isStreaming) ...[
-              const SizedBox(height: 4),
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: isUser
-                      ? theme.colorScheme.onPrimary
-                      : theme.colorScheme.primary,
-                ),
+              if (index < segments.length - 1) const SizedBox(height: 10),
+            ],
+            if (segments.isEmpty && message.content.trim().isNotEmpty)
+              _MessageMarkdown(content: message.content),
+            if (message.isStreaming) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '实时生成中',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ],
           ],
@@ -92,113 +116,91 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-/// 流式消息气泡（未物化的流式内容）
-class StreamingMessageBubble extends StatelessWidget {
-  final String content;
-  final bool isThinking;
+class _MessageHeader extends StatelessWidget {
+  const _MessageHeader({required this.role});
 
-  const StreamingMessageBubble({
-    super.key,
-    required this.content,
-    this.isThinking = false,
-  });
+  final MessageRole role;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final (label, icon) = switch (role) {
+      MessageRole.system => ('系统', Icons.settings_outlined),
+      MessageRole.tool => ('工具', Icons.build_outlined),
+      _ => ('Agent', Icons.auto_awesome_outlined),
+    };
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        margin: const EdgeInsets.only(left: 16, right: 48, top: 4, bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isThinking
-              ? theme.colorScheme.tertiaryContainer
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomLeft: Radius.circular(4),
-            bottomRight: Radius.circular(16),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isThinking)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.psychology,
-                      size: 14,
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Thinking...',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Text(
-              content,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: isThinking
-                    ? theme.colorScheme.onTertiaryContainer
-                    : theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 4),
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
 
-class _ThinkingBubble extends StatelessWidget {
-  final String content;
-  final ThemeData theme;
+class _MessageSegmentView extends StatelessWidget {
+  const _MessageSegmentView({
+    required this.message,
+    required this.segment,
+    required this.onResolvePermission,
+  });
 
-  const _ThinkingBubble({required this.content, required this.theme});
+  final ConversationMessageDto message;
+  final MessageSegment segment;
+  final Future<void> Function(String toolCallId, String action)?
+  onResolvePermission;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        margin: const EdgeInsets.only(left: 16, right: 48, top: 4, bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.tertiaryContainer,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-            bottomLeft: Radius.circular(4),
-            bottomRight: Radius.circular(16),
-          ),
-        ),
+    switch (segment.kind) {
+      case MessageSegmentKind.text:
+        return _MessageMarkdown(content: segment.content ?? '');
+      case MessageSegmentKind.thinking:
+        return _ThinkingBlock(content: segment.content ?? '');
+      case MessageSegmentKind.toolCall:
+        final toolCall = message.toolCalls
+            .where((item) => item.id == segment.toolCallId)
+            .cast<ConversationToolCallDto?>()
+            .firstWhere(
+              (item) => item != null,
+              orElse: () => null,
+            );
+        if (toolCall == null) {
+          return const SizedBox.shrink();
+        }
+        return ToolCallCard(
+          toolCall: toolCall,
+          defaultExpanded: toolCall.status.isActive,
+          onResolvePermission: onResolvePermission,
+        );
+    }
+  }
+}
+
+class _ThinkingBlock extends StatelessWidget {
+  const _ThinkingBlock({required this.content});
+
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -206,26 +208,24 @@ class _ThinkingBubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.psychology,
+                  Icons.psychology_outlined,
                   size: 14,
                   color: theme.colorScheme.onTertiaryContainer,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
                 Text(
-                  'Thought',
-                  style: theme.textTheme.labelSmall?.copyWith(
+                  '思考过程',
+                  style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onTertiaryContainer,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              content,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onTertiaryContainer,
-                fontStyle: FontStyle.italic,
-              ),
+            const SizedBox(height: 8),
+            _MessageMarkdown(
+              content: content,
+              color: theme.colorScheme.onTertiaryContainer,
             ),
           ],
         ),
@@ -234,78 +234,63 @@ class _ThinkingBubble extends StatelessWidget {
   }
 }
 
-class _ToolCallBubble extends StatelessWidget {
-  final ConversationMessageDto message;
-  final ThemeData theme;
+class _MessageMarkdown extends StatelessWidget {
+  const _MessageMarkdown({
+    required this.content,
+    this.color,
+  });
 
-  const _ToolCallBubble({required this.message, required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(left: 16, right: 48, top: 4, bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.build,
-              size: 16,
-              color: theme.colorScheme.onSecondaryContainer,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                message.toolName ?? 'Tool call',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSecondaryContainer,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolResultBubble extends StatelessWidget {
-  final ConversationMessageDto message;
-  final ThemeData theme;
-
-  const _ToolResultBubble({required this.message, required this.theme});
+  final String content;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
+    final theme = Theme.of(context);
+    final textColor = color ?? theme.colorScheme.onSurface;
+    return MarkdownBody(
+      data: content.isEmpty ? ' ' : content,
+      selectable: true,
+      shrinkWrap: true,
+      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+        p: theme.textTheme.bodyMedium?.copyWith(
+          color: textColor,
+          height: 1.45,
         ),
-        margin: const EdgeInsets.only(left: 16, right: 48, top: 2, bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(12),
+        pPadding: EdgeInsets.zero,
+        code: theme.textTheme.bodySmall?.copyWith(
+          fontFamily: 'monospace',
+          color: textColor,
         ),
-        child: Text(
-          message.content,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontFamily: 'monospace',
+        codeblockDecoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.85,
           ),
-          maxLines: 5,
-          overflow: TextOverflow.ellipsis,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        blockquote: theme.textTheme.bodyMedium?.copyWith(
+          color: textColor.withValues(alpha: 0.85),
+        ),
+        blockquotePadding: const EdgeInsets.all(12),
+        blockquoteDecoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(
+              color: theme.colorScheme.primary,
+              width: 3,
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+List<MessageSegment> _resolvedSegments(ConversationMessageDto message) {
+  if (message.segments.isNotEmpty) {
+    return message.segments;
+  }
+
+  return <MessageSegment>[
+    if (message.content.trim().isNotEmpty) MessageSegment.text(message.content),
+    for (final toolCall in message.toolCalls) MessageSegment.toolCall(toolCall.id),
+  ];
 }

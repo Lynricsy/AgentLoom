@@ -13,9 +13,9 @@ void main() {
     Widget createApp() {
       return ProviderScope(
         overrides: [
-          envProvider.overrideWithValue(
+          baseEnvProvider.overrideWithValue(
             const EnvConfig(
-              apiBaseUrl: 'http://localhost:3000/api/v1',
+              studioBaseUrl: 'http://localhost:3000',
               appName: 'AgentLoom Test',
               environment: AppEnvironment.dev,
             ),
@@ -48,9 +48,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(NavigationBar), findsOneWidget);
-      // NavigationBar destinations contain Dashboard, Workflows, Agents, Settings
+      // NavigationBar destinations contain 总览、工作流、Agent、资源、设置
       final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(navBar.destinations.length, 4);
+      expect(navBar.destinations.length, 5);
     });
 
     testWidgets('defaults to Dashboard tab', (tester) async {

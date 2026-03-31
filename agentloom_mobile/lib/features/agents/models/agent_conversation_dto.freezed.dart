@@ -14,18 +14,15 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$AgentConversationDto {
   String get id;
-  @JsonKey(name: 'agent_definition_id')
   String get agentDefinitionId;
-  @JsonKey(name: 'organization_id')
-  String get organizationId;
   String get status;
   String? get title;
-  @JsonKey(name: 'created_at')
+  @JsonKey(fromJson: _conversationMetadataFromJson)
+  Map<String, dynamic> get metadata;
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
-  @JsonKey(name: 'created_by')
   String? get createdBy;
+  String? get organizationId;
 
   /// Create a copy of AgentConversationDto
   /// with the given fields replaced by the non-null parameter values.
@@ -48,16 +45,17 @@ mixin _$AgentConversationDto {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.agentDefinitionId, agentDefinitionId) ||
                 other.agentDefinitionId == agentDefinitionId) &&
-            (identical(other.organizationId, organizationId) ||
-                other.organizationId == organizationId) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.title, title) || other.title == title) &&
+            const DeepCollectionEquality().equals(other.metadata, metadata) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
                 other.updatedAt == updatedAt) &&
             (identical(other.createdBy, createdBy) ||
-                other.createdBy == createdBy));
+                other.createdBy == createdBy) &&
+            (identical(other.organizationId, organizationId) ||
+                other.organizationId == organizationId));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -66,17 +64,18 @@ mixin _$AgentConversationDto {
     runtimeType,
     id,
     agentDefinitionId,
-    organizationId,
     status,
     title,
+    const DeepCollectionEquality().hash(metadata),
     createdAt,
     updatedAt,
     createdBy,
+    organizationId,
   );
 
   @override
   String toString() {
-    return 'AgentConversationDto(id: $id, agentDefinitionId: $agentDefinitionId, organizationId: $organizationId, status: $status, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy)';
+    return 'AgentConversationDto(id: $id, agentDefinitionId: $agentDefinitionId, status: $status, title: $title, metadata: $metadata, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy, organizationId: $organizationId)';
   }
 }
 
@@ -89,13 +88,15 @@ abstract mixin class $AgentConversationDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'agent_definition_id') String agentDefinitionId,
-    @JsonKey(name: 'organization_id') String organizationId,
+    String agentDefinitionId,
     String status,
     String? title,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
-    @JsonKey(name: 'created_by') String? createdBy,
+    @JsonKey(fromJson: _conversationMetadataFromJson)
+    Map<String, dynamic> metadata,
+    String createdAt,
+    String updatedAt,
+    String? createdBy,
+    String? organizationId,
   });
 }
 
@@ -114,12 +115,13 @@ class _$AgentConversationDtoCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? agentDefinitionId = null,
-    Object? organizationId = null,
     Object? status = null,
     Object? title = freezed,
+    Object? metadata = null,
     Object? createdAt = null,
     Object? updatedAt = null,
     Object? createdBy = freezed,
+    Object? organizationId = freezed,
   }) {
     return _then(
       _self.copyWith(
@@ -131,10 +133,6 @@ class _$AgentConversationDtoCopyWithImpl<$Res>
             ? _self.agentDefinitionId
             : agentDefinitionId // ignore: cast_nullable_to_non_nullable
                   as String,
-        organizationId: null == organizationId
-            ? _self.organizationId
-            : organizationId // ignore: cast_nullable_to_non_nullable
-                  as String,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
@@ -143,6 +141,10 @@ class _$AgentConversationDtoCopyWithImpl<$Res>
             ? _self.title
             : title // ignore: cast_nullable_to_non_nullable
                   as String?,
+        metadata: null == metadata
+            ? _self.metadata
+            : metadata // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>,
         createdAt: null == createdAt
             ? _self.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
@@ -154,6 +156,10 @@ class _$AgentConversationDtoCopyWithImpl<$Res>
         createdBy: freezed == createdBy
             ? _self.createdBy
             : createdBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        organizationId: freezed == organizationId
+            ? _self.organizationId
+            : organizationId // ignore: cast_nullable_to_non_nullable
                   as String?,
       ),
     );
@@ -255,13 +261,15 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'agent_definition_id') String agentDefinitionId,
-      @JsonKey(name: 'organization_id') String organizationId,
+      String agentDefinitionId,
       String status,
       String? title,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      @JsonKey(fromJson: _conversationMetadataFromJson)
+      Map<String, dynamic> metadata,
+      String createdAt,
+      String updatedAt,
+      String? createdBy,
+      String? organizationId,
     )?
     $default, {
     required TResult orElse(),
@@ -272,12 +280,13 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
         return $default(
           _that.id,
           _that.agentDefinitionId,
-          _that.organizationId,
           _that.status,
           _that.title,
+          _that.metadata,
           _that.createdAt,
           _that.updatedAt,
           _that.createdBy,
+          _that.organizationId,
         );
       case _:
         return orElse();
@@ -301,13 +310,15 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'agent_definition_id') String agentDefinitionId,
-      @JsonKey(name: 'organization_id') String organizationId,
+      String agentDefinitionId,
       String status,
       String? title,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      @JsonKey(fromJson: _conversationMetadataFromJson)
+      Map<String, dynamic> metadata,
+      String createdAt,
+      String updatedAt,
+      String? createdBy,
+      String? organizationId,
     )
     $default,
   ) {
@@ -317,12 +328,13 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
         return $default(
           _that.id,
           _that.agentDefinitionId,
-          _that.organizationId,
           _that.status,
           _that.title,
+          _that.metadata,
           _that.createdAt,
           _that.updatedAt,
           _that.createdBy,
+          _that.organizationId,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -345,13 +357,15 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'agent_definition_id') String agentDefinitionId,
-      @JsonKey(name: 'organization_id') String organizationId,
+      String agentDefinitionId,
       String status,
       String? title,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
-      @JsonKey(name: 'created_by') String? createdBy,
+      @JsonKey(fromJson: _conversationMetadataFromJson)
+      Map<String, dynamic> metadata,
+      String createdAt,
+      String updatedAt,
+      String? createdBy,
+      String? organizationId,
     )?
     $default,
   ) {
@@ -361,12 +375,13 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
         return $default(
           _that.id,
           _that.agentDefinitionId,
-          _that.organizationId,
           _that.status,
           _that.title,
+          _that.metadata,
           _that.createdAt,
           _that.updatedAt,
           _that.createdBy,
+          _that.organizationId,
         );
       case _:
         return null;
@@ -379,38 +394,44 @@ extension AgentConversationDtoPatterns on AgentConversationDto {
 class _AgentConversationDto implements AgentConversationDto {
   const _AgentConversationDto({
     required this.id,
-    @JsonKey(name: 'agent_definition_id') required this.agentDefinitionId,
-    @JsonKey(name: 'organization_id') required this.organizationId,
+    required this.agentDefinitionId,
     required this.status,
     this.title,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
-    @JsonKey(name: 'created_by') this.createdBy,
-  });
+    @JsonKey(fromJson: _conversationMetadataFromJson)
+    final Map<String, dynamic> metadata = const <String, dynamic>{},
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdBy,
+    this.organizationId,
+  }) : _metadata = metadata;
   factory _AgentConversationDto.fromJson(Map<String, dynamic> json) =>
       _$AgentConversationDtoFromJson(json);
 
   @override
   final String id;
   @override
-  @JsonKey(name: 'agent_definition_id')
   final String agentDefinitionId;
-  @override
-  @JsonKey(name: 'organization_id')
-  final String organizationId;
   @override
   final String status;
   @override
   final String? title;
+  final Map<String, dynamic> _metadata;
   @override
-  @JsonKey(name: 'created_at')
+  @JsonKey(fromJson: _conversationMetadataFromJson)
+  Map<String, dynamic> get metadata {
+    if (_metadata is EqualUnmodifiableMapView) return _metadata;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(_metadata);
+  }
+
+  @override
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
   @override
-  @JsonKey(name: 'created_by')
   final String? createdBy;
+  @override
+  final String? organizationId;
 
   /// Create a copy of AgentConversationDto
   /// with the given fields replaced by the non-null parameter values.
@@ -436,16 +457,17 @@ class _AgentConversationDto implements AgentConversationDto {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.agentDefinitionId, agentDefinitionId) ||
                 other.agentDefinitionId == agentDefinitionId) &&
-            (identical(other.organizationId, organizationId) ||
-                other.organizationId == organizationId) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.title, title) || other.title == title) &&
+            const DeepCollectionEquality().equals(other._metadata, _metadata) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
                 other.updatedAt == updatedAt) &&
             (identical(other.createdBy, createdBy) ||
-                other.createdBy == createdBy));
+                other.createdBy == createdBy) &&
+            (identical(other.organizationId, organizationId) ||
+                other.organizationId == organizationId));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -454,17 +476,18 @@ class _AgentConversationDto implements AgentConversationDto {
     runtimeType,
     id,
     agentDefinitionId,
-    organizationId,
     status,
     title,
+    const DeepCollectionEquality().hash(_metadata),
     createdAt,
     updatedAt,
     createdBy,
+    organizationId,
   );
 
   @override
   String toString() {
-    return 'AgentConversationDto(id: $id, agentDefinitionId: $agentDefinitionId, organizationId: $organizationId, status: $status, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy)';
+    return 'AgentConversationDto(id: $id, agentDefinitionId: $agentDefinitionId, status: $status, title: $title, metadata: $metadata, createdAt: $createdAt, updatedAt: $updatedAt, createdBy: $createdBy, organizationId: $organizationId)';
   }
 }
 
@@ -479,13 +502,15 @@ abstract mixin class _$AgentConversationDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'agent_definition_id') String agentDefinitionId,
-    @JsonKey(name: 'organization_id') String organizationId,
+    String agentDefinitionId,
     String status,
     String? title,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
-    @JsonKey(name: 'created_by') String? createdBy,
+    @JsonKey(fromJson: _conversationMetadataFromJson)
+    Map<String, dynamic> metadata,
+    String createdAt,
+    String updatedAt,
+    String? createdBy,
+    String? organizationId,
   });
 }
 
@@ -504,12 +529,13 @@ class __$AgentConversationDtoCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? agentDefinitionId = null,
-    Object? organizationId = null,
     Object? status = null,
     Object? title = freezed,
+    Object? metadata = null,
     Object? createdAt = null,
     Object? updatedAt = null,
     Object? createdBy = freezed,
+    Object? organizationId = freezed,
   }) {
     return _then(
       _AgentConversationDto(
@@ -521,10 +547,6 @@ class __$AgentConversationDtoCopyWithImpl<$Res>
             ? _self.agentDefinitionId
             : agentDefinitionId // ignore: cast_nullable_to_non_nullable
                   as String,
-        organizationId: null == organizationId
-            ? _self.organizationId
-            : organizationId // ignore: cast_nullable_to_non_nullable
-                  as String,
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
@@ -533,6 +555,10 @@ class __$AgentConversationDtoCopyWithImpl<$Res>
             ? _self.title
             : title // ignore: cast_nullable_to_non_nullable
                   as String?,
+        metadata: null == metadata
+            ? _self._metadata
+            : metadata // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>,
         createdAt: null == createdAt
             ? _self.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
@@ -544,6 +570,10 @@ class __$AgentConversationDtoCopyWithImpl<$Res>
         createdBy: freezed == createdBy
             ? _self.createdBy
             : createdBy // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        organizationId: freezed == organizationId
+            ? _self.organizationId
+            : organizationId // ignore: cast_nullable_to_non_nullable
                   as String?,
       ),
     );

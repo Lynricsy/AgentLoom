@@ -3,24 +3,77 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'agent_definition_dto.freezed.dart';
 part 'agent_definition_dto.g.dart';
 
+Map<String, dynamic>? _nullableMapFromJson(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map<Object?, Object?>) {
+    return value.map((key, item) => MapEntry('$key', item));
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> _mapListFromJson(Object? value) {
+  if (value is! List) {
+    return const <Map<String, dynamic>>[];
+  }
+
+  return value
+      .whereType<Map<Object?, Object?>>()
+      .map(
+        (item) => item.map((key, entry) => MapEntry('$key', entry)),
+      )
+      .toList(growable: false);
+}
+
+List<String>? _nullableStringListFromJson(Object? value) {
+  if (value is! List) {
+    return null;
+  }
+
+  final items = value.whereType<String>().toList(growable: false);
+  return items.isEmpty ? null : items;
+}
+
 /// Agent 定义 DTO
 @freezed
 abstract class AgentDefinitionDto with _$AgentDefinitionDto {
   const factory AgentDefinitionDto({
     required String id,
-    @JsonKey(name: 'organization_id') required String organizationId,
     required String name,
+    required String slug,
     String? description,
+    String? icon,
     required String status,
-    @JsonKey(name: 'system_prompt') String? systemPrompt,
-    @JsonKey(name: 'model_id') String? modelId,
-    @JsonKey(name: 'autonomy_mode') String? autonomyMode,
-    @JsonKey(name: 'max_iterations') int? maxIterations,
-    @JsonKey(name: 'timeout_seconds') int? timeoutSeconds,
     int? version,
-    @JsonKey(name: 'created_at') required String createdAt,
-    @JsonKey(name: 'updated_at') required String updatedAt,
-    @JsonKey(name: 'created_by') String? createdBy,
+    String? publishedVersionId,
+    String? tenantId,
+    String? createdBy,
+    String? updatedBy,
+    required String createdAt,
+    required String updatedAt,
+    String? systemPrompt,
+    @JsonKey(fromJson: _mapListFromJson)
+    @Default(<Map<String, dynamic>>[])
+    List<Map<String, dynamic>> nodes,
+    @JsonKey(fromJson: _mapListFromJson)
+    @Default(<Map<String, dynamic>>[])
+    List<Map<String, dynamic>> edges,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? viewport,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? sandboxConfig,
+    String? workspaceSnapshotId,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? inputSchema,
+    @JsonKey(fromJson: _nullableStringListFromJson)
+    List<String>? memoryInstanceIds,
+    String? sandboxLifecycle,
+    String? organizationId,
+    String? modelId,
+    String? autonomyMode,
+    int? maxIterations,
+    int? timeoutSeconds,
   }) = _AgentDefinitionDto;
 
   factory AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
@@ -29,13 +82,6 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
 
 /// Agent 列表分页状态
 class AgentListState {
-  final List<AgentDefinitionDto> agents;
-  final int currentPage;
-  final bool hasMore;
-  final String? statusFilter;
-  final String? searchQuery;
-  final bool isLoadingMore;
-
   const AgentListState({
     this.agents = const [],
     this.currentPage = 1,
@@ -44,6 +90,13 @@ class AgentListState {
     this.searchQuery,
     this.isLoadingMore = false,
   });
+
+  final List<AgentDefinitionDto> agents;
+  final int currentPage;
+  final bool hasMore;
+  final String? statusFilter;
+  final String? searchQuery;
+  final bool isLoadingMore;
 
   AgentListState copyWith({
     List<AgentDefinitionDto>? agents,

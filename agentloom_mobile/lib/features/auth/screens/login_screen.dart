@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../providers/auth_provider.dart';
+import '../../../routes/route_names.dart';
+import '../../../shared/providers/env_provider.dart';
 import '../models/auth_state.dart';
+import '../providers/auth_provider.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/oauth_button.dart';
 
@@ -55,19 +57,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (!mounted) return;
 
-    // 检查登录后状态
     final authState = ref.read(authProvider).value;
     if (authState is AuthStateMfaRequired) {
-      // MFA 挑战 → 导航到 MFA 验证页面
       _passwordController.clear();
-      if (mounted) {
-        context.go(
-          '/mfa-verify',
-          extra: {'mfaToken': authState.mfaToken, 'factors': authState.factors},
-        );
-      }
+      context.go(
+        '/mfa-verify',
+        extra: {'mfaToken': authState.mfaToken, 'factors': authState.factors},
+      );
     } else if (authState is AuthStateUnauthenticated) {
-      // 登录失败 → 清空密码
       _passwordController.clear();
     }
   }
@@ -78,10 +75,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final authState = ref.watch(authProvider);
+    final env = ref.watch(envProvider);
     final isLoading = authState.isLoading;
 
-    // 提取错误消息（MFA 状态不再显示错误，而是导航到 MFA 验证页面）
     String? errorMessage;
     final stateValue = authState.value;
     if (stateValue is AuthStateUnauthenticated) {
@@ -89,122 +87,174 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 48),
-                // 应用标题
-                Text(
-                  'AgentLoom',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '多智能体工作流编排平台',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 48),
-                // 邮箱输入框
-                AuthTextField(
-                  controller: _emailController,
-                  label: '邮箱',
-                  keyboardType: TextInputType.emailAddress,
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 16),
-                // 密码输入框
-                AuthTextField(
-                  controller: _passwordController,
-                  label: '密码',
-                  obscureText: _obscurePassword,
-                  onToggleVisibility: () {
-                    setState(() => _obscurePassword = !_obscurePassword);
-                  },
-                  enabled: !isLoading,
-                ),
-                const SizedBox(height: 24),
-                // 登录按钮
-                FilledButton(
-                  onPressed: (_isFormValid && !isLoading) ? _handleLogin : null,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('登录'),
-                ),
-                // 错误提示
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    errorMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 32),
-                // OAuth 分隔线
-                Row(
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.scaffoldBackgroundColor,
+              theme.colorScheme.surfaceContainerLow,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '或',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    OutlinedButton.icon(
+                      onPressed: () => context.pushNamed(RouteNames.serverConfig),
+                      icon: const Icon(Icons.dns_rounded),
+                      label: Text(env.displayHost),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 24,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      theme.colorScheme.primary,
+                                      theme.colorScheme.secondary,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(22),
+                                ),
+                                child: const Icon(
+                                  Icons.hub_rounded,
+                                  color: Colors.white,
+                                  size: 30,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                'AgentLoom',
+                                style: theme.textTheme.headlineMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '移动工作台',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '在移动端管理资源、运行工作流、与 Agent 对话，并在需要时继续跳转 Web Studio 进行画布编排。',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              AuthTextField(
+                                controller: _emailController,
+                                label: '邮箱',
+                                keyboardType: TextInputType.emailAddress,
+                                enabled: !isLoading,
+                              ),
+                              const SizedBox(height: 16),
+                              AuthTextField(
+                                controller: _passwordController,
+                                label: '密码',
+                                obscureText: _obscurePassword,
+                                onToggleVisibility: () {
+                                  setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  );
+                                },
+                                enabled: !isLoading,
+                              ),
+                              const SizedBox(height: 22),
+                              FilledButton(
+                                onPressed:
+                                    (_isFormValid && !isLoading) ? _handleLogin : null,
+                                child: isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text('登录'),
+                              ),
+                              if (errorMessage != null) ...[
+                                const SizedBox(height: 14),
+                                Text(
+                                  errorMessage,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 28),
+                              Row(
+                                children: [
+                                  const Expanded(child: Divider()),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Text(
+                                      '或使用第三方登录',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ),
+                                  const Expanded(child: Divider()),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              OAuthButton(
+                                provider: 'google',
+                                label: '使用 Google 登录',
+                                icon: Icons.g_mobiledata,
+                                backgroundColor: const Color(0xFF4285F4),
+                                foregroundColor: Colors.white,
+                                isLoading: isLoading,
+                                onPressed: () => _handleOAuthLogin('google'),
+                              ),
+                              const SizedBox(height: 12),
+                              OAuthButton(
+                                provider: 'github',
+                                label: '使用 GitHub 登录',
+                                icon: Icons.code,
+                                backgroundColor: const Color(0xFF24292E),
+                                foregroundColor: Colors.white,
+                                isLoading: isLoading,
+                                onPressed: () => _handleOAuthLogin('github'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    const Expanded(child: Divider()),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-                // Google OAuth 按钮
-                OAuthButton(
-                  provider: 'google',
-                  label: '使用 Google 登录',
-                  icon: Icons.g_mobiledata,
-                  backgroundColor: const Color(0xFF4285F4),
-                  foregroundColor: Colors.white,
-                  isLoading: isLoading,
-                  onPressed: () => _handleOAuthLogin('google'),
-                ),
-                const SizedBox(height: 12),
-                // GitHub OAuth 按钮
-                OAuthButton(
-                  provider: 'github',
-                  label: '使用 GitHub 登录',
-                  icon: Icons.code,
-                  backgroundColor: const Color(0xFF24292E),
-                  foregroundColor: Colors.white,
-                  isLoading: isLoading,
-                  onPressed: () => _handleOAuthLogin('github'),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

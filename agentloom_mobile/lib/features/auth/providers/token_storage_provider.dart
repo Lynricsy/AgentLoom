@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../../shared/providers/secure_storage_provider.dart';
 import '../models/auth_tokens.dart';
 
 /// 安全存储 key 常量
@@ -73,11 +74,6 @@ class TokenStorage {
     ]);
   }
 }
-
-/// FlutterSecureStorage 实例 Provider（测试中可 override）
-final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
-  return const FlutterSecureStorage();
-});
 
 /// TokenStorage Provider
 final tokenStorageProvider = Provider<TokenStorage>((ref) {

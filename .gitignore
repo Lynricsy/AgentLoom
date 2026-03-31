@@ -116,6 +116,10 @@ node-compile-cache/
 .amp/
 .ace-tool/
 evidence-*.png
+skills-lock.json
+.trellis/tasks/*/check.jsonl
+.trellis/tasks/*/debug.jsonl
+.trellis/tasks/*/implement.jsonl
 
 # AI tool configs
 .agents/

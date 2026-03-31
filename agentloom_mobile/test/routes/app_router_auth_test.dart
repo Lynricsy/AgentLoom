@@ -18,7 +18,7 @@ void main() {
     expiresIn: 3600,
   );
   const testEnvConfig = EnvConfig(
-    apiBaseUrl: 'http://localhost:3000/api/v1',
+    studioBaseUrl: 'http://localhost:3000',
     appName: 'AgentLoom Test',
     environment: AppEnvironment.dev,
   );
@@ -26,7 +26,7 @@ void main() {
   ProviderContainer createContainer(TokenStorage tokenStorage) {
     return ProviderContainer(
       overrides: [
-        envProvider.overrideWithValue(testEnvConfig),
+        baseEnvProvider.overrideWithValue(testEnvConfig),
         tokenStorageProvider.overrideWithValue(tokenStorage),
       ],
     );

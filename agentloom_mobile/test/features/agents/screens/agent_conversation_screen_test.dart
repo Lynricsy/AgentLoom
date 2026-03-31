@@ -27,9 +27,9 @@ void main() {
     return ProviderScope(
       overrides: [
         agentApiProvider.overrideWithValue(mockApi),
-        envProvider.overrideWithValue(
+        baseEnvProvider.overrideWithValue(
           const EnvConfig(
-            apiBaseUrl: 'http://localhost:3000/api/v1',
+            studioBaseUrl: 'http://localhost:3000',
             appName: 'Test',
             environment: AppEnvironment.dev,
           ),
@@ -72,9 +72,9 @@ void main() {
           pageSize: any(named: 'pageSize'),
         ),
       ).thenAnswer(
-        (_) async => PaginatedResponse(
+        (_) async => const PaginatedResponse(
           data: <ConversationMessageDto>[],
-          meta: const PaginationMeta(
+          meta: PaginationMeta(
             total: 0,
             page: 1,
             pageSize: 50,
@@ -110,7 +110,7 @@ void main() {
             createTestMessage(
               id: 'msg-2',
               content: 'Hi! How can I help?',
-              role: MessageRole.agent,
+              role: MessageRole.assistant,
             ),
           ],
           meta: const PaginationMeta(

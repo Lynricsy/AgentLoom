@@ -340,6 +340,7 @@ AgentDefinitionDto createTestAgent({
   String id = 'agent-test-001',
   String organizationId = 'org-001',
   String name = 'Test Agent',
+  String? slug,
   String? description = 'A test agent for unit tests',
   String status = 'published',
   String? systemPrompt,
@@ -355,6 +356,7 @@ AgentDefinitionDto createTestAgent({
     id: id,
     organizationId: organizationId,
     name: name,
+    slug: slug ?? name.toLowerCase().replaceAll(' ', '-'),
     description: description,
     status: status,
     systemPrompt: systemPrompt,
@@ -425,7 +427,6 @@ ConversationMessageDto createTestMessage({
   String id = 'msg-001',
   String conversationId = 'conv-001',
   MessageRole role = MessageRole.user,
-  MessageType type = MessageType.text,
   required String content,
   String createdAt = '2026-01-01T00:00:00.000Z',
 }) {
@@ -433,9 +434,9 @@ ConversationMessageDto createTestMessage({
     id: id,
     conversationId: conversationId,
     role: role,
-    type: type,
     content: content,
     createdAt: createdAt,
+    segments: <MessageSegment>[MessageSegment.text(content)],
   );
 }
 

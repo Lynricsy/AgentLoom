@@ -19,8 +19,14 @@ class PaginationMeta {
     required this.totalPages,
   });
 
-  factory PaginationMeta.fromJson(Map<String, dynamic> json) =>
-      _$PaginationMetaFromJson(json);
+  factory PaginationMeta.fromJson(Map<String, dynamic> json) {
+    return _$PaginationMetaFromJson({
+      'total': json['total'] ?? 0,
+      'page': json['page'] ?? 1,
+      'page_size': json['page_size'] ?? json['pageSize'] ?? 20,
+      'total_pages': json['total_pages'] ?? json['totalPages'] ?? 0,
+    });
+  }
 
   Map<String, dynamic> toJson() => _$PaginationMetaToJson(this);
 }

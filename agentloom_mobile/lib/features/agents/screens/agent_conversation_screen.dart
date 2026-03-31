@@ -1,22 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/conversation_message_dto.dart';
 import '../providers/agent_conversation_provider.dart';
-import '../widgets/computer_banner.dart';
-import '../widgets/computer_expand_view.dart';
+import '../widgets/conversation_context_panel.dart';
 import '../widgets/message_bubble.dart';
 
-/// Agent 对话页面（Manus 风格）
 class AgentConversationScreen extends ConsumerStatefulWidget {
-  final String agentId;
-  final String conversationId;
-
   const AgentConversationScreen({
     super.key,
     required this.agentId,
     required this.conversationId,
   });
+
+  final String agentId;
+  final String conversationId;
 
   @override
   ConsumerState<AgentConversationScreen> createState() =>
@@ -27,6 +27,7 @@ class _AgentConversationScreenState
     extends ConsumerState<AgentConversationScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  String? _lastScrollSignature;
 
   ConversationParams get _params =>
       (agentId: widget.agentId, conversationId: widget.conversationId);
@@ -38,299 +39,557 @@ class _AgentConversationScreenState
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _sendMessage() {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
-
-    ref.read(agentConversationProvider(_params).notifier).sendMessage(text);
-    _textController.clear();
-    _scrollToBottom();
-  }
-
-  void _openComputerView(ConversationState chatState) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => ComputerExpandView(
-        terminalOutput: chatState.terminalOutput,
-        isLive: chatState.isSandboxActive,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    ref.listen<AsyncValue<ConversationState>>(
+      agentConversationProvider(_params),
+      (_, next) {
+        final state = next.value;
+        if (state == null) {
+          return;
+        }
+        final nextSignature = _scrollSignature(state);
+        if (nextSignature == _lastScrollSignature) {
+          return;
+        }
+        _lastScrollSignature = nextSignature;
+        _scrollToBottom();
+      },
+    );
+
     final conversationAsync = ref.watch(agentConversationProvider(_params));
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Conversation'),
+        title: const Text('Agent 对话'),
         actions: [
-          // 连接状态指示
-          conversationAsync.whenOrNull(
-                data: (state) {
-                  if (state is ConversationActive) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Icon(
-                        state.isConnected ? Icons.wifi : Icons.wifi_off,
-                        size: 18,
-                        color: state.isConnected
-                            ? Colors.green
-                            : theme.colorScheme.error,
-                      ),
-                    );
-                  }
-                  return null;
-                },
-              ) ??
-              const SizedBox.shrink(),
+          if (conversationAsync.value case final state?)
+            ..._buildActions(context, ref, state),
         ],
       ),
       body: conversationAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 48,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Failed to load conversation',
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () =>
-                    ref.invalidate(agentConversationProvider(_params)),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        error: (error, _) => _LoadErrorState(
+          message: '加载对话失败：$error',
+          onRetry: () => ref.invalidate(agentConversationProvider(_params)),
         ),
         data: (state) {
-          if (state is ConversationError) {
-            return Center(
-              child: Text(
-                state.message,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            );
-          }
-
-          if (state is! ConversationActive) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final chatState = state.chatState;
-
-          return Column(
-            children: [
-              // 消息列表
-              Expanded(
-                child:
-                    chatState.messages.isEmpty &&
-                        chatState.streamingContent == null
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 64,
-                              color: theme.colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Send a message to start',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.only(top: 8, bottom: 8),
-                        itemCount:
-                            chatState.messages.length +
-                            (chatState.streamingContent != null ? 1 : 0) +
-                            (chatState.thinkingContent != null ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          // 已有消息
-                          if (index < chatState.messages.length) {
-                            return MessageBubble(
-                              message: chatState.messages[index],
-                            );
-                          }
-
-                          // 思考中的流式内容
-                          final streamIndex = index - chatState.messages.length;
-                          if (streamIndex == 0 &&
-                              chatState.thinkingContent != null) {
-                            return StreamingMessageBubble(
-                              content: chatState.thinkingContent!,
-                              isThinking: true,
-                            );
-                          }
-
-                          // 流式消息内容
-                          if (chatState.streamingContent != null) {
-                            return StreamingMessageBubble(
-                              content: chatState.streamingContent!,
-                            );
-                          }
-
-                          return const SizedBox.shrink();
-                        },
-                      ),
-              ),
-
-              // Agent 正在输入指示
-              if (chatState.isAgentTyping &&
-                  chatState.streamingContent == null &&
-                  chatState.thinkingContent == null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Agent is thinking...',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // 计算机状态横幅
-              ComputerBanner(
-                latestTerminalLine: chatState.latestTerminalLine,
-                activeToolCall: chatState.activeToolCall,
-                isSandboxActive: chatState.isSandboxActive,
-                onTap: () => _openComputerView(chatState),
-              ),
-
-              // 输入栏
-              _InputBar(
-                controller: _textController,
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final showSidePanel = constraints.maxWidth >= 1040;
+              final content = _ConversationPane(
+                state: state,
+                scrollController: _scrollController,
+                textController: _textController,
                 onSend: _sendMessage,
-                isLoading: chatState.isLoading,
-              ),
-            ],
+                onCancel: () {
+                  unawaited(
+                    ref
+                        .read(agentConversationProvider(_params).notifier)
+                        .cancelConversation(),
+                  );
+                },
+                onResolvePermission: (toolCallId, action) {
+                  return ref
+                      .read(agentConversationProvider(_params).notifier)
+                      .resolveToolPermission(toolCallId, action);
+                },
+                onOpenContext: showSidePanel
+                    ? null
+                    : () => _openContextSheet(context),
+              );
+
+              if (!showSidePanel) {
+                return content;
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: content),
+                  SizedBox(
+                    width: 380,
+                    child: ConversationContextPanel(
+                      state: state,
+                      onRefreshWorkspace: () => ref
+                          .read(agentConversationProvider(_params).notifier)
+                          .refreshWorkspaceTree(),
+                      onOpenFile: (path) => ref
+                          .read(agentConversationProvider(_params).notifier)
+                          .openWorkspaceFile(path),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         },
+      ),
+      backgroundColor: theme.colorScheme.surface,
+    );
+  }
+
+  List<Widget> _buildActions(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationState state,
+  ) {
+    final theme = Theme.of(context);
+    return [
+      Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Icon(
+          state.isConnected ? Icons.wifi : Icons.wifi_off,
+          size: 18,
+          color: state.isConnected
+              ? const Color(0xFF0F9D58)
+              : theme.colorScheme.error,
+        ),
+      ),
+      IconButton(
+        tooltip: '工作区',
+        onPressed: () => _openContextSheet(context),
+        icon: const Icon(Icons.dock_outlined),
+      ),
+      IconButton(
+        tooltip: '刷新工作区',
+        onPressed: state.isLoadingWorkspace
+            ? null
+            : () {
+                unawaited(
+                  ref
+                      .read(agentConversationProvider(_params).notifier)
+                      .refreshWorkspaceTree(),
+                );
+              },
+        icon: state.isLoadingWorkspace
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh),
+      ),
+      if (state.isBusy)
+        IconButton(
+          tooltip: '停止',
+          onPressed: () {
+            unawaited(
+              ref
+                  .read(agentConversationProvider(_params).notifier)
+                  .cancelConversation(),
+            );
+          },
+          icon: const Icon(Icons.stop_circle_outlined),
+        ),
+    ];
+  }
+
+  void _sendMessage() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+
+    unawaited(
+      ref.read(agentConversationProvider(_params).notifier).sendMessage(text),
+    );
+    _textController.clear();
+    _scrollToBottom();
+  }
+
+  void _openContextSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.92,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final state = ref.watch(agentConversationProvider(_params)).value;
+              if (state == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return ConversationContextPanel(
+                compact: true,
+                state: state,
+                onRefreshWorkspace: () => ref
+                    .read(agentConversationProvider(_params).notifier)
+                    .refreshWorkspaceTree(),
+                onOpenFile: (path) => ref
+                    .read(agentConversationProvider(_params).notifier)
+                    .openWorkspaceFile(path),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) {
+        return;
+      }
+
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  String _scrollSignature(ConversationState state) {
+    final lastMessage = state.messages.isNotEmpty ? state.messages.last : null;
+    return [
+      state.messages.length,
+      lastMessage?.id ?? 'none',
+      lastMessage?.content.length ?? 0,
+      lastMessage?.toolCalls.length ?? 0,
+      state.terminalEntries.length,
+      state.fileChanges.length,
+      state.status.name,
+    ].join(':');
+  }
+}
+
+class _ConversationPane extends StatelessWidget {
+  const _ConversationPane({
+    required this.state,
+    required this.scrollController,
+    required this.textController,
+    required this.onSend,
+    required this.onCancel,
+    required this.onResolvePermission,
+    required this.onOpenContext,
+  });
+
+  final ConversationState state;
+  final ScrollController scrollController;
+  final TextEditingController textController;
+  final VoidCallback onSend;
+  final VoidCallback onCancel;
+  final Future<void> Function(String toolCallId, String action)
+  onResolvePermission;
+  final VoidCallback? onOpenContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        if (state.error != null)
+          _InlineBanner(
+            icon: Icons.error_outline,
+            text: state.error!,
+            color: theme.colorScheme.errorContainer,
+            foregroundColor: theme.colorScheme.onErrorContainer,
+          )
+        else if (!state.isConnected)
+          _InlineBanner(
+            icon: Icons.wifi_off,
+            text: state.status == ConversationStatus.connecting
+                ? '正在建立实时连接…'
+                : '实时连接已断开，历史消息仍可查看',
+            color: theme.colorScheme.secondaryContainer,
+            foregroundColor: theme.colorScheme.onSecondaryContainer,
+          ),
+        Expanded(
+          child: state.messages.isEmpty
+              ? const _EmptyConversationState()
+              : ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
+                  itemCount: state.messages.length,
+                  itemBuilder: (context, index) {
+                    return MessageBubble(
+                      message: state.messages[index],
+                      onResolvePermission: onResolvePermission,
+                    );
+                  },
+                ),
+        ),
+        if (onOpenContext != null && _shouldShowDock(state))
+          _ContextDock(
+            state: state,
+            onTap: onOpenContext!,
+          ),
+        _InputBar(
+          controller: textController,
+          onSend: onSend,
+          onCancel: onCancel,
+          isBusy: state.isBusy,
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineBanner extends StatelessWidget {
+  const _InlineBanner({
+    required this.icon,
+    required this.text,
+    required this.color,
+    required this.foregroundColor,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: color,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: foregroundColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: foregroundColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// 底部输入栏
-class _InputBar extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onSend;
-  final bool isLoading;
-
-  const _InputBar({
-    required this.controller,
-    required this.onSend,
-    this.isLoading = false,
+class _ContextDock extends StatelessWidget {
+  const _ContextDock({
+    required this.state,
+    required this.onTap,
   });
+
+  final ConversationState state;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    return Container(
-      padding: EdgeInsets.only(
-        left: 12,
-        right: 8,
-        top: 8,
-        bottom: 8 + MediaQuery.of(context).padding.bottom,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              maxLines: 4,
-              minLines: 1,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => onSend(),
-              decoration: InputDecoration(
-                hintText: 'Type a message...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                isDense: true,
+    return Material(
+      color: theme.colorScheme.surfaceContainerLow,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                state.latestToolCall != null
+                    ? Icons.build_circle_outlined
+                    : Icons.dock_outlined,
+                size: 18,
+                color: theme.colorScheme.primary,
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          isLoading
-              ? const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : IconButton(
-                  onPressed: onSend,
-                  icon: Icon(Icons.send, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      state.latestToolCall != null
+                          ? '最近工具：${state.latestToolCall!.tool}'
+                          : '查看运行上下文',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      state.latestTerminalLine ??
+                          '终端 ${state.terminalEntries.length} 条 · 文件 ${state.fileTree.length} 项 · 变更 ${state.fileChanges.length} 条',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-        ],
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class _InputBar extends StatelessWidget {
+  const _InputBar({
+    required this.controller,
+    required this.onSend,
+    required this.onCancel,
+    required this.isBusy,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final VoidCallback onCancel;
+  final bool isBusy;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                minLines: 1,
+                maxLines: 6,
+                enabled: !isBusy,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => onSend(),
+                decoration: InputDecoration(
+                  hintText: isBusy ? 'Agent 正在处理中…' : '输入消息…',
+                  filled: true,
+                  fillColor: theme.colorScheme.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: isBusy
+                  ? IconButton.filledTonal(
+                      key: const ValueKey('cancel-button'),
+                      onPressed: onCancel,
+                      icon: const Icon(Icons.stop),
+                    )
+                  : IconButton.filled(
+                      key: const ValueKey('send-button'),
+                      onPressed: onSend,
+                      icon: const Icon(Icons.send),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadErrorState extends StatelessWidget {
+  const _LoadErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyConversationState extends StatelessWidget {
+  const _EmptyConversationState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.forum_outlined,
+              size: 54,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '开始一轮新的对话',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '消息、工具调用瀑布流、终端输出和工作区文件会在这里连续展示。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _shouldShowDock(ConversationState state) {
+  return state.latestToolCall != null ||
+      state.latestTerminalLine != null ||
+      state.fileTree.isNotEmpty ||
+      state.fileChanges.isNotEmpty;
 }

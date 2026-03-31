@@ -42,7 +42,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('AgentLoom'), findsOneWidget);
-      expect(find.text('多智能体工作流编排平台'), findsOneWidget);
+      expect(find.text('移动工作台'), findsOneWidget);
       expect(find.text('邮箱'), findsOneWidget);
       expect(find.text('密码'), findsOneWidget);
       expect(find.text('登录'), findsOneWidget);
@@ -209,7 +209,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('或'), findsOneWidget);
+      expect(find.text('或使用第三方登录'), findsOneWidget);
       expect(find.byType(Divider), findsNWidgets(2));
     });
 

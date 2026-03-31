@@ -4,6 +4,7 @@ class RouteNames {
 
   static const String dashboard = 'dashboard';
   static const String workflows = 'workflows';
+  static const String resources = 'resources';
   static const String settings = 'settings';
   static const String workflowDetail = 'workflowDetail';
   static const String executionMonitor = 'executionMonitor';
@@ -28,6 +29,13 @@ class RouteNames {
   static const String skillDetail = 'skillDetail';
   static const String skillEdit = 'skillEdit';
 
+  /// 资源域路由
+  static const String workspaces = 'workspaces';
+  static const String sandboxes = 'sandboxes';
+  static const String knowledgeBases = 'knowledgeBases';
+  static const String mcpServers = 'mcpServers';
+  static const String llmModels = 'llmModels';
+
   /// Memory 路由
   static const String memoryList = 'memoryList';
   static const String memoryDetail = 'memoryDetail';
@@ -39,4 +47,5 @@ class RouteNames {
   static const String changePassword = 'changePassword';
   static const String mfaManage = 'mfaManage';
   static const String sessions = 'sessions';
+  static const String serverConfig = 'serverConfig';
 }

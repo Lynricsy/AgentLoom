@@ -13,9 +13,9 @@ void main() {
     setUp(() {
       container = ProviderContainer(
         overrides: [
-          envProvider.overrideWithValue(
+          baseEnvProvider.overrideWithValue(
             const EnvConfig(
-              apiBaseUrl: 'https://api-dev.agentloom.com/api/v1',
+              studioBaseUrl: 'https://api-dev.agentloom.com',
               appName: 'AgentLoom Test',
               environment: AppEnvironment.dev,
             ),
@@ -70,9 +70,9 @@ void main() {
     test('staging env uses staging URL', () {
       final stagingContainer = ProviderContainer(
         overrides: [
-          envProvider.overrideWithValue(
+          baseEnvProvider.overrideWithValue(
             const EnvConfig(
-              apiBaseUrl: 'https://api-staging.agentloom.com/api/v1',
+              studioBaseUrl: 'https://api-staging.agentloom.com',
               appName: 'AgentLoom Staging',
               environment: AppEnvironment.staging,
             ),
@@ -88,9 +88,9 @@ void main() {
     test('prod env uses prod URL', () {
       final prodContainer = ProviderContainer(
         overrides: [
-          envProvider.overrideWithValue(
+          baseEnvProvider.overrideWithValue(
             const EnvConfig(
-              apiBaseUrl: 'https://api.agentloom.com/api/v1',
+              studioBaseUrl: 'https://api.agentloom.com',
               appName: 'AgentLoom',
               environment: AppEnvironment.prod,
             ),

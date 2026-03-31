@@ -29,7 +29,7 @@ void main() {
   );
   const testUser = LoginUser(id: 'user-1', email: 'fox@test.com');
   const testEnv = EnvConfig(
-    apiBaseUrl: 'http://localhost:3000/api/v1',
+    studioBaseUrl: 'http://localhost:3000',
     appName: 'AgentLoom Test',
     environment: AppEnvironment.dev,
   );
@@ -39,7 +39,7 @@ void main() {
     return ProviderContainer(
       overrides: [
         workflowApiProvider.overrideWithValue(mockApi),
-        envProvider.overrideWithValue(testEnv),
+        baseEnvProvider.overrideWithValue(testEnv),
         authProvider.overrideWith(
           () => _FakeAuthNotifier(
             authState ??

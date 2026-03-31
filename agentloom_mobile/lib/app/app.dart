@@ -77,6 +77,8 @@ class _AgentLoomAppState extends ConsumerState<AgentLoomApp> {
     return MaterialApp.router(
       title: env.appName,
       theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.light,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );
