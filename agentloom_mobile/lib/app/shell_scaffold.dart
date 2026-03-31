@@ -65,9 +65,9 @@ class ShellScaffold extends StatelessWidget {
           ],
         ),
       ),
-      child: SafeArea(
-        child: isWide
-            ? Row(
+      child: isWide
+          ? SafeArea(
+              child: Row(
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
@@ -116,36 +116,26 @@ class ShellScaffold extends StatelessWidget {
                     ),
                   ),
                 ],
-              )
-            : Scaffold(
-                backgroundColor: Colors.transparent,
-                body: navigationShell,
-                bottomNavigationBar: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface.withValues(alpha: 0.94),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: theme.colorScheme.outlineVariant),
-                    ),
-                    child: NavigationBar(
-                      selectedIndex: navigationShell.currentIndex,
-                      onDestinationSelected: (index) {
-                        navigationShell.goBranch(index);
-                      },
-                      destinations: [
-                        for (final destination in _destinations)
-                          NavigationDestination(
-                            icon: Icon(destination.icon),
-                            selectedIcon: Icon(destination.selectedIcon),
-                            label: destination.label,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
-      ),
+            )
+          : Scaffold(
+              backgroundColor: Colors.transparent,
+              body: navigationShell,
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: navigationShell.currentIndex,
+                onDestinationSelected: (index) {
+                  navigationShell.goBranch(index);
+                },
+                destinations: [
+                  for (final destination in _destinations)
+                    NavigationDestination(
+                      icon: Icon(destination.icon),
+                      selectedIcon: Icon(destination.selectedIcon),
+                      label: destination.label,
+                    ),
+                ],
+              ),
+            ),
     );
   }
 }

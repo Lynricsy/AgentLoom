@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/entity_grid_card.dart';
 import '../providers/workflow_list_provider.dart';
-import '../widgets/workflow_card.dart';
 
 /// 工作流列表页面
 class WorkflowsScreen extends ConsumerStatefulWidget {
@@ -34,13 +34,58 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
     });
   }
 
+  /// 根据宽度计算列数
+  int _crossAxisCount(double width) {
+    if (width >= 900) return 4;
+    if (width >= 600) return 3;
+    return 2;
+  }
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays == 0) return 'Today';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${date.month}/${date.day}/${date.year}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
+  String _buildReleaseLabel(
+    String status,
+    int? publishedReleaseNumber,
+  ) {
+    if (status == 'published') {
+      return 'v${publishedReleaseNumber ?? 1}';
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final workflowState = ref.watch(workflowListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Workflows')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.account_tree_rounded,
+              size: 22,
+              color: theme.colorScheme.onSurface,
+            ),
+            const SizedBox(width: 8),
+            const Text('Workflows'),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           // 搜索栏
@@ -106,7 +151,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
           ),
           const SizedBox(height: 8),
 
-          // 列表
+          // 网格列表
           Expanded(
             child: workflowState.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -161,38 +206,80 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                 return RefreshIndicator(
                   onRefresh: () =>
                       ref.read(workflowListProvider.notifier).refresh(),
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (scrollInfo) {
-                      if (scrollInfo.metrics.pixels >=
-                          scrollInfo.metrics.maxScrollExtent - 200) {
-                        ref.read(workflowListProvider.notifier).loadMore();
-                      }
-                      return false;
-                    },
-                    child: ListView.builder(
-                      itemCount:
-                          state.workflows.length +
-                          (state.isLoadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == state.workflows.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final crossAxisCount =
+                          _crossAxisCount(constraints.maxWidth);
 
-                        final workflow = state.workflows[index];
-                        return WorkflowCard(
-                          workflow: workflow,
-                          onTap: () => context.goNamed(
-                            RouteNames.workflowDetail,
-                            pathParameters: {'workflowId': workflow.id},
-                          ),
-                        );
-                      },
-                    ),
+                      return NotificationListener<ScrollNotification>(
+                        onNotification: (scrollInfo) {
+                          if (scrollInfo.metrics.pixels >=
+                              scrollInfo.metrics.maxScrollExtent - 200) {
+                            ref.read(workflowListProvider.notifier).loadMore();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              sliver: SliverGrid(
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  mainAxisSpacing: 8,
+                                  crossAxisSpacing: 8,
+                                  childAspectRatio: 0.88,
+                                ),
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                    final workflow = state.workflows[index];
+                                    final versionLabel = _buildReleaseLabel(
+                                      workflow.status,
+                                      workflow.publishedReleaseNumber,
+                                    );
+
+                                    return EntityGridCard(
+                                      icon: workflow.icon,
+                                      fallbackIcon:
+                                          Icons.account_tree_outlined,
+                                      name: workflow.name,
+                                      description: workflow.description,
+                                      status: workflow.status,
+                                      date:
+                                          _formatDate(workflow.updatedAt),
+                                      versionLabel: versionLabel.isNotEmpty
+                                          ? versionLabel
+                                          : null,
+                                      onTap: () => context.goNamed(
+                                        RouteNames.workflowDetail,
+                                        pathParameters: {
+                                          'workflowId': workflow.id,
+                                        },
+                                      ),
+                                    );
+                                  },
+                                  childCount: state.workflows.length,
+                                ),
+                              ),
+                            ),
+                            // 加载更多指示器
+                            if (state.isLoadingMore)
+                              const SliverToBoxAdapter(
+                                child: Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 );
               },

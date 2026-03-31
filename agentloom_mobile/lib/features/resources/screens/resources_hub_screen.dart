@@ -12,7 +12,20 @@ class ResourcesHubScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('资源')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.widgets_rounded,
+              size: 22,
+              color: theme.colorScheme.onSurface,
+            ),
+            const SizedBox(width: 8),
+            const Text('Resources'),
+          ],
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [

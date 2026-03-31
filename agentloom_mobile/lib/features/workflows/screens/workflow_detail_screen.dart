@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/entity_icon.dart';
 import '../models/workflow_definition_dto.dart';
 import '../providers/workflow_detail_provider.dart';
 import '../widgets/execution_summary_tile.dart';
@@ -67,6 +68,25 @@ class WorkflowDetailScreen extends ConsumerWidget {
                           children: [
                             Row(
                               children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Center(
+                                    child: EntityIcon(
+                                      icon: workflow.icon,
+                                      fallbackIcon:
+                                          Icons.account_tree_outlined,
+                                      size: 28,
+                                      color: theme
+                                          .colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
                                 Expanded(
                                   child: Text(
                                     workflow.name,

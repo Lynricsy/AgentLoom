@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/entity_grid_card.dart';
 import '../api/agent_api.dart';
 import '../providers/agent_provider.dart';
-import '../widgets/agent_card.dart';
 
 /// Agent 列表页面
 class AgentListScreen extends ConsumerStatefulWidget {
@@ -35,13 +35,48 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
     });
   }
 
+  /// 根据宽度计算列数
+  int _crossAxisCount(double width) {
+    if (width >= 900) return 4;
+    if (width >= 600) return 3;
+    return 2;
+  }
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays == 0) return 'Today';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${date.month}/${date.day}/${date.year}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final agentState = ref.watch(agentListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agents')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.smart_toy_rounded,
+              size: 22,
+              color: theme.colorScheme.onSurface,
+            ),
+            const SizedBox(width: 8),
+            const Text('Agents'),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           // 搜索栏
@@ -107,7 +142,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
           ),
           const SizedBox(height: 8),
 
-          // 列表
+          // 网格列表
           Expanded(
             child: agentState.when(
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -162,40 +197,85 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                 return RefreshIndicator(
                   onRefresh: () =>
                       ref.read(agentListProvider.notifier).refresh(),
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (scrollInfo) {
-                      if (scrollInfo.metrics.pixels >=
-                          scrollInfo.metrics.maxScrollExtent - 200) {
-                        ref.read(agentListProvider.notifier).loadMore();
-                      }
-                      return false;
-                    },
-                    child: ListView.builder(
-                      itemCount:
-                          state.agents.length + (state.isLoadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == state.agents.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final crossAxisCount =
+                          _crossAxisCount(constraints.maxWidth);
 
-                        final agent = state.agents[index];
-                        return AgentCard(
-                          agent: agent,
-                          onTap: () => context.pushNamed(
-                            RouteNames.agentDetail,
-                            pathParameters: {'agentId': agent.id},
-                          ),
-                          onChat: agent.status == 'published'
-                              ? () => _startConversation(context, agent.id)
-                              : null,
-                        );
-                      },
-                    ),
+                      return NotificationListener<ScrollNotification>(
+                        onNotification: (scrollInfo) {
+                          if (scrollInfo.metrics.pixels >=
+                              scrollInfo.metrics.maxScrollExtent - 200) {
+                            ref.read(agentListProvider.notifier).loadMore();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              sliver: SliverGrid(
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  mainAxisSpacing: 8,
+                                  crossAxisSpacing: 8,
+                                  childAspectRatio: 0.88,
+                                ),
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) {
+                                    final agent = state.agents[index];
+
+                                    return EntityGridCard(
+                                      icon: agent.icon,
+                                      fallbackIcon: Icons.smart_toy_outlined,
+                                      name: agent.name,
+                                      description: agent.description,
+                                      status: agent.status,
+                                      date: _formatDate(agent.updatedAt),
+                                      versionLabel: agent.version != null
+                                          ? 'v${agent.version}'
+                                          : null,
+                                      onTap: () => context.pushNamed(
+                                        RouteNames.agentDetail,
+                                        pathParameters: {
+                                          'agentId': agent.id,
+                                        },
+                                      ),
+                                      onSecondaryAction:
+                                          agent.status == 'published'
+                                              ? () => _startConversation(
+                                                    context,
+                                                    agent.id,
+                                                  )
+                                              : null,
+                                      secondaryActionIcon:
+                                          agent.status == 'published'
+                                              ? Icons.chat_bubble_outline
+                                              : null,
+                                    );
+                                  },
+                                  childCount: state.agents.length,
+                                ),
+                              ),
+                            ),
+                            // 加载更多指示器
+                            if (state.isLoadingMore)
+                              const SliverToBoxAdapter(
+                                child: Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 );
               },
@@ -213,7 +293,10 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
       if (!context.mounted) return;
       context.pushNamed(
         RouteNames.agentConversation,
-        pathParameters: {'agentId': agentId, 'conversationId': conversation.id},
+        pathParameters: {
+          'agentId': agentId,
+          'conversationId': conversation.id,
+        },
       );
     } catch (e) {
       if (!context.mounted) return;

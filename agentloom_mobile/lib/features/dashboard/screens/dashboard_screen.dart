@@ -17,7 +17,20 @@ class DashboardScreen extends ConsumerWidget {
     final recentExecutionsAsync = ref.watch(recentExecutionsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.space_dashboard_rounded,
+              size: 22,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            const SizedBox(width: 8),
+            const Text('Dashboard'),
+          ],
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(recentWorkflowsProvider);

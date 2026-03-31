@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/entity_icon.dart';
 import '../api/agent_api.dart';
 import '../providers/agent_conversation_provider.dart';
 import '../providers/agent_provider.dart';
@@ -72,10 +73,13 @@ class AgentDetailScreen extends ConsumerWidget {
                                     color: theme.colorScheme.primaryContainer,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: Icon(
-                                    Icons.smart_toy,
-                                    color: theme.colorScheme.onPrimaryContainer,
-                                    size: 28,
+                                  child: Center(
+                                    child: EntityIcon(
+                                      icon: agent.icon,
+                                      fallbackIcon: Icons.smart_toy,
+                                      size: 28,
+                                      color: theme.colorScheme.onPrimaryContainer,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -230,6 +234,12 @@ class AgentDetailScreen extends ConsumerWidget {
                                 'conversationId': conv.id,
                               },
                             ),
+                            onLongPress: () => _showConversationMenu(
+                              context,
+                              ref,
+                              conv.id,
+                              conv.title,
+                            ),
                           );
                         }, childCount: conversations.length),
                       );
@@ -273,6 +283,112 @@ class AgentDetailScreen extends ConsumerWidget {
       return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     } catch (_) {
       return isoDate;
+    }
+  }
+
+  void _showConversationMenu(
+    BuildContext context,
+    WidgetRef ref,
+    String conversationId,
+    String? currentTitle,
+  ) {
+    showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Regenerate Title'),
+              onTap: () => Navigator.pop(ctx, 'regenerate'),
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+              title: Text(
+                'Delete Conversation',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+              ),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    ).then((action) {
+      if (action == null || !context.mounted) return;
+      switch (action) {
+        case 'regenerate':
+          _regenerateTitle(context, ref, conversationId);
+          break;
+        case 'delete':
+          _deleteConversation(context, ref, conversationId);
+          break;
+      }
+    });
+  }
+
+  Future<void> _regenerateTitle(
+    BuildContext context,
+    WidgetRef ref,
+    String conversationId,
+  ) async {
+    try {
+      final api = ref.read(agentApiProvider);
+      final title = await api.generateConversationTitle(conversationId);
+      if (!context.mounted) return;
+      ref.invalidate(agentConversationsProvider(agentId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(title != null ? 'Title updated: $title' : 'Could not generate title')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to regenerate title: $e')),
+      );
+    }
+  }
+
+  Future<void> _deleteConversation(
+    BuildContext context,
+    WidgetRef ref,
+    String conversationId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Conversation'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final api = ref.read(agentApiProvider);
+      await api.deleteConversation(conversationId);
+      if (!context.mounted) return;
+      ref.invalidate(agentConversationsProvider(agentId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conversation deleted')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete conversation: $e')),
+      );
     }
   }
 }
