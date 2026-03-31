@@ -890,3 +890,68 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Flutter workflow/agent 卡片式布局重构
+
+**Date**: 2026-03-31
+**Task**: Flutter workflow/agent 卡片式布局重构
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 变更概述
+
+将 Flutter 客户端 workflow 和 agent 列表页从单列 ListView 重构为响应式多列网格卡片布局，统一设计语言，补充图标显示。
+
+## 新建文件
+
+| 文件 | 说明 |
+|------|------|
+| `shared/widgets/entity_icon.dart` | 三格式图标组件（null→fallback / lucide→Material / emoji→Fluent 3D CDN），对齐 Studio EntityIcon.tsx |
+| `shared/widgets/entity_grid_card.dart` | 统一网格卡片组件，图标+名称+状态+描述+日期版本 |
+
+## 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `pubspec.yaml` | 添加 `cached_network_image` 依赖 |
+| `workflow_definition_dto.dart` + freezed | 补充 `String? icon` 字段 |
+| `workflows_screen.dart` | ListView → 响应式 SliverGrid (2/3/4列) + AppBar 图标 |
+| `agent_list_screen.dart` | ListView → 响应式 SliverGrid + AppBar 图标 |
+| `workflow_detail_screen.dart` | 顶部添加 EntityIcon |
+| `agent_detail_screen.dart` | 硬编码 smart_toy → EntityIcon |
+| `dashboard_screen.dart` | AppBar 加图标 |
+| `resources_hub_screen.dart` | AppBar 加图标 |
+| `settings_screen.dart` | AppBar 加图标 |
+
+## 关键设计决策
+
+- **EntityIcon 三格式对齐 Studio**: null→fallback, lucide:xxx→Material 映射(25个), emoji codepoint→CDN 图片+双层 fallback
+- **响应式断点**: <600px=2列, 600-900px=3列, >=900px=4列
+- **统一卡片**: EntityGridCard 取代独立的 WorkflowCard/AgentCard 在列表页的使用
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `51d84c6` | (see git log) |
+| `c1d81d5` | (see git log) |
+| `0f9090d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
