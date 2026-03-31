@@ -18,6 +18,7 @@ target/
 .pub-cache/
 .pub/
 build/
+**/.kotlin/
 
 # ──────────────────────────────────────────────
 # 构建输出 (Build Outputs)
