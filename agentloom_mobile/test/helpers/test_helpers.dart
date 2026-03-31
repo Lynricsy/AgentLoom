@@ -484,20 +484,18 @@ List<MemoryInstanceDto> createTestMemoryInstanceList({int count = 3}) {
 MemoryNodeDto createTestMemoryNode({
   String id = 'mem-node-1',
   String instanceId = 'mem-inst-1',
-  String content = 'This is a test memory node content.',
-  String? disclosureLevel = 'public',
-  List<String> triggerKeywords = const ['test', 'memory'],
+  String contentType = 'text',
+  int disclosureLevel = 0,
+  Map<String, dynamic>? metadata,
   String createdAt = '2026-01-01T00:00:00.000Z',
-  String updatedAt = '2026-01-15T12:00:00.000Z',
 }) {
   return MemoryNodeDto(
     id: id,
     instanceId: instanceId,
-    content: content,
+    contentType: contentType,
     disclosureLevel: disclosureLevel,
-    triggerKeywords: triggerKeywords,
+    metadata: metadata,
     createdAt: createdAt,
-    updatedAt: updatedAt,
   );
 }
 
@@ -511,8 +509,7 @@ List<MemoryNodeDto> createTestMemoryNodeList({
     (i) => createTestMemoryNode(
       id: 'mem-node-$i',
       instanceId: instanceId,
-      content: 'Node content $i - some detailed memory information.',
-      triggerKeywords: ['keyword-$i', 'test'],
+      contentType: 'text',
     ),
   );
 }

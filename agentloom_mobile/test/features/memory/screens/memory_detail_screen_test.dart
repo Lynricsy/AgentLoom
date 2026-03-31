@@ -76,9 +76,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      // 节点内容应部分显示
-      expect(find.textContaining('Node content 0'), findsOneWidget);
-      expect(find.textContaining('Node content 1'), findsOneWidget);
+      // 节点 contentType 应显示
+      expect(find.text('text'), findsNWidgets(2));
     });
 
     testWidgets('shows "No nodes yet" when empty', (tester) async {

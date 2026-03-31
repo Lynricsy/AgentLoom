@@ -45,28 +45,30 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('renders node content after loading', (tester) async {
+    testWidgets('renders node info after loading', (tester) async {
       when(() => mockApi.getMemoryNode(any(), any())).thenAnswer(
         (_) async => createTestMemoryNode(
-          content: 'This is the node content text.',
-          disclosureLevel: 'public',
-          triggerKeywords: ['keyword1', 'keyword2'],
+          contentType: 'text',
+          disclosureLevel: 2,
         ),
       );
       when(
         () => mockApi.getMemoryVersions(any(), any()),
-      ).thenAnswer((_) async => []);
+      ).thenAnswer(
+        (_) async => [createTestMemoryVersion(content: 'Latest version text.')],
+      );
 
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('This is the node content text.'), findsOneWidget);
-      expect(find.text('Node Content'), findsOneWidget);
+      expect(find.text('Node Info'), findsOneWidget);
+      expect(find.text('text'), findsOneWidget);
+      expect(find.text('Latest version text.'), findsOneWidget);
     });
 
-    testWidgets('shows disclosure level', (tester) async {
+    testWidgets('shows disclosure level as number', (tester) async {
       when(() => mockApi.getMemoryNode(any(), any())).thenAnswer(
-        (_) async => createTestMemoryNode(disclosureLevel: 'confidential'),
+        (_) async => createTestMemoryNode(disclosureLevel: 3),
       );
       when(
         () => mockApi.getMemoryVersions(any(), any()),
@@ -75,25 +77,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('confidential'), findsOneWidget);
-      expect(find.text('Disclosure: '), findsOneWidget);
-    });
-
-    testWidgets('shows trigger keyword chips', (tester) async {
-      when(() => mockApi.getMemoryNode(any(), any())).thenAnswer(
-        (_) async =>
-            createTestMemoryNode(triggerKeywords: ['ai', 'machine-learning']),
-      );
-      when(
-        () => mockApi.getMemoryVersions(any(), any()),
-      ).thenAnswer((_) async => []);
-
-      await tester.pumpWidget(createTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.byType(Chip), findsNWidgets(2));
-      expect(find.text('ai'), findsOneWidget);
-      expect(find.text('machine-learning'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('Disclosure'), findsOneWidget);
     });
 
     testWidgets('shows version history section', (tester) async {

@@ -433,10 +433,15 @@ describe('AgentMemoryController', () => {
       const instances = [createInstance(), createInstance({ id: 'inst-2' })];
       const dataQuery = createSelectChain(instances);
       const countQuery = createSelectChain([{ total: 10 }]);
+      const nodeCountQuery = createSelectChain([
+        { instanceId: instances[0].id, total: 3 },
+        { instanceId: instances[1].id, total: 5 },
+      ]);
 
       tenantDb.select
         .mockReturnValueOnce(dataQuery)
-        .mockReturnValueOnce(countQuery);
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(nodeCountQuery);
 
       const result = await controller.listInstances(
         TENANT_ID,
@@ -448,7 +453,12 @@ describe('AgentMemoryController', () => {
         }),
       );
 
-      expect(result.data).toEqual(instances);
+      expect(result.data).toEqual(
+        instances.map((inst, i) => ({
+          ...inst,
+          nodeCount: [3, 5][i],
+        })),
+      );
       expect(result.meta).toEqual({
         page: 1,
         pageSize: 20,
@@ -461,10 +471,12 @@ describe('AgentMemoryController', () => {
       const instances = [createInstance()];
       const dataQuery = createSelectChain(instances);
       const countQuery = createSelectChain([{ total: 1 }]);
+      const nodeCountQuery = createSelectChain([]);
 
       tenantDb.select
         .mockReturnValueOnce(dataQuery)
-        .mockReturnValueOnce(countQuery);
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(nodeCountQuery);
 
       const result = await controller.listInstances(
         TENANT_ID,
@@ -487,10 +499,12 @@ describe('AgentMemoryController', () => {
     it('应支持 search 和 status 过滤', async () => {
       const dataQuery = createSelectChain([]);
       const countQuery = createSelectChain([{ total: 0 }]);
+      const nodeCountQuery = createSelectChain([]);
 
       tenantDb.select
         .mockReturnValueOnce(dataQuery)
-        .mockReturnValueOnce(countQuery);
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(nodeCountQuery);
 
       const result = await controller.listInstances(
         TENANT_ID,
@@ -513,10 +527,12 @@ describe('AgentMemoryController', () => {
     it('count 为空时 total 应回退为 0', async () => {
       const dataQuery = createSelectChain([]);
       const countQuery = createSelectChain([undefined] as unknown[]);
+      const nodeCountQuery = createSelectChain([]);
 
       tenantDb.select
         .mockReturnValueOnce(dataQuery)
-        .mockReturnValueOnce(countQuery);
+        .mockReturnValueOnce(countQuery)
+        .mockReturnValueOnce(nodeCountQuery);
 
       const result = await controller.listInstances(
         TENANT_ID,
