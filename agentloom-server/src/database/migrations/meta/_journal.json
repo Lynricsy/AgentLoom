@@ -421,6 +421,13 @@
       "when": 1774928197737,
       "tag": "0059_mighty_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1775152800000,
+      "tag": "0060_purge_stale_session_sandboxes",
+      "breakpoints": true
     }
   ]
 }
