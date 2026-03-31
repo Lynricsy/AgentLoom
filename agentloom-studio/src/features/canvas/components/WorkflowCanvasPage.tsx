@@ -295,6 +295,7 @@ export function WorkflowCanvasPage() {
             workflowName={workflow.name}
             workflowStatus={workflow.status}
             draftInputSchema={workflow.inputSchema}
+            preferDraftSchema
             isStarting={isStarting}
             onStartExecution={startExecution}
             onOpenChange={setIsExecutionLaunchDialogOpen}

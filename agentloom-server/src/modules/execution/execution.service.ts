@@ -590,6 +590,29 @@ export class ExecutionService {
     return getTenantDb(this.db);
   }
 
+  private shouldUseDraftDefinition(
+    runRequest: InternalRunWorkflowRequest | undefined,
+  ): boolean {
+    return runRequest?.launchSource === 'web-studio';
+  }
+
+  private buildDraftExecutionSnapshot(
+    workflow: typeof schema.workflowDefinitions.$inferSelect,
+  ): schema.WorkflowExecution['definitionSnapshot'] {
+    return {
+      nodes: workflow.nodes ?? [],
+      edges: workflow.edges ?? [],
+      viewport: workflow.viewport ?? null,
+      inputSchema: workflow.inputSchema ?? null,
+      metadata: {
+        nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
+        edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
+        createdFromVersion: workflow.version,
+        releaseNotes: null,
+      },
+    };
+  }
+
   private async hydrateSandboxStatusesInSteps(
     steps: schema.ExecutionStep[],
   ): Promise<schema.ExecutionStep[]> {
@@ -626,6 +649,7 @@ export class ExecutionService {
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
+    const useDraftDefinition = this.shouldUseDraftDefinition(runRequest);
     const [workflow] = await this.tenantDb
       .select()
       .from(schema.workflowDefinitions)
@@ -663,6 +687,10 @@ export class ExecutionService {
       .from(schema.workflowVersions)
       .where(eq(schema.workflowVersions.id, workflow.publishedVersionId));
 
+    const definitionSnapshot = useDraftDefinition
+      ? this.buildDraftExecutionSnapshot(workflow)
+      : publishedVersion.snapshot;
+
     const admissionDecision =
       await this.resourceGovernanceService.resolveExecutionAdmissionDecision({
         tenantId,
@@ -689,7 +717,7 @@ export class ExecutionService {
         status: 'pending',
         triggerType: runRequest?.triggerType ?? 'manual',
         inputParams,
-        definitionSnapshot: publishedVersion.snapshot,
+        definitionSnapshot,
         createdBy:
           userId === SYSTEM_TRIGGER_USER_ID ? workflow.createdBy : userId,
       })

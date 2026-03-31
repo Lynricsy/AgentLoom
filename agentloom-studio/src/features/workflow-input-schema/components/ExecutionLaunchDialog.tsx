@@ -27,6 +27,7 @@ interface ExecutionLaunchDialogProps {
   workflowName: string
   workflowStatus: WorkflowStatus
   draftInputSchema: WorkflowInputSchema | null
+  preferDraftSchema?: boolean
   isStarting?: boolean
   onStartExecution: (
     workflowId: string,
@@ -58,6 +59,7 @@ export function ExecutionLaunchDialog({
   workflowName,
   workflowStatus,
   draftInputSchema,
+  preferDraftSchema = false,
   isStarting = false,
   onStartExecution,
   onOpenChange,
@@ -67,6 +69,7 @@ export function ExecutionLaunchDialog({
     workflowId,
     workflowStatus,
     draftInputSchema,
+    preferDraftSchema,
     enabled: open,
   })
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -246,6 +249,7 @@ export function ExecutionLaunchDialog({
               </Dialog.Title>
               <Dialog.Description className="text-sm text-muted-foreground">
                 为「{workflowName}」填写运行参数后启动执行。
+                {preferDraftSchema ? ' 本次运行将使用当前编辑稿。' : ''}
               </Dialog.Description>
             </div>
 

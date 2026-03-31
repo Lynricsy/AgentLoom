@@ -11,6 +11,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🎨 可视化工作流画布** — 基于 React Flow 的拖拽式 DAG 编辑器，21 种 workflow 节点类型，实时端口类型兼容性检查（Rust WASM）
 - **🤖 多模型智能路由** — 6 种路由策略（Token 优化 / 成本优化 / 质量优先 / 延迟优先 / 历史最优 / 容错链），支持自动 Fallback
 - **⚡ DAG 调度引擎** — 状态机驱动的工作流执行，BullMQ 分布式任务队列，支持断点续跑与人工介入
+- **🧪 编辑器调试运行** — Studio 编辑界面的 Run 使用当前草稿定义做一次性执行验证；编辑器外、移动端、API 与 Trigger 仍基于已发布版本运行
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知

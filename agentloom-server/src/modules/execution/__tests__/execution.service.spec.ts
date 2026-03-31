@@ -467,6 +467,101 @@ describe('ExecutionService', () => {
       );
     });
 
+    it('应在 web-studio 启动时使用当前工作流草稿快照', async () => {
+      const draftSnapshotWorkflow = {
+        ...mockPublishedWorkflow,
+        version: 20,
+        nodes: [
+          {
+            id: 'draft-http-tool',
+            type: 'tool',
+            position: { x: 120, y: 80 },
+            data: {
+              nodeType: 'http-tool',
+              config: {
+                url: 'https://api.day.app/device/test',
+                method: 'POST',
+              },
+            },
+          },
+        ],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+      const publishedVersion = {
+        ...mockVersion,
+        snapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'published-http-tool',
+              type: 'tool',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'http-tool',
+                config: {
+                  url: 'https://agentloom.ling.plus/api/v1/health',
+                  method: 'GET',
+                },
+              },
+            },
+          ],
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([draftSnapshotWorkflow]))
+        .mockReturnValueOnce(createSelectChain([publishedVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([
+          {
+            ...mockExecution,
+            definitionSnapshot: {
+              nodes: draftSnapshotWorkflow.nodes,
+              edges: draftSnapshotWorkflow.edges,
+              viewport: draftSnapshotWorkflow.viewport,
+              inputSchema: draftSnapshotWorkflow.inputSchema,
+              metadata: {
+                nodeCount: 1,
+                edgeCount: 0,
+                createdFromVersion: 20,
+                releaseNotes: null,
+              },
+            },
+          },
+        ]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          inputParams: { topic: 'Bark 验证' },
+          schemaVersion: CONDITIONAL_RUN_INPUT_SCHEMA.version,
+          launchSource: 'web-studio',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.definitionSnapshot).toEqual({
+        nodes: draftSnapshotWorkflow.nodes,
+        edges: [],
+        viewport: draftSnapshotWorkflow.viewport,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+        metadata: {
+          nodeCount: 1,
+          edgeCount: 0,
+          createdFromVersion: 20,
+          releaseNotes: null,
+        },
+      });
+      expect(insertValues.workflowVersionId).toBe(VERSION_ID);
+    });
+
     it('应将 launchSource 合并到 inputParams._meta 中', async () => {
       const executionWithLaunchSource = {
         ...mockExecution,

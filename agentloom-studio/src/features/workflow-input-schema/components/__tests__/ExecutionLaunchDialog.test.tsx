@@ -186,6 +186,71 @@ describe('ExecutionLaunchDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('编辑器要求使用草稿 schema 时，发布态也应优先使用 draftInputSchema', async () => {
+    const draftInputSchema: WorkflowInputSchema = {
+      version: 7,
+      collectionMode: 'form',
+      fields: [
+        {
+          id: 'topic',
+          type: 'text',
+          label: '主题',
+          required: true,
+        },
+      ],
+    }
+
+    useWorkflowInputSchemaMock.mockReturnValue({
+      data: {
+        version: 3,
+        collectionMode: 'form',
+        fields: [
+          {
+            id: 'mode',
+            type: 'single_select',
+            label: '运行模式',
+            required: true,
+            options: ['basic', 'advanced'],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <ExecutionLaunchDialog
+        open
+        workflowId="wf-001"
+        workflowName="Workflow One"
+        workflowStatus="published"
+        draftInputSchema={draftInputSchema}
+        preferDraftSchema
+        onStartExecution={startExecutionMock}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(useWorkflowInputSchemaMock).toHaveBeenCalledWith('wf-001', { enabled: false })
+    expect(screen.getByText(/本次运行将使用当前编辑稿/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('主题'), {
+      target: { value: 'Bark 验证' },
+    })
+    fireEvent.click(screen.getByTestId('confirm-launch-workflow'))
+
+    await waitFor(() => {
+      expect(startExecutionMock).toHaveBeenCalledWith('wf-001', {
+        inputParams: {
+          topic: 'Bark 验证',
+        },
+        schemaVersion: 7,
+        launchSource: 'web-studio',
+      })
+    })
+  })
+
   it('草稿态优先使用 draftInputSchema，且不会启用 published 查询', async () => {
     const draftInputSchema: WorkflowInputSchema = {
       version: 2,

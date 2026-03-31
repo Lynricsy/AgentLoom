@@ -182,6 +182,7 @@ vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () 
     workflowName: string
     workflowStatus: WorkflowDefinition['status']
     draftInputSchema: WorkflowInputSchema | null
+    preferDraftSchema?: boolean
   }) => {
     executionLaunchDialogMock(props)
     return props.open ? <div data-testid="execution-launch-dialog" /> : null
@@ -446,6 +447,7 @@ describe('WorkflowCanvasPage workflow settings integration', () => {
         workflowName: 'Workflow One',
         workflowStatus: 'published',
         draftInputSchema: workflowInputSchema,
+        preferDraftSchema: true,
       }),
     )
   })
