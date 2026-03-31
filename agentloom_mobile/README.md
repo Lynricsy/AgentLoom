@@ -1,47 +1,80 @@
 # agentloom_mobile
 
-AgentLoom Flutter 移动端应用，当前已覆盖 Story 7.3 / 7.3a / 7.4 / 7.4a / 7.5 / 7.6 的核心能力：认证与会话管理、工作流列表/详情、参数输入启动链路、Dashboard 最近执行聚合、基于 Socket.IO 的实时执行监控，以及基于 FCM 的移动端推送通知与设备注册。
+AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使用端应用。它已经覆盖认证与安全、工作流启动与执行监控、Agent 对话、通知，以及资源域的完整入口，并支持在运行时切换 Studio 地址。
 
 ## 已实现能力
 
-- Riverpod + GoRouter + Dio 的移动端基础架构
-- 登录、token 存储、401 自动刷新与路由守卫
-- 工作流列表、筛选、详情、执行历史
-- 工作流启动参数输入：
-  - `/workflows/:workflowId/launch` 参数页路由
+- Riverpod + GoRouter + Dio 的应用基础架构
+- `studioBaseUrl` 运行时配置：
+  - 登录页与设置页都可进入 `ServerConfigScreen`
+  - 由 Studio 地址自动派生 `apiBaseUrl`
+- 认证与安全：
+  - 邮箱密码登录
+  - Google / GitHub OAuth
+  - MFA TOTP 注册与验证
+  - 密码修改、会话管理
+- Dashboard：
+  - 最近工作流
+  - 最近执行聚合
+- Workflows：
+  - 列表、筛选、详情、执行历史
+  - 参数输入页 `/workflows/:workflowId/launch`
   - 动态表单字段（text / number / single_select / multi_select）
-  - required / min / max / minLength / maxLength 客户端校验
-  - 空参数确认页与 `collectionMode='conversation'` Web 端引导
-- Dashboard 快速访问工作流 + 最近执行聚合视图
-- 执行监控页：
+  - `collectionMode != 'form'` 时的 Web-first fallback
+- Execution Monitor：
   - Socket.IO `/execution` 实时状态推送
-  - REST execution detail 首次加载 + 5 秒 polling 降级
-  - failed/cancelled 语义化横幅
-  - 步骤时间线、节点名称/类型展示
-  - `/executions/:executionId` 深链接 / Shell 外路由
-- 移动端推送通知：
-  - `features/notifications/` 中的 FCM payload 模型、设备注册 API、通知服务与 Riverpod notifier
-  - 认证状态从未认证 → 已认证时统一初始化推送权限与 token 注册，登出/强制登出时清理注册与本地 token
-  - 前台消息转本地通知，点击系统推送、本地通知，以及本地通知冷启动恢复时都能跳转 `/executions/:executionId`
-  - Android/iOS 已补齐 Firebase messaging 所需基础平台配置（不含 `google-services.json` / `GoogleService-Info.plist`）
-- WorkflowDetail FAB 先进入参数页，再由参数提交成功后跳转执行监控页
+  - REST detail 首次加载 + polling 降级
+  - 状态头、告警横幅、步骤时间线
+  - Shell 外深链接 `/executions/:executionId`
+- Agents：
+  - Agent 列表、详情、会话入口
+  - 对话页支持实时消息流、thinking 段、工具调用 / 工具结果瀑布流
+  - 权限审批、终端输出、文件变更、工作区上下文面板
+- Resources：
+  - Memory
+  - Skills
+  - Workspaces
+  - Sandboxes
+  - Knowledge Bases
+  - MCP Servers
+  - LLM Models
+- MCP Servers：
+  - 配置列表与详情
+  - 连接测试
+  - 工具发现 / 导入 / 重导入
+  - 配置编辑、删除
+  - 已导入工具停用
+- LLM Models：
+  - 模型配置列表与详情
+  - 创建 / 编辑 / 删除
+  - Chat / Embedding 类型
+  - API Key 选择
+  - Private Cloud 连接测试与远端模型探测
+- Notifications：
+  - FCM token 生命周期管理
+  - 前台本地通知
+  - 后台 / 冷启动深链到执行详情
+
+## 导航结构
+
+- 总览
+- 工作流
+- Agent
+- 资源
+- 设置
+
+`ShellScaffold` 会根据宽度自动在 `NavigationBar` 与 `NavigationRail` 间切换。
 
 ## 开发命令
 
-执行 Flutter 命令前请先注入 SDK 路径：
+项目固定 Flutter 3.41.2。若本地使用 FVM，可为下列命令加上 `fvm` 前缀：
 
 ```bash
-export PATH="/root/fvm/default/bin:$PATH"
-```
-
-常用命令：
-
-```bash
-fvm flutter pub get
-fvm flutter analyze
-fvm dart run build_runner build --delete-conflicting-outputs
-fvm flutter test
-fvm flutter test --coverage
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
+flutter test --coverage
 ```
 
 ## 目录概览
@@ -51,21 +84,25 @@ lib/
 ├── app/                 # AgentLoomApp / ShellScaffold
 ├── config/              # 环境、主题、常量
 ├── features/
-│   ├── auth/            # 登录、token 存储、AuthNotifier、AuthInterceptor
+│   ├── auth/            # 登录、OAuth、TokenStorage、MFA
 │   ├── dashboard/       # Quick Access + recentWorkflows/recentExecutions
 │   ├── execution/       # Socket.IO 执行监控、timeline、banner、provider
 │   ├── notifications/   # FCM payload、设备注册 API、通知服务、push provider
-│   ├── settings/        # 占位设置页
-│   └── workflows/       # 工作流列表、详情、parameter launch、runWorkflow、execution/input-schema models
+│   ├── agents/          # Agent 列表/详情/对话、消息段与工具瀑布流
+│   ├── memory/          # Memory 列表/详情/连接/配置/图谱
+│   ├── resources/       # ResourcesHub + Workspaces/Sandboxes/Knowledge/MCP/LLM
+│   ├── settings/        # ServerConfig、密码修改、MFA、会话管理
+│   ├── skills/          # Skill 列表/详情/轻编辑
+│   └── workflows/       # 工作流列表、详情、参数输入、启动
 ├── routes/              # GoRouter、route names、auth redirect
 └── shared/              # api client、paginated models、provider、共享组件
 ```
 
 ## 测试与验证
 
-- `fvm flutter analyze`：静态检查
-- `fvm flutter test`：当前全量测试应保持绿色（最新基线为 416/416）
-- `fvm dart run build_runner build --delete-conflicting-outputs`：Freezed/JSON 生成物更新
+- `flutter analyze`：静态检查通过
+- `flutter test`：当前全量测试为 `602/602` 通过
+- `dart run build_runner build --delete-conflicting-outputs`：更新 Freezed / JSON 生成物
 
 ## 环境文件
 

@@ -99,6 +99,9 @@ void main() {
       expect(RouteNames.resources, 'resources');
       expect(RouteNames.settings, 'settings');
       expect(RouteNames.serverConfig, 'serverConfig');
+      expect(RouteNames.knowledgeBases, 'knowledgeBases');
+      expect(RouteNames.mcpServers, 'mcpServers');
+      expect(RouteNames.llmModels, 'llmModels');
     });
   });
 }

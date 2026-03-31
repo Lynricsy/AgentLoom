@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 class ResourceEmptyState extends StatelessWidget {
@@ -109,10 +110,7 @@ class ResourceMetadataRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: SelectableText(
-              value,
-              style: theme.textTheme.bodySmall,
-            ),
+            child: SelectableText(value, style: theme.textTheme.bodySmall),
           ),
         ],
       ),
@@ -121,11 +119,7 @@ class ResourceMetadataRow extends StatelessWidget {
 }
 
 class JsonCodePanel extends StatelessWidget {
-  const JsonCodePanel({
-    super.key,
-    required this.label,
-    required this.data,
-  });
+  const JsonCodePanel({super.key, required this.label, required this.data});
 
   final String label;
   final Object? data;
@@ -140,9 +134,9 @@ class JsonCodePanel extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         DecoratedBox(
@@ -197,4 +191,26 @@ String formatDateTime(String raw) {
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
   return '${local.year}-$month-$day $hour:$minute';
+}
+
+String describeResourceError(Object error) {
+  if (error is DioException) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout) {
+      return '请求超时，请稍后重试';
+    }
+    if (error.type == DioExceptionType.connectionError) {
+      return '无法连接到服务器，请检查网络或服务器地址';
+    }
+
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final message = data['message'] ?? data['detail'];
+      if (message != null) {
+        return message.toString();
+      }
+    }
+  }
+
+  return error.toString();
 }

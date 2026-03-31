@@ -212,6 +212,28 @@ void main() {
       },
     );
   });
+
+  group('resource routes', () {
+    test('resource subroutes are registered in GoRouter', () {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      final router = container.read(goRouterProvider);
+
+      expect(
+        router.namedLocation(RouteNames.knowledgeBases),
+        equals('/resources/knowledge-bases'),
+      );
+      expect(
+        router.namedLocation(RouteNames.mcpServers),
+        equals('/resources/mcp-servers'),
+      );
+      expect(
+        router.namedLocation(RouteNames.llmModels),
+        equals('/resources/llm-models'),
+      );
+    });
+  });
 }
 
 class _TestTokenStorage extends TokenStorage {

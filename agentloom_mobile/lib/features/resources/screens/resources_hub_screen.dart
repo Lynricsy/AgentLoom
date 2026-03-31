@@ -12,9 +12,7 @@ class ResourcesHubScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('资源'),
-      ),
+      appBar: AppBar(title: const Text('资源')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
@@ -72,7 +70,7 @@ class ResourcesHubScreen extends StatelessWidget {
             icon: Icons.extension_rounded,
             title: 'MCP Servers',
             subtitle: '连接、测试、导入工具与配置管理',
-            badge: '迁移中',
+            badge: '已接入',
             onTap: () => context.pushNamed(RouteNames.mcpServers),
           ),
           const SizedBox(height: 12),
@@ -80,7 +78,7 @@ class ResourcesHubScreen extends StatelessWidget {
             icon: Icons.hub_rounded,
             title: 'LLM Models',
             subtitle: '模型配置、用途标注与连接测试',
-            badge: '迁移中',
+            badge: '已接入',
             onTap: () => context.pushNamed(RouteNames.llmModels),
           ),
           const SizedBox(height: 18),
@@ -103,10 +101,7 @@ class ResourcesHubScreen extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.subtitle,
-  });
+  const _SectionHeader({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -118,15 +113,9 @@ class _SectionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.titleMedium,
-        ),
+        Text(title, style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: theme.textTheme.bodySmall,
-        ),
+        Text(subtitle, style: theme.textTheme.bodySmall),
       ],
     );
   }
@@ -173,15 +162,9 @@ class _ResourceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium,
-                    ),
+                    Text(title, style: theme.textTheme.titleMedium),
                     const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    Text(subtitle, style: theme.textTheme.bodySmall),
                   ],
                 ),
               ),

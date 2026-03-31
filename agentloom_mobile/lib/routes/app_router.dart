@@ -22,7 +22,8 @@ import '../features/memory/screens/memory_detail_screen.dart';
 import '../features/memory/screens/memory_list_screen.dart';
 import '../features/memory/screens/memory_node_screen.dart';
 import '../features/resources/screens/knowledge_bases_screen.dart';
-import '../features/resources/screens/resource_placeholder_screen.dart';
+import '../features/resources/screens/llm_models_screen.dart';
+import '../features/resources/screens/mcp_servers_screen.dart';
 import '../features/resources/screens/resources_hub_screen.dart';
 import '../features/resources/screens/sandboxes_screen.dart';
 import '../features/resources/screens/workspaces_screen.dart';
@@ -279,9 +280,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                               final id = state.pathParameters['id']!;
                               return ProviderScope(
                                 overrides: [
-                                  memoryAuditInstanceIdProvider.overrideWithValue(
-                                    id,
-                                  ),
+                                  memoryAuditInstanceIdProvider
+                                      .overrideWithValue(id),
                                 ],
                                 child: MemoryAuditScreen(instanceId: id),
                               );
@@ -327,32 +327,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'mcp-servers',
                     name: RouteNames.mcpServers,
-                    builder: (context, state) {
-                      return const ResourcePlaceholderScreen(
-                        title: 'MCP Servers',
-                        description: 'MCP 连接、测试、工具发现与导入流会在后续批次接入。',
-                        nextSteps: [
-                          '接入服务器配置列表与详情',
-                          '补齐连接测试与工具发现',
-                          '补齐导入/重导入工具的完整流程',
-                        ],
-                      );
-                    },
+                    builder: (context, state) => const McpServersScreen(),
                   ),
                   GoRoute(
                     path: 'llm-models',
                     name: RouteNames.llmModels,
-                    builder: (context, state) {
-                      return const ResourcePlaceholderScreen(
-                        title: 'LLM Models',
-                        description: '模型配置和连接测试会迁入资源域，统一支撑资源选择器和运行时使用。',
-                        nextSteps: [
-                          '接入模型列表与 provider 类型',
-                          '补齐创建、编辑与连接测试',
-                          '补齐 chat / embedding 用途标识',
-                        ],
-                      );
-                    },
+                    builder: (context, state) => const LlmModelsScreen(),
                   ),
                 ],
               ),
