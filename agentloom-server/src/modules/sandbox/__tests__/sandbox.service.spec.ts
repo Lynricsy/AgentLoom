@@ -7,8 +7,8 @@ import { DRIZZLE } from '../../../database/database.module';
 import { SandboxService } from '../sandbox.service';
 import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import { SandboxNotFoundException } from '../sandbox.exceptions';
-import { DockerService } from '../docker.service';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
+import { SANDBOX_RUNTIME_DRIVER } from '../sandbox-runtime-driver.port';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   runInTenantTransaction: vi.fn(
@@ -185,7 +185,7 @@ describe('SandboxService', () => {
           useValue: mockLifecycleProducer,
         },
         {
-          provide: DockerService,
+          provide: SANDBOX_RUNTIME_DRIVER,
           useValue: mockDockerService,
         },
       ],

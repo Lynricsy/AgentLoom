@@ -22,8 +22,12 @@ import {
   SandboxStatsUnavailableException,
 } from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
-import { DockerService, type ContainerStats } from './docker.service';
 import type { PiConfigInput } from './pi-config-generator.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type ContainerStats,
+  type SandboxRuntimeDriver,
+} from './sandbox-runtime-driver.port';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 const NON_ACTIVE_SESSION_STATUSES = ['stopping', ...TERMINAL_STATUSES] as const;
@@ -52,7 +56,8 @@ export class SandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
   ) {}
 
   private get tenantDb(): DrizzleDB {

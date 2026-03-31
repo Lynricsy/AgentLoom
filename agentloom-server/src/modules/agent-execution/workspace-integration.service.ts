@@ -1,7 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
-import { DockerService } from '../sandbox/docker.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from '../sandbox/sandbox-runtime-driver.port';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import type { SandboxConfig } from '../../database/schema';
@@ -43,7 +46,8 @@ export class WorkspaceIntegrationService {
   >();
 
   constructor(
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
     private readonly sandboxService: SandboxService,
     private readonly workspaceService: WorkspaceService,
     private readonly eventEmitter: EventEmitter2,

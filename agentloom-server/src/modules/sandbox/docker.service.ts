@@ -15,7 +15,6 @@ import {
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import type {
   PiConfigBundle,
-  PiConfigInput,
   PiModelConfig,
 } from './pi-config-generator.service';
 import {
@@ -26,37 +25,22 @@ import {
   SandboxCreationException,
   SandboxDestroyException,
 } from './sandbox.exceptions';
+import type {
+  ContainerStats,
+  CreateContainerPiContext,
+  DockerExecCreateOptions,
+  DockerExecExitInfo,
+  DockerExecHandle,
+  SandboxRuntimeDriver,
+} from './sandbox-runtime-driver.port';
 
-export interface ContainerStats {
-  cpuPercent: number;
-  memoryUsageMb: number;
-  memoryLimitMb: number;
-}
-
-export interface DockerExecCreateOptions {
-  command: string;
-  args?: string[];
-  cwd?: string;
-  env?: string[];
-}
-
-export interface DockerExecHandle {
-  execId: string;
-}
-
-export interface DockerExecExitInfo {
-  running: boolean;
-  exitCode: number | null;
-  pid: number | null;
-}
-
-/** 创建容器时可选的 pi-coding-agent 配置上下文 */
-export interface CreateContainerPiContext {
-  /** pi-config 生成所需的输入 */
-  piConfigInput?: PiConfigInput;
-  /** 保留 Agent 对话 ID，供上层显式工具权限回调链路扩展 */
-  conversationId?: string;
-}
+export type {
+  ContainerStats,
+  CreateContainerPiContext,
+  DockerExecCreateOptions,
+  DockerExecExitInfo,
+  DockerExecHandle,
+} from './sandbox-runtime-driver.port';
 
 interface FakeExecRecord {
   readonly child: ReturnType<typeof spawn>;
@@ -87,7 +71,7 @@ function getConfiguredSandboxNetwork(): string | undefined {
 }
 
 @Injectable()
-export class DockerService {
+export class DockerService implements SandboxRuntimeDriver {
   private readonly docker: Docker;
   private readonly execStreams = new Map<string, NodeJS.ReadableStream>();
   private readonly fakeExecs = new Map<string, FakeExecRecord>();

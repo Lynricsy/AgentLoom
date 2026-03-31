@@ -9,6 +9,7 @@ import { SandboxLifecycleWorker } from './sandbox-lifecycle.worker';
 import { SandboxController } from './sandbox.controller';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
 import { PiConfigGeneratorService } from './pi-config-generator.service';
+import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
 
 @Module({
   imports: [
@@ -27,6 +28,10 @@ import { PiConfigGeneratorService } from './pi-config-generator.service';
   providers: [
     SandboxService,
     DockerService,
+    {
+      provide: SANDBOX_RUNTIME_DRIVER,
+      useExisting: DockerService,
+    },
     SandboxLifecycleProducer,
     SandboxLifecycleWorker,
     PiConfigGeneratorService,
@@ -34,6 +39,7 @@ import { PiConfigGeneratorService } from './pi-config-generator.service';
   exports: [
     SandboxService,
     DockerService,
+    SANDBOX_RUNTIME_DRIVER,
     SandboxLifecycleProducer,
     PiConfigGeneratorService,
   ],

@@ -37,13 +37,16 @@ import {
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { RagService } from '../knowledge/services/rag.service';
 import { McpService } from '../mcp/mcp.service';
-import { DockerService } from '../sandbox/docker.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
 import {
   PiConfigGeneratorService,
   resolvePiProviderApiKeyEnv,
   type PiModelConfig,
 } from '../sandbox/pi-config-generator.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from '../sandbox/sandbox-runtime-driver.port';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeExecutionService } from './code-execution.service';
 import { executeHttpToolRequest } from './http-tool-request.util';
@@ -225,7 +228,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly sandboxService: SandboxService,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
     @Optional() private readonly codeExecutionService?: CodeExecutionService,

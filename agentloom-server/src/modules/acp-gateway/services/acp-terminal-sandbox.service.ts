@@ -6,9 +6,10 @@ import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { sandboxSessions } from '../../../database/schema';
 import {
-  DockerService,
+  SANDBOX_RUNTIME_DRIVER,
   type DockerExecExitInfo,
-} from '../../sandbox/docker.service';
+  type SandboxRuntimeDriver,
+} from '../../sandbox/sandbox-runtime-driver.port';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import type { AcpTrackedSession } from '../acp-types';
 
@@ -41,7 +42,8 @@ interface ResolvedTerminalCwd {
 export class AcpTerminalSandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
   ) {}
 
   async createTerminal(

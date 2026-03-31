@@ -9,10 +9,13 @@ import * as schema from '../../database/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 
 import { StorageService } from '../../infrastructure/storage/storage.service';
-import { DockerService } from './docker.service';
 import { SandboxService } from './sandbox.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import { WorkspaceService } from '../workspace/workspace.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from './sandbox-runtime-driver.port';
 import {
   SANDBOX_LIFECYCLE_QUEUE,
   type SandboxLifecycleJobData,
@@ -39,7 +42,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly moduleRef: ModuleRef,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
     private readonly sandboxService: SandboxService,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
     private readonly storageService: StorageService,

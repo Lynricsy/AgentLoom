@@ -14,7 +14,10 @@ import { sandboxSessions } from '../../../database/schema';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import type { AcpTrackedSession } from '../acp-types';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
-import { DockerService } from '../../sandbox/docker.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from '../../sandbox/sandbox-runtime-driver.port';
 
 const SANDBOX_WORKSPACE_ROOT = '/workspace';
 const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024;
@@ -44,7 +47,8 @@ export interface SandboxWriteTextFileParams {
 export class AcpFilesystemSandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
   ) {}
 
   async readTextFile(

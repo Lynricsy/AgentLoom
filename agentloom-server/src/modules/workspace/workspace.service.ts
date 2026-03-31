@@ -5,7 +5,10 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import { StorageService } from '../../infrastructure/storage/storage.service';
-import { DockerService } from '../sandbox/docker.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from '../sandbox/sandbox-runtime-driver.port';
 import { buildWorkspaceStorageKey } from './workspace.constants';
 
 const CONTAINER_WORKSPACE = '/workspace/';
@@ -18,7 +21,8 @@ export class WorkspaceService {
     @Inject(DRIZZLE)
     private readonly db: DrizzleDB,
     private readonly storageService: StorageService,
-    private readonly dockerService: DockerService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly dockerService: SandboxRuntimeDriver,
   ) {}
 
   async resolveOrganizationId(tenantId: string): Promise<string> {

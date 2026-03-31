@@ -6,8 +6,8 @@ import { Readable } from 'node:stream';
 import { DRIZZLE } from '../../../database/database.module';
 import { WorkspaceService } from '../workspace.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { DockerService } from '../../sandbox/docker.service';
 import type { WorkspaceSnapshot } from '../../../database/schema';
+import { SANDBOX_RUNTIME_DRIVER } from '../../sandbox/sandbox-runtime-driver.port';
 
 // ─── Drizzle chain builders ─────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ describe('WorkspaceService', () => {
         WorkspaceService,
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: mockStorageService },
-        { provide: DockerService, useValue: mockDockerService },
+        { provide: SANDBOX_RUNTIME_DRIVER, useValue: mockDockerService },
       ],
     }).compile();
 

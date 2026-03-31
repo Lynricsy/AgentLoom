@@ -27,6 +27,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 | plugin | `src/modules/plugin/` | `.alp` 上传、签名校验、Extism WASM 沙箱、收益结算 |
 | optimization-suggestion | `src/modules/optimization-suggestion/` | 周期分析执行遥测并生成可应用建议 |
 | acp-gateway | `src/modules/acp-gateway/` | ACP stdio 协议适配、连接级 session registry、严格 initialize 版本协商、authenticate、`session/new` / `session/load` / `session/prompt` / `session/cancel`、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy + server-sandbox surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` server-sandbox surface、canonical `readTextFile` / `writeTextFile` 能力协商，以及仅在 client 同时启用 `terminal.create` 与 `terminal.output` 时暴露的粗粒度 `terminal: { create: true }` 总开关、写入前 `session/request_permission` bridge、基于 `sandbox_sessions` 的 ACP-local sandbox workspace 解析、`/workspace/` 边界 + `realpath` / symlink / traversal / oversize / binary guardrails、session-bound terminal registry + durable continuity metadata、默认 1MB ring buffer / 5 并发 / 300s timeout kill / denylist 审计、runtime 事件到 `session/update` / `stopReason` 的映射、ordered history replay 与 cold-recovery fail-closed，以及 JSON-RPC 2.0 错误映射 |
+| sandbox | `src/modules/sandbox/` | 沙箱生命周期与运行时装配；当前默认通过 `SANDBOX_RUNTIME_DRIVER` token 绑定 `DockerService`，让 agent / workspace / ACP 等消费方先依赖抽象驱动，为后续扩展其他 runtime 预留切口 |
 
 ## 本地开发
 
