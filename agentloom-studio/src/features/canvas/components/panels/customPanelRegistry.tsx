@@ -29,6 +29,8 @@ import { MemoryConfigPanel } from './MemoryConfigPanel'
 import { WorkspaceConfigPanel } from './WorkspaceConfigPanel'
 import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
 import { ConditionConfigPanel } from './ConditionConfigPanel'
+import { LoopConfigPanel } from './LoopConfigPanel'
+import { MergeConfigPanel } from './MergeConfigPanel'
 import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
 import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
 import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
@@ -176,6 +178,22 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'condition': {
     render: ({ node, onConfigChange }) => (
       <ConditionConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'loop': {
+    render: ({ node, onConfigChange }) => (
+      <LoopConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'merge': {
+    render: ({ node, onConfigChange }) => (
+      <MergeConfigPanel
         config={node.data.config}
         onApply={onConfigChange}
       />

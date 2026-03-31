@@ -32,9 +32,10 @@ export const NODE_TYPES = [
   'agent',
   'skill',
   'workspace',
+  'merge',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin', 'condition', 'merge'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -442,20 +443,11 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '条件分支节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
     inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('input-in', 'input', 'input', 'json')],
-    outputPorts: [createPort('matched-out', 'matched', 'output', 'json'), createPort('unmatched-out', 'unmatched', 'output', 'json')],
-    configSchema: {
-      type: 'object',
-      properties: {
-        mode: createConfigField('string', '判断模式', {
-          enum: ['expression', 'field-comparison'],
-          default: 'expression',
-        }),
-        expression: createConfigField('string', '条件表达式'),
-        conditionField: createConfigField('string', '字段名'),
-        expectedValue: createConfigField('string', '期望值'),
-      },
-      required: ['mode'],
-    },
+    outputPorts: [
+      createPort('branch-0', 'IF', 'output', 'json', { description: 'IF 分支输出' }),
+      createPort('else', 'ELSE', 'output', 'json', { description: '默认分支输出' }),
+    ],
+    configSchema: EMPTY_CONFIG_SCHEMA,
   },
   loop: {
     type: 'loop',
@@ -469,7 +461,17 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     configSchema: {
       type: 'object',
       properties: {
-        maxIterations: createConfigField('number', 'Max Iterations', { default: 10 }),
+        maxIterations: createConfigField('number', '最大迭代次数', { default: 10 }),
+        stopConditionMode: createConfigField('string', '停止条件', {
+          enum: ['none', 'condition', 'expression'],
+          default: 'none',
+        }),
+        stopCondition: createConfigField('object', '停止条件配置'),
+        stopExpression: createConfigField('string', '停止表达式'),
+        errorStrategy: createConfigField('string', '错误处理', {
+          enum: ['stop', 'skip', 'collect'],
+          default: 'stop',
+        }),
       },
       required: [],
     },
@@ -706,6 +708,31 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         workspaceName: createConfigField('string', '工作区名称'),
       },
       required: ['workspaceId'],
+    },
+  },
+  merge: {
+    type: 'merge',
+    category: 'control',
+    label: 'Merge',
+    icon: 'GitMerge',
+    description: '合并多分支数据',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('input-0', '输入 1', 'input', 'json'),
+      createPort('input-1', '输入 2', 'input', 'json'),
+    ],
+    outputPorts: [createPort('merged-out', 'merged', 'output', 'json')],
+    configSchema: {
+      type: 'object',
+      properties: {
+        mode: createConfigField('string', '合并模式', {
+          enum: ['append', 'merge-by-key'],
+          default: 'append',
+        }),
+        mergeKey: createConfigField('string', '合并键'),
+        inputCount: createConfigField('number', '输入数量', { default: 2 }),
+      },
+      required: ['mode'],
     },
   },
 }

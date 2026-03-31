@@ -22,6 +22,7 @@ import {
   Filter,
   GitBranch,
   GitFork,
+  GitMerge,
   Globe,
   MessageSquare,
   Package,
@@ -68,6 +69,8 @@ import { MemoryNodeBody } from './nodes/MemoryNodeBody'
 import { WorkspaceNodeBody } from './nodes/WorkspaceNodeBody'
 import { InputPreprocessorNodeBody } from './nodes/InputPreprocessorNodeBody'
 import { ConditionNodeBody } from './nodes/ConditionNodeBody'
+import { LoopNodeBody } from './nodes/LoopNodeBody'
+import { MergeNodeBody } from './nodes/MergeNodeBody'
 import { HttpToolNodeBody } from './nodes/HttpToolNodeBody'
 import { CodeToolNodeBody } from './nodes/CodeToolNodeBody'
 import { ManualTriggerNodeBody } from './nodes/ManualTriggerNodeBody'
@@ -93,6 +96,7 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Braces,
   GitBranch,
   GitFork,
+  GitMerge,
   Repeat,
   Package,
   Puzzle,
@@ -564,6 +568,10 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <InputPreprocessorNodeBody config={data.config} />
           ) : data.nodeType === 'condition' ? (
             <ConditionNodeBody config={data.config} />
+          ) : data.nodeType === 'loop' ? (
+            <LoopNodeBody config={data.config} />
+          ) : data.nodeType === 'merge' ? (
+            <MergeNodeBody config={data.config} />
           ) : data.nodeType === 'http-tool' ? (
             <HttpToolNodeBody config={data.config} />
           ) : data.nodeType === 'code-tool' ? (

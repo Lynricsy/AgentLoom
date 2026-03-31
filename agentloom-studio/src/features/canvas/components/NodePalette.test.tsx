@@ -74,7 +74,6 @@ describe('NodePalette', () => {
       'memory',
       'text-output',
       'json-output',
-      'condition',
       'loop',
     ])
     expect(new Set(paletteTypes)).toEqual(new Set(registryTypes))

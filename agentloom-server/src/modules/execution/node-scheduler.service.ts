@@ -394,6 +394,10 @@ export class NodeSchedulerService {
         await this.executeLoopNode(step, input, tenantId, executionId);
         break;
 
+      case 'merge':
+        await this.executeMerge(step, input, tenantId, executionId);
+        break;
+
       case 'text-output':
       case 'json-output':
         await this.executeOutputNode(step, input, tenantId, executionId);
@@ -1608,60 +1612,43 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const expression =
-        typeof nodeData.expression === 'string'
-          ? nodeData.expression.trim()
-          : '';
-      const conditionField = this.readFirstString(
-        nodeData.conditionField,
-        nodeData.condition_field,
-      );
-      const expectedValue = this.readFirstDefined(
-        nodeData.expectedValue,
-        nodeData.expected_value,
-      );
+      const flatInput = this.flattenInput(input);
 
-      if (!expression && !conditionField) {
-        throw new AgentExecutionException(
-          `条件节点 ${step.nodeId} 缺少 conditionField 配置`,
-        );
+      // 检测新格式（branches 数组）vs 旧格式（mode + expression/conditionField）
+      const branches = this.resolveConditionBranches(nodeData);
+
+      // 顺序评估每个分支，找到第一个匹配的
+      let matchedBranchId: string | null = null;
+
+      for (const branch of branches) {
+        const matches = this.evaluateConditionBranch(branch, input, flatInput);
+        if (matches) {
+          matchedBranchId = branch.id;
+          break;
+        }
       }
 
-      const flatInput = this.flattenInput(input);
-      const actualValue = conditionField
-        ? this.resolveJsonPath(flatInput, conditionField)
-        : undefined;
-      const evaluation = expression
-        ? this.evaluateExpression(expression, input)
-        : actualValue === expectedValue;
-      const branch = evaluation ? 'matched' : 'unmatched';
-      const matchedPayload = evaluation ? input : null;
-      const unmatchedPayload = evaluation ? null : input;
+      // 构建 result：匹配分支获得 payload，其他为 null
+      const winnerBranchId = matchedBranchId ?? 'else';
+      const result: Record<string, unknown> = {
+        branch: winnerBranchId,
+      };
 
-      const result = expression
-        ? {
-            branch,
-            'matched-out': matchedPayload,
-            'unmatched-out': unmatchedPayload,
-            matched: matchedPayload,
-            unmatched: unmatchedPayload,
-            true: matchedPayload,
-            false: unmatchedPayload,
-            expression,
-            evaluatedValue: evaluation,
-          }
-        : {
-            branch,
-            'matched-out': matchedPayload,
-            'unmatched-out': unmatchedPayload,
-            matched: matchedPayload,
-            unmatched: unmatchedPayload,
-            true: matchedPayload,
-            false: unmatchedPayload,
-            evaluatedField: conditionField,
-            actualValue,
-            expectedValue,
-          };
+      for (const branch of branches) {
+        result[branch.id] = branch.id === matchedBranchId ? input : null;
+      }
+      result['else'] = matchedBranchId === null ? input : null;
+
+      // 向后兼容旧 matched/unmatched 键名
+      if (branches.length === 1) {
+        const isMatched = matchedBranchId === branches[0].id;
+        result['matched-out'] = isMatched ? input : null;
+        result['unmatched-out'] = isMatched ? null : input;
+        result['matched'] = result['matched-out'];
+        result['unmatched'] = result['unmatched-out'];
+        result['true'] = result['matched-out'];
+        result['false'] = result['unmatched-out'];
+      }
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -1721,18 +1708,95 @@ export class NodeSchedulerService {
         configuredMaxIterations && configuredMaxIterations > 0
           ? Math.floor(configuredMaxIterations)
           : 10;
+
+      const stopConditionMode = this.readFirstString(
+        nodeData.stopConditionMode,
+        nodeData.stop_condition_mode,
+      );
+      const stopCondition = this.resolveLoopStopCondition(nodeData);
+      const stopExpression = this.readFirstString(
+        nodeData.stopExpression,
+        nodeData.stop_expression,
+      );
+      const errorStrategy = this.resolveLoopErrorStrategy(nodeData);
+
       const items = this.normalizeLoopItemsInput(input);
-      const iteratedItems = items.slice(0, maxIterations);
-      const truncated = items.length > iteratedItems.length;
+      const iteratedItems: unknown[] = [];
+      const errors: Array<{ index: number; message: string }> = [];
+      let stoppedEarly = false;
+      let stopReason: string | undefined;
+
+      for (
+        let i = 0;
+        i < items.length && iteratedItems.length < maxIterations;
+        i += 1
+      ) {
+        const currentItem = items[i];
+
+        try {
+          iteratedItems.push(currentItem);
+
+          // 评估停止条件
+          if (
+            stopConditionMode === 'condition' &&
+            stopCondition &&
+            this.evaluateLoopStopCondition(stopCondition, currentItem)
+          ) {
+            stoppedEarly = true;
+            stopReason = 'stop_condition_met';
+            break;
+          }
+
+          if (
+            stopConditionMode === 'expression' &&
+            stopExpression &&
+            this.evaluateLoopStopExpression(stopExpression, currentItem)
+          ) {
+            stoppedEarly = true;
+            stopReason = 'stop_expression_met';
+            break;
+          }
+        } catch (itemError) {
+          const message =
+            itemError instanceof Error
+              ? itemError.message
+              : String(itemError);
+
+          if (errorStrategy === 'stop') {
+            throw itemError;
+          }
+
+          if (errorStrategy === 'skip') {
+            // 跳过出错的项，移除刚 push 的 currentItem
+            iteratedItems.pop();
+            errors.push({ index: i, message });
+            continue;
+          }
+
+          if (errorStrategy === 'collect') {
+            errors.push({ index: i, message });
+            continue;
+          }
+        }
+      }
+
+      const truncated =
+        !stoppedEarly && items.length > iteratedItems.length;
       const itemOutput =
         iteratedItems.length === 1 ? iteratedItems[0] : iteratedItems;
-      const done = {
+      const done: Record<string, unknown> = {
         items: iteratedItems,
         totalItems: items.length,
         processedCount: iteratedItems.length,
-        remainingCount: Math.max(items.length - iteratedItems.length, 0),
+        remainingCount: Math.max(
+          items.length - (stoppedEarly ? iteratedItems.length : iteratedItems.length),
+          0,
+        ),
         maxIterations,
         truncated,
+        stoppedEarly,
+        ...(stopReason ? { stopReason } : {}),
+        ...(errors.length > 0 ? { errors } : {}),
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -1748,6 +1812,9 @@ export class NodeSchedulerService {
             processedCount: iteratedItems.length,
             maxIterations,
             truncated,
+            stoppedEarly,
+            ...(stopReason ? { stopReason } : {}),
+            ...(errors.length > 0 ? { errors } : {}),
           },
         },
       );
@@ -1782,6 +1849,152 @@ export class NodeSchedulerService {
         },
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeMerge(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const mode = this.readFirstString(nodeData.mode) === 'merge-by-key'
+        ? 'merge-by-key'
+        : 'append';
+      const mergeKey = this.readFirstString(
+        nodeData.mergeKey,
+        nodeData.merge_key,
+      );
+      const rawInputCount = this.readOptionalNumber(
+        nodeData.inputCount,
+        nodeData.input_count,
+      );
+      const inputCount = rawInputCount && rawInputCount >= 2
+        ? Math.floor(rawInputCount)
+        : 2;
+
+      // 按端口 ID 顺序收集输入（input-0, input-1, ...）
+      const collectedInputs: unknown[] = [];
+      for (let i = 0; i < inputCount; i += 1) {
+        const portId = `input-${i}`;
+        const value = input[portId];
+        if (value !== undefined && value !== null) {
+          collectedInputs.push(value);
+        }
+      }
+
+      // 如果按端口 ID 没有收到数据，尝试从整体 input 收集
+      if (collectedInputs.length === 0) {
+        for (const value of Object.values(input)) {
+          if (value !== undefined && value !== null) {
+            collectedInputs.push(value);
+          }
+        }
+      }
+
+      let merged: unknown;
+
+      if (mode === 'merge-by-key' && mergeKey) {
+        // 按键合并: 将具有相同 key 值的对象合并
+        const mergeMap = new Map<string, Record<string, unknown>>();
+        const orderKeys: string[] = [];
+
+        for (const item of collectedInputs) {
+          if (Array.isArray(item)) {
+            for (const element of item) {
+              this.mergeByKey(element, mergeKey, mergeMap, orderKeys);
+            }
+          } else {
+            this.mergeByKey(item, mergeKey, mergeMap, orderKeys);
+          }
+        }
+
+        merged = orderKeys
+          .map((k) => mergeMap.get(k))
+          .filter((v): v is Record<string, unknown> => v !== undefined);
+      } else {
+        // 追加拼接: 将所有输入展平为一个数组
+        const items: unknown[] = [];
+        for (const item of collectedInputs) {
+          if (Array.isArray(item)) {
+            items.push(...item);
+          } else {
+            items.push(item);
+          }
+        }
+        merged = items;
+      }
+
+      const result = {
+        merged,
+        'merged-out': merged,
+        mode,
+        inputCount,
+        collectedCount: collectedInputs.length,
+      };
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private mergeByKey(
+    item: unknown,
+    mergeKey: string,
+    mergeMap: Map<string, Record<string, unknown>>,
+    orderKeys: string[],
+  ): void {
+    if (!this.isRecord(item)) return;
+
+    const keyValue = item[mergeKey];
+    if (keyValue === undefined || keyValue === null) return;
+
+    const keyStr = String(keyValue);
+    const existing = mergeMap.get(keyStr);
+    if (existing) {
+      Object.assign(existing, item);
+    } else {
+      mergeMap.set(keyStr, { ...item });
+      orderKeys.push(keyStr);
     }
   }
 
@@ -3484,7 +3697,9 @@ export class NodeSchedulerService {
   private stripExecOnlyInputs(
     input: Record<string, unknown>,
   ): Record<string, unknown> | undefined {
-    const entries = Object.entries(input).filter(([key]) => key !== 'exec-in' && key !== 'exec_in');
+    const entries = Object.entries(input).filter(
+      ([key]) => key !== 'exec-in' && key !== 'exec_in',
+    );
     if (entries.length === 0) {
       return undefined;
     }
@@ -4104,7 +4319,12 @@ export class NodeSchedulerService {
     switch (sourceStep.nodeType) {
       case 'agent':
       case 'chat-agent':
-        if (sourceHandle === 'reply-out' || sourceHandle === 'agent-out' || sourceHandle === 'reply' || sourceHandle === 'agent-output') {
+        if (
+          sourceHandle === 'reply-out' ||
+          sourceHandle === 'agent-out' ||
+          sourceHandle === 'reply' ||
+          sourceHandle === 'agent-output'
+        ) {
           return sourceStep.result.content;
         }
         if (
@@ -4127,23 +4347,38 @@ export class NodeSchedulerService {
         }
         return undefined;
       case 'llm-model':
-        return sourceHandle === 'model-out' || sourceHandle === 'model-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'model-out' || sourceHandle === 'model-output'
+          ? sourceStep.result
+          : undefined;
       case 'smart-routing':
         return sourceHandle === 'model-out' ? sourceStep.result : undefined;
       case 'mcp-tool':
-        return sourceHandle === 'tool-out' || sourceHandle === 'tool-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'tool-out' || sourceHandle === 'tool-output'
+          ? sourceStep.result
+          : undefined;
       case 'skill':
         return sourceHandle === 'skill-out' ? sourceStep.result : undefined;
       case 'knowledge-base':
-        return sourceHandle === 'knowledge-out' || sourceHandle === 'knowledge' ? sourceStep.result : undefined;
+        return sourceHandle === 'knowledge-out' || sourceHandle === 'knowledge'
+          ? sourceStep.result
+          : undefined;
       case 'sandbox':
-        return sourceHandle === 'sandbox-out' || sourceHandle === 'sandbox-output'
+        return sourceHandle === 'sandbox-out' ||
+          sourceHandle === 'sandbox-output'
           ? sourceStep.result
           : undefined;
       case 'workspace':
-        return sourceHandle === 'volume-out' || sourceHandle === 'volume-output' ? sourceStep.result : undefined;
+        return sourceHandle === 'volume-out' || sourceHandle === 'volume-output'
+          ? sourceStep.result
+          : undefined;
       case 'memory':
-        return sourceHandle === 'memory-out' || sourceHandle === 'memory-out-0' ? sourceStep.result : undefined;
+        return sourceHandle === 'memory-out' || sourceHandle === 'memory-out-0'
+          ? sourceStep.result
+          : undefined;
+      case 'merge':
+        return sourceHandle === 'merged-out' || sourceHandle === 'merged'
+          ? sourceStep.result
+          : undefined;
       default:
         return undefined;
     }
@@ -4157,14 +4392,18 @@ export class NodeSchedulerService {
     sourceHandle: string,
     value: unknown,
   ): unknown {
-    if (
-      sourceHandle !== 'matched-out' &&
-      sourceHandle !== 'unmatched-out' &&
-      sourceHandle !== 'matched' &&
-      sourceHandle !== 'unmatched' &&
-      sourceHandle !== 'true' &&
-      sourceHandle !== 'false'
-    ) {
+    // 识别条件分支 handle（新格式 branch-N/else + 旧格式 matched/unmatched）
+    const isConditionHandle =
+      sourceHandle.startsWith('branch-') ||
+      sourceHandle === 'else' ||
+      sourceHandle === 'matched-out' ||
+      sourceHandle === 'unmatched-out' ||
+      sourceHandle === 'matched' ||
+      sourceHandle === 'unmatched' ||
+      sourceHandle === 'true' ||
+      sourceHandle === 'false';
+
+    if (!isConditionHandle) {
       return value;
     }
 
@@ -4180,23 +4419,47 @@ export class NodeSchedulerService {
     return value;
   }
 
-  private normalizeConditionBranch(branch: string): 'matched' | 'unmatched' {
-    return branch === 'true' || branch === 'matched' ? 'matched' : 'unmatched';
+  private normalizeConditionBranch(branch: string): string {
+    // 新格式: branch-0, branch-1, ..., else
+    if (branch.startsWith('branch-') || branch === 'else') {
+      return branch;
+    }
+
+    // 旧格式: matched/true → branch-0, unmatched/false → else
+    if (branch === 'true' || branch === 'matched') {
+      return 'branch-0';
+    }
+
+    return 'else';
   }
 
   private normalizeConditionSourceHandle(
     sourceHandle?: string,
-  ): 'matched' | 'unmatched' | undefined {
+  ): string | undefined {
     if (!sourceHandle) {
       return undefined;
     }
 
-    if (sourceHandle === 'matched-out' || sourceHandle === 'true' || sourceHandle === 'matched') {
-      return 'matched';
+    // 新格式 handle: branch-0, branch-1, ..., else
+    if (sourceHandle.startsWith('branch-') || sourceHandle === 'else') {
+      return sourceHandle;
     }
 
-    if (sourceHandle === 'unmatched-out' || sourceHandle === 'false' || sourceHandle === 'unmatched') {
-      return 'unmatched';
+    // 旧格式 handle → 映射到新格式
+    if (
+      sourceHandle === 'matched-out' ||
+      sourceHandle === 'true' ||
+      sourceHandle === 'matched'
+    ) {
+      return 'branch-0';
+    }
+
+    if (
+      sourceHandle === 'unmatched-out' ||
+      sourceHandle === 'false' ||
+      sourceHandle === 'unmatched'
+    ) {
+      return 'else';
     }
 
     return undefined;
@@ -4419,6 +4682,269 @@ export class NodeSchedulerService {
    *
    * 多个源节点有同名字段时后者覆盖前者。
    */
+  // ── N-way 条件分支评估 ─────────────────────────────────────
+
+  /**
+   * 条件分支描述（统一新旧格式后的内部表示）
+   */
+  private resolveConditionBranches(nodeData: Record<string, unknown>): Array<{
+    id: string;
+    mode: 'visual' | 'expression';
+    expression: string;
+    conditions: {
+      rules: Array<{ field: string; operator: string; value: string }>;
+      logic: 'and' | 'or';
+    };
+  }> {
+    // 新格式: branches 数组
+    if (Array.isArray(nodeData.branches)) {
+      return nodeData.branches
+        .filter((b) => this.isRecord(b))
+        .map((b, index) => ({
+          id: typeof b.id === 'string' ? b.id : `branch-${index}`,
+          mode: b.mode === 'expression' ? 'expression' : 'visual',
+          expression: typeof b.expression === 'string' ? b.expression : '',
+          conditions: this.normalizeConditionGroup(b.conditions),
+        }));
+    }
+
+    // 旧格式: mode + expression/conditionField
+    const mode = nodeData.mode;
+
+    if (mode === 'expression') {
+      const expression =
+        typeof nodeData.expression === 'string'
+          ? nodeData.expression.trim()
+          : '';
+      return [
+        {
+          id: 'branch-0',
+          mode: 'expression',
+          expression,
+          conditions: { rules: [], logic: 'and' },
+        },
+      ];
+    }
+
+    if (mode === 'field-comparison') {
+      const field = this.readFirstString(
+        nodeData.conditionField,
+        nodeData.condition_field,
+      );
+      const value =
+        nodeData.expectedValue != null
+          ? String(nodeData.expectedValue)
+          : nodeData.expected_value != null
+            ? String(nodeData.expected_value)
+            : '';
+      return [
+        {
+          id: 'branch-0',
+          mode: 'visual' as const,
+          expression: '',
+          conditions: {
+            rules: [{ field: field ?? '', operator: 'equals', value }],
+            logic: 'and' as const,
+          },
+        },
+      ];
+    }
+
+    // 无条件配置但有 expression 或 conditionField（旧版兼容 fallback）
+    const fallbackExpression = this.readFirstString(nodeData.expression);
+    const fallbackField = this.readFirstString(
+      nodeData.conditionField,
+      nodeData.condition_field,
+    );
+
+    if (fallbackExpression) {
+      return [
+        {
+          id: 'branch-0',
+          mode: 'expression',
+          expression: fallbackExpression,
+          conditions: { rules: [], logic: 'and' },
+        },
+      ];
+    }
+
+    if (fallbackField) {
+      const value =
+        nodeData.expectedValue != null
+          ? String(nodeData.expectedValue)
+          : nodeData.expected_value != null
+            ? String(nodeData.expected_value)
+            : '';
+      return [
+        {
+          id: 'branch-0',
+          mode: 'visual',
+          expression: '',
+          conditions: {
+            rules: [{ field: fallbackField, operator: 'equals', value }],
+            logic: 'and',
+          },
+        },
+      ];
+    }
+
+    // 完全空配置
+    return [];
+  }
+
+  private normalizeConditionGroup(value: unknown): {
+    rules: Array<{ field: string; operator: string; value: string }>;
+    logic: 'and' | 'or';
+  } {
+    if (!this.isRecord(value)) {
+      return { rules: [], logic: 'and' };
+    }
+
+    const logic = value.logic === 'or' ? 'or' : 'and';
+    const rawRules = Array.isArray(value.rules) ? value.rules : [];
+    const rules = rawRules
+      .filter((r) => this.isRecord(r))
+      .map((r) => ({
+        field: typeof r.field === 'string' ? r.field : '',
+        operator: typeof r.operator === 'string' ? r.operator : 'equals',
+        value: typeof r.value === 'string' ? r.value : '',
+      }));
+
+    return { rules, logic };
+  }
+
+  /**
+   * 评估单个分支是否匹配
+   */
+  private evaluateConditionBranch(
+    branch: {
+      mode: 'visual' | 'expression';
+      expression: string;
+      conditions: {
+        rules: Array<{ field: string; operator: string; value: string }>;
+        logic: 'and' | 'or';
+      };
+    },
+    input: Record<string, unknown>,
+    flatInput: Record<string, unknown>,
+  ): boolean {
+    if (branch.mode === 'expression') {
+      if (!branch.expression.trim()) {
+        return false;
+      }
+
+      return !!this.evaluateExpression(branch.expression, input);
+    }
+
+    // 可视化模式: 评估条件规则组
+    const { rules, logic } = branch.conditions;
+    if (rules.length === 0) {
+      return false;
+    }
+
+    if (logic === 'and') {
+      return rules.every((rule) =>
+        this.evaluateConditionRule(rule, input, flatInput),
+      );
+    }
+
+    return rules.some((rule) =>
+      this.evaluateConditionRule(rule, input, flatInput),
+    );
+  }
+
+  /**
+   * 评估单条规则（11 种运算符 + 向后兼容 expression 运算符）
+   */
+  private evaluateConditionRule(
+    rule: { field: string; operator: string; value: string },
+    input: Record<string, unknown>,
+    flatInput: Record<string, unknown>,
+  ): boolean {
+    // expression 运算符: 整个 value 作为 JS 表达式
+    if (rule.operator === 'expression') {
+      const expr = rule.value.trim();
+      if (!expr) {
+        return false;
+      }
+
+      return !!this.evaluateExpression(expr, input);
+    }
+
+    const fieldValue = this.resolveConditionFieldValue(
+      rule.field,
+      input,
+      flatInput,
+    );
+    const expected = rule.value;
+
+    switch (rule.operator) {
+      case 'equals':
+        return String(fieldValue ?? '') === expected;
+      case 'not_equals':
+        return String(fieldValue ?? '') !== expected;
+      case 'contains':
+        return String(fieldValue ?? '').includes(expected);
+      case 'not_contains':
+        return !String(fieldValue ?? '').includes(expected);
+      case 'gt':
+        return Number(fieldValue) > Number(expected);
+      case 'gte':
+        return Number(fieldValue) >= Number(expected);
+      case 'lt':
+        return Number(fieldValue) < Number(expected);
+      case 'lte':
+        return Number(fieldValue) <= Number(expected);
+      case 'starts_with':
+        return String(fieldValue ?? '').startsWith(expected);
+      case 'ends_with':
+        return String(fieldValue ?? '').endsWith(expected);
+      case 'is_empty':
+        return (
+          fieldValue === null ||
+          fieldValue === undefined ||
+          fieldValue === '' ||
+          (Array.isArray(fieldValue) && fieldValue.length === 0)
+        );
+      case 'is_not_empty':
+        return !(
+          fieldValue === null ||
+          fieldValue === undefined ||
+          fieldValue === '' ||
+          (Array.isArray(fieldValue) && fieldValue.length === 0)
+        );
+      case 'regex_match':
+        try {
+          return new RegExp(expected).test(String(fieldValue ?? ''));
+        } catch {
+          return false;
+        }
+      default:
+        return String(fieldValue ?? '') === expected;
+    }
+  }
+
+  /**
+   * 解析条件规则中的字段值：先在 flatInput 中查找，再在 input 中做路径解析
+   */
+  private resolveConditionFieldValue(
+    field: string,
+    input: Record<string, unknown>,
+    flatInput: Record<string, unknown>,
+  ): unknown {
+    if (!field) {
+      return undefined;
+    }
+
+    // 直接查 flatInput
+    if (Object.prototype.hasOwnProperty.call(flatInput, field)) {
+      return flatInput[field];
+    }
+
+    // 路径解析
+    return this.resolveJsonPath(input, field);
+  }
+
   private flattenInput(
     input: Record<string, unknown>,
   ): Record<string, unknown> {
@@ -4430,5 +4956,108 @@ export class NodeSchedulerService {
       }
     }
     return result;
+  }
+
+  // ── Loop 停止条件辅助方法 ─────────────────────────────────────
+
+  /**
+   * 从 nodeData 解析循环停止条件（visual 模式下的 ConditionGroup）
+   */
+  private resolveLoopStopCondition(
+    nodeData: Record<string, unknown>,
+  ):
+    | {
+        rules: Array<{ field: string; operator: string; value: string }>;
+        logic: 'and' | 'or';
+      }
+    | undefined {
+    const raw = this.readFirstDefined(
+      nodeData.stopCondition,
+      nodeData.stop_condition,
+    );
+
+    if (!this.isRecord(raw)) {
+      return undefined;
+    }
+
+    const logic = raw.logic === 'or' ? 'or' : 'and';
+    const rawRules = Array.isArray(raw.rules) ? raw.rules : [];
+    const rules = rawRules
+      .filter((r) => this.isRecord(r))
+      .map((r) => ({
+        field: typeof r.field === 'string' ? r.field : '',
+        operator: typeof r.operator === 'string' ? r.operator : 'equals',
+        value: typeof r.value === 'string' ? r.value : '',
+      }));
+
+    if (rules.length === 0) {
+      return undefined;
+    }
+
+    return { rules, logic };
+  }
+
+  /**
+   * 从 nodeData 解析循环错误处理策略
+   */
+  private resolveLoopErrorStrategy(
+    nodeData: Record<string, unknown>,
+  ): 'stop' | 'skip' | 'collect' {
+    const raw = this.readFirstString(
+      nodeData.errorStrategy,
+      nodeData.error_strategy,
+    );
+
+    return raw === 'skip' || raw === 'collect' ? raw : 'stop';
+  }
+
+  /**
+   * 评估循环停止条件（visual 模式）
+   *
+   * 将当前迭代项包装为 input 对象后复用 evaluateConditionBranch
+   */
+  private evaluateLoopStopCondition(
+    conditions: {
+      rules: Array<{ field: string; operator: string; value: string }>;
+      logic: 'and' | 'or';
+    },
+    currentItem: unknown,
+  ): boolean {
+    const wrappedInput = this.wrapLoopItemAsInput(currentItem);
+    const flatInput = this.flattenInput(wrappedInput);
+
+    return this.evaluateConditionBranch(
+      {
+        mode: 'visual',
+        expression: '',
+        conditions,
+      },
+      wrappedInput,
+      flatInput,
+    );
+  }
+
+  /**
+   * 评估循环停止表达式（expression 模式）
+   */
+  private evaluateLoopStopExpression(
+    expression: string,
+    currentItem: unknown,
+  ): boolean {
+    const wrappedInput = this.wrapLoopItemAsInput(currentItem);
+    return !!this.evaluateExpression(expression, wrappedInput);
+  }
+
+  /**
+   * 将循环迭代项包装为 evaluateConditionBranch 期望的 input 格式
+   */
+  private wrapLoopItemAsInput(
+    item: unknown,
+  ): Record<string, unknown> {
+    if (this.isRecord(item)) {
+      return item;
+    }
+
+    return { value: item };
   }
 }

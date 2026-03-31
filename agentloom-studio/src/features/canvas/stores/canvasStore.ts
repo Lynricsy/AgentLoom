@@ -26,6 +26,7 @@ import {
 } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import type { NodeType } from '../types/nodeTypeRegistry'
+import { migrateConditionConfig, buildConditionOutputPorts, parseMergeNodeConfig, buildMergeInputPorts } from '../types/condition.types'
 
 enableMapSet()
 
@@ -604,16 +605,28 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 const agentNodeData = agentNodeDefaults
                   ? (n.data as Partial<AgentNodeData>)
                   : null
-                const inputPorts = Array.isArray(n.data.inputPorts)
+                let inputPorts = Array.isArray(n.data.inputPorts)
                   ? clonePortDefinitions(n.data.inputPorts)
                   : typeConfig
                     ? clonePortDefinitions(typeConfig.inputPorts)
                     : []
-                const outputPorts = Array.isArray(n.data.outputPorts)
+                let outputPorts = Array.isArray(n.data.outputPorts)
                   ? clonePortDefinitions(n.data.outputPorts)
                   : typeConfig
                     ? clonePortDefinitions(typeConfig.outputPorts)
                     : []
+
+                // 条件节点: 从 config.branches 推导输出端口（兼容旧格式迁移）
+                if (n.data.nodeType === 'condition') {
+                  const condConfig = migrateConditionConfig(n.data.config ?? {})
+                  outputPorts = buildConditionOutputPorts(condConfig.branches)
+                }
+
+                // 合并节点: 从 config.inputCount 推导输入端口
+                if (n.data.nodeType === 'merge') {
+                  const mergeConfig = parseMergeNodeConfig(n.data.config ?? {})
+                  inputPorts = buildMergeInputPorts(mergeConfig.inputCount)
+                }
 
                 return {
                   ...n,

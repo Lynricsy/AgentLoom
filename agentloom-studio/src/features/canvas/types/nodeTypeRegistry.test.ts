@@ -40,6 +40,7 @@ describe('nodeTypeRegistry', () => {
       'agent',
       'skill',
       'workspace',
+      'merge',
     ])
   })
 
@@ -195,7 +196,6 @@ describe('nodeTypeRegistry', () => {
       'memory',
       'text-output',
       'json-output',
-      'condition',
       'loop',
     ])
     expect(new Set(groupedTypes)).toEqual(new Set(staticTypes))
