@@ -41,7 +41,18 @@ class MemoryApi {
   /// 获取单个 Memory 实例详情
   Future<MemoryInstanceDto> getMemoryInstance(String id) async {
     final response = await _dio.get('/api/v1/memory-instances/$id');
-    final data = response.data as Map<String, dynamic>;
+    final raw = response.data as Map<String, dynamic>;
+    // 服务端返回 { data: { ...instance, stats: { nodeCount, edgeCount } } }
+    final data =
+        raw.containsKey('data')
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
+    // 将嵌套的 stats 平铺到顶层以匹配 DTO 字段
+    if (data.containsKey('stats') && data['stats'] is Map) {
+      final stats = data['stats'] as Map<String, dynamic>;
+      data['nodeCount'] = stats['nodeCount'] ?? data['nodeCount'] ?? 0;
+      data['edgeCount'] = stats['edgeCount'] ?? data['edgeCount'] ?? 0;
+    }
     return MemoryInstanceDto.fromJson(data);
   }
 
@@ -68,7 +79,12 @@ class MemoryApi {
     final response = await _dio.get(
       '/api/v1/memory-instances/$instanceId/nodes/$nodeId',
     );
-    final data = response.data as Map<String, dynamic>;
+    final raw = response.data as Map<String, dynamic>;
+    // 服务端返回 { data: { ...node, versions, edges } }
+    final data =
+        raw.containsKey('data')
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
     return MemoryNodeDto.fromJson(data);
   }
 
@@ -104,17 +120,21 @@ class MemoryApi {
     );
   }
 
-  /// 获取节点版本详情
+  /// 获取节点版本详情（服务端无单版本端点，通过列表过滤）
   Future<MemoryVersionDto> getVersionDetail(
     String instanceId,
     String nodeId,
     String versionId,
   ) async {
-    final response = await _dio.get(
-      '/api/v1/memory-instances/$instanceId/nodes/$nodeId/versions/$versionId',
+    final versions = await getMemoryVersions(instanceId, nodeId);
+    return versions.firstWhere(
+      (v) => v.id == versionId,
+      orElse: () => throw DioException(
+        requestOptions: RequestOptions(path: ''),
+        message: 'Version $versionId not found',
+        type: DioExceptionType.badResponse,
+      ),
     );
-    final data = response.data as Map<String, dynamic>;
-    return MemoryVersionDto.fromJson(data);
   }
 
   /// 获取节点版本历史
