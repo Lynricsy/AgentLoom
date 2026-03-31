@@ -35,15 +35,29 @@ const mockReturning = vi
   .mockResolvedValue([{ id: 'sandbox-session-row' }]);
 const mockInsert = vi.fn().mockReturnThis();
 const mockValues = vi.fn().mockResolvedValue(undefined);
+const mockDelete = vi.fn();
+const mockDeleteWhere = vi.fn().mockResolvedValue(undefined);
+const mockSelect = vi.fn();
+const mockFrom = vi.fn();
+const mockSelectWhere = vi.fn();
+const mockLimit = vi.fn();
 
 const mockTenantDb = {
   update: mockUpdate,
   insert: mockInsert,
+  delete: mockDelete,
+  select: mockSelect,
 };
 mockUpdate.mockReturnValue({ set: mockSet });
 mockSet.mockReturnValue({ where: mockWhere });
 mockWhere.mockReturnValue({ returning: mockReturning });
 mockInsert.mockReturnValue({ values: mockValues });
+mockDelete.mockReturnValue({ where: mockDeleteWhere });
+mockSelect.mockReturnValue({ from: mockFrom });
+mockFrom.mockReturnValue({ where: mockSelectWhere });
+mockSelectWhere.mockReturnValue({ limit: mockLimit });
+// Default: no lifecycleMode → defaults to 'session' mode
+mockLimit.mockResolvedValue([{ config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } }]);
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
@@ -99,6 +113,12 @@ describe('SandboxLifecycleWorker', () => {
     mockWhere.mockReturnValue({ returning: mockReturning });
     mockInsert.mockReturnValue({ values: mockValues });
     mockReturning.mockResolvedValue([{ id: 'sandbox-session-row' }]);
+    mockDelete.mockReturnValue({ where: mockDeleteWhere });
+    mockDeleteWhere.mockResolvedValue(undefined);
+    mockSelect.mockReturnValue({ from: mockFrom });
+    mockFrom.mockReturnValue({ where: mockSelectWhere });
+    mockSelectWhere.mockReturnValue({ limit: mockLimit });
+    mockLimit.mockResolvedValue([{ config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } }]);
 
     worker = new SandboxLifecycleWorker(
       {} as any,
@@ -187,7 +207,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    it('容器创建失败时应回写 session failed 并记录系统日志', async () => {
+    it('session 模式容器创建失败时应删除 session 记录', async () => {
       mockDockerService.createContainer.mockRejectedValueOnce(
         new Error('image not found'),
       );
@@ -200,6 +220,29 @@ describe('SandboxLifecycleWorker', () => {
             executionId: 'e1',
             tenantId: 't1',
             config: DEFAULT_CONFIG,
+          }),
+        ),
+      ).rejects.toThrow('image not found');
+
+      expect(mockDeleteWhere).toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it('persistent 模式容器创建失败时应标记为 failed 并记录日志', async () => {
+      mockDockerService.createContainer.mockRejectedValueOnce(
+        new Error('image not found'),
+      );
+
+      const persistentConfig = { ...DEFAULT_CONFIG, lifecycleMode: 'persistent' as const };
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: persistentConfig,
           }),
         ),
       ).rejects.toThrow('image not found');
@@ -294,7 +337,29 @@ describe('SandboxLifecycleWorker', () => {
   });
 
   describe('destroy job', () => {
-    it('应停止并删除容器、更新状态为 stopped', async () => {
+    it('session 模式应停止并删除容器、清除数据库记录', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+        }),
+      );
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockSelect).toHaveBeenCalled();
+      expect(mockDeleteWhere).toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it('persistent 模式应停止容器、更新状态为 stopped 并记录日志', async () => {
+      mockLimit.mockResolvedValueOnce([
+        { config: { cpu: 1, memory: 512, disk: 2, timeout: 24, lifecycleMode: 'persistent' } },
+      ]);
+
       await worker.process(
         createJob({
           jobType: 'destroy',
@@ -313,7 +378,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    it('无 containerId 时应仅更新状态', async () => {
+    it('无 containerId 时应仅清除数据库记录', async () => {
       await worker.process(
         createJob({
           jobType: 'destroy',
@@ -325,9 +390,7 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
       expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'stopped' }),
-      );
+      expect(mockDeleteWhere).toHaveBeenCalled();
     });
 
     it('有 persistencePath 时应在删除前同步 workspace 到 MinIO', async () => {
@@ -390,9 +453,7 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'stopped' }),
-      );
+      expect(mockDeleteWhere).toHaveBeenCalled();
     });
 
     it('已包含租户前缀的 persistencePath 不应重复拼接', async () => {
@@ -428,14 +489,12 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'stopped' }),
-      );
+      expect(mockDeleteWhere).toHaveBeenCalled();
     });
   });
 
   describe('timeout_check job', () => {
-    it('会话仍活跃时应强制停止并标记为 failed', async () => {
+    it('session 模式会话仍活跃时应强制停止、删除记录并级联失败 workflow', async () => {
       mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
         executionId: 'e1',
@@ -458,13 +517,10 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      // Session-mode: sandbox row is deleted, not updated
+      expect(mockDeleteWhere).toHaveBeenCalled();
+      // Execution steps and workflow are still updated to failed
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
-      expect(updatePayloads).toContainEqual(
-        expect.objectContaining({
-          status: 'failed',
-          stoppedAt: expect.any(Date),
-        }),
-      );
       expect(updatePayloads).toContainEqual(
         expect.objectContaining({
           status: 'failed',
@@ -477,6 +533,37 @@ describe('SandboxLifecycleWorker', () => {
           status: 'failed',
           failedAt: expect.any(Date),
           errorMessage: { message: 'sandbox_timeout' },
+        }),
+      );
+      // Session-mode: no log insertion
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it('persistent 模式 timeout 应标记为 failed 并记录日志', async () => {
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's1',
+        executionId: 'e1',
+        status: 'ready',
+        containerId: 'c-123',
+        config: { cpu: 1, memory: 512, disk: 2, timeout: 24, lifecycleMode: 'persistent' },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+          }),
+        ),
+      ).rejects.toThrow(SandboxTimeoutException);
+
+      const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
+      expect(updatePayloads).toContainEqual(
+        expect.objectContaining({
+          status: 'failed',
+          stoppedAt: expect.any(Date),
         }),
       );
       expect(mockInsert).toHaveBeenCalled();

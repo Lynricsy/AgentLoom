@@ -189,22 +189,34 @@ export class SandboxLifecycleWorker extends WorkerHost {
           });
       }
 
+      const isSessionMode =
+        (config?.lifecycleMode ?? 'session') === 'session';
+
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
-        await tenantDb
-          .update(schema.sandboxSessions)
-          .set({
-            status: 'failed',
-            stoppedAt: new Date(),
-          })
-          .where(eq(schema.sandboxSessions.id, sessionId));
+        if (isSessionMode) {
+          // Session-mode: hard-delete row (FK cascade removes logs)
+          await tenantDb
+            .delete(schema.sandboxSessions)
+            .where(eq(schema.sandboxSessions.id, sessionId));
+        } else {
+          await tenantDb
+            .update(schema.sandboxSessions)
+            .set({
+              status: 'failed',
+              stoppedAt: new Date(),
+            })
+            .where(eq(schema.sandboxSessions.id, sessionId));
+        }
       });
 
-      await this.insertLog(
-        sessionId,
-        'system',
-        `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
-        tenantId,
-      );
+      if (!isSessionMode) {
+        await this.insertLog(
+          sessionId,
+          'system',
+          `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
+          tenantId,
+        );
+      }
 
       throw error;
     }
@@ -248,19 +260,44 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.dockerService.removeContainer(containerId);
     }
 
-    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
-      await tenantDb
-        .update(schema.sandboxSessions)
-        .set({
-          status: 'stopped',
-          stoppedAt: new Date(),
-        })
-        .where(eq(schema.sandboxSessions.id, sessionId));
-    });
+    const purged = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (tenantDb) => {
+        const [session] = await tenantDb
+          .select({ config: schema.sandboxSessions.config })
+          .from(schema.sandboxSessions)
+          .where(eq(schema.sandboxSessions.id, sessionId))
+          .limit(1);
 
-    await this.insertLog(sessionId, 'system', 'Sandbox destroyed', tenantId);
+        const isSessionMode =
+          (session?.config.lifecycleMode ?? 'session') === 'session';
 
-    this.logger.log(`Sandbox ${sessionId} destroyed`);
+        if (isSessionMode) {
+          // Session-mode: hard-delete row (FK cascade removes logs)
+          await tenantDb
+            .delete(schema.sandboxSessions)
+            .where(eq(schema.sandboxSessions.id, sessionId));
+          return true;
+        }
+
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({ status: 'stopped', stoppedAt: new Date() })
+          .where(eq(schema.sandboxSessions.id, sessionId));
+        return false;
+      },
+    );
+
+    if (!purged) {
+      await this.insertLog(sessionId, 'system', 'Sandbox destroyed', tenantId);
+    }
+
+    this.logger.log(
+      purged
+        ? `Sandbox ${sessionId} destroyed and purged (session-mode)`
+        : `Sandbox ${sessionId} destroyed`,
+    );
   }
 
   private async handleTimeoutCheck(
@@ -321,14 +358,24 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.dockerService.removeContainer(session.containerId);
     }
 
+    const isSessionMode =
+      (session.config.lifecycleMode ?? 'session') === 'session';
+
     await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
-      await tenantDb
-        .update(schema.sandboxSessions)
-        .set({
-          status: 'failed',
-          stoppedAt: new Date(),
-        })
-        .where(eq(schema.sandboxSessions.id, sessionId));
+      if (isSessionMode) {
+        // Session-mode: hard-delete row (FK cascade removes logs)
+        await tenantDb
+          .delete(schema.sandboxSessions)
+          .where(eq(schema.sandboxSessions.id, sessionId));
+      } else {
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({
+            status: 'failed',
+            stoppedAt: new Date(),
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
+      }
 
       if (binding.executionId) {
         await tenantDb
@@ -366,7 +413,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
       }
     });
 
-    await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
+    if (!isSessionMode) {
+      await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
+    }
 
     if (binding.executionId) {
       throw new SandboxTimeoutException(session.config.timeout);
