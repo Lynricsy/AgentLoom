@@ -834,3 +834,59 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Agent 对话沙箱启动阶段状态展示
+
+**Date**: 2026-03-31
+**Task**: Agent 对话沙箱启动阶段状态展示
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 概要
+
+为 Agent 对话添加沙箱启动分阶段状态展示，替代原有的通用 "Processing" 转圈。
+
+## 变更
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Server | `execution-event.types.ts` | 新增 `PreparationPhase` 类型，扩展 `ExecutionStatusChangedPayload` |
+| Server | `agent-execution.worker.ts` | 5 个阶段事件发射点 + 沙箱复用检测 + 失败阶段标记 |
+| Studio | `types.ts` + `agent-conversation.store.ts` | 类型定义 + 5 个 state 字段 + 事件处理 |
+| Studio | `PreparationCard.tsx` + `MessageList.tsx` | Stepper 卡片（Lucide icons + 收缩动画）+ 集成 |
+| Flutter | `conversation_message_dto.dart` + `provider` | enum + state 扩展 + 事件处理 |
+| Flutter | `preparation_card.dart` + `screen` | Stepper widget（Material Icons + AnimatedSize）+ 集成 |
+
+## 技术要点
+
+- 5 个阶段：`queued → preparing → sandbox_creating → agent_initializing → running`
+- 沙箱复用时跳过 `sandbox_creating`，并携带 `sandboxReused: true`
+- 失败时携带 `failedPhase` + `error`，前端对应阶段标红
+- 卡片出现在 Agent 消息位置，Agent 回复后平滑收缩为一行摘要
+- 向后兼容：所有新字段 optional，旧客户端安全忽略
+- Check Agent 修复了 3 个状态清理 bug（done/completed/cancelled 终态遗漏）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4231a93` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

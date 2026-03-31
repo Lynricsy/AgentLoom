@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-03-30
+- **Total Sessions**: 16
+- **Last Active**: 2026-03-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~836 | Active |
+| `journal-1.md` | ~892 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-03-31 | Agent 对话沙箱启动阶段状态展示 | `4231a93` | `main` |
 | 15 | 2026-03-30 | Agent 对话页面 MCP 解析 / Markdown 渲染 / 布局修复 | `164b21e`, `1ed4718`, `8dc70d0` | `main` |
 | 14 | 2026-03-30 | 统一端口 ID 命名规范与优化端口标签 | `fc728b2` | `main` |
 | 13 | 2026-03-30 | feat: Workflow/Agent 自定义 Emoji/Icon 选择器 | `e0beed4` | `main` |
