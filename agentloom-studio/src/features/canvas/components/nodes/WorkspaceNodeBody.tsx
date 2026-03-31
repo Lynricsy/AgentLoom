@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { useViewport } from '@xyflow/react'
 import { FolderOpen } from 'lucide-react'
+import { NodeBadge } from '../shared/NodeBadge'
 
 function readStringValue(
   config: Record<string, unknown>,
@@ -32,15 +33,15 @@ export const WorkspaceNodeBody = memo(function WorkspaceNodeBody({
 
   return (
     <div
-      className="flex flex-col items-center gap-0.5 px-1"
+      className="flex flex-col items-center gap-1"
       data-testid="workspace-node-body"
     >
       {/* Icon -- always visible */}
-      <FolderOpen className="h-4 w-4 shrink-0 text-teal-400" />
+      <FolderOpen className="h-4 w-4 shrink-0 text-primary/80" />
 
       {/* Low LOD: just the label */}
       {!isMedDetail && (
-        <span className="text-[10px] leading-tight text-neutral-400">
+        <span className="text-[11px] leading-tight text-muted-foreground">
           Workspace
         </span>
       )}
@@ -48,7 +49,7 @@ export const WorkspaceNodeBody = memo(function WorkspaceNodeBody({
       {/* Medium LOD: + workspace name */}
       {isMedDetail && !isHighDetail && (
         <span
-          className="max-w-[100px] truncate text-[10px] leading-tight text-neutral-300"
+          className="max-w-[100px] truncate text-[11px] leading-tight text-muted-foreground"
           data-testid="workspace-name"
         >
           {configured ? workspaceName : '未配置'}
@@ -59,16 +60,16 @@ export const WorkspaceNodeBody = memo(function WorkspaceNodeBody({
       {isHighDetail && (
         <>
           <span
-            className="max-w-[120px] truncate text-xs leading-tight text-neutral-200"
+            className="max-w-[120px] truncate leading-tight text-foreground"
             data-testid="workspace-name"
           >
             {configured ? workspaceName : '未配置'}
           </span>
 
           {configured && (
-            <span className="rounded bg-teal-500/20 px-1 text-[10px] leading-tight text-teal-300">
+            <NodeBadge variant="status" color="primary">
               Workspace
-            </span>
+            </NodeBadge>
           )}
         </>
       )}

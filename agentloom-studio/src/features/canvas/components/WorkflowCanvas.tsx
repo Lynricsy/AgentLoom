@@ -30,6 +30,7 @@ import {
 } from './overlays/ConnectionStateOverlay'
 import { CanvasSearch } from './toolbar/CanvasSearch'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
+import { useExecutionHighlight } from '../hooks/useExecutionHighlight'
 import {
   arePortDataTypesCompatible,
   evaluateConnection,
@@ -328,6 +329,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<CompatibilityPreviewHandle>(null)
+
+  useExecutionHighlight({ containerRef, edges })
   const pointerRef = useRef({ x: -9999, y: -9999 })
   const frameRef = useRef<number | null>(null)
   const activeConnectionRef = useRef<ActiveConnectionState | null>(null)

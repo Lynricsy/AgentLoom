@@ -144,7 +144,7 @@ describe('ReusableBlockBody', () => {
 
     expect(body).toHaveTextContent(/复用分析块/)
     expect(body).toHaveTextContent(/1入\s*\/\s*2出/)
-    expect(body).toHaveTextContent(/2\s*个内部.*点/)
+    expect(body).toHaveTextContent(/2\s*节点\s*\/\s*1\s*连线/)
   })
 
   it('renders expanded preview when isExpanded is true', () => {

@@ -14,6 +14,7 @@ import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';
 import { SmartEdge } from '@/features/canvas/components/edges/SmartEdge';
 import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette';
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
+import { useConnectionPreview } from '@/features/canvas/hooks/useConnectionPreview';
 import type { CanvasEdgeData, CanvasNodeData } from '@/features/canvas/types';
 import {
   useAgentCanvasNodes,
@@ -65,7 +66,9 @@ export const AgentCanvas = memo(function AgentCanvas({
   } = useAgentCanvasActions();
 
   const reactFlowRef = useRef<AgentCanvasReactFlowInstance | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { onDragOver, onDrop } = useAgentCanvasDrop(reactFlowRef);
+  const { onConnectStart, onConnectEnd } = useConnectionPreview({ containerRef });
 
   useEffect(() => {
     void loadAgent(agentId);
@@ -126,7 +129,7 @@ export const AgentCanvas = memo(function AgentCanvas({
   const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
   return (
-    <div className={cn('relative h-full w-full', className)}>
+    <div ref={containerRef} className={cn('relative h-full w-full', className)}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -135,6 +138,8 @@ export const AgentCanvas = memo(function AgentCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={createConnection}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         onInit={onInit}
         onNodeClick={onNodeClick}

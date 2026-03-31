@@ -246,28 +246,66 @@ body {
 /* ─── Node visual enhancements ──────────────────────── */
 .canvas-node-shell {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--node-color, var(--color-border)) 8%, transparent) 0%, transparent 40%),
+    linear-gradient(180deg, color-mix(in srgb, var(--node-color, var(--color-border)) 12%, transparent) 0%, transparent 48%),
     var(--color-card);
+  /* 4-layer shadow: inset highlight + definition + ambient lift + accent ring */
   box-shadow:
-    0 1px 2px rgba(0,0,0,0.2),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 12%, transparent);
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.24),
+    0 6px 16px -4px rgba(0,0,0,0.20),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 18%, transparent);
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+/* Light theme: pronounced inset bevel + softer ambient */
+:root:not(.dark) .canvas-node-shell {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    0 1px 3px rgba(0,0,0,0.12),
+    0 6px 16px -4px rgba(0,0,0,0.10),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 16%, transparent);
 }
 
 .canvas-node-shell:hover {
-  transform: translateY(-1px);
+  transform: translateY(-3px);
+  /* Hover: dramatic float with node-color glow */
   box-shadow:
-    0 4px 12px rgba(0,0,0,0.3),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 25%, transparent);
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 4px 8px rgba(0,0,0,0.28),
+    0 12px 28px -6px rgba(0,0,0,0.22),
+    0 0 16px -2px color-mix(in srgb, var(--node-color, var(--color-border)) 20%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 32%, transparent);
+}
+
+:root:not(.dark) .canvas-node-shell:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.9),
+    0 4px 8px rgba(0,0,0,0.14),
+    0 12px 28px -6px rgba(0,0,0,0.12),
+    0 0 16px -2px color-mix(in srgb, var(--node-color, var(--color-border)) 14%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 32%, transparent);
 }
 
 .canvas-node-shell[data-selected="true"] {
+  /* Selected: vivid primary ring + wide glow aura */
   box-shadow:
-    0 0 0 2px var(--color-primary),
-    0 0 20px color-mix(in srgb, var(--color-primary) 18%, transparent),
-    0 4px 16px rgba(0,0,0,0.3);
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 0 0 2.5px var(--color-primary),
+    0 0 20px color-mix(in srgb, var(--color-primary) 28%, transparent),
+    0 0 40px -4px color-mix(in srgb, var(--color-primary) 16%, transparent),
+    0 8px 24px rgba(0,0,0,0.30);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 14%, transparent) 0%, transparent 36%),
     var(--color-card);
+}
+
+:root:not(.dark) .canvas-node-shell[data-selected="true"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.9),
+    0 0 0 2.5px var(--color-primary),
+    0 0 20px color-mix(in srgb, var(--color-primary) 22%, transparent),
+    0 0 40px -4px color-mix(in srgb, var(--color-primary) 12%, transparent),
+    0 8px 24px rgba(0,0,0,0.14);
 }
 
 .canvas-node-shell[data-shell-status="running"] {
@@ -277,13 +315,17 @@ body {
 @keyframes node-running-glow {
   0%, 100% {
     box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--color-primary) 30%, transparent),
-      0 0 12px color-mix(in srgb, var(--color-primary) 10%, transparent);
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 0 0 2px color-mix(in srgb, var(--color-primary) 40%, transparent),
+      0 0 16px color-mix(in srgb, var(--color-primary) 16%, transparent),
+      0 6px 16px -4px rgba(0,0,0,0.20);
   }
   50% {
     box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--color-primary) 50%, transparent),
-      0 0 24px color-mix(in srgb, var(--color-primary) 20%, transparent);
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 0 0 2px color-mix(in srgb, var(--color-primary) 60%, transparent),
+      0 0 32px color-mix(in srgb, var(--color-primary) 28%, transparent),
+      0 6px 16px -4px rgba(0,0,0,0.20);
   }
 }
 
@@ -888,7 +930,11 @@ body {
 }
 
 .canvas-node-shell:has(.exec-overlay--running) {
-  box-shadow: 0 0 0 1px hsl(from var(--color-primary) h s l / 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 0 2px hsl(from var(--color-primary) h s l / 0.4),
+    0 0 16px color-mix(in srgb, var(--color-primary) 14%, transparent),
+    0 6px 16px -4px rgba(0,0,0,0.20);
 }
 
 .canvas-node-shell[data-shell-status="completed"] {
@@ -906,6 +952,44 @@ body {
 @keyframes exec-badge-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* ─── Execution dependency highlight ──────────────────── */
+/* running 节点的直接输入节点：明显的 primary 光晕（弱于 running 但清晰可见） */
+.canvas-node-shell--dep-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 0 1.5px color-mix(in srgb, var(--color-primary) 40%, transparent),
+    0 0 14px -2px color-mix(in srgb, var(--color-primary) 22%, transparent),
+    0 6px 16px -4px rgba(0,0,0,0.20);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+:root:not(.dark) .canvas-node-shell--dep-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    0 0 0 1.5px color-mix(in srgb, var(--color-primary) 36%, transparent),
+    0 0 14px -2px color-mix(in srgb, var(--color-primary) 16%, transparent),
+    0 6px 16px -4px rgba(0,0,0,0.10);
+  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+}
+
+/* running 节点到其输入源的边：加粗 + primary 发光 */
+.react-flow__edge.dep-active path.smart-edge-path {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 50%, transparent));
+}
+
+.react-flow__edge.dep-active path.smart-edge-path--l0 {
+  stroke: color-mix(in srgb, var(--color-primary) 70%, var(--color-compat-l0));
+}
+
+.react-flow__edge.dep-active path.smart-edge-path--l1 {
+  stroke: color-mix(in srgb, var(--color-primary) 70%, var(--color-compat-l1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-node-shell--dep-active { animation: none; }
 }
 
 /* ─── 字段映射：禁止/确认/预览 ──────────────────────────── */

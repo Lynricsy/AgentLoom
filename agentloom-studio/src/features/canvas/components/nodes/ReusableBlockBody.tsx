@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import type { BlockDefinition, BlockNodeData, CanvasNodeData } from '../../types'
 import { useCanvasActions } from '../../stores/canvasStore'
+import { NodeBadge } from '../shared/NodeBadge'
 
 interface ReusableBlockBodyProps {
   nodeId: string
@@ -32,6 +33,8 @@ function isBlockNodeData(data: CanvasNodeData): data is BlockNodeData {
   )
 }
 
+const MAX_VISIBLE_INTERNAL_NODES = 4
+
 export const ReusableBlockBody = memo(function ReusableBlockBody({
   nodeId,
   data,
@@ -50,56 +53,68 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
 
   return (
     <div className="flex flex-col gap-2" data-testid="reusable-block-body">
-      <div className="flex items-center gap-2">
+      {/* Header row: icon + badges */}
+      <div className="flex items-center gap-1">
         <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium text-foreground">
-          Reusable Block
-        </span>
+        <NodeBadge variant="status" color="muted">
+          {internalNodeCount} 节点 / {internalEdgeCount} 连线
+        </NodeBadge>
         {(inputCount > 0 || outputCount > 0) && (
-          <span className="ml-auto shrink-0 text-[10px] text-muted">{inputCount}入 / {outputCount}出</span>
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            {inputCount}入 / {outputCount}出
+          </span>
         )}
       </div>
 
-      <div className="space-y-1">
+      {/* Block name + description */}
+      <div className="flex flex-col gap-1">
         <p className="font-medium text-foreground">{data.blockName}</p>
-        <p className="text-[10px] text-muted-foreground">
-          {internalNodeCount} 个内部节点 · {internalEdgeCount} 条内部连线
-        </p>
-        {data.description && <p className="truncate text-xs text-muted-foreground">{data.description}</p>}
+        {data.description && (
+          <p className="truncate text-muted-foreground">{data.description}</p>
+        )}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] text-muted">{internalNodeCount} 个内部节点</span>
+      {/* Toggle button */}
+      <div className="flex items-center justify-end">
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 px-2 text-[10px]"
+          className="h-7 px-2 text-[11px]"
           onClick={() => updateNodeData(nodeId, { isExpanded: !data.isExpanded })}
           aria-label={toggleLabel}
         >
-          {data.isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {data.isExpanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
           <span>{toggleLabel}</span>
         </Button>
       </div>
 
+      {/* Expanded preview (limited to MAX_VISIBLE_INTERNAL_NODES) */}
       {data.isExpanded ? (
         <div
           data-testid="reusable-block-expanded-view"
-          className="space-y-2 rounded-lg border border-dashed border-border/70 bg-background/70 p-3"
+          className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-background/70 p-3"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-foreground">内部图预览</span>
-            <span className="text-[10px] text-muted-foreground">只读</span>
+            <span className="text-[11px] text-muted-foreground">只读</span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {data.blockDefinition.nodes.map((node) => (
-              <span
-                key={node.id}
-                className="rounded-md border border-border/70 bg-muted/30 px-2 py-1 text-[10px] text-foreground"
-              >
-                {node.data.label}
-              </span>
-            ))}
+          <div className="flex flex-wrap gap-1">
+            {data.blockDefinition.nodes
+              .slice(0, MAX_VISIBLE_INTERNAL_NODES)
+              .map((node) => (
+                <NodeBadge key={node.id} variant="info" color="default">
+                  {node.data.label}
+                </NodeBadge>
+              ))}
+            {data.blockDefinition.nodes.length > MAX_VISIBLE_INTERNAL_NODES ? (
+              <NodeBadge variant="info" color="muted">
+                +{data.blockDefinition.nodes.length - MAX_VISIBLE_INTERNAL_NODES} more
+              </NodeBadge>
+            ) : null}
           </div>
         </div>
       ) : null}

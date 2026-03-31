@@ -7,6 +7,7 @@ import {
   isKnowledgeBaseConfigured,
   type KnowledgeBaseStatus,
 } from '@/features/knowledge/types'
+import { NodeBadge, type NodeBadgeColor } from '../shared/NodeBadge'
 
 interface KnowledgeBaseNodeBodyProps {
   config: Record<string, unknown>
@@ -25,16 +26,16 @@ function readKnowledgeBaseStatus(value: unknown): KnowledgeBaseStatus | null {
     : null
 }
 
-function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
+function getStatusBadgeColor(status: KnowledgeBaseStatus): NodeBadgeColor {
   switch (status) {
     case 'ready':
-      return 'bg-emerald-500/10 text-emerald-700'
+      return 'success'
     case 'processing':
-      return 'bg-blue-500/10 text-blue-700'
+      return 'info'
     case 'failed':
-      return 'bg-rose-500/10 text-rose-700'
+      return 'destructive'
     default:
-      return 'bg-muted text-muted-foreground'
+      return 'default'
   }
 }
 
@@ -45,7 +46,7 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
 
   if (!isKnowledgeBaseConfigured(config)) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground/60 italic">
+      <div className="flex items-center gap-2 text-muted-foreground/60 italic">
         <BookOpen className="h-3.5 w-3.5 shrink-0" />
         <span>选择知识库</span>
       </div>
@@ -68,37 +69,43 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
     return (
       <div className="flex items-center gap-2" data-testid="knowledge-node-low">
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-        <span className="truncate text-xs font-medium text-foreground">{name}</span>
+        <span className="truncate font-medium text-foreground">{name}</span>
       </div>
     )
   }
 
   return (
-    <div className="space-y-2" data-testid={`knowledge-node-${lod}`}>
+    <div className="flex flex-col gap-2" data-testid={`knowledge-node-${lod}`}>
+      {/* Name row */}
       <div className="flex items-center gap-2">
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-        <span className="truncate text-xs font-medium text-foreground">{name}</span>
+        <span className="truncate font-medium text-foreground">{name}</span>
       </div>
+
+      {/* Status + stats merged into one row */}
       {lod === 'medium' && documentCount !== null && (
-        <p className="text-[11px] text-muted-foreground">{documentCount} 个文档</p>
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span>{documentCount} 个文档</span>
+        </div>
       )}
+
       {lod === 'high' && (
-        <div className="space-y-1.5 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-1">
           {status && (
-            <span
-              className={`inline-flex rounded-full px-2 py-0.5 font-medium ${getKnowledgeBaseStatusClass(
-                status,
-              )}`}
-            >
+            <NodeBadge variant="status" color={getStatusBadgeColor(status)}>
               {getKnowledgeBaseStatusLabel(status)}
-            </span>
+            </NodeBadge>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            {documentCount !== null && <span>{documentCount} 个文档</span>}
-            {nodeCount !== null && (
-              <span>{getKnowledgeNodeCountLabel({ nodeCount, chunkCount: nodeCount })}</span>
-            )}
-          </div>
+          {documentCount !== null && (
+            <NodeBadge variant="info" color="default">
+              {documentCount} 个文档
+            </NodeBadge>
+          )}
+          {nodeCount !== null && (
+            <NodeBadge variant="info" color="default">
+              {getKnowledgeNodeCountLabel({ nodeCount, chunkCount: nodeCount })}
+            </NodeBadge>
+          )}
         </div>
       )}
     </div>

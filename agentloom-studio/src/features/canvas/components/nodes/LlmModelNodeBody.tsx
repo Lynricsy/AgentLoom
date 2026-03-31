@@ -6,6 +6,7 @@ import {
   parseLlmModelConfig,
   ProviderIcon,
 } from '@/features/llm'
+import { NodeBadge } from '../shared/NodeBadge'
 
 type LlmNodeVisualState = 'unconfigured' | 'configured' | 'warning'
 
@@ -22,6 +23,8 @@ function extractHostname(url: string): string {
   }
 }
 
+const MAX_VISIBLE_BADGES = 3
+
 export const LlmModelNodeBody = memo(function LlmModelNodeBody({
   source,
   state,
@@ -31,7 +34,7 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
 
   if (!llmConfig) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground/60 italic">
+      <div className="flex items-center gap-2 text-muted-foreground/60 italic">
         <Brain className="h-3.5 w-3.5 shrink-0" />
         <span>点击配置模型</span>
       </div>
@@ -50,48 +53,61 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
           : '缺少模型')
     : '缺少 API Key'
 
+  // 收集参数 badges
+  const paramBadges: { key: string; label: string }[] = [
+    { key: 'name', label: llmConfig.name },
+    { key: 'temp', label: `t:${llmConfig.parameters.temperature.toFixed(1)}` },
+  ]
+  if (typeof llmConfig.parameters.maxTokens === 'number') {
+    paramBadges.push({ key: 'max', label: `max:${llmConfig.parameters.maxTokens}` })
+  }
+
+  const visibleBadges = paramBadges.slice(0, MAX_VISIBLE_BADGES)
+  const overflowCount = paramBadges.length - MAX_VISIBLE_BADGES
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+      {/* Provider : Model (merged into one line) */}
+      <div className="flex items-center gap-1">
         <ProviderIcon
           provider={llmConfig.provider}
           size={14}
           className={hasWarning ? 'text-warning' : 'text-primary/80'}
         />
-        <span className="truncate text-xs font-medium text-foreground">
-          {providerInfo?.name ?? llmConfig.provider}
+        <span className="truncate font-medium text-foreground">
+          {providerInfo?.name ?? llmConfig.provider}: {llmConfig.modelName}
         </span>
         {hasWarning ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] text-warning">
+          <NodeBadge variant="status" color="warning" className="shrink-0">
             <AlertTriangle className="h-3 w-3" />
             {warningLabel}
-          </span>
+          </NodeBadge>
         ) : null}
       </div>
 
-      <div className="space-y-1">
-        <p className="truncate text-[11px] font-medium text-foreground">{llmConfig.modelName}</p>
-        <div className="flex flex-wrap gap-1 text-[10px] text-muted-foreground">
-          <span className="rounded bg-muted px-1.5 py-0.5">{llmConfig.name}</span>
-          <span className="rounded bg-muted px-1.5 py-0.5">
-            t:{llmConfig.parameters.temperature.toFixed(1)}
-          </span>
-          {typeof llmConfig.parameters.maxTokens === 'number' ? (
-            <span className="rounded bg-muted px-1.5 py-0.5">
-              max:{llmConfig.parameters.maxTokens}
-            </span>
-          ) : null}
-        </div>
+      {/* Parameter badges */}
+      <div className="flex flex-wrap gap-1">
+        {visibleBadges.map((badge) => (
+          <NodeBadge key={badge.key} variant="info" color="default">
+            {badge.label}
+          </NodeBadge>
+        ))}
+        {overflowCount > 0 ? (
+          <NodeBadge variant="info" color="muted">
+            +{overflowCount}
+          </NodeBadge>
+        ) : null}
       </div>
 
+      {/* Private cloud endpoint (optional) */}
       {isPrivateCloud && llmConfig.endpointUrl ? (
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <Server className="h-3 w-3 shrink-0" />
           <span className="truncate">{extractHostname(llmConfig.endpointUrl)}</span>
           {llmConfig.authMethod ? (
-            <span className="rounded bg-muted px-1.5 py-0.5">
+            <NodeBadge variant="info" color="default">
               {llmConfig.authMethod === 'api_key' ? 'Key' : llmConfig.authMethod}
-            </span>
+            </NodeBadge>
           ) : null}
         </div>
       ) : null}
