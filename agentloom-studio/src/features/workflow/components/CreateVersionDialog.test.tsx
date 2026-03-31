@@ -127,7 +127,7 @@ describe('CreateVersionDialog', () => {
   it('打开时渲染创建表单', () => {
     render(<CreateVersionDialog {...defaultProps} />);
 
-    expect(screen.getByRole('heading', { name: '保存版本' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '保存快照' })).toBeInTheDocument();
     expect(screen.getByTestId('version-label-input')).toBeInTheDocument();
     expect(screen.getByTestId('confirm-create-version')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-create-version')).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('CreateVersionDialog', () => {
   it('关闭时不渲染内容', () => {
     render(<CreateVersionDialog {...defaultProps} open={false} />);
 
-    expect(screen.queryByRole('heading', { name: '保存版本' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '保存快照' })).not.toBeInTheDocument();
   });
 
   it('输入标签后提交', async () => {
@@ -154,7 +154,7 @@ describe('CreateVersionDialog', () => {
 
     await waitFor(() => {
       expect(notifyMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: '版本已保存' }),
+        expect.objectContaining({ title: '快照已保存' }),
       );
     });
 

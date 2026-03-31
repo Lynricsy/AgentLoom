@@ -68,6 +68,18 @@ function getStatusLabel(status: WorkflowStatus): string {
   }
 }
 
+function getWorkflowReleaseLabel(workflow: WorkflowDefinition): string | null {
+  if (workflow.status !== 'published') {
+    return null
+  }
+
+  if (typeof workflow.publishedReleaseNumber === 'number') {
+    return `v${workflow.publishedReleaseNumber}`
+  }
+
+  return 'v1'
+}
+
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
   selected: boolean
@@ -189,9 +201,15 @@ const WorkflowCard = memo(function WorkflowCard({
             <Clock className="h-3 w-3" />
             {formatRelativeTime(new Date(workflow.updatedAt))}
           </span>
-          <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-medium">
-            v{workflow.version}
-          </span>
+          {getWorkflowReleaseLabel(workflow) ? (
+            <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-medium">
+              {getWorkflowReleaseLabel(workflow)}
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 font-medium text-muted-foreground">
+              未发布
+            </span>
+          )}
         </div>
       </button>
     </div>
@@ -251,9 +269,15 @@ const WorkflowListItem = memo(function WorkflowListItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
-            <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-              v{workflow.version}
-            </span>
+            {getWorkflowReleaseLabel(workflow) ? (
+              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                {getWorkflowReleaseLabel(workflow)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                未发布
+              </span>
+            )}
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {workflow.description || '暂无描述'}

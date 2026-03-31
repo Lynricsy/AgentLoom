@@ -99,7 +99,7 @@ src/
 | agentCanvasStore       | `features/agent-canvas/stores/`       | Agent 配置画布状态：nodes/edges/viewport/dirty，AGENT_CANVAS_NODE_REGISTRY 子集节点类型                      |
 | agentConversationStore | `features/agent-conversation/stores/` | 对话状态：messages/streaming/conversationList/activeConversationId，Socket.IO `/agent-conversation` 事件驱动 |
 
-**自动保存**: `canvasStore.subscribe()` + 2s debounce → PUT /workflow-versions
+**自动保存**: `canvasStore.subscribe()` + 2s debounce → `PATCH /workflow-definitions/:id`；`workflow.version` 仍是草稿修订号/OCC 版本，用户可见发布版号应读取 `publishedReleaseNumber`，未发布记录在 UI 上应使用“快照”语义而不是 `vN`。
 
 **Canvas 类型兼容性运行时**: `features/canvas/lib/typeEngine/` 现提供主线程单例 `TypeEngineService` façade、底层单例 `TypeEngineRuntime` 与 `runtime.worker.ts`；`connectionCompatibility.ts` 负责同步 guard + cache 读取 + 异步权威检查适配；`WorkflowCanvas.tsx` 在 cache miss 且最终判定 `INCOMPATIBLE` 时会补发持久化错误反馈，避免 preview reset 后丢失原因；`canvasStore.updateNodeData()` 仅在 `inputPorts/outputPorts` 契约签名变化时触发相邻边兼容性重算，并在 refresh 落地前重新基于最新 live `edge.data` merge，以保留并发 `fieldMapping` 编辑，再通过 `refreshEdgeCompatibility()` 标脏让 autosave 持久化新的 `edge.data`；`vite.config.ts` 现通过 `server.fs.allow = [path.resolve(__dirname, '..')]` 放行 sibling `agentloom-type-engine/pkg` wasm 资产，保证 Vite dev 浏览器环境也能拉起 worker + wasm
 

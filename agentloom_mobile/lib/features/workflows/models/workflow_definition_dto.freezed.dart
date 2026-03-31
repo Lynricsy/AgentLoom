@@ -19,14 +19,11 @@ mixin _$WorkflowDefinitionDto {
   String? get description;
   String get status;
   int get version;
+  int? get publishedReleaseNumber;
   Map<String, dynamic>? get metadata;
-  @JsonKey(name: 'created_by')
   String? get createdBy;
-  @JsonKey(name: 'updated_by')
   String? get updatedBy;
-  @JsonKey(name: 'created_at')
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
 
   /// Create a copy of WorkflowDefinitionDto
@@ -54,6 +51,8 @@ mixin _$WorkflowDefinitionDto {
                 other.description == description) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.version, version) || other.version == version) &&
+            (identical(other.publishedReleaseNumber, publishedReleaseNumber) ||
+                other.publishedReleaseNumber == publishedReleaseNumber) &&
             const DeepCollectionEquality().equals(other.metadata, metadata) &&
             (identical(other.createdBy, createdBy) ||
                 other.createdBy == createdBy) &&
@@ -75,6 +74,7 @@ mixin _$WorkflowDefinitionDto {
     description,
     status,
     version,
+    publishedReleaseNumber,
     const DeepCollectionEquality().hash(metadata),
     createdBy,
     updatedBy,
@@ -84,7 +84,7 @@ mixin _$WorkflowDefinitionDto {
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -102,11 +102,12 @@ abstract mixin class $WorkflowDefinitionDtoCopyWith<$Res> {
     String? description,
     String status,
     int version,
+    int? publishedReleaseNumber,
     Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_by') String? createdBy,
-    @JsonKey(name: 'updated_by') String? updatedBy,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -129,6 +130,7 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? description = freezed,
     Object? status = null,
     Object? version = null,
+    Object? publishedReleaseNumber = freezed,
     Object? metadata = freezed,
     Object? createdBy = freezed,
     Object? updatedBy = freezed,
@@ -161,6 +163,10 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
             ? _self.version
             : version // ignore: cast_nullable_to_non_nullable
                   as int,
+        publishedReleaseNumber: freezed == publishedReleaseNumber
+            ? _self.publishedReleaseNumber
+            : publishedReleaseNumber // ignore: cast_nullable_to_non_nullable
+                  as int?,
         metadata: freezed == metadata
             ? _self.metadata
             : metadata // ignore: cast_nullable_to_non_nullable
@@ -286,11 +292,12 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? description,
       String status,
       int version,
+      int? publishedReleaseNumber,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -305,6 +312,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.description,
           _that.status,
           _that.version,
+          _that.publishedReleaseNumber,
           _that.metadata,
           _that.createdBy,
           _that.updatedBy,
@@ -338,11 +346,12 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? description,
       String status,
       int version,
+      int? publishedReleaseNumber,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )
     $default,
   ) {
@@ -356,6 +365,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.description,
           _that.status,
           _that.version,
+          _that.publishedReleaseNumber,
           _that.metadata,
           _that.createdBy,
           _that.updatedBy,
@@ -388,11 +398,12 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? description,
       String status,
       int version,
+      int? publishedReleaseNumber,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )?
     $default,
   ) {
@@ -406,6 +417,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.description,
           _that.status,
           _that.version,
+          _that.publishedReleaseNumber,
           _that.metadata,
           _that.createdBy,
           _that.updatedBy,
@@ -428,11 +440,12 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     this.description,
     required this.status,
     required this.version,
+    this.publishedReleaseNumber,
     final Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_by') this.createdBy,
-    @JsonKey(name: 'updated_by') this.updatedBy,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
+    this.createdBy,
+    this.updatedBy,
+    required this.createdAt,
+    required this.updatedAt,
   }) : _metadata = metadata;
   factory _WorkflowDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$WorkflowDefinitionDtoFromJson(json);
@@ -449,6 +462,8 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
   final String status;
   @override
   final int version;
+  @override
+  final int? publishedReleaseNumber;
   final Map<String, dynamic>? _metadata;
   @override
   Map<String, dynamic>? get metadata {
@@ -460,16 +475,12 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
   }
 
   @override
-  @JsonKey(name: 'created_by')
   final String? createdBy;
   @override
-  @JsonKey(name: 'updated_by')
   final String? updatedBy;
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
 
   /// Create a copy of WorkflowDefinitionDto
@@ -500,6 +511,8 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
                 other.description == description) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.version, version) || other.version == version) &&
+            (identical(other.publishedReleaseNumber, publishedReleaseNumber) ||
+                other.publishedReleaseNumber == publishedReleaseNumber) &&
             const DeepCollectionEquality().equals(other._metadata, _metadata) &&
             (identical(other.createdBy, createdBy) ||
                 other.createdBy == createdBy) &&
@@ -521,6 +534,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     description,
     status,
     version,
+    publishedReleaseNumber,
     const DeepCollectionEquality().hash(_metadata),
     createdBy,
     updatedBy,
@@ -530,7 +544,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -550,11 +564,12 @@ abstract mixin class _$WorkflowDefinitionDtoCopyWith<$Res>
     String? description,
     String status,
     int version,
+    int? publishedReleaseNumber,
     Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_by') String? createdBy,
-    @JsonKey(name: 'updated_by') String? updatedBy,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -577,6 +592,7 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? description = freezed,
     Object? status = null,
     Object? version = null,
+    Object? publishedReleaseNumber = freezed,
     Object? metadata = freezed,
     Object? createdBy = freezed,
     Object? updatedBy = freezed,
@@ -609,6 +625,10 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
             ? _self.version
             : version // ignore: cast_nullable_to_non_nullable
                   as int,
+        publishedReleaseNumber: freezed == publishedReleaseNumber
+            ? _self.publishedReleaseNumber
+            : publishedReleaseNumber // ignore: cast_nullable_to_non_nullable
+                  as int?,
         metadata: freezed == metadata
             ? _self._metadata
             : metadata // ignore: cast_nullable_to_non_nullable

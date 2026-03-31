@@ -33,6 +33,32 @@ function formatCreatorInitial(createdBy: string): string {
   return formatCreatorLabel(createdBy).slice(0, 1).toUpperCase()
 }
 
+function getReleaseNumber(version: WorkflowVersion): number | null {
+  if (typeof version.releaseNumber === 'number') {
+    return version.releaseNumber
+  }
+
+  return version.publishedAt ? 1 : null
+}
+
+function formatVersionRecordLabel(version: WorkflowVersion): string {
+  const releaseNumber = getReleaseNumber(version)
+  if (releaseNumber !== null) {
+    return `v${releaseNumber}`
+  }
+
+  return `快照 #${version.versionNumber}`
+}
+
+function formatHistoryRecordLabel(version: WorkflowVersion): string {
+  const releaseNumber = getReleaseNumber(version)
+  if (releaseNumber !== null) {
+    return `版本 ${formatVersionRecordLabel(version)}`
+  }
+
+  return `快照 #${version.versionNumber}`
+}
+
 function VersionItemSkeleton() {
   return (
     <div className="animate-pulse border-b border-border p-4" data-testid="version-item-skeleton">
@@ -65,6 +91,9 @@ const VersionItem = memo(function VersionItem({
   const isWorkflowArchived = workflowStatus === 'archived'
   const creatorLabel = formatCreatorLabel(version.createdBy)
   const releaseNotes = version.snapshot?.metadata?.releaseNotes?.trim() ?? ''
+  const releaseNumber = getReleaseNumber(version)
+  const isReleased = releaseNumber !== null
+  const publishActionLabel = isReleased ? '重新发布' : '发布'
 
   return (
     <div
@@ -73,8 +102,15 @@ const VersionItem = memo(function VersionItem({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            v{version.versionNumber}
+          <span
+            className={cn(
+              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              isReleased
+                ? 'bg-primary/10 text-primary'
+                : 'bg-muted text-muted-foreground',
+            )}
+          >
+            {formatVersionRecordLabel(version)}
           </span>
           {version.label && (
             <span className="flex items-center gap-1 text-sm text-foreground">
@@ -87,7 +123,12 @@ const VersionItem = memo(function VersionItem({
         <div className="flex items-center gap-1">
           {isPublished && (
             <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600">
-              已发布
+              当前发布
+            </span>
+          )}
+          {!isPublished && isReleased && (
+            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-600">
+              历史发布
             </span>
           )}
           {isArchived && (
@@ -138,7 +179,7 @@ const VersionItem = memo(function VersionItem({
                 data-testid={`publish-version-${version.versionNumber}`}
               >
                 <Upload className="h-3 w-3" />
-                发布
+                {publishActionLabel}
               </button>
             )}
             <button
@@ -236,7 +277,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
       await rollbackMutation.mutateAsync(rollbackTarget.id)
       notify({
         title: '回滚成功',
-        description: `已回滚到版本 v${rollbackTarget.versionNumber}${rollbackTarget.label ? `（${rollbackTarget.label}）` : ''}`,
+        description: `已回滚到${formatHistoryRecordLabel(rollbackTarget)}${rollbackTarget.label ? `（${rollbackTarget.label}）` : ''}`,
         variant: 'success',
       })
       setRollbackTarget(null)
@@ -278,13 +319,13 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
         open ? 'translate-x-0' : 'translate-x-full',
       )}
       data-testid="version-history-panel"
-      aria-label="版本历史"
+      aria-label="历史记录"
     >
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">版本历史</h2>
+          <h2 className="text-sm font-medium">历史记录</h2>
           {total > 0 && (
             <span className="text-xs text-muted-foreground">({total})</span>
           )}
@@ -293,7 +334,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
           type="button"
           className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           onClick={onClose}
-          aria-label="关闭版本历史"
+          aria-label="关闭历史记录"
           data-testid="close-version-history"
         >
           <X className="h-4 w-4" />
@@ -304,7 +345,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
       {rollbackTarget && (
         <div className="border-b border-amber-500/20 bg-amber-500/5 p-4" data-testid="rollback-confirm">
           <p className="text-sm text-amber-700">
-            确定要回滚到版本 v{rollbackTarget.versionNumber}
+            确定要回滚到{formatHistoryRecordLabel(rollbackTarget)}
             {rollbackTarget.label ? `（${rollbackTarget.label}）` : ''}吗？当前未保存的更改将丢失。
           </p>
           <div className="mt-3 flex gap-2">
@@ -341,8 +382,8 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
         ) : versions.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground" data-testid="version-list-empty">
             <History className="h-8 w-8 opacity-40" />
-            <p className="text-sm">暂无版本快照</p>
-            <p className="text-xs">保存版本或发布当前画布后，会在这里展示历史记录</p>
+            <p className="text-sm">暂无发布记录或快照</p>
+            <p className="text-xs">保存快照或发布当前画布后，会在这里展示历史记录</p>
           </div>
         ) : (
           <div data-testid="version-list" onScroll={handleListScroll} className="h-full overflow-y-auto">
@@ -368,7 +409,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
 
       {footerLabel && (
         <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">已加载 {versions.length}/{total} 个版本</span>
+          <span className="text-xs text-muted-foreground">已加载 {versions.length}/{total} 条记录</span>
           <span className="text-xs text-muted-foreground">{footerLabel}</span>
         </div>
       )}

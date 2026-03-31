@@ -121,8 +121,8 @@ describe('VersionHistoryPanel', () => {
     render(<VersionHistoryPanel {...defaultProps} />);
 
     expect(screen.getByTestId('version-list-empty')).toBeInTheDocument();
-    expect(screen.getByText('暂无版本快照')).toBeInTheDocument();
-    expect(screen.getByText('保存版本或发布当前画布后，会在这里展示历史记录')).toBeInTheDocument();
+    expect(screen.getByText('暂无发布记录或快照')).toBeInTheDocument();
+    expect(screen.getByText('保存快照或发布当前画布后，会在这里展示历史记录')).toBeInTheDocument();
   });
 
   it('渲染版本列表并显示创建者', () => {
@@ -182,7 +182,8 @@ describe('VersionHistoryPanel', () => {
 
     render(<VersionHistoryPanel {...defaultProps} />);
 
-    expect(screen.getByText('已发布')).toBeInTheDocument();
+    expect(screen.getByText('当前发布')).toBeInTheDocument();
+    expect(screen.getByText('v1')).toBeInTheDocument();
   });
 
   it('已归档版本显示归档标签', () => {
@@ -278,7 +279,7 @@ describe('VersionHistoryPanel', () => {
       expect(screen.getByTestId('version-item-1')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('已加载 2/2 个版本')).toBeInTheDocument();
+    expect(screen.getByText('已加载 2/2 条记录')).toBeInTheDocument();
     expect(screen.getByText('已加载全部版本')).toBeInTheDocument();
   });
 

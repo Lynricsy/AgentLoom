@@ -133,12 +133,14 @@ export class WorkflowVersionService {
   private get definitionListColumns() {
     return {
       id: schema.workflowDefinitions.id,
+      tenantId: schema.workflowDefinitions.tenantId,
       name: schema.workflowDefinitions.name,
       slug: schema.workflowDefinitions.slug,
       description: schema.workflowDefinitions.description,
       icon: schema.workflowDefinitions.icon,
       status: schema.workflowDefinitions.status,
       version: schema.workflowDefinitions.version,
+      publishedVersionId: schema.workflowDefinitions.publishedVersionId,
       metadata: schema.workflowDefinitions.metadata,
       createdBy: schema.workflowDefinitions.createdBy,
       updatedBy: schema.workflowDefinitions.updatedBy,
@@ -182,8 +184,19 @@ export class WorkflowVersionService {
 
     const [data, countResult] = await Promise.all([
       this.tenantDb
-        .select(this.definitionListColumns)
+        .select({
+          ...this.definitionListColumns,
+          publishedSnapshot: schema.workflowVersions.snapshot,
+          publishedAt: schema.workflowVersions.publishedAt,
+        })
         .from(schema.workflowDefinitions)
+        .leftJoin(
+          schema.workflowVersions,
+          eq(
+            schema.workflowDefinitions.publishedVersionId,
+            schema.workflowVersions.id,
+          ),
+        )
         .where(whereClause)
         .orderBy(orderFn(sortColumn))
         .limit(pageSize)
@@ -197,7 +210,15 @@ export class WorkflowVersionService {
     const total = countResult[0]?.count ?? 0;
 
     return {
-      data: data.map(serializeWorkflowDefinition),
+      data: data.map(({ publishedSnapshot, publishedAt, ...workflow }) =>
+        serializeWorkflowDefinition({
+          ...workflow,
+          publishedReleaseNumber: this.extractReleaseNumber(
+            publishedSnapshot,
+            publishedAt ?? null,
+          ),
+        }),
+      ),
       meta: {
         total,
         page,
@@ -219,14 +240,30 @@ export class WorkflowVersionService {
       throw new WorkflowNotFoundException(workflowId);
     }
 
-    return serializeWorkflowDefinition(workflow);
+    const publishedReleaseNumber = await this.getPublishedReleaseNumber(
+      workflowId,
+      workflow.publishedVersionId,
+    );
+
+    return serializeWorkflowDefinition({
+      ...workflow,
+      publishedReleaseNumber,
+    });
   }
 
   async findDefinitionDetailById(
     workflowId: string,
   ): Promise<WorkflowDefinitionDetailResponseDto> {
     const workflow = await this.findWorkflowOrThrow(this.tenantDb, workflowId);
-    return serializeWorkflowDefinitionDetail(workflow);
+    const publishedReleaseNumber = await this.getPublishedReleaseNumber(
+      workflowId,
+      workflow.publishedVersionId,
+    );
+
+    return serializeWorkflowDefinitionDetail({
+      ...workflow,
+      publishedReleaseNumber,
+    });
   }
 
   async getInputSchema(
@@ -851,6 +888,10 @@ export class WorkflowVersionService {
         const normalizedReleaseNotes = this.normalizeOptionalText(
           dto.releaseNotes,
         );
+        const nextReleaseNumber = await this.getNextReleaseNumber(
+          dbClient,
+          workflowId,
+        );
 
         await dbClient
           .update(schema.workflowVersions)
@@ -870,6 +911,11 @@ export class WorkflowVersionService {
             dto.versionId,
             workflowId,
           );
+          const releaseNumber =
+            this.extractReleaseNumber(
+              existingVersion.snapshot,
+              existingVersion.publishedAt,
+            ) ?? nextReleaseNumber;
 
           const [updatedVersion] = await dbClient
             .update(schema.workflowVersions)
@@ -884,6 +930,7 @@ export class WorkflowVersionService {
                     normalizedReleaseNotes ??
                     existingVersion.snapshot.metadata.releaseNotes ??
                     null,
+                  releaseNumber,
                 },
               },
             })
@@ -892,6 +939,8 @@ export class WorkflowVersionService {
 
           publishedVersion = updatedVersion;
         } else {
+          const releaseNumber = nextReleaseNumber;
+
           const [createdVersion] = await dbClient
             .insert(schema.workflowVersions)
             .values({
@@ -902,7 +951,11 @@ export class WorkflowVersionService {
                 workflowId,
               ),
               label: dto.label ?? null,
-              snapshot: this.buildSnapshot(workflow, normalizedReleaseNotes),
+              snapshot: this.buildSnapshot(
+                workflow,
+                normalizedReleaseNotes,
+                releaseNumber,
+              ),
               publishedAt,
               createdBy: userId,
             })
@@ -1129,9 +1182,33 @@ export class WorkflowVersionService {
     return (maxResult?.maxVersion ?? 0) + 1;
   }
 
+  private async getNextReleaseNumber(
+    dbClient: WorkflowDbClient,
+    workflowId: string,
+  ): Promise<number> {
+    const versions = await dbClient
+      .select({
+        snapshot: schema.workflowVersions.snapshot,
+        publishedAt: schema.workflowVersions.publishedAt,
+      })
+      .from(schema.workflowVersions)
+      .where(eq(schema.workflowVersions.workflowDefinitionId, workflowId));
+
+    const maxReleaseNumber = versions.reduce((currentMax, version) => {
+      const releaseNumber = this.extractReleaseNumber(
+        version.snapshot,
+        version.publishedAt,
+      );
+      return Math.max(currentMax, releaseNumber ?? 0);
+    }, 0);
+
+    return maxReleaseNumber + 1;
+  }
+
   private buildSnapshot(
     workflow: typeof schema.workflowDefinitions.$inferSelect,
     releaseNotes: string | null = null,
+    releaseNumber: number | null = null,
   ): WorkflowVersionSnapshot {
     return {
       nodes: workflow.nodes ?? [],
@@ -1143,6 +1220,7 @@ export class WorkflowVersionService {
         edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
         createdFromVersion: workflow.version,
         releaseNotes,
+        releaseNumber,
       },
     };
   }
@@ -1202,6 +1280,58 @@ export class WorkflowVersionService {
     return normalizedValue ? normalizedValue : null;
   }
 
+  private extractReleaseNumber(
+    snapshot?: WorkflowVersionSnapshot | null,
+    publishedAt?: Date | null,
+  ): number | null {
+    const releaseNumber = snapshot?.metadata?.releaseNumber;
+
+    if (
+      typeof releaseNumber === 'number' &&
+      Number.isInteger(releaseNumber) &&
+      releaseNumber > 0
+    ) {
+      return releaseNumber;
+    }
+
+    if (publishedAt) {
+      return 1;
+    }
+
+    return null;
+  }
+
+  private async getPublishedReleaseNumber(
+    workflowId: string,
+    publishedVersionId: string | null,
+  ): Promise<number | null> {
+    if (!publishedVersionId) {
+      return null;
+    }
+
+    const [publishedVersion] = await this.tenantDb
+      .select({
+        snapshot: schema.workflowVersions.snapshot,
+        publishedAt: schema.workflowVersions.publishedAt,
+      })
+      .from(schema.workflowVersions)
+      .where(
+        and(
+          eq(schema.workflowVersions.id, publishedVersionId),
+          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+        ),
+      );
+
+    if (!publishedVersion) {
+      return null;
+    }
+
+    return this.extractReleaseNumber(
+      publishedVersion.snapshot,
+      publishedVersion.publishedAt,
+    );
+  }
+
   private getPublishedCacheKey(tenantId: string, workflowId: string): string {
     return redisKey(tenantId, RedisDomain.CACHE, `wf:published:${workflowId}`);
   }
@@ -1217,10 +1347,16 @@ export class WorkflowVersionService {
   private toResponseDto(
     version: typeof schema.workflowVersions.$inferSelect,
   ): VersionResponseDto {
+    const releaseNumber = this.extractReleaseNumber(
+      version.snapshot,
+      version.publishedAt,
+    );
+
     return {
       id: version.id,
       workflowDefinitionId: version.workflowDefinitionId,
       versionNumber: version.versionNumber,
+      releaseNumber,
       label: version.label ?? null,
       snapshot: version.snapshot,
       publishedAt: version.publishedAt?.toISOString() ?? null,

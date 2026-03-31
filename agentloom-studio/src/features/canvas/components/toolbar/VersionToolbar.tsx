@@ -122,7 +122,7 @@ export const VersionToolbar = memo(function VersionToolbar({
             data-testid="btn-create-version"
           >
             <Save className="h-3.5 w-3.5" />
-            保存版本
+            保存快照
           </button>
         )}
 
@@ -133,7 +133,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           data-testid="btn-version-history"
         >
           <History className="h-3.5 w-3.5" />
-          版本历史
+          历史记录
         </button>
 
         {onToggleInterventionPolicies && (

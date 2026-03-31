@@ -11,12 +11,15 @@ import type { WorkflowInputSchema } from '../../workflow/dto/workflow-input-sche
  */
 export interface WorkflowDefinitionResponseDto {
   id: string;
+  tenantId: string;
   name: string;
   slug: string;
   description: string | null;
   icon: string | null;
   status: string;
   version: number;
+  publishedVersionId: string | null;
+  publishedReleaseNumber: number | null;
   metadata: Record<string, unknown> | null;
   createdBy: string;
   updatedBy: string;
@@ -54,27 +57,34 @@ export function serializeWorkflowDefinition(
   row: Pick<
     WorkflowDefinition,
     | 'id'
+    | 'tenantId'
     | 'name'
     | 'slug'
     | 'description'
     | 'icon'
     | 'status'
     | 'version'
+    | 'publishedVersionId'
     | 'metadata'
     | 'createdBy'
     | 'updatedBy'
     | 'createdAt'
     | 'updatedAt'
-  >,
+  > & {
+    publishedReleaseNumber?: number | null;
+  },
 ): WorkflowDefinitionResponseDto {
   return {
     id: row.id,
+    tenantId: row.tenantId,
     name: row.name,
     slug: row.slug,
     description: row.description,
     icon: row.icon ?? null,
     status: row.status,
     version: row.version,
+    publishedVersionId: row.publishedVersionId ?? null,
+    publishedReleaseNumber: row.publishedReleaseNumber ?? null,
     metadata:
       row.metadata && Object.keys(row.metadata).length > 0
         ? row.metadata
@@ -90,7 +100,9 @@ export function serializeWorkflowDefinition(
  * 将 Drizzle 行序列化为详情响应 DTO（包含 nodes/edges/viewport）
  */
 export function serializeWorkflowDefinitionDetail(
-  row: WorkflowDefinition,
+  row: WorkflowDefinition & {
+    publishedReleaseNumber?: number | null;
+  },
 ): WorkflowDefinitionDetailResponseDto {
   return {
     ...serializeWorkflowDefinition(row),

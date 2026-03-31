@@ -286,7 +286,7 @@ export function WorkflowInputSchemaTab({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-muted-foreground">
-            Schema 版本 {schema.version} · 工作流版本 {currentWorkflowVersion}
+            Schema 版本 {schema.version} · 工作流修订 {currentWorkflowVersion}
           </div>
           <Button
             variant="outline"

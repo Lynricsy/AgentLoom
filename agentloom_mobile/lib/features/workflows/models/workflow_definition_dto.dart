@@ -13,11 +13,12 @@ abstract class WorkflowDefinitionDto with _$WorkflowDefinitionDto {
     String? description,
     required String status,
     required int version,
+    int? publishedReleaseNumber,
     Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_by') String? createdBy,
-    @JsonKey(name: 'updated_by') String? updatedBy,
-    @JsonKey(name: 'created_at') required String createdAt,
-    @JsonKey(name: 'updated_at') required String updatedAt,
+    String? createdBy,
+    String? updatedBy,
+    required String createdAt,
+    required String updatedAt,
   }) = _WorkflowDefinitionDto;
 
   factory WorkflowDefinitionDto.fromJson(Map<String, dynamic> json) =>

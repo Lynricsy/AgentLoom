@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../models/workflow_definition_dto.dart';
 import '../providers/workflow_detail_provider.dart';
 import '../widgets/execution_summary_tile.dart';
 import '../widgets/workflow_status_chip.dart';
@@ -89,7 +90,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 16),
                             _MetadataRow(
                               label: 'Version',
-                              value: 'v${workflow.version}',
+                              value: _buildReleaseLabel(workflow),
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(label: 'Slug', value: workflow.slug),
@@ -218,6 +219,14 @@ class WorkflowDetailScreen extends ConsumerWidget {
     } catch (_) {
       return isoDate;
     }
+  }
+
+  String _buildReleaseLabel(WorkflowDefinitionDto workflow) {
+    if (workflow.status == 'published') {
+      return 'v${workflow.publishedReleaseNumber ?? 1}';
+    }
+
+    return 'Unpublished';
   }
 }
 

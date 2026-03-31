@@ -13,6 +13,7 @@ class WorkflowCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final releaseLabel = _buildReleaseLabel();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -69,7 +70,7 @@ class WorkflowCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    'v${workflow.version}',
+                    releaseLabel,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -96,5 +97,14 @@ class WorkflowCard extends StatelessWidget {
     } catch (_) {
       return isoDate;
     }
+  }
+
+  String _buildReleaseLabel() {
+    final releaseNumber = workflow.publishedReleaseNumber;
+    if (workflow.status == 'published') {
+      return 'v${releaseNumber ?? 1}';
+    }
+
+    return '未发布';
   }
 }

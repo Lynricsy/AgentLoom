@@ -91,7 +91,7 @@ describe('PublishSheet', () => {
   it('默认选择当前版本', () => {
     render(<PublishSheet {...defaultProps} />);
 
-    const currentRadio = screen.getByRole('radio', { name: /当前画布快照/ });
+    const currentRadio = screen.getByRole('radio', { name: /当前编辑稿/ });
     expect(currentRadio).toBeChecked();
     expect(screen.queryByTestId('version-select')).not.toBeInTheDocument();
   });
@@ -99,14 +99,14 @@ describe('PublishSheet', () => {
   it('带 initialVersionId 打开时预选已有版本', () => {
     render(<PublishSheet {...defaultProps} initialVersionId="ver-001" />);
 
-    expect(screen.getByRole('radio', { name: /选择已有版本/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /选择已有记录/ })).toBeChecked();
     expect(screen.getByTestId('version-select')).toHaveValue('ver-001');
   });
 
   it('切换到已有版本显示版本选择器', () => {
     render(<PublishSheet {...defaultProps} />);
 
-    const existingRadio = screen.getByRole('radio', { name: /选择已有版本/ });
+    const existingRadio = screen.getByRole('radio', { name: /选择已有记录/ });
     fireEvent.click(existingRadio);
     expect(screen.getByTestId('version-select')).toBeInTheDocument();
   });
@@ -185,7 +185,7 @@ describe('PublishSheet', () => {
 
     render(<PublishSheet {...defaultProps} />);
 
-    fireEvent.click(screen.getByRole('radio', { name: /选择已有版本/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /选择已有记录/ }));
     fireEvent.change(screen.getByTestId('version-select'), {
       target: { value: 'ver-001' },
     });
@@ -201,14 +201,14 @@ describe('PublishSheet', () => {
   it('未选择版本时显示验证错误', () => {
     render(<PublishSheet {...defaultProps} />);
 
-    fireEvent.click(screen.getByRole('radio', { name: /选择已有版本/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /选择已有记录/ }));
     fireEvent.change(screen.getByTestId('version-select'), {
       target: { value: '' },
     });
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     expect(screen.getByTestId('publish-validation-error')).toBeInTheDocument();
-    expect(screen.getByText('请选择一个已有版本')).toBeInTheDocument();
+    expect(screen.getByText('请选择一条可发布记录')).toBeInTheDocument();
     expect(mutateAsyncMock).not.toHaveBeenCalled();
   });
 

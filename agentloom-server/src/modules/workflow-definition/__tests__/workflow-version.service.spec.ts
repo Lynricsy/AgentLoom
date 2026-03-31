@@ -196,8 +196,9 @@ function createSelectChainWithPagination(result: unknown) {
   const limit = vi.fn().mockReturnValue({ offset });
   const orderBy = vi.fn().mockReturnValue({ limit });
   const where = vi.fn().mockReturnValue({ orderBy });
-  const from = vi.fn().mockReturnValue({ where });
-  return { from, where, orderBy, limit, offset };
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ leftJoin, where });
+  return { from, leftJoin, where, orderBy, limit, offset };
 }
 
 function createSelectChainWithInnerJoin(result: unknown) {
@@ -348,11 +349,15 @@ describe('WorkflowVersionService', () => {
         data: [
           {
             id: workflows[0].id,
+            tenantId: TENANT_ID,
             name: '工作流 A',
             slug: 'workflow-a',
             description: '描述 A',
+            icon: null,
             status: 'draft',
             version: 1,
+            publishedVersionId: null,
+            publishedReleaseNumber: null,
             metadata: { complexity: 'beginner' },
             createdBy: USER_ID,
             updatedBy: USER_ID,
@@ -361,11 +366,15 @@ describe('WorkflowVersionService', () => {
           },
           {
             id: workflows[1].id,
+            tenantId: TENANT_ID,
             name: '工作流 B',
             slug: 'workflow-b',
             description: null,
+            icon: null,
             status: 'draft',
             version: 1,
+            publishedVersionId: null,
+            publishedReleaseNumber: null,
             metadata: null,
             createdBy: USER_ID,
             updatedBy: USER_ID,
@@ -533,11 +542,15 @@ describe('WorkflowVersionService', () => {
 
       expect(result).toEqual({
         id: WORKFLOW_ID,
+        tenantId: TENANT_ID,
         name: '测试工作流',
         slug: 'test-workflow',
         description: '详情描述',
+        icon: null,
         status: 'draft',
         version: 1,
+        publishedVersionId: null,
+        publishedReleaseNumber: null,
         metadata: { category: 'analysis' },
         createdBy: USER_ID,
         updatedBy: USER_ID,
@@ -575,11 +588,15 @@ describe('WorkflowVersionService', () => {
 
       expect(result).toEqual({
         id: WORKFLOW_ID,
+        tenantId: TENANT_ID,
         name: '测试工作流',
         slug: 'test-workflow',
         description: '详情描述',
+        icon: null,
         status: 'draft',
         version: 1,
+        publishedVersionId: null,
+        publishedReleaseNumber: null,
         nodes: MOCK_NODES,
         edges: MOCK_EDGES,
         viewport: MOCK_VIEWPORT,
@@ -679,11 +696,15 @@ describe('WorkflowVersionService', () => {
 
       expect(result).toEqual({
         id: WORKFLOW_ID,
+        tenantId: TENANT_ID,
         name: '更新后的名称',
         slug: 'test-workflow',
         description: null,
+        icon: null,
         status: 'draft',
         version: 4,
+        publishedVersionId: null,
+        publishedReleaseNumber: null,
         nodes: MOCK_NODES,
         edges: MOCK_EDGES,
         viewport: MOCK_VIEWPORT,
@@ -1051,8 +1072,12 @@ describe('WorkflowVersionService', () => {
   describe('publish', () => {
     it('应当从当前快照创建新版本并发布', async () => {
       const selectWf = createSelectChain([createDraftWorkflow()]);
+      const selectReleases = createSelectChain([]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
+        .mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 2,
@@ -1084,9 +1109,11 @@ describe('WorkflowVersionService', () => {
 
     it('应当发布指定的已有版本', async () => {
       const selectWf = createSelectChain([createDraftWorkflow()]);
+      const selectReleases = createSelectChain([]);
       const selectVersion = createSelectChain([createMockVersion()]);
       db.select
         .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
         .mockReturnValueOnce(selectVersion);
 
       const updatedVersion = createMockVersion({ publishedAt: NOW });
@@ -1125,8 +1152,12 @@ describe('WorkflowVersionService', () => {
       const selectWf = createSelectChain([
         createDraftWorkflow({ status: 'published' }),
       ]);
+      const selectReleases = createSelectChain([]);
       const selectMax = createSelectChain([{ maxVersion: 2 }]);
-      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
+        .mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 3,
@@ -1168,8 +1199,12 @@ describe('WorkflowVersionService', () => {
     it('端口类型不兼容时应当返回发布 warnings', async () => {
       const workflow = createPortMappedWorkflow('text', 'image');
       const selectWf = createSelectChain([workflow]);
+      const selectReleases = createSelectChain([]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
+        .mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 2,
@@ -1205,8 +1240,12 @@ describe('WorkflowVersionService', () => {
     it('端口类型一致时不应返回发布 warnings', async () => {
       const workflow = createPortMappedWorkflow('text', 'text');
       const selectWf = createSelectChain([workflow]);
+      const selectReleases = createSelectChain([]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
+        .mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 2,
@@ -1226,8 +1265,12 @@ describe('WorkflowVersionService', () => {
     it('目标端口为 json 时不应返回发布 warnings', async () => {
       const workflow = createPortMappedWorkflow('model', 'json');
       const selectWf = createSelectChain([workflow]);
+      const selectReleases = createSelectChain([]);
       const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectReleases)
+        .mockReturnValueOnce(selectMax);
 
       const publishedVersion = createMockVersion({
         versionNumber: 2,
@@ -1515,8 +1558,12 @@ describe('WorkflowVersionService', () => {
     describe('draft →', () => {
       it('draft → published：应当允许', async () => {
         const selectWf = createSelectChain([createDraftWorkflow()]);
+        const selectReleases = createSelectChain([]);
         const selectMax = createSelectChain([{ maxVersion: 0 }]);
-        db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+        db.select
+          .mockReturnValueOnce(selectWf)
+          .mockReturnValueOnce(selectReleases)
+          .mockReturnValueOnce(selectMax);
 
         const insertChain = createInsertChain([
           createMockVersion({ publishedAt: NOW }),
@@ -1553,8 +1600,12 @@ describe('WorkflowVersionService', () => {
         const selectWf = createSelectChain([
           createDraftWorkflow({ status: 'published' }),
         ]);
+        const selectReleases = createSelectChain([]);
         const selectMax = createSelectChain([{ maxVersion: 4 }]);
-        db.select.mockReturnValueOnce(selectWf).mockReturnValueOnce(selectMax);
+        db.select
+          .mockReturnValueOnce(selectWf)
+          .mockReturnValueOnce(selectReleases)
+          .mockReturnValueOnce(selectMax);
 
         const publishedVersion = createMockVersion({
           versionNumber: 5,

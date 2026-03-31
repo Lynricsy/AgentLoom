@@ -59,6 +59,7 @@ export interface WorkflowDefinition {
   version: number
   status: WorkflowStatus
   publishedVersionId: string | null
+  publishedReleaseNumber?: number | null
   createdBy: string
   updatedBy: string
   createdAt: string
@@ -86,6 +87,7 @@ export interface WorkflowVersionSnapshot {
     edgeCount: number
     createdFromVersion: number
     releaseNotes?: string | null
+    releaseNumber?: number | null
   }
 }
 
@@ -93,6 +95,7 @@ export interface WorkflowVersion {
   id: string
   workflowDefinitionId: string
   versionNumber: number
+  releaseNumber?: number | null
   label: string | null
   snapshot: WorkflowVersionSnapshot
   publishedAt: string | null

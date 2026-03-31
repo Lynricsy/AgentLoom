@@ -29,15 +29,15 @@ export const CreateVersionDialog = memo(function CreateVersionDialog({
           label: label.trim() || undefined,
         })
         notify({
-          title: '版本已保存',
-          description: label.trim() ? `版本「${label.trim()}」已创建` : '新版本已创建',
+          title: '快照已保存',
+          description: label.trim() ? `快照「${label.trim()}」已创建` : '新快照已创建',
           variant: 'success',
         })
         setLabel('')
         onOpenChange(false)
       } catch {
         notify({
-          title: '保存版本失败',
+          title: '保存快照失败',
           description: '请稍后重试',
           variant: 'error',
         })
@@ -70,14 +70,14 @@ export const CreateVersionDialog = memo(function CreateVersionDialog({
           )}
           data-testid="create-version-dialog"
         >
-          <Dialog.Title className="text-base font-medium">保存版本</Dialog.Title>
+          <Dialog.Title className="text-base font-medium">保存快照</Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            创建当前工作流的版本快照，便于后续回滚。
+            创建当前工作流的草稿快照，便于后续回滚或发布。
           </Dialog.Description>
 
           <form onSubmit={handleSubmit} className="mt-4">
             <label htmlFor="version-label" className="text-sm font-medium">
-              版本标签 <span className="text-muted-foreground">（可选）</span>
+              快照标签 <span className="text-muted-foreground">（可选）</span>
             </label>
             <input
               id="version-label"
@@ -112,7 +112,7 @@ export const CreateVersionDialog = memo(function CreateVersionDialog({
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                保存版本
+                保存快照
               </button>
             </div>
           </form>

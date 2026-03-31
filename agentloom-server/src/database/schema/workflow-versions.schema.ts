@@ -29,6 +29,7 @@ export interface WorkflowVersionSnapshot {
     edgeCount: number;
     createdFromVersion: number;
     releaseNotes?: string | null;
+    releaseNumber?: number | null;
   };
 }
 

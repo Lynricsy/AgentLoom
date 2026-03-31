@@ -7,7 +7,7 @@ import {
 } from '../api/versionMutations'
 import { useWorkflowVersions } from '../api/versionQueries'
 import { useToast } from '@/shared/ui/toast'
-import type { PublishWarning } from '../types'
+import type { PublishWarning, WorkflowVersion } from '../types'
 
 interface PublishSheetProps {
   open: boolean
@@ -50,6 +50,14 @@ async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
   }
 
   return ['发布失败，请稍后重试']
+}
+
+function formatPublishableRecordLabel(version: WorkflowVersion): string {
+  if (typeof version.releaseNumber === 'number') {
+    return `版本 v${version.releaseNumber}${version.label ? ` - ${version.label}` : ''}`
+  }
+
+  return `快照 #${version.versionNumber}${version.label ? ` - ${version.label}` : ''}`
 }
 
 export const PublishSheet = memo(function PublishSheet({
@@ -96,7 +104,7 @@ export const PublishSheet = memo(function PublishSheet({
       setValidationErrors([])
 
       if (versionSource === 'existing' && !selectedVersionId) {
-        setValidationErrors(['请选择一个已有版本'])
+        setValidationErrors(['请选择一条可发布记录'])
         return
       }
 
@@ -278,7 +286,7 @@ export const PublishSheet = memo(function PublishSheet({
               {/* 版本标签 */}
               <div>
                 <label htmlFor="publish-label" className="text-sm font-medium">
-                  版本标签 <span className="text-muted-foreground">（可选）</span>
+                  发布标签 <span className="text-muted-foreground">（可选）</span>
                 </label>
                 <input
                   id="publish-label"
@@ -329,9 +337,9 @@ export const PublishSheet = memo(function PublishSheet({
                       className="mt-0.5"
                     />
                     <div>
-                      <span className="text-sm font-medium">当前画布快照</span>
+                      <span className="text-sm font-medium">当前编辑稿</span>
                       <p className="text-xs text-muted-foreground">
-                        将当前画布状态创建为新版本并发布
+                        将当前画布状态创建为新的发布版本
                       </p>
                     </div>
                   </label>
@@ -354,9 +362,9 @@ export const PublishSheet = memo(function PublishSheet({
                       className="mt-0.5"
                     />
                     <div>
-                      <span className="text-sm font-medium">选择已有版本</span>
+                      <span className="text-sm font-medium">选择已有记录</span>
                       <p className="text-xs text-muted-foreground">
-                        从已保存的版本中选择一个进行发布
+                        从已保存快照或历史发布中选择一条记录进行发布
                       </p>
                     </div>
                   </label>
@@ -367,11 +375,11 @@ export const PublishSheet = memo(function PublishSheet({
               {versionSource === 'existing' && (
                 <div>
                   <label htmlFor="version-select" className="text-sm font-medium">
-                    选择版本
+                    选择记录
                   </label>
                   {unpublishedVersions.length === 0 ? (
                     <p className="mt-1.5 text-xs text-muted-foreground">
-                      暂无可发布的版本，请先保存版本
+                      暂无可发布记录，请先保存快照
                     </p>
                   ) : (
                     <select
@@ -381,11 +389,10 @@ export const PublishSheet = memo(function PublishSheet({
                       className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                       data-testid="version-select"
                     >
-                      <option value="">请选择版本...</option>
+                      <option value="">请选择记录...</option>
                       {unpublishedVersions.map((v) => (
                         <option key={v.id} value={v.id}>
-                          v{v.versionNumber}
-                          {v.label ? ` - ${v.label}` : ''}
+                          {formatPublishableRecordLabel(v)}
                         </option>
                       ))}
                     </select>

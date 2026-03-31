@@ -9,6 +9,7 @@ const versionSnapshotSchema = z.object({
     edgeCount: z.number(),
     createdFromVersion: z.number(),
     releaseNotes: z.string().nullable().optional(),
+    releaseNumber: z.number().int().nullable().optional(),
   }),
 });
 
@@ -16,6 +17,7 @@ export const versionResponseSchema = z.object({
   id: z.string().uuid(),
   workflowDefinitionId: z.string().uuid(),
   versionNumber: z.number().int(),
+  releaseNumber: z.number().int().nullable(),
   label: z.string().nullable(),
   snapshot: versionSnapshotSchema,
   publishedAt: z.string().nullable(),

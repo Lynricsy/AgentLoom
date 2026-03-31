@@ -15,11 +15,12 @@ _WorkflowDefinitionDto _$WorkflowDefinitionDtoFromJson(
   description: json['description'] as String?,
   status: json['status'] as String,
   version: (json['version'] as num).toInt(),
+  publishedReleaseNumber: (json['publishedReleaseNumber'] as num?)?.toInt(),
   metadata: json['metadata'] as Map<String, dynamic>?,
-  createdBy: json['created_by'] as String?,
-  updatedBy: json['updated_by'] as String?,
-  createdAt: json['created_at'] as String,
-  updatedAt: json['updated_at'] as String,
+  createdBy: json['createdBy'] as String?,
+  updatedBy: json['updatedBy'] as String?,
+  createdAt: json['createdAt'] as String,
+  updatedAt: json['updatedAt'] as String,
 );
 
 Map<String, dynamic> _$WorkflowDefinitionDtoToJson(
@@ -31,9 +32,10 @@ Map<String, dynamic> _$WorkflowDefinitionDtoToJson(
   'description': instance.description,
   'status': instance.status,
   'version': instance.version,
+  'publishedReleaseNumber': instance.publishedReleaseNumber,
   'metadata': instance.metadata,
-  'created_by': instance.createdBy,
-  'updated_by': instance.updatedBy,
-  'created_at': instance.createdAt,
-  'updated_at': instance.updatedAt,
+  'createdBy': instance.createdBy,
+  'updatedBy': instance.updatedBy,
+  'createdAt': instance.createdAt,
+  'updatedAt': instance.updatedAt,
 };
