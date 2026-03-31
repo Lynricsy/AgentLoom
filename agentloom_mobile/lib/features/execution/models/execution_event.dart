@@ -8,11 +8,11 @@ part 'execution_event.g.dart';
 @freezed
 abstract class ExecutionEventEnvelope with _$ExecutionEventEnvelope {
   const factory ExecutionEventEnvelope({
-    @JsonKey(name: 'event_id') required int eventId,
+    required int eventId,
     required String event,
     required String timestamp,
-    @JsonKey(name: 'execution_id') required String executionId,
-    @JsonKey(name: 'tenant_id') String? tenantId,
+    required String executionId,
+    String? tenantId,
     required Map<String, dynamic> data,
   }) = _ExecutionEventEnvelope;
 
@@ -24,11 +24,11 @@ abstract class ExecutionEventEnvelope with _$ExecutionEventEnvelope {
 @freezed
 abstract class ExecutionStatusChangedData with _$ExecutionStatusChangedData {
   const factory ExecutionStatusChangedData({
-    @JsonKey(name: 'execution_id') required String executionId,
+    required String executionId,
     required String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    int? completedSteps,
+    int? totalSteps,
+    String? errorMessage,
   }) = _ExecutionStatusChangedData;
 
   factory ExecutionStatusChangedData.fromJson(Map<String, dynamic> json) =>
@@ -39,16 +39,16 @@ abstract class ExecutionStatusChangedData with _$ExecutionStatusChangedData {
 @freezed
 abstract class NodeStatusChangedData with _$NodeStatusChangedData {
   const factory NodeStatusChangedData({
-    @JsonKey(name: 'step_id') required String stepId,
-    @JsonKey(name: 'node_id') required String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    required String stepId,
+    required String nodeId,
+    String? nodeName,
+    String? nodeType,
     required String from,
     required String to,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    Map<String, dynamic>? errorDetail,
+    String? errorMessage,
   }) = _NodeStatusChangedData;
 
   factory NodeStatusChangedData.fromJson(Map<String, dynamic> json) =>

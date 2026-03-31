@@ -14,7 +14,6 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$SubscribeAck {
   String get status;
-  @JsonKey(name: 'current_state')
   ExecutionStateSnapshot? get currentState;
   String? get error;
 
@@ -61,7 +60,7 @@ abstract mixin class $SubscribeAckCopyWith<$Res> {
   @useResult
   $Res call({
     String status,
-    @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+    ExecutionStateSnapshot? currentState,
     String? error,
   });
 
@@ -212,7 +211,7 @@ extension SubscribeAckPatterns on SubscribeAck {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String status,
-      @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+      ExecutionStateSnapshot? currentState,
       String? error,
     )?
     $default, {
@@ -244,7 +243,7 @@ extension SubscribeAckPatterns on SubscribeAck {
   TResult when<TResult extends Object?>(
     TResult Function(
       String status,
-      @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+      ExecutionStateSnapshot? currentState,
       String? error,
     )
     $default,
@@ -274,7 +273,7 @@ extension SubscribeAckPatterns on SubscribeAck {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String status,
-      @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+      ExecutionStateSnapshot? currentState,
       String? error,
     )?
     $default,
@@ -292,18 +291,13 @@ extension SubscribeAckPatterns on SubscribeAck {
 /// @nodoc
 @JsonSerializable()
 class _SubscribeAck implements SubscribeAck {
-  const _SubscribeAck({
-    required this.status,
-    @JsonKey(name: 'current_state') this.currentState,
-    this.error,
-  });
+  const _SubscribeAck({required this.status, this.currentState, this.error});
   factory _SubscribeAck.fromJson(Map<String, dynamic> json) =>
       _$SubscribeAckFromJson(json);
 
   @override
   final String status;
   @override
-  @JsonKey(name: 'current_state')
   final ExecutionStateSnapshot? currentState;
   @override
   final String? error;
@@ -353,7 +347,7 @@ abstract mixin class _$SubscribeAckCopyWith<$Res>
   @useResult
   $Res call({
     String status,
-    @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+    ExecutionStateSnapshot? currentState,
     String? error,
   });
 

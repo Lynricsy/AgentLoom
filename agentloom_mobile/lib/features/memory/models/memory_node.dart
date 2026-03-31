@@ -8,14 +8,13 @@ part 'memory_node.g.dart';
 abstract class MemoryNodeDto with _$MemoryNodeDto {
   const factory MemoryNodeDto({
     required String id,
-    @JsonKey(name: 'instance_id') required String instanceId,
+    required String instanceId,
     required String content,
-    @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-    @JsonKey(name: 'trigger_keywords')
+    String? disclosureLevel,
     @Default([])
     List<String> triggerKeywords,
-    @JsonKey(name: 'created_at') required String createdAt,
-    @JsonKey(name: 'updated_at') required String updatedAt,
+    required String createdAt,
+    required String updatedAt,
   }) = _MemoryNodeDto;
 
   factory MemoryNodeDto.fromJson(Map<String, dynamic> json) =>

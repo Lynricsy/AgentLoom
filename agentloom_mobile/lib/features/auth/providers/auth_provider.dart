@@ -19,12 +19,12 @@ import 'token_storage_provider.dart';
 /// - login / logout / refresh 状态转换
 class AuthNotifier extends AsyncNotifier<AuthState> {
   late TokenStorage _tokenStorage;
-  late AuthApi _authApi;
+
+  AuthApi get _authApi => ref.read(authApiProvider);
 
   @override
   Future<AuthState> build() async {
     _tokenStorage = ref.read(tokenStorageProvider);
-    _authApi = ref.read(authApiProvider);
 
     final tokens = await _tokenStorage.readTokens();
     if (tokens == null) {

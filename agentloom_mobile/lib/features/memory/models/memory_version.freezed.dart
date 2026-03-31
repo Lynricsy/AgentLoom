@@ -14,15 +14,11 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$MemoryVersionDto {
   String get id;
-  @JsonKey(name: 'node_id')
   String get nodeId;
   String get content;
-  @JsonKey(name: 'version_number')
   int get versionNumber;
-  @JsonKey(name: 'change_type')
   String? get changeType;
   bool get deprecated;
-  @JsonKey(name: 'created_at')
   String get createdAt;
 
   /// Create a copy of MemoryVersionDto
@@ -84,12 +80,12 @@ abstract mixin class $MemoryVersionDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'node_id') String nodeId,
+    String nodeId,
     String content,
-    @JsonKey(name: 'version_number') int versionNumber,
-    @JsonKey(name: 'change_type') String? changeType,
+    int versionNumber,
+    String? changeType,
     bool deprecated,
-    @JsonKey(name: 'created_at') String createdAt,
+    String createdAt,
   });
 }
 
@@ -244,12 +240,12 @@ extension MemoryVersionDtoPatterns on MemoryVersionDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'node_id') String nodeId,
+      String nodeId,
       String content,
-      @JsonKey(name: 'version_number') int versionNumber,
-      @JsonKey(name: 'change_type') String? changeType,
+      int versionNumber,
+      String? changeType,
       bool deprecated,
-      @JsonKey(name: 'created_at') String createdAt,
+      String createdAt,
     )?
     $default, {
     required TResult orElse(),
@@ -288,12 +284,12 @@ extension MemoryVersionDtoPatterns on MemoryVersionDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'node_id') String nodeId,
+      String nodeId,
       String content,
-      @JsonKey(name: 'version_number') int versionNumber,
-      @JsonKey(name: 'change_type') String? changeType,
+      int versionNumber,
+      String? changeType,
       bool deprecated,
-      @JsonKey(name: 'created_at') String createdAt,
+      String createdAt,
     )
     $default,
   ) {
@@ -330,12 +326,12 @@ extension MemoryVersionDtoPatterns on MemoryVersionDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'node_id') String nodeId,
+      String nodeId,
       String content,
-      @JsonKey(name: 'version_number') int versionNumber,
-      @JsonKey(name: 'change_type') String? changeType,
+      int versionNumber,
+      String? changeType,
       bool deprecated,
-      @JsonKey(name: 'created_at') String createdAt,
+      String createdAt,
     )?
     $default,
   ) {
@@ -362,12 +358,12 @@ extension MemoryVersionDtoPatterns on MemoryVersionDto {
 class _MemoryVersionDto implements MemoryVersionDto {
   const _MemoryVersionDto({
     required this.id,
-    @JsonKey(name: 'node_id') required this.nodeId,
+    required this.nodeId,
     required this.content,
-    @JsonKey(name: 'version_number') required this.versionNumber,
-    @JsonKey(name: 'change_type') this.changeType,
+    required this.versionNumber,
+    this.changeType,
     this.deprecated = false,
-    @JsonKey(name: 'created_at') required this.createdAt,
+    required this.createdAt,
   });
   factory _MemoryVersionDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryVersionDtoFromJson(json);
@@ -375,21 +371,17 @@ class _MemoryVersionDto implements MemoryVersionDto {
   @override
   final String id;
   @override
-  @JsonKey(name: 'node_id')
   final String nodeId;
   @override
   final String content;
   @override
-  @JsonKey(name: 'version_number')
   final int versionNumber;
   @override
-  @JsonKey(name: 'change_type')
   final String? changeType;
   @override
   @JsonKey()
   final bool deprecated;
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
 
   /// Create a copy of MemoryVersionDto
@@ -453,12 +445,12 @@ abstract mixin class _$MemoryVersionDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'node_id') String nodeId,
+    String nodeId,
     String content,
-    @JsonKey(name: 'version_number') int versionNumber,
-    @JsonKey(name: 'change_type') String? changeType,
+    int versionNumber,
+    String? changeType,
     bool deprecated,
-    @JsonKey(name: 'created_at') String createdAt,
+    String createdAt,
   });
 }
 

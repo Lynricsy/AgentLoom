@@ -8,16 +8,16 @@ part 'execution_state.g.dart';
 @freezed
 abstract class StepSnapshot with _$StepSnapshot {
   const factory StepSnapshot({
-    @JsonKey(name: 'step_id') required String stepId,
-    @JsonKey(name: 'node_id') required String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    required String stepId,
+    required String nodeId,
+    String? nodeName,
+    String? nodeType,
     required String status,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_message') String? errorMessage,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+    String? startedAt,
+    String? completedAt,
+    String? errorMessage,
+    Map<String, dynamic>? errorDetail,
+    Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   }) = _StepSnapshot;
 
@@ -29,13 +29,13 @@ abstract class StepSnapshot with _$StepSnapshot {
 @freezed
 abstract class ExecutionStateSnapshot with _$ExecutionStateSnapshot {
   const factory ExecutionStateSnapshot({
-    @JsonKey(name: 'execution_id') required String executionId,
+    required String executionId,
     required String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
+    int? completedSteps,
+    int? totalSteps,
     required List<StepSnapshot> steps,
-    @JsonKey(name: 'snapshot_at') String? snapshotAt,
-    @JsonKey(name: 'last_event_id') int? lastEventId,
+    String? snapshotAt,
+    int? lastEventId,
   }) = _ExecutionStateSnapshot;
 
   factory ExecutionStateSnapshot.fromJson(Map<String, dynamic> json) =>

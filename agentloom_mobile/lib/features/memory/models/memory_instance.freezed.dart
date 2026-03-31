@@ -16,16 +16,11 @@ mixin _$MemoryInstanceDto {
   String get id;
   String get name;
   String? get description;
-  @JsonKey(name: 'config')
   Map<String, dynamic>? get config;
   String get status;
-  @JsonKey(name: 'node_count')
   int get nodeCount;
-  @JsonKey(name: 'edge_count')
   int get edgeCount;
-  @JsonKey(name: 'created_at')
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
 
   /// Create a copy of MemoryInstanceDto
@@ -94,12 +89,12 @@ abstract mixin class $MemoryInstanceDtoCopyWith<$Res> {
     String id,
     String name,
     String? description,
-    @JsonKey(name: 'config') Map<String, dynamic>? config,
+    Map<String, dynamic>? config,
     String status,
-    @JsonKey(name: 'node_count') int nodeCount,
-    @JsonKey(name: 'edge_count') int edgeCount,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    int nodeCount,
+    int edgeCount,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -266,12 +261,12 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       String id,
       String name,
       String? description,
-      @JsonKey(name: 'config') Map<String, dynamic>? config,
+      Map<String, dynamic>? config,
       String status,
-      @JsonKey(name: 'node_count') int nodeCount,
-      @JsonKey(name: 'edge_count') int edgeCount,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      int nodeCount,
+      int edgeCount,
+      String createdAt,
+      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -314,12 +309,12 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       String id,
       String name,
       String? description,
-      @JsonKey(name: 'config') Map<String, dynamic>? config,
+      Map<String, dynamic>? config,
       String status,
-      @JsonKey(name: 'node_count') int nodeCount,
-      @JsonKey(name: 'edge_count') int edgeCount,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      int nodeCount,
+      int edgeCount,
+      String createdAt,
+      String updatedAt,
     )
     $default,
   ) {
@@ -360,12 +355,12 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       String id,
       String name,
       String? description,
-      @JsonKey(name: 'config') Map<String, dynamic>? config,
+      Map<String, dynamic>? config,
       String status,
-      @JsonKey(name: 'node_count') int nodeCount,
-      @JsonKey(name: 'edge_count') int edgeCount,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      int nodeCount,
+      int edgeCount,
+      String createdAt,
+      String updatedAt,
     )?
     $default,
   ) {
@@ -396,12 +391,12 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
     required this.id,
     required this.name,
     this.description,
-    @JsonKey(name: 'config') final Map<String, dynamic>? config,
+    final Map<String, dynamic>? config,
     required this.status,
-    @JsonKey(name: 'node_count') this.nodeCount = 0,
-    @JsonKey(name: 'edge_count') this.edgeCount = 0,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
+    this.nodeCount = 0,
+    this.edgeCount = 0,
+    required this.createdAt,
+    required this.updatedAt,
   }) : _config = config;
   factory _MemoryInstanceDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryInstanceDtoFromJson(json);
@@ -414,7 +409,6 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
   final String? description;
   final Map<String, dynamic>? _config;
   @override
-  @JsonKey(name: 'config')
   Map<String, dynamic>? get config {
     final value = _config;
     if (value == null) return null;
@@ -426,16 +420,14 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
   @override
   final String status;
   @override
-  @JsonKey(name: 'node_count')
+  @JsonKey()
   final int nodeCount;
   @override
-  @JsonKey(name: 'edge_count')
+  @JsonKey()
   final int edgeCount;
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
 
   /// Create a copy of MemoryInstanceDto
@@ -506,12 +498,12 @@ abstract mixin class _$MemoryInstanceDtoCopyWith<$Res>
     String id,
     String name,
     String? description,
-    @JsonKey(name: 'config') Map<String, dynamic>? config,
+    Map<String, dynamic>? config,
     String status,
-    @JsonKey(name: 'node_count') int nodeCount,
-    @JsonKey(name: 'edge_count') int edgeCount,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    int nodeCount,
+    int edgeCount,
+    String createdAt,
+    String updatedAt,
   });
 }
 

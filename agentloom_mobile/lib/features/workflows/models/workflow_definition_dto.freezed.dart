@@ -17,6 +17,7 @@ mixin _$WorkflowDefinitionDto {
   String get name;
   String get slug;
   String? get description;
+  String? get icon;
   String get status;
   int get version;
   int? get publishedReleaseNumber;
@@ -49,6 +50,7 @@ mixin _$WorkflowDefinitionDto {
             (identical(other.slug, slug) || other.slug == slug) &&
             (identical(other.description, description) ||
                 other.description == description) &&
+            (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.version, version) || other.version == version) &&
             (identical(other.publishedReleaseNumber, publishedReleaseNumber) ||
@@ -72,6 +74,7 @@ mixin _$WorkflowDefinitionDto {
     name,
     slug,
     description,
+    icon,
     status,
     version,
     publishedReleaseNumber,
@@ -84,7 +87,7 @@ mixin _$WorkflowDefinitionDto {
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -100,6 +103,7 @@ abstract mixin class $WorkflowDefinitionDtoCopyWith<$Res> {
     String name,
     String slug,
     String? description,
+    String? icon,
     String status,
     int version,
     int? publishedReleaseNumber,
@@ -128,6 +132,7 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? name = null,
     Object? slug = null,
     Object? description = freezed,
+    Object? icon = freezed,
     Object? status = null,
     Object? version = null,
     Object? publishedReleaseNumber = freezed,
@@ -154,6 +159,10 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
         description: freezed == description
             ? _self.description
             : description // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        icon: freezed == icon
+            ? _self.icon
+            : icon // ignore: cast_nullable_to_non_nullable
                   as String?,
         status: null == status
             ? _self.status
@@ -290,6 +299,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String name,
       String slug,
       String? description,
+      String? icon,
       String status,
       int version,
       int? publishedReleaseNumber,
@@ -310,6 +320,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.name,
           _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
           _that.version,
           _that.publishedReleaseNumber,
@@ -344,6 +355,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String name,
       String slug,
       String? description,
+      String? icon,
       String status,
       int version,
       int? publishedReleaseNumber,
@@ -363,6 +375,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.name,
           _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
           _that.version,
           _that.publishedReleaseNumber,
@@ -396,6 +409,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String name,
       String slug,
       String? description,
+      String? icon,
       String status,
       int version,
       int? publishedReleaseNumber,
@@ -415,6 +429,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.name,
           _that.slug,
           _that.description,
+          _that.icon,
           _that.status,
           _that.version,
           _that.publishedReleaseNumber,
@@ -438,6 +453,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     required this.name,
     required this.slug,
     this.description,
+    this.icon,
     required this.status,
     required this.version,
     this.publishedReleaseNumber,
@@ -458,6 +474,8 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
   final String slug;
   @override
   final String? description;
+  @override
+  final String? icon;
   @override
   final String status;
   @override
@@ -509,6 +527,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
             (identical(other.slug, slug) || other.slug == slug) &&
             (identical(other.description, description) ||
                 other.description == description) &&
+            (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.version, version) || other.version == version) &&
             (identical(other.publishedReleaseNumber, publishedReleaseNumber) ||
@@ -532,6 +551,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     name,
     slug,
     description,
+    icon,
     status,
     version,
     publishedReleaseNumber,
@@ -544,7 +564,7 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
@@ -562,6 +582,7 @@ abstract mixin class _$WorkflowDefinitionDtoCopyWith<$Res>
     String name,
     String slug,
     String? description,
+    String? icon,
     String status,
     int version,
     int? publishedReleaseNumber,
@@ -590,6 +611,7 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? name = null,
     Object? slug = null,
     Object? description = freezed,
+    Object? icon = freezed,
     Object? status = null,
     Object? version = null,
     Object? publishedReleaseNumber = freezed,
@@ -616,6 +638,10 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
         description: freezed == description
             ? _self.description
             : description // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        icon: freezed == icon
+            ? _self.icon
+            : icon // ignore: cast_nullable_to_non_nullable
                   as String?,
         status: null == status
             ? _self.status

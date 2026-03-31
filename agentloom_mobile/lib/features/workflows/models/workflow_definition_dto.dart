@@ -11,6 +11,7 @@ abstract class WorkflowDefinitionDto with _$WorkflowDefinitionDto {
     required String name,
     required String slug,
     String? description,
+    String? icon,
     required String status,
     required int version,
     int? publishedReleaseNumber,

@@ -14,28 +14,20 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$SkillDto {
   String get id;
-  @JsonKey(name: 'tenant_id')
   String get tenantId;
   String get name;
   String get slug;
   String? get description;
   String? get content;
   Map<String, dynamic>? get frontmatter;
-  @JsonKey(name: 'is_builtin')
   bool get isBuiltin;
   String get status;
-  @JsonKey(name: 'file_count')
   int get fileCount;
-  @JsonKey(name: 'total_size_bytes')
   int get totalSizeBytes;
   int get version;
-  @JsonKey(name: 'created_by')
   String? get createdBy;
-  @JsonKey(name: 'updated_by')
   String? get updatedBy;
-  @JsonKey(name: 'created_at')
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
 
   /// Create a copy of SkillDto
@@ -118,21 +110,21 @@ abstract mixin class $SkillDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'tenant_id') String tenantId,
+    String tenantId,
     String name,
     String slug,
     String? description,
     String? content,
     Map<String, dynamic>? frontmatter,
-    @JsonKey(name: 'is_builtin') bool isBuiltin,
+    bool isBuiltin,
     String status,
-    @JsonKey(name: 'file_count') int fileCount,
-    @JsonKey(name: 'total_size_bytes') int totalSizeBytes,
+    int fileCount,
+    int totalSizeBytes,
     int version,
-    @JsonKey(name: 'created_by') String? createdBy,
-    @JsonKey(name: 'updated_by') String? updatedBy,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -331,21 +323,21 @@ extension SkillDtoPatterns on SkillDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'tenant_id') String tenantId,
+      String tenantId,
       String name,
       String slug,
       String? description,
       String? content,
       Map<String, dynamic>? frontmatter,
-      @JsonKey(name: 'is_builtin') bool isBuiltin,
+      bool isBuiltin,
       String status,
-      @JsonKey(name: 'file_count') int fileCount,
-      @JsonKey(name: 'total_size_bytes') int totalSizeBytes,
+      int fileCount,
+      int totalSizeBytes,
       int version,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -393,21 +385,21 @@ extension SkillDtoPatterns on SkillDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'tenant_id') String tenantId,
+      String tenantId,
       String name,
       String slug,
       String? description,
       String? content,
       Map<String, dynamic>? frontmatter,
-      @JsonKey(name: 'is_builtin') bool isBuiltin,
+      bool isBuiltin,
       String status,
-      @JsonKey(name: 'file_count') int fileCount,
-      @JsonKey(name: 'total_size_bytes') int totalSizeBytes,
+      int fileCount,
+      int totalSizeBytes,
       int version,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )
     $default,
   ) {
@@ -453,21 +445,21 @@ extension SkillDtoPatterns on SkillDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'tenant_id') String tenantId,
+      String tenantId,
       String name,
       String slug,
       String? description,
       String? content,
       Map<String, dynamic>? frontmatter,
-      @JsonKey(name: 'is_builtin') bool isBuiltin,
+      bool isBuiltin,
       String status,
-      @JsonKey(name: 'file_count') int fileCount,
-      @JsonKey(name: 'total_size_bytes') int totalSizeBytes,
+      int fileCount,
+      int totalSizeBytes,
       int version,
-      @JsonKey(name: 'created_by') String? createdBy,
-      @JsonKey(name: 'updated_by') String? updatedBy,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? createdBy,
+      String? updatedBy,
+      String createdAt,
+      String updatedAt,
     )?
     $default,
   ) {
@@ -503,21 +495,21 @@ extension SkillDtoPatterns on SkillDto {
 class _SkillDto implements SkillDto {
   const _SkillDto({
     required this.id,
-    @JsonKey(name: 'tenant_id') required this.tenantId,
+    required this.tenantId,
     required this.name,
     required this.slug,
     this.description,
     this.content,
     final Map<String, dynamic>? frontmatter,
-    @JsonKey(name: 'is_builtin') required this.isBuiltin,
+    required this.isBuiltin,
     required this.status,
-    @JsonKey(name: 'file_count') required this.fileCount,
-    @JsonKey(name: 'total_size_bytes') required this.totalSizeBytes,
+    required this.fileCount,
+    required this.totalSizeBytes,
     required this.version,
-    @JsonKey(name: 'created_by') this.createdBy,
-    @JsonKey(name: 'updated_by') this.updatedBy,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
+    this.createdBy,
+    this.updatedBy,
+    required this.createdAt,
+    required this.updatedAt,
   }) : _frontmatter = frontmatter;
   factory _SkillDto.fromJson(Map<String, dynamic> json) =>
       _$SkillDtoFromJson(json);
@@ -525,7 +517,6 @@ class _SkillDto implements SkillDto {
   @override
   final String id;
   @override
-  @JsonKey(name: 'tenant_id')
   final String tenantId;
   @override
   final String name;
@@ -546,29 +537,22 @@ class _SkillDto implements SkillDto {
   }
 
   @override
-  @JsonKey(name: 'is_builtin')
   final bool isBuiltin;
   @override
   final String status;
   @override
-  @JsonKey(name: 'file_count')
   final int fileCount;
   @override
-  @JsonKey(name: 'total_size_bytes')
   final int totalSizeBytes;
   @override
   final int version;
   @override
-  @JsonKey(name: 'created_by')
   final String? createdBy;
   @override
-  @JsonKey(name: 'updated_by')
   final String? updatedBy;
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
 
   /// Create a copy of SkillDto
@@ -656,21 +640,21 @@ abstract mixin class _$SkillDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'tenant_id') String tenantId,
+    String tenantId,
     String name,
     String slug,
     String? description,
     String? content,
     Map<String, dynamic>? frontmatter,
-    @JsonKey(name: 'is_builtin') bool isBuiltin,
+    bool isBuiltin,
     String status,
-    @JsonKey(name: 'file_count') int fileCount,
-    @JsonKey(name: 'total_size_bytes') int totalSizeBytes,
+    int fileCount,
+    int totalSizeBytes,
     int version,
-    @JsonKey(name: 'created_by') String? createdBy,
-    @JsonKey(name: 'updated_by') String? updatedBy,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? createdBy,
+    String? updatedBy,
+    String createdAt,
+    String updatedAt,
   });
 }
 

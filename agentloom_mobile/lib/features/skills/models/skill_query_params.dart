@@ -8,10 +8,10 @@ part 'skill_query_params.g.dart';
 abstract class SkillQueryParams with _$SkillQueryParams {
   const factory SkillQueryParams({
     @Default(1) int page,
-    @JsonKey(name: 'page_size') @Default(20) int pageSize,
+    @Default(20) int pageSize,
     String? search,
     String? status,
-    @JsonKey(name: 'is_builtin') bool? isBuiltin,
+    bool? isBuiltin,
   }) = _SkillQueryParams;
 
   factory SkillQueryParams.fromJson(Map<String, dynamic> json) =>

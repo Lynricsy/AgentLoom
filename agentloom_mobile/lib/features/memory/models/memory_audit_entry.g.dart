@@ -10,11 +10,11 @@ _MemoryAuditEntryDto _$MemoryAuditEntryDtoFromJson(Map<String, dynamic> json) =>
     _MemoryAuditEntryDto(
       id: json['id'] as String,
       action: json['action'] as String,
-      userId: json['user_id'] as String,
-      targetNodeId: json['target_node_id'] as String?,
-      targetVersionId: json['target_version_id'] as String?,
+      userId: json['userId'] as String,
+      targetNodeId: json['targetNodeId'] as String?,
+      targetVersionId: json['targetVersionId'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String),
     );
 
 Map<String, dynamic> _$MemoryAuditEntryDtoToJson(
@@ -22,9 +22,9 @@ Map<String, dynamic> _$MemoryAuditEntryDtoToJson(
 ) => <String, dynamic>{
   'id': instance.id,
   'action': instance.action,
-  'user_id': instance.userId,
-  'target_node_id': instance.targetNodeId,
-  'target_version_id': instance.targetVersionId,
+  'userId': instance.userId,
+  'targetNodeId': instance.targetNodeId,
+  'targetVersionId': instance.targetVersionId,
   'metadata': instance.metadata,
-  'created_at': instance.createdAt.toIso8601String(),
+  'createdAt': instance.createdAt.toIso8601String(),
 };

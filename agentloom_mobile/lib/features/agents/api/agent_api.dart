@@ -111,7 +111,7 @@ class AgentApi {
 
     final response = await _dio.post(
       '/api/v1/agent-definitions/$agentId/conversations',
-      data: body.isEmpty ? null : body,
+      data: body,
     );
     return AgentConversationDto.fromJson(_unwrapDataEnvelope(response));
   }
@@ -158,6 +158,20 @@ class AgentApi {
 
   Future<void> cancelConversation(String conversationId) async {
     await _dio.post('/api/v1/agent-conversations/$conversationId/cancel');
+  }
+
+  /// 重新生成对话标题
+  Future<String?> generateConversationTitle(String conversationId) async {
+    final response = await _dio.post(
+      '/api/v1/agent-conversations/$conversationId/generate-title',
+    );
+    final data = _unwrapDataEnvelope(response);
+    return data['title'] as String?;
+  }
+
+  /// 删除（结束）对话
+  Future<void> deleteConversation(String conversationId) async {
+    await _dio.delete('/api/v1/agent-conversations/$conversationId');
   }
 
   Future<void> resolveToolPermission(

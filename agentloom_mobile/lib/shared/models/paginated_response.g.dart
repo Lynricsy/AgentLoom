@@ -10,16 +10,16 @@ PaginationMeta _$PaginationMetaFromJson(Map<String, dynamic> json) =>
     PaginationMeta(
       total: (json['total'] as num).toInt(),
       page: (json['page'] as num).toInt(),
-      pageSize: (json['page_size'] as num).toInt(),
-      totalPages: (json['total_pages'] as num).toInt(),
+      pageSize: (json['pageSize'] as num).toInt(),
+      totalPages: (json['totalPages'] as num).toInt(),
     );
 
 Map<String, dynamic> _$PaginationMetaToJson(PaginationMeta instance) =>
     <String, dynamic>{
       'total': instance.total,
       'page': instance.page,
-      'page_size': instance.pageSize,
-      'total_pages': instance.totalPages,
+      'pageSize': instance.pageSize,
+      'totalPages': instance.totalPages,
     };
 
 PaginatedResponse<T> _$PaginatedResponseFromJson<T>(

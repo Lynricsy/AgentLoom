@@ -14,29 +14,18 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ExecutionStepDto {
   String get id;
-  @JsonKey(name: 'execution_id')
   String? get executionId;
-  @JsonKey(name: 'node_id')
   String get nodeId;
-  @JsonKey(name: 'step_order')
   int? get stepOrder;
   String get status;
-  @JsonKey(name: 'node_type')
   String? get nodeType;
-  @JsonKey(name: 'node_data')
   Map<String, dynamic>? get nodeData;
   Map<String, dynamic>? get result;
-  @JsonKey(name: 'checkpoint_data')
   Map<String, dynamic>? get checkpointData;
-  @JsonKey(name: 'error_message')
   Object? get errorMessage;
-  @JsonKey(name: 'started_at')
   String? get startedAt;
-  @JsonKey(name: 'completed_at')
   String? get completedAt;
-  @JsonKey(name: 'created_at')
   String? get createdAt;
-  @JsonKey(name: 'updated_at')
   String? get updatedAt;
 
   /// Create a copy of ExecutionStepDto
@@ -121,19 +110,19 @@ abstract mixin class $ExecutionStepDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'step_order') int? stepOrder,
+    String? executionId,
+    String nodeId,
+    int? stepOrder,
     String status,
-    @JsonKey(name: 'node_type') String? nodeType,
-    @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+    String? nodeType,
+    Map<String, dynamic>? nodeData,
     Map<String, dynamic>? result,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-    @JsonKey(name: 'error_message') Object? errorMessage,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'created_at') String? createdAt,
-    @JsonKey(name: 'updated_at') String? updatedAt,
+    Map<String, dynamic>? checkpointData,
+    Object? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    String? createdAt,
+    String? updatedAt,
   });
 }
 
@@ -322,19 +311,19 @@ extension ExecutionStepDtoPatterns on ExecutionStepDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'step_order') int? stepOrder,
+      String? executionId,
+      String nodeId,
+      int? stepOrder,
       String status,
-      @JsonKey(name: 'node_type') String? nodeType,
-      @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+      String? nodeType,
+      Map<String, dynamic>? nodeData,
       Map<String, dynamic>? result,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-      @JsonKey(name: 'error_message') Object? errorMessage,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'created_at') String? createdAt,
-      @JsonKey(name: 'updated_at') String? updatedAt,
+      Map<String, dynamic>? checkpointData,
+      Object? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      String? createdAt,
+      String? updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -380,19 +369,19 @@ extension ExecutionStepDtoPatterns on ExecutionStepDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'step_order') int? stepOrder,
+      String? executionId,
+      String nodeId,
+      int? stepOrder,
       String status,
-      @JsonKey(name: 'node_type') String? nodeType,
-      @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+      String? nodeType,
+      Map<String, dynamic>? nodeData,
       Map<String, dynamic>? result,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-      @JsonKey(name: 'error_message') Object? errorMessage,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'created_at') String? createdAt,
-      @JsonKey(name: 'updated_at') String? updatedAt,
+      Map<String, dynamic>? checkpointData,
+      Object? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      String? createdAt,
+      String? updatedAt,
     )
     $default,
   ) {
@@ -436,19 +425,19 @@ extension ExecutionStepDtoPatterns on ExecutionStepDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'step_order') int? stepOrder,
+      String? executionId,
+      String nodeId,
+      int? stepOrder,
       String status,
-      @JsonKey(name: 'node_type') String? nodeType,
-      @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+      String? nodeType,
+      Map<String, dynamic>? nodeData,
       Map<String, dynamic>? result,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-      @JsonKey(name: 'error_message') Object? errorMessage,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'created_at') String? createdAt,
-      @JsonKey(name: 'updated_at') String? updatedAt,
+      Map<String, dynamic>? checkpointData,
+      Object? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      String? createdAt,
+      String? updatedAt,
     )?
     $default,
   ) {
@@ -482,20 +471,19 @@ extension ExecutionStepDtoPatterns on ExecutionStepDto {
 class _ExecutionStepDto implements ExecutionStepDto {
   const _ExecutionStepDto({
     required this.id,
-    @JsonKey(name: 'execution_id') this.executionId,
-    @JsonKey(name: 'node_id') required this.nodeId,
-    @JsonKey(name: 'step_order') this.stepOrder,
+    this.executionId,
+    required this.nodeId,
+    this.stepOrder,
     required this.status,
-    @JsonKey(name: 'node_type') this.nodeType,
-    @JsonKey(name: 'node_data') final Map<String, dynamic>? nodeData,
+    this.nodeType,
+    final Map<String, dynamic>? nodeData,
     final Map<String, dynamic>? result,
-    @JsonKey(name: 'checkpoint_data')
     final Map<String, dynamic>? checkpointData,
-    @JsonKey(name: 'error_message') this.errorMessage,
-    @JsonKey(name: 'started_at') this.startedAt,
-    @JsonKey(name: 'completed_at') this.completedAt,
-    @JsonKey(name: 'created_at') this.createdAt,
-    @JsonKey(name: 'updated_at') this.updatedAt,
+    this.errorMessage,
+    this.startedAt,
+    this.completedAt,
+    this.createdAt,
+    this.updatedAt,
   }) : _nodeData = nodeData,
        _result = result,
        _checkpointData = checkpointData;
@@ -505,22 +493,17 @@ class _ExecutionStepDto implements ExecutionStepDto {
   @override
   final String id;
   @override
-  @JsonKey(name: 'execution_id')
   final String? executionId;
   @override
-  @JsonKey(name: 'node_id')
   final String nodeId;
   @override
-  @JsonKey(name: 'step_order')
   final int? stepOrder;
   @override
   final String status;
   @override
-  @JsonKey(name: 'node_type')
   final String? nodeType;
   final Map<String, dynamic>? _nodeData;
   @override
-  @JsonKey(name: 'node_data')
   Map<String, dynamic>? get nodeData {
     final value = _nodeData;
     if (value == null) return null;
@@ -541,7 +524,6 @@ class _ExecutionStepDto implements ExecutionStepDto {
 
   final Map<String, dynamic>? _checkpointData;
   @override
-  @JsonKey(name: 'checkpoint_data')
   Map<String, dynamic>? get checkpointData {
     final value = _checkpointData;
     if (value == null) return null;
@@ -551,19 +533,14 @@ class _ExecutionStepDto implements ExecutionStepDto {
   }
 
   @override
-  @JsonKey(name: 'error_message')
   final Object? errorMessage;
   @override
-  @JsonKey(name: 'started_at')
   final String? startedAt;
   @override
-  @JsonKey(name: 'completed_at')
   final String? completedAt;
   @override
-  @JsonKey(name: 'created_at')
   final String? createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String? updatedAt;
 
   /// Create a copy of ExecutionStepDto
@@ -650,19 +627,19 @@ abstract mixin class _$ExecutionStepDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'step_order') int? stepOrder,
+    String? executionId,
+    String nodeId,
+    int? stepOrder,
     String status,
-    @JsonKey(name: 'node_type') String? nodeType,
-    @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+    String? nodeType,
+    Map<String, dynamic>? nodeData,
     Map<String, dynamic>? result,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-    @JsonKey(name: 'error_message') Object? errorMessage,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'created_at') String? createdAt,
-    @JsonKey(name: 'updated_at') String? updatedAt,
+    Map<String, dynamic>? checkpointData,
+    Object? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    String? createdAt,
+    String? updatedAt,
   });
 }
 

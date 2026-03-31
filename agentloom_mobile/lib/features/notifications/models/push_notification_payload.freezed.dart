@@ -14,13 +14,9 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$PushNotificationPayload {
   String get type;
-  @JsonKey(name: 'execution_id')
   String? get executionId;
-  @JsonKey(name: 'workflow_id')
   String? get workflowId;
-  @JsonKey(name: 'node_id')
   String? get nodeId;
-  @JsonKey(name: 'notification_id')
   String? get notificationId;
 
   /// Create a copy of PushNotificationPayload
@@ -77,10 +73,10 @@ abstract mixin class $PushNotificationPayloadCopyWith<$Res> {
   @useResult
   $Res call({
     String type,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'workflow_id') String? workflowId,
-    @JsonKey(name: 'node_id') String? nodeId,
-    @JsonKey(name: 'notification_id') String? notificationId,
+    String? executionId,
+    String? workflowId,
+    String? nodeId,
+    String? notificationId,
   });
 }
 
@@ -225,10 +221,10 @@ extension PushNotificationPayloadPatterns on PushNotificationPayload {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String type,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'workflow_id') String? workflowId,
-      @JsonKey(name: 'node_id') String? nodeId,
-      @JsonKey(name: 'notification_id') String? notificationId,
+      String? executionId,
+      String? workflowId,
+      String? nodeId,
+      String? notificationId,
     )?
     $default, {
     required TResult orElse(),
@@ -265,10 +261,10 @@ extension PushNotificationPayloadPatterns on PushNotificationPayload {
   TResult when<TResult extends Object?>(
     TResult Function(
       String type,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'workflow_id') String? workflowId,
-      @JsonKey(name: 'node_id') String? nodeId,
-      @JsonKey(name: 'notification_id') String? notificationId,
+      String? executionId,
+      String? workflowId,
+      String? nodeId,
+      String? notificationId,
     )
     $default,
   ) {
@@ -303,10 +299,10 @@ extension PushNotificationPayloadPatterns on PushNotificationPayload {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String type,
-      @JsonKey(name: 'execution_id') String? executionId,
-      @JsonKey(name: 'workflow_id') String? workflowId,
-      @JsonKey(name: 'node_id') String? nodeId,
-      @JsonKey(name: 'notification_id') String? notificationId,
+      String? executionId,
+      String? workflowId,
+      String? nodeId,
+      String? notificationId,
     )?
     $default,
   ) {
@@ -331,10 +327,10 @@ extension PushNotificationPayloadPatterns on PushNotificationPayload {
 class _PushNotificationPayload implements PushNotificationPayload {
   const _PushNotificationPayload({
     required this.type,
-    @JsonKey(name: 'execution_id') this.executionId,
-    @JsonKey(name: 'workflow_id') this.workflowId,
-    @JsonKey(name: 'node_id') this.nodeId,
-    @JsonKey(name: 'notification_id') this.notificationId,
+    this.executionId,
+    this.workflowId,
+    this.nodeId,
+    this.notificationId,
   });
   factory _PushNotificationPayload.fromJson(Map<String, dynamic> json) =>
       _$PushNotificationPayloadFromJson(json);
@@ -342,16 +338,12 @@ class _PushNotificationPayload implements PushNotificationPayload {
   @override
   final String type;
   @override
-  @JsonKey(name: 'execution_id')
   final String? executionId;
   @override
-  @JsonKey(name: 'workflow_id')
   final String? workflowId;
   @override
-  @JsonKey(name: 'node_id')
   final String? nodeId;
   @override
-  @JsonKey(name: 'notification_id')
   final String? notificationId;
 
   /// Create a copy of PushNotificationPayload
@@ -413,10 +405,10 @@ abstract mixin class _$PushNotificationPayloadCopyWith<$Res>
   @useResult
   $Res call({
     String type,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'workflow_id') String? workflowId,
-    @JsonKey(name: 'node_id') String? nodeId,
-    @JsonKey(name: 'notification_id') String? notificationId,
+    String? executionId,
+    String? workflowId,
+    String? nodeId,
+    String? notificationId,
   });
 }
 

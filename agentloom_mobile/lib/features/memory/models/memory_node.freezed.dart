@@ -14,16 +14,11 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$MemoryNodeDto {
   String get id;
-  @JsonKey(name: 'instance_id')
   String get instanceId;
   String get content;
-  @JsonKey(name: 'disclosure_level')
   String? get disclosureLevel;
-  @JsonKey(name: 'trigger_keywords')
   List<String> get triggerKeywords;
-  @JsonKey(name: 'created_at')
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
 
   /// Create a copy of MemoryNodeDto
@@ -88,12 +83,12 @@ abstract mixin class $MemoryNodeDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'instance_id') String instanceId,
+    String instanceId,
     String content,
-    @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-    @JsonKey(name: 'trigger_keywords') List<String> triggerKeywords,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? disclosureLevel,
+    List<String> triggerKeywords,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -248,12 +243,12 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'instance_id') String instanceId,
+      String instanceId,
       String content,
-      @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-      @JsonKey(name: 'trigger_keywords') List<String> triggerKeywords,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? disclosureLevel,
+      List<String> triggerKeywords,
+      String createdAt,
+      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -292,12 +287,12 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'instance_id') String instanceId,
+      String instanceId,
       String content,
-      @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-      @JsonKey(name: 'trigger_keywords') List<String> triggerKeywords,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? disclosureLevel,
+      List<String> triggerKeywords,
+      String createdAt,
+      String updatedAt,
     )
     $default,
   ) {
@@ -334,12 +329,12 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'instance_id') String instanceId,
+      String instanceId,
       String content,
-      @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-      @JsonKey(name: 'trigger_keywords') List<String> triggerKeywords,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String? disclosureLevel,
+      List<String> triggerKeywords,
+      String createdAt,
+      String updatedAt,
     )?
     $default,
   ) {
@@ -366,13 +361,12 @@ extension MemoryNodeDtoPatterns on MemoryNodeDto {
 class _MemoryNodeDto implements MemoryNodeDto {
   const _MemoryNodeDto({
     required this.id,
-    @JsonKey(name: 'instance_id') required this.instanceId,
+    required this.instanceId,
     required this.content,
-    @JsonKey(name: 'disclosure_level') this.disclosureLevel,
-    @JsonKey(name: 'trigger_keywords')
+    this.disclosureLevel,
     final List<String> triggerKeywords = const [],
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
+    required this.createdAt,
+    required this.updatedAt,
   }) : _triggerKeywords = triggerKeywords;
   factory _MemoryNodeDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryNodeDtoFromJson(json);
@@ -380,16 +374,14 @@ class _MemoryNodeDto implements MemoryNodeDto {
   @override
   final String id;
   @override
-  @JsonKey(name: 'instance_id')
   final String instanceId;
   @override
   final String content;
   @override
-  @JsonKey(name: 'disclosure_level')
   final String? disclosureLevel;
   final List<String> _triggerKeywords;
   @override
-  @JsonKey(name: 'trigger_keywords')
+  @JsonKey()
   List<String> get triggerKeywords {
     if (_triggerKeywords is EqualUnmodifiableListView) return _triggerKeywords;
     // ignore: implicit_dynamic_type
@@ -397,10 +389,8 @@ class _MemoryNodeDto implements MemoryNodeDto {
   }
 
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
 
   /// Create a copy of MemoryNodeDto
@@ -467,12 +457,12 @@ abstract mixin class _$MemoryNodeDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'instance_id') String instanceId,
+    String instanceId,
     String content,
-    @JsonKey(name: 'disclosure_level') String? disclosureLevel,
-    @JsonKey(name: 'trigger_keywords') List<String> triggerKeywords,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String? disclosureLevel,
+    List<String> triggerKeywords,
+    String createdAt,
+    String updatedAt,
   });
 }
 

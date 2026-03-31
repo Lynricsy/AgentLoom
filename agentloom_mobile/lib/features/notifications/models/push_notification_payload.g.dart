@@ -10,18 +10,18 @@ _PushNotificationPayload _$PushNotificationPayloadFromJson(
   Map<String, dynamic> json,
 ) => _PushNotificationPayload(
   type: json['type'] as String,
-  executionId: json['execution_id'] as String?,
-  workflowId: json['workflow_id'] as String?,
-  nodeId: json['node_id'] as String?,
-  notificationId: json['notification_id'] as String?,
+  executionId: json['executionId'] as String?,
+  workflowId: json['workflowId'] as String?,
+  nodeId: json['nodeId'] as String?,
+  notificationId: json['notificationId'] as String?,
 );
 
 Map<String, dynamic> _$PushNotificationPayloadToJson(
   _PushNotificationPayload instance,
 ) => <String, dynamic>{
   'type': instance.type,
-  'execution_id': instance.executionId,
-  'workflow_id': instance.workflowId,
-  'node_id': instance.nodeId,
-  'notification_id': instance.notificationId,
+  'executionId': instance.executionId,
+  'workflowId': instance.workflowId,
+  'nodeId': instance.nodeId,
+  'notificationId': instance.notificationId,
 };

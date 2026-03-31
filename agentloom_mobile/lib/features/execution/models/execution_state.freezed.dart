@@ -13,24 +13,15 @@ T _$identity<T>(T value) => value;
 
 /// @nodoc
 mixin _$StepSnapshot {
-  @JsonKey(name: 'step_id')
   String get stepId;
-  @JsonKey(name: 'node_id')
   String get nodeId;
-  @JsonKey(name: 'node_name')
   String? get nodeName;
-  @JsonKey(name: 'node_type')
   String? get nodeType;
   String get status;
-  @JsonKey(name: 'started_at')
   String? get startedAt;
-  @JsonKey(name: 'completed_at')
   String? get completedAt;
-  @JsonKey(name: 'error_message')
   String? get errorMessage;
-  @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail;
-  @JsonKey(name: 'checkpoint_data')
   Map<String, dynamic>? get checkpointData;
   Map<String, dynamic>? get result;
 
@@ -107,16 +98,16 @@ abstract mixin class $StepSnapshotCopyWith<$Res> {
   ) = _$StepSnapshotCopyWithImpl;
   @useResult
   $Res call({
-    @JsonKey(name: 'step_id') String stepId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    String stepId,
+    String nodeId,
+    String? nodeName,
+    String? nodeType,
     String status,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_message') String? errorMessage,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+    String? startedAt,
+    String? completedAt,
+    String? errorMessage,
+    Map<String, dynamic>? errorDetail,
+    Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   });
 }
@@ -290,16 +281,16 @@ extension StepSnapshotPatterns on StepSnapshot {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String status,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_message') String? errorMessage,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+      String? startedAt,
+      String? completedAt,
+      String? errorMessage,
+      Map<String, dynamic>? errorDetail,
+      Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )?
     $default, {
@@ -342,16 +333,16 @@ extension StepSnapshotPatterns on StepSnapshot {
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String status,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_message') String? errorMessage,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+      String? startedAt,
+      String? completedAt,
+      String? errorMessage,
+      Map<String, dynamic>? errorDetail,
+      Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )
     $default,
@@ -392,16 +383,16 @@ extension StepSnapshotPatterns on StepSnapshot {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String status,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_message') String? errorMessage,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+      String? startedAt,
+      String? completedAt,
+      String? errorMessage,
+      Map<String, dynamic>? errorDetail,
+      Map<String, dynamic>? checkpointData,
       Map<String, dynamic>? result,
     )?
     $default,
@@ -432,16 +423,15 @@ extension StepSnapshotPatterns on StepSnapshot {
 @JsonSerializable()
 class _StepSnapshot implements StepSnapshot {
   const _StepSnapshot({
-    @JsonKey(name: 'step_id') required this.stepId,
-    @JsonKey(name: 'node_id') required this.nodeId,
-    @JsonKey(name: 'node_name') this.nodeName,
-    @JsonKey(name: 'node_type') this.nodeType,
+    required this.stepId,
+    required this.nodeId,
+    this.nodeName,
+    this.nodeType,
     required this.status,
-    @JsonKey(name: 'started_at') this.startedAt,
-    @JsonKey(name: 'completed_at') this.completedAt,
-    @JsonKey(name: 'error_message') this.errorMessage,
-    @JsonKey(name: 'error_detail') final Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'checkpoint_data')
+    this.startedAt,
+    this.completedAt,
+    this.errorMessage,
+    final Map<String, dynamic>? errorDetail,
     final Map<String, dynamic>? checkpointData,
     final Map<String, dynamic>? result,
   }) : _errorDetail = errorDetail,
@@ -451,31 +441,23 @@ class _StepSnapshot implements StepSnapshot {
       _$StepSnapshotFromJson(json);
 
   @override
-  @JsonKey(name: 'step_id')
   final String stepId;
   @override
-  @JsonKey(name: 'node_id')
   final String nodeId;
   @override
-  @JsonKey(name: 'node_name')
   final String? nodeName;
   @override
-  @JsonKey(name: 'node_type')
   final String? nodeType;
   @override
   final String status;
   @override
-  @JsonKey(name: 'started_at')
   final String? startedAt;
   @override
-  @JsonKey(name: 'completed_at')
   final String? completedAt;
   @override
-  @JsonKey(name: 'error_message')
   final String? errorMessage;
   final Map<String, dynamic>? _errorDetail;
   @override
-  @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail {
     final value = _errorDetail;
     if (value == null) return null;
@@ -486,7 +468,6 @@ class _StepSnapshot implements StepSnapshot {
 
   final Map<String, dynamic>? _checkpointData;
   @override
-  @JsonKey(name: 'checkpoint_data')
   Map<String, dynamic>? get checkpointData {
     final value = _checkpointData;
     if (value == null) return null;
@@ -580,16 +561,16 @@ abstract mixin class _$StepSnapshotCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    @JsonKey(name: 'step_id') String stepId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    String stepId,
+    String nodeId,
+    String? nodeName,
+    String? nodeType,
     String status,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_message') String? errorMessage,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
+    String? startedAt,
+    String? completedAt,
+    String? errorMessage,
+    Map<String, dynamic>? errorDetail,
+    Map<String, dynamic>? checkpointData,
     Map<String, dynamic>? result,
   });
 }
@@ -672,17 +653,12 @@ class __$StepSnapshotCopyWithImpl<$Res>
 
 /// @nodoc
 mixin _$ExecutionStateSnapshot {
-  @JsonKey(name: 'execution_id')
   String get executionId;
   String get status;
-  @JsonKey(name: 'completed_steps')
   int? get completedSteps;
-  @JsonKey(name: 'total_steps')
   int? get totalSteps;
   List<StepSnapshot> get steps;
-  @JsonKey(name: 'snapshot_at')
   String? get snapshotAt;
-  @JsonKey(name: 'last_event_id')
   int? get lastEventId;
 
   /// Create a copy of ExecutionStateSnapshot
@@ -744,13 +720,13 @@ abstract mixin class $ExecutionStateSnapshotCopyWith<$Res> {
   ) = _$ExecutionStateSnapshotCopyWithImpl;
   @useResult
   $Res call({
-    @JsonKey(name: 'execution_id') String executionId,
+    String executionId,
     String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
+    int? completedSteps,
+    int? totalSteps,
     List<StepSnapshot> steps,
-    @JsonKey(name: 'snapshot_at') String? snapshotAt,
-    @JsonKey(name: 'last_event_id') int? lastEventId,
+    String? snapshotAt,
+    int? lastEventId,
   });
 }
 
@@ -904,13 +880,13 @@ extension ExecutionStateSnapshotPatterns on ExecutionStateSnapshot {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
+      int? completedSteps,
+      int? totalSteps,
       List<StepSnapshot> steps,
-      @JsonKey(name: 'snapshot_at') String? snapshotAt,
-      @JsonKey(name: 'last_event_id') int? lastEventId,
+      String? snapshotAt,
+      int? lastEventId,
     )?
     $default, {
     required TResult orElse(),
@@ -948,13 +924,13 @@ extension ExecutionStateSnapshotPatterns on ExecutionStateSnapshot {
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
+      int? completedSteps,
+      int? totalSteps,
       List<StepSnapshot> steps,
-      @JsonKey(name: 'snapshot_at') String? snapshotAt,
-      @JsonKey(name: 'last_event_id') int? lastEventId,
+      String? snapshotAt,
+      int? lastEventId,
     )
     $default,
   ) {
@@ -990,13 +966,13 @@ extension ExecutionStateSnapshotPatterns on ExecutionStateSnapshot {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
+      int? completedSteps,
+      int? totalSteps,
       List<StepSnapshot> steps,
-      @JsonKey(name: 'snapshot_at') String? snapshotAt,
-      @JsonKey(name: 'last_event_id') int? lastEventId,
+      String? snapshotAt,
+      int? lastEventId,
     )?
     $default,
   ) {
@@ -1022,27 +998,24 @@ extension ExecutionStateSnapshotPatterns on ExecutionStateSnapshot {
 @JsonSerializable()
 class _ExecutionStateSnapshot implements ExecutionStateSnapshot {
   const _ExecutionStateSnapshot({
-    @JsonKey(name: 'execution_id') required this.executionId,
+    required this.executionId,
     required this.status,
-    @JsonKey(name: 'completed_steps') this.completedSteps,
-    @JsonKey(name: 'total_steps') this.totalSteps,
+    this.completedSteps,
+    this.totalSteps,
     required final List<StepSnapshot> steps,
-    @JsonKey(name: 'snapshot_at') this.snapshotAt,
-    @JsonKey(name: 'last_event_id') this.lastEventId,
+    this.snapshotAt,
+    this.lastEventId,
   }) : _steps = steps;
   factory _ExecutionStateSnapshot.fromJson(Map<String, dynamic> json) =>
       _$ExecutionStateSnapshotFromJson(json);
 
   @override
-  @JsonKey(name: 'execution_id')
   final String executionId;
   @override
   final String status;
   @override
-  @JsonKey(name: 'completed_steps')
   final int? completedSteps;
   @override
-  @JsonKey(name: 'total_steps')
   final int? totalSteps;
   final List<StepSnapshot> _steps;
   @override
@@ -1053,10 +1026,8 @@ class _ExecutionStateSnapshot implements ExecutionStateSnapshot {
   }
 
   @override
-  @JsonKey(name: 'snapshot_at')
   final String? snapshotAt;
   @override
-  @JsonKey(name: 'last_event_id')
   final int? lastEventId;
 
   /// Create a copy of ExecutionStateSnapshot
@@ -1123,13 +1094,13 @@ abstract mixin class _$ExecutionStateSnapshotCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    @JsonKey(name: 'execution_id') String executionId,
+    String executionId,
     String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
+    int? completedSteps,
+    int? totalSteps,
     List<StepSnapshot> steps,
-    @JsonKey(name: 'snapshot_at') String? snapshotAt,
-    @JsonKey(name: 'last_event_id') int? lastEventId,
+    String? snapshotAt,
+    int? lastEventId,
   });
 }
 

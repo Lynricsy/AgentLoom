@@ -9,7 +9,7 @@ part 'subscribe_ack.g.dart';
 abstract class SubscribeAck with _$SubscribeAck {
   const factory SubscribeAck({
     required String status,
-    @JsonKey(name: 'current_state') ExecutionStateSnapshot? currentState,
+    ExecutionStateSnapshot? currentState,
     String? error,
   }) = _SubscribeAck;
 

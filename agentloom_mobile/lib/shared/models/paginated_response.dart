@@ -7,9 +7,7 @@ part 'paginated_response.g.dart';
 class PaginationMeta {
   final int total;
   final int page;
-  @JsonKey(name: 'page_size')
   final int pageSize;
-  @JsonKey(name: 'total_pages')
   final int totalPages;
 
   const PaginationMeta({
@@ -23,8 +21,8 @@ class PaginationMeta {
     return _$PaginationMetaFromJson({
       'total': json['total'] ?? 0,
       'page': json['page'] ?? 1,
-      'page_size': json['page_size'] ?? json['pageSize'] ?? 20,
-      'total_pages': json['total_pages'] ?? json['totalPages'] ?? 0,
+      'pageSize': json['pageSize'] ?? json['page_size'] ?? 20,
+      'totalPages': json['totalPages'] ?? json['total_pages'] ?? 0,
     });
   }
 

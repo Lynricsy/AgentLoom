@@ -10,12 +10,12 @@ abstract class MemoryInstanceDto with _$MemoryInstanceDto {
     required String id,
     required String name,
     String? description,
-    @JsonKey(name: 'config') Map<String, dynamic>? config,
+    Map<String, dynamic>? config,
     required String status,
-    @JsonKey(name: 'node_count') @Default(0) int nodeCount,
-    @JsonKey(name: 'edge_count') @Default(0) int edgeCount,
-    @JsonKey(name: 'created_at') required String createdAt,
-    @JsonKey(name: 'updated_at') required String updatedAt,
+    @Default(0) int nodeCount,
+    @Default(0) int edgeCount,
+    required String createdAt,
+    required String updatedAt,
   }) = _MemoryInstanceDto;
 
   factory MemoryInstanceDto.fromJson(Map<String, dynamic> json) =>

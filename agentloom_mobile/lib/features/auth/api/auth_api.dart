@@ -51,7 +51,7 @@ class AuthApi {
   /// 邮箱密码登录
   Future<AuthLoginResponse> login(String email, String password) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/login',
+      '/api/v1/auth/login',
       data: {'email': email, 'password': password},
     );
 
@@ -80,7 +80,7 @@ class AuthApi {
     String? displayName,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/register',
+      '/api/v1/auth/register',
       data: {
         'email': email,
         'password': password,
@@ -102,7 +102,7 @@ class AuthApi {
   /// Token 刷新
   Future<AuthTokens> refresh(String refreshToken) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/refresh',
+      '/api/v1/auth/refresh',
       data: {'refresh_token': refreshToken},
     );
 
@@ -113,7 +113,7 @@ class AuthApi {
   /// 登出
   Future<void> logout(String accessToken) async {
     await _dio.post<void>(
-      '/auth/logout',
+      '/api/v1/auth/logout',
       options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
     );
   }
@@ -127,7 +127,7 @@ class AuthApi {
     String platform = 'mobile',
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/oauth/$provider',
+      '/api/v1/auth/oauth/$provider',
       data: {'redirect_url': null, 'platform': platform},
     );
 

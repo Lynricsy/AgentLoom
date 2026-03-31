@@ -8,12 +8,12 @@ part of 'conversation_plan.dart';
 
 _ConversationPlan _$ConversationPlanFromJson(Map<String, dynamic> json) =>
     _ConversationPlan(
-      systemPrompt: json['system_prompt'] as String,
-      maxTurns: (json['max_turns'] as num).toInt(),
+      systemPrompt: json['systemPrompt'] as String,
+      maxTurns: (json['maxTurns'] as num).toInt(),
     );
 
 Map<String, dynamic> _$ConversationPlanToJson(_ConversationPlan instance) =>
     <String, dynamic>{
-      'system_prompt': instance.systemPrompt,
-      'max_turns': instance.maxTurns,
+      'systemPrompt': instance.systemPrompt,
+      'maxTurns': instance.maxTurns,
     };

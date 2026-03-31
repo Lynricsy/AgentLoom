@@ -33,7 +33,7 @@ class MfaApi {
   /// TOTP 注册 — 需要 Bearer auth
   Future<MfaEnrollResponse> enrollTotp(String accessToken) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/mfa/totp/enroll',
+      '/api/v1/auth/mfa/totp/enroll',
       options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
     );
 
@@ -53,7 +53,7 @@ class MfaApi {
     required String code,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/mfa/login/verify',
+      '/api/v1/auth/mfa/login/verify',
       data: {'mfa_token': mfaToken, 'factor_id': factorId, 'code': code},
     );
 
@@ -67,7 +67,7 @@ class MfaApi {
     required String code,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/mfa/totp/verify',
+      '/api/v1/auth/mfa/totp/verify',
       data: {'factor_id': factorId, 'code': code},
     );
 
@@ -81,7 +81,7 @@ class MfaApi {
     required String code,
   }) async {
     final response = await _dio.delete<Map<String, dynamic>>(
-      '/auth/mfa',
+      '/api/v1/auth/mfa',
       data: {'code': code},
       options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
     );

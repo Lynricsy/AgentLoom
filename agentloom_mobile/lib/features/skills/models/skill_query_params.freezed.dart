@@ -14,11 +14,9 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$SkillQueryParams {
   int get page;
-  @JsonKey(name: 'page_size')
   int get pageSize;
   String? get search;
   String? get status;
-  @JsonKey(name: 'is_builtin')
   bool? get isBuiltin;
 
   /// Create a copy of SkillQueryParams
@@ -68,10 +66,10 @@ abstract mixin class $SkillQueryParamsCopyWith<$Res> {
   @useResult
   $Res call({
     int page,
-    @JsonKey(name: 'page_size') int pageSize,
+    int pageSize,
     String? search,
     String? status,
-    @JsonKey(name: 'is_builtin') bool? isBuiltin,
+    bool? isBuiltin,
   });
 }
 
@@ -216,10 +214,10 @@ extension SkillQueryParamsPatterns on SkillQueryParams {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       int page,
-      @JsonKey(name: 'page_size') int pageSize,
+      int pageSize,
       String? search,
       String? status,
-      @JsonKey(name: 'is_builtin') bool? isBuiltin,
+      bool? isBuiltin,
     )?
     $default, {
     required TResult orElse(),
@@ -256,10 +254,10 @@ extension SkillQueryParamsPatterns on SkillQueryParams {
   TResult when<TResult extends Object?>(
     TResult Function(
       int page,
-      @JsonKey(name: 'page_size') int pageSize,
+      int pageSize,
       String? search,
       String? status,
-      @JsonKey(name: 'is_builtin') bool? isBuiltin,
+      bool? isBuiltin,
     )
     $default,
   ) {
@@ -294,10 +292,10 @@ extension SkillQueryParamsPatterns on SkillQueryParams {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       int page,
-      @JsonKey(name: 'page_size') int pageSize,
+      int pageSize,
       String? search,
       String? status,
-      @JsonKey(name: 'is_builtin') bool? isBuiltin,
+      bool? isBuiltin,
     )?
     $default,
   ) {
@@ -322,10 +320,10 @@ extension SkillQueryParamsPatterns on SkillQueryParams {
 class _SkillQueryParams implements SkillQueryParams {
   const _SkillQueryParams({
     this.page = 1,
-    @JsonKey(name: 'page_size') this.pageSize = 20,
+    this.pageSize = 20,
     this.search,
     this.status,
-    @JsonKey(name: 'is_builtin') this.isBuiltin,
+    this.isBuiltin,
   });
   factory _SkillQueryParams.fromJson(Map<String, dynamic> json) =>
       _$SkillQueryParamsFromJson(json);
@@ -334,14 +332,13 @@ class _SkillQueryParams implements SkillQueryParams {
   @JsonKey()
   final int page;
   @override
-  @JsonKey(name: 'page_size')
+  @JsonKey()
   final int pageSize;
   @override
   final String? search;
   @override
   final String? status;
   @override
-  @JsonKey(name: 'is_builtin')
   final bool? isBuiltin;
 
   /// Create a copy of SkillQueryParams
@@ -393,10 +390,10 @@ abstract mixin class _$SkillQueryParamsCopyWith<$Res>
   @useResult
   $Res call({
     int page,
-    @JsonKey(name: 'page_size') int pageSize,
+    int pageSize,
     String? search,
     String? status,
-    @JsonKey(name: 'is_builtin') bool? isBuiltin,
+    bool? isBuiltin,
   });
 }
 

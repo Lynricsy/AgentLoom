@@ -13,13 +13,10 @@ T _$identity<T>(T value) => value;
 
 /// @nodoc
 mixin _$ExecutionEventEnvelope {
-  @JsonKey(name: 'event_id')
   int get eventId;
   String get event;
   String get timestamp;
-  @JsonKey(name: 'execution_id')
   String get executionId;
-  @JsonKey(name: 'tenant_id')
   String? get tenantId;
   Map<String, dynamic> get data;
 
@@ -78,11 +75,11 @@ abstract mixin class $ExecutionEventEnvelopeCopyWith<$Res> {
   ) = _$ExecutionEventEnvelopeCopyWithImpl;
   @useResult
   $Res call({
-    @JsonKey(name: 'event_id') int eventId,
+    int eventId,
     String event,
     String timestamp,
-    @JsonKey(name: 'execution_id') String executionId,
-    @JsonKey(name: 'tenant_id') String? tenantId,
+    String executionId,
+    String? tenantId,
     Map<String, dynamic> data,
   });
 }
@@ -232,11 +229,11 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'event_id') int eventId,
+      int eventId,
       String event,
       String timestamp,
-      @JsonKey(name: 'execution_id') String executionId,
-      @JsonKey(name: 'tenant_id') String? tenantId,
+      String executionId,
+      String? tenantId,
       Map<String, dynamic> data,
     )?
     $default, {
@@ -274,11 +271,11 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'event_id') int eventId,
+      int eventId,
       String event,
       String timestamp,
-      @JsonKey(name: 'execution_id') String executionId,
-      @JsonKey(name: 'tenant_id') String? tenantId,
+      String executionId,
+      String? tenantId,
       Map<String, dynamic> data,
     )
     $default,
@@ -314,11 +311,11 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
-      @JsonKey(name: 'event_id') int eventId,
+      int eventId,
       String event,
       String timestamp,
-      @JsonKey(name: 'execution_id') String executionId,
-      @JsonKey(name: 'tenant_id') String? tenantId,
+      String executionId,
+      String? tenantId,
       Map<String, dynamic> data,
     )?
     $default,
@@ -344,28 +341,25 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
 @JsonSerializable()
 class _ExecutionEventEnvelope implements ExecutionEventEnvelope {
   const _ExecutionEventEnvelope({
-    @JsonKey(name: 'event_id') required this.eventId,
+    required this.eventId,
     required this.event,
     required this.timestamp,
-    @JsonKey(name: 'execution_id') required this.executionId,
-    @JsonKey(name: 'tenant_id') this.tenantId,
+    required this.executionId,
+    this.tenantId,
     required final Map<String, dynamic> data,
   }) : _data = data;
   factory _ExecutionEventEnvelope.fromJson(Map<String, dynamic> json) =>
       _$ExecutionEventEnvelopeFromJson(json);
 
   @override
-  @JsonKey(name: 'event_id')
   final int eventId;
   @override
   final String event;
   @override
   final String timestamp;
   @override
-  @JsonKey(name: 'execution_id')
   final String executionId;
   @override
-  @JsonKey(name: 'tenant_id')
   final String? tenantId;
   final Map<String, dynamic> _data;
   @override
@@ -435,11 +429,11 @@ abstract mixin class _$ExecutionEventEnvelopeCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    @JsonKey(name: 'event_id') int eventId,
+    int eventId,
     String event,
     String timestamp,
-    @JsonKey(name: 'execution_id') String executionId,
-    @JsonKey(name: 'tenant_id') String? tenantId,
+    String executionId,
+    String? tenantId,
     Map<String, dynamic> data,
   });
 }
@@ -497,14 +491,10 @@ class __$ExecutionEventEnvelopeCopyWithImpl<$Res>
 
 /// @nodoc
 mixin _$ExecutionStatusChangedData {
-  @JsonKey(name: 'execution_id')
   String get executionId;
   String get status;
-  @JsonKey(name: 'completed_steps')
   int? get completedSteps;
-  @JsonKey(name: 'total_steps')
   int? get totalSteps;
-  @JsonKey(name: 'error_message')
   String? get errorMessage;
 
   /// Create a copy of ExecutionStatusChangedData
@@ -562,11 +552,11 @@ abstract mixin class $ExecutionStatusChangedDataCopyWith<$Res> {
   ) = _$ExecutionStatusChangedDataCopyWithImpl;
   @useResult
   $Res call({
-    @JsonKey(name: 'execution_id') String executionId,
+    String executionId,
     String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    int? completedSteps,
+    int? totalSteps,
+    String? errorMessage,
   });
 }
 
@@ -710,11 +700,11 @@ extension ExecutionStatusChangedDataPatterns on ExecutionStatusChangedData {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      int? completedSteps,
+      int? totalSteps,
+      String? errorMessage,
     )?
     $default, {
     required TResult orElse(),
@@ -750,11 +740,11 @@ extension ExecutionStatusChangedDataPatterns on ExecutionStatusChangedData {
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      int? completedSteps,
+      int? totalSteps,
+      String? errorMessage,
     )
     $default,
   ) {
@@ -788,11 +778,11 @@ extension ExecutionStatusChangedDataPatterns on ExecutionStatusChangedData {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
-      @JsonKey(name: 'execution_id') String executionId,
+      String executionId,
       String status,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      int? completedSteps,
+      int? totalSteps,
+      String? errorMessage,
     )?
     $default,
   ) {
@@ -816,28 +806,24 @@ extension ExecutionStatusChangedDataPatterns on ExecutionStatusChangedData {
 @JsonSerializable()
 class _ExecutionStatusChangedData implements ExecutionStatusChangedData {
   const _ExecutionStatusChangedData({
-    @JsonKey(name: 'execution_id') required this.executionId,
+    required this.executionId,
     required this.status,
-    @JsonKey(name: 'completed_steps') this.completedSteps,
-    @JsonKey(name: 'total_steps') this.totalSteps,
-    @JsonKey(name: 'error_message') this.errorMessage,
+    this.completedSteps,
+    this.totalSteps,
+    this.errorMessage,
   });
   factory _ExecutionStatusChangedData.fromJson(Map<String, dynamic> json) =>
       _$ExecutionStatusChangedDataFromJson(json);
 
   @override
-  @JsonKey(name: 'execution_id')
   final String executionId;
   @override
   final String status;
   @override
-  @JsonKey(name: 'completed_steps')
   final int? completedSteps;
   @override
-  @JsonKey(name: 'total_steps')
   final int? totalSteps;
   @override
-  @JsonKey(name: 'error_message')
   final String? errorMessage;
 
   /// Create a copy of ExecutionStatusChangedData
@@ -900,11 +886,11 @@ abstract mixin class _$ExecutionStatusChangedDataCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    @JsonKey(name: 'execution_id') String executionId,
+    String executionId,
     String status,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'total_steps') int? totalSteps,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    int? completedSteps,
+    int? totalSteps,
+    String? errorMessage,
   });
 }
 
@@ -956,23 +942,15 @@ class __$ExecutionStatusChangedDataCopyWithImpl<$Res>
 
 /// @nodoc
 mixin _$NodeStatusChangedData {
-  @JsonKey(name: 'step_id')
   String get stepId;
-  @JsonKey(name: 'node_id')
   String get nodeId;
-  @JsonKey(name: 'node_name')
   String? get nodeName;
-  @JsonKey(name: 'node_type')
   String? get nodeType;
   String get from;
   String get to;
-  @JsonKey(name: 'started_at')
   String? get startedAt;
-  @JsonKey(name: 'completed_at')
   String? get completedAt;
-  @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail;
-  @JsonKey(name: 'error_message')
   String? get errorMessage;
 
   /// Create a copy of NodeStatusChangedData
@@ -1043,16 +1021,16 @@ abstract mixin class $NodeStatusChangedDataCopyWith<$Res> {
   ) = _$NodeStatusChangedDataCopyWithImpl;
   @useResult
   $Res call({
-    @JsonKey(name: 'step_id') String stepId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    String stepId,
+    String nodeId,
+    String? nodeName,
+    String? nodeType,
     String from,
     String to,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    Map<String, dynamic>? errorDetail,
+    String? errorMessage,
   });
 }
 
@@ -1221,16 +1199,16 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String from,
       String to,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      Map<String, dynamic>? errorDetail,
+      String? errorMessage,
     )?
     $default, {
     required TResult orElse(),
@@ -1271,16 +1249,16 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
     TResult Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String from,
       String to,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      Map<String, dynamic>? errorDetail,
+      String? errorMessage,
     )
     $default,
   ) {
@@ -1319,16 +1297,16 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
-      @JsonKey(name: 'step_id') String stepId,
-      @JsonKey(name: 'node_id') String nodeId,
-      @JsonKey(name: 'node_name') String? nodeName,
-      @JsonKey(name: 'node_type') String? nodeType,
+      String stepId,
+      String nodeId,
+      String? nodeName,
+      String? nodeType,
       String from,
       String to,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-      @JsonKey(name: 'error_message') String? errorMessage,
+      String? startedAt,
+      String? completedAt,
+      Map<String, dynamic>? errorDetail,
+      String? errorMessage,
     )?
     $default,
   ) {
@@ -1357,45 +1335,38 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
 @JsonSerializable()
 class _NodeStatusChangedData implements NodeStatusChangedData {
   const _NodeStatusChangedData({
-    @JsonKey(name: 'step_id') required this.stepId,
-    @JsonKey(name: 'node_id') required this.nodeId,
-    @JsonKey(name: 'node_name') this.nodeName,
-    @JsonKey(name: 'node_type') this.nodeType,
+    required this.stepId,
+    required this.nodeId,
+    this.nodeName,
+    this.nodeType,
     required this.from,
     required this.to,
-    @JsonKey(name: 'started_at') this.startedAt,
-    @JsonKey(name: 'completed_at') this.completedAt,
-    @JsonKey(name: 'error_detail') final Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'error_message') this.errorMessage,
+    this.startedAt,
+    this.completedAt,
+    final Map<String, dynamic>? errorDetail,
+    this.errorMessage,
   }) : _errorDetail = errorDetail;
   factory _NodeStatusChangedData.fromJson(Map<String, dynamic> json) =>
       _$NodeStatusChangedDataFromJson(json);
 
   @override
-  @JsonKey(name: 'step_id')
   final String stepId;
   @override
-  @JsonKey(name: 'node_id')
   final String nodeId;
   @override
-  @JsonKey(name: 'node_name')
   final String? nodeName;
   @override
-  @JsonKey(name: 'node_type')
   final String? nodeType;
   @override
   final String from;
   @override
   final String to;
   @override
-  @JsonKey(name: 'started_at')
   final String? startedAt;
   @override
-  @JsonKey(name: 'completed_at')
   final String? completedAt;
   final Map<String, dynamic>? _errorDetail;
   @override
-  @JsonKey(name: 'error_detail')
   Map<String, dynamic>? get errorDetail {
     final value = _errorDetail;
     if (value == null) return null;
@@ -1405,7 +1376,6 @@ class _NodeStatusChangedData implements NodeStatusChangedData {
   }
 
   @override
-  @JsonKey(name: 'error_message')
   final String? errorMessage;
 
   /// Create a copy of NodeStatusChangedData
@@ -1481,16 +1451,16 @@ abstract mixin class _$NodeStatusChangedDataCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    @JsonKey(name: 'step_id') String stepId,
-    @JsonKey(name: 'node_id') String nodeId,
-    @JsonKey(name: 'node_name') String? nodeName,
-    @JsonKey(name: 'node_type') String? nodeType,
+    String stepId,
+    String nodeId,
+    String? nodeName,
+    String? nodeType,
     String from,
     String to,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'error_detail') Map<String, dynamic>? errorDetail,
-    @JsonKey(name: 'error_message') String? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    Map<String, dynamic>? errorDetail,
+    String? errorMessage,
   });
 }
 

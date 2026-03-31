@@ -15,14 +15,10 @@ T _$identity<T>(T value) => value;
 mixin _$MemoryAuditEntryDto {
   String get id;
   String get action;
-  @JsonKey(name: 'user_id')
   String get userId;
-  @JsonKey(name: 'target_node_id')
   String? get targetNodeId;
-  @JsonKey(name: 'target_version_id')
   String? get targetVersionId;
   Map<String, dynamic>? get metadata;
-  @JsonKey(name: 'created_at')
   DateTime get createdAt;
 
   /// Create a copy of MemoryAuditEntryDto
@@ -84,11 +80,11 @@ abstract mixin class $MemoryAuditEntryDtoCopyWith<$Res> {
   $Res call({
     String id,
     String action,
-    @JsonKey(name: 'user_id') String userId,
-    @JsonKey(name: 'target_node_id') String? targetNodeId,
-    @JsonKey(name: 'target_version_id') String? targetVersionId,
+    String userId,
+    String? targetNodeId,
+    String? targetVersionId,
     Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_at') DateTime createdAt,
+    DateTime createdAt,
   });
 }
 
@@ -244,11 +240,11 @@ extension MemoryAuditEntryDtoPatterns on MemoryAuditEntryDto {
     TResult Function(
       String id,
       String action,
-      @JsonKey(name: 'user_id') String userId,
-      @JsonKey(name: 'target_node_id') String? targetNodeId,
-      @JsonKey(name: 'target_version_id') String? targetVersionId,
+      String userId,
+      String? targetNodeId,
+      String? targetVersionId,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_at') DateTime createdAt,
+      DateTime createdAt,
     )?
     $default, {
     required TResult orElse(),
@@ -288,11 +284,11 @@ extension MemoryAuditEntryDtoPatterns on MemoryAuditEntryDto {
     TResult Function(
       String id,
       String action,
-      @JsonKey(name: 'user_id') String userId,
-      @JsonKey(name: 'target_node_id') String? targetNodeId,
-      @JsonKey(name: 'target_version_id') String? targetVersionId,
+      String userId,
+      String? targetNodeId,
+      String? targetVersionId,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_at') DateTime createdAt,
+      DateTime createdAt,
     )
     $default,
   ) {
@@ -330,11 +326,11 @@ extension MemoryAuditEntryDtoPatterns on MemoryAuditEntryDto {
     TResult? Function(
       String id,
       String action,
-      @JsonKey(name: 'user_id') String userId,
-      @JsonKey(name: 'target_node_id') String? targetNodeId,
-      @JsonKey(name: 'target_version_id') String? targetVersionId,
+      String userId,
+      String? targetNodeId,
+      String? targetVersionId,
       Map<String, dynamic>? metadata,
-      @JsonKey(name: 'created_at') DateTime createdAt,
+      DateTime createdAt,
     )?
     $default,
   ) {
@@ -362,11 +358,11 @@ class _MemoryAuditEntryDto implements MemoryAuditEntryDto {
   const _MemoryAuditEntryDto({
     required this.id,
     required this.action,
-    @JsonKey(name: 'user_id') required this.userId,
-    @JsonKey(name: 'target_node_id') this.targetNodeId,
-    @JsonKey(name: 'target_version_id') this.targetVersionId,
+    required this.userId,
+    this.targetNodeId,
+    this.targetVersionId,
     final Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_at') required this.createdAt,
+    required this.createdAt,
   }) : _metadata = metadata;
   factory _MemoryAuditEntryDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryAuditEntryDtoFromJson(json);
@@ -376,13 +372,10 @@ class _MemoryAuditEntryDto implements MemoryAuditEntryDto {
   @override
   final String action;
   @override
-  @JsonKey(name: 'user_id')
   final String userId;
   @override
-  @JsonKey(name: 'target_node_id')
   final String? targetNodeId;
   @override
-  @JsonKey(name: 'target_version_id')
   final String? targetVersionId;
   final Map<String, dynamic>? _metadata;
   @override
@@ -395,7 +388,6 @@ class _MemoryAuditEntryDto implements MemoryAuditEntryDto {
   }
 
   @override
-  @JsonKey(name: 'created_at')
   final DateTime createdAt;
 
   /// Create a copy of MemoryAuditEntryDto
@@ -462,11 +454,11 @@ abstract mixin class _$MemoryAuditEntryDtoCopyWith<$Res>
   $Res call({
     String id,
     String action,
-    @JsonKey(name: 'user_id') String userId,
-    @JsonKey(name: 'target_node_id') String? targetNodeId,
-    @JsonKey(name: 'target_version_id') String? targetVersionId,
+    String userId,
+    String? targetNodeId,
+    String? targetVersionId,
     Map<String, dynamic>? metadata,
-    @JsonKey(name: 'created_at') DateTime createdAt,
+    DateTime createdAt,
   });
 }
 

@@ -11,9 +11,9 @@ part 'workflow_input_schema.g.dart';
 abstract class WorkflowInputSchema with _$WorkflowInputSchema {
   const factory WorkflowInputSchema({
     @Default(1) int version,
-    @Default('form') @JsonKey(name: 'collection_mode') String collectionMode,
+    @Default('form') String collectionMode,
     @Default([]) List<InputFieldDefinition> fields,
-    @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+    ConversationPlan? conversationPlan,
   }) = _WorkflowInputSchema;
 
   factory WorkflowInputSchema.fromJson(Map<String, dynamic> json) =>

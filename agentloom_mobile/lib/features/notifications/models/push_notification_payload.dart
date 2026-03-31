@@ -7,10 +7,10 @@ part 'push_notification_payload.g.dart';
 abstract class PushNotificationPayload with _$PushNotificationPayload {
   const factory PushNotificationPayload({
     required String type,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'workflow_id') String? workflowId,
-    @JsonKey(name: 'node_id') String? nodeId,
-    @JsonKey(name: 'notification_id') String? notificationId,
+    String? executionId,
+    String? workflowId,
+    String? nodeId,
+    String? notificationId,
   }) = _PushNotificationPayload;
 
   factory PushNotificationPayload.fromJson(Map<String, dynamic> json) =>

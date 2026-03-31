@@ -120,18 +120,9 @@ class EnvConfig {
 
   /// 根据 Studio 基础地址推导 API 地址。
   static String deriveApiBaseUrl(String studioBaseUrl) {
-    final normalizedStudioBaseUrl = normalizeStudioBaseUrl(studioBaseUrl);
-    final uri = Uri.parse(normalizedStudioBaseUrl);
-    final basePath = uri.path == '/' ? '' : uri.path.replaceFirst(RegExp(r'/$'), '');
-    final apiPath = basePath.isEmpty ? '/api/v1' : '$basePath/api/v1';
-
-    return uri
-        .replace(
-          path: apiPath,
-          query: null,
-          fragment: null,
-        )
-        .toString();
+    // 业务 API 路径已自带 /api/v1 前缀，baseUrl 不再追加，
+    // 避免 Dio 字符串拼接导致 /api/v1/api/v1 双重前缀。
+    return normalizeStudioBaseUrl(studioBaseUrl);
   }
 
   static String _ensureScheme(String raw) {

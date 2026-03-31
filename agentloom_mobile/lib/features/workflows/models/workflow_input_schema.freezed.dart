@@ -14,10 +14,8 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$WorkflowInputSchema {
   int get version;
-  @JsonKey(name: 'collection_mode')
   String get collectionMode;
   List<InputFieldDefinition> get fields;
-  @JsonKey(name: 'conversation_plan')
   ConversationPlan? get conversationPlan;
 
   /// Create a copy of WorkflowInputSchema
@@ -71,9 +69,9 @@ abstract mixin class $WorkflowInputSchemaCopyWith<$Res> {
   @useResult
   $Res call({
     int version,
-    @JsonKey(name: 'collection_mode') String collectionMode,
+    String collectionMode,
     List<InputFieldDefinition> fields,
-    @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+    ConversationPlan? conversationPlan,
   });
 
   $ConversationPlanCopyWith<$Res>? get conversationPlan;
@@ -229,9 +227,9 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       int version,
-      @JsonKey(name: 'collection_mode') String collectionMode,
+      String collectionMode,
       List<InputFieldDefinition> fields,
-      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+      ConversationPlan? conversationPlan,
     )?
     $default, {
     required TResult orElse(),
@@ -267,9 +265,9 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
   TResult when<TResult extends Object?>(
     TResult Function(
       int version,
-      @JsonKey(name: 'collection_mode') String collectionMode,
+      String collectionMode,
       List<InputFieldDefinition> fields,
-      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+      ConversationPlan? conversationPlan,
     )
     $default,
   ) {
@@ -303,9 +301,9 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       int version,
-      @JsonKey(name: 'collection_mode') String collectionMode,
+      String collectionMode,
       List<InputFieldDefinition> fields,
-      @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+      ConversationPlan? conversationPlan,
     )?
     $default,
   ) {
@@ -329,9 +327,9 @@ extension WorkflowInputSchemaPatterns on WorkflowInputSchema {
 class _WorkflowInputSchema implements WorkflowInputSchema {
   const _WorkflowInputSchema({
     this.version = 1,
-    @JsonKey(name: 'collection_mode') this.collectionMode = 'form',
+    this.collectionMode = 'form',
     final List<InputFieldDefinition> fields = const [],
-    @JsonKey(name: 'conversation_plan') this.conversationPlan,
+    this.conversationPlan,
   }) : _fields = fields;
   factory _WorkflowInputSchema.fromJson(Map<String, dynamic> json) =>
       _$WorkflowInputSchemaFromJson(json);
@@ -340,7 +338,7 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
   @JsonKey()
   final int version;
   @override
-  @JsonKey(name: 'collection_mode')
+  @JsonKey()
   final String collectionMode;
   final List<InputFieldDefinition> _fields;
   @override
@@ -352,7 +350,6 @@ class _WorkflowInputSchema implements WorkflowInputSchema {
   }
 
   @override
-  @JsonKey(name: 'conversation_plan')
   final ConversationPlan? conversationPlan;
 
   /// Create a copy of WorkflowInputSchema
@@ -411,9 +408,9 @@ abstract mixin class _$WorkflowInputSchemaCopyWith<$Res>
   @useResult
   $Res call({
     int version,
-    @JsonKey(name: 'collection_mode') String collectionMode,
+    String collectionMode,
     List<InputFieldDefinition> fields,
-    @JsonKey(name: 'conversation_plan') ConversationPlan? conversationPlan,
+    ConversationPlan? conversationPlan,
   });
 
   @override

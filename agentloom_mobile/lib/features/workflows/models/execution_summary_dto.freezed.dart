@@ -14,31 +14,20 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ExecutionSummaryDto {
   String get id;
-  @JsonKey(name: 'workflow_id')
   String get workflowId;
   String get status;
-  @JsonKey(name: 'trigger_type')
   String? get triggerType;
-  @JsonKey(name: 'total_steps')
   int? get totalSteps;
-  @JsonKey(name: 'completed_steps')
   int? get completedSteps;
-  @JsonKey(name: 'started_at')
   String? get startedAt;
-  @JsonKey(name: 'completed_at')
   String? get completedAt;
-  @JsonKey(name: 'failed_at')
   String? get failedAt;
-  @JsonKey(name: 'definition_snapshot')
   Map<String, dynamic>? get definitionSnapshot;
-  @JsonKey(name: 'error_message')
   Object? get errorMessage;
   List<ExecutionStepDto>? get steps;
   @JsonKey(includeFromJson: false, includeToJson: false)
   String? get workflowName;
-  @JsonKey(name: 'created_at')
   String get createdAt;
-  @JsonKey(name: 'updated_at')
   String get updatedAt;
 
   /// Create a copy of ExecutionSummaryDto
@@ -128,21 +117,20 @@ abstract mixin class $ExecutionSummaryDtoCopyWith<$Res> {
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'workflow_id') String workflowId,
+    String workflowId,
     String status,
-    @JsonKey(name: 'trigger_type') String? triggerType,
-    @JsonKey(name: 'total_steps') int? totalSteps,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'failed_at') String? failedAt,
-    @JsonKey(name: 'definition_snapshot')
+    String? triggerType,
+    int? totalSteps,
+    int? completedSteps,
+    String? startedAt,
+    String? completedAt,
+    String? failedAt,
     Map<String, dynamic>? definitionSnapshot,
-    @JsonKey(name: 'error_message') Object? errorMessage,
+    Object? errorMessage,
     List<ExecutionStepDto>? steps,
     @JsonKey(includeFromJson: false, includeToJson: false) String? workflowName,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String createdAt,
+    String updatedAt,
   });
 }
 
@@ -336,22 +324,21 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
   TResult maybeWhen<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'workflow_id') String workflowId,
+      String workflowId,
       String status,
-      @JsonKey(name: 'trigger_type') String? triggerType,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'failed_at') String? failedAt,
-      @JsonKey(name: 'definition_snapshot')
+      String? triggerType,
+      int? totalSteps,
+      int? completedSteps,
+      String? startedAt,
+      String? completedAt,
+      String? failedAt,
       Map<String, dynamic>? definitionSnapshot,
-      @JsonKey(name: 'error_message') Object? errorMessage,
+      Object? errorMessage,
       List<ExecutionStepDto>? steps,
       @JsonKey(includeFromJson: false, includeToJson: false)
       String? workflowName,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String createdAt,
+      String updatedAt,
     )?
     $default, {
     required TResult orElse(),
@@ -398,22 +385,21 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
   TResult when<TResult extends Object?>(
     TResult Function(
       String id,
-      @JsonKey(name: 'workflow_id') String workflowId,
+      String workflowId,
       String status,
-      @JsonKey(name: 'trigger_type') String? triggerType,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'failed_at') String? failedAt,
-      @JsonKey(name: 'definition_snapshot')
+      String? triggerType,
+      int? totalSteps,
+      int? completedSteps,
+      String? startedAt,
+      String? completedAt,
+      String? failedAt,
       Map<String, dynamic>? definitionSnapshot,
-      @JsonKey(name: 'error_message') Object? errorMessage,
+      Object? errorMessage,
       List<ExecutionStepDto>? steps,
       @JsonKey(includeFromJson: false, includeToJson: false)
       String? workflowName,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String createdAt,
+      String updatedAt,
     )
     $default,
   ) {
@@ -458,22 +444,21 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
   TResult? whenOrNull<TResult extends Object?>(
     TResult? Function(
       String id,
-      @JsonKey(name: 'workflow_id') String workflowId,
+      String workflowId,
       String status,
-      @JsonKey(name: 'trigger_type') String? triggerType,
-      @JsonKey(name: 'total_steps') int? totalSteps,
-      @JsonKey(name: 'completed_steps') int? completedSteps,
-      @JsonKey(name: 'started_at') String? startedAt,
-      @JsonKey(name: 'completed_at') String? completedAt,
-      @JsonKey(name: 'failed_at') String? failedAt,
-      @JsonKey(name: 'definition_snapshot')
+      String? triggerType,
+      int? totalSteps,
+      int? completedSteps,
+      String? startedAt,
+      String? completedAt,
+      String? failedAt,
       Map<String, dynamic>? definitionSnapshot,
-      @JsonKey(name: 'error_message') Object? errorMessage,
+      Object? errorMessage,
       List<ExecutionStepDto>? steps,
       @JsonKey(includeFromJson: false, includeToJson: false)
       String? workflowName,
-      @JsonKey(name: 'created_at') String createdAt,
-      @JsonKey(name: 'updated_at') String updatedAt,
+      String createdAt,
+      String updatedAt,
     )?
     $default,
   ) {
@@ -508,21 +493,20 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
 class _ExecutionSummaryDto implements ExecutionSummaryDto {
   const _ExecutionSummaryDto({
     required this.id,
-    @JsonKey(name: 'workflow_id') required this.workflowId,
+    required this.workflowId,
     required this.status,
-    @JsonKey(name: 'trigger_type') this.triggerType,
-    @JsonKey(name: 'total_steps') this.totalSteps,
-    @JsonKey(name: 'completed_steps') this.completedSteps,
-    @JsonKey(name: 'started_at') this.startedAt,
-    @JsonKey(name: 'completed_at') this.completedAt,
-    @JsonKey(name: 'failed_at') this.failedAt,
-    @JsonKey(name: 'definition_snapshot')
+    this.triggerType,
+    this.totalSteps,
+    this.completedSteps,
+    this.startedAt,
+    this.completedAt,
+    this.failedAt,
     final Map<String, dynamic>? definitionSnapshot,
-    @JsonKey(name: 'error_message') this.errorMessage,
+    this.errorMessage,
     final List<ExecutionStepDto>? steps,
     @JsonKey(includeFromJson: false, includeToJson: false) this.workflowName,
-    @JsonKey(name: 'created_at') required this.createdAt,
-    @JsonKey(name: 'updated_at') required this.updatedAt,
+    required this.createdAt,
+    required this.updatedAt,
   }) : _definitionSnapshot = definitionSnapshot,
        _steps = steps;
   factory _ExecutionSummaryDto.fromJson(Map<String, dynamic> json) =>
@@ -531,31 +515,23 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
   @override
   final String id;
   @override
-  @JsonKey(name: 'workflow_id')
   final String workflowId;
   @override
   final String status;
   @override
-  @JsonKey(name: 'trigger_type')
   final String? triggerType;
   @override
-  @JsonKey(name: 'total_steps')
   final int? totalSteps;
   @override
-  @JsonKey(name: 'completed_steps')
   final int? completedSteps;
   @override
-  @JsonKey(name: 'started_at')
   final String? startedAt;
   @override
-  @JsonKey(name: 'completed_at')
   final String? completedAt;
   @override
-  @JsonKey(name: 'failed_at')
   final String? failedAt;
   final Map<String, dynamic>? _definitionSnapshot;
   @override
-  @JsonKey(name: 'definition_snapshot')
   Map<String, dynamic>? get definitionSnapshot {
     final value = _definitionSnapshot;
     if (value == null) return null;
@@ -566,7 +542,6 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
   }
 
   @override
-  @JsonKey(name: 'error_message')
   final Object? errorMessage;
   final List<ExecutionStepDto>? _steps;
   @override
@@ -582,10 +557,8 @@ class _ExecutionSummaryDto implements ExecutionSummaryDto {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? workflowName;
   @override
-  @JsonKey(name: 'created_at')
   final String createdAt;
   @override
-  @JsonKey(name: 'updated_at')
   final String updatedAt;
 
   /// Create a copy of ExecutionSummaryDto
@@ -680,21 +653,20 @@ abstract mixin class _$ExecutionSummaryDtoCopyWith<$Res>
   @useResult
   $Res call({
     String id,
-    @JsonKey(name: 'workflow_id') String workflowId,
+    String workflowId,
     String status,
-    @JsonKey(name: 'trigger_type') String? triggerType,
-    @JsonKey(name: 'total_steps') int? totalSteps,
-    @JsonKey(name: 'completed_steps') int? completedSteps,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'failed_at') String? failedAt,
-    @JsonKey(name: 'definition_snapshot')
+    String? triggerType,
+    int? totalSteps,
+    int? completedSteps,
+    String? startedAt,
+    String? completedAt,
+    String? failedAt,
     Map<String, dynamic>? definitionSnapshot,
-    @JsonKey(name: 'error_message') Object? errorMessage,
+    Object? errorMessage,
     List<ExecutionStepDto>? steps,
     @JsonKey(includeFromJson: false, includeToJson: false) String? workflowName,
-    @JsonKey(name: 'created_at') String createdAt,
-    @JsonKey(name: 'updated_at') String updatedAt,
+    String createdAt,
+    String updatedAt,
   });
 }
 

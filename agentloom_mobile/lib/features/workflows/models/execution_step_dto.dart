@@ -8,19 +8,19 @@ part 'execution_step_dto.g.dart';
 abstract class ExecutionStepDto with _$ExecutionStepDto {
   const factory ExecutionStepDto({
     required String id,
-    @JsonKey(name: 'execution_id') String? executionId,
-    @JsonKey(name: 'node_id') required String nodeId,
-    @JsonKey(name: 'step_order') int? stepOrder,
+    String? executionId,
+    required String nodeId,
+    int? stepOrder,
     required String status,
-    @JsonKey(name: 'node_type') String? nodeType,
-    @JsonKey(name: 'node_data') Map<String, dynamic>? nodeData,
+    String? nodeType,
+    Map<String, dynamic>? nodeData,
     Map<String, dynamic>? result,
-    @JsonKey(name: 'checkpoint_data') Map<String, dynamic>? checkpointData,
-    @JsonKey(name: 'error_message') Object? errorMessage,
-    @JsonKey(name: 'started_at') String? startedAt,
-    @JsonKey(name: 'completed_at') String? completedAt,
-    @JsonKey(name: 'created_at') String? createdAt,
-    @JsonKey(name: 'updated_at') String? updatedAt,
+    Map<String, dynamic>? checkpointData,
+    Object? errorMessage,
+    String? startedAt,
+    String? completedAt,
+    String? createdAt,
+    String? updatedAt,
   }) = _ExecutionStepDto;
 
   factory ExecutionStepDto.fromJson(Map<String, dynamic> json) =>

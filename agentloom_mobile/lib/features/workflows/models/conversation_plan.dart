@@ -6,8 +6,8 @@ part 'conversation_plan.g.dart';
 @freezed
 abstract class ConversationPlan with _$ConversationPlan {
   const factory ConversationPlan({
-    @JsonKey(name: 'system_prompt') required String systemPrompt,
-    @JsonKey(name: 'max_turns') required int maxTurns,
+    required String systemPrompt,
+    required int maxTurns,
   }) = _ConversationPlan;
 
   factory ConversationPlan.fromJson(Map<String, dynamic> json) =>

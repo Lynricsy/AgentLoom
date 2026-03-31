@@ -13,9 +13,7 @@ T _$identity<T>(T value) => value;
 
 /// @nodoc
 mixin _$ConversationPlan {
-  @JsonKey(name: 'system_prompt')
   String get systemPrompt;
-  @JsonKey(name: 'max_turns')
   int get maxTurns;
 
   /// Create a copy of ConversationPlan
@@ -59,10 +57,7 @@ abstract mixin class $ConversationPlanCopyWith<$Res> {
     $Res Function(ConversationPlan) _then,
   ) = _$ConversationPlanCopyWithImpl;
   @useResult
-  $Res call({
-    @JsonKey(name: 'system_prompt') String systemPrompt,
-    @JsonKey(name: 'max_turns') int maxTurns,
-  });
+  $Res call({String systemPrompt, int maxTurns});
 }
 
 /// @nodoc
@@ -186,11 +181,7 @@ extension ConversationPlanPatterns on ConversationPlan {
 
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>(
-    TResult Function(
-      @JsonKey(name: 'system_prompt') String systemPrompt,
-      @JsonKey(name: 'max_turns') int maxTurns,
-    )?
-    $default, {
+    TResult Function(String systemPrompt, int maxTurns)? $default, {
     required TResult orElse(),
   }) {
     final _that = this;
@@ -217,11 +208,7 @@ extension ConversationPlanPatterns on ConversationPlan {
 
   @optionalTypeArgs
   TResult when<TResult extends Object?>(
-    TResult Function(
-      @JsonKey(name: 'system_prompt') String systemPrompt,
-      @JsonKey(name: 'max_turns') int maxTurns,
-    )
-    $default,
+    TResult Function(String systemPrompt, int maxTurns) $default,
   ) {
     final _that = this;
     switch (_that) {
@@ -246,11 +233,7 @@ extension ConversationPlanPatterns on ConversationPlan {
 
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>(
-    TResult? Function(
-      @JsonKey(name: 'system_prompt') String systemPrompt,
-      @JsonKey(name: 'max_turns') int maxTurns,
-    )?
-    $default,
+    TResult? Function(String systemPrompt, int maxTurns)? $default,
   ) {
     final _that = this;
     switch (_that) {
@@ -265,18 +248,13 @@ extension ConversationPlanPatterns on ConversationPlan {
 /// @nodoc
 @JsonSerializable()
 class _ConversationPlan implements ConversationPlan {
-  const _ConversationPlan({
-    @JsonKey(name: 'system_prompt') required this.systemPrompt,
-    @JsonKey(name: 'max_turns') required this.maxTurns,
-  });
+  const _ConversationPlan({required this.systemPrompt, required this.maxTurns});
   factory _ConversationPlan.fromJson(Map<String, dynamic> json) =>
       _$ConversationPlanFromJson(json);
 
   @override
-  @JsonKey(name: 'system_prompt')
   final String systemPrompt;
   @override
-  @JsonKey(name: 'max_turns')
   final int maxTurns;
 
   /// Create a copy of ConversationPlan
@@ -322,10 +300,7 @@ abstract mixin class _$ConversationPlanCopyWith<$Res>
   ) = __$ConversationPlanCopyWithImpl;
   @override
   @useResult
-  $Res call({
-    @JsonKey(name: 'system_prompt') String systemPrompt,
-    @JsonKey(name: 'max_turns') int maxTurns,
-  });
+  $Res call({String systemPrompt, int maxTurns});
 }
 
 /// @nodoc
