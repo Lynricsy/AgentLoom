@@ -31,6 +31,7 @@ import { McpModule } from '../mcp/mcp.module';
 import { McpService } from '../mcp/mcp.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import { SubAgentToolsProvider } from './subagent';
 import {
   AGENT_CONVERSATION_EXECUTION_QUEUE,
@@ -71,6 +72,7 @@ const agentExecutionWorkerProvider: Provider = {
     skillResolverService?: SkillResolverService,
     subAgentToolsProvider?: SubAgentToolsProvider,
     mcpService?: McpService,
+    conversationTitleService?: ConversationTitleService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -87,6 +89,7 @@ const agentExecutionWorkerProvider: Provider = {
       skillResolverService,
       subAgentToolsProvider,
       mcpService,
+      conversationTitleService,
     ),
   inject: [
     DRIZZLE,
@@ -103,6 +106,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: SkillResolverService, optional: true },
     { token: SubAgentToolsProvider, optional: true },
     { token: McpService, optional: true },
+    { token: ConversationTitleService, optional: true },
   ],
 };
 

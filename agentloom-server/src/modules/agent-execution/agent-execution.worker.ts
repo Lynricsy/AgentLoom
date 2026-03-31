@@ -54,6 +54,7 @@ import {
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import {
   type ExecuteSubAgentParams,
   type SubAgentCompletionNotice,
@@ -159,6 +160,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly skillResolverService?: SkillResolverService,
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
     private readonly mcpService?: McpService,
+    private readonly conversationTitleService?: ConversationTitleService,
   ) {
     super();
   }
@@ -356,6 +358,8 @@ export class AgentExecutionWorker extends WorkerHost {
           historyMessages,
         );
 
+        const hadPriorAssistant = !!executionMetadata.lastAssistantMessageId;
+
         executionMetadata = await this.persistConversationTurn(
           conversationId,
           tenantId,
@@ -369,6 +373,17 @@ export class AgentExecutionWorker extends WorkerHost {
           executionMetadata,
         );
         shouldRebuildHistoryOnce = false;
+
+        // 首轮 assistant 回复后自动生成标题（fire-and-forget）
+        if (
+          !hadPriorAssistant &&
+          executionMetadata.lastAssistantMessageId &&
+          this.conversationTitleService
+        ) {
+          this.conversationTitleService
+            .generateTitle(conversationId, tenantId)
+            .catch(() => {});
+        }
 
         if (turnResult.stopReason === 'cancelled') {
           terminalStatus = 'cancelled';

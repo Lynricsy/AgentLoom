@@ -414,6 +414,13 @@
       "when": 1774850752311,
       "tag": "0058_add-icon-to-workflow-and-agent",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1774928197737,
+      "tag": "0059_mighty_black_tom",
+      "breakpoints": true
     }
   ]
 }

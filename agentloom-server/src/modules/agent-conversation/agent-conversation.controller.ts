@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -19,18 +20,21 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
+import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ResolveConversationToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ToolPermissionCallbackDto } from './dto/tool-permission-callback.dto';
+import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 @ApiTags('Agent Conversations')
 @Controller()
 export class AgentConversationController {
   constructor(
     private readonly conversationService: AgentConversationService,
+    private readonly conversationTitleService: ConversationTitleService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
   ) {}
@@ -153,6 +157,36 @@ export class AgentConversationController {
         status: 'permission_resolved',
       },
     };
+  }
+
+  @Patch('agent-conversations/:id')
+  @Roles('operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'Update a conversation (title, metadata)' })
+  @ApiResponse({ status: 200, description: 'Conversation updated' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+    @Body() dto: UpdateConversationDto,
+  ) {
+    return this.conversationService.updateConversation(id, tenantId, dto);
+  }
+
+  @Post('agent-conversations/:id/generate-title')
+  @Roles('operator', 'creator', 'admin', 'owner')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate or regenerate conversation title' })
+  @ApiResponse({ status: 200, description: 'Title generated' })
+  async generateTitle(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const title = await this.conversationTitleService.generateTitle(
+      id,
+      tenantId,
+      userId,
+    );
+    return { data: { title } };
   }
 
   @Delete('agent-conversations/:id')

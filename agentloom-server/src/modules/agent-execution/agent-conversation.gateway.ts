@@ -46,6 +46,7 @@ export const ConversationEventName = {
   SANDBOX_TERMINAL_OUTPUT: 'conversation.sandbox.terminal_output',
   SANDBOX_FILE_CHANGE: 'conversation.sandbox.file_change',
   STATUS_CHANGED: 'conversation.status.changed',
+  TITLE_UPDATED: 'conversation.title.updated',
 } as const;
 
 export type ConversationEventName =
@@ -626,6 +627,25 @@ export class AgentConversationGateway
       payload.tenantId,
       payload.conversationId,
       conversationEvent,
+      envelope,
+    );
+  }
+
+  @OnEvent('conversation.title.updated')
+  handleTitleUpdated(payload: {
+    conversationId: string;
+    tenantId: string;
+    title: string;
+  }): void {
+    const envelope = this.buildEventPayload(
+      payload.conversationId,
+      payload.tenantId,
+      { title: payload.title },
+    );
+    this.broadcastConversationEventImmediately(
+      payload.tenantId,
+      payload.conversationId,
+      ConversationEventName.TITLE_UPDATED,
       envelope,
     );
   }

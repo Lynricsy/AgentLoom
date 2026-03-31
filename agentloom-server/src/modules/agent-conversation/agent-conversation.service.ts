@@ -11,6 +11,7 @@ import {
 import { agentDefinitions } from '../../database/schema/agent-definitions.schema';
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
+import type { UpdateConversationDto } from './dto/update-conversation.dto';
 import { serializeConversation } from './dto/conversation-response.dto';
 import { serializeMessage } from './dto/message-response.dto';
 
@@ -290,5 +291,32 @@ export class AgentConversationService {
       organizationId: conversation.tenantId,
       userId: conversation.createdBy,
     });
+  }
+
+  async updateConversation(
+    conversationId: string,
+    tenantId: string,
+    dto: UpdateConversationDto,
+  ) {
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (dto.title !== undefined) updates.title = dto.title;
+    if (dto.metadata !== undefined) updates.metadata = dto.metadata;
+
+    const [conversation] = await this.tenantDb
+      .update(agentConversations)
+      .set(updates)
+      .where(
+        and(
+          eq(agentConversations.id, conversationId),
+          eq(agentConversations.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
+
+    return { data: serializeConversation(conversation) };
   }
 }
