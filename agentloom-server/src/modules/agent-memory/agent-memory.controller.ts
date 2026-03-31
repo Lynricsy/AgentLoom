@@ -159,8 +159,28 @@ export class AgentMemoryController {
 
     const total = countRow?.total ?? 0;
 
+    // 批量查询每个实例的节点数
+    const instanceIds = data.map((d) => d.id);
+    let nodeCountMap: Record<string, number> = {};
+    if (instanceIds.length > 0) {
+      const nodeCounts = await tenantDb
+        .select({
+          instanceId: memoryNodes.instanceId,
+          total: count(),
+        })
+        .from(memoryNodes)
+        .where(sql`${memoryNodes.instanceId} IN ${instanceIds}`)
+        .groupBy(memoryNodes.instanceId);
+      nodeCountMap = Object.fromEntries(
+        nodeCounts.map((r) => [r.instanceId, r.total]),
+      );
+    }
+
     return {
-      data,
+      data: data.map((d) => ({
+        ...d,
+        nodeCount: nodeCountMap[d.id] ?? 0,
+      })),
       meta: {
         page,
         pageSize,
